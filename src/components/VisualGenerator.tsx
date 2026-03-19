@@ -12,7 +12,8 @@ import {
   MapPin,
   Smile,
   Zap,
-  Star
+  Star,
+  Flame
 } from 'lucide-react';
 import { Persona, GeneratedImage } from '../types';
 import { generateImage, type ImageModel } from '../services/imageService';
@@ -49,6 +50,13 @@ const MODEL_OPTIONS: { value: ImageModel; label: string; description: string; ic
     description: 'Ultra-fast generation',
     icon: <Zap className="w-4 h-4" />,
     color: 'border-yellow-500/40 bg-yellow-500/10 text-yellow-400'
+  },
+  {
+    value: 'nano2',
+    label: 'nano banana 2',
+    description: 'Gemini 3.1 Flash',
+    icon: <Flame className="w-4 h-4" />,
+    color: 'border-orange-500/40 bg-orange-500/10 text-orange-400'
   },
   {
     value: 'pro',
@@ -151,7 +159,7 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
               <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-2">
                 <Sparkles className="w-3 h-3" /> Gemini Model
               </label>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 {MODEL_OPTIONS.map((opt) => (
                   <button
                     key={opt.value}
@@ -182,10 +190,10 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
                   <div className="w-12 h-12 border-4 border-purple-500/20 border-t-purple-500 rounded-full animate-spin" />
                   <div className="text-center">
                     <p className="text-sm font-medium text-purple-400 animate-pulse">
-                      {selectedModel === 'pro' ? 'Rendering via Gemini Pro...' : 'Generating with Gemini...'}
+                      {selectedModel === 'pro' ? 'Rendering via Gemini Pro...' : selectedModel === 'nano2' ? 'Generating via Gemini 3.1 Flash...' : 'Generating with Gemini...'}
                     </p>
                     <p className="text-xs text-zinc-600 mt-1">
-                      {selectedModel === 'pro' ? 'Pro mode takes a bit longer for higher quality' : 'Ultra-fast generation in progress'}
+                      {selectedModel === 'pro' ? 'Pro mode takes a bit longer for higher quality' : selectedModel === 'nano2' ? 'Nano banana 2 is warming up...' : 'Ultra-fast generation in progress'}
                     </p>
                   </div>
                 </div>

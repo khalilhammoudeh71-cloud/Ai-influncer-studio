@@ -16,6 +16,7 @@ const ai = new GoogleGenAI({
 
 const MODELS = {
   fast: 'gemini-2.5-flash-image',
+  nano2: 'gemini-3.1-flash-image',
   pro: 'gemini-3-pro-image-preview',
 } as const;
 

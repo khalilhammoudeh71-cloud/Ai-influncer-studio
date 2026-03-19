@@ -1,6 +1,6 @@
 import { Persona } from '../types';
 
-export type ImageModel = 'fast' | 'pro';
+export type ImageModel = 'fast' | 'nano2' | 'pro';
 
 export interface GenerateImageParams {
   persona: Persona;
