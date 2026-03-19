@@ -20,7 +20,7 @@ function getOpenAIClient(): OpenAI {
   return new OpenAI({ apiKey, baseURL });
 }
 
-const GEMINI_MODEL = 'gemini-2.0-flash-preview-image-generation';
+const GEMINI_MODEL = 'gemini-3.1-flash-image-preview';
 
 function buildPrompt(body: any): string {
   const { personaName, niche, tone, visualStyle, environment, outfitStyle, framing, mood, additionalInstructions, isChatContext, chatPrompt } = body;
