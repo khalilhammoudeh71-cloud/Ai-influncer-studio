@@ -49,6 +49,26 @@ function stripDataPrefix(dataUrl: string): { data: string; mimeType: string } {
   return { mimeType: 'image/png', data: dataUrl };
 }
 
+function parseGeminiError(err: any): string {
+  try {
+    const raw = err?.message || String(err);
+    const parsed = JSON.parse(raw);
+    const msg: string = parsed?.error?.message || raw;
+    if (msg.includes('quota') || msg.includes('RESOURCE_EXHAUSTED') || err?.status === 429) {
+      return 'Gemini quota exceeded — please wait a moment and try again.';
+    }
+    if (msg.includes('API key not valid') || msg.includes('INVALID_ARGUMENT')) {
+      return 'Gemini API key is invalid. Check your GEMINI_API_KEY.';
+    }
+    if (msg.includes('not found') || msg.includes('NOT_FOUND')) {
+      return `Gemini model not available: ${GEMINI_MODEL}`;
+    }
+    return msg;
+  } catch {
+    return err?.message || 'Gemini generation failed';
+  }
+}
+
 async function generateGeminiImage(prompt: string, referenceImage?: string): Promise<{ imageUrl: string; model: string }> {
   const parts: any[] = [];
 
@@ -131,7 +151,7 @@ app.post('/api/generate-image', async (req, res) => {
 
   const gemini = geminiResult.status === 'fulfilled'
     ? { imageUrl: geminiResult.value.imageUrl, model: geminiResult.value.model, error: null }
-    : { imageUrl: null, model: GEMINI_MODEL, error: (geminiResult.reason as any)?.message || 'Gemini generation failed' };
+    : { imageUrl: null, model: GEMINI_MODEL, error: parseGeminiError(geminiResult.reason) };
 
   const openai = openaiResult.status === 'fulfilled'
     ? { imageUrl: openaiResult.value.imageUrl, model: openaiResult.value.model, error: null }
