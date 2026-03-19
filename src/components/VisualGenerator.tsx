@@ -1,22 +1,21 @@
 import React, { useState } from 'react';
-import { 
-  Camera, 
-  Sparkles, 
-  Image as ImageIcon, 
-  X, 
-  Download, 
-  Heart,
+import {
+  Camera,
+  Sparkles,
+  Image as ImageIcon,
+  X,
+  Download,
   RefreshCw,
   Layout,
   Shirt,
   MapPin,
   Smile,
-  Zap,
-  Star,
-  Flame
+  CheckCircle,
+  AlertCircle,
+  Loader2
 } from 'lucide-react';
 import { Persona, GeneratedImage } from '../types';
-import { generateImage, type ImageModel } from '../services/imageService';
+import { generateDualImage, type DualImageResult, type SingleImageResult } from '../services/imageService';
 
 interface VisualGeneratorProps {
   persona: Persona;
@@ -25,13 +24,13 @@ interface VisualGeneratorProps {
 }
 
 const ENVIRONMENTS = [
-  'Luxury Hotel', 'Modern Apartment', 'Rooftop Lounge', 'Beach Resort', 
-  'Yacht Deck', 'Upscale Restaurant', 'Private Gym', 'Beauty Studio', 
+  'Luxury Hotel', 'Modern Apartment', 'Rooftop Lounge', 'Beach Resort',
+  'Yacht Deck', 'Upscale Restaurant', 'Private Gym', 'Beauty Studio',
   'Dental Office', 'Creator Studio', 'City Street', 'Penthouse'
 ];
 
 const OUTFITS = [
-  'Casual Chic', 'Luxury Evening', 'Business Professional', 'Fitness Wear', 
+  'Casual Chic', 'Luxury Evening', 'Business Professional', 'Fitness Wear',
   'Medical Scrubs', 'Edgy Streetwear', 'Glamorous Gown', 'Home Lounge'
 ];
 
@@ -43,29 +42,67 @@ const MOODS = [
   'Confident', 'Friendly', 'Thoughtful', 'Playful', 'Professional', 'Seductive'
 ];
 
-const MODEL_OPTIONS: { value: ImageModel; label: string; description: string; icon: React.ReactNode; color: string }[] = [
-  {
-    value: 'fast',
-    label: 'nano banana',
-    description: 'Ultra-fast generation',
-    icon: <Zap className="w-4 h-4" />,
-    color: 'border-yellow-500/40 bg-yellow-500/10 text-yellow-400'
-  },
-  {
-    value: 'nano2',
-    label: 'nano banana 2',
-    description: 'Gemini 3.1 Flash',
-    icon: <Flame className="w-4 h-4" />,
-    color: 'border-orange-500/40 bg-orange-500/10 text-orange-400'
-  },
-  {
-    value: 'pro',
-    label: 'nano banana pro',
-    description: 'Highest quality & detail',
-    icon: <Star className="w-4 h-4" />,
-    color: 'border-purple-500/40 bg-purple-500/10 text-purple-400'
-  }
-];
+interface ImagePanelProps {
+  label: string;
+  sublabel: string;
+  accentClass: string;
+  result: SingleImageResult | null;
+  isGenerating: boolean;
+  onSave: () => void;
+  onDownload: () => void;
+}
+
+const ImagePanel: React.FC<ImagePanelProps> = ({
+  label, sublabel, accentClass, result, isGenerating, onSave, onDownload
+}) => (
+  <div className="flex flex-col gap-2">
+    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border ${accentClass} w-fit`}>
+      <span className="text-xs font-bold">{label}</span>
+      <span className="text-[10px] opacity-60">{sublabel}</span>
+    </div>
+
+    <div className="aspect-square rounded-2xl bg-zinc-950 border border-zinc-800 overflow-hidden relative group">
+      {isGenerating ? (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+          <Loader2 className="w-8 h-8 animate-spin text-zinc-500" />
+          <p className="text-xs text-zinc-500 animate-pulse">Generating...</p>
+        </div>
+      ) : result?.error ? (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center p-4">
+          <AlertCircle className="w-8 h-8 text-red-400/60" />
+          <p className="text-xs text-red-400/70">{result.error}</p>
+        </div>
+      ) : result?.imageUrl ? (
+        <>
+          <img src={result.imageUrl} alt={label} className="w-full h-full object-cover" />
+          <div className="absolute bottom-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button
+              onClick={onDownload}
+              className="p-1.5 bg-black/60 backdrop-blur-md rounded-lg text-white hover:bg-black/80 transition-colors"
+              title="Download"
+            >
+              <Download className="w-4 h-4" />
+            </button>
+          </div>
+        </>
+      ) : (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <ImageIcon className="w-10 h-10 text-zinc-700 opacity-30" />
+        </div>
+      )}
+    </div>
+
+    {result?.imageUrl && (
+      <button
+        onClick={onSave}
+        className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all border ${accentClass} hover:opacity-90 flex items-center justify-center gap-1.5`}
+      >
+        <CheckCircle className="w-3.5 h-3.5" />
+        Save This One
+      </button>
+    )}
+  </div>
+);
 
 export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClose, onSaveImage }) => {
   const [prompt, setPrompt] = useState('');
@@ -74,63 +111,78 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
   const [selectedOutfit, setSelectedOutfit] = useState(OUTFITS[0]);
   const [selectedFraming, setSelectedFraming] = useState(FRAMING[0]);
   const [selectedMood, setSelectedMood] = useState(MOODS[0]);
-  const [selectedModel, setSelectedModel] = useState<ImageModel>('fast');
-  const [generatedPreview, setGeneratedPreview] = useState<string | null>(null);
-  const [generationError, setGenerationError] = useState<string | null>(null);
-  const [actualPromptUsed, setActualPromptUsed] = useState<string>('');
+  const [results, setResults] = useState<DualImageResult | null>(null);
+  const [globalError, setGlobalError] = useState<string | null>(null);
 
   const handleGenerate = async () => {
     setIsGenerating(true);
-    setGenerationError(null);
+    setGlobalError(null);
+    setResults(null);
 
     try {
-      const result = await generateImage({
+      const data = await generateDualImage({
         persona,
         environment: selectedEnv,
         outfitStyle: selectedOutfit,
         framing: selectedFraming,
         mood: selectedMood,
         additionalInstructions: prompt,
-        model: selectedModel
       });
-
-      setGeneratedPreview(result.imageUrl);
-      setActualPromptUsed(result.promptUsed);
-    } catch (error: any) {
-      setGenerationError(error.message || 'Unable to generate image right now.');
+      setResults(data);
+    } catch (err: any) {
+      setGlobalError(err.message || 'Generation failed. Please try again.');
     } finally {
       setIsGenerating(false);
     }
   };
 
-  const handleDownload = () => {
-    if (!generatedPreview) return;
+  const makeGeneratedImage = (imageUrl: string, model: string): GeneratedImage => ({
+    id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    url: imageUrl,
+    prompt: results?.promptUsed || prompt || '',
+    timestamp: Date.now(),
+    environment: selectedEnv,
+    outfit: selectedOutfit,
+    framing: selectedFraming,
+    model,
+  });
+
+  const saveGemini = () => {
+    if (!results?.gemini?.imageUrl) return;
+    onSaveImage(makeGeneratedImage(results.gemini.imageUrl, results.gemini.model));
+    onClose();
+  };
+
+  const saveOpenAI = () => {
+    if (!results?.openai?.imageUrl) return;
+    onSaveImage(makeGeneratedImage(results.openai.imageUrl, results.openai.model));
+    onClose();
+  };
+
+  const saveBoth = () => {
+    if (results?.gemini?.imageUrl) {
+      onSaveImage(makeGeneratedImage(results.gemini.imageUrl, results.gemini.model));
+    }
+    if (results?.openai?.imageUrl) {
+      onSaveImage(makeGeneratedImage(results.openai.imageUrl, results.openai.model));
+    }
+    onClose();
+  };
+
+  const downloadImage = (imageUrl: string, label: string) => {
     const a = document.createElement('a');
-    a.href = generatedPreview;
-    a.download = `${persona.name.replace(/\s+/g, '_')}_${Date.now()}.png`;
+    a.href = imageUrl;
+    a.download = `${persona.name.replace(/\s+/g, '_')}_${label}_${Date.now()}.png`;
     a.click();
   };
 
-  const saveToLibrary = () => {
-    if (!generatedPreview) return;
-    const newImg: GeneratedImage = {
-      id: `img-${Date.now()}`,
-      url: generatedPreview,
-      prompt: actualPromptUsed || prompt || `A ${selectedFraming} of ${persona.name} in a ${selectedEnv} wearing ${selectedOutfit}. Mood: ${selectedMood}.`,
-      timestamp: Date.now(),
-      environment: selectedEnv,
-      outfit: selectedOutfit,
-      framing: selectedFraming
-    };
-    onSaveImage(newImg);
-    onClose();
-  };
+  const hasBothResults = results?.gemini?.imageUrl && results?.openai?.imageUrl;
 
   return (
     <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
-      
-      <div className="relative w-full max-w-2xl bg-zinc-900 rounded-3xl overflow-hidden border border-zinc-800 shadow-2xl animate-in slide-in-from-bottom duration-300">
+
+      <div className="relative w-full max-w-3xl bg-zinc-900 rounded-3xl overflow-hidden border border-zinc-800 shadow-2xl animate-in slide-in-from-bottom duration-300">
         {/* Header */}
         <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/50 sticky top-0 z-10">
           <div className="flex items-center gap-3">
@@ -143,7 +195,7 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
             </div>
             <div>
               <h3 className="font-bold text-white">Visual Studio</h3>
-              <p className="text-xs text-zinc-400">Generating for {persona.name}</p>
+              <p className="text-xs text-zinc-400">Gemini Flash 3.1 &amp; DALL-E side by side</p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-zinc-800 rounded-full transition-colors">
@@ -151,136 +203,88 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
           </button>
         </div>
 
-        <div className="max-h-[80vh] overflow-y-auto">
-          <div className="p-6 space-y-6">
+        <div className="max-h-[82vh] overflow-y-auto">
+          <div className="p-6 space-y-5">
 
-            {/* Model Selector */}
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-2">
-                <Sparkles className="w-3 h-3" /> Gemini Model
-              </label>
-              <div className="grid grid-cols-3 gap-3">
-                {MODEL_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => setSelectedModel(opt.value)}
-                    className={`flex items-center gap-3 p-3 rounded-2xl border-2 text-left transition-all ${
-                      selectedModel === opt.value
-                        ? opt.color + ' border-opacity-100'
-                        : 'border-zinc-700/50 bg-zinc-800/50 text-zinc-400 hover:border-zinc-600'
-                    }`}
-                  >
-                    <span className={selectedModel === opt.value ? '' : 'opacity-50'}>{opt.icon}</span>
-                    <div>
-                      <p className="text-xs font-bold leading-tight">{opt.label}</p>
-                      <p className="text-[10px] opacity-70 leading-tight">{opt.description}</p>
-                    </div>
-                    {selectedModel === opt.value && (
-                      <div className="ml-auto w-2 h-2 rounded-full bg-current shrink-0" />
-                    )}
-                  </button>
-                ))}
+            {/* Dual Preview */}
+            <div className="grid grid-cols-2 gap-4">
+              <ImagePanel
+                label="Gemini"
+                sublabel="Flash 3.1"
+                accentClass="border-blue-500/30 bg-blue-500/10 text-blue-400"
+                result={results?.gemini ?? null}
+                isGenerating={isGenerating}
+                onSave={saveGemini}
+                onDownload={() => results?.gemini?.imageUrl && downloadImage(results.gemini.imageUrl, 'gemini')}
+              />
+              <ImagePanel
+                label="DALL-E"
+                sublabel="gpt-image-1"
+                accentClass="border-green-500/30 bg-green-500/10 text-green-400"
+                result={results?.openai ?? null}
+                isGenerating={isGenerating}
+                onSave={saveOpenAI}
+                onDownload={() => results?.openai?.imageUrl && downloadImage(results.openai.imageUrl, 'dalle')}
+              />
+            </div>
+
+            {globalError && (
+              <div className="flex items-center gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                {globalError}
               </div>
-            </div>
-
-            {/* Preview Area */}
-            <div className="aspect-square sm:aspect-video rounded-2xl bg-zinc-950 border border-zinc-800 overflow-hidden relative group">
-              {isGenerating ? (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
-                  <div className="w-12 h-12 border-4 border-purple-500/20 border-t-purple-500 rounded-full animate-spin" />
-                  <div className="text-center">
-                    <p className="text-sm font-medium text-purple-400 animate-pulse">
-                      {selectedModel === 'pro' ? 'Rendering via Gemini Pro...' : selectedModel === 'nano2' ? 'Generating via Gemini 3.1 Flash...' : 'Generating with Gemini...'}
-                    </p>
-                    <p className="text-xs text-zinc-600 mt-1">
-                      {selectedModel === 'pro' ? 'Pro mode takes a bit longer for higher quality' : selectedModel === 'nano2' ? 'Nano banana 2 is warming up...' : 'Ultra-fast generation in progress'}
-                    </p>
-                  </div>
-                </div>
-              ) : generationError ? (
-                <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 gap-3 bg-red-500/5">
-                  <div className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center text-red-500">
-                    <X className="w-6 h-6" />
-                  </div>
-                  <h4 className="font-bold text-red-400 text-sm">Generation Failed</h4>
-                  <p className="text-xs text-red-400/80 max-w-sm">{generationError}</p>
-                </div>
-              ) : generatedPreview ? (
-                <>
-                  <img src={generatedPreview} alt="Generated" className="w-full h-full object-cover transition-opacity duration-300" />
-                  <div className="absolute bottom-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                      onClick={handleDownload}
-                      className="p-2 bg-black/60 backdrop-blur-md rounded-lg text-white hover:bg-black/80 transition-colors"
-                      title="Download"
-                    >
-                      <Download className="w-5 h-5" />
-                    </button>
-                    <button className="p-2 bg-black/60 backdrop-blur-md rounded-lg text-white hover:bg-black/80 transition-colors" title="Save as favorite">
-                      <Heart className="w-5 h-5" />
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <div className="absolute inset-0 flex flex-col items-center justify-center text-zinc-600 gap-3">
-                  <ImageIcon className="w-12 h-12 opacity-20" />
-                  <p className="text-sm">Configure and tap Generate to create visuals</p>
-                </div>
-              )}
-            </div>
+            )}
 
             {/* Controls */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-2">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-1.5">
                     <MapPin className="w-3 h-3" /> Environment
                   </label>
-                  <select 
+                  <select
                     value={selectedEnv}
                     onChange={(e) => setSelectedEnv(e.target.value)}
-                    className="w-full bg-zinc-800 border-zinc-700 rounded-xl px-4 py-3 text-sm text-white focus:ring-2 focus:ring-purple-500 outline-none"
+                    className="w-full bg-zinc-800 border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white focus:ring-2 focus:ring-purple-500 outline-none"
                   >
                     {ENVIRONMENTS.map(env => <option key={env} value={env}>{env}</option>)}
                   </select>
                 </div>
-
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-2">
-                    <Shirt className="w-3 h-3" /> Outfit & Style
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-1.5">
+                    <Shirt className="w-3 h-3" /> Outfit
                   </label>
-                  <select 
+                  <select
                     value={selectedOutfit}
                     onChange={(e) => setSelectedOutfit(e.target.value)}
-                    className="w-full bg-zinc-800 border-zinc-700 rounded-xl px-4 py-3 text-sm text-white focus:ring-2 focus:ring-purple-500 outline-none"
+                    className="w-full bg-zinc-800 border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white focus:ring-2 focus:ring-purple-500 outline-none"
                   >
                     {OUTFITS.map(o => <option key={o} value={o}>{o}</option>)}
                   </select>
                 </div>
               </div>
 
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-2">
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-1.5">
                     <Layout className="w-3 h-3" /> Framing
                   </label>
-                  <select 
+                  <select
                     value={selectedFraming}
                     onChange={(e) => setSelectedFraming(e.target.value)}
-                    className="w-full bg-zinc-800 border-zinc-700 rounded-xl px-4 py-3 text-sm text-white focus:ring-2 focus:ring-purple-500 outline-none"
+                    className="w-full bg-zinc-800 border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white focus:ring-2 focus:ring-purple-500 outline-none"
                   >
                     {FRAMING.map(f => <option key={f} value={f}>{f}</option>)}
                   </select>
                 </div>
-
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-2">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-1.5">
                     <Smile className="w-3 h-3" /> Mood
                   </label>
-                  <select 
+                  <select
                     value={selectedMood}
                     onChange={(e) => setSelectedMood(e.target.value)}
-                    className="w-full bg-zinc-800 border-zinc-700 rounded-xl px-4 py-3 text-sm text-white focus:ring-2 focus:ring-purple-500 outline-none"
+                    className="w-full bg-zinc-800 border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white focus:ring-2 focus:ring-purple-500 outline-none"
                   >
                     {MOODS.map(m => <option key={m} value={m}>{m}</option>)}
                   </select>
@@ -288,48 +292,42 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
               </div>
             </div>
 
-            {/* Custom Prompt */}
-            <div className="space-y-2">
+            {/* Custom prompt */}
+            <div className="space-y-1.5">
               <label className="text-xs font-bold text-zinc-500 uppercase">Additional Instructions (Optional)</label>
-              <textarea 
+              <textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 placeholder="e.g. Holding a coffee cup, direct eye contact, cinematic lighting..."
-                className="w-full bg-zinc-800 border-zinc-700 rounded-xl px-4 py-3 text-sm text-white min-h-[80px] focus:ring-2 focus:ring-purple-500 outline-none resize-none"
+                className="w-full bg-zinc-800 border-zinc-700 rounded-xl px-4 py-3 text-sm text-white min-h-[70px] focus:ring-2 focus:ring-purple-500 outline-none resize-none"
               />
             </div>
           </div>
         </div>
 
-        {/* Footer Actions */}
-        <div className="p-6 bg-zinc-950 border-t border-zinc-800 flex gap-3">
-          {!generatedPreview ? (
-            <button 
-              onClick={handleGenerate}
-              disabled={isGenerating}
-              className="flex-1 bg-white text-black font-bold py-4 rounded-xl flex items-center justify-center gap-2 hover:bg-zinc-200 transition-colors disabled:opacity-50"
+        {/* Footer */}
+        <div className="p-5 bg-zinc-950 border-t border-zinc-800 flex gap-2">
+          <button
+            onClick={handleGenerate}
+            disabled={isGenerating}
+            className="flex-1 bg-white text-black font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 hover:bg-zinc-200 transition-colors disabled:opacity-50 text-sm"
+          >
+            {isGenerating ? (
+              <><Loader2 className="w-4 h-4 animate-spin" /> Generating both...</>
+            ) : results ? (
+              <><RefreshCw className="w-4 h-4" /> Regenerate Both</>
+            ) : (
+              <><Sparkles className="w-4 h-4" /> Generate Both</>
+            )}
+          </button>
+
+          {hasBothResults && (
+            <button
+              onClick={saveBoth}
+              className="px-5 py-3.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-sm transition-colors shadow-lg shadow-purple-500/20 whitespace-nowrap"
             >
-              <Sparkles className="w-5 h-5" />
-              {isGenerating ? 'Generating...' : 'Generate Visual'}
+              Save Both
             </button>
-          ) : (
-            <>
-              <button 
-                onClick={handleGenerate}
-                disabled={isGenerating}
-                className="flex-1 bg-zinc-800 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 hover:bg-zinc-700 transition-colors"
-              >
-                <RefreshCw className="w-5 h-5" />
-                Regenerate
-              </button>
-              <button 
-                onClick={saveToLibrary}
-                className="flex-1 bg-purple-600 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 hover:bg-purple-500 transition-colors shadow-lg shadow-purple-500/20"
-              >
-                <Download className="w-5 h-5" />
-                Save to Library
-              </button>
-            </>
           )}
         </div>
       </div>

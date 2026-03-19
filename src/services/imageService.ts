@@ -1,7 +1,5 @@
 import { Persona } from '../types';
 
-export type ImageModel = 'fast' | 'nano2' | 'pro';
-
 export interface GenerateImageParams {
   persona: Persona;
   environment?: string;
@@ -11,16 +9,21 @@ export interface GenerateImageParams {
   additionalInstructions?: string;
   isChatContext?: boolean;
   chatPrompt?: string;
-  model?: ImageModel;
 }
 
-export interface GenerateImageResult {
-  imageUrl: string;
+export interface SingleImageResult {
+  imageUrl: string | null;
+  model: string;
+  error: string | null;
+}
+
+export interface DualImageResult {
+  gemini: SingleImageResult;
+  openai: SingleImageResult;
   promptUsed: string;
-  model?: string;
 }
 
-export async function generateImage(params: GenerateImageParams): Promise<GenerateImageResult> {
+export async function generateDualImage(params: GenerateImageParams): Promise<DualImageResult> {
   const { persona, ...restParams } = params;
 
   const payload = {
@@ -29,7 +32,6 @@ export async function generateImage(params: GenerateImageParams): Promise<Genera
     niche: persona.niche,
     tone: persona.tone,
     visualStyle: persona.visualStyle || 'Realistic, highly detailed',
-    model: params.model || 'fast',
     ...restParams
   };
 
@@ -44,26 +46,15 @@ export async function generateImage(params: GenerateImageParams): Promise<Genera
     throw new Error('Image API not reachable. Make sure the backend server is running.');
   }
 
-  if (!response.ok) {
-    let errorMessage = 'Image generation failed.';
-    try {
-      const errorData = await response.json();
-      if (errorData.error) errorMessage = errorData.error;
-    } catch {
-      errorMessage = `HTTP Error ${response.status}`;
-    }
-    throw new Error(errorMessage);
-  }
-
   const data = await response.json();
 
-  if (!data.imageUrl) {
-    throw new Error('Image API returned an invalid response.');
+  if (!response.ok && !data.gemini && !data.openai) {
+    throw new Error(data.error || 'Image generation failed.');
   }
 
   return {
-    imageUrl: data.imageUrl,
+    gemini: data.gemini,
+    openai: data.openai,
     promptUsed: data.promptUsed || '',
-    model: data.model
   };
 }

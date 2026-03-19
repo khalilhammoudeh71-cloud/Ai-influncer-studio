@@ -7,6 +7,7 @@ export type GeneratedImage = {
   outfit?: string;
   framing?: string;
   isFavorite?: boolean;
+  model?: string;
 };
 
 export type Persona = {
