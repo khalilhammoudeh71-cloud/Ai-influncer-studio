@@ -1,6 +1,5 @@
 import path from "path";
 import { fileURLToPath } from "url";
-import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import { viteSingleFile } from "vite-plugin-singlefile";
@@ -8,9 +7,14 @@ import { viteSingleFile } from "vite-plugin-singlefile";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// https://vite.dev/config/
-export default defineConfig({
-  plugins: [react(), tailwindcss(), viteSingleFile()],
+export default defineConfig(({ command }) => ({
+  plugins: [
+    react(),
+    ...(command === 'build' ? [viteSingleFile()] : []),
+  ],
+  css: {
+    postcss: './postcss.config.js',
+  },
   server: {
     host: '0.0.0.0',
     port: 5000,
@@ -21,10 +25,20 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
+    watch: {
+      ignored: [
+        '**/node_modules/**',
+        '**/.replit_integration_files/**',
+        '**/server/**',
+        '**/.git/**',
+        '**/.cache/**',
+        '**/.local/**',
+      ],
+    },
   },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),
     },
   },
-});
+}));
