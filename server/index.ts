@@ -8,11 +8,7 @@ app.use(cors());
 app.use(express.json({ limit: '20mb' }));
 
 const geminiAI = new GoogleGenAI({
-  apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
-  httpOptions: {
-    apiVersion: '',
-    baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL,
-  },
+  apiKey: process.env.GEMINI_API_KEY || process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
 });
 
 function getOpenAIClient(): OpenAI {
