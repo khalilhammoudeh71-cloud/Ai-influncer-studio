@@ -10,9 +10,12 @@ import {
   Layout,
   Shirt,
   MapPin,
-  Smile
+  Smile,
+  Zap,
+  Star
 } from 'lucide-react';
 import { Persona, GeneratedImage } from '../types';
+import { generateImage, type ImageModel } from '../services/imageService';
 
 interface VisualGeneratorProps {
   persona: Persona;
@@ -39,6 +42,23 @@ const MOODS = [
   'Confident', 'Friendly', 'Thoughtful', 'Playful', 'Professional', 'Seductive'
 ];
 
+const MODEL_OPTIONS: { value: ImageModel; label: string; description: string; icon: React.ReactNode; color: string }[] = [
+  {
+    value: 'fast',
+    label: 'nano banana',
+    description: 'Ultra-fast generation',
+    icon: <Zap className="w-4 h-4" />,
+    color: 'border-yellow-500/40 bg-yellow-500/10 text-yellow-400'
+  },
+  {
+    value: 'pro',
+    label: 'nano banana pro',
+    description: 'Highest quality & detail',
+    icon: <Star className="w-4 h-4" />,
+    color: 'border-purple-500/40 bg-purple-500/10 text-purple-400'
+  }
+];
+
 export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClose, onSaveImage }) => {
   const [prompt, setPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -46,6 +66,7 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
   const [selectedOutfit, setSelectedOutfit] = useState(OUTFITS[0]);
   const [selectedFraming, setSelectedFraming] = useState(FRAMING[0]);
   const [selectedMood, setSelectedMood] = useState(MOODS[0]);
+  const [selectedModel, setSelectedModel] = useState<ImageModel>('fast');
   const [generatedPreview, setGeneratedPreview] = useState<string | null>(null);
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [actualPromptUsed, setActualPromptUsed] = useState<string>('');
@@ -53,35 +74,33 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
   const handleGenerate = async () => {
     setIsGenerating(true);
     setGenerationError(null);
-    
+
     try {
-      // Use the real image generation service
-      const { generateImage } = await import('../services/imageService');
       const result = await generateImage({
         persona,
         environment: selectedEnv,
         outfitStyle: selectedOutfit,
         framing: selectedFraming,
         mood: selectedMood,
-        additionalInstructions: prompt
+        additionalInstructions: prompt,
+        model: selectedModel
       });
 
-      // Pre-load the image so we only show it when it's ready
-      const img = new Image();
-      img.src = result.imageUrl;
-      img.onload = () => {
-        setGeneratedPreview(result.imageUrl);
-        setActualPromptUsed(result.promptUsed);
-        setIsGenerating(false);
-      };
-      img.onerror = () => {
-        setGenerationError("Failed to load the generated image from the provider.");
-        setIsGenerating(false);
-      };
+      setGeneratedPreview(result.imageUrl);
+      setActualPromptUsed(result.promptUsed);
     } catch (error: any) {
       setGenerationError(error.message || 'Unable to generate image right now.');
+    } finally {
       setIsGenerating(false);
     }
+  };
+
+  const handleDownload = () => {
+    if (!generatedPreview) return;
+    const a = document.createElement('a');
+    a.href = generatedPreview;
+    a.download = `${persona.name.replace(/\s+/g, '_')}_${Date.now()}.png`;
+    a.click();
   };
 
   const saveToLibrary = () => {
@@ -125,13 +144,50 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
         </div>
 
         <div className="max-h-[80vh] overflow-y-auto">
-          <div className="p-6 space-y-8">
+          <div className="p-6 space-y-6">
+
+            {/* Model Selector */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-2">
+                <Sparkles className="w-3 h-3" /> Gemini Model
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                {MODEL_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setSelectedModel(opt.value)}
+                    className={`flex items-center gap-3 p-3 rounded-2xl border-2 text-left transition-all ${
+                      selectedModel === opt.value
+                        ? opt.color + ' border-opacity-100'
+                        : 'border-zinc-700/50 bg-zinc-800/50 text-zinc-400 hover:border-zinc-600'
+                    }`}
+                  >
+                    <span className={selectedModel === opt.value ? '' : 'opacity-50'}>{opt.icon}</span>
+                    <div>
+                      <p className="text-xs font-bold leading-tight">{opt.label}</p>
+                      <p className="text-[10px] opacity-70 leading-tight">{opt.description}</p>
+                    </div>
+                    {selectedModel === opt.value && (
+                      <div className="ml-auto w-2 h-2 rounded-full bg-current shrink-0" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* Preview Area */}
             <div className="aspect-square sm:aspect-video rounded-2xl bg-zinc-950 border border-zinc-800 overflow-hidden relative group">
               {isGenerating ? (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
                   <div className="w-12 h-12 border-4 border-purple-500/20 border-t-purple-500 rounded-full animate-spin" />
-                  <p className="text-sm font-medium text-purple-400 animate-pulse">Rendering via OpenAI...</p>
+                  <div className="text-center">
+                    <p className="text-sm font-medium text-purple-400 animate-pulse">
+                      {selectedModel === 'pro' ? 'Rendering via Gemini Pro...' : 'Generating with Gemini...'}
+                    </p>
+                    <p className="text-xs text-zinc-600 mt-1">
+                      {selectedModel === 'pro' ? 'Pro mode takes a bit longer for higher quality' : 'Ultra-fast generation in progress'}
+                    </p>
+                  </div>
                 </div>
               ) : generationError ? (
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 gap-3 bg-red-500/5">
@@ -145,10 +201,14 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
                 <>
                   <img src={generatedPreview} alt="Generated" className="w-full h-full object-cover transition-opacity duration-300" />
                   <div className="absolute bottom-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button className="p-2 bg-black/60 backdrop-blur-md rounded-lg text-white hover:bg-black/80 transition-colors">
+                    <button
+                      onClick={handleDownload}
+                      className="p-2 bg-black/60 backdrop-blur-md rounded-lg text-white hover:bg-black/80 transition-colors"
+                      title="Download"
+                    >
                       <Download className="w-5 h-5" />
                     </button>
-                    <button className="p-2 bg-black/60 backdrop-blur-md rounded-lg text-white hover:bg-black/80 transition-colors">
+                    <button className="p-2 bg-black/60 backdrop-blur-md rounded-lg text-white hover:bg-black/80 transition-colors" title="Save as favorite">
                       <Heart className="w-5 h-5" />
                     </button>
                   </div>
