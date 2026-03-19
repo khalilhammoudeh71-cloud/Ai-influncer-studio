@@ -1,11 +1,11 @@
 import express from 'express';
 import cors from 'cors';
 import { GoogleGenAI, Modality } from '@google/genai';
-import OpenAI from 'openai';
+import OpenAI, { toFile } from 'openai';
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '20mb' }));
 
 const geminiAI = new GoogleGenAI({
   apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
@@ -24,7 +24,7 @@ function getOpenAIClient(): OpenAI {
   return new OpenAI({ apiKey, baseURL });
 }
 
-const GEMINI_MODEL = 'gemini-3.1-flash-image';
+const GEMINI_MODEL = 'gemini-2.0-flash-preview-image-generation';
 
 function buildPrompt(body: any): string {
   const { personaName, niche, tone, visualStyle, environment, outfitStyle, framing, mood, additionalInstructions, isChatContext, chatPrompt } = body;
@@ -32,7 +32,7 @@ function buildPrompt(body: any): string {
   if (isChatContext) {
     return `A high-quality, photorealistic social media photo of an AI influencer named ${personaName}. Niche: ${niche}. Tone/Style: ${tone}. Visual Style: ${visualStyle}.
 The user requested: "${chatPrompt}".
-Create a realistic, visually compelling image suitable for social media. Consistent, detailed facial features.`;
+Create a realistic, visually compelling image suitable for social media. Maintain consistent, detailed facial features matching any provided reference.`;
   }
 
   return `A high-quality, photorealistic social media photo of an AI influencer named ${personaName}.
@@ -42,13 +42,31 @@ Outfit: ${outfitStyle || 'Stylish casual'}.
 Framing: ${framing || 'Portrait'}.
 Mood: ${mood || 'Confident'}.
 ${additionalInstructions ? `Additional details: ${additionalInstructions}` : ''}
-Create a realistic, highly detailed image suitable for a professional social media post. Consistent facial features, cinematic lighting.`;
+Create a realistic, highly detailed image suitable for a professional social media post. Maintain consistent facial features matching any provided reference. Cinematic lighting.`;
 }
 
-async function generateGeminiImage(prompt: string): Promise<{ imageUrl: string; model: string }> {
+function stripDataPrefix(dataUrl: string): { data: string; mimeType: string } {
+  const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+  if (match) {
+    return { mimeType: match[1], data: match[2] };
+  }
+  return { mimeType: 'image/png', data: dataUrl };
+}
+
+async function generateGeminiImage(prompt: string, referenceImage?: string): Promise<{ imageUrl: string; model: string }> {
+  const parts: any[] = [];
+
+  if (referenceImage) {
+    const { mimeType, data } = stripDataPrefix(referenceImage);
+    parts.push({ inlineData: { mimeType, data } });
+    parts.push({ text: `Using this reference image to maintain consistent appearance: ${prompt}` });
+  } else {
+    parts.push({ text: prompt });
+  }
+
   const response = await geminiAI.models.generateContent({
     model: GEMINI_MODEL,
-    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    contents: [{ role: 'user', parts }],
     config: {
       responseModalities: [Modality.TEXT, Modality.IMAGE],
     },
@@ -70,12 +88,30 @@ async function generateGeminiImage(prompt: string): Promise<{ imageUrl: string; 
   };
 }
 
-async function generateOpenAIImage(prompt: string): Promise<{ imageUrl: string; model: string }> {
-  const response = await getOpenAIClient().images.generate({
-    model: 'gpt-image-1',
-    prompt,
-    n: 1,
-  });
+async function generateOpenAIImage(prompt: string, referenceImage?: string): Promise<{ imageUrl: string; model: string }> {
+  const client = getOpenAIClient();
+
+  let response;
+
+  if (referenceImage) {
+    const { mimeType, data } = stripDataPrefix(referenceImage);
+    const buffer = Buffer.from(data, 'base64');
+    const ext = mimeType.includes('png') ? 'png' : 'jpg';
+    const imageFile = await toFile(buffer, `reference.${ext}`, { type: mimeType });
+
+    response = await client.images.edit({
+      model: 'gpt-image-1',
+      image: imageFile,
+      prompt,
+      n: 1,
+    });
+  } else {
+    response = await client.images.generate({
+      model: 'gpt-image-1',
+      prompt,
+      n: 1,
+    });
+  }
 
   const b64 = response.data?.[0]?.b64_json;
   if (!b64) {
@@ -89,11 +125,12 @@ async function generateOpenAIImage(prompt: string): Promise<{ imageUrl: string; 
 }
 
 app.post('/api/generate-image', async (req, res) => {
-  const prompt = buildPrompt(req.body);
+  const { referenceImage, ...rest } = req.body;
+  const prompt = buildPrompt(rest);
 
   const [geminiResult, openaiResult] = await Promise.allSettled([
-    generateGeminiImage(prompt),
-    generateOpenAIImage(prompt),
+    generateGeminiImage(prompt, referenceImage),
+    generateOpenAIImage(prompt, referenceImage),
   ]);
 
   const gemini = geminiResult.status === 'fulfilled'

@@ -32,6 +32,7 @@ export async function generateDualImage(params: GenerateImageParams): Promise<Du
     niche: persona.niche,
     tone: persona.tone,
     visualStyle: persona.visualStyle || 'Realistic, highly detailed',
+    referenceImage: persona.referenceImage || null,
     ...restParams
   };
 
