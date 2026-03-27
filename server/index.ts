@@ -52,16 +52,20 @@ function stripDataPrefix(dataUrl: string): { data: string; mimeType: string } {
 function parseGeminiError(err: any): string {
   try {
     const raw = err?.message || String(err);
-    const parsed = JSON.parse(raw);
-    const msg: string = parsed?.error?.message || raw;
-    if (msg.includes('quota') || msg.includes('RESOURCE_EXHAUSTED') || err?.status === 429) {
-      return 'Gemini quota exceeded — please wait a moment and try again.';
+    let msg = raw;
+    try { msg = JSON.parse(raw)?.error?.message || raw; } catch {}
+
+    if (msg.includes('paid plan') || msg.includes('upgrade')) {
+      return 'BILLING_REQUIRED';
     }
-    if (msg.includes('API key not valid') || msg.includes('INVALID_ARGUMENT')) {
-      return 'Gemini API key is invalid. Check your GEMINI_API_KEY.';
+    if (msg.includes('quota') || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('limit: 0')) {
+      return 'BILLING_REQUIRED';
+    }
+    if (msg.includes('API key not valid') || (msg.includes('INVALID_ARGUMENT') && msg.includes('key'))) {
+      return 'Gemini API key is invalid — check your GEMINI_API_KEY secret.';
     }
     if (msg.includes('not found') || msg.includes('NOT_FOUND')) {
-      return `Gemini model not available: ${GEMINI_MODEL}`;
+      return `Gemini model not available on this API version.`;
     }
     return msg;
   } catch {

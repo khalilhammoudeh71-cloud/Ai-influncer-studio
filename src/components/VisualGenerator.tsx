@@ -12,7 +12,9 @@ import {
   Smile,
   CheckCircle,
   AlertCircle,
-  Loader2
+  Loader2,
+  ExternalLink,
+  CreditCard
 } from 'lucide-react';
 import { Persona, GeneratedImage } from '../types';
 import { generateDualImage, type DualImageResult, type SingleImageResult } from '../services/imageService';
@@ -66,6 +68,22 @@ const ImagePanel: React.FC<ImagePanelProps> = ({
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
           <Loader2 className="w-8 h-8 animate-spin text-zinc-500" />
           <p className="text-xs text-zinc-500 animate-pulse">Generating...</p>
+        </div>
+      ) : result?.error === 'BILLING_REQUIRED' ? (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center p-5">
+          <CreditCard className="w-8 h-8 text-amber-400/70" />
+          <div>
+            <p className="text-xs font-bold text-amber-300 mb-1">Paid Plan Required</p>
+            <p className="text-[11px] text-zinc-400 leading-relaxed">Gemini image generation requires a paid Google AI Studio account.</p>
+          </div>
+          <a
+            href="https://ai.dev/projects"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-400 hover:text-amber-300 underline underline-offset-2"
+          >
+            Upgrade at ai.dev <ExternalLink className="w-3 h-3" />
+          </a>
         </div>
       ) : result?.error ? (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center p-4">
