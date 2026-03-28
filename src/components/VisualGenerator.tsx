@@ -18,6 +18,7 @@ import {
   Pencil,
   ArrowUpCircle,
   History,
+  Upload,
 } from 'lucide-react';
 import { Persona, GeneratedImage } from '../types';
 import {
@@ -85,6 +86,8 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
 
   const [postAction, setPostAction] = useState<PostGenAction>(null);
   const [editPrompt, setEditPrompt] = useState('');
+  const [editAdditionalImage, setEditAdditionalImage] = useState<string | null>(null);
+  const [editAdditionalImageName, setEditAdditionalImageName] = useState<string | null>(null);
   const [selectedEditModel, setSelectedEditModel] = useState('');
   const [selectedUpscaleModel, setSelectedUpscaleModel] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -191,7 +194,7 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
     setActionError(null);
 
     try {
-      const data = await editImage(activeVersion.imageUrl, editPrompt, selectedEditModel);
+      const data = await editImage(activeVersion.imageUrl, editPrompt, selectedEditModel, editAdditionalImage || undefined);
       const newResult = { imageUrl: data.imageUrl, model: data.model, promptUsed: editPrompt };
       setResult(newResult);
       const version: ImageVersion = {
@@ -205,6 +208,8 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
       setActiveHistoryIndex(newHistory.length - 1);
       setPostAction(null);
       setEditPrompt('');
+      setEditAdditionalImage(null);
+      setEditAdditionalImageName(null);
     } catch (err: any) {
       setActionError(err.message || 'Editing failed.');
     } finally {
@@ -486,9 +491,45 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
                       <textarea
                         value={editPrompt}
                         onChange={(e) => setEditPrompt(e.target.value)}
-                        placeholder="e.g. Change background to a beach sunset, add sunglasses, make hair blonde..."
+                        placeholder="e.g. Change background to a beach sunset, add sunglasses, combine with the uploaded image..."
                         className="w-full bg-zinc-800 border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white min-h-[60px] focus:ring-2 focus:ring-blue-500 outline-none resize-none"
                       />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] uppercase tracking-wider font-bold text-zinc-500 ml-1">Additional Image (optional)</label>
+                      {editAdditionalImage ? (
+                        <div className="flex items-center gap-2 bg-zinc-800 rounded-xl p-2">
+                          <img src={editAdditionalImage} alt="Additional" className="w-10 h-10 rounded-lg object-cover" />
+                          <span className="text-xs text-zinc-300 truncate flex-1">{editAdditionalImageName}</span>
+                          <button
+                            onClick={() => { setEditAdditionalImage(null); setEditAdditionalImageName(null); }}
+                            className="p-1 hover:bg-white/10 rounded-lg text-zinc-400 hover:text-white transition-colors"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <label className="flex items-center gap-2 px-3 py-2.5 bg-zinc-800 hover:bg-zinc-700 rounded-xl cursor-pointer transition-colors border border-dashed border-zinc-600">
+                          <Upload className="w-3.5 h-3.5 text-zinc-400" />
+                          <span className="text-xs text-zinc-400">Upload background, product, or person to combine</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              const reader = new FileReader();
+                              reader.onload = () => {
+                                setEditAdditionalImage(reader.result as string);
+                                setEditAdditionalImageName(file.name);
+                              };
+                              reader.readAsDataURL(file);
+                              e.target.value = '';
+                            }}
+                          />
+                        </label>
+                      )}
                     </div>
                     {actionError && (
                       <div className="flex items-center gap-2 p-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">

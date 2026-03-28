@@ -34,6 +34,8 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
   const [previewSelectedEditModel, setPreviewSelectedEditModel] = useState('');
   const [previewSelectedUpscaleModel, setPreviewSelectedUpscaleModel] = useState('');
   const [previewEditPrompt, setPreviewEditPrompt] = useState('');
+  const [previewAdditionalImage, setPreviewAdditionalImage] = useState<string | null>(null);
+  const [previewAdditionalImageName, setPreviewAdditionalImageName] = useState<string | null>(null);
   const [previewProcessing, setPreviewProcessing] = useState(false);
   const [previewActionError, setPreviewActionError] = useState<string | null>(null);
   const [refModelsLoading, setRefModelsLoading] = useState(false);
@@ -110,6 +112,8 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
     setPreviewImage(img);
     setPreviewAction(null);
     setPreviewEditPrompt('');
+    setPreviewAdditionalImage(null);
+    setPreviewAdditionalImageName(null);
     setPreviewActionError(null);
     setPreviewProcessing(false);
     if (previewEditModels.length === 0) {
@@ -139,7 +143,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
     setPreviewProcessing(true);
     setPreviewActionError(null);
     try {
-      const data = await editImage(previewImage.url, previewEditPrompt, previewSelectedEditModel);
+      const data = await editImage(previewImage.url, previewEditPrompt, previewSelectedEditModel, previewAdditionalImage || undefined);
       const newImg: GeneratedImage = {
         id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         url: data.imageUrl,
@@ -163,6 +167,8 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
       setPreviewImage(newImg);
       setPreviewAction(null);
       setPreviewEditPrompt('');
+      setPreviewAdditionalImage(null);
+      setPreviewAdditionalImageName(null);
     } catch (err: any) {
       setPreviewActionError(err.message || 'Editing failed.');
     } finally {
@@ -1130,9 +1136,42 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                       <textarea
                         value={previewEditPrompt}
                         onChange={(e) => setPreviewEditPrompt(e.target.value)}
-                        placeholder="Describe what to change..."
+                        placeholder="Describe what to change or how to combine with uploaded image..."
                         className="w-full bg-zinc-800 border-zinc-700 rounded-lg px-3 py-2 text-xs text-white min-h-[50px] focus:ring-2 focus:ring-blue-500 outline-none resize-none"
                       />
+                      {previewAdditionalImage ? (
+                        <div className="flex items-center gap-2 bg-zinc-800 rounded-lg p-2">
+                          <img src={previewAdditionalImage} alt="Additional" className="w-8 h-8 rounded-md object-cover" />
+                          <span className="text-[10px] text-zinc-300 truncate flex-1">{previewAdditionalImageName}</span>
+                          <button
+                            onClick={() => { setPreviewAdditionalImage(null); setPreviewAdditionalImageName(null); }}
+                            className="p-1 hover:bg-white/10 rounded text-zinc-400 hover:text-white transition-colors"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ) : (
+                        <label className="flex items-center gap-2 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg cursor-pointer transition-colors border border-dashed border-zinc-600">
+                          <Upload className="w-3 h-3 text-zinc-400" />
+                          <span className="text-[10px] text-zinc-400">Upload background, product, or person to combine</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              const reader = new FileReader();
+                              reader.onload = () => {
+                                setPreviewAdditionalImage(reader.result as string);
+                                setPreviewAdditionalImageName(file.name);
+                              };
+                              reader.readAsDataURL(file);
+                              e.target.value = '';
+                            }}
+                          />
+                        </label>
+                      )}
                       {previewActionError && (
                         <p className="text-[10px] text-red-400 flex items-center gap-1"><AlertTriangle className="w-3 h-3" />{previewActionError}</p>
                       )}

@@ -271,19 +271,23 @@ function stripDataPrefix(dataUrl: string): { data: string; mimeType: string } {
   return { mimeType: 'image/png', data: dataUrl };
 }
 
-async function generateWithReplit(prompt: string, referenceImage?: string): Promise<string> {
+async function generateWithReplit(prompt: string, referenceImage?: string | string[]): Promise<string> {
   const client = getOpenAIClient();
   let response;
 
-  if (referenceImage) {
-    const { mimeType, data } = stripDataPrefix(referenceImage);
-    const buffer = Buffer.from(data, 'base64');
-    const ext = mimeType.includes('png') ? 'png' : 'jpg';
-    const imageFile = await toFile(buffer, `reference.${ext}`, { type: mimeType });
+  const images = Array.isArray(referenceImage) ? referenceImage : (referenceImage ? [referenceImage] : []);
+
+  if (images.length > 0) {
+    const imageFiles = await Promise.all(images.map(async (img, i) => {
+      const { mimeType, data } = stripDataPrefix(img);
+      const buffer = Buffer.from(data, 'base64');
+      const ext = mimeType.includes('png') ? 'png' : 'jpg';
+      return toFile(buffer, `reference_${i}.${ext}`, { type: mimeType });
+    }));
 
     response = await client.images.edit({
       model: 'gpt-image-1',
-      image: imageFile,
+      image: imageFiles as any,
       prompt,
       n: 1,
     });
@@ -606,7 +610,7 @@ app.post('/api/generate-reference', async (req, res) => {
 });
 
 app.post('/api/edit-image', async (req, res) => {
-  const { sourceImage, prompt, modelId } = req.body;
+  const { sourceImage, prompt, modelId, additionalImage } = req.body;
 
   if (!sourceImage || !prompt || !modelId) {
     return res.status(400).json({ error: 'sourceImage, prompt, and modelId are required' });
@@ -615,10 +619,13 @@ app.post('/api/edit-image', async (req, res) => {
   try {
     let imageUrl: string;
     let modelName = modelId;
+    const resolvedAdditional = additionalImage ? await resolveImageToDataUrl(additionalImage) : null;
 
     if (modelId === 'replit:gpt-image-1') {
       const resolvedSource = await resolveImageToDataUrl(sourceImage);
-      imageUrl = await generateWithReplit(prompt, resolvedSource);
+      const images = [resolvedSource];
+      if (resolvedAdditional) images.push(resolvedAdditional);
+      imageUrl = await generateWithReplit(prompt, images);
       modelName = 'GPT Image 1 (DALL-E)';
     } else if (modelId.startsWith('wavespeed-edit:')) {
       await fetchWavespeedModels();
@@ -635,9 +642,14 @@ app.post('/api/edit-image', async (req, res) => {
         enable_base64_output: true,
       };
       if (editModel.editImageField === 'images') {
-        payload.images = [b64Url];
+        const imgs = [b64Url];
+        if (resolvedAdditional) imgs.push(resolvedAdditional);
+        payload.images = imgs;
       } else {
         payload.image = b64Url;
+        if (resolvedAdditional) {
+          payload.image_2 = resolvedAdditional;
+        }
       }
 
       const url = `https://api.wavespeed.ai${editModel.apiPath}`;

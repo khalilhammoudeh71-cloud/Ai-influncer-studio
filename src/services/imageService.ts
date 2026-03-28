@@ -106,11 +106,13 @@ export async function generateImage(params: GenerateImageParams): Promise<Genera
   };
 }
 
-export async function editImage(sourceImage: string, prompt: string, modelId: string): Promise<{ imageUrl: string; model: string }> {
+export async function editImage(sourceImage: string, prompt: string, modelId: string, additionalImage?: string): Promise<{ imageUrl: string; model: string }> {
+  const body: Record<string, string> = { sourceImage, prompt, modelId };
+  if (additionalImage) body.additionalImage = additionalImage;
   const response = await fetch('/api/edit-image', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sourceImage, prompt, modelId }),
+    body: JSON.stringify(body),
   });
 
   const contentType = response.headers.get('content-type');
