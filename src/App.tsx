@@ -211,7 +211,7 @@ function App() {
     switch (activeTab) {
       case 'personas': return <PersonasView personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} selectedId={selectedPersonaId} />;
       case 'planner': return <PlannerView persona={activePersona} />;
-      case 'create': return <CreateView persona={activePersona} />;
+      case 'create': return <CreateView persona={activePersona} personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} />;
       case 'assistant': return <AssistantView persona={activePersona} />;
       case 'revenue': return <RevenueView persona={activePersona} />;
       case 'settings': return <SettingsView />;

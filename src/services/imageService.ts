@@ -168,6 +168,33 @@ export async function generateVideo(prompt: string, modelId: string, sourceImage
   return { videoUrl: data.videoUrl, model: data.model };
 }
 
+export async function generateContent(
+  type: 'prompt' | 'transcript' | 'multi-scene',
+  topic: string,
+  persona: { name: string; niche: string; tone: string; platform: string; bio: string },
+  sceneCount?: number
+): Promise<string> {
+  const body: Record<string, unknown> = { type, topic, persona };
+  if (sceneCount) body.sceneCount = sceneCount;
+
+  const response = await fetch('/api/generate-content', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  const contentType = response.headers.get('content-type');
+  if (!contentType || !contentType.includes('application/json')) {
+    throw new Error('Content API not reachable. Make sure the backend server is running.');
+  }
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || 'Content generation failed.');
+  }
+  return data.content;
+}
+
 export async function generateReferenceImage(prompt: string, modelId: string): Promise<GenerateImageResult> {
   const response = await fetch('/api/generate-reference', {
     method: 'POST',

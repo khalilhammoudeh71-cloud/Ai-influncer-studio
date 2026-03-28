@@ -600,6 +600,62 @@ app.get('/api/models', async (_req, res) => {
   }
 });
 
+app.post('/api/generate-content', async (req, res) => {
+  const { type, topic, persona, sceneCount } = req.body;
+
+  if (!type || !topic || !persona) {
+    return res.status(400).json({ error: 'type, topic, and persona are required' });
+  }
+
+  const validTypes = ['prompt', 'transcript', 'multi-scene'];
+  if (!validTypes.includes(type)) {
+    return res.status(400).json({ error: `Invalid type. Must be one of: ${validTypes.join(', ')}` });
+  }
+
+  try {
+    const openai = getOpenAIClient();
+
+    const personaContext = `You are ${persona.name}, an AI influencer in the ${persona.niche} niche. Your tone is ${persona.tone}. Your platform is ${persona.platform}. Bio: ${persona.bio}`;
+
+    let systemPrompt = '';
+    let userPrompt = '';
+
+    if (type === 'prompt') {
+      systemPrompt = `${personaContext}\n\nYou are a world-class AI image/video prompt engineer. Generate a single, highly detailed visual prompt for AI image or video generation. The prompt should be tailored to the persona's brand, niche, and visual style. Output ONLY the prompt text — no labels, no explanations, no quotes.`;
+      userPrompt = `Generate a detailed AI image/video generation prompt for this topic/idea: "${topic}"\n\nThe prompt should describe the scene, lighting, mood, composition, camera angle, and style in vivid detail. Make it suitable for high-end social media content that matches the persona's brand.`;
+    } else if (type === 'transcript') {
+      systemPrompt = `${personaContext}\n\nYou are an expert social media scriptwriter. Write in the persona's voice and tone. Create engaging, platform-optimized content. Output the script directly — no meta-commentary.`;
+      userPrompt = `Write a single-scene video script/caption for this topic: "${topic}"\n\nInclude:\n- A hook (first line that grabs attention)\n- The main script/caption body (2-4 paragraphs)\n- A call-to-action\n- 5-8 relevant hashtags\n\nFormat it cleanly with clear sections. Write in the persona's authentic voice.`;
+    } else if (type === 'multi-scene') {
+      const scenes = Math.min(Math.max(sceneCount || 3, 2), 6);
+      systemPrompt = `${personaContext}\n\nYou are an expert video production scriptwriter. Create detailed multi-scene video scripts with professional production notes. Write in the persona's voice. Output the script directly.`;
+      userPrompt = `Create a ${scenes}-scene video script for this topic: "${topic}"\n\nFor each scene, include:\n- **Scene [number]: [Title]**\n- **Duration**: estimated seconds\n- **Visual Direction**: camera angle, setting, lighting, mood\n- **Dialogue/Voiceover**: what the persona says\n- **On-Screen Text**: any text overlays\n\nEnd with a summary section including:\n- Total estimated duration\n- 5-8 hashtags\n- A suggested caption for posting`;
+    }
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      max_completion_tokens: 2048,
+      temperature: 0.8,
+    });
+
+    const content = completion.choices[0]?.message?.content || '';
+    if (!content) {
+      throw new Error('AI returned empty content');
+    }
+
+    return res.json({ content, type });
+  } catch (err) {
+    console.error('[generate-content] Error:', err instanceof Error ? err.message : err);
+    return res.status(500).json({
+      error: err instanceof Error ? err.message : 'Content generation failed',
+    });
+  }
+});
+
 app.post('/api/generate-image', async (req, res) => {
   const { referenceImage, modelId, ...rest } = req.body as ImageGenRequest & { modelId: string };
   const prompt = buildPrompt(rest);
