@@ -976,6 +976,25 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                       <img src={img.url} alt={img.prompt || ''} className="w-full h-full object-cover" />
                     </div>
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const updated = personas.map(p => {
+                          if (p.id === viewingPersona.id) {
+                            return { ...p, visualLibrary: (p.visualLibrary || []).filter(i => i.id !== img.id) };
+                          }
+                          return p;
+                        });
+                        setPersonas(updated);
+                        const fresh = updated.find(p => p.id === viewingPersona.id);
+                        if (fresh) setViewingPersona(fresh);
+                        api.images.delete(viewingPersona.id, img.id).catch(err => console.error('[API] Image delete error:', err));
+                      }}
+                      className="absolute top-2 right-2 p-1.5 bg-black/70 hover:bg-red-600 text-white/70 hover:text-white rounded-lg opacity-0 group-hover:opacity-100 transition-all z-10"
+                      title="Delete image"
+                    >
+                      <Trash size={14} />
+                    </button>
                     <div className="absolute bottom-0 left-0 right-0 p-3 opacity-0 group-hover:opacity-100 transition-opacity">
                       <p className="text-[10px] text-white/70 truncate">{img.prompt || 'Generated image'}</p>
                       <div className="flex items-center gap-2 mt-1">
