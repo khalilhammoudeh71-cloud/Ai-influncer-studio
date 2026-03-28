@@ -1,4 +1,4 @@
-import { Plus, Search, Edit2, Trash2, X, Check, Camera, Upload, Image as ImageIcon, AlertTriangle, Sparkles, ArrowLeft, Download, Heart, Trash, Eye, Loader2, ChevronDown, Cpu, Wand2, Pencil, ArrowUpCircle } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, X, Check, Camera, Upload, Image as ImageIcon, AlertTriangle, Sparkles, ArrowLeft, Download, Heart, Trash, Eye, Loader2, ChevronDown, Cpu, Wand2, Pencil, ArrowUpCircle, Film } from 'lucide-react';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { cn } from '../utils/cn';
 import { Persona, GeneratedImage } from '../types';
@@ -979,8 +979,17 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                     onClick={() => openPreviewImage(img)}
                   >
                     <div className="aspect-square">
-                      <img src={img.url} alt={img.prompt || ''} className="w-full h-full object-cover" />
+                      {img.mediaType === 'video' ? (
+                        <video src={img.url} muted className="w-full h-full object-cover" />
+                      ) : (
+                        <img src={img.url} alt={img.prompt || ''} className="w-full h-full object-cover" />
+                      )}
                     </div>
+                    {img.mediaType === 'video' && (
+                      <div className="absolute top-2 left-2 p-1 bg-black/70 rounded-md z-10">
+                        <Film size={12} className="text-pink-400" />
+                      </div>
+                    )}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                     <button
                       onClick={(e) => {
@@ -1048,11 +1057,21 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                   <X size={24} />
                 </button>
                 <div className="relative">
-                  <img 
-                    src={previewImage.url} 
-                    alt={previewImage.prompt || ''} 
-                    className="w-full rounded-2xl border border-white/10"
-                  />
+                  {previewImage.mediaType === 'video' ? (
+                    <video 
+                      src={previewImage.url} 
+                      controls 
+                      autoPlay 
+                      loop 
+                      className="w-full rounded-2xl border border-white/10"
+                    />
+                  ) : (
+                    <img 
+                      src={previewImage.url} 
+                      alt={previewImage.prompt || ''} 
+                      className="w-full rounded-2xl border border-white/10"
+                    />
+                  )}
                   {previewProcessing && (
                     <div className="absolute inset-0 bg-black/60 rounded-2xl flex items-center justify-center">
                       <div className="flex flex-col items-center gap-2">
@@ -1088,6 +1107,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                       </span>
                     )}
                   </div>
+                  {previewImage.mediaType !== 'video' && (
                   <div className="grid grid-cols-2 gap-2 mt-4">
                     <button
                       onClick={() => { setPreviewAction(previewAction === 'edit' ? null : 'edit'); setPreviewActionError(null); }}
@@ -1112,6 +1132,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                       <ArrowUpCircle size={14} /> Upscale
                     </button>
                   </div>
+                  )}
 
                   {previewAction === 'edit' && (
                     <div className="mt-3 p-3 rounded-xl bg-blue-950/30 border border-blue-500/20 space-y-2">

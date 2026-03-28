@@ -55,7 +55,7 @@ export async function fetchUpscaleModels(): Promise<ModelInfo[]> {
   return data.upscaleModels || [];
 }
 
-export async function fetchAllModelTypes(): Promise<{ models: ModelInfo[]; editModels: ModelInfo[]; upscaleModels: ModelInfo[] }> {
+export async function fetchAllModelTypes(): Promise<{ models: ModelInfo[]; editModels: ModelInfo[]; upscaleModels: ModelInfo[]; videoModels: ModelInfo[] }> {
   const response = await fetch('/api/models');
   if (!response.ok) {
     throw new Error('Failed to fetch models');
@@ -65,6 +65,7 @@ export async function fetchAllModelTypes(): Promise<{ models: ModelInfo[]; editM
     models: data.models || [],
     editModels: data.editModels || [],
     upscaleModels: data.upscaleModels || [],
+    videoModels: data.videoModels || [],
   };
 }
 
@@ -144,6 +145,27 @@ export async function upscaleImage(sourceImage: string, modelId: string): Promis
     throw new Error(data.error || 'Image upscaling failed.');
   }
   return { imageUrl: data.imageUrl, model: data.model };
+}
+
+export async function generateVideo(prompt: string, modelId: string, sourceImage?: string): Promise<{ videoUrl: string; model: string }> {
+  const body: Record<string, string> = { prompt, modelId };
+  if (sourceImage) body.sourceImage = sourceImage;
+  const response = await fetch('/api/generate-video', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  const contentType = response.headers.get('content-type');
+  if (!contentType || !contentType.includes('application/json')) {
+    throw new Error('Video API not reachable. Make sure the backend server is running.');
+  }
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || 'Video generation failed.');
+  }
+  return { videoUrl: data.videoUrl, model: data.model };
 }
 
 export async function generateReferenceImage(prompt: string, modelId: string): Promise<GenerateImageResult> {

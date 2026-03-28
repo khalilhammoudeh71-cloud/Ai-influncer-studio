@@ -19,10 +19,13 @@ import {
   ArrowUpCircle,
   History,
   Upload,
+  Video,
+  Film,
 } from 'lucide-react';
 import { Persona, GeneratedImage } from '../types';
 import {
   generateImage,
+  generateVideo,
   fetchAllModelTypes,
   editImage,
   upscaleImage,
@@ -66,7 +69,10 @@ interface ImageVersion {
   label: string;
 }
 
+type GenMode = 'image' | 'video';
+
 export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClose, onSaveImage }) => {
+  const [genMode, setGenMode] = useState<GenMode>('image');
   const [prompt, setPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [selectedEnv, setSelectedEnv] = useState(ENVIRONMENTS[1]);
@@ -81,7 +87,9 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [editModels, setEditModels] = useState<ModelInfo[]>([]);
   const [upscaleModels, setUpscaleModels] = useState<ModelInfo[]>([]);
+  const [videoModels, setVideoModels] = useState<ModelInfo[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>('');
+  const [selectedVideoModel, setSelectedVideoModel] = useState<string>('');
   const [modelsLoading, setModelsLoading] = useState(true);
 
   const [postAction, setPostAction] = useState<PostGenAction>(null);
@@ -93,20 +101,26 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
   const [isProcessing, setIsProcessing] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  const [videoResult, setVideoResult] = useState<{ videoUrl: string; model: string } | null>(null);
+  const [videoSourceImage, setVideoSourceImage] = useState<string | null>(null);
+  const [videoSourceImageName, setVideoSourceImageName] = useState<string | null>(null);
+
   const hasRefImage = !!persona.referenceImage;
 
   useEffect(() => {
     fetchAllModelTypes()
-      .then(({ models: m, editModels: em, upscaleModels: um }) => {
+      .then(({ models: m, editModels: em, upscaleModels: um, videoModels: vm }) => {
         setModels(m);
         setEditModels(em);
         setUpscaleModels(um);
+        setVideoModels(vm);
         const preferred = hasRefImage
           ? m.find(x => x.hasEditVariant) || m[0]
           : m[0];
         if (preferred) setSelectedModel(preferred.id);
         if (em.length > 0) setSelectedEditModel(em[0].id);
         if (um.length > 0) setSelectedUpscaleModel(um[0].id);
+        if (vm.length > 0) setSelectedVideoModel(vm[0].id);
       })
       .catch(() => setGlobalError('Failed to load available models.'))
       .finally(() => setModelsLoading(false));
@@ -147,6 +161,20 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
     });
     return groups;
   }, [upscaleModels]);
+
+  const groupedVideoModels = useMemo(() => {
+    const t2v: Record<string, ModelInfo[]> = {};
+    const i2v: Record<string, ModelInfo[]> = {};
+    videoModels.forEach((m) => {
+      const target = m.type === 'image-to-video' ? i2v : t2v;
+      if (!target[m.provider]) target[m.provider] = [];
+      target[m.provider].push(m);
+    });
+    return { t2v, i2v };
+  }, [videoModels]);
+
+  const selectedVideoModelInfo = useMemo(() => videoModels.find(m => m.id === selectedVideoModel), [videoModels, selectedVideoModel]);
+  const isI2VModel = selectedVideoModel.startsWith('wavespeed-i2v:');
 
   const selectedModelInfo = useMemo(() => models.find(m => m.id === selectedModel), [models, selectedModel]);
 
@@ -267,11 +295,58 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
     onClose();
   };
 
+  const handleGenerateVideo = async () => {
+    if (!selectedVideoModel || !prompt.trim()) return;
+    setIsGenerating(true);
+    setGlobalError(null);
+    setVideoResult(null);
+
+    try {
+      const sourceImg = isI2VModel
+        ? (videoSourceImage || persona.referenceImage || null)
+        : undefined;
+
+      if (isI2VModel && !sourceImg) {
+        throw new Error('Image-to-video models require a source image. Upload one or set a persona reference image.');
+      }
+
+      const data = await generateVideo(prompt, selectedVideoModel, sourceImg || undefined);
+      setVideoResult(data);
+    } catch (err: any) {
+      setGlobalError(err.message || 'Video generation failed. Please try again.');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleSaveVideo = () => {
+    if (!videoResult?.videoUrl) return;
+    const media: GeneratedImage = {
+      id: `vid-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      url: videoResult.videoUrl,
+      prompt: prompt || '',
+      timestamp: Date.now(),
+      model: videoResult.model,
+      mediaType: 'video',
+    };
+    onSaveImage(media);
+    onClose();
+  };
+
   const downloadImage = () => {
     if (!activeVersion?.imageUrl) return;
     const a = document.createElement('a');
     a.href = activeVersion.imageUrl;
     a.download = `${persona.name.replace(/\s+/g, '_')}_${Date.now()}.png`;
+    a.click();
+  };
+
+  const downloadVideo = () => {
+    if (!videoResult?.videoUrl) return;
+    const a = document.createElement('a');
+    a.href = videoResult.videoUrl;
+    a.download = `${persona.name.replace(/\s+/g, '_')}_${Date.now()}.mp4`;
+    a.target = '_blank';
     a.click();
   };
 
@@ -292,7 +367,7 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
             <div>
               <h3 className="font-bold text-white">Visual Studio</h3>
               <p className="text-xs text-zinc-400">
-                {models.length} models available
+                {genMode === 'image' ? `${models.length} image models` : `${videoModels.length} video models`}
               </p>
             </div>
           </div>
@@ -304,6 +379,30 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
         <div className="max-h-[82vh] overflow-y-auto">
           <div className="p-6 space-y-5">
 
+            <div className="flex bg-zinc-800 rounded-xl p-1 gap-1">
+              <button
+                onClick={() => { setGenMode('image'); setGlobalError(null); }}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold transition-all ${
+                  genMode === 'image'
+                    ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-lg'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-700'
+                }`}
+              >
+                <ImageIcon className="w-4 h-4" /> Image
+              </button>
+              <button
+                onClick={() => { setGenMode('video'); setGlobalError(null); }}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold transition-all ${
+                  genMode === 'video'
+                    ? 'bg-gradient-to-r from-pink-600 to-orange-500 text-white shadow-lg'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-700'
+                }`}
+              >
+                <Video className="w-4 h-4" /> Video
+              </button>
+            </div>
+
+            {genMode === 'image' && (<>
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-1.5">
                 <Cpu className="w-3 h-3" /> AI Model
@@ -664,10 +763,200 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
                 className="w-full bg-zinc-800 border-zinc-700 rounded-xl px-4 py-3 text-sm text-white min-h-[70px] focus:ring-2 focus:ring-purple-500 outline-none resize-none"
               />
             </div>
+            </>
+            )}
+
+            {genMode === 'video' && (
+            <>
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-1.5">
+                <Film className="w-3 h-3" /> Video Model
+              </label>
+              {modelsLoading ? (
+                <div className="flex items-center gap-2 px-3 py-2.5 bg-zinc-800 rounded-xl text-sm text-zinc-400">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Loading models...
+                </div>
+              ) : (
+                <div className="relative">
+                  <select
+                    value={selectedVideoModel}
+                    onChange={(e) => setSelectedVideoModel(e.target.value)}
+                    className="w-full bg-zinc-800 border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white focus:ring-2 focus:ring-pink-500 outline-none appearance-none pr-10"
+                  >
+                    {Object.keys(groupedVideoModels.t2v).length > 0 && (
+                      <optgroup label="Text to Video">
+                        {Object.entries(groupedVideoModels.t2v).map(([provider, providerModels]) => (
+                          providerModels.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              [{provider}] {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}
+                            </option>
+                          ))
+                        ))}
+                      </optgroup>
+                    )}
+                    {Object.keys(groupedVideoModels.i2v).length > 0 && (
+                      <optgroup label="Image to Video">
+                        {Object.entries(groupedVideoModels.i2v).map(([provider, providerModels]) => (
+                          providerModels.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              [{provider}] {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}
+                            </option>
+                          ))
+                        ))}
+                      </optgroup>
+                    )}
+                  </select>
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
+                </div>
+              )}
+              {selectedVideoModelInfo && (
+                <div className="flex items-center gap-2 flex-wrap mt-1">
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-300 border border-pink-500/30">
+                    {selectedVideoModelInfo.provider}
+                  </span>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full ${
+                    isI2VModel
+                      ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                      : 'bg-violet-500/20 text-violet-300 border border-violet-500/30'
+                  }`}>
+                    {isI2VModel ? 'Image → Video' : 'Text → Video'}
+                  </span>
+                  {selectedVideoModelInfo.price > 0 && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                      ${selectedVideoModelInfo.price.toFixed(3)} per video
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="aspect-video max-h-[350px] rounded-2xl bg-zinc-950 border border-zinc-800 overflow-hidden relative group mx-auto w-full">
+              {isGenerating ? (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+                  <Loader2 className="w-10 h-10 animate-spin text-pink-500" />
+                  <p className="text-xs text-zinc-500 animate-pulse">Generating video — this may take a few minutes...</p>
+                </div>
+              ) : videoResult?.videoUrl ? (
+                <>
+                  <video
+                    src={videoResult.videoUrl}
+                    controls
+                    autoPlay
+                    loop
+                    className="absolute inset-0 w-full h-full object-contain"
+                  />
+                  <div className="absolute top-2 left-2 px-2.5 py-1 bg-black/60 backdrop-blur-md rounded-lg">
+                    <span className="text-[10px] text-white font-medium">{videoResult.model}</span>
+                  </div>
+                </>
+              ) : (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                  <Film className="w-12 h-12 text-zinc-700 opacity-30" />
+                  <p className="text-xs text-zinc-600">Select a model and generate</p>
+                </div>
+              )}
+            </div>
+
+            {globalError && (
+              <div className="flex items-center gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                {globalError}
+              </div>
+            )}
+
+            {videoResult?.videoUrl && (
+              <div className="flex gap-3">
+                <button
+                  onClick={handleSaveVideo}
+                  className="flex-1 py-3 rounded-xl text-sm font-bold transition-all bg-gradient-to-r from-pink-600 to-orange-500 hover:from-pink-500 hover:to-orange-400 text-white flex items-center justify-center gap-2 shadow-lg shadow-pink-500/20"
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  Save to Library
+                </button>
+                <button
+                  onClick={downloadVideo}
+                  className="py-3 px-4 rounded-xl text-sm font-bold bg-zinc-800 hover:bg-zinc-700 text-white flex items-center justify-center gap-2 transition-colors"
+                >
+                  <Download className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
+            {isI2VModel && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-1.5">
+                  <ImageIcon className="w-3 h-3" /> Source Image
+                </label>
+                {videoSourceImage ? (
+                  <div className="flex items-center gap-3 bg-zinc-800 rounded-xl p-3">
+                    <img src={videoSourceImage} alt="Source" className="w-14 h-14 rounded-lg object-cover" />
+                    <div className="flex-1 min-w-0">
+                      <span className="text-xs text-zinc-300 truncate block">{videoSourceImageName || 'Uploaded image'}</span>
+                      <span className="text-[10px] text-zinc-500">Will be animated into video</span>
+                    </div>
+                    <button
+                      onClick={() => { setVideoSourceImage(null); setVideoSourceImageName(null); }}
+                      className="p-1.5 hover:bg-white/10 rounded-lg text-zinc-400 hover:text-white transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : persona.referenceImage ? (
+                  <div className="flex items-center gap-3 bg-zinc-800 rounded-xl p-3">
+                    <img src={persona.referenceImage} alt="Persona ref" className="w-14 h-14 rounded-lg object-cover" />
+                    <div className="flex-1 min-w-0">
+                      <span className="text-xs text-zinc-300">Using persona reference image</span>
+                      <span className="text-[10px] text-zinc-500 block">Or upload a different image below</span>
+                    </div>
+                  </div>
+                ) : null}
+                {!videoSourceImage && (
+                  <label className="flex items-center gap-2 px-3 py-2.5 bg-zinc-800 hover:bg-zinc-700 rounded-xl cursor-pointer transition-colors border border-dashed border-zinc-600">
+                    <Upload className="w-3.5 h-3.5 text-zinc-400" />
+                    <span className="text-xs text-zinc-400">
+                      {persona.referenceImage ? 'Upload a different source image' : 'Upload source image for video'}
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                          setVideoSourceImage(reader.result as string);
+                          setVideoSourceImageName(file.name);
+                        };
+                        reader.readAsDataURL(file);
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
+                )}
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-zinc-500 uppercase">Video Prompt</label>
+              <textarea
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                placeholder={isI2VModel
+                  ? 'Describe the motion and action — e.g. "She turns to camera and smiles, hair blowing in the wind"'
+                  : 'Describe the full scene — e.g. "A confident woman walks through a modern city at sunset, cinematic slow-mo"'
+                }
+                className="w-full bg-zinc-800 border-zinc-700 rounded-xl px-4 py-3 text-sm text-white min-h-[70px] focus:ring-2 focus:ring-pink-500 outline-none resize-none"
+              />
+            </div>
+            </>
+            )}
+
           </div>
         </div>
 
         <div className="p-5 bg-zinc-950 border-t border-zinc-800">
+          {genMode === 'image' ? (
           <button
             onClick={handleGenerate}
             disabled={isGenerating || isProcessing || !selectedModel}
@@ -681,6 +970,21 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
               <><Sparkles className="w-4 h-4" /> Generate Image</>
             )}
           </button>
+          ) : (
+          <button
+            onClick={handleGenerateVideo}
+            disabled={isGenerating || !selectedVideoModel || !prompt.trim()}
+            className="w-full bg-gradient-to-r from-pink-600 to-orange-500 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 hover:from-pink-500 hover:to-orange-400 transition-colors disabled:opacity-50 text-sm"
+          >
+            {isGenerating ? (
+              <><Loader2 className="w-4 h-4 animate-spin" /> Generating Video...</>
+            ) : videoResult ? (
+              <><RefreshCw className="w-4 h-4" /> Generate New Video</>
+            ) : (
+              <><Video className="w-4 h-4" /> Generate Video</>
+            )}
+          </button>
+          )}
         </div>
       </div>
     </div>

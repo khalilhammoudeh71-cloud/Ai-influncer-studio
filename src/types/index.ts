@@ -8,6 +8,7 @@ export type GeneratedImage = {
   framing?: string;
   isFavorite?: boolean;
   model?: string;
+  mediaType?: 'image' | 'video';
 };
 
 export type Persona = {

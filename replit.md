@@ -15,6 +15,12 @@ A React web application for managing AI influencer personas. Users can create pe
   - **Wavespeed AI**: 113+ models from 20+ providers (Google, OpenAI, Midjourney, Stability AI, ByteDance, xAI, etc.) via API key stored as `WAVESPEED_API_KEY`
   - Models fetched dynamically from Wavespeed API and cached for 30 minutes
   - URL allowlisting enforced for all Wavespeed response URLs (SSRF protection)
+- **Video Generation**:
+  - Text-to-video and image-to-video via Wavespeed AI models
+  - Model ID prefixes: `wavespeed-t2v:{id}` (text-to-video), `wavespeed-i2v:{id}` (image-to-video)
+  - Videos return HTTP URLs (not base64); polled up to 3 minutes for completion
+  - VisualGenerator has Image/Video mode toggle; videos saved to Visual Library with `mediaType: 'video'`
+  - PersonasView gallery shows video badge, preview modal plays video with controls
 
 ## Database Schema
 Tables managed in `shared/schema.ts`:
@@ -57,8 +63,9 @@ server/
 ```
 
 ## API Endpoints
-- `GET /api/models` - Returns all available image generation models (built-in + Wavespeed), grouped by provider
+- `GET /api/models` - Returns all available image/video generation models (built-in + Wavespeed), grouped by provider
 - `POST /api/generate-image` - Generates a single image using the specified `modelId` (prefix: `replit:` or `wavespeed:`)
+- `POST /api/generate-video` - Generates a video using Wavespeed (prefix: `wavespeed-t2v:` or `wavespeed-i2v:`)
 - `GET /api/health` - Health check
 - `GET/POST /api/personas` - List/create personas
 - `PUT/DELETE /api/personas/:clientId` - Update/delete persona

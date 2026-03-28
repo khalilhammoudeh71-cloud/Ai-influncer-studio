@@ -37,6 +37,7 @@ interface ModelInfo {
 let cachedModels: ModelInfo[] | null = null;
 let cachedEditModels: ModelInfo[] | null = null;
 let cachedUpscaleModels: ModelInfo[] | null = null;
+let cachedVideoModels: ModelInfo[] | null = null;
 let cacheTimestamp = 0;
 const CACHE_TTL = 30 * 60 * 1000;
 
@@ -198,9 +199,62 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
     });
     upscaleModels.sort((a, b) => a.provider.localeCompare(b.provider) || a.name.localeCompare(b.name));
 
+    const textToVideo = rawModels.filter((m: { type: string }) => m.type === 'text-to-video');
+    const imageToVideo = rawModels.filter((m: { type: string }) => m.type === 'image-to-video');
+
+    const videoModels: ModelInfo[] = [
+      ...textToVideo.map((m: { model_id: string; base_price: number; description?: string; api_schema?: { api_schemas?: { api_path: string; request_schema?: { properties?: Record<string, unknown> } }[] } }) => {
+        const apiPath = resolveApiPath(m);
+        const providerSlash = m.model_id.indexOf('/');
+        const provider = m.model_id.slice(0, providerSlash);
+        const friendlyName = m.model_id
+          .replace('/text-to-video', '')
+          .split('/').slice(1).join(' ')
+          .replace(/-/g, ' ')
+          .replace(/\b\w/g, (c: string) => c.toUpperCase());
+
+        return {
+          id: `wavespeed-t2v:${m.model_id}`,
+          name: friendlyName,
+          provider: PROVIDER_NAMES[provider] || provider,
+          type: 'text-to-video' as const,
+          price: m.base_price,
+          description: m.description || '',
+          apiPath,
+          hasEditVariant: false,
+        };
+      }),
+      ...imageToVideo.map((m: { model_id: string; base_price: number; description?: string; api_schema?: { api_schemas?: { api_path: string; request_schema?: { properties?: Record<string, unknown> } }[] } }) => {
+        const apiPath = resolveApiPath(m);
+        const providerSlash = m.model_id.indexOf('/');
+        const provider = m.model_id.slice(0, providerSlash);
+        const props = m.api_schema?.api_schemas?.[0]?.request_schema?.properties || {};
+        const imageField: 'image' | 'images' = props.images ? 'images' : 'image';
+        const friendlyName = m.model_id
+          .replace('/image-to-video', '')
+          .split('/').slice(1).join(' ')
+          .replace(/-/g, ' ')
+          .replace(/\b\w/g, (c: string) => c.toUpperCase());
+
+        return {
+          id: `wavespeed-i2v:${m.model_id}`,
+          name: friendlyName,
+          provider: PROVIDER_NAMES[provider] || provider,
+          type: 'image-to-video' as const,
+          price: m.base_price,
+          description: m.description || '',
+          apiPath,
+          hasEditVariant: false,
+          editImageField: imageField,
+        };
+      }),
+    ];
+    videoModels.sort((a, b) => a.provider.localeCompare(b.provider) || a.name.localeCompare(b.name));
+
     cachedModels = models;
     cachedEditModels = editModels;
     cachedUpscaleModels = upscaleModels;
+    cachedVideoModels = videoModels;
     cacheTimestamp = Date.now();
     return models;
   } catch (err) {
@@ -524,6 +578,7 @@ app.get('/api/models', async (_req, res) => {
       models: allModels,
       editModels,
       upscaleModels: cachedUpscaleModels || [],
+      videoModels: cachedVideoModels || [],
     });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to fetch models' });
@@ -719,6 +774,123 @@ app.post('/api/upscale-image', async (req, res) => {
   } catch (err) {
     console.error('[upscale-image] Error:', err instanceof Error ? err.message : err);
     return res.status(500).json({ error: err instanceof Error ? err.message : 'Image upscaling failed' });
+  }
+});
+
+async function extractWavespeedVideoOutput(json: Record<string, unknown>): Promise<string> {
+  const data = json.data as Record<string, unknown> | undefined;
+  console.log('[Wavespeed Video] Response code:', json.code, 'status:', data?.status, 'keys:', data ? Object.keys(data).join(',') : 'none');
+
+  if ((json.code as number) !== 200 || (data?.status as string) === 'failed') {
+    throw new Error((data?.error as string) || (json.message as string) || 'Wavespeed video request failed');
+  }
+
+  const outputs = (data?.outputs as string[]) || [];
+  if (outputs.length && outputs[0].startsWith('http')) {
+    return outputs[0];
+  }
+
+  const output = data?.output as string | undefined;
+  if (output && typeof output === 'string' && output.startsWith('http')) {
+    return output;
+  }
+
+  const videoUrl = (data?.video_url || data?.videoUrl || data?.video || data?.url) as string | undefined;
+  if (videoUrl && typeof videoUrl === 'string' && videoUrl.startsWith('http')) {
+    return videoUrl;
+  }
+
+  if (data?.status === 'processing' || data?.status === 'queued' || data?.status === 'completed') {
+    const pollUrl = (data?.urls as Record<string, string>)?.get || (data?.id ? `https://api.wavespeed.ai/api/v3/predictions/${data.id}/result` : null);
+    if (pollUrl && isAllowedWavespeedUrl(pollUrl)) {
+      console.log('[Wavespeed Video] Polling:', pollUrl.substring(0, 120));
+      for (let attempt = 0; attempt < 60; attempt++) {
+        await new Promise(r => setTimeout(r, 3000));
+        const pollRes = await fetch(pollUrl, {
+          headers: { Authorization: `Bearer ${WAVESPEED_API_KEY}` },
+        });
+        const pollJson = await pollRes.json();
+        const pollData = pollJson.data || {};
+        console.log('[Wavespeed Video] Poll attempt', attempt + 1, 'status:', pollData.status);
+
+        if (pollData.status === 'failed') {
+          throw new Error(pollData.error || 'Video generation failed during polling');
+        }
+
+        const pollOutputs = pollData.outputs || pollJson.outputs || [];
+        if (pollOutputs.length && pollOutputs[0].startsWith('http')) {
+          return pollOutputs[0];
+        }
+
+        const pollOutput = (pollData.output || pollData.video_url || pollData.videoUrl || pollData.video || pollData.url) as string | undefined;
+        if (pollOutput && typeof pollOutput === 'string' && pollOutput.startsWith('http')) {
+          return pollOutput;
+        }
+
+        if (pollData.status === 'completed') {
+          console.log('[Wavespeed Video] Completed but no video output. Keys:', Object.keys(pollData).join(','));
+          const anyUrl = Object.values(pollData).find(v => typeof v === 'string' && (v as string).startsWith('http') && /\.(mp4|webm|mov)/i.test(v as string));
+          if (anyUrl) return anyUrl as string;
+          throw new Error('Video completed but no video URL found');
+        }
+      }
+      throw new Error('Video generation timed out after 3 minutes');
+    }
+  }
+
+  throw new Error('No video output found in Wavespeed response');
+}
+
+app.post('/api/generate-video', async (req, res) => {
+  const { prompt, modelId, sourceImage } = req.body;
+
+  if (!prompt || !modelId) {
+    return res.status(400).json({ error: 'prompt and modelId are required' });
+  }
+
+  try {
+    await fetchWavespeedModels();
+    const videoModel = (cachedVideoModels || []).find(m => m.id === modelId);
+    if (!videoModel) {
+      return res.status(400).json({ error: 'Unknown video model ID' });
+    }
+
+    const isI2V = modelId.startsWith('wavespeed-i2v:');
+
+    if (isI2V && !sourceImage) {
+      return res.status(400).json({ error: 'Image-to-video models require a source image' });
+    }
+
+    const payload: Record<string, unknown> = {
+      prompt,
+    };
+
+    if (isI2V && sourceImage) {
+      const b64Url = await resolveImageToDataUrl(sourceImage);
+      if (videoModel.editImageField === 'images') {
+        payload.images = [b64Url];
+      } else {
+        payload.image = b64Url;
+      }
+    }
+
+    console.log('[Video Gen] Model:', videoModel.name, 'Path:', videoModel.apiPath, 'Type:', isI2V ? 'i2v' : 't2v');
+    const url = `https://api.wavespeed.ai${videoModel.apiPath}`;
+    const apiRes = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${WAVESPEED_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+    const json = await apiRes.json();
+    const videoUrl = await extractWavespeedVideoOutput(json);
+
+    return res.json({ videoUrl, model: videoModel.name });
+  } catch (err) {
+    console.error('[generate-video] Error:', err instanceof Error ? err.message : err);
+    return res.status(500).json({ error: err instanceof Error ? err.message : 'Video generation failed' });
   }
 });
 
