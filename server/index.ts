@@ -28,6 +28,7 @@ interface ModelInfo {
   apiPath: string;
   hasEditVariant: boolean;
   editApiPath?: string;
+  editImageField?: 'image' | 'images';
 }
 
 let cachedModels: ModelInfo[] | null = null;
@@ -49,18 +50,21 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
     const textToImage = rawModels.filter((m: any) => m.type === 'text-to-image');
     const imageToImage = rawModels.filter((m: any) => m.type === 'image-to-image');
 
-    const editLookup = new Map<string, any>();
+    const editLookup = new Map<string, { model: any; imageField: 'image' | 'images' }>();
     imageToImage.forEach((m: any) => {
       const base = m.model_id
         .replace('/edit', '')
         .replace('/image-to-image', '');
-      editLookup.set(base, m);
+      const props = m.api_schema?.api_schemas?.[0]?.request_schema?.properties || {};
+      const imageField: 'image' | 'images' = props.images ? 'images' : 'image';
+      editLookup.set(base, { model: m, imageField });
     });
 
     const models: ModelInfo[] = textToImage.map((m: any) => {
       const base = m.model_id
         .replace('/text-to-image', '');
-      const editModel = editLookup.get(base) || editLookup.get(base + '/edit');
+      const editEntry = editLookup.get(base) || editLookup.get(base + '/edit');
+      const editModel = editEntry?.model;
       const apiPath = m.api_schema?.api_schemas?.[0]?.api_path || `/api/v3/${m.model_id}`;
 
       const providerSlash = m.model_id.indexOf('/');
@@ -106,6 +110,7 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
         editApiPath: editModel
           ? (editModel.api_schema?.api_schemas?.[0]?.api_path || `/api/v3/${editModel.model_id}`)
           : undefined,
+        editImageField: editEntry?.imageField,
       };
     });
 
@@ -215,6 +220,7 @@ async function fetchAllowedImage(urlStr: string): Promise<string> {
 async function generateWithWavespeed(
   apiPath: string,
   editApiPath: string | undefined,
+  editImageField: 'image' | 'images' | undefined,
   prompt: string,
   referenceImage?: string
 ): Promise<string> {
@@ -229,7 +235,12 @@ async function generateWithWavespeed(
 
   if (hasRef && editApiPath) {
     const { data } = stripDataPrefix(referenceImage!);
-    payload.image = `data:image/png;base64,${data}`;
+    const b64Url = `data:image/png;base64,${data}`;
+    if (editImageField === 'images') {
+      payload.images = [b64Url];
+    } else {
+      payload.image = b64Url;
+    }
   }
 
   const url = `https://api.wavespeed.ai${usePath}`;
@@ -307,7 +318,7 @@ app.post('/api/generate-image', async (req, res) => {
         return res.status(400).json({ error: 'Unknown or unavailable model ID' });
       }
       modelName = modelInfo.name;
-      imageUrl = await generateWithWavespeed(modelInfo.apiPath, modelInfo.editApiPath, prompt, referenceImage);
+      imageUrl = await generateWithWavespeed(modelInfo.apiPath, modelInfo.editApiPath, modelInfo.editImageField, prompt, referenceImage);
     } else {
       return res.status(400).json({ error: 'Unknown model ID' });
     }
