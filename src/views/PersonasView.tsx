@@ -463,55 +463,46 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                     </div>
                   </div>
 
-                  {editingPersona.referenceImage ? (
-                    <div className="relative aspect-video rounded-2xl overflow-hidden border border-white/10 group">
+                  {editingPersona.referenceImage && (
+                    <div className="relative aspect-video rounded-2xl overflow-hidden border border-white/10 group mb-3">
                       <img 
                         src={editingPersona.referenceImage} 
                         alt="Reference" 
                         className="w-full h-full object-cover"
                       />
                       <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm">
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => fileInputRef.current?.click()}
-                            className="bg-white text-black px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5"
-                          >
-                            <Upload size={12} /> Replace
-                          </button>
-                          <button
-                            onClick={() => setEditingPersona({...editingPersona, referenceImage: undefined})}
-                            className="bg-red-500 text-white px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5"
-                          >
-                            <X size={12} /> Remove
-                          </button>
-                        </div>
+                        <button
+                          onClick={() => setEditingPersona({...editingPersona, referenceImage: undefined})}
+                          className="bg-red-500 text-white px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5"
+                        >
+                          <X size={12} /> Remove
+                        </button>
                       </div>
-                      <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload} />
                     </div>
-                  ) : (
-                    <>
-                      <div className="flex rounded-xl bg-white/5 p-0.5 gap-0.5">
-                        <button
-                          onClick={() => setRefMode('upload')}
-                          className={cn(
-                            "flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-all",
-                            refMode === 'upload' ? "bg-indigo-600 text-white shadow" : "text-gray-400 hover:text-white"
-                          )}
-                        >
-                          <Upload size={13} /> Upload
-                        </button>
-                        <button
-                          onClick={() => setRefMode('generate')}
-                          className={cn(
-                            "flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-all",
-                            refMode === 'generate' ? "bg-indigo-600 text-white shadow" : "text-gray-400 hover:text-white"
-                          )}
-                        >
-                          <Wand2 size={13} /> Generate with AI
-                        </button>
-                      </div>
+                  )}
 
-                      {refMode === 'upload' ? (
+                  <div className="flex rounded-xl bg-white/5 p-0.5 gap-0.5">
+                    <button
+                      onClick={() => setRefMode('upload')}
+                      className={cn(
+                        "flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-all",
+                        refMode === 'upload' ? "bg-indigo-600 text-white shadow" : "text-gray-400 hover:text-white"
+                      )}
+                    >
+                      <Upload size={13} /> {editingPersona.referenceImage ? 'Replace' : 'Upload'}
+                    </button>
+                    <button
+                      onClick={() => setRefMode('generate')}
+                      className={cn(
+                        "flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-all",
+                        refMode === 'generate' ? "bg-indigo-600 text-white shadow" : "text-gray-400 hover:text-white"
+                      )}
+                    >
+                      <Wand2 size={13} /> Generate with AI
+                    </button>
+                  </div>
+
+                  {refMode === 'upload' ? (
                         <div 
                           onClick={() => fileInputRef.current?.click()}
                           className="relative border-2 border-dashed border-white/10 rounded-2xl py-10 text-center cursor-pointer hover:border-indigo-500/50 hover:bg-white/[0.02] transition-all"
@@ -589,8 +580,6 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                           </button>
                         </div>
                       )}
-                    </>
-                  )}
                 </section>
 
                 {/* Form Fields */}
