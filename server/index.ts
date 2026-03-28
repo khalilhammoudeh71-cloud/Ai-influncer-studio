@@ -1119,7 +1119,7 @@ async function extractWavespeedVideoOutput(json: Record<string, unknown>): Promi
     return videoUrl;
   }
 
-  if (data?.status === 'processing' || data?.status === 'queued' || data?.status === 'completed') {
+  if (data?.status === 'processing' || data?.status === 'queued' || data?.status === 'completed' || data?.status === 'created' || data?.status === 'pending') {
     const pollUrl = (data?.urls as Record<string, string>)?.get || (data?.id ? `https://api.wavespeed.ai/api/v3/predictions/${data.id}/result` : null);
     if (pollUrl && isAllowedWavespeedUrl(pollUrl)) {
       console.log('[Wavespeed Video] Polling:', pollUrl.substring(0, 120));
