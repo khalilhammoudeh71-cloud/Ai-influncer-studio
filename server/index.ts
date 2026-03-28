@@ -323,37 +323,100 @@ async function resolveImageToDataUrl(input: string): Promise<string> {
   return `data:image/png;base64,${input}`;
 }
 
+function normalizeBase64Output(raw: string): string {
+  if (raw.startsWith('data:')) return raw;
+  if (raw.startsWith('http')) return raw;
+  const mimeType = (raw.charAt(0) === '/' ? 'image/jpeg'
+    : raw.startsWith('iVBOR') ? 'image/png'
+    : raw.startsWith('R0lGOD') ? 'image/gif'
+    : raw.startsWith('UklGR') ? 'image/webp'
+    : 'image/png');
+  return `data:${mimeType};base64,${raw}`;
+}
+
+async function resolveOutputImage(output: string): Promise<string> {
+  if (output.startsWith('data:')) {
+    console.log('[Wavespeed] Output: already a data URL, length:', output.length);
+    return output;
+  }
+  if (output.startsWith('http')) {
+    console.log('[Wavespeed] Output: URL, fetching:', output.substring(0, 120));
+    return await fetchAllowedImage(output);
+  }
+  const dataUrl = normalizeBase64Output(output);
+  console.log('[Wavespeed] Output: raw base64, length:', output.length, 'detected type:', dataUrl.substring(5, dataUrl.indexOf(';')));
+  return dataUrl;
+}
+
 async function extractWavespeedOutput(json: Record<string, unknown>): Promise<string> {
   const data = json.data as Record<string, unknown> | undefined;
+  console.log('[Wavespeed] Response code:', json.code, 'status:', data?.status, 'keys:', data ? Object.keys(data).join(',') : 'none');
+
   if ((json.code as number) !== 200 || (data?.status as string) === 'failed') {
     throw new Error((data?.error as string) || (json.message as string) || 'Wavespeed request failed');
   }
 
   const outputs = (data?.outputs as string[]) || [];
   if (outputs.length) {
-    const output = outputs[0];
-    console.log('[Wavespeed] Output type:', output.startsWith('http') ? 'URL' : 'base64', 'length:', output.length);
-    if (output.startsWith('http')) return await fetchAllowedImage(output);
-    return `data:image/jpeg;base64,${output}`;
+    return await resolveOutputImage(outputs[0]);
+  }
+
+  const output = data?.output as string | undefined;
+  if (output) {
+    console.log('[Wavespeed] Found single "output" field instead of "outputs" array');
+    return await resolveOutputImage(output);
+  }
+
+  const imageUrl = (data?.image_url || data?.imageUrl || data?.image || data?.url) as string | undefined;
+  if (imageUrl) {
+    console.log('[Wavespeed] Found image URL in data field');
+    return await resolveOutputImage(imageUrl);
   }
 
   if ((data?.status as string) === 'completed' && (data?.urls as Record<string, string>)?.get) {
     const pollUrl = (data!.urls as Record<string, string>).get;
+    console.log('[Wavespeed] No outputs yet, polling:', pollUrl.substring(0, 120));
     if (!isAllowedWavespeedUrl(pollUrl)) {
       throw new Error('Blocked: poll URL from untrusted host');
     }
-    const pollRes = await fetch(pollUrl, {
-      headers: { Authorization: `Bearer ${WAVESPEED_API_KEY}` },
-    });
-    const pollJson = await pollRes.json();
-    const pollOutputs = pollJson.data?.outputs || pollJson.outputs || [];
-    if (pollOutputs.length) {
-      const img = pollOutputs[0];
-      if (img.startsWith('http')) return await fetchAllowedImage(img);
-      return `data:image/png;base64,${img}`;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const pollRes = await fetch(pollUrl, {
+        headers: { Authorization: `Bearer ${WAVESPEED_API_KEY}` },
+      });
+      const pollJson = await pollRes.json();
+      const pollData = pollJson.data || {};
+      console.log('[Wavespeed] Poll attempt', attempt + 1, 'status:', pollData.status, 'outputs:', (pollData.outputs || []).length);
+
+      if (pollData.status === 'failed') {
+        throw new Error(pollData.error || 'Wavespeed generation failed during polling');
+      }
+
+      const pollOutputs = pollData.outputs || pollJson.outputs || [];
+      if (pollOutputs.length) {
+        return await resolveOutputImage(pollOutputs[0]);
+      }
+
+      const pollOutput = pollData.output as string | undefined;
+      if (pollOutput) {
+        return await resolveOutputImage(pollOutput);
+      }
+
+      const pollImageUrl = (pollData.image_url || pollData.imageUrl || pollData.image || pollData.url) as string | undefined;
+      if (pollImageUrl) {
+        return await resolveOutputImage(pollImageUrl);
+      }
+
+      if (pollData.status === 'completed' && !pollOutputs.length) {
+        console.log('[Wavespeed] Poll completed but no outputs, full data keys:', Object.keys(pollData).join(','));
+        throw new Error('Wavespeed returned completed status but no image data');
+      }
+
+      await new Promise(r => setTimeout(r, 2000));
     }
+    throw new Error('Wavespeed polling timed out after 10 attempts');
   }
 
+  console.log('[Wavespeed] No outputs found. Full data keys:', data ? Object.keys(data).join(',') : 'none');
   throw new Error('No image output from Wavespeed');
 }
 
