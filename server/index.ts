@@ -308,11 +308,7 @@ async function resolveImageToDataUrl(input: string): Promise<string> {
   }
   if (input.startsWith('http://') || input.startsWith('https://')) {
     if (!isAllowedWavespeedUrl(input)) {
-      const imgRes = await fetch(input);
-      if (!imgRes.ok) throw new Error('Failed to fetch image from URL');
-      const buf = Buffer.from(await imgRes.arrayBuffer());
-      const ct = imgRes.headers.get('content-type') || 'image/png';
-      return `data:${ct};base64,${buf.toString('base64')}`;
+      throw new Error('Only Wavespeed CDN URLs or base64/data URLs are accepted as source images');
     }
     return await fetchAllowedImage(input);
   }
@@ -541,7 +537,8 @@ app.post('/api/edit-image', async (req, res) => {
     let modelName = modelId;
 
     if (modelId === 'replit:gpt-image-1') {
-      imageUrl = await generateWithReplit(prompt, sourceImage);
+      const resolvedSource = await resolveImageToDataUrl(sourceImage);
+      imageUrl = await generateWithReplit(prompt, resolvedSource);
       modelName = 'GPT Image 1 (DALL-E)';
     } else if (modelId.startsWith('wavespeed-edit:')) {
       await fetchWavespeedModels();
