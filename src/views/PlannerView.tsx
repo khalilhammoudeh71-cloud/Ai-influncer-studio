@@ -6,9 +6,11 @@ import { api } from '../services/apiService';
 
 interface PlannerViewProps {
   persona: Persona;
+  personas: Persona[];
+  onSelectPersona: (id: string) => void;
 }
 
-export default function PlannerView({ persona }: PlannerViewProps) {
+export default function PlannerView({ persona, personas, onSelectPersona }: PlannerViewProps) {
   const [plan, setPlan] = useState<(PlannedPost & { id: string })[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [platform, setPlatform] = useState(persona.platform);
@@ -61,11 +63,18 @@ export default function PlannerView({ persona }: PlannerViewProps) {
       </header>
 
       <div className="grid grid-cols-2 gap-4 mb-8">
-        <div className="bg-[#1A1A1A] p-3 rounded-2xl border border-white/5 opacity-60">
+        <div className="bg-[#1A1A1A] p-3 rounded-2xl border border-white/5 relative">
           <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Persona</label>
-          <div className="flex justify-between items-center text-sm font-medium">
-            {persona.name}
-          </div>
+          <select
+            value={persona.id}
+            onChange={e => onSelectPersona(e.target.value)}
+            className="w-full bg-transparent text-sm font-medium text-white outline-none appearance-none pr-5 cursor-pointer"
+          >
+            {personas.map(p => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+          <ChevronDown size={13} className="absolute right-3 bottom-3.5 text-gray-500 pointer-events-none" />
         </div>
         <div className="bg-[#1A1A1A] p-3 rounded-2xl border border-white/5 cursor-pointer" onClick={() => {
             const platforms = ['Instagram', 'TikTok', 'YouTube', 'Twitter/X'];

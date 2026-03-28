@@ -210,7 +210,7 @@ function App() {
   const renderContent = () => {
     switch (activeTab) {
       case 'personas': return <PersonasView personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} selectedId={selectedPersonaId} />;
-      case 'planner': return <PlannerView persona={activePersona} />;
+      case 'planner': return <PlannerView persona={activePersona} personas={personas} onSelectPersona={setSelectedPersonaId} />;
       case 'create': return <CreateView persona={activePersona} personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} />;
       case 'assistant': return <AssistantView persona={activePersona} personas={personas} />;
       case 'chat': return <ChatView personas={personas} activePersona={activePersona} />;
