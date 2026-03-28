@@ -77,6 +77,14 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
     const textToImage = rawModels.filter((m: { type: string }) => m.type === 'text-to-image');
     const imageToImage = rawModels.filter((m: { type: string }) => m.type === 'image-to-image');
 
+    function resolveApiPath(m: { model_id: string; api_schema?: { api_schemas?: { api_path: string }[] } }): string {
+      const schemaPath = m.api_schema?.api_schemas?.[0]?.api_path;
+      if (schemaPath && schemaPath.includes(m.model_id.split('/').slice(0, 2).join('/'))) {
+        return schemaPath;
+      }
+      return `/api/v3/${m.model_id}`;
+    }
+
     const editLookup = new Map<string, { model: { model_id: string; api_schema?: { api_schemas?: { api_path: string; request_schema?: { properties?: Record<string, unknown> } }[] } }; imageField: 'image' | 'images' }>();
     imageToImage.forEach((m: { model_id: string; api_schema?: { api_schemas?: { api_path: string; request_schema?: { properties?: Record<string, unknown> } }[] } }) => {
       const base = m.model_id
@@ -87,12 +95,14 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
       editLookup.set(base, { model: m, imageField });
     });
 
+    const editModelIds = new Set(imageToImage.map((m: { model_id: string }) => m.model_id));
+
     const models: ModelInfo[] = textToImage.map((m: { model_id: string; base_price: number; description?: string; api_schema?: { api_schemas?: { api_path: string }[] } }) => {
-      const base = m.model_id
-        .replace('/text-to-image', '');
-      const editEntry = editLookup.get(base) || editLookup.get(base + '/edit');
+      const base = m.model_id.replace('/text-to-image', '');
+      const editEntry = editLookup.get(base);
       const editModel = editEntry?.model;
-      const apiPath = m.api_schema?.api_schemas?.[0]?.api_path || `/api/v3/${m.model_id}`;
+      const hasRealEditVariant = editModel ? editModelIds.has(editModel.model_id) : false;
+      const apiPath = resolveApiPath(m);
 
       const providerSlash = m.model_id.indexOf('/');
       const provider = m.model_id.slice(0, providerSlash);
@@ -113,18 +123,18 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
         price: m.base_price,
         description: m.description || '',
         apiPath,
-        hasEditVariant: !!editModel,
-        editApiPath: editModel
-          ? (editModel.api_schema?.api_schemas?.[0]?.api_path || `/api/v3/${editModel.model_id}`)
+        hasEditVariant: hasRealEditVariant,
+        editApiPath: hasRealEditVariant && editModel
+          ? resolveApiPath(editModel)
           : undefined,
-        editImageField: editEntry?.imageField,
+        editImageField: hasRealEditVariant ? editEntry?.imageField : undefined,
       };
     });
 
     models.sort((a, b) => a.provider.localeCompare(b.provider) || a.name.localeCompare(b.name));
 
     const editModels: ModelInfo[] = imageToImage.map((m: { model_id: string; base_price: number; description?: string; api_schema?: { api_schemas?: { api_path: string; request_schema?: { properties?: Record<string, unknown> } }[] } }) => {
-      const apiPath = m.api_schema?.api_schemas?.[0]?.api_path || `/api/v3/${m.model_id}`;
+      const apiPath = resolveApiPath(m);
       const providerSlash = m.model_id.indexOf('/');
       const provider = m.model_id.slice(0, providerSlash);
       const props = m.api_schema?.api_schemas?.[0]?.request_schema?.properties || {};
