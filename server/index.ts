@@ -36,6 +36,28 @@ interface ModelInfo {
   nsfw?: boolean;
 }
 
+const NSFW_MODEL_IDS = new Set([
+  'wavespeed-ai/wan-2.1-i2v-480p',
+  'wavespeed-ai/wan-2.1-i2v-720p',
+  'wavespeed-ai/wan-2.1-i2v-720p-bf16',
+  'wavespeed-ai/wan-2.1-t2v-480p',
+  'wavespeed-ai/wan-2.1-t2v-720p',
+  'wavespeed-ai/wan-2.1-t2v-720p-bf16',
+  'wavespeed-ai/wan-2.2-i2v-720p',
+  'wavespeed-ai/wan-2.2-t2v-720p',
+  'alibaba/wan2.1-i2v-720p',
+  'alibaba/wan2.1-t2v-720p',
+  'wavespeed-ai/seededit-v3.0',
+  'wavespeed-ai/seededit-v2.0',
+  'wavespeed-ai/firered-v1.5-image',
+  'wavespeed-ai/firered-v1.5-image-lora',
+  'wavespeed-ai/higgsfield-t2v-01',
+  'wavespeed-ai/higgsfield-i2v-01',
+  'wavespeed-ai/uso-full',
+  'wavespeed-ai/z-image',
+  'wavespeed-ai/glm-image',
+]);
+
 const NSFW_MODEL_FRAGMENTS = [
   '/wan-2',
   'alibaba/wan',
@@ -48,6 +70,7 @@ const NSFW_MODEL_FRAGMENTS = [
 ];
 
 function isNsfwModel(modelId: string): boolean {
+  if (NSFW_MODEL_IDS.has(modelId)) return true;
   return NSFW_MODEL_FRAGMENTS.some(f => modelId.includes(f));
 }
 
