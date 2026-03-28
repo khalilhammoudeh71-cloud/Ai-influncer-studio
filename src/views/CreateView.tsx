@@ -23,6 +23,7 @@ import {
   ArrowUpCircle,
   History,
   Camera,
+  ChevronsRight,
 } from 'lucide-react';
 import { Persona, GeneratedImage } from '../types';
 import {
@@ -99,6 +100,9 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
   const [videoPrompt, setVideoPrompt] = useState('');
   const [videoResult, setVideoResult] = useState<{ videoUrl: string; model: string } | null>(null);
+  const [isExtending, setIsExtending] = useState(false);
+  const [extendResult, setExtendResult] = useState<{ videoUrl: string; model: string } | null>(null);
+  const [extendError, setExtendError] = useState<string | null>(null);
   const [videoSourcePersonaId, setVideoSourcePersonaId] = useState<string>('none');
   const [videoSourceImage, setVideoSourceImage] = useState<string | null>(null);
   const [videoSourceImageName, setVideoSourceImageName] = useState<string | null>(null);
@@ -303,6 +307,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     setIsGenerating(true);
     setGlobalError(null);
     setVideoResult(null);
+    setExtendResult(null);
+    setExtendError(null);
 
     try {
       const sourceImg = isI2VModel ? effectiveVideoSourceImage : undefined;
@@ -316,6 +322,42 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     } finally {
       setIsGenerating(false);
     }
+  };
+
+  const handleExtendVideo = async () => {
+    if (!videoResult?.videoUrl || !selectedVideoModel) return;
+    setIsExtending(true);
+    setExtendError(null);
+    setExtendResult(null);
+    try {
+      const frameRes = await fetch('/api/extract-last-frame', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoUrl: videoResult.videoUrl }),
+      });
+      const frameData = await frameRes.json();
+      if (!frameRes.ok) throw new Error(frameData.error || 'Could not extract last frame');
+
+      const data = await generateVideo(videoPrompt, selectedVideoModel, frameData.frameDataUrl);
+      setExtendResult(data);
+    } catch (err: unknown) {
+      setExtendError(err instanceof Error ? err.message : 'Video extension failed.');
+    } finally {
+      setIsExtending(false);
+    }
+  };
+
+  const handleSaveExtendedVideo = () => {
+    if (!extendResult?.videoUrl) return;
+    const media: GeneratedImage = {
+      id: `vid-ext-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      url: extendResult.videoUrl,
+      prompt: `Extended: ${videoPrompt}`,
+      timestamp: Date.now(),
+      model: extendResult.model,
+      mediaType: 'video',
+    };
+    saveMediaToLibrary(media);
   };
 
   const handleTextGenerate = async () => {
@@ -840,13 +882,57 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       </div>
 
       {videoResult && (
-        <div className="flex gap-2">
-          <button onClick={() => downloadFile(videoResult.videoUrl, 'mp4')} className="flex-1 py-2 rounded-xl text-xs font-bold bg-zinc-800 text-zinc-300 hover:text-white flex items-center justify-center gap-1.5">
-            <Download className="w-3.5 h-3.5" /> Download
+        <div className="space-y-2">
+          <div className="flex gap-2">
+            <button onClick={() => downloadFile(videoResult.videoUrl, 'mp4')} className="flex-1 py-2 rounded-xl text-xs font-bold bg-zinc-800 text-zinc-300 hover:text-white flex items-center justify-center gap-1.5">
+              <Download className="w-3.5 h-3.5" /> Download
+            </button>
+            <button onClick={handleSaveVideo} disabled={saved} className="flex-1 py-2 rounded-xl text-xs font-bold bg-pink-600 hover:bg-pink-500 text-white flex items-center justify-center gap-1.5 disabled:opacity-50">
+              {saved ? <><Check className="w-3.5 h-3.5" /> Saved!</> : <><CheckCircle className="w-3.5 h-3.5" /> Save to Library</>}
+            </button>
+          </div>
+          <button
+            onClick={handleExtendVideo}
+            disabled={isExtending || isGenerating}
+            className="w-full py-2.5 rounded-xl text-xs font-bold bg-violet-600/20 border border-violet-500/30 text-violet-300 hover:bg-violet-600/30 hover:text-violet-200 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+          >
+            {isExtending ? (
+              <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Extracting last frame & generating…</>
+            ) : (
+              <><ChevronsRight className="w-3.5 h-3.5" /> Extend Video</>
+            )}
           </button>
-          <button onClick={handleSaveVideo} disabled={saved} className="flex-1 py-2 rounded-xl text-xs font-bold bg-pink-600 hover:bg-pink-500 text-white flex items-center justify-center gap-1.5 disabled:opacity-50">
-            {saved ? <><Check className="w-3.5 h-3.5" /> Saved!</> : <><CheckCircle className="w-3.5 h-3.5" /> Save to Library</>}
-          </button>
+
+          {extendError && (
+            <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">
+              <AlertCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
+              <span className="text-xs text-red-300">{extendError}</span>
+            </div>
+          )}
+
+          {extendResult?.videoUrl && (
+            <div className="space-y-2 pt-1">
+              <div className="flex items-center gap-2">
+                <div className="h-px flex-1 bg-white/5" />
+                <span className="text-[10px] uppercase tracking-widest text-violet-400 font-bold">Extended</span>
+                <div className="h-px flex-1 bg-white/5" />
+              </div>
+              <div className="aspect-video max-h-[360px] rounded-2xl bg-zinc-950 border border-violet-500/20 overflow-hidden relative mx-auto w-full">
+                <video src={extendResult.videoUrl} controls autoPlay loop className="absolute inset-0 w-full h-full object-contain" />
+                <div className="absolute top-2 left-2 px-2.5 py-1 bg-black/60 backdrop-blur-md rounded-lg">
+                  <span className="text-[10px] text-violet-300 font-medium">{extendResult.model} · Extended</span>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => downloadFile(extendResult.videoUrl, 'mp4')} className="flex-1 py-2 rounded-xl text-xs font-bold bg-zinc-800 text-zinc-300 hover:text-white flex items-center justify-center gap-1.5">
+                  <Download className="w-3.5 h-3.5" /> Download Extended
+                </button>
+                <button onClick={handleSaveExtendedVideo} className="flex-1 py-2 rounded-xl text-xs font-bold bg-violet-600 hover:bg-violet-500 text-white flex items-center justify-center gap-1.5">
+                  <CheckCircle className="w-3.5 h-3.5" /> Save Extended
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

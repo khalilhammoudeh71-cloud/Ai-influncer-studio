@@ -1213,6 +1213,40 @@ app.post('/api/generate-video', async (req, res) => {
   }
 });
 
+app.post('/api/extract-last-frame', async (req, res) => {
+  const { videoUrl } = req.body;
+  if (!videoUrl || typeof videoUrl !== 'string') {
+    return res.status(400).json({ error: 'videoUrl is required' });
+  }
+  if (!isAllowedWavespeedUrl(videoUrl)) {
+    return res.status(400).json({ error: 'Only Wavespeed video URLs are supported' });
+  }
+
+  try {
+    const { execFile } = await import('child_process');
+    const { promisify } = await import('util');
+    const execFileAsync = promisify(execFile);
+
+    // Use ffmpeg to extract the last frame: seek to near the end, grab 1 frame, output as JPEG to stdout
+    const { stdout } = await execFileAsync(
+      'ffmpeg',
+      ['-sseof', '-0.5', '-i', videoUrl, '-frames:v', '1', '-f', 'image2', '-vcodec', 'mjpeg', 'pipe:1'],
+      { encoding: 'buffer', maxBuffer: 10 * 1024 * 1024 }
+    );
+
+    if (!stdout || (stdout as unknown as Buffer).length === 0) {
+      throw new Error('ffmpeg produced no output');
+    }
+
+    const base64 = (stdout as unknown as Buffer).toString('base64');
+    const dataUrl = `data:image/jpeg;base64,${base64}`;
+    return res.json({ frameDataUrl: dataUrl });
+  } catch (err) {
+    console.error('[extract-last-frame] Error:', err instanceof Error ? err.message : err);
+    return res.status(500).json({ error: err instanceof Error ? err.message : 'Frame extraction failed' });
+  }
+});
+
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', wavespeedConfigured: !!WAVESPEED_API_KEY });
 });
