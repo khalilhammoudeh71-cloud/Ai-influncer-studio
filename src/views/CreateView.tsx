@@ -320,7 +320,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       }
       setTextResult(result);
     } catch (err: unknown) {
-      setGlobalError(err instanceof Error ? err.message : 'Content generation failed.');
+      const fallback = mode === 'prompt' ? 'Prompt enhancement failed.' : 'Content generation failed.';
+      setGlobalError(err instanceof Error ? err.message : fallback);
     } finally {
       setIsGenerating(false);
     }

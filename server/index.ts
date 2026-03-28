@@ -685,15 +685,32 @@ app.post('/api/enhance-prompt', async (req, res) => {
       body: JSON.stringify({ text: text.trim(), enable_sync_mode: true }),
     });
 
-    const json = await wsRes.json() as { code: number; message?: string; data?: { outputs?: string[]; status?: string; error?: string } };
+    type PromptOptimizerData = { outputs?: string[]; status?: string; error?: string; urls?: { get?: string } };
+    const json = await wsRes.json() as { code: number; message?: string; data?: PromptOptimizerData };
     if (json.code !== 200) {
       throw new Error(json.message || 'Wavespeed prompt enhance failed');
     }
 
-    const outputs = json.data?.outputs || [];
-    const enhanced = outputs[0] || '';
+    let data = json.data || {};
+    const outputs = data.outputs || [];
+    let enhanced = outputs[0] || '';
+
+    if (!enhanced && data.status !== 'failed' && data.urls?.get) {
+      const pollUrl = data.urls.get;
+      if (!isAllowedWavespeedUrl(pollUrl)) throw new Error('Blocked: poll URL from untrusted host');
+      for (let attempt = 0; attempt < 10; attempt++) {
+        await new Promise(r => setTimeout(r, 2000));
+        const pollRes = await fetch(pollUrl, { headers: { Authorization: `Bearer ${WAVESPEED_API_KEY}` } });
+        const pollJson = await pollRes.json() as { data?: PromptOptimizerData };
+        data = pollJson.data || {};
+        if (data.status === 'failed') throw new Error(data.error || 'Prompt optimizer failed during polling');
+        const pollOutputs = data.outputs || [];
+        if (pollOutputs[0]) { enhanced = pollOutputs[0]; break; }
+      }
+    }
+
     if (!enhanced) {
-      throw new Error(json.data?.error || 'Prompt optimizer returned no output');
+      throw new Error(data.error || 'Prompt optimizer returned no output');
     }
 
     return res.json({ enhanced });
