@@ -22,6 +22,7 @@ import {
   Pencil,
   ArrowUpCircle,
   History,
+  Camera,
 } from 'lucide-react';
 import { Persona, GeneratedImage } from '../types';
 import {
@@ -32,11 +33,13 @@ import {
   fetchAllModelTypes,
   editImage,
   upscaleImage,
+  generateAngleImage,
+  ANGLE_MODELS,
   type ModelInfo,
   type GenerateImageResult,
 } from '../services/imageService';
 
-type CreateMode = 'image' | 'video' | 'prompt' | 'transcript' | 'multi-scene';
+type CreateMode = 'image' | 'video' | 'prompt' | 'transcript' | 'multi-scene' | 'angle';
 
 interface CreateViewProps {
   persona: Persona;
@@ -57,6 +60,7 @@ const MODE_CONFIG: { id: CreateMode; label: string; icon: typeof ImageIcon; grad
   { id: 'prompt', label: 'Prompt', icon: Wand2, gradient: 'from-emerald-600 to-teal-500', ringClass: 'focus:ring-emerald-500' },
   { id: 'transcript', label: 'Transcript', icon: FileText, gradient: 'from-amber-500 to-orange-500', ringClass: 'focus:ring-amber-500' },
   { id: 'multi-scene', label: 'Multi-Scene', icon: Film, gradient: 'from-indigo-600 to-purple-500', ringClass: 'focus:ring-indigo-500' },
+  { id: 'angle', label: 'Angle', icon: Camera, gradient: 'from-cyan-600 to-sky-500', ringClass: 'focus:ring-cyan-500' },
 ];
 
 type PostGenAction = null | 'edit' | 'upscale';
@@ -112,6 +116,14 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [saved, setSaved] = useState(false);
+
+  const [angleSourceImage, setAngleSourceImage] = useState<string | null>(null);
+  const [angleSourceImageName, setAngleSourceImageName] = useState<string | null>(null);
+  const [angleHorizontal, setAngleHorizontal] = useState('front-facing');
+  const [angleVertical, setAngleVertical] = useState('eye level');
+  const [angleDistance, setAngleDistance] = useState('medium shot');
+  const [angleModel, setAngleModel] = useState(ANGLE_MODELS[0].id);
+  const [angleResult, setAngleResult] = useState<{ imageUrl: string; model: string } | null>(null);
 
   const effectiveRefImage = inlineRefImage || persona.referenceImage || null;
   const hasRefImage = !!effectiveRefImage;
@@ -327,6 +339,40 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     }
   };
 
+  const handleAngleGenerate = async () => {
+    const sourceImg = angleSourceImage || persona.referenceImage || null;
+    if (!sourceImg) return;
+    setIsGenerating(true);
+    setGlobalError(null);
+    setAngleResult(null);
+    try {
+      const data = await generateAngleImage({
+        imageBase64: sourceImg,
+        modelId: angleModel,
+        horizontalAngle: angleHorizontal,
+        verticalAngle: angleVertical,
+        distance: angleDistance,
+      });
+      setAngleResult(data);
+    } catch (err: unknown) {
+      setGlobalError(err instanceof Error ? err.message : 'Angle generation failed.');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleSaveAngleImage = () => {
+    if (!angleResult?.imageUrl) return;
+    const media: GeneratedImage = {
+      id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      url: angleResult.imageUrl,
+      prompt: `Angle: ${angleHorizontal}, ${angleVertical}, ${angleDistance}`,
+      timestamp: Date.now(),
+      model: angleResult.model,
+    };
+    saveMediaToLibrary(media);
+  };
+
   const handleSaveImage = () => {
     if (!activeVersion?.imageUrl) return;
     const media: GeneratedImage = {
@@ -381,40 +427,50 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     onChange: (v: string) => void,
     grouped: Record<string, ModelInfo[]>,
     showRefWarning = false
-  ) => (
-    <div className="space-y-1.5">
-      <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-1.5">
-        <Cpu className="w-3 h-3" /> AI Model
-      </label>
-      {modelsLoading ? (
-        <div className="flex items-center gap-2 px-3 py-2.5 bg-zinc-800 rounded-xl text-sm text-zinc-400">
-          <Loader2 className="w-4 h-4 animate-spin" /> Loading models...
-        </div>
-      ) : (
-        <div className="relative">
-          <select
-            value={value}
-            onChange={e => onChange(e.target.value)}
-            className="w-full bg-zinc-800 border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white focus:ring-2 focus:ring-purple-500 outline-none appearance-none pr-10"
-          >
-            {Object.entries(grouped).map(([provider, providerModels]) => (
-              <optgroup key={provider} label={provider}>
-                {providerModels.map(m => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}{showRefWarning && hasRefImage && !m.hasEditVariant ? ' ⚠ No ref support' : ''}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
-        </div>
-      )}
-    </div>
-  );
+  ) => {
+    const allModels = Object.values(grouped).flat();
+    const selectedInfo = allModels.find(m => m.id === value);
+    return (
+      <div className="space-y-1.5">
+        <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-1.5">
+          <Cpu className="w-3 h-3" /> AI Model
+        </label>
+        {modelsLoading ? (
+          <div className="flex items-center gap-2 px-3 py-2.5 bg-zinc-800 rounded-xl text-sm text-zinc-400">
+            <Loader2 className="w-4 h-4 animate-spin" /> Loading models...
+          </div>
+        ) : (
+          <div className="relative">
+            <select
+              value={value}
+              onChange={e => onChange(e.target.value)}
+              className="w-full bg-zinc-800 border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white focus:ring-2 focus:ring-purple-500 outline-none appearance-none pr-10"
+            >
+              {Object.entries(grouped).map(([provider, providerModels]) => (
+                <optgroup key={provider} label={provider}>
+                  {providerModels.map(m => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}{m.nsfw ? ' 🔓 NSFW' : ''}{showRefWarning && hasRefImage && !m.hasEditVariant ? ' ⚠ No ref support' : ''}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
+          </div>
+        )}
+        {selectedInfo?.nsfw && (
+          <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/30">
+            🔓 Uncensored — NSFW content supported
+          </span>
+        )}
+      </div>
+    );
+  };
 
   const renderVideoModelSelect = () => {
     const { t2v, i2v } = groupedVideoModels;
+    const selectedVideoInfo = videoModels.find(m => m.id === selectedVideoModel);
     return (
       <div className="space-y-1.5">
         <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-1.5">
@@ -436,7 +492,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                   {Object.entries(t2v).map(([provider, ms]) =>
                     ms.map(m => (
                       <option key={m.id} value={m.id}>
-                        {m.name} ({provider}){m.price > 0 ? ` $${m.price.toFixed(3)}` : ' Free'}
+                        {m.name} ({provider}){m.price > 0 ? ` $${m.price.toFixed(3)}` : ' Free'}{m.nsfw ? ' 🔓 NSFW' : ''}
                       </option>
                     ))
                   )}
@@ -447,7 +503,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                   {Object.entries(i2v).map(([provider, ms]) =>
                     ms.map(m => (
                       <option key={m.id} value={m.id}>
-                        {m.name} ({provider}){m.price > 0 ? ` $${m.price.toFixed(3)}` : ' Free'}
+                        {m.name} ({provider}){m.price > 0 ? ` $${m.price.toFixed(3)}` : ' Free'}{m.nsfw ? ' 🔓 NSFW' : ''}
                       </option>
                     ))
                   )}
@@ -456,6 +512,11 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             </select>
             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
           </div>
+        )}
+        {selectedVideoInfo?.nsfw && (
+          <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/30">
+            🔓 Uncensored — NSFW content supported
+          </span>
         )}
       </div>
     );
@@ -792,6 +853,222 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     );
   };
 
+  const HORIZONTAL_POSITIONS = [
+    { id: 'front-facing',   label: 'Front',       row: 0, col: 1 },
+    { id: 'front-right',    label: 'FR',           row: 0, col: 2 },
+    { id: 'side right',     label: 'Right',        row: 1, col: 2 },
+    { id: 'back-right',     label: 'BR',           row: 2, col: 2 },
+    { id: 'back-facing',    label: 'Back',         row: 2, col: 1 },
+    { id: 'back-left',      label: 'BL',           row: 2, col: 0 },
+    { id: 'side left',      label: 'Left',         row: 1, col: 0 },
+    { id: 'front-left',     label: 'FL',           row: 0, col: 0 },
+  ];
+
+  const VERTICAL_POSITIONS = [
+    { id: 'bird\'s eye view', label: "Bird's Eye" },
+    { id: 'high angle',       label: 'High Angle'  },
+    { id: 'eye level',        label: 'Eye Level'   },
+    { id: 'low angle',        label: 'Low Angle'   },
+  ];
+
+  const DISTANCE_OPTIONS = [
+    { id: 'close-up shot',  label: 'Close-Up'     },
+    { id: 'medium shot',    label: 'Medium Shot'  },
+    { id: 'wide shot',      label: 'Wide Shot'    },
+  ];
+
+  const renderAngleMode = () => {
+    const angleSourceImg = angleSourceImage || persona.referenceImage || null;
+    const angleModelInfo = ANGLE_MODELS.find(m => m.id === angleModel);
+
+    const grid: (typeof HORIZONTAL_POSITIONS[0] | null)[][] = [
+      [null, null, null],
+      [null, null, null],
+      [null, null, null],
+    ];
+    HORIZONTAL_POSITIONS.forEach(p => { grid[p.row][p.col] = p; });
+
+    return (
+      <div className="space-y-5">
+        <div className="space-y-1.5">
+          <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-1.5">
+            <Upload className="w-3 h-3" /> Source Image
+          </label>
+          <label className="flex items-center gap-3 px-3 py-3 bg-zinc-800 border border-zinc-700 rounded-xl cursor-pointer hover:bg-zinc-700/50 transition-colors">
+            {angleSourceImage ? (
+              <img src={angleSourceImage} alt="" className="w-14 h-14 rounded-lg object-cover" />
+            ) : persona.referenceImage ? (
+              <img src={persona.referenceImage} alt="" className="w-14 h-14 rounded-lg object-cover opacity-60" />
+            ) : (
+              <div className="w-14 h-14 rounded-lg bg-zinc-700 flex items-center justify-center">
+                <Upload className="w-5 h-5 text-zinc-500" />
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-white truncate">{angleSourceImageName || (persona.referenceImage ? 'Using persona reference' : 'Upload image to reangle')}</p>
+              <p className="text-[10px] text-zinc-500">Upload a photo to change its camera angle</p>
+            </div>
+            <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload(setAngleSourceImage, setAngleSourceImageName)} />
+          </label>
+          {angleSourceImage && (
+            <button onClick={() => { setAngleSourceImage(null); setAngleSourceImageName(null); }} className="text-[10px] text-zinc-500 hover:text-red-400 transition-colors">
+              Remove uploaded image
+            </button>
+          )}
+        </div>
+
+        <div className="space-y-3">
+          <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-1.5">
+            <Camera className="w-3 h-3" /> Camera Angle
+          </label>
+          <div className="bg-zinc-800/60 border border-zinc-700 rounded-2xl p-4 space-y-4">
+            <div>
+              <p className="text-[10px] font-bold text-zinc-500 uppercase mb-2">Horizontal Direction</p>
+              <div className="grid grid-cols-3 gap-1.5 max-w-[200px] mx-auto">
+                {grid.map((row, ri) =>
+                  row.map((cell, ci) => {
+                    if (!cell) {
+                      return (
+                        <div key={`${ri}-${ci}`} className="h-12 flex items-center justify-center">
+                          <div className="w-8 h-8 rounded-full bg-zinc-700/40 flex items-center justify-center">
+                            <Camera className="w-4 h-4 text-zinc-600" />
+                          </div>
+                        </div>
+                      );
+                    }
+                    const isActive = angleHorizontal === cell.id;
+                    return (
+                      <button
+                        key={cell.id}
+                        onClick={() => setAngleHorizontal(cell.id)}
+                        className={`h-12 rounded-xl text-[10px] font-bold transition-all ${
+                          isActive
+                            ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/30'
+                            : 'bg-zinc-700/60 text-zinc-400 hover:bg-zinc-600/60 hover:text-white'
+                        }`}
+                      >
+                        {cell.label}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            <div>
+              <p className="text-[10px] font-bold text-zinc-500 uppercase mb-2">Vertical Elevation</p>
+              <div className="flex gap-1.5">
+                {VERTICAL_POSITIONS.map(p => (
+                  <button
+                    key={p.id}
+                    onClick={() => setAngleVertical(p.id)}
+                    className={`flex-1 py-2 rounded-xl text-[10px] font-bold transition-all ${
+                      angleVertical === p.id
+                        ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/30'
+                        : 'bg-zinc-700/60 text-zinc-400 hover:bg-zinc-600/60 hover:text-white'
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <p className="text-[10px] font-bold text-zinc-500 uppercase mb-2">Shot Distance</p>
+              <div className="flex gap-1.5">
+                {DISTANCE_OPTIONS.map(p => (
+                  <button
+                    key={p.id}
+                    onClick={() => setAngleDistance(p.id)}
+                    className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
+                      angleDistance === p.id
+                        ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/30'
+                        : 'bg-zinc-700/60 text-zinc-400 hover:bg-zinc-600/60 hover:text-white'
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-1.5">
+            <Cpu className="w-3 h-3" /> Model
+          </label>
+          <div className="relative">
+            <select
+              value={angleModel}
+              onChange={e => setAngleModel(e.target.value)}
+              className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white focus:ring-2 focus:ring-cyan-500 outline-none appearance-none pr-10"
+            >
+              {ANGLE_MODELS.map(m => (
+                <option key={m.id} value={m.id}>
+                  {m.name} (${m.price.toFixed(3)}){m.nsfw ? ' 🔓 NSFW' : ''}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
+          </div>
+          {angleModelInfo?.nsfw && (
+            <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/30">
+              🔓 Uncensored — NSFW content supported
+            </span>
+          )}
+        </div>
+
+        <button
+          onClick={handleAngleGenerate}
+          disabled={isGenerating || !angleSourceImg}
+          className="w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-cyan-600 to-sky-500 hover:from-cyan-500 hover:to-sky-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+        >
+          {isGenerating
+            ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</>
+            : <><Camera className="w-4 h-4" /> Apply Camera Angle</>}
+        </button>
+
+        {!angleSourceImg && !isGenerating && (
+          <p className="text-center text-xs text-zinc-500">Upload an image or set a persona reference image to get started</p>
+        )}
+
+        <div className="aspect-square max-h-[400px] rounded-2xl bg-zinc-950 border border-zinc-800 overflow-hidden relative group mx-auto w-full max-w-[400px]">
+          {isGenerating ? (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+              <Loader2 className="w-10 h-10 animate-spin text-cyan-500" />
+              <p className="text-xs text-zinc-500 animate-pulse">Repositioning camera...</p>
+            </div>
+          ) : angleResult?.imageUrl ? (
+            <>
+              <img src={angleResult.imageUrl} alt="Angle result" className="absolute inset-0 w-full h-full object-contain" />
+              <div className="absolute bottom-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button onClick={() => downloadFile(angleResult.imageUrl, 'png')} className="p-2 bg-black/60 backdrop-blur-md rounded-lg text-white hover:bg-black/80" title="Download">
+                  <Download className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="absolute top-2 left-2 px-2.5 py-1 bg-black/60 backdrop-blur-md rounded-lg">
+                <span className="text-[10px] text-white font-medium">{angleResult.model}</span>
+              </div>
+            </>
+          ) : (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+              <Camera className="w-12 h-12 text-zinc-700 opacity-30" />
+              <p className="text-xs text-zinc-600">Select angle and generate</p>
+            </div>
+          )}
+        </div>
+
+        {angleResult && !isGenerating && (
+          <button onClick={handleSaveAngleImage} disabled={saved} className="w-full py-2.5 rounded-xl text-sm font-bold bg-cyan-600 hover:bg-cyan-500 text-white flex items-center justify-center gap-2 disabled:opacity-50 transition-all">
+            {saved ? <><Check className="w-4 h-4" /> Saved!</> : <><CheckCircle className="w-4 h-4" /> Save to Library</>}
+          </button>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="p-6 max-w-3xl mx-auto">
       <header className="mb-6 pt-4">
@@ -847,6 +1124,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       {mode === 'image' && renderImageMode()}
       {mode === 'video' && renderVideoMode()}
       {(mode === 'prompt' || mode === 'transcript' || mode === 'multi-scene') && renderTextMode()}
+      {mode === 'angle' && renderAngleMode()}
     </div>
   );
 }

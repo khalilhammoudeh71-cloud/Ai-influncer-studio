@@ -8,7 +8,15 @@ export interface ModelInfo {
   price: number;
   description: string;
   hasEditVariant: boolean;
+  nsfw?: boolean;
 }
+
+export const ANGLE_MODELS: { id: string; name: string; price: number; nsfw: boolean }[] = [
+  { id: 'angle-qwen-multiple',     name: 'Qwen Multiple Angles',        price: 0.025, nsfw: false },
+  { id: 'angle-qwen-multiple-2509', name: 'Qwen Multiple Angles v2',    price: 0.025, nsfw: false },
+  { id: 'angle-wan22',             name: 'Wan 2.2',                     price: 0.02,  nsfw: true  },
+  { id: 'angle-seededit-v3',       name: 'SeedEdit v3',                 price: 0.027, nsfw: true  },
+];
 
 export interface GenerateImageParams {
   persona: Persona;
@@ -212,6 +220,31 @@ export async function generateContent(
     throw new Error(data.error || 'Content generation failed.');
   }
   return data.content;
+}
+
+export async function generateAngleImage(params: {
+  imageBase64: string;
+  modelId: string;
+  horizontalAngle: string;
+  verticalAngle: string;
+  distance: string;
+}): Promise<{ imageUrl: string; model: string }> {
+  const response = await fetch('/api/angle-image', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+
+  const contentType = response.headers.get('content-type');
+  if (!contentType || !contentType.includes('application/json')) {
+    throw new Error('Angle API not reachable. Make sure the backend server is running.');
+  }
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || 'Angle generation failed.');
+  }
+  return { imageUrl: data.imageUrl, model: data.model };
 }
 
 export async function generateReferenceImage(prompt: string, modelId: string): Promise<GenerateImageResult> {

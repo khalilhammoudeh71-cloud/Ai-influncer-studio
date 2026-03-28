@@ -33,7 +33,50 @@ interface ModelInfo {
   hasEditVariant: boolean;
   editApiPath?: string;
   editImageField?: 'image' | 'images';
+  nsfw?: boolean;
 }
+
+const NSFW_MODEL_FRAGMENTS = [
+  '/wan-2',
+  'alibaba/wan',
+  'seededit',
+  'firered',
+  'higgsfield',
+  '/uso',
+  'z-image',
+  'glm-image',
+];
+
+function isNsfwModel(modelId: string): boolean {
+  return NSFW_MODEL_FRAGMENTS.some(f => modelId.includes(f));
+}
+
+const ANGLE_MODEL_CONFIGS: Record<string, { name: string; apiPath: string; imageField: 'image' | 'images'; nsfw: boolean }> = {
+  'angle-qwen-multiple': {
+    name: 'Qwen Multiple Angles',
+    apiPath: '/api/v3/wavespeed-ai/qwen-image/edit-multiple-angles',
+    imageField: 'image',
+    nsfw: false,
+  },
+  'angle-qwen-multiple-2509': {
+    name: 'Qwen Multiple Angles v2',
+    apiPath: '/api/v3/wavespeed-ai/qwen-image/edit-2509-multiple-angles',
+    imageField: 'image',
+    nsfw: false,
+  },
+  'angle-wan22': {
+    name: 'Wan 2.2 (Uncensored)',
+    apiPath: '/api/v3/wavespeed-ai/wan-2.2/image-to-image',
+    imageField: 'image',
+    nsfw: true,
+  },
+  'angle-seededit-v3': {
+    name: 'SeedEdit v3 (Uncensored)',
+    apiPath: '/api/v3/bytedance/seededit-v3',
+    imageField: 'image',
+    nsfw: true,
+  },
+};
 
 let cachedModels: ModelInfo[] | null = null;
 let cachedEditModels: ModelInfo[] | null = null;
@@ -145,6 +188,7 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
           ? resolveApiPath(editModel)
           : undefined,
         editImageField: hasRealEditVariant ? editEntry?.imageField : undefined,
+        nsfw: isNsfwModel(m.model_id),
       };
     });
 
@@ -176,6 +220,7 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
         apiPath,
         hasEditVariant: false,
         editImageField: imageField,
+        nsfw: isNsfwModel(m.model_id),
       };
     });
     editModels.sort((a, b) => a.provider.localeCompare(b.provider) || a.name.localeCompare(b.name));
@@ -211,6 +256,7 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
         apiPath,
         hasEditVariant: false,
         editImageField: imageField,
+        nsfw: isNsfwModel(m.model_id),
       };
     });
     upscaleModels.sort((a, b) => a.provider.localeCompare(b.provider) || a.name.localeCompare(b.name));
@@ -238,6 +284,7 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
           description: m.description || '',
           apiPath,
           hasEditVariant: false,
+          nsfw: isNsfwModel(m.model_id),
         };
       }),
       ...imageToVideo.map((m: { model_id: string; base_price: number; description?: string; api_schema?: { api_schemas?: { api_path: string; request_schema?: { properties?: Record<string, unknown> } }[] } }) => {
@@ -262,6 +309,7 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
           apiPath,
           hasEditVariant: false,
           editImageField: imageField,
+          nsfw: isNsfwModel(m.model_id),
         };
       }),
     ];
@@ -719,6 +767,60 @@ app.post('/api/enhance-prompt', async (req, res) => {
     return res.status(500).json({
       error: err instanceof Error ? err.message : 'Prompt enhancement failed',
     });
+  }
+});
+
+app.post('/api/angle-image', async (req, res) => {
+  const { imageBase64, modelId, horizontalAngle, verticalAngle, distance } = req.body as {
+    imageBase64: string;
+    modelId: string;
+    horizontalAngle: string;
+    verticalAngle: string;
+    distance: string;
+  };
+
+  if (!imageBase64 || !modelId || !horizontalAngle || !verticalAngle || !distance) {
+    return res.status(400).json({ error: 'imageBase64, modelId, horizontalAngle, verticalAngle, and distance are required' });
+  }
+
+  if (!WAVESPEED_API_KEY) {
+    return res.status(500).json({ error: 'Wavespeed API key not configured' });
+  }
+
+  const config = ANGLE_MODEL_CONFIGS[modelId];
+  if (!config) {
+    return res.status(400).json({ error: `Unknown angle model: ${modelId}` });
+  }
+
+  const prompt = `Change the camera angle to ${horizontalAngle} perspective, ${verticalAngle} elevation, ${distance}. Adjust only the camera viewpoint and framing while preserving all subject details, appearance, clothing, and environment. Maintain consistent facial features, hair, and body proportions. Apply a photorealistic, high-quality rendering.`;
+
+  try {
+    const b64Image = await resolveImageToDataUrl(imageBase64);
+    const payload: Record<string, unknown> = {
+      prompt,
+      enable_sync_mode: true,
+      enable_base64_output: true,
+      [config.imageField]: config.imageField === 'images' ? [b64Image] : b64Image,
+    };
+
+    const url = `https://api.wavespeed.ai${config.apiPath}`;
+    console.log('[angle-image] Calling:', url, 'model:', modelId);
+
+    const wsRes = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${WAVESPEED_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const json = await wsRes.json();
+    const imageUrl = await extractWavespeedOutput(json);
+    return res.json({ imageUrl, model: config.name });
+  } catch (err) {
+    console.error('[angle-image] Error:', err instanceof Error ? err.message : err);
+    return res.status(500).json({ error: err instanceof Error ? err.message : 'Angle generation failed' });
   }
 });
 

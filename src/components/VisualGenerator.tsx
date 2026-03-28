@@ -422,7 +422,7 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
                       <optgroup key={provider} label={provider}>
                         {providerModels.map((m) => (
                           <option key={m.id} value={m.id}>
-                            {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}{hasRefImage && !m.hasEditVariant ? ' ⚠ No ref support' : ''}
+                            {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}{m.nsfw ? ' 🔓 NSFW' : ''}{hasRefImage && !m.hasEditVariant ? ' ⚠ No ref support' : ''}
                           </option>
                         ))}
                       </optgroup>
@@ -449,6 +449,11 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
                   {selectedModelInfo.price > 0 && (
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
                       ${selectedModelInfo.price.toFixed(3)} per image
+                    </span>
+                  )}
+                  {selectedModelInfo.nsfw && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/30">
+                      🔓 Uncensored
                     </span>
                   )}
                 </div>
@@ -576,7 +581,7 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
                             <optgroup key={provider} label={provider}>
                               {providerModels.map((m) => (
                                 <option key={m.id} value={m.id}>
-                                  {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}
+                                  {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}{m.nsfw ? ' 🔓 NSFW' : ''}
                                 </option>
                               ))}
                             </optgroup>
@@ -663,7 +668,7 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
                             <optgroup key={provider} label={provider}>
                               {providerModels.map((m) => (
                                 <option key={m.id} value={m.id}>
-                                  {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}
+                                  {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}{m.nsfw ? ' 🔓 NSFW' : ''}
                                 </option>
                               ))}
                             </optgroup>
@@ -788,7 +793,7 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
                         {Object.entries(groupedVideoModels.t2v).map(([provider, providerModels]) => (
                           providerModels.map((m) => (
                             <option key={m.id} value={m.id}>
-                              [{provider}] {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}
+                              [{provider}] {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}{m.nsfw ? ' 🔓 NSFW' : ''}
                             </option>
                           ))
                         ))}
@@ -799,7 +804,7 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
                         {Object.entries(groupedVideoModels.i2v).map(([provider, providerModels]) => (
                           providerModels.map((m) => (
                             <option key={m.id} value={m.id}>
-                              [{provider}] {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}
+                              [{provider}] {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}{m.nsfw ? ' 🔓 NSFW' : ''}
                             </option>
                           ))
                         ))}
