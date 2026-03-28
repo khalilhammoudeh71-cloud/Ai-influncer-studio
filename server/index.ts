@@ -42,7 +42,6 @@ let cacheTimestamp = 0;
 const CACHE_TTL = 30 * 60 * 1000;
 
 const SUBSCRIPTION_FREE_MODELS = [
-  'google/nano-banana',
   'google/nano-banana-2',
   'google/nano-banana-pro',
   'google/veo2',
