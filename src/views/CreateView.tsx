@@ -87,6 +87,9 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const [isProcessing, setIsProcessing] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  const [inlineRefImage, setInlineRefImage] = useState<string | null>(null);
+  const [inlineRefImageName, setInlineRefImageName] = useState<string | null>(null);
+
   const [videoPrompt, setVideoPrompt] = useState('');
   const [videoResult, setVideoResult] = useState<{ videoUrl: string; model: string } | null>(null);
   const [videoSourceImage, setVideoSourceImage] = useState<string | null>(null);
@@ -109,7 +112,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const [copied, setCopied] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  const hasRefImage = !!persona.referenceImage;
+  const effectiveRefImage = inlineRefImage || persona.referenceImage || null;
+  const hasRefImage = !!effectiveRefImage;
   const activeVersion = imageHistory[activeHistoryIndex] || null;
 
   useEffect(() => {
@@ -210,8 +214,9 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     setActionError(null);
 
     try {
+      const personaWithRef = inlineRefImage ? { ...persona, referenceImage: inlineRefImage } : persona;
       const data = await generateImage({
-        persona,
+        persona: personaWithRef,
         modelId: selectedModel,
         environment: selectedEnv,
         outfitStyle: selectedOutfit,
@@ -223,8 +228,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       const version: ImageVersion = { imageUrl: data.imageUrl, model: data.model, promptUsed: data.promptUsed || imagePrompt || '', label: 'Original' };
       setImageHistory([version]);
       setActiveHistoryIndex(0);
-    } catch (err: any) {
-      setGlobalError(err.message || 'Generation failed.');
+    } catch (err: unknown) {
+      setGlobalError(err instanceof Error ? err.message : 'Generation failed.');
     } finally {
       setIsGenerating(false);
     }
@@ -246,8 +251,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       setEditPrompt('');
       setEditAdditionalImage(null);
       setEditAdditionalImageName(null);
-    } catch (err: any) {
-      setActionError(err.message || 'Editing failed.');
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Editing failed.');
     } finally {
       setIsProcessing(false);
     }
@@ -266,8 +271,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       setImageHistory(newHistory);
       setActiveHistoryIndex(newHistory.length - 1);
       setPostAction(null);
-    } catch (err: any) {
-      setActionError(err.message || 'Upscaling failed.');
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Upscaling failed.');
     } finally {
       setIsProcessing(false);
     }
@@ -286,8 +291,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       }
       const data = await generateVideo(videoPrompt, selectedVideoModel, sourceImg || undefined);
       setVideoResult(data);
-    } catch (err: any) {
-      setGlobalError(err.message || 'Video generation failed.');
+    } catch (err: unknown) {
+      setGlobalError(err instanceof Error ? err.message : 'Video generation failed.');
     } finally {
       setIsGenerating(false);
     }
@@ -308,8 +313,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         contentType === 'multi-scene' ? sceneCount : undefined
       );
       setTextResult(result);
-    } catch (err: any) {
-      setGlobalError(err.message || 'Content generation failed.');
+    } catch (err: unknown) {
+      setGlobalError(err instanceof Error ? err.message : 'Content generation failed.');
     } finally {
       setIsGenerating(false);
     }
@@ -490,6 +495,31 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         {renderDropdown('Outfit', Shirt, selectedOutfit, setSelectedOutfit, OUTFITS)}
         {renderDropdown('Framing', Layout, selectedFraming, setSelectedFraming, FRAMING)}
         {renderDropdown('Mood', Smile, selectedMood, setSelectedMood, MOODS)}
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-1.5">
+          <Upload className="w-3 h-3" /> Reference Image (optional)
+        </label>
+        <label className="flex items-center gap-2 px-3 py-2.5 bg-zinc-800 border border-zinc-700 rounded-xl cursor-pointer hover:bg-zinc-700/50 transition-colors">
+          {inlineRefImage ? (
+            <img src={inlineRefImage} alt="" className="w-10 h-10 rounded-lg object-cover" />
+          ) : persona.referenceImage ? (
+            <img src={persona.referenceImage} alt="" className="w-10 h-10 rounded-lg object-cover opacity-60" />
+          ) : (
+            <div className="w-10 h-10 rounded-lg bg-zinc-700 flex items-center justify-center"><Upload className="w-4 h-4 text-zinc-500" /></div>
+          )}
+          <div className="flex-1 min-w-0">
+            <p className="text-sm text-white truncate">{inlineRefImageName || (persona.referenceImage ? 'Using persona reference' : 'Upload reference image')}</p>
+            <p className="text-[10px] text-zinc-500">Models with ref support will use this for consistency</p>
+          </div>
+          <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload(setInlineRefImage, setInlineRefImageName)} />
+        </label>
+        {inlineRefImage && (
+          <button onClick={() => { setInlineRefImage(null); setInlineRefImageName(null); }} className="text-[10px] text-zinc-500 hover:text-red-400 transition-colors">
+            Remove uploaded reference
+          </button>
+        )}
       </div>
 
       <textarea

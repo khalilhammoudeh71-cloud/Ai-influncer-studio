@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import OpenAI, { toFile } from 'openai';
+import { GoogleGenAI } from '@google/genai';
 import { Pool } from '@neondatabase/serverless';
 import apiRoutes from './routes';
 
@@ -600,6 +601,15 @@ app.get('/api/models', async (_req, res) => {
   }
 });
 
+function getGeminiClient(): GoogleGenAI {
+  const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+  const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
+  if (!apiKey || !baseUrl) {
+    throw new Error('Gemini integration not configured. Please enable it in your Replit integrations.');
+  }
+  return new GoogleGenAI({ apiKey, httpOptions: { baseUrl } });
+}
+
 app.post('/api/generate-content', async (req, res) => {
   const { type, topic, persona, sceneCount } = req.body;
 
@@ -613,7 +623,7 @@ app.post('/api/generate-content', async (req, res) => {
   }
 
   try {
-    const openai = getOpenAIClient();
+    const ai = getGeminiClient();
 
     const personaContext = `You are ${persona.name}, an AI influencer in the ${persona.niche} niche. Your tone is ${persona.tone}. Your platform is ${persona.platform}. Bio: ${persona.bio}`;
 
@@ -632,19 +642,18 @@ app.post('/api/generate-content', async (req, res) => {
       userPrompt = `Create a ${scenes}-scene video script for this topic: "${topic}"\n\nFor each scene, include:\n- **Scene [number]: [Title]**\n- **Duration**: estimated seconds\n- **Visual Direction**: camera angle, setting, lighting, mood\n- **Dialogue/Voiceover**: what the persona says\n- **On-Screen Text**: any text overlays\n\nEnd with a summary section including:\n- Total estimated duration\n- 5-8 hashtags\n- A suggested caption for posting`;
     }
 
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-      max_completion_tokens: 2048,
-      temperature: 0.8,
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: `${systemPrompt}\n\n${userPrompt}`,
+      config: {
+        maxOutputTokens: 2048,
+        temperature: 0.8,
+      },
     });
 
-    const content = completion.choices[0]?.message?.content || '';
+    const content = response.text || '';
     if (!content) {
-      throw new Error('AI returned empty content');
+      throw new Error('Gemini returned empty content');
     }
 
     return res.json({ content, type });
