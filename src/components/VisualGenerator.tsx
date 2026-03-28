@@ -17,6 +17,7 @@ import {
   Cpu,
   Pencil,
   ArrowUpCircle,
+  History,
 } from 'lucide-react';
 import { Persona, GeneratedImage } from '../types';
 import {
@@ -57,6 +58,13 @@ const MOODS = [
 
 type PostGenAction = null | 'edit' | 'upscale';
 
+interface ImageVersion {
+  imageUrl: string;
+  model: string;
+  promptUsed: string;
+  label: string;
+}
+
 export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClose, onSaveImage }) => {
   const [prompt, setPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -66,6 +74,8 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
   const [selectedMood, setSelectedMood] = useState(MOODS[1]);
   const [result, setResult] = useState<GenerateImageResult | null>(null);
   const [globalError, setGlobalError] = useState<string | null>(null);
+  const [imageHistory, setImageHistory] = useState<ImageVersion[]>([]);
+  const [activeHistoryIndex, setActiveHistoryIndex] = useState(0);
 
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [editModels, setEditModels] = useState<ModelInfo[]>([]);
@@ -137,11 +147,15 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
 
   const selectedModelInfo = useMemo(() => models.find(m => m.id === selectedModel), [models, selectedModel]);
 
+  const activeVersion = imageHistory[activeHistoryIndex] || null;
+
   const handleGenerate = async () => {
     if (!selectedModel) return;
     setIsGenerating(true);
     setGlobalError(null);
     setResult(null);
+    setImageHistory([]);
+    setActiveHistoryIndex(0);
     setPostAction(null);
     setActionError(null);
 
@@ -156,6 +170,14 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
         additionalInstructions: prompt,
       });
       setResult(data);
+      const version: ImageVersion = {
+        imageUrl: data.imageUrl,
+        model: data.model,
+        promptUsed: data.promptUsed || prompt || '',
+        label: 'Original',
+      };
+      setImageHistory([version]);
+      setActiveHistoryIndex(0);
     } catch (err: any) {
       setGlobalError(err.message || 'Generation failed. Please try again.');
     } finally {
@@ -164,13 +186,23 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
   };
 
   const handleEdit = async () => {
-    if (!result?.imageUrl || !editPrompt.trim() || !selectedEditModel) return;
+    if (!activeVersion?.imageUrl || !editPrompt.trim() || !selectedEditModel) return;
     setIsProcessing(true);
     setActionError(null);
 
     try {
-      const data = await editImage(result.imageUrl, editPrompt, selectedEditModel);
-      setResult({ imageUrl: data.imageUrl, model: data.model, promptUsed: editPrompt });
+      const data = await editImage(activeVersion.imageUrl, editPrompt, selectedEditModel);
+      const newResult = { imageUrl: data.imageUrl, model: data.model, promptUsed: editPrompt };
+      setResult(newResult);
+      const version: ImageVersion = {
+        imageUrl: data.imageUrl,
+        model: data.model,
+        promptUsed: editPrompt,
+        label: `Edit ${imageHistory.filter(v => v.label.startsWith('Edit')).length + 1}`,
+      };
+      const newHistory = [...imageHistory, version];
+      setImageHistory(newHistory);
+      setActiveHistoryIndex(newHistory.length - 1);
       setPostAction(null);
       setEditPrompt('');
     } catch (err: any) {
@@ -181,13 +213,23 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
   };
 
   const handleUpscale = async () => {
-    if (!result?.imageUrl || !selectedUpscaleModel) return;
+    if (!activeVersion?.imageUrl || !selectedUpscaleModel) return;
     setIsProcessing(true);
     setActionError(null);
 
     try {
-      const data = await upscaleImage(result.imageUrl, selectedUpscaleModel);
-      setResult({ imageUrl: data.imageUrl, model: data.model, promptUsed: result.promptUsed });
+      const data = await upscaleImage(activeVersion.imageUrl, selectedUpscaleModel);
+      const newResult = { imageUrl: data.imageUrl, model: data.model, promptUsed: activeVersion.promptUsed };
+      setResult(newResult);
+      const version: ImageVersion = {
+        imageUrl: data.imageUrl,
+        model: data.model,
+        promptUsed: activeVersion.promptUsed,
+        label: `Upscale ${imageHistory.filter(v => v.label.startsWith('Upscale')).length + 1}`,
+      };
+      const newHistory = [...imageHistory, version];
+      setImageHistory(newHistory);
+      setActiveHistoryIndex(newHistory.length - 1);
       setPostAction(null);
     } catch (err: any) {
       setActionError(err.message || 'Upscaling failed.');
@@ -196,26 +238,34 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
     }
   };
 
+  const handleSelectVersion = (index: number) => {
+    setActiveHistoryIndex(index);
+    const version = imageHistory[index];
+    if (version) {
+      setResult({ imageUrl: version.imageUrl, model: version.model, promptUsed: version.promptUsed });
+    }
+  };
+
   const handleSave = () => {
-    if (!result?.imageUrl) return;
+    if (!activeVersion?.imageUrl) return;
     const image: GeneratedImage = {
       id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      url: result.imageUrl,
-      prompt: result.promptUsed || prompt || '',
+      url: activeVersion.imageUrl,
+      prompt: activeVersion.promptUsed || prompt || '',
       timestamp: Date.now(),
       environment: selectedEnv,
       outfit: selectedOutfit,
       framing: selectedFraming,
-      model: result.model,
+      model: activeVersion.model,
     };
     onSaveImage(image);
     onClose();
   };
 
   const downloadImage = () => {
-    if (!result?.imageUrl) return;
+    if (!activeVersion?.imageUrl) return;
     const a = document.createElement('a');
-    a.href = result.imageUrl;
+    a.href = activeVersion.imageUrl;
     a.download = `${persona.name.replace(/\s+/g, '_')}_${Date.now()}.png`;
     a.click();
   };
@@ -334,6 +384,34 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
                 </div>
               )}
             </div>
+
+            {imageHistory.length > 1 && (
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5">
+                  <History className="w-3 h-3 text-zinc-500" />
+                  <span className="text-[10px] uppercase tracking-wider font-bold text-zinc-500">Version History</span>
+                  <span className="text-[10px] text-zinc-600">— tap to select, then save</span>
+                </div>
+                <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin">
+                  {imageHistory.map((version, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => handleSelectVersion(idx)}
+                      className={`relative shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 transition-all ${
+                        idx === activeHistoryIndex
+                          ? 'border-purple-500 ring-2 ring-purple-500/30 scale-105'
+                          : 'border-zinc-700 hover:border-zinc-500 opacity-60 hover:opacity-100'
+                      }`}
+                    >
+                      <img src={version.imageUrl} alt={version.label} className="w-full h-full object-cover" />
+                      <div className="absolute inset-x-0 bottom-0 bg-black/70 px-1 py-0.5">
+                        <span className="text-[8px] text-white font-bold leading-tight block truncate">{version.label}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {globalError && (
               <div className="flex items-center gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
