@@ -302,8 +302,12 @@ async function fetchAllowedImage(urlStr: string): Promise<string> {
     throw new Error('Blocked: image URL from untrusted host');
   }
   const imgRes = await fetch(urlStr);
+  if (!imgRes.ok) throw new Error(`Failed to fetch image: ${imgRes.status}`);
   const imgBuf = Buffer.from(await imgRes.arrayBuffer());
-  return `data:image/png;base64,${imgBuf.toString('base64')}`;
+  const ct = imgRes.headers.get('content-type') || 'image/png';
+  const mimeType = ct.split(';')[0].trim();
+  console.log('[Wavespeed] Fetched image from URL, size:', imgBuf.length, 'bytes, type:', mimeType);
+  return `data:${mimeType};base64,${imgBuf.toString('base64')}`;
 }
 
 async function resolveImageToDataUrl(input: string): Promise<string> {
@@ -328,6 +332,7 @@ async function extractWavespeedOutput(json: Record<string, unknown>): Promise<st
   const outputs = (data?.outputs as string[]) || [];
   if (outputs.length) {
     const output = outputs[0];
+    console.log('[Wavespeed] Output type:', output.startsWith('http') ? 'URL' : 'base64', 'length:', output.length);
     if (output.startsWith('http')) return await fetchAllowedImage(output);
     return `data:image/jpeg;base64,${output}`;
   }
@@ -389,36 +394,9 @@ async function generateWithWavespeed(
   });
 
   const json = await res.json();
+  console.log('[Wavespeed] Response status:', json.code, 'data status:', json.data?.status, 'outputs count:', (json.data?.outputs || []).length, 'has poll url:', !!(json.data?.urls?.get));
 
-  if (json.code !== 200 || json.data?.status === 'failed') {
-    throw new Error(json.data?.error || json.message || 'Wavespeed generation failed');
-  }
-
-  const outputs = json.data?.outputs || [];
-  if (!outputs.length) {
-    if (json.data?.status === 'completed' && json.data?.urls?.get) {
-      const pollUrl = json.data.urls.get;
-      if (!isAllowedWavespeedUrl(pollUrl)) {
-        throw new Error('Blocked: poll URL from untrusted host');
-      }
-      const pollRes = await fetch(pollUrl, {
-        headers: { Authorization: `Bearer ${WAVESPEED_API_KEY}` },
-      });
-      const pollJson = await pollRes.json();
-      const pollOutputs = pollJson.data?.outputs || pollJson.outputs || [];
-      if (pollOutputs.length) {
-        const img = pollOutputs[0];
-        if (img.startsWith('http')) return await fetchAllowedImage(img);
-        return `data:image/png;base64,${img}`;
-      }
-    }
-    throw new Error('No image output from Wavespeed');
-  }
-
-  const output = outputs[0];
-  if (output.startsWith('http')) return await fetchAllowedImage(output);
-
-  return `data:image/jpeg;base64,${output}`;
+  return await extractWavespeedOutput(json);
 }
 
 app.get('/api/models', async (_req, res) => {

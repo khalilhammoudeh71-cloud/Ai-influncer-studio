@@ -313,7 +313,7 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
                 </div>
               ) : result?.imageUrl ? (
                 <>
-                  <img src={result.imageUrl} alt="Generated" className="w-full h-full object-cover" />
+                  <img src={result.imageUrl} alt="Generated" className="absolute inset-0 w-full h-full object-contain" />
                   <div className="absolute bottom-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
                       onClick={downloadImage}
