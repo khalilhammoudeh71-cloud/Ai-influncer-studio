@@ -3,7 +3,7 @@ import { Send, User, Bot, Sparkles, MessageSquareQuote, History, Copy, Download,
 import { cn } from '../utils/cn';
 import { Persona } from '../types';
 import { generateAssistantReply, generatePersonaContent } from '../utils/personaEngine';
-import { generateDualImage } from '../services/imageService';
+import { generateImage } from '../services/imageService';
 
 type Message = {
   id: string;
@@ -55,19 +55,18 @@ export default function AssistantView({ persona }: AssistantViewProps) {
       setMessages(prev => [...prev, pendingReply]);
 
       try {
-        const result = await generateDualImage({
+        const result = await generateImage({
           persona,
+          modelId: 'replit:gpt-image-1',
           isChatContext: true,
           chatPrompt: currentInput
         });
-
-        const imageUrl = result.gemini?.imageUrl || result.openai?.imageUrl;
 
         setMessages(prev => prev.map(m => m.id === pendingMessageId ? {
           ...m,
           content: `I've generated a new visual based on your request.`,
           type: 'image',
-          imageUrl: imageUrl ?? undefined,
+          imageUrl: result.imageUrl ?? undefined,
           isGenerating: false
         } : m));
 

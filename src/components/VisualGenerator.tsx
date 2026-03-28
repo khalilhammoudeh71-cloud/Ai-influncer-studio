@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Camera,
   Sparkles,
@@ -13,11 +13,16 @@ import {
   CheckCircle,
   AlertCircle,
   Loader2,
-  ExternalLink,
-  CreditCard
+  ChevronDown,
+  Cpu,
 } from 'lucide-react';
 import { Persona, GeneratedImage } from '../types';
-import { generateDualImage, type DualImageResult, type SingleImageResult } from '../services/imageService';
+import {
+  generateImage,
+  fetchAvailableModels,
+  type ModelInfo,
+  type GenerateImageResult,
+} from '../services/imageService';
 
 interface VisualGeneratorProps {
   persona: Persona;
@@ -44,84 +49,6 @@ const MOODS = [
   'Confident', 'Friendly', 'Thoughtful', 'Playful', 'Professional', 'Seductive'
 ];
 
-interface ImagePanelProps {
-  label: string;
-  sublabel: string;
-  accentClass: string;
-  result: SingleImageResult | null;
-  isGenerating: boolean;
-  onSave: () => void;
-  onDownload: () => void;
-}
-
-const ImagePanel: React.FC<ImagePanelProps> = ({
-  label, sublabel, accentClass, result, isGenerating, onSave, onDownload
-}) => (
-  <div className="flex flex-col gap-2">
-    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border ${accentClass} w-fit`}>
-      <span className="text-xs font-bold">{label}</span>
-      <span className="text-[10px] opacity-60">{sublabel}</span>
-    </div>
-
-    <div className="aspect-square rounded-2xl bg-zinc-950 border border-zinc-800 overflow-hidden relative group">
-      {isGenerating ? (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-          <Loader2 className="w-8 h-8 animate-spin text-zinc-500" />
-          <p className="text-xs text-zinc-500 animate-pulse">Generating...</p>
-        </div>
-      ) : result?.error === 'BILLING_REQUIRED' ? (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center p-5">
-          <CreditCard className="w-8 h-8 text-amber-400/70" />
-          <div>
-            <p className="text-xs font-bold text-amber-300 mb-1">Paid Plan Required</p>
-            <p className="text-[11px] text-zinc-400 leading-relaxed">Gemini image generation requires a paid Google AI Studio account.</p>
-          </div>
-          <a
-            href="https://ai.dev/projects"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-400 hover:text-amber-300 underline underline-offset-2"
-          >
-            Upgrade at ai.dev <ExternalLink className="w-3 h-3" />
-          </a>
-        </div>
-      ) : result?.error ? (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center p-4">
-          <AlertCircle className="w-8 h-8 text-red-400/60" />
-          <p className="text-xs text-red-400/70">{result.error}</p>
-        </div>
-      ) : result?.imageUrl ? (
-        <>
-          <img src={result.imageUrl} alt={label} className="w-full h-full object-cover" />
-          <div className="absolute bottom-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button
-              onClick={onDownload}
-              className="p-1.5 bg-black/60 backdrop-blur-md rounded-lg text-white hover:bg-black/80 transition-colors"
-              title="Download"
-            >
-              <Download className="w-4 h-4" />
-            </button>
-          </div>
-        </>
-      ) : (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <ImageIcon className="w-10 h-10 text-zinc-700 opacity-30" />
-        </div>
-      )}
-    </div>
-
-    {result?.imageUrl && (
-      <button
-        onClick={onSave}
-        className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all border ${accentClass} hover:opacity-90 flex items-center justify-center gap-1.5`}
-      >
-        <CheckCircle className="w-3.5 h-3.5" />
-        Save This One
-      </button>
-    )}
-  </div>
-);
-
 export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClose, onSaveImage }) => {
   const [prompt, setPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -129,24 +56,51 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
   const [selectedOutfit, setSelectedOutfit] = useState(OUTFITS[0]);
   const [selectedFraming, setSelectedFraming] = useState(FRAMING[0]);
   const [selectedMood, setSelectedMood] = useState(MOODS[0]);
-  const [results, setResults] = useState<DualImageResult | null>(null);
+  const [result, setResult] = useState<GenerateImageResult | null>(null);
   const [globalError, setGlobalError] = useState<string | null>(null);
 
+  const [models, setModels] = useState<ModelInfo[]>([]);
+  const [selectedModel, setSelectedModel] = useState<string>('');
+  const [modelsLoading, setModelsLoading] = useState(true);
+
+  useEffect(() => {
+    fetchAvailableModels()
+      .then((m) => {
+        setModels(m);
+        if (m.length > 0) setSelectedModel(m[0].id);
+      })
+      .catch(() => setGlobalError('Failed to load available models.'))
+      .finally(() => setModelsLoading(false));
+  }, []);
+
+  const groupedModels = useMemo(() => {
+    const groups: Record<string, ModelInfo[]> = {};
+    models.forEach((m) => {
+      if (!groups[m.provider]) groups[m.provider] = [];
+      groups[m.provider].push(m);
+    });
+    return groups;
+  }, [models]);
+
+  const selectedModelInfo = useMemo(() => models.find(m => m.id === selectedModel), [models, selectedModel]);
+
   const handleGenerate = async () => {
+    if (!selectedModel) return;
     setIsGenerating(true);
     setGlobalError(null);
-    setResults(null);
+    setResult(null);
 
     try {
-      const data = await generateDualImage({
+      const data = await generateImage({
         persona,
+        modelId: selectedModel,
         environment: selectedEnv,
         outfitStyle: selectedOutfit,
         framing: selectedFraming,
         mood: selectedMood,
         additionalInstructions: prompt,
       });
-      setResults(data);
+      setResult(data);
     } catch (err: any) {
       setGlobalError(err.message || 'Generation failed. Please try again.');
     } finally {
@@ -154,54 +108,35 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
     }
   };
 
-  const makeGeneratedImage = (imageUrl: string, model: string): GeneratedImage => ({
-    id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    url: imageUrl,
-    prompt: results?.promptUsed || prompt || '',
-    timestamp: Date.now(),
-    environment: selectedEnv,
-    outfit: selectedOutfit,
-    framing: selectedFraming,
-    model,
-  });
-
-  const saveGemini = () => {
-    if (!results?.gemini?.imageUrl) return;
-    onSaveImage(makeGeneratedImage(results.gemini.imageUrl, results.gemini.model));
+  const handleSave = () => {
+    if (!result?.imageUrl) return;
+    const image: GeneratedImage = {
+      id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      url: result.imageUrl,
+      prompt: result.promptUsed || prompt || '',
+      timestamp: Date.now(),
+      environment: selectedEnv,
+      outfit: selectedOutfit,
+      framing: selectedFraming,
+      model: result.model,
+    };
+    onSaveImage(image);
     onClose();
   };
 
-  const saveOpenAI = () => {
-    if (!results?.openai?.imageUrl) return;
-    onSaveImage(makeGeneratedImage(results.openai.imageUrl, results.openai.model));
-    onClose();
-  };
-
-  const saveBoth = () => {
-    if (results?.gemini?.imageUrl) {
-      onSaveImage(makeGeneratedImage(results.gemini.imageUrl, results.gemini.model));
-    }
-    if (results?.openai?.imageUrl) {
-      onSaveImage(makeGeneratedImage(results.openai.imageUrl, results.openai.model));
-    }
-    onClose();
-  };
-
-  const downloadImage = (imageUrl: string, label: string) => {
+  const downloadImage = () => {
+    if (!result?.imageUrl) return;
     const a = document.createElement('a');
-    a.href = imageUrl;
-    a.download = `${persona.name.replace(/\s+/g, '_')}_${label}_${Date.now()}.png`;
+    a.href = result.imageUrl;
+    a.download = `${persona.name.replace(/\s+/g, '_')}_${Date.now()}.png`;
     a.click();
   };
-
-  const hasBothResults = results?.gemini?.imageUrl && results?.openai?.imageUrl;
 
   return (
     <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
 
       <div className="relative w-full max-w-3xl bg-zinc-900 rounded-3xl overflow-hidden border border-zinc-800 shadow-2xl animate-in slide-in-from-bottom duration-300">
-        {/* Header */}
         <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/50 sticky top-0 z-10">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-purple-500 to-blue-500 flex items-center justify-center overflow-hidden">
@@ -213,7 +148,9 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
             </div>
             <div>
               <h3 className="font-bold text-white">Visual Studio</h3>
-              <p className="text-xs text-zinc-400">Gemini Flash 3.1 &amp; DALL-E side by side</p>
+              <p className="text-xs text-zinc-400">
+                {models.length} models available
+              </p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-zinc-800 rounded-full transition-colors">
@@ -224,26 +161,81 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
         <div className="max-h-[82vh] overflow-y-auto">
           <div className="p-6 space-y-5">
 
-            {/* Dual Preview */}
-            <div className="grid grid-cols-2 gap-4">
-              <ImagePanel
-                label="Gemini"
-                sublabel="Flash 3.1"
-                accentClass="border-blue-500/30 bg-blue-500/10 text-blue-400"
-                result={results?.gemini ?? null}
-                isGenerating={isGenerating}
-                onSave={saveGemini}
-                onDownload={() => results?.gemini?.imageUrl && downloadImage(results.gemini.imageUrl, 'gemini')}
-              />
-              <ImagePanel
-                label="DALL-E"
-                sublabel="gpt-image-1"
-                accentClass="border-green-500/30 bg-green-500/10 text-green-400"
-                result={results?.openai ?? null}
-                isGenerating={isGenerating}
-                onSave={saveOpenAI}
-                onDownload={() => results?.openai?.imageUrl && downloadImage(results.openai.imageUrl, 'dalle')}
-              />
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-1.5">
+                <Cpu className="w-3 h-3" /> AI Model
+              </label>
+              {modelsLoading ? (
+                <div className="flex items-center gap-2 px-3 py-2.5 bg-zinc-800 rounded-xl text-sm text-zinc-400">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Loading models...
+                </div>
+              ) : (
+                <div className="relative">
+                  <select
+                    value={selectedModel}
+                    onChange={(e) => setSelectedModel(e.target.value)}
+                    className="w-full bg-zinc-800 border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white focus:ring-2 focus:ring-purple-500 outline-none appearance-none pr-10"
+                  >
+                    {Object.entries(groupedModels).map(([provider, providerModels]) => (
+                      <optgroup key={provider} label={provider}>
+                        {providerModels.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
+                </div>
+              )}
+              {selectedModelInfo && (
+                <div className="flex items-center gap-2 flex-wrap mt-1">
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                    {selectedModelInfo.provider}
+                  </span>
+                  {selectedModelInfo.hasEditVariant && persona.referenceImage && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                      Reference image supported
+                    </span>
+                  )}
+                  {selectedModelInfo.price > 0 && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                      ${selectedModelInfo.price.toFixed(3)} per image
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="aspect-square max-h-[400px] rounded-2xl bg-zinc-950 border border-zinc-800 overflow-hidden relative group mx-auto w-full max-w-[400px]">
+              {isGenerating ? (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+                  <Loader2 className="w-10 h-10 animate-spin text-purple-500" />
+                  <p className="text-xs text-zinc-500 animate-pulse">Generating with {selectedModelInfo?.name || 'AI'}...</p>
+                </div>
+              ) : result?.imageUrl ? (
+                <>
+                  <img src={result.imageUrl} alt="Generated" className="w-full h-full object-cover" />
+                  <div className="absolute bottom-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={downloadImage}
+                      className="p-2 bg-black/60 backdrop-blur-md rounded-lg text-white hover:bg-black/80 transition-colors"
+                      title="Download"
+                    >
+                      <Download className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="absolute top-2 left-2 px-2.5 py-1 bg-black/60 backdrop-blur-md rounded-lg">
+                    <span className="text-[10px] text-white font-medium">{result.model}</span>
+                  </div>
+                </>
+              ) : (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                  <ImageIcon className="w-12 h-12 text-zinc-700 opacity-30" />
+                  <p className="text-xs text-zinc-600">Select a model and generate</p>
+                </div>
+              )}
             </div>
 
             {globalError && (
@@ -253,7 +245,16 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
               </div>
             )}
 
-            {/* Controls */}
+            {result?.imageUrl && (
+              <button
+                onClick={handleSave}
+                className="w-full py-3 rounded-xl text-sm font-bold transition-all bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white flex items-center justify-center gap-2 shadow-lg shadow-purple-500/20"
+              >
+                <CheckCircle className="w-4 h-4" />
+                Save to Visual Library
+              </button>
+            )}
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-3">
                 <div className="space-y-1.5">
@@ -310,7 +311,6 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
               </div>
             </div>
 
-            {/* Custom prompt */}
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-zinc-500 uppercase">Additional Instructions (Optional)</label>
               <textarea
@@ -323,30 +323,20 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="p-5 bg-zinc-950 border-t border-zinc-800 flex gap-2">
+        <div className="p-5 bg-zinc-950 border-t border-zinc-800">
           <button
             onClick={handleGenerate}
-            disabled={isGenerating}
-            className="flex-1 bg-white text-black font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 hover:bg-zinc-200 transition-colors disabled:opacity-50 text-sm"
+            disabled={isGenerating || !selectedModel}
+            className="w-full bg-white text-black font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 hover:bg-zinc-200 transition-colors disabled:opacity-50 text-sm"
           >
             {isGenerating ? (
-              <><Loader2 className="w-4 h-4 animate-spin" /> Generating both...</>
-            ) : results ? (
-              <><RefreshCw className="w-4 h-4" /> Regenerate Both</>
+              <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</>
+            ) : result ? (
+              <><RefreshCw className="w-4 h-4" /> Regenerate</>
             ) : (
-              <><Sparkles className="w-4 h-4" /> Generate Both</>
+              <><Sparkles className="w-4 h-4" /> Generate Image</>
             )}
           </button>
-
-          {hasBothResults && (
-            <button
-              onClick={saveBoth}
-              className="px-5 py-3.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-sm transition-colors shadow-lg shadow-purple-500/20 whitespace-nowrap"
-            >
-              Save Both
-            </button>
-          )}
         </div>
       </div>
     </div>

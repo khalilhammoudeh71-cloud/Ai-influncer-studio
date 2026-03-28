@@ -1,15 +1,10 @@
 import express from 'express';
 import cors from 'cors';
-import { GoogleGenAI, Modality } from '@google/genai';
 import OpenAI, { toFile } from 'openai';
 
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '20mb' }));
-
-const geminiAI = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY || process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
-});
 
 function getOpenAIClient(): OpenAI {
   const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
@@ -20,7 +15,126 @@ function getOpenAIClient(): OpenAI {
   return new OpenAI({ apiKey, baseURL });
 }
 
-const GEMINI_MODEL = 'gemini-3.1-flash-image-preview';
+const WAVESPEED_API_KEY = process.env.WAVESPEED_API_KEY || '';
+const WAVESPEED_BASE = 'https://api.wavespeed.ai/api/v3';
+
+interface ModelInfo {
+  id: string;
+  name: string;
+  provider: string;
+  type: 'text-to-image' | 'image-to-image';
+  price: number;
+  description: string;
+  apiPath: string;
+  hasEditVariant: boolean;
+  editApiPath?: string;
+}
+
+let cachedModels: ModelInfo[] | null = null;
+let cacheTimestamp = 0;
+const CACHE_TTL = 30 * 60 * 1000;
+
+async function fetchWavespeedModels(): Promise<ModelInfo[]> {
+  if (cachedModels && Date.now() - cacheTimestamp < CACHE_TTL) {
+    return cachedModels;
+  }
+
+  try {
+    const res = await fetch(`${WAVESPEED_BASE}/models`, {
+      headers: { Authorization: `Bearer ${WAVESPEED_API_KEY}` },
+    });
+    const json = await res.json();
+    const rawModels = json.data || [];
+
+    const textToImage = rawModels.filter((m: any) => m.type === 'text-to-image');
+    const imageToImage = rawModels.filter((m: any) => m.type === 'image-to-image');
+
+    const editLookup = new Map<string, any>();
+    imageToImage.forEach((m: any) => {
+      const base = m.model_id
+        .replace('/edit', '')
+        .replace('/image-to-image', '');
+      editLookup.set(base, m);
+    });
+
+    const models: ModelInfo[] = textToImage.map((m: any) => {
+      const base = m.model_id
+        .replace('/text-to-image', '');
+      const editModel = editLookup.get(base) || editLookup.get(base + '/edit');
+      const apiPath = m.api_schema?.api_schemas?.[0]?.api_path || `/api/v3/${m.model_id}`;
+
+      const providerSlash = m.model_id.indexOf('/');
+      const provider = m.model_id.slice(0, providerSlash);
+
+      const providerNames: Record<string, string> = {
+        'google': 'Google',
+        'openai': 'OpenAI',
+        'wavespeed-ai': 'Wavespeed AI',
+        'bytedance': 'ByteDance',
+        'stability-ai': 'Stability AI',
+        'x-ai': 'xAI',
+        'midjourney': 'Midjourney',
+        'kwaivgi': 'Kling',
+        'recraft-ai': 'Recraft',
+        'alibaba': 'Alibaba',
+        'z-ai': 'Zhipu AI',
+        'leonardoai': 'Leonardo AI',
+        'reve': 'Reve',
+        'vidu': 'Vidu',
+        'higgsfield': 'Higgsfield',
+        'nvidia': 'NVIDIA',
+        'bria': 'Bria',
+      };
+
+      const friendlyName = m.model_id
+        .replace('/text-to-image', '')
+        .split('/')
+        .slice(1)
+        .join(' ')
+        .replace(/-/g, ' ')
+        .replace(/\b\w/g, (c: string) => c.toUpperCase());
+
+      return {
+        id: `wavespeed:${m.model_id}`,
+        name: friendlyName,
+        provider: providerNames[provider] || provider,
+        type: 'text-to-image' as const,
+        price: m.base_price,
+        description: m.description || '',
+        apiPath,
+        hasEditVariant: !!editModel,
+        editApiPath: editModel
+          ? (editModel.api_schema?.api_schemas?.[0]?.api_path || `/api/v3/${editModel.model_id}`)
+          : undefined,
+      };
+    });
+
+    models.sort((a, b) => a.provider.localeCompare(b.provider) || a.name.localeCompare(b.name));
+
+    cachedModels = models;
+    cacheTimestamp = Date.now();
+    return models;
+  } catch (err) {
+    console.error('[Wavespeed] Failed to fetch models:', err);
+    return cachedModels || [];
+  }
+}
+
+function getAllModels(wavespeedModels: ModelInfo[]): ModelInfo[] {
+  const builtIn: ModelInfo[] = [
+    {
+      id: 'replit:gpt-image-1',
+      name: 'GPT Image 1 (DALL-E)',
+      provider: 'Replit Built-in',
+      type: 'text-to-image',
+      price: 0,
+      description: 'OpenAI DALL-E image generation via Replit integration (included free)',
+      apiPath: '',
+      hasEditVariant: true,
+    },
+  ];
+  return [...builtIn, ...wavespeedModels];
+}
 
 function buildPrompt(body: any): string {
   const { personaName, niche, tone, visualStyle, environment, outfitStyle, framing, mood, additionalInstructions, isChatContext, chatPrompt } = body;
@@ -49,68 +163,8 @@ function stripDataPrefix(dataUrl: string): { data: string; mimeType: string } {
   return { mimeType: 'image/png', data: dataUrl };
 }
 
-function parseGeminiError(err: any): string {
-  try {
-    const raw = err?.message || String(err);
-    let msg = raw;
-    try { msg = JSON.parse(raw)?.error?.message || raw; } catch {}
-
-    if (msg.includes('paid plan') || msg.includes('upgrade')) {
-      return 'BILLING_REQUIRED';
-    }
-    if (msg.includes('quota') || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('limit: 0')) {
-      return 'BILLING_REQUIRED';
-    }
-    if (msg.includes('API key not valid') || (msg.includes('INVALID_ARGUMENT') && msg.includes('key'))) {
-      return 'Gemini API key is invalid — check your GEMINI_API_KEY secret.';
-    }
-    if (msg.includes('not found') || msg.includes('NOT_FOUND')) {
-      return `Gemini model not available on this API version.`;
-    }
-    return msg;
-  } catch {
-    return err?.message || 'Gemini generation failed';
-  }
-}
-
-async function generateGeminiImage(prompt: string, referenceImage?: string): Promise<{ imageUrl: string; model: string }> {
-  const parts: any[] = [];
-
-  if (referenceImage) {
-    const { mimeType, data } = stripDataPrefix(referenceImage);
-    parts.push({ inlineData: { mimeType, data } });
-    parts.push({ text: `Using this reference image to maintain consistent appearance: ${prompt}` });
-  } else {
-    parts.push({ text: prompt });
-  }
-
-  const response = await geminiAI.models.generateContent({
-    model: GEMINI_MODEL,
-    contents: [{ role: 'user', parts }],
-    config: {
-      responseModalities: [Modality.TEXT, Modality.IMAGE],
-    },
-  });
-
-  const candidate = response.candidates?.[0];
-  const imagePart = candidate?.content?.parts?.find(
-    (part: { inlineData?: { data?: string; mimeType?: string } }) => part.inlineData
-  );
-
-  if (!imagePart?.inlineData?.data) {
-    throw new Error('Gemini returned no image data');
-  }
-
-  const mimeType = imagePart.inlineData.mimeType || 'image/png';
-  return {
-    imageUrl: `data:${mimeType};base64,${imagePart.inlineData.data}`,
-    model: GEMINI_MODEL,
-  };
-}
-
-async function generateOpenAIImage(prompt: string, referenceImage?: string): Promise<{ imageUrl: string; model: string }> {
+async function generateWithReplit(prompt: string, referenceImage?: string): Promise<string> {
   const client = getOpenAIClient();
-
   let response;
 
   if (referenceImage) {
@@ -134,45 +188,155 @@ async function generateOpenAIImage(prompt: string, referenceImage?: string): Pro
   }
 
   const b64 = response.data?.[0]?.b64_json;
-  if (!b64) {
-    throw new Error('OpenAI returned no image data');
-  }
-
-  return {
-    imageUrl: `data:image/png;base64,${b64}`,
-    model: 'gpt-image-1',
-  };
+  if (!b64) throw new Error('OpenAI returned no image data');
+  return `data:image/png;base64,${b64}`;
 }
 
-app.post('/api/generate-image', async (req, res) => {
-  const { referenceImage, ...rest } = req.body;
-  const prompt = buildPrompt(rest);
+const WAVESPEED_ALLOWED_HOSTS = ['api.wavespeed.ai', 'wscdn.wavespeed.ai', 'cdn.wavespeed.ai'];
 
-  const [geminiResult, openaiResult] = await Promise.allSettled([
-    generateGeminiImage(prompt, referenceImage),
-    generateOpenAIImage(prompt, referenceImage),
-  ]);
+function isAllowedWavespeedUrl(urlStr: string): boolean {
+  try {
+    const u = new URL(urlStr);
+    return u.protocol === 'https:' && WAVESPEED_ALLOWED_HOSTS.some(h => u.hostname === h || u.hostname.endsWith('.' + h));
+  } catch {
+    return false;
+  }
+}
 
-  const gemini = geminiResult.status === 'fulfilled'
-    ? { imageUrl: geminiResult.value.imageUrl, model: geminiResult.value.model, error: null }
-    : { imageUrl: null, model: GEMINI_MODEL, error: parseGeminiError(geminiResult.reason) };
+async function fetchAllowedImage(urlStr: string): Promise<string> {
+  if (!isAllowedWavespeedUrl(urlStr)) {
+    throw new Error('Blocked: image URL from untrusted host');
+  }
+  const imgRes = await fetch(urlStr);
+  const imgBuf = Buffer.from(await imgRes.arrayBuffer());
+  return `data:image/png;base64,${imgBuf.toString('base64')}`;
+}
 
-  const openai = openaiResult.status === 'fulfilled'
-    ? { imageUrl: openaiResult.value.imageUrl, model: openaiResult.value.model, error: null }
-    : { imageUrl: null, model: 'gpt-image-1', error: (openaiResult.reason as any)?.message || 'OpenAI generation failed' };
+async function generateWithWavespeed(
+  apiPath: string,
+  editApiPath: string | undefined,
+  prompt: string,
+  referenceImage?: string
+): Promise<string> {
+  const hasRef = !!referenceImage;
+  const usePath = hasRef && editApiPath ? editApiPath : apiPath;
 
-  if (!gemini.imageUrl && !openai.imageUrl) {
-    return res.status(500).json({ error: 'Both generators failed. Please try again.', gemini, openai });
+  const payload: any = {
+    prompt,
+    enable_sync_mode: true,
+    enable_base64_output: true,
+  };
+
+  if (hasRef && editApiPath) {
+    const { data } = stripDataPrefix(referenceImage!);
+    payload.image = `data:image/png;base64,${data}`;
   }
 
-  return res.json({ promptUsed: prompt, gemini, openai });
+  const url = `https://api.wavespeed.ai${usePath}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${WAVESPEED_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const json = await res.json();
+
+  if (json.code !== 200 || json.data?.status === 'failed') {
+    throw new Error(json.data?.error || json.message || 'Wavespeed generation failed');
+  }
+
+  const outputs = json.data?.outputs || [];
+  if (!outputs.length) {
+    if (json.data?.status === 'completed' && json.data?.urls?.get) {
+      const pollUrl = json.data.urls.get;
+      if (!isAllowedWavespeedUrl(pollUrl)) {
+        throw new Error('Blocked: poll URL from untrusted host');
+      }
+      const pollRes = await fetch(pollUrl, {
+        headers: { Authorization: `Bearer ${WAVESPEED_API_KEY}` },
+      });
+      const pollJson = await pollRes.json();
+      const pollOutputs = pollJson.data?.outputs || pollJson.outputs || [];
+      if (pollOutputs.length) {
+        const img = pollOutputs[0];
+        if (img.startsWith('http')) return await fetchAllowedImage(img);
+        return `data:image/png;base64,${img}`;
+      }
+    }
+    throw new Error('No image output from Wavespeed');
+  }
+
+  const output = outputs[0];
+  if (output.startsWith('http')) return await fetchAllowedImage(output);
+
+  return `data:image/jpeg;base64,${output}`;
+}
+
+app.get('/api/models', async (_req, res) => {
+  try {
+    const wavespeedModels = await fetchWavespeedModels();
+    const allModels = getAllModels(wavespeedModels);
+    res.json({ models: allModels });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to fetch models' });
+  }
+});
+
+app.post('/api/generate-image', async (req, res) => {
+  const { referenceImage, modelId, ...rest } = req.body;
+  const prompt = buildPrompt(rest);
+
+  if (!modelId) {
+    return res.status(400).json({ error: 'modelId is required' });
+  }
+
+  try {
+    let imageUrl: string;
+    let modelName = modelId;
+
+    if (modelId === 'replit:gpt-image-1') {
+      imageUrl = await generateWithReplit(prompt, referenceImage);
+      modelName = 'gpt-image-1';
+    } else if (modelId.startsWith('wavespeed:')) {
+      const wavespeedModels = await fetchWavespeedModels();
+      const modelInfo = wavespeedModels.find(m => m.id === modelId);
+      if (!modelInfo) {
+        return res.status(400).json({ error: 'Unknown or unavailable model ID' });
+      }
+      modelName = modelInfo.name;
+      imageUrl = await generateWithWavespeed(modelInfo.apiPath, modelInfo.editApiPath, prompt, referenceImage);
+    } else {
+      return res.status(400).json({ error: 'Unknown model ID' });
+    }
+
+    return res.json({
+      imageUrl,
+      model: modelName,
+      promptUsed: prompt,
+    });
+  } catch (err: any) {
+    console.error('[generate-image] Error:', err.message);
+    return res.status(500).json({
+      error: err.message || 'Image generation failed',
+    });
+  }
 });
 
 app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', geminiModel: GEMINI_MODEL, openaiModel: 'gpt-image-1' });
+  res.json({ status: 'ok', wavespeedConfigured: !!WAVESPEED_API_KEY });
 });
 
 const PORT = 3001;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`[AI Image Server] Listening on port ${PORT}`);
+  if (WAVESPEED_API_KEY) {
+    fetchWavespeedModels().then(models => {
+      console.log(`[Wavespeed] Loaded ${models.length} image generation models`);
+    });
+  } else {
+    console.warn('[Wavespeed] No API key configured — only built-in models available');
+  }
 });

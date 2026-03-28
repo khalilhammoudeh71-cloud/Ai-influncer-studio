@@ -1,7 +1,18 @@
 import { Persona } from '../types';
 
+export interface ModelInfo {
+  id: string;
+  name: string;
+  provider: string;
+  type: string;
+  price: number;
+  description: string;
+  hasEditVariant: boolean;
+}
+
 export interface GenerateImageParams {
   persona: Persona;
+  modelId: string;
   environment?: string;
   outfitStyle?: string;
   framing?: string;
@@ -11,35 +22,39 @@ export interface GenerateImageParams {
   chatPrompt?: string;
 }
 
-export interface SingleImageResult {
-  imageUrl: string | null;
+export interface GenerateImageResult {
+  imageUrl: string;
   model: string;
-  error: string | null;
-}
-
-export interface DualImageResult {
-  gemini: SingleImageResult;
-  openai: SingleImageResult;
   promptUsed: string;
 }
 
-export async function generateDualImage(params: GenerateImageParams): Promise<DualImageResult> {
-  const { persona, ...restParams } = params;
+export async function fetchAvailableModels(): Promise<ModelInfo[]> {
+  const response = await fetch('/api/models');
+  if (!response.ok) {
+    throw new Error('Failed to fetch available models');
+  }
+  const data = await response.json();
+  return data.models || [];
+}
+
+export async function generateImage(params: GenerateImageParams): Promise<GenerateImageResult> {
+  const { persona, modelId, ...restParams } = params;
 
   const payload = {
+    modelId,
     personaId: persona.id,
     personaName: persona.name,
     niche: persona.niche,
     tone: persona.tone,
     visualStyle: persona.visualStyle || 'Realistic, highly detailed',
     referenceImage: persona.referenceImage || null,
-    ...restParams
+    ...restParams,
   };
 
   const response = await fetch('/api/generate-image', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
   });
 
   const contentType = response.headers.get('content-type');
@@ -49,13 +64,13 @@ export async function generateDualImage(params: GenerateImageParams): Promise<Du
 
   const data = await response.json();
 
-  if (!response.ok && !data.gemini && !data.openai) {
+  if (!response.ok) {
     throw new Error(data.error || 'Image generation failed.');
   }
 
   return {
-    gemini: data.gemini,
-    openai: data.openai,
+    imageUrl: data.imageUrl,
+    model: data.model,
     promptUsed: data.promptUsed || '',
   };
 }
