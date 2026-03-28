@@ -1,8 +1,9 @@
-import { Plus, Search, Edit2, Trash2, X, Check, Camera, Upload, Image as ImageIcon, AlertTriangle, Sparkles } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, X, Check, Camera, Upload, Image as ImageIcon, AlertTriangle, Sparkles, ArrowLeft, Download, Heart, Trash, Eye } from 'lucide-react';
 import { useState, useRef } from 'react';
 import { cn } from '../utils/cn';
 import { Persona, GeneratedImage } from '../types';
 import { VisualGenerator } from '../components/VisualGenerator';
+import { api } from '../services/apiService';
 
 interface PersonasViewProps {
   personas: Persona[];
@@ -17,6 +18,8 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
   const [showGenerator, setShowGenerator] = useState(false);
   const [activePersonaForGen, setActivePersonaForGen] = useState<Persona | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [viewingPersona, setViewingPersona] = useState<Persona | null>(null);
+  const [previewImage, setPreviewImage] = useState<GeneratedImage | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const filteredPersonas = personas.filter(p => {
@@ -37,6 +40,11 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
       return p;
     });
     setPersonas(updated);
+    if (viewingPersona && viewingPersona.id === activePersonaForGen.id) {
+      const fresh = updated.find(p => p.id === viewingPersona.id);
+      if (fresh) setViewingPersona(fresh);
+    }
+    api.images.create(activePersonaForGen.id, img).catch(err => console.error('[API] Image save error:', err));
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -142,7 +150,6 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
   const handleUpdatePersona = () => {
     if (!editingPersona) return;
     try {
-      // Ensure arrays and required fields exist to prevent rendering crashes
       const safePersona = {
         ...editingPersona,
         personalityTraits: editingPersona.personalityTraits || [],
@@ -156,9 +163,11 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
       const updated = personas.map(p => p.id === safePersona.id ? safePersona : p);
       setPersonas(updated);
       setEditingPersona(null);
+      if (viewingPersona && viewingPersona.id === safePersona.id) {
+        setViewingPersona(safePersona);
+      }
     } catch (error) {
       console.error('Crash during persona save:', error);
-      // Fallback safely if mapping somehow crashes
       setEditingPersona(null);
     }
   };
@@ -167,6 +176,10 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
     if (!deleteConfirmId) return;
     const updated = personas.filter(p => p.id !== deleteConfirmId);
     setPersonas(updated);
+    if (viewingPersona?.id === deleteConfirmId) {
+      setViewingPersona(null);
+      setPreviewImage(null);
+    }
     if (selectedId === deleteConfirmId) {
       if (updated.length > 0) {
         onSelectPersona(updated[0].id);
@@ -218,7 +231,11 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
           return (
             <div 
               key={persona.id} 
-              onClick={() => onSelectPersona(persona.id)}
+              onClick={() => {
+                onSelectPersona(persona.id);
+                const fresh = personas.find(p => p.id === persona.id) || persona;
+                setViewingPersona(fresh);
+              }}
               className={cn(
                 "group relative bg-[#1A1A1A] border rounded-3xl p-5 cursor-pointer transition-all duration-300 overflow-hidden",
                 isSelected ? "border-indigo-500 ring-1 ring-indigo-500/50" : "border-white/5 hover:border-white/20"
@@ -253,14 +270,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                 </button>
               </div>
               
-              <div 
-                className="flex gap-4" 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSelectPersona(persona.id);
-                  handleOpenEdit(persona);
-                }}
-              >
+              <div className="flex gap-4">
                 <div className="relative">
                   {persona.referenceImage ? (
                     <img 
@@ -650,10 +660,220 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
         </button>
       </div>
 
+      {viewingPersona && (
+        <div className="fixed inset-0 z-50 bg-[#0A0A0A] overflow-y-auto animate-in fade-in duration-200">
+          <header className="sticky top-0 z-10 bg-[#0A0A0A]/90 backdrop-blur-xl border-b border-white/5 px-5 py-4 flex items-center justify-between">
+            <button 
+              onClick={() => { setViewingPersona(null); setPreviewImage(null); }}
+              className="p-2 hover:bg-white/5 rounded-full text-gray-400 transition-colors"
+            >
+              <ArrowLeft size={22} />
+            </button>
+            <h2 className="text-lg font-bold truncate mx-4">{viewingPersona.name}</h2>
+            <div className="flex gap-2">
+              <button 
+                onClick={() => {
+                  setActivePersonaForGen(viewingPersona);
+                  setShowGenerator(true);
+                }}
+                className="p-2 bg-indigo-600 hover:bg-indigo-500 rounded-full text-white transition-colors"
+              >
+                <Sparkles size={18} />
+              </button>
+              <button 
+                onClick={() => {
+                  const vp = viewingPersona;
+                  setViewingPersona(null);
+                  setPreviewImage(null);
+                  handleOpenEdit(vp);
+                }}
+                className="p-2 hover:bg-white/5 rounded-full text-gray-400 transition-colors"
+              >
+                <Edit2 size={18} />
+              </button>
+            </div>
+          </header>
+
+          <div className="p-5">
+            <div className="flex items-center gap-4 mb-6">
+              <div className="relative shrink-0">
+                {viewingPersona.referenceImage ? (
+                  <img 
+                    src={viewingPersona.referenceImage} 
+                    alt={viewingPersona.name} 
+                    className="w-20 h-20 rounded-2xl object-cover ring-2 ring-indigo-500/20"
+                  />
+                ) : (
+                  <img 
+                    src={viewingPersona.avatar} 
+                    alt={viewingPersona.name} 
+                    className="w-20 h-20 rounded-2xl object-cover"
+                  />
+                )}
+                <div className={cn(
+                  "absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-[#0A0A0A]",
+                  viewingPersona.status === 'Active' ? "bg-green-500" : "bg-gray-500"
+                )} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-gray-400 text-sm">{viewingPersona.niche}</p>
+                <div className="flex flex-wrap items-center gap-2 mt-2">
+                  <span className="text-[11px] bg-white/5 text-gray-300 px-2 py-1 rounded-md border border-white/5">
+                    {viewingPersona.tone}
+                  </span>
+                  <span className="text-[11px] bg-white/5 text-gray-300 px-2 py-1 rounded-md border border-white/5">
+                    {viewingPersona.platform}
+                  </span>
+                </div>
+                {viewingPersona.bio && (
+                  <p className="text-gray-500 text-xs mt-2 line-clamp-2">{viewingPersona.bio}</p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-lg">Creations</h3>
+              <span className="text-xs text-gray-500 font-medium">
+                {viewingPersona.visualLibrary?.length || 0} images
+              </span>
+            </div>
+
+            {viewingPersona.visualLibrary && viewingPersona.visualLibrary.length > 0 ? (
+              <div className="grid grid-cols-2 gap-3">
+                {viewingPersona.visualLibrary.map((img) => (
+                  <div 
+                    key={img.id} 
+                    className="relative group rounded-2xl overflow-hidden border border-white/5 bg-[#1A1A1A] cursor-pointer"
+                    onClick={() => setPreviewImage(img)}
+                  >
+                    <div className="aspect-square">
+                      <img src={img.url} alt={img.prompt || ''} className="w-full h-full object-cover" />
+                    </div>
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <div className="absolute bottom-0 left-0 right-0 p-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <p className="text-[10px] text-white/70 truncate">{img.prompt || 'Generated image'}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        {img.model && (
+                          <span className="text-[9px] bg-white/10 text-white/60 px-1.5 py-0.5 rounded">{img.model}</span>
+                        )}
+                        {img.environment && (
+                          <span className="text-[9px] text-white/40">{img.environment}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-16 bg-[#1A1A1A] rounded-3xl border border-white/5">
+                <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <ImageIcon className="text-gray-600" size={32} />
+                </div>
+                <h3 className="text-base font-semibold mb-2 text-gray-300">No creations yet</h3>
+                <p className="text-gray-500 text-sm max-w-[220px] mx-auto mb-6 leading-relaxed">
+                  Generate visuals for this persona to see them here.
+                </p>
+                <button 
+                  onClick={() => {
+                    setActivePersonaForGen(viewingPersona);
+                    setShowGenerator(true);
+                  }}
+                  className="bg-indigo-600 hover:bg-indigo-500 px-6 py-3 rounded-2xl font-bold text-sm transition-all active:scale-95 inline-flex items-center gap-2"
+                >
+                  <Sparkles size={16} />
+                  Generate Visuals
+                </button>
+              </div>
+            )}
+          </div>
+
+          {previewImage && (
+            <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4" onClick={() => setPreviewImage(null)}>
+              <div className="relative max-w-lg w-full" onClick={(e) => e.stopPropagation()}>
+                <button 
+                  onClick={() => setPreviewImage(null)}
+                  className="absolute -top-12 right-0 p-2 text-gray-400 hover:text-white transition-colors"
+                >
+                  <X size={24} />
+                </button>
+                <img 
+                  src={previewImage.url} 
+                  alt={previewImage.prompt || ''} 
+                  className="w-full rounded-2xl border border-white/10"
+                />
+                <div className="mt-4 bg-[#1A1A1A] rounded-2xl border border-white/5 p-4">
+                  {previewImage.prompt && (
+                    <p className="text-sm text-gray-300 mb-3">{previewImage.prompt}</p>
+                  )}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {previewImage.model && (
+                      <span className="text-[10px] bg-indigo-500/10 text-indigo-400 px-2 py-1 rounded-md border border-indigo-500/20">
+                        {previewImage.model}
+                      </span>
+                    )}
+                    {previewImage.environment && (
+                      <span className="text-[10px] bg-white/5 text-gray-400 px-2 py-1 rounded-md border border-white/5">
+                        {previewImage.environment}
+                      </span>
+                    )}
+                    {previewImage.outfit && (
+                      <span className="text-[10px] bg-white/5 text-gray-400 px-2 py-1 rounded-md border border-white/5">
+                        {previewImage.outfit}
+                      </span>
+                    )}
+                    {previewImage.framing && (
+                      <span className="text-[10px] bg-white/5 text-gray-400 px-2 py-1 rounded-md border border-white/5">
+                        {previewImage.framing}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex gap-2 mt-4">
+                    <a
+                      href={previewImage.url}
+                      download={`${viewingPersona.name.replace(/\s+/g, '_')}_${previewImage.id}.png`}
+                      className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-white/5 hover:bg-white/10 rounded-xl text-xs font-bold transition-colors"
+                    >
+                      <Download size={14} /> Download
+                    </a>
+                    <button
+                      onClick={() => {
+                        const updated = personas.map(p => {
+                          if (p.id === viewingPersona.id) {
+                            return {
+                              ...p,
+                              visualLibrary: (p.visualLibrary || []).filter(i => i.id !== previewImage.id)
+                            };
+                          }
+                          return p;
+                        });
+                        setPersonas(updated);
+                        const updatedPersona = updated.find(p => p.id === viewingPersona.id);
+                        if (updatedPersona) setViewingPersona(updatedPersona);
+                        api.images.delete(viewingPersona.id, previewImage.id).catch(err => console.error('[API] Image delete error:', err));
+                        setPreviewImage(null);
+                      }}
+                      className="flex items-center justify-center gap-2 py-2.5 px-4 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl text-xs font-bold transition-colors"
+                    >
+                      <Trash size={14} /> Delete
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {showGenerator && activePersonaForGen && (
         <VisualGenerator 
           persona={activePersonaForGen} 
-          onClose={() => setShowGenerator(false)} 
+          onClose={() => {
+            setShowGenerator(false);
+            if (viewingPersona) {
+              const fresh = personas.find(p => p.id === viewingPersona.id);
+              if (fresh) setViewingPersona(fresh);
+            }
+          }} 
           onSaveImage={handleSaveGeneratedImage}
         />
       )}

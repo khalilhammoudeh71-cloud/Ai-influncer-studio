@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { TrendingUp, Plus, DollarSign, Wallet, CreditCard, ChevronRight, PieChart, X } from 'lucide-react';
 import { Persona, RevenueEntry } from '../types';
+import { api } from '../services/apiService';
 
 interface RevenueViewProps {
   persona: Persona;
@@ -17,25 +18,14 @@ export default function RevenueView({ persona }: RevenueViewProps) {
   });
 
   useEffect(() => {
-    const saved = localStorage.getItem(`revenue_entries_${persona.id}`);
-    if (saved) {
-      try {
-        setEntries(JSON.parse(saved));
-      } catch {
-        setEntries([]);
-      }
-    } else {
-      setEntries([]);
-    }
+    api.revenue.listByPersona(persona.id)
+      .then(data => setEntries(data))
+      .catch(() => setEntries([]));
   }, [persona.id]);
-
-  useEffect(() => {
-    localStorage.setItem(`revenue_entries_${persona.id}`, JSON.stringify(entries));
-  }, [entries, persona.id]);
 
   const totalPersonaRevenue = entries.reduce((acc, curr) => acc + curr.amount, 0);
 
-  const handleAddEntry = () => {
+  const handleAddEntry = async () => {
     const amount = parseFloat(newEntry.amount);
     if (isNaN(amount) || amount <= 0) return;
 
@@ -52,6 +42,12 @@ export default function RevenueView({ persona }: RevenueViewProps) {
     setEntries(prev => [entry, ...prev]);
     setNewEntry({ amount: '', source: 'Brand Deal', platform: persona.platform, notes: '' });
     setShowAddForm(false);
+
+    try {
+      await api.revenue.create(entry);
+    } catch (err) {
+      console.error('[Revenue] Save error:', err);
+    }
   };
 
   return (

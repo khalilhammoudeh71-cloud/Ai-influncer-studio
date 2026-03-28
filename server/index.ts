@@ -1,10 +1,13 @@
 import express from 'express';
 import cors from 'cors';
 import OpenAI, { toFile } from 'openai';
+import { Pool } from '@neondatabase/serverless';
+import apiRoutes from './routes';
 
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '20mb' }));
+app.use('/api', apiRoutes);
 
 function getOpenAIClient(): OpenAI {
   const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
@@ -47,11 +50,11 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
     const json = await res.json();
     const rawModels = json.data || [];
 
-    const textToImage = rawModels.filter((m: any) => m.type === 'text-to-image');
-    const imageToImage = rawModels.filter((m: any) => m.type === 'image-to-image');
+    const textToImage = rawModels.filter((m: { type: string }) => m.type === 'text-to-image');
+    const imageToImage = rawModels.filter((m: { type: string }) => m.type === 'image-to-image');
 
-    const editLookup = new Map<string, { model: any; imageField: 'image' | 'images' }>();
-    imageToImage.forEach((m: any) => {
+    const editLookup = new Map<string, { model: { model_id: string; api_schema?: { api_schemas?: { api_path: string; request_schema?: { properties?: Record<string, unknown> } }[] } }; imageField: 'image' | 'images' }>();
+    imageToImage.forEach((m: { model_id: string; api_schema?: { api_schemas?: { api_path: string; request_schema?: { properties?: Record<string, unknown> } }[] } }) => {
       const base = m.model_id
         .replace('/edit', '')
         .replace('/image-to-image', '');
@@ -60,7 +63,7 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
       editLookup.set(base, { model: m, imageField });
     });
 
-    const models: ModelInfo[] = textToImage.map((m: any) => {
+    const models: ModelInfo[] = textToImage.map((m: { model_id: string; base_price: number; description?: string; api_schema?: { api_schemas?: { api_path: string }[] } }) => {
       const base = m.model_id
         .replace('/text-to-image', '');
       const editEntry = editLookup.get(base) || editLookup.get(base + '/edit');
@@ -141,7 +144,22 @@ function getAllModels(wavespeedModels: ModelInfo[]): ModelInfo[] {
   return [...builtIn, ...wavespeedModels];
 }
 
-function buildPrompt(body: any): string {
+interface ImageGenRequest {
+  personaName: string;
+  niche: string;
+  tone: string;
+  visualStyle: string;
+  environment?: string;
+  outfitStyle?: string;
+  framing?: string;
+  mood?: string;
+  additionalInstructions?: string;
+  isChatContext?: boolean;
+  chatPrompt?: string;
+  referenceImage?: string;
+}
+
+function buildPrompt(body: ImageGenRequest): string {
   const { personaName, niche, tone, visualStyle, environment, outfitStyle, framing, mood, additionalInstructions, isChatContext, chatPrompt } = body;
 
   if (isChatContext) {
@@ -227,7 +245,7 @@ async function generateWithWavespeed(
   const hasRef = !!referenceImage;
   const usePath = hasRef && editApiPath ? editApiPath : apiPath;
 
-  const payload: any = {
+  const payload: Record<string, unknown> = {
     prompt,
     enable_sync_mode: true,
     enable_base64_output: true,
@@ -291,13 +309,13 @@ app.get('/api/models', async (_req, res) => {
     const wavespeedModels = await fetchWavespeedModels();
     const allModels = getAllModels(wavespeedModels);
     res.json({ models: allModels });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message || 'Failed to fetch models' });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to fetch models' });
   }
 });
 
 app.post('/api/generate-image', async (req, res) => {
-  const { referenceImage, modelId, ...rest } = req.body;
+  const { referenceImage, modelId, ...rest } = req.body as ImageGenRequest & { modelId: string };
   const prompt = buildPrompt(rest);
 
   if (!modelId) {
@@ -328,10 +346,10 @@ app.post('/api/generate-image', async (req, res) => {
       model: modelName,
       promptUsed: prompt,
     });
-  } catch (err: any) {
-    console.error('[generate-image] Error:', err.message);
+  } catch (err) {
+    console.error('[generate-image] Error:', err instanceof Error ? err.message : err);
     return res.status(500).json({
-      error: err.message || 'Image generation failed',
+      error: err instanceof Error ? err.message : 'Image generation failed',
     });
   }
 });
@@ -340,14 +358,97 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', wavespeedConfigured: !!WAVESPEED_API_KEY });
 });
 
-const PORT = 3001;
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`[AI Image Server] Listening on port ${PORT}`);
-  if (WAVESPEED_API_KEY) {
-    fetchWavespeedModels().then(models => {
-      console.log(`[Wavespeed] Loaded ${models.length} image generation models`);
-    });
-  } else {
-    console.warn('[Wavespeed] No API key configured — only built-in models available');
+async function pushSchema() {
+  try {
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS personas (
+        id SERIAL PRIMARY KEY,
+        client_id TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL DEFAULT '',
+        niche TEXT NOT NULL DEFAULT '',
+        tone TEXT NOT NULL DEFAULT '',
+        platform TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'Draft',
+        avatar TEXT NOT NULL DEFAULT '',
+        reference_image TEXT,
+        personality_traits TEXT NOT NULL DEFAULT '[]',
+        visual_style TEXT NOT NULL DEFAULT '',
+        audience_type TEXT NOT NULL DEFAULT '',
+        content_boundaries TEXT NOT NULL DEFAULT '',
+        bio TEXT NOT NULL DEFAULT '',
+        brand_voice_rules TEXT NOT NULL DEFAULT '',
+        content_goals TEXT NOT NULL DEFAULT '',
+        persona_notes TEXT NOT NULL DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS generated_images (
+        id SERIAL PRIMARY KEY,
+        client_id TEXT NOT NULL UNIQUE,
+        persona_client_id TEXT NOT NULL,
+        url TEXT NOT NULL,
+        prompt TEXT NOT NULL DEFAULT '',
+        timestamp REAL NOT NULL,
+        environment TEXT,
+        outfit TEXT,
+        framing TEXT,
+        is_favorite BOOLEAN DEFAULT false,
+        model TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS revenue_entries (
+        id SERIAL PRIMARY KEY,
+        client_id TEXT NOT NULL UNIQUE,
+        persona_client_id TEXT NOT NULL,
+        date TEXT NOT NULL,
+        amount REAL NOT NULL,
+        source TEXT NOT NULL DEFAULT '',
+        platform TEXT NOT NULL DEFAULT '',
+        notes TEXT NOT NULL DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS planned_posts (
+        id SERIAL PRIMARY KEY,
+        persona_client_id TEXT NOT NULL,
+        plan_platform TEXT NOT NULL DEFAULT '',
+        day INTEGER NOT NULL,
+        type TEXT NOT NULL DEFAULT '',
+        hook TEXT NOT NULL DEFAULT '',
+        angle TEXT NOT NULL DEFAULT '',
+        cta TEXT NOT NULL DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS conversations (
+        id SERIAL PRIMARY KEY,
+        title TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS messages (
+        id SERIAL PRIMARY KEY,
+        conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      );
+    `);
+    await pool.end();
+    console.log('[DB] Schema tables ensured');
+  } catch (err) {
+    console.error('[DB] Schema push error:', err);
   }
+}
+
+const PORT = 3001;
+pushSchema().then(() => {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`[AI Image Server] Listening on port ${PORT}`);
+    if (WAVESPEED_API_KEY) {
+      fetchWavespeedModels().then(models => {
+        console.log(`[Wavespeed] Loaded ${models.length} image generation models`);
+      });
+    } else {
+      console.warn('[Wavespeed] No API key configured — only built-in models available');
+    }
+  });
 });

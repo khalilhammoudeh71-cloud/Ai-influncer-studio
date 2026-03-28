@@ -1,20 +1,48 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { Sparkles, ChevronDown, CheckCircle2 } from 'lucide-react';
 import { Persona, PlannedPost } from '../types';
 import { generatePersonaPlan } from '../utils/personaEngine';
+import { api } from '../services/apiService';
 
 interface PlannerViewProps {
   persona: Persona;
 }
 
 export default function PlannerView({ persona }: PlannerViewProps) {
-  const [isGenerated, setIsGenerated] = useState(false);
+  const [plan, setPlan] = useState<(PlannedPost & { id: string })[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [platform, setPlatform] = useState(persona.platform);
 
-  const plan = useMemo(() => {
-    if (!isGenerated) return [];
-    return generatePersonaPlan(persona, platform, "Weekly Growth");
-  }, [isGenerated, persona, platform]);
+  useEffect(() => {
+    setPlatform(persona.platform);
+  }, [persona.id]);
+
+  useEffect(() => {
+    setIsLoading(true);
+    api.plannedPosts.get(persona.id, platform)
+      .then(posts => {
+        if (posts && posts.length > 0) {
+          setPlan(posts.map((p, i) => ({ ...p, id: `plan-${i}` })));
+        } else {
+          setPlan([]);
+        }
+      })
+      .catch(() => setPlan([]))
+      .finally(() => setIsLoading(false));
+  }, [persona.id, platform]);
+
+  const handleGenerate = () => {
+    const generated = generatePersonaPlan(persona, platform, "Weekly Growth");
+    setPlan(generated);
+    api.plannedPosts.save(persona.id, platform, generated.map(({ day, type, hook, angle, cta }) => ({ day, type, hook, angle, cta })))
+      .catch(err => console.error('[Planner] Save error:', err));
+  };
+
+  const handleReset = () => {
+    setPlan([]);
+    api.plannedPosts.save(persona.id, platform, [])
+      .catch(err => console.error('[Planner] Reset error:', err));
+  };
 
   return (
     <div className="p-6">
@@ -52,7 +80,11 @@ export default function PlannerView({ persona }: PlannerViewProps) {
         </div>
       </div>
 
-      {!isGenerated ? (
+      {isLoading ? (
+        <div className="flex items-center justify-center py-20">
+          <div className="w-6 h-6 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
+        </div>
+      ) : plan.length === 0 ? (
         <div className="bg-[#1A1A1A] border border-white/5 rounded-3xl p-8 flex flex-col items-center text-center">
           <div className="w-16 h-16 bg-indigo-500/10 rounded-2xl flex items-center justify-center mb-4">
             <Sparkles className="text-indigo-400" size={32} />
@@ -62,7 +94,7 @@ export default function PlannerView({ persona }: PlannerViewProps) {
             Ready to generate 7 days of {persona.tone.toLowerCase()} content?
           </p>
           <button 
-            onClick={() => setIsGenerated(true)}
+            onClick={handleGenerate}
             className="w-full bg-indigo-600 hover:bg-indigo-500 py-4 rounded-2xl font-bold transition-all flex items-center justify-center gap-2"
           >
             <Sparkles size={18} />
@@ -74,14 +106,14 @@ export default function PlannerView({ persona }: PlannerViewProps) {
           <div className="flex justify-between items-center mb-2">
             <h3 className="font-bold">Next 7 Days</h3>
             <button 
-              onClick={() => setIsGenerated(false)}
+              onClick={handleReset}
               className="text-indigo-400 text-xs font-bold uppercase tracking-wider"
             >
               Reset
             </button>
           </div>
           
-          {plan.map((post: PlannedPost & { id: string }) => (
+          {plan.map((post) => (
             <div key={post.id} className="bg-[#1A1A1A] border border-white/5 rounded-2xl p-4 flex gap-4">
               <div className="bg-indigo-500/10 h-12 w-12 rounded-xl flex flex-col items-center justify-center text-indigo-400 font-bold shrink-0">
                 <span className="text-[10px] uppercase opacity-60">Day</span>

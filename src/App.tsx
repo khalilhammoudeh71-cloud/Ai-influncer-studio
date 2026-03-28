@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Users, 
   Calendar, 
@@ -8,7 +8,8 @@ import {
   Settings
 } from 'lucide-react';
 import { cn } from './utils/cn';
-import { Persona } from './types';
+import { Persona, RevenueEntry, PlannedPost } from './types';
+import { api } from './services/apiService';
 import PersonasView from './views/PersonasView';
 import PlannerView from './views/PlannerView';
 import CreateView from './views/CreateView';
@@ -18,10 +19,6 @@ import SettingsView from './views/SettingsView';
 
 type Tab = 'personas' | 'planner' | 'create' | 'assistant' | 'revenue' | 'settings';
 
-// Demo personas are kept for engine logic and internal reference only,
-// but not injected into the live user list.
-// Internal reference personas used ONLY as fallbacks for content engine logic.
-// These are NEVER rendered in the UI list or saved to user storage.
 export const INTERNAL_FALLBACK_PERSONAS: Persona[] = [
   {
     id: 'fallback-luxury',
@@ -84,57 +81,84 @@ function App() {
     return (saved as Tab) || 'personas';
   });
 
-  const [personas, setPersonas] = useState<Persona[]>(() => {
-    // Attempt recovery from multiple possible keys to prevent data loss across updates
-    const keys = [
-      'ai_influencer_personas', 
-      'ai-influencer-studio-personas', 
-      'personas_data',
-      'studio_personas'
-    ];
-    
-    for (const key of keys) {
-      const saved = localStorage.getItem(key);
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            // Migration: Ensure all legacy personas have a valid ID and are treated as user personas
-            const migrated = parsed.map(p => ({
-              ...p,
-              id: p.id && p.id.startsWith('user-') ? p.id : `user-${p.id || Date.now() + Math.random()}`,
-              personalityTraits: Array.isArray(p.personalityTraits) ? p.personalityTraits : [],
-              visualLibrary: Array.isArray(p.visualLibrary) ? p.visualLibrary : []
-            }));
-            
-            console.log(`[Storage] Recovered ${migrated.length} personas from key: ${key}`);
-            return migrated;
-          }
-        } catch (e) {
-          console.error(`[Storage] Failed to parse key ${key}`, e);
-        }
-      }
-    }
-    
-    return [];
-  });
+  const [personas, setPersonasLocal] = useState<Persona[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   const [selectedPersonaId, setSelectedPersonaId] = useState<string>(() => {
     const saved = localStorage.getItem('ai_influencer_selected_id');
-    // Also try legacy selected id keys
     const legacySelected = localStorage.getItem('selected_persona_id');
     const id = saved || legacySelected;
     return (id && id.startsWith('user-')) ? id : '';
   });
 
-  useEffect(() => {
+  const hasMigrated = useRef(false);
+
+  const loadPersonas = useCallback(async () => {
     try {
-      const data = JSON.stringify(personas);
-      localStorage.setItem('ai_influencer_personas', data);
-      localStorage.setItem('ai-influencer-studio-personas', data);
-      localStorage.setItem('studio_personas', data);
+      const data = await api.personas.list();
+      setPersonasLocal(data);
+      return data;
     } catch (err) {
-      console.error('[Storage] Error saving to localStorage.', err);
+      console.error('[API] Failed to load personas:', err);
+      return [];
+    }
+  }, []);
+
+  useEffect(() => {
+    async function init() {
+      setIsLoading(true);
+      let serverPersonas = await loadPersonas();
+
+      if (!hasMigrated.current && !localStorage.getItem('ai_influencer_db_migrated')) {
+        hasMigrated.current = true;
+
+        const localPersonas = getLocalStoragePersonas();
+        const localRevenue = getLocalStorageRevenue(localPersonas);
+        const localPlans = getLocalStoragePlans(localPersonas);
+
+        if (localPersonas.length > 0) {
+          console.log(`[Migration] Migrating ${localPersonas.length} personas to server...`);
+          try {
+            await api.migrate({ personas: localPersonas, revenueEntries: localRevenue, plannedPosts: localPlans });
+            serverPersonas = await loadPersonas();
+            localStorage.setItem('ai_influencer_db_migrated', 'true');
+            console.log('[Migration] Complete');
+          } catch (err) {
+            console.error('[Migration] Failed, will retry on next load:', err);
+          }
+        } else {
+          localStorage.setItem('ai_influencer_db_migrated', 'true');
+        }
+      }
+
+      setIsLoading(false);
+    }
+    init();
+  }, [loadPersonas]);
+
+  const setPersonas = useCallback(async (newPersonas: Persona[]) => {
+    const oldPersonas = personas;
+    setPersonasLocal(newPersonas);
+
+    const oldIds = new Set(oldPersonas.map(p => p.id));
+    const newIds = new Set(newPersonas.map(p => p.id));
+
+    const added = newPersonas.filter(p => !oldIds.has(p.id));
+    const removed = oldPersonas.filter(p => !newIds.has(p.id));
+    const updated = newPersonas.filter(p => {
+      if (!oldIds.has(p.id)) return false;
+      const old = oldPersonas.find(o => o.id === p.id);
+      return old && JSON.stringify(old) !== JSON.stringify(p);
+    });
+
+    try {
+      await Promise.all([
+        ...added.map(p => api.personas.create(p)),
+        ...removed.map(p => api.personas.delete(p.id)),
+        ...updated.map(p => api.personas.update(p)),
+      ]);
+    } catch (err) {
+      console.error('[API] Sync error:', err);
     }
   }, [personas]);
 
@@ -142,7 +166,7 @@ function App() {
     if (selectedPersonaId && personas.length > 0 && !personas.find(p => p.id === selectedPersonaId)) {
       setSelectedPersonaId(personas[0]?.id || '');
     }
-  }, [personas]);
+  }, [personas, selectedPersonaId]);
 
   useEffect(() => {
     localStorage.setItem('ai_influencer_selected_id', selectedPersonaId);
@@ -161,10 +185,17 @@ function App() {
     return <Onboarding onComplete={handleOnboardingComplete} />;
   }
 
-  // Priority logic for generation engine context:
-  // 1. User's explicitly selected persona from their REAL list.
-  // 2. The first persona in the user's REAL list.
-  // 3. Internal fallback (never shown in UI) to prevent app crash.
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-[#0A0A0A]">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-8 h-8 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
+          <p className="text-gray-500 text-sm">Loading your studio...</p>
+        </div>
+      </div>
+    );
+  }
+
   const activePersona = personas.find(p => p.id === selectedPersonaId) || personas[0] || INTERNAL_FALLBACK_PERSONAS[0];
 
   const tabs = [
@@ -223,6 +254,82 @@ function App() {
       </nav>
     </div>
   );
+}
+
+function getLocalStoragePersonas(): Persona[] {
+  const keys = [
+    'ai_influencer_personas',
+    'ai-influencer-studio-personas',
+    'personas_data',
+    'studio_personas'
+  ];
+
+  for (const key of keys) {
+    const saved = localStorage.getItem(key);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((p: Partial<Persona> & { id?: string }) => ({
+            ...p,
+            id: p.id && p.id.startsWith('user-') ? p.id : `user-${p.id || Date.now() + Math.random()}`,
+            personalityTraits: Array.isArray(p.personalityTraits) ? p.personalityTraits : [],
+            visualLibrary: Array.isArray(p.visualLibrary) ? p.visualLibrary : []
+          }));
+        }
+      } catch {
+        continue;
+      }
+    }
+  }
+  return [];
+}
+
+function getLocalStorageRevenue(personaList: Persona[]): Record<string, RevenueEntry[]> {
+  const result: Record<string, RevenueEntry[]> = {};
+  for (const p of personaList) {
+    const saved = localStorage.getItem(`revenue_entries_${p.id}`);
+    if (saved) {
+      try {
+        const entries = JSON.parse(saved);
+        if (Array.isArray(entries) && entries.length > 0) {
+          result[p.id] = entries;
+        }
+      } catch {
+        continue;
+      }
+    }
+  }
+  return result;
+}
+
+function getLocalStoragePlans(personaList: Persona[]): Record<string, Record<string, PlannedPost[]>> {
+  const result: Record<string, Record<string, PlannedPost[]>> = {};
+  const platforms = ['Instagram', 'TikTok', 'YouTube', 'Twitter', 'LinkedIn'];
+  for (const p of personaList) {
+    for (const platform of platforms) {
+      const keys = [
+        `planned_posts_${p.id}_${platform}`,
+        `content_plan_${p.id}_${platform}`,
+      ];
+      for (const key of keys) {
+        const saved = localStorage.getItem(key);
+        if (saved) {
+          try {
+            const posts = JSON.parse(saved);
+            if (Array.isArray(posts) && posts.length > 0) {
+              if (!result[p.id]) result[p.id] = {};
+              result[p.id][platform] = posts;
+              break;
+            }
+          } catch {
+            continue;
+          }
+        }
+      }
+    }
+  }
+  return result;
 }
 
 export default App;
