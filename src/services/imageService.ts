@@ -168,6 +168,25 @@ export async function generateVideo(prompt: string, modelId: string, sourceImage
   return { videoUrl: data.videoUrl, model: data.model };
 }
 
+export async function enhancePrompt(text: string): Promise<string> {
+  const response = await fetch('/api/enhance-prompt', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  });
+
+  const contentType = response.headers.get('content-type');
+  if (!contentType || !contentType.includes('application/json')) {
+    throw new Error('Prompt API not reachable. Make sure the backend server is running.');
+  }
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || 'Prompt enhancement failed.');
+  }
+  return data.enhanced as string;
+}
+
 export async function generateContent(
   type: 'prompt' | 'transcript' | 'multi-scene',
   topic: string,

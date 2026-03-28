@@ -665,6 +665,46 @@ app.post('/api/generate-content', async (req, res) => {
   }
 });
 
+app.post('/api/enhance-prompt', async (req, res) => {
+  const { text } = req.body;
+  if (!text || typeof text !== 'string' || !text.trim()) {
+    return res.status(400).json({ error: 'text is required' });
+  }
+
+  if (!WAVESPEED_API_KEY) {
+    return res.status(500).json({ error: 'Wavespeed API key not configured' });
+  }
+
+  try {
+    const wsRes = await fetch('https://api.wavespeed.ai/api/v3/wavespeed-ai/prompt-optimizer', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${WAVESPEED_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ text: text.trim(), enable_sync_mode: true }),
+    });
+
+    const json = await wsRes.json() as { code: number; message?: string; data?: { outputs?: string[]; status?: string; error?: string } };
+    if (json.code !== 200) {
+      throw new Error(json.message || 'Wavespeed prompt enhance failed');
+    }
+
+    const outputs = json.data?.outputs || [];
+    const enhanced = outputs[0] || '';
+    if (!enhanced) {
+      throw new Error(json.data?.error || 'Prompt optimizer returned no output');
+    }
+
+    return res.json({ enhanced });
+  } catch (err) {
+    console.error('[enhance-prompt] Error:', err instanceof Error ? err.message : err);
+    return res.status(500).json({
+      error: err instanceof Error ? err.message : 'Prompt enhancement failed',
+    });
+  }
+});
+
 app.post('/api/generate-image', async (req, res) => {
   const { referenceImage, modelId, ...rest } = req.body as ImageGenRequest & { modelId: string };
   const prompt = buildPrompt(rest);
