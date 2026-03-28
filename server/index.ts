@@ -235,14 +235,18 @@ The user requested: "${chatPrompt}".
 Create a realistic, visually compelling image suitable for social media. Maintain consistent, detailed facial features matching any provided reference.`;
   }
 
-  return `A high-quality, photorealistic social media photo of an AI influencer named ${personaName}.
-Niche: ${niche}. Tone/Style: ${tone}. Visual Style: ${visualStyle}.
-Environment: ${environment || 'Modern setting'}.
-Outfit: ${outfitStyle || 'Stylish casual'}.
-Framing: ${framing || 'Portrait'}.
-Mood: ${mood || 'Confident'}.
-${additionalInstructions ? `Additional details: ${additionalInstructions}` : ''}
-Create a realistic, highly detailed image suitable for a professional social media post. Maintain consistent facial features matching any provided reference. Cinematic lighting.`;
+  const parts = [
+    `A high-quality, photorealistic social media photo of an AI influencer named ${personaName}.`,
+    `Niche: ${niche}. Tone/Style: ${tone}. Visual Style: ${visualStyle}.`,
+  ];
+  if (environment && environment !== 'Custom') parts.push(`Environment: ${environment}.`);
+  if (outfitStyle && outfitStyle !== 'Custom') parts.push(`Outfit: ${outfitStyle}.`);
+  if (framing && framing !== 'Custom') parts.push(`Framing: ${framing}.`);
+  if (mood && mood !== 'Custom') parts.push(`Mood: ${mood}.`);
+  if (additionalInstructions) parts.push(`Additional details: ${additionalInstructions}`);
+  parts.push('Create a realistic, highly detailed image suitable for a professional social media post. Maintain consistent facial features matching any provided reference. Cinematic lighting.');
+
+  return parts.join('\n');
 }
 
 function stripDataPrefix(dataUrl: string): { data: string; mimeType: string } {
