@@ -41,6 +41,22 @@ let cachedVideoModels: ModelInfo[] | null = null;
 let cacheTimestamp = 0;
 const CACHE_TTL = 30 * 60 * 1000;
 
+const SUBSCRIPTION_FREE_MODELS = [
+  'google/nano-banana',
+  'google/nano-banana-2',
+  'google/nano-banana-pro',
+  'google/veo2',
+  'google/veo3',
+  'google/veo3-fast',
+  'google/veo3.1',
+  'google/veo3.1-fast',
+];
+
+function applySubscriptionPricing(modelId: string, basePrice: number): number {
+  const cleanId = modelId.replace(/\/(text-to-image|image-to-image|text-to-video|image-to-video|reference-to-video|edit|upscale).*$/, '');
+  return SUBSCRIPTION_FREE_MODELS.some(sub => cleanId === sub || cleanId.startsWith(sub + '/')) ? 0 : basePrice;
+}
+
 const PROVIDER_NAMES: Record<string, string> = {
   'google': 'Google',
   'openai': 'OpenAI',
@@ -121,7 +137,7 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
         name: friendlyName,
         provider: PROVIDER_NAMES[provider] || provider,
         type: 'text-to-image' as const,
-        price: m.base_price,
+        price: applySubscriptionPricing(m.model_id, m.base_price),
         description: m.description || '',
         apiPath,
         hasEditVariant: hasRealEditVariant,
@@ -155,7 +171,7 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
         name: friendlyName,
         provider: PROVIDER_NAMES[provider] || provider,
         type: 'image-to-image' as const,
-        price: m.base_price,
+        price: applySubscriptionPricing(m.model_id, m.base_price),
         description: m.description || '',
         apiPath,
         hasEditVariant: false,
@@ -190,7 +206,7 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
         name: friendlyName,
         provider: PROVIDER_NAMES[provider] || provider,
         type: 'upscaler' as const,
-        price: m.base_price,
+        price: applySubscriptionPricing(m.model_id, m.base_price),
         description: m.description || '',
         apiPath,
         hasEditVariant: false,
@@ -218,7 +234,7 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
           name: friendlyName,
           provider: PROVIDER_NAMES[provider] || provider,
           type: 'text-to-video' as const,
-          price: m.base_price,
+          price: applySubscriptionPricing(m.model_id, m.base_price),
           description: m.description || '',
           apiPath,
           hasEditVariant: false,
@@ -241,7 +257,7 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
           name: friendlyName,
           provider: PROVIDER_NAMES[provider] || provider,
           type: 'image-to-video' as const,
-          price: m.base_price,
+          price: applySubscriptionPricing(m.model_id, m.base_price),
           description: m.description || '',
           apiPath,
           hasEditVariant: false,
