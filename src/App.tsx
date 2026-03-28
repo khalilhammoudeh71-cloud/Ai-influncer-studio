@@ -4,7 +4,7 @@ import {
   Calendar, 
   PlusCircle, 
   MessageSquare, 
-  DollarSign, 
+  MessageCircle,
   Settings
 } from 'lucide-react';
 import { cn } from './utils/cn';
@@ -14,10 +14,10 @@ import PersonasView from './views/PersonasView';
 import PlannerView from './views/PlannerView';
 import CreateView from './views/CreateView';
 import AssistantView from './views/AssistantView';
-import RevenueView from './views/RevenueView';
+import ChatView from './views/ChatView';
 import SettingsView from './views/SettingsView';
 
-type Tab = 'personas' | 'planner' | 'create' | 'assistant' | 'revenue' | 'settings';
+type Tab = 'personas' | 'planner' | 'create' | 'assistant' | 'chat' | 'settings';
 
 export const INTERNAL_FALLBACK_PERSONAS: Persona[] = [
   {
@@ -203,7 +203,7 @@ function App() {
     { id: 'planner', label: 'Planner', icon: Calendar },
     { id: 'create', label: 'Create', icon: PlusCircle },
     { id: 'assistant', label: 'Assistant', icon: MessageSquare },
-    { id: 'revenue', label: 'Revenue', icon: DollarSign },
+    { id: 'chat', label: 'Chat', icon: MessageCircle },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
@@ -213,7 +213,7 @@ function App() {
       case 'planner': return <PlannerView persona={activePersona} />;
       case 'create': return <CreateView persona={activePersona} personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} />;
       case 'assistant': return <AssistantView persona={activePersona} personas={personas} />;
-      case 'revenue': return <RevenueView persona={activePersona} />;
+      case 'chat': return <ChatView personas={personas} activePersona={activePersona} />;
       case 'settings': return <SettingsView />;
       default: return <PersonasView personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} selectedId={selectedPersonaId} />;
     }

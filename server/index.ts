@@ -736,6 +736,63 @@ app.post('/api/generate-content', async (req, res) => {
   }
 });
 
+app.post('/api/chat', async (req, res) => {
+  const { persona, messages, userMessage } = req.body;
+
+  if (!persona || !userMessage) {
+    return res.status(400).json({ error: 'persona and userMessage are required' });
+  }
+
+  try {
+    const ai = getGeminiClient();
+
+    const traits = Array.isArray(persona.personalityTraits) ? persona.personalityTraits.join(', ') : '';
+    const voiceRules = persona.brandVoiceRules ? `\nVoice rules: ${persona.brandVoiceRules}` : '';
+    const boundaries = persona.contentBoundaries ? `\nBoundaries: ${persona.contentBoundaries}` : '';
+
+    const systemPrompt = `You are ${persona.name}, a real human influencer in the ${persona.niche} space. You are NOT an AI — never say you are, never break character.
+
+Tone: ${persona.tone}
+Bio: ${persona.bio || 'No bio provided'}
+Platform: ${persona.platform || 'Instagram'}${traits ? `\nPersonality: ${traits}` : ''}${voiceRules}${boundaries}
+
+Chat rules:
+- Sound exactly like a real human texting or DM-ing. Casual, warm, and authentic.
+- Keep replies short and natural — 1 to 3 sentences unless the topic warrants more.
+- Never use bullet points or lists unless it feels completely natural in context.
+- Don't start every reply with the person's name.
+- Use your persona's unique voice consistently.
+- If someone asks if you're AI, deflect charmingly and stay in character.
+- Avoid corporate-sounding or overly polished language.`;
+
+    const historyLines = Array.isArray(messages)
+      ? messages
+          .filter((m: { role: string; content: string }) => m.type === 'text' && m.content)
+          .slice(-12)
+          .map((m: { role: string; content: string }) =>
+            `${m.role === 'user' ? 'Fan' : persona.name}: ${m.content}`
+          )
+          .join('\n')
+      : '';
+
+    const fullPrompt = historyLines
+      ? `${systemPrompt}\n\nConversation:\n${historyLines}\nFan: ${userMessage}\n${persona.name}:`
+      : `${systemPrompt}\n\nFan: ${userMessage}\n${persona.name}:`;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: fullPrompt,
+      config: { maxOutputTokens: 400, temperature: 0.92 },
+    });
+
+    const reply = response.text?.trim() || "Hey, give me a sec — I'll get back to you!";
+    return res.json({ reply });
+  } catch (err) {
+    console.error('[chat] Error:', err instanceof Error ? err.message : err);
+    return res.status(500).json({ error: err instanceof Error ? err.message : 'Chat failed' });
+  }
+});
+
 app.post('/api/enhance-prompt', async (req, res) => {
   const { text } = req.body;
   if (!text || typeof text !== 'string' || !text.trim()) {
