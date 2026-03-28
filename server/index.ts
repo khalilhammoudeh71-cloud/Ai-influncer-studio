@@ -432,7 +432,9 @@ async function generateWithWavespeed(
   referenceImage?: string
 ): Promise<string> {
   const hasRef = !!referenceImage;
-  const usePath = hasRef && editApiPath ? editApiPath : apiPath;
+  const useEditPath = hasRef && editApiPath;
+  const usePath = useEditPath ? editApiPath! : apiPath;
+  console.log('[Wavespeed] Generate:', { hasRef, usePath, apiPath });
 
   const payload: Record<string, unknown> = {
     prompt,
@@ -440,9 +442,8 @@ async function generateWithWavespeed(
     enable_base64_output: true,
   };
 
-  if (hasRef && editApiPath) {
-    const { data } = stripDataPrefix(referenceImage!);
-    const b64Url = `data:image/png;base64,${data}`;
+  if (useEditPath) {
+    const b64Url = await resolveImageToDataUrl(referenceImage!);
     if (editImageField === 'images') {
       payload.images = [b64Url];
     } else {
@@ -461,7 +462,27 @@ async function generateWithWavespeed(
   });
 
   const json = await res.json();
-  console.log('[Wavespeed] Response status:', json.code, 'data status:', json.data?.status, 'outputs count:', (json.data?.outputs || []).length, 'has poll url:', !!(json.data?.urls?.get));
+  console.log('[Wavespeed] Response code:', json.code, 'message:', json.message || '');
+
+  if (json.code === 400 && useEditPath && /model not found/i.test(json.message || '')) {
+    console.log('[Wavespeed] Edit model not found, falling back to text-to-image path:', apiPath);
+    const fallbackPayload: Record<string, unknown> = {
+      prompt,
+      enable_sync_mode: true,
+      enable_base64_output: true,
+    };
+    const fallbackRes = await fetch(`https://api.wavespeed.ai${apiPath}`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${WAVESPEED_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(fallbackPayload),
+    });
+    const fallbackJson = await fallbackRes.json();
+    console.log('[Wavespeed] Fallback response code:', fallbackJson.code);
+    return await extractWavespeedOutput(fallbackJson);
+  }
 
   return await extractWavespeedOutput(json);
 }
