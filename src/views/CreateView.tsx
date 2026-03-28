@@ -51,12 +51,12 @@ const OUTFITS = [CUSTOM, 'Casual Chic', 'Luxury Evening', 'Business Professional
 const FRAMING = [CUSTOM, 'Portrait', 'Selfie Style', 'Full Body', 'Half Body', 'Candid', 'Cinematic'];
 const MOODS = [CUSTOM, 'Confident', 'Friendly', 'Thoughtful', 'Playful', 'Professional', 'Seductive'];
 
-const MODE_CONFIG: { id: CreateMode; label: string; icon: typeof ImageIcon; gradient: string }[] = [
-  { id: 'image', label: 'Image', icon: ImageIcon, gradient: 'from-purple-600 to-blue-600' },
-  { id: 'video', label: 'Video', icon: Video, gradient: 'from-pink-600 to-orange-500' },
-  { id: 'prompt', label: 'Prompt', icon: Wand2, gradient: 'from-emerald-600 to-teal-500' },
-  { id: 'transcript', label: 'Script', icon: FileText, gradient: 'from-amber-500 to-orange-500' },
-  { id: 'multi-scene', label: 'Multi-Scene', icon: Film, gradient: 'from-indigo-600 to-purple-500' },
+const MODE_CONFIG: { id: CreateMode; label: string; icon: typeof ImageIcon; gradient: string; ringClass: string }[] = [
+  { id: 'image', label: 'Image', icon: ImageIcon, gradient: 'from-purple-600 to-blue-600', ringClass: 'focus:ring-purple-500' },
+  { id: 'video', label: 'Video', icon: Video, gradient: 'from-pink-600 to-orange-500', ringClass: 'focus:ring-pink-500' },
+  { id: 'prompt', label: 'Prompt', icon: Wand2, gradient: 'from-emerald-600 to-teal-500', ringClass: 'focus:ring-emerald-500' },
+  { id: 'transcript', label: 'Transcript', icon: FileText, gradient: 'from-amber-500 to-orange-500', ringClass: 'focus:ring-amber-500' },
+  { id: 'multi-scene', label: 'Multi-Scene', icon: Film, gradient: 'from-indigo-600 to-purple-500', ringClass: 'focus:ring-indigo-500' },
 ];
 
 type PostGenAction = null | 'edit' | 'upscale';
@@ -719,7 +719,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     };
     const buttonLabels: Record<string, string> = {
       'prompt': 'Generate Prompt',
-      'transcript': 'Generate Script',
+      'transcript': 'Generate Transcript',
       'multi-scene': 'Generate Multi-Scene Script',
     };
 
@@ -729,7 +729,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           value={textTopic}
           onChange={e => setTextTopic(e.target.value)}
           placeholder={placeholders[mode]}
-          className={`w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder-zinc-500 resize-none h-24 outline-none focus:ring-2 focus:ring-${currentModeConfig.gradient.includes('emerald') ? 'emerald' : currentModeConfig.gradient.includes('amber') ? 'amber' : 'indigo'}-500`}
+          className={`w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder-zinc-500 resize-none h-24 outline-none focus:ring-2 ${currentModeConfig.ringClass}`}
         />
 
         {isMultiScene && (
