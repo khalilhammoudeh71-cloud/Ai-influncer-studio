@@ -1033,8 +1033,8 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
           </div>
 
           {previewImage && (
-            <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 overflow-y-auto" onClick={() => { if (!previewProcessing) setPreviewImage(null); }}>
-              <div className="relative max-w-lg w-full my-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="fixed inset-0 z-[70] flex items-start justify-center bg-black/90 backdrop-blur-sm p-4 pb-24 overflow-y-auto" onClick={() => { if (!previewProcessing) setPreviewImage(null); }}>
+              <div className="relative max-w-lg w-full mt-8" onClick={(e) => e.stopPropagation()}>
                 <button 
                   onClick={() => { if (!previewProcessing) setPreviewImage(null); }}
                   className="absolute -top-12 right-0 p-2 text-gray-400 hover:text-white transition-colors"
