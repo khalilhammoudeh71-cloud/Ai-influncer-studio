@@ -153,9 +153,13 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
     });
     editModels.sort((a, b) => a.provider.localeCompare(b.provider) || a.name.localeCompare(b.name));
 
-    const upscalerModels = rawModels.filter((m: { type: string; model_id: string }) =>
-      m.type === 'upscaler' && !m.model_id.toLowerCase().includes('video')
-    );
+    const upscalerModels = rawModels.filter((m: { type: string; model_id: string; api_schema?: { api_schemas?: { request_schema?: { properties?: Record<string, unknown> } }[] } }) => {
+      if (m.type !== 'upscaler') return false;
+      if (m.model_id.toLowerCase().includes('video')) return false;
+      const props = m.api_schema?.api_schemas?.[0]?.request_schema?.properties || {};
+      if (props.video && !props.image && !props.images) return false;
+      return true;
+    });
     const upscaleModels: ModelInfo[] = upscalerModels.map((m: { model_id: string; base_price: number; description?: string; api_schema?: { api_schemas?: { api_path: string; request_schema?: { properties?: Record<string, unknown> } }[] } }) => {
       const apiPath = m.api_schema?.api_schemas?.[0]?.api_path || `/api/v3/${m.model_id}`;
       const providerSlash = m.model_id.indexOf('/');
