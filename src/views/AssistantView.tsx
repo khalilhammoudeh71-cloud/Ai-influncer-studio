@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Send, User, Bot, Sparkles, MessageSquareQuote, History, Copy, Download, Heart, RefreshCw } from 'lucide-react';
+import { Send, User, Bot, Sparkles, MessageSquareQuote, History, Copy, Download, Heart, RefreshCw, ChevronDown } from 'lucide-react';
 import { cn } from '../utils/cn';
 import { Persona } from '../types';
 import { generateAssistantReply, generatePersonaContent } from '../utils/personaEngine';
@@ -17,16 +17,29 @@ type Message = {
 
 interface AssistantViewProps {
   persona: Persona;
+  personas: Persona[];
 }
 
-export default function AssistantView({ persona }: AssistantViewProps) {
+function makeGreeting(p: Persona) {
+  return `Hi there! I'm your AI Content Assistant. I'm currently tuned to ${p.name}'s persona (${p.tone}). How can I help you grow today?`;
+}
+
+export default function AssistantView({ persona, personas }: AssistantViewProps) {
+  const [selectedPersonaId, setSelectedPersonaId] = useState<string>(persona.id);
+  const activePersona = personas.find(p => p.id === selectedPersonaId) ?? persona;
+
   const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      role: 'assistant',
-      content: `Hi there! I'm your AI Content Assistant. I'm currently tuned to ${persona.name}'s persona (${persona.tone}). How can I help you grow today?`
-    }
+    { id: '1', role: 'assistant', content: makeGreeting(activePersona) }
   ]);
+
+  const handlePersonaChange = (id: string) => {
+    setSelectedPersonaId(id);
+    const chosen = personas.find(p => p.id === id) ?? persona;
+    setMessages([{ id: Date.now().toString(), role: 'assistant', content: makeGreeting(chosen) }]);
+    setGeneratedReplies([]);
+    setReplyInput('');
+  };
+
   const [input, setInput] = useState('');
   const [activeSegment, setActiveSegment] = useState<'chat' | 'replies'>('chat');
   const [replyInput, setReplyInput] = useState('');
@@ -56,7 +69,7 @@ export default function AssistantView({ persona }: AssistantViewProps) {
 
       try {
         const result = await generateImage({
-          persona,
+          persona: activePersona,
           modelId: 'replit:gpt-image-1',
           isChatContext: true,
           chatPrompt: currentInput
@@ -80,7 +93,7 @@ export default function AssistantView({ persona }: AssistantViewProps) {
       }
     } else {
       setTimeout(() => {
-        const reply = generateAssistantReply(persona, currentInput);
+        const reply = generateAssistantReply(activePersona, currentInput);
         const assistantReply: Message = { 
           id: (Date.now() + 1).toString(), 
           role: 'assistant', 
@@ -94,17 +107,17 @@ export default function AssistantView({ persona }: AssistantViewProps) {
   const handleGenerateReplies = () => {
     if (!replyInput.trim()) return;
     const mockPost = { day: 0, type: 'Comment', hook: replyInput, angle: '', cta: '' };
-    const r1 = generatePersonaContent(persona, mockPost, persona.platform, 'Short Caption');
-    const r2 = generatePersonaContent(persona, mockPost, persona.platform, 'Video Script');
+    const r1 = generatePersonaContent(activePersona, mockPost, activePersona.platform, 'Short Caption');
+    const r2 = generatePersonaContent(activePersona, mockPost, activePersona.platform, 'Video Script');
     setGeneratedReplies([r1, r2]);
   };
 
   const STARTER_PROMPTS = useMemo(() => [
-    `Give me 5 post ideas for ${persona.name}`,
-    `Rewrite this to sound more ${persona.tone.split(',')[0]}`,
-    `Generate ${persona.niche} engagement hooks`,
-    `Plan a content series for ${persona.platform}`
-  ], [persona]);
+    `Give me 5 post ideas for ${activePersona.name}`,
+    `Rewrite this to sound more ${activePersona.tone.split(',')[0]}`,
+    `Generate ${activePersona.niche} engagement hooks`,
+    `Plan a content series for ${activePersona.platform}`
+  ], [activePersona]);
 
   return (
     <div className="h-full flex flex-col">
@@ -113,13 +126,38 @@ export default function AssistantView({ persona }: AssistantViewProps) {
           <div>
             <h1 className="text-2xl font-bold tracking-tight">AI Assistant</h1>
             <div className="flex items-center gap-1.5 mt-0.5">
-               <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
-               <span className="text-xs text-indigo-400 font-medium">{persona.name} (AI Mode)</span>
+              <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
+              <span className="text-xs text-indigo-400 font-medium">AI Mode</span>
             </div>
           </div>
           <button className="bg-white/5 p-2.5 rounded-2xl hover:bg-white/10 transition-colors">
-             <History size={20} className="text-gray-400" />
+            <History size={20} className="text-gray-400" />
           </button>
+        </div>
+
+        <div className="mb-4">
+          <label className="text-[10px] uppercase tracking-wider font-bold text-gray-600 block mb-1.5">Persona</label>
+          <div className="relative">
+            <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center gap-2 pointer-events-none">
+              {activePersona.referenceImage ? (
+                <img src={activePersona.referenceImage} alt="" className="w-6 h-6 rounded-full object-cover" />
+              ) : (
+                <div className="w-6 h-6 rounded-full bg-indigo-600/30 flex items-center justify-center">
+                  <Bot size={12} className="text-indigo-400" />
+                </div>
+              )}
+            </div>
+            <select
+              value={selectedPersonaId}
+              onChange={e => handlePersonaChange(e.target.value)}
+              className="w-full bg-[#1A1A1A] border border-white/10 rounded-2xl pl-11 pr-9 py-2.5 text-sm text-white outline-none appearance-none focus:border-indigo-500/50 transition-colors"
+            >
+              {personas.map(p => (
+                <option key={p.id} value={p.id}>{p.name} — {p.niche}</option>
+              ))}
+            </select>
+            <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+          </div>
         </div>
 
         {/* Segmented Control */}
