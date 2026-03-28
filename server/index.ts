@@ -302,6 +302,23 @@ async function fetchAllowedImage(urlStr: string): Promise<string> {
   return `data:image/png;base64,${imgBuf.toString('base64')}`;
 }
 
+async function resolveImageToDataUrl(input: string): Promise<string> {
+  if (input.startsWith('data:')) {
+    return input;
+  }
+  if (input.startsWith('http://') || input.startsWith('https://')) {
+    if (!isAllowedWavespeedUrl(input)) {
+      const imgRes = await fetch(input);
+      if (!imgRes.ok) throw new Error('Failed to fetch image from URL');
+      const buf = Buffer.from(await imgRes.arrayBuffer());
+      const ct = imgRes.headers.get('content-type') || 'image/png';
+      return `data:${ct};base64,${buf.toString('base64')}`;
+    }
+    return await fetchAllowedImage(input);
+  }
+  return `data:image/png;base64,${input}`;
+}
+
 async function extractWavespeedOutput(json: Record<string, unknown>): Promise<string> {
   const data = json.data as Record<string, unknown> | undefined;
   if ((json.code as number) !== 200 || (data?.status as string) === 'failed') {
@@ -534,8 +551,7 @@ app.post('/api/edit-image', async (req, res) => {
       }
       modelName = editModel.name;
 
-      const { mimeType, data } = stripDataPrefix(sourceImage);
-      const b64Url = `data:${mimeType};base64,${data}`;
+      const b64Url = await resolveImageToDataUrl(sourceImage);
       const payload: Record<string, unknown> = {
         prompt,
         enable_sync_mode: true,
@@ -587,8 +603,7 @@ app.post('/api/upscale-image', async (req, res) => {
       return res.status(400).json({ error: 'Unknown upscale model ID' });
     }
 
-    const { mimeType, data } = stripDataPrefix(sourceImage);
-    const b64Url = `data:${mimeType};base64,${data}`;
+    const b64Url = await resolveImageToDataUrl(sourceImage);
     const payload: Record<string, unknown> = {
       enable_sync_mode: true,
       enable_base64_output: true,
