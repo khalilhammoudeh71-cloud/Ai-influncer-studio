@@ -56,6 +56,7 @@ function imageToClient(row: typeof generatedImages.$inferSelect) {
     framing: row.framing || undefined,
     isFavorite: row.isFavorite || false,
     model: row.model || undefined,
+    mediaType: (row.mediaType || 'image') as 'image' | 'video',
   };
 }
 
@@ -202,6 +203,7 @@ router.post('/personas/:personaClientId/images', async (req, res) => {
       framing: body.framing || null,
       isFavorite: body.isFavorite || false,
       model: body.model || null,
+      mediaType: body.mediaType || 'image',
     }).onConflictDoUpdate({
       target: generatedImages.clientId,
       set: {
@@ -213,6 +215,7 @@ router.post('/personas/:personaClientId/images', async (req, res) => {
         framing: body.framing || null,
         isFavorite: body.isFavorite || false,
         model: body.model || null,
+        mediaType: body.mediaType || 'image',
       },
     }).returning();
     res.json(imageToClient(row));
@@ -365,6 +368,7 @@ router.post('/migrate', async (req, res) => {
               framing: img.framing || null,
               isFavorite: img.isFavorite || false,
               model: img.model || null,
+              mediaType: img.mediaType || 'image',
             }).onConflictDoNothing();
           }
         }

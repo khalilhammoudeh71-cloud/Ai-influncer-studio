@@ -306,18 +306,13 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     setTextResult('');
 
     try {
-      let result: string;
-      if (mode === 'prompt') {
-        result = await enhancePrompt(textTopic);
-      } else {
-        const contentType = mode as 'transcript' | 'multi-scene';
-        result = await generateContent(
-          contentType,
-          textTopic,
-          { name: persona.name, niche: persona.niche, tone: persona.tone, platform: persona.platform, bio: persona.bio },
-          contentType === 'multi-scene' ? sceneCount : undefined
-        );
-      }
+      const contentType = mode as 'prompt' | 'transcript' | 'multi-scene';
+      const result = await generateContent(
+        contentType,
+        textTopic,
+        { name: persona.name, niche: persona.niche, tone: persona.tone, platform: persona.platform, bio: persona.bio },
+        contentType === 'multi-scene' ? sceneCount : undefined
+      );
       setTextResult(result);
     } catch (err: unknown) {
       setGlobalError(err instanceof Error ? err.message : 'Content generation failed.');

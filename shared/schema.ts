@@ -49,6 +49,7 @@ export const generatedImages = pgTable("generated_images", {
   framing: text("framing"),
   isFavorite: boolean("is_favorite").default(false),
   model: text("model"),
+  mediaType: text("media_type").default("image"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 

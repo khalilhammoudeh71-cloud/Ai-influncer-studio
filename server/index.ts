@@ -1055,8 +1055,10 @@ async function pushSchema() {
         framing TEXT,
         is_favorite BOOLEAN DEFAULT false,
         model TEXT,
+        media_type TEXT DEFAULT 'image',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
       );
+      ALTER TABLE generated_images ADD COLUMN IF NOT EXISTS media_type TEXT DEFAULT 'image';
       CREATE TABLE IF NOT EXISTS revenue_entries (
         id SERIAL PRIMARY KEY,
         client_id TEXT NOT NULL UNIQUE,
