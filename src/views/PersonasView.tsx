@@ -4,7 +4,7 @@ import { cn } from '../utils/cn';
 import { Persona, GeneratedImage } from '../types';
 import { VisualGenerator } from '../components/VisualGenerator';
 import { api } from '../services/apiService';
-import { fetchAvailableModels, fetchAllModelTypes, generateReferenceImage, editImage, upscaleImage, type ModelInfo } from '../services/imageService';
+import { fetchAvailableModels, fetchAllModelTypes, generateReferenceImage, editImage, upscaleImage, generateVideo, type ModelInfo } from '../services/imageService';
 
 interface PersonasViewProps {
   personas: Persona[];
@@ -28,12 +28,15 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
   const [refModels, setRefModels] = useState<ModelInfo[]>([]);
   const [refSelectedModel, setRefSelectedModel] = useState('');
 
-  const [previewAction, setPreviewAction] = useState<null | 'edit' | 'upscale'>(null);
+  const [previewAction, setPreviewAction] = useState<null | 'edit' | 'upscale' | 'video'>(null);
   const [previewEditModels, setPreviewEditModels] = useState<ModelInfo[]>([]);
   const [previewUpscaleModels, setPreviewUpscaleModels] = useState<ModelInfo[]>([]);
+  const [previewVideoModels, setPreviewVideoModels] = useState<ModelInfo[]>([]);
   const [previewSelectedEditModel, setPreviewSelectedEditModel] = useState('');
   const [previewSelectedUpscaleModel, setPreviewSelectedUpscaleModel] = useState('');
+  const [previewSelectedVideoModel, setPreviewSelectedVideoModel] = useState('');
   const [previewEditPrompt, setPreviewEditPrompt] = useState('');
+  const [previewVideoPrompt, setPreviewVideoPrompt] = useState('');
   const [previewAdditionalImage, setPreviewAdditionalImage] = useState<string | null>(null);
   const [previewAdditionalImageName, setPreviewAdditionalImageName] = useState<string | null>(null);
   const [previewProcessing, setPreviewProcessing] = useState(false);
@@ -112,16 +115,20 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
     setPreviewImage(img);
     setPreviewAction(null);
     setPreviewEditPrompt('');
+    setPreviewVideoPrompt('');
     setPreviewAdditionalImage(null);
     setPreviewAdditionalImageName(null);
     setPreviewActionError(null);
     setPreviewProcessing(false);
     if (previewEditModels.length === 0) {
-      fetchAllModelTypes().then(({ editModels: em, upscaleModels: um }) => {
+      fetchAllModelTypes().then(({ editModels: em, upscaleModels: um, videoModels: vm }) => {
         setPreviewEditModels(em);
         setPreviewUpscaleModels(um);
+        const i2vModels = vm.filter(m => m.id.startsWith('wavespeed-i2v:'));
+        setPreviewVideoModels(i2vModels);
         if (em.length > 0) setPreviewSelectedEditModel(em[0].id);
         if (um.length > 0) setPreviewSelectedUpscaleModel(um[0].id);
+        if (i2vModels.length > 0) setPreviewSelectedVideoModel(i2vModels[0].id);
       }).catch(() => {});
     }
   };
@@ -137,6 +144,12 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
     previewUpscaleModels.forEach(m => { if (!groups[m.provider]) groups[m.provider] = []; groups[m.provider].push(m); });
     return groups;
   }, [previewUpscaleModels]);
+
+  const groupedPreviewVideoModels = useMemo(() => {
+    const groups: Record<string, ModelInfo[]> = {};
+    previewVideoModels.forEach(m => { if (!groups[m.provider]) groups[m.provider] = []; groups[m.provider].push(m); });
+    return groups;
+  }, [previewVideoModels]);
 
   const handlePreviewEdit = async () => {
     if (!previewImage || !previewEditPrompt.trim() || !previewSelectedEditModel || !viewingPersona) return;
@@ -206,6 +219,43 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
       setPreviewAction(null);
     } catch (err: any) {
       setPreviewActionError(err.message || 'Upscaling failed.');
+    } finally {
+      setPreviewProcessing(false);
+    }
+  };
+
+  const handlePreviewVideo = async () => {
+    if (!previewImage || !previewVideoPrompt.trim() || !previewSelectedVideoModel || !viewingPersona) return;
+    setPreviewProcessing(true);
+    setPreviewActionError(null);
+    try {
+      const data = await generateVideo(previewVideoPrompt, previewSelectedVideoModel, previewImage.url);
+      const newEntry: GeneratedImage = {
+        id: `vid-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        url: data.videoUrl,
+        prompt: previewVideoPrompt,
+        timestamp: Date.now(),
+        model: data.model,
+        mediaType: 'video',
+        environment: previewImage.environment,
+        outfit: previewImage.outfit,
+        framing: previewImage.framing,
+      };
+      const updated = personas.map(p => {
+        if (p.id === viewingPersona.id) {
+          return { ...p, visualLibrary: [...(p.visualLibrary || []), newEntry] };
+        }
+        return p;
+      });
+      setPersonas(updated);
+      const fresh = updated.find(p => p.id === viewingPersona.id);
+      if (fresh) setViewingPersona(fresh);
+      api.images.create(viewingPersona.id, newEntry).catch(err => console.error('[API] Video save error:', err));
+      setPreviewImage(newEntry);
+      setPreviewAction(null);
+      setPreviewVideoPrompt('');
+    } catch (err: any) {
+      setPreviewActionError(err.message || 'Video generation failed.');
     } finally {
       setPreviewProcessing(false);
     }
@@ -1076,7 +1126,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                     <div className="absolute inset-0 bg-black/60 rounded-2xl flex items-center justify-center">
                       <div className="flex flex-col items-center gap-2">
                         <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
-                        <span className="text-xs text-white/70">{previewAction === 'upscale' ? 'Upscaling...' : 'Editing...'}</span>
+                        <span className="text-xs text-white/70">{previewAction === 'upscale' ? 'Upscaling...' : previewAction === 'video' ? 'Generating video...' : 'Editing...'}</span>
                       </div>
                     </div>
                   )}
@@ -1108,7 +1158,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                     )}
                   </div>
                   {previewImage.mediaType !== 'video' && (
-                  <div className="grid grid-cols-2 gap-2 mt-4">
+                  <div className="grid grid-cols-3 gap-2 mt-4">
                     <button
                       onClick={() => { setPreviewAction(previewAction === 'edit' ? null : 'edit'); setPreviewActionError(null); }}
                       disabled={previewProcessing}
@@ -1118,7 +1168,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                           : 'bg-white/5 text-zinc-300 border-white/5 hover:bg-white/10'
                       }`}
                     >
-                      <Pencil size={14} /> Edit Image
+                      <Pencil size={14} /> Edit
                     </button>
                     <button
                       onClick={() => { setPreviewAction(previewAction === 'upscale' ? null : 'upscale'); setPreviewActionError(null); }}
@@ -1130,6 +1180,17 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                       }`}
                     >
                       <ArrowUpCircle size={14} /> Upscale
+                    </button>
+                    <button
+                      onClick={() => { setPreviewAction(previewAction === 'video' ? null : 'video'); setPreviewActionError(null); }}
+                      disabled={previewProcessing}
+                      className={`flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold transition-all border ${
+                        previewAction === 'video'
+                          ? 'bg-pink-600 text-white border-pink-500'
+                          : 'bg-white/5 text-zinc-300 border-white/5 hover:bg-white/10'
+                      }`}
+                    >
+                      <Film size={14} /> Video
                     </button>
                   </div>
                   )}
@@ -1237,6 +1298,49 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                       >
                         {previewProcessing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ArrowUpCircle className="w-3.5 h-3.5" />}
                         {previewProcessing ? 'Upscaling...' : 'Upscale & Save'}
+                      </button>
+                    </div>
+                  )}
+
+                  {previewAction === 'video' && (
+                    <div className="mt-3 p-3 rounded-xl bg-pink-950/30 border border-pink-500/20 space-y-2">
+                      <div className="relative">
+                        <select
+                          value={previewSelectedVideoModel}
+                          onChange={(e) => setPreviewSelectedVideoModel(e.target.value)}
+                          className="w-full bg-zinc-800 border-zinc-700 rounded-lg px-3 py-2 text-xs text-white focus:ring-2 focus:ring-pink-500 outline-none appearance-none pr-8"
+                        >
+                          {Object.entries(groupedPreviewVideoModels).map(([provider, providerModels]) => (
+                            <optgroup key={provider} label={provider}>
+                              {providerModels.map((m) => (
+                                <option key={m.id} value={m.id}>
+                                  {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ))}
+                        </select>
+                        <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500 pointer-events-none" />
+                      </div>
+                      <textarea
+                        value={previewVideoPrompt}
+                        onChange={(e) => setPreviewVideoPrompt(e.target.value)}
+                        placeholder="Describe the motion — e.g. 'She turns to the camera and smiles, hair blowing in the wind'"
+                        className="w-full bg-zinc-800 border-zinc-700 rounded-lg px-3 py-2 text-xs text-white min-h-[50px] focus:ring-2 focus:ring-pink-500 outline-none resize-none"
+                      />
+                      <p className="text-[10px] text-zinc-500 flex items-center gap-1">
+                        <ImageIcon className="w-3 h-3" /> This image will be used as the source frame
+                      </p>
+                      {previewActionError && (
+                        <p className="text-[10px] text-red-400 flex items-center gap-1"><AlertTriangle className="w-3 h-3" />{previewActionError}</p>
+                      )}
+                      <button
+                        onClick={handlePreviewVideo}
+                        disabled={previewProcessing || !previewVideoPrompt.trim()}
+                        className="w-full py-2 rounded-lg text-xs font-bold bg-gradient-to-r from-pink-600 to-orange-500 hover:from-pink-500 hover:to-orange-400 text-white disabled:opacity-50 flex items-center justify-center gap-2"
+                      >
+                        {previewProcessing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Film className="w-3.5 h-3.5" />}
+                        {previewProcessing ? 'Generating Video...' : 'Generate Video & Save'}
                       </button>
                     </div>
                   )}
