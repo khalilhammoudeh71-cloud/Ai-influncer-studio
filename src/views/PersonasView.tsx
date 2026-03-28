@@ -1,9 +1,10 @@
-import { Plus, Search, Edit2, Trash2, X, Check, Camera, Upload, Image as ImageIcon, AlertTriangle, Sparkles, ArrowLeft, Download, Heart, Trash, Eye } from 'lucide-react';
-import { useState, useRef } from 'react';
+import { Plus, Search, Edit2, Trash2, X, Check, Camera, Upload, Image as ImageIcon, AlertTriangle, Sparkles, ArrowLeft, Download, Heart, Trash, Eye, Loader2, ChevronDown, Cpu, Wand2 } from 'lucide-react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { cn } from '../utils/cn';
 import { Persona, GeneratedImage } from '../types';
 import { VisualGenerator } from '../components/VisualGenerator';
 import { api } from '../services/apiService';
+import { fetchAvailableModels, generateReferenceImage, type ModelInfo } from '../services/imageService';
 
 interface PersonasViewProps {
   personas: Persona[];
@@ -21,6 +22,55 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
   const [viewingPersona, setViewingPersona] = useState<Persona | null>(null);
   const [previewImage, setPreviewImage] = useState<GeneratedImage | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [refMode, setRefMode] = useState<'upload' | 'generate'>('upload');
+  const [refPrompt, setRefPrompt] = useState('');
+  const [refModels, setRefModels] = useState<ModelInfo[]>([]);
+  const [refSelectedModel, setRefSelectedModel] = useState('');
+  const [refModelsLoading, setRefModelsLoading] = useState(false);
+  const [refGenerating, setRefGenerating] = useState(false);
+  const [refError, setRefError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (editingPersona) {
+      setRefMode('upload');
+      setRefPrompt('');
+      setRefError(null);
+      if (refModels.length === 0 && !refModelsLoading) {
+        setRefModelsLoading(true);
+        fetchAvailableModels()
+          .then((m) => {
+            setRefModels(m);
+            if (m.length > 0) setRefSelectedModel(m[0].id);
+          })
+          .catch(() => setRefError('Failed to load AI models'))
+          .finally(() => setRefModelsLoading(false));
+      }
+    }
+  }, [editingPersona]);
+
+  const refGroupedModels = useMemo(() => {
+    const groups: Record<string, ModelInfo[]> = {};
+    refModels.forEach((m) => {
+      if (!groups[m.provider]) groups[m.provider] = [];
+      groups[m.provider].push(m);
+    });
+    return groups;
+  }, [refModels]);
+
+  const handleGenerateRef = async () => {
+    if (!refPrompt.trim() || !refSelectedModel || !editingPersona) return;
+    setRefGenerating(true);
+    setRefError(null);
+    try {
+      const result = await generateReferenceImage(refPrompt, refSelectedModel);
+      setEditingPersona({ ...editingPersona, referenceImage: result.imageUrl });
+    } catch (err: any) {
+      setRefError(err.message || 'Generation failed');
+    } finally {
+      setRefGenerating(false);
+    }
+  };
 
   const filteredPersonas = personas.filter(p => {
     if (!searchQuery.trim()) return true;
@@ -401,7 +451,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                   </div>
                 </div>
 
-                {/* Reference Image Upload */}
+                {/* Reference Image Section */}
                 <section className="bg-white/5 border border-white/10 rounded-3xl p-6 space-y-4">
                   <div className="flex items-center gap-3 mb-2">
                     <div className="p-2 bg-indigo-500/20 rounded-xl text-indigo-400">
@@ -409,59 +459,138 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                     </div>
                     <div>
                       <h3 className="text-sm font-bold">Reference Image</h3>
-                      <p className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">Visual Style Reference (Optional)</p>
+                      <p className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">Face / Style Reference</p>
                     </div>
                   </div>
-                  
-                  <div 
-                    onClick={() => fileInputRef.current?.click()}
-                    className={cn(
-                      "relative border-2 border-dashed border-white/10 rounded-2xl p-4 transition-all cursor-pointer hover:border-indigo-500/50 hover:bg-white/[0.02]",
-                      editingPersona.referenceImage ? "aspect-video" : "py-10 text-center"
-                    )}
-                  >
-                    <input 
-                      type="file" 
-                      ref={fileInputRef} 
-                      className="hidden" 
-                      accept="image/*"
-                      onChange={handleImageUpload}
-                    />
-                    
-                    {editingPersona.referenceImage ? (
-                      <div className="relative w-full h-full group">
-                        <img 
-                          src={editingPersona.referenceImage} 
-                          alt="Reference" 
-                          className="w-full h-full object-cover rounded-xl"
-                        />
-                        <div className="absolute inset-0 bg-black/40 rounded-xl flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm">
-                          <div className="bg-white text-black px-4 py-2 rounded-full text-xs font-bold flex items-center gap-2">
-                            <Upload size={14} /> Replace Image
-                          </div>
+
+                  {editingPersona.referenceImage ? (
+                    <div className="relative aspect-video rounded-2xl overflow-hidden border border-white/10 group">
+                      <img 
+                        src={editingPersona.referenceImage} 
+                        alt="Reference" 
+                        className="w-full h-full object-cover"
+                      />
+                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm">
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => fileInputRef.current?.click()}
+                            className="bg-white text-black px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5"
+                          >
+                            <Upload size={12} /> Replace
+                          </button>
+                          <button
+                            onClick={() => setEditingPersona({...editingPersona, referenceImage: undefined})}
+                            className="bg-red-500 text-white px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5"
+                          >
+                            <X size={12} /> Remove
+                          </button>
                         </div>
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingPersona({...editingPersona, referenceImage: undefined});
-                          }}
-                          className="absolute top-2 right-2 p-1.5 bg-black/60 hover:bg-red-500 rounded-full text-white transition-colors"
+                      </div>
+                      <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload} />
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex rounded-xl bg-white/5 p-0.5 gap-0.5">
+                        <button
+                          onClick={() => setRefMode('upload')}
+                          className={cn(
+                            "flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-all",
+                            refMode === 'upload' ? "bg-indigo-600 text-white shadow" : "text-gray-400 hover:text-white"
+                          )}
                         >
-                          <X size={14} />
+                          <Upload size={13} /> Upload
+                        </button>
+                        <button
+                          onClick={() => setRefMode('generate')}
+                          className={cn(
+                            "flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-all",
+                            refMode === 'generate' ? "bg-indigo-600 text-white shadow" : "text-gray-400 hover:text-white"
+                          )}
+                        >
+                          <Wand2 size={13} /> Generate with AI
                         </button>
                       </div>
-                    ) : (
-                      <div className="flex flex-col items-center gap-3">
-                        <div className="p-3 bg-white/5 rounded-full text-gray-400 group-hover:text-indigo-400 transition-colors">
-                          <Upload size={24} />
+
+                      {refMode === 'upload' ? (
+                        <div 
+                          onClick={() => fileInputRef.current?.click()}
+                          className="relative border-2 border-dashed border-white/10 rounded-2xl py-10 text-center cursor-pointer hover:border-indigo-500/50 hover:bg-white/[0.02] transition-all"
+                        >
+                          <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload} />
+                          <div className="flex flex-col items-center gap-3">
+                            <div className="p-3 bg-white/5 rounded-full text-gray-400">
+                              <Upload size={24} />
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium text-gray-300">Tap to upload reference</p>
+                              <p className="text-xs text-gray-500 mt-1">PNG, JPG up to 5MB</p>
+                            </div>
+                          </div>
                         </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-300">Tap to upload reference</p>
-                          <p className="text-xs text-gray-500 mt-1">PNG, JPG up to 5MB</p>
+                      ) : (
+                        <div className="space-y-3">
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] uppercase tracking-wider font-bold text-gray-500 ml-1 flex items-center gap-1">
+                              <Cpu size={10} /> Model
+                            </label>
+                            {refModelsLoading ? (
+                              <div className="flex items-center gap-2 px-3 py-2.5 bg-white/5 rounded-xl text-xs text-gray-400">
+                                <Loader2 className="w-3 h-3 animate-spin" /> Loading models...
+                              </div>
+                            ) : (
+                              <div className="relative">
+                                <select
+                                  value={refSelectedModel}
+                                  onChange={(e) => setRefSelectedModel(e.target.value)}
+                                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white focus:ring-2 focus:ring-indigo-500/50 outline-none appearance-none pr-8"
+                                >
+                                  {Object.entries(refGroupedModels).map(([provider, providerModels]) => (
+                                    <optgroup key={provider} label={provider}>
+                                      {providerModels.map((m) => (
+                                        <option key={m.id} value={m.id}>
+                                          {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}
+                                        </option>
+                                      ))}
+                                    </optgroup>
+                                  ))}
+                                </select>
+                                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500 pointer-events-none" />
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] uppercase tracking-wider font-bold text-gray-500 ml-1">Describe your persona's look</label>
+                            <textarea
+                              value={refPrompt}
+                              onChange={(e) => setRefPrompt(e.target.value)}
+                              placeholder="e.g. A beautiful 25-year-old woman with long dark hair, green eyes, warm smile, professional headshot style..."
+                              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white min-h-[80px] focus:ring-2 focus:ring-indigo-500/50 outline-none resize-none"
+                            />
+                          </div>
+
+                          {refError && (
+                            <div className="flex items-center gap-2 p-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+                              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                              {refError}
+                            </div>
+                          )}
+
+                          <button
+                            onClick={handleGenerateRef}
+                            disabled={refGenerating || !refPrompt.trim() || !refSelectedModel}
+                            className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-50 shadow-lg shadow-indigo-600/20"
+                          >
+                            {refGenerating ? (
+                              <><Loader2 size={14} className="animate-spin" /> Generating...</>
+                            ) : (
+                              <><Sparkles size={14} /> Generate Reference Image</>
+                            )}
+                          </button>
                         </div>
-                      </div>
-                    )}
-                  </div>
+                      )}
+                    </>
+                  )}
                 </section>
 
                 {/* Form Fields */}

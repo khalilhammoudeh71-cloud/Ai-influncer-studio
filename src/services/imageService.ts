@@ -74,3 +74,28 @@ export async function generateImage(params: GenerateImageParams): Promise<Genera
     promptUsed: data.promptUsed || '',
   };
 }
+
+export async function generateReferenceImage(prompt: string, modelId: string): Promise<GenerateImageResult> {
+  const response = await fetch('/api/generate-reference', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt, modelId }),
+  });
+
+  const contentType = response.headers.get('content-type');
+  if (!contentType || !contentType.includes('application/json')) {
+    throw new Error('Image API not reachable. Make sure the backend server is running.');
+  }
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Reference image generation failed.');
+  }
+
+  return {
+    imageUrl: data.imageUrl,
+    model: data.model,
+    promptUsed: data.promptUsed || '',
+  };
+}

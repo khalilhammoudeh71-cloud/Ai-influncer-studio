@@ -354,6 +354,45 @@ app.post('/api/generate-image', async (req, res) => {
   }
 });
 
+app.post('/api/generate-reference', async (req, res) => {
+  const { prompt, modelId } = req.body;
+
+  if (!prompt || !modelId) {
+    return res.status(400).json({ error: 'prompt and modelId are required' });
+  }
+
+  try {
+    let imageUrl: string;
+    let modelName = modelId;
+
+    if (modelId === 'replit:gpt-image-1') {
+      imageUrl = await generateWithReplit(prompt);
+      modelName = 'gpt-image-1';
+    } else if (modelId.startsWith('wavespeed:')) {
+      const wavespeedModels = await fetchWavespeedModels();
+      const modelInfo = wavespeedModels.find(m => m.id === modelId);
+      if (!modelInfo) {
+        return res.status(400).json({ error: 'Unknown or unavailable model ID' });
+      }
+      modelName = modelInfo.name;
+      imageUrl = await generateWithWavespeed(modelInfo.apiPath, undefined, undefined, prompt);
+    } else {
+      return res.status(400).json({ error: 'Unknown model ID' });
+    }
+
+    return res.json({
+      imageUrl,
+      model: modelName,
+      promptUsed: prompt,
+    });
+  } catch (err) {
+    console.error('[generate-reference] Error:', err instanceof Error ? err.message : err);
+    return res.status(500).json({
+      error: err instanceof Error ? err.message : 'Reference image generation failed',
+    });
+  }
+});
+
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', wavespeedConfigured: !!WAVESPEED_API_KEY });
 });

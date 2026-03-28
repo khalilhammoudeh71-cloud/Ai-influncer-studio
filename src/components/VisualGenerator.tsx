@@ -63,24 +63,38 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [modelsLoading, setModelsLoading] = useState(true);
 
+  const hasRefImage = !!persona.referenceImage;
+
   useEffect(() => {
     fetchAvailableModels()
       .then((m) => {
         setModels(m);
-        if (m.length > 0) setSelectedModel(m[0].id);
+        const preferred = hasRefImage
+          ? m.find(x => x.hasEditVariant) || m[0]
+          : m[0];
+        if (preferred) setSelectedModel(preferred.id);
       })
       .catch(() => setGlobalError('Failed to load available models.'))
       .finally(() => setModelsLoading(false));
   }, []);
 
+  const sortedModels = useMemo(() => {
+    if (!hasRefImage) return models;
+    return [...models].sort((a, b) => {
+      if (a.hasEditVariant && !b.hasEditVariant) return -1;
+      if (!a.hasEditVariant && b.hasEditVariant) return 1;
+      return 0;
+    });
+  }, [models, hasRefImage]);
+
   const groupedModels = useMemo(() => {
     const groups: Record<string, ModelInfo[]> = {};
-    models.forEach((m) => {
+    sortedModels.forEach((m) => {
       if (!groups[m.provider]) groups[m.provider] = [];
       groups[m.provider].push(m);
     });
     return groups;
-  }, [models]);
+  }, [sortedModels]);
 
   const selectedModelInfo = useMemo(() => models.find(m => m.id === selectedModel), [models, selectedModel]);
 
@@ -180,7 +194,7 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
                       <optgroup key={provider} label={provider}>
                         {providerModels.map((m) => (
                           <option key={m.id} value={m.id}>
-                            {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}
+                            {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}{hasRefImage && !m.hasEditVariant ? ' ⚠ No ref support' : ''}
                           </option>
                         ))}
                       </optgroup>
@@ -194,9 +208,14 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
                     {selectedModelInfo.provider}
                   </span>
-                  {selectedModelInfo.hasEditVariant && persona.referenceImage && (
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                      Reference image supported
+                  {hasRefImage && selectedModelInfo.hasEditVariant && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-500/20 text-green-300 border border-green-500/30">
+                      Uses reference image
+                    </span>
+                  )}
+                  {hasRefImage && !selectedModelInfo.hasEditVariant && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/30">
+                      Text-only — will ignore reference
                     </span>
                   )}
                   {selectedModelInfo.price > 0 && (
