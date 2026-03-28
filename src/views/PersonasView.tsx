@@ -1,10 +1,10 @@
-import { Plus, Search, Edit2, Trash2, X, Check, Camera, Upload, Image as ImageIcon, AlertTriangle, Sparkles, ArrowLeft, Download, Heart, Trash, Eye, Loader2, ChevronDown, Cpu, Wand2 } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, X, Check, Camera, Upload, Image as ImageIcon, AlertTriangle, Sparkles, ArrowLeft, Download, Heart, Trash, Eye, Loader2, ChevronDown, Cpu, Wand2, Pencil, ArrowUpCircle } from 'lucide-react';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { cn } from '../utils/cn';
 import { Persona, GeneratedImage } from '../types';
 import { VisualGenerator } from '../components/VisualGenerator';
 import { api } from '../services/apiService';
-import { fetchAvailableModels, generateReferenceImage, type ModelInfo } from '../services/imageService';
+import { fetchAvailableModels, fetchAllModelTypes, generateReferenceImage, editImage, upscaleImage, type ModelInfo } from '../services/imageService';
 
 interface PersonasViewProps {
   personas: Persona[];
@@ -27,6 +27,15 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
   const [refPrompt, setRefPrompt] = useState('');
   const [refModels, setRefModels] = useState<ModelInfo[]>([]);
   const [refSelectedModel, setRefSelectedModel] = useState('');
+
+  const [previewAction, setPreviewAction] = useState<null | 'edit' | 'upscale'>(null);
+  const [previewEditModels, setPreviewEditModels] = useState<ModelInfo[]>([]);
+  const [previewUpscaleModels, setPreviewUpscaleModels] = useState<ModelInfo[]>([]);
+  const [previewSelectedEditModel, setPreviewSelectedEditModel] = useState('');
+  const [previewSelectedUpscaleModel, setPreviewSelectedUpscaleModel] = useState('');
+  const [previewEditPrompt, setPreviewEditPrompt] = useState('');
+  const [previewProcessing, setPreviewProcessing] = useState(false);
+  const [previewActionError, setPreviewActionError] = useState<string | null>(null);
   const [refModelsLoading, setRefModelsLoading] = useState(false);
   const [refGenerating, setRefGenerating] = useState(false);
   const [refError, setRefError] = useState<string | null>(null);
@@ -95,6 +104,105 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
       if (fresh) setViewingPersona(fresh);
     }
     api.images.create(activePersonaForGen.id, img).catch(err => console.error('[API] Image save error:', err));
+  };
+
+  const openPreviewImage = (img: GeneratedImage) => {
+    setPreviewImage(img);
+    setPreviewAction(null);
+    setPreviewEditPrompt('');
+    setPreviewActionError(null);
+    setPreviewProcessing(false);
+    if (previewEditModels.length === 0) {
+      fetchAllModelTypes().then(({ editModels: em, upscaleModels: um }) => {
+        setPreviewEditModels(em);
+        setPreviewUpscaleModels(um);
+        if (em.length > 0) setPreviewSelectedEditModel(em[0].id);
+        if (um.length > 0) setPreviewSelectedUpscaleModel(um[0].id);
+      }).catch(() => {});
+    }
+  };
+
+  const groupedPreviewEditModels = useMemo(() => {
+    const groups: Record<string, ModelInfo[]> = {};
+    previewEditModels.forEach(m => { if (!groups[m.provider]) groups[m.provider] = []; groups[m.provider].push(m); });
+    return groups;
+  }, [previewEditModels]);
+
+  const groupedPreviewUpscaleModels = useMemo(() => {
+    const groups: Record<string, ModelInfo[]> = {};
+    previewUpscaleModels.forEach(m => { if (!groups[m.provider]) groups[m.provider] = []; groups[m.provider].push(m); });
+    return groups;
+  }, [previewUpscaleModels]);
+
+  const handlePreviewEdit = async () => {
+    if (!previewImage || !previewEditPrompt.trim() || !previewSelectedEditModel || !viewingPersona) return;
+    setPreviewProcessing(true);
+    setPreviewActionError(null);
+    try {
+      const data = await editImage(previewImage.url, previewEditPrompt, previewSelectedEditModel);
+      const newImg: GeneratedImage = {
+        id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        url: data.imageUrl,
+        prompt: previewEditPrompt,
+        timestamp: Date.now(),
+        model: data.model,
+        environment: previewImage.environment,
+        outfit: previewImage.outfit,
+        framing: previewImage.framing,
+      };
+      const updated = personas.map(p => {
+        if (p.id === viewingPersona.id) {
+          return { ...p, visualLibrary: [...(p.visualLibrary || []), newImg] };
+        }
+        return p;
+      });
+      setPersonas(updated);
+      const fresh = updated.find(p => p.id === viewingPersona.id);
+      if (fresh) setViewingPersona(fresh);
+      api.images.create(viewingPersona.id, newImg).catch(err => console.error('[API] Image save error:', err));
+      setPreviewImage(newImg);
+      setPreviewAction(null);
+      setPreviewEditPrompt('');
+    } catch (err: any) {
+      setPreviewActionError(err.message || 'Editing failed.');
+    } finally {
+      setPreviewProcessing(false);
+    }
+  };
+
+  const handlePreviewUpscale = async () => {
+    if (!previewImage || !previewSelectedUpscaleModel || !viewingPersona) return;
+    setPreviewProcessing(true);
+    setPreviewActionError(null);
+    try {
+      const data = await upscaleImage(previewImage.url, previewSelectedUpscaleModel);
+      const newImg: GeneratedImage = {
+        id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        url: data.imageUrl,
+        prompt: previewImage.prompt,
+        timestamp: Date.now(),
+        model: data.model,
+        environment: previewImage.environment,
+        outfit: previewImage.outfit,
+        framing: previewImage.framing,
+      };
+      const updated = personas.map(p => {
+        if (p.id === viewingPersona.id) {
+          return { ...p, visualLibrary: [...(p.visualLibrary || []), newImg] };
+        }
+        return p;
+      });
+      setPersonas(updated);
+      const fresh = updated.find(p => p.id === viewingPersona.id);
+      if (fresh) setViewingPersona(fresh);
+      api.images.create(viewingPersona.id, newImg).catch(err => console.error('[API] Image save error:', err));
+      setPreviewImage(newImg);
+      setPreviewAction(null);
+    } catch (err: any) {
+      setPreviewActionError(err.message || 'Upscaling failed.');
+    } finally {
+      setPreviewProcessing(false);
+    }
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -862,7 +970,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                   <div 
                     key={img.id} 
                     className="relative group rounded-2xl overflow-hidden border border-white/5 bg-[#1A1A1A] cursor-pointer"
-                    onClick={() => setPreviewImage(img)}
+                    onClick={() => openPreviewImage(img)}
                   >
                     <div className="aspect-square">
                       <img src={img.url} alt={img.prompt || ''} className="w-full h-full object-cover" />
@@ -906,19 +1014,29 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
           </div>
 
           {previewImage && (
-            <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4" onClick={() => setPreviewImage(null)}>
-              <div className="relative max-w-lg w-full" onClick={(e) => e.stopPropagation()}>
+            <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 overflow-y-auto" onClick={() => { if (!previewProcessing) setPreviewImage(null); }}>
+              <div className="relative max-w-lg w-full my-auto" onClick={(e) => e.stopPropagation()}>
                 <button 
-                  onClick={() => setPreviewImage(null)}
+                  onClick={() => { if (!previewProcessing) setPreviewImage(null); }}
                   className="absolute -top-12 right-0 p-2 text-gray-400 hover:text-white transition-colors"
                 >
                   <X size={24} />
                 </button>
-                <img 
-                  src={previewImage.url} 
-                  alt={previewImage.prompt || ''} 
-                  className="w-full rounded-2xl border border-white/10"
-                />
+                <div className="relative">
+                  <img 
+                    src={previewImage.url} 
+                    alt={previewImage.prompt || ''} 
+                    className="w-full rounded-2xl border border-white/10"
+                  />
+                  {previewProcessing && (
+                    <div className="absolute inset-0 bg-black/60 rounded-2xl flex items-center justify-center">
+                      <div className="flex flex-col items-center gap-2">
+                        <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+                        <span className="text-xs text-white/70">{previewAction === 'upscale' ? 'Upscaling...' : 'Editing...'}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
                 <div className="mt-4 bg-[#1A1A1A] rounded-2xl border border-white/5 p-4">
                   {previewImage.prompt && (
                     <p className="text-sm text-gray-300 mb-3">{previewImage.prompt}</p>
@@ -945,7 +1063,106 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                       </span>
                     )}
                   </div>
-                  <div className="flex gap-2 mt-4">
+                  <div className="grid grid-cols-2 gap-2 mt-4">
+                    <button
+                      onClick={() => { setPreviewAction(previewAction === 'edit' ? null : 'edit'); setPreviewActionError(null); }}
+                      disabled={previewProcessing}
+                      className={`flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold transition-all border ${
+                        previewAction === 'edit'
+                          ? 'bg-blue-600 text-white border-blue-500'
+                          : 'bg-white/5 text-zinc-300 border-white/5 hover:bg-white/10'
+                      }`}
+                    >
+                      <Pencil size={14} /> Edit Image
+                    </button>
+                    <button
+                      onClick={() => { setPreviewAction(previewAction === 'upscale' ? null : 'upscale'); setPreviewActionError(null); }}
+                      disabled={previewProcessing}
+                      className={`flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold transition-all border ${
+                        previewAction === 'upscale'
+                          ? 'bg-emerald-600 text-white border-emerald-500'
+                          : 'bg-white/5 text-zinc-300 border-white/5 hover:bg-white/10'
+                      }`}
+                    >
+                      <ArrowUpCircle size={14} /> Upscale
+                    </button>
+                  </div>
+
+                  {previewAction === 'edit' && (
+                    <div className="mt-3 p-3 rounded-xl bg-blue-950/30 border border-blue-500/20 space-y-2">
+                      <div className="relative">
+                        <select
+                          value={previewSelectedEditModel}
+                          onChange={(e) => setPreviewSelectedEditModel(e.target.value)}
+                          className="w-full bg-zinc-800 border-zinc-700 rounded-lg px-3 py-2 text-xs text-white focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-8"
+                        >
+                          {Object.entries(groupedPreviewEditModels).map(([provider, providerModels]) => (
+                            <optgroup key={provider} label={provider}>
+                              {providerModels.map((m) => (
+                                <option key={m.id} value={m.id}>
+                                  {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ))}
+                        </select>
+                        <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500 pointer-events-none" />
+                      </div>
+                      <textarea
+                        value={previewEditPrompt}
+                        onChange={(e) => setPreviewEditPrompt(e.target.value)}
+                        placeholder="Describe what to change..."
+                        className="w-full bg-zinc-800 border-zinc-700 rounded-lg px-3 py-2 text-xs text-white min-h-[50px] focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+                      />
+                      {previewActionError && (
+                        <p className="text-[10px] text-red-400 flex items-center gap-1"><AlertTriangle className="w-3 h-3" />{previewActionError}</p>
+                      )}
+                      <button
+                        onClick={handlePreviewEdit}
+                        disabled={previewProcessing || !previewEditPrompt.trim()}
+                        className="w-full py-2 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50 flex items-center justify-center gap-2"
+                      >
+                        {previewProcessing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Pencil className="w-3.5 h-3.5" />}
+                        {previewProcessing ? 'Editing...' : 'Apply Edit & Save'}
+                      </button>
+                    </div>
+                  )}
+
+                  {previewAction === 'upscale' && (
+                    <div className="mt-3 p-3 rounded-xl bg-emerald-950/30 border border-emerald-500/20 space-y-2">
+                      <div className="relative">
+                        <select
+                          value={previewSelectedUpscaleModel}
+                          onChange={(e) => setPreviewSelectedUpscaleModel(e.target.value)}
+                          className="w-full bg-zinc-800 border-zinc-700 rounded-lg px-3 py-2 text-xs text-white focus:ring-2 focus:ring-emerald-500 outline-none appearance-none pr-8"
+                        >
+                          {Object.entries(groupedPreviewUpscaleModels).map(([provider, providerModels]) => (
+                            <optgroup key={provider} label={provider}>
+                              {providerModels.map((m) => (
+                                <option key={m.id} value={m.id}>
+                                  {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ))}
+                        </select>
+                        <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500 pointer-events-none" />
+                      </div>
+                      {previewActionError && (
+                        <p className="text-[10px] text-red-400 flex items-center gap-1"><AlertTriangle className="w-3 h-3" />{previewActionError}</p>
+                      )}
+                      <button
+                        onClick={handlePreviewUpscale}
+                        disabled={previewProcessing}
+                        className="w-full py-2 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50 flex items-center justify-center gap-2"
+                      >
+                        {previewProcessing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ArrowUpCircle className="w-3.5 h-3.5" />}
+                        {previewProcessing ? 'Upscaling...' : 'Upscale & Save'}
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="flex gap-2 mt-3">
                     <a
                       href={previewImage.url}
                       download={`${viewingPersona.name.replace(/\s+/g, '_')}_${previewImage.id}.png`}
