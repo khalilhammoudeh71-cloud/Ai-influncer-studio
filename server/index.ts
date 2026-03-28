@@ -25,7 +25,7 @@ interface ModelInfo {
   id: string;
   name: string;
   provider: string;
-  type: 'text-to-image' | 'image-to-image';
+  type: 'text-to-image' | 'image-to-image' | 'upscaler';
   price: number;
   description: string;
   apiPath: string;
@@ -35,8 +35,32 @@ interface ModelInfo {
 }
 
 let cachedModels: ModelInfo[] | null = null;
+let cachedEditModels: ModelInfo[] | null = null;
+let cachedUpscaleModels: ModelInfo[] | null = null;
 let cacheTimestamp = 0;
 const CACHE_TTL = 30 * 60 * 1000;
+
+const PROVIDER_NAMES: Record<string, string> = {
+  'google': 'Google',
+  'openai': 'OpenAI',
+  'wavespeed-ai': 'Wavespeed AI',
+  'bytedance': 'ByteDance',
+  'stability-ai': 'Stability AI',
+  'x-ai': 'xAI',
+  'midjourney': 'Midjourney',
+  'kwaivgi': 'Kling',
+  'recraft-ai': 'Recraft',
+  'alibaba': 'Alibaba',
+  'z-ai': 'Zhipu AI',
+  'leonardoai': 'Leonardo AI',
+  'reve': 'Reve',
+  'vidu': 'Vidu',
+  'higgsfield': 'Higgsfield',
+  'nvidia': 'NVIDIA',
+  'bria': 'Bria',
+  'clarity-ai': 'Clarity AI',
+  'runwayml': 'Runway',
+};
 
 async function fetchWavespeedModels(): Promise<ModelInfo[]> {
   if (cachedModels && Date.now() - cacheTimestamp < CACHE_TTL) {
@@ -73,26 +97,6 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
       const providerSlash = m.model_id.indexOf('/');
       const provider = m.model_id.slice(0, providerSlash);
 
-      const providerNames: Record<string, string> = {
-        'google': 'Google',
-        'openai': 'OpenAI',
-        'wavespeed-ai': 'Wavespeed AI',
-        'bytedance': 'ByteDance',
-        'stability-ai': 'Stability AI',
-        'x-ai': 'xAI',
-        'midjourney': 'Midjourney',
-        'kwaivgi': 'Kling',
-        'recraft-ai': 'Recraft',
-        'alibaba': 'Alibaba',
-        'z-ai': 'Zhipu AI',
-        'leonardoai': 'Leonardo AI',
-        'reve': 'Reve',
-        'vidu': 'Vidu',
-        'higgsfield': 'Higgsfield',
-        'nvidia': 'NVIDIA',
-        'bria': 'Bria',
-      };
-
       const friendlyName = m.model_id
         .replace('/text-to-image', '')
         .split('/')
@@ -104,7 +108,7 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
       return {
         id: `wavespeed:${m.model_id}`,
         name: friendlyName,
-        provider: providerNames[provider] || provider,
+        provider: PROVIDER_NAMES[provider] || provider,
         type: 'text-to-image' as const,
         price: m.base_price,
         description: m.description || '',
@@ -119,7 +123,70 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
 
     models.sort((a, b) => a.provider.localeCompare(b.provider) || a.name.localeCompare(b.name));
 
+    const editModels: ModelInfo[] = imageToImage.map((m: { model_id: string; base_price: number; description?: string; api_schema?: { api_schemas?: { api_path: string; request_schema?: { properties?: Record<string, unknown> } }[] } }) => {
+      const apiPath = m.api_schema?.api_schemas?.[0]?.api_path || `/api/v3/${m.model_id}`;
+      const providerSlash = m.model_id.indexOf('/');
+      const provider = m.model_id.slice(0, providerSlash);
+      const props = m.api_schema?.api_schemas?.[0]?.request_schema?.properties || {};
+      const imageField: 'image' | 'images' = props.images ? 'images' : 'image';
+
+      const friendlyName = m.model_id
+        .replace('/image-to-image', '')
+        .replace('/edit', '')
+        .split('/')
+        .slice(1)
+        .join(' ')
+        .replace(/-/g, ' ')
+        .replace(/\b\w/g, (c: string) => c.toUpperCase());
+
+      return {
+        id: `wavespeed-edit:${m.model_id}`,
+        name: friendlyName,
+        provider: PROVIDER_NAMES[provider] || provider,
+        type: 'image-to-image' as const,
+        price: m.base_price,
+        description: m.description || '',
+        apiPath,
+        hasEditVariant: false,
+        editImageField: imageField,
+      };
+    });
+    editModels.sort((a, b) => a.provider.localeCompare(b.provider) || a.name.localeCompare(b.name));
+
+    const upscalerModels = rawModels.filter((m: { type: string; model_id: string }) =>
+      m.type === 'upscaler' && !m.model_id.toLowerCase().includes('video')
+    );
+    const upscaleModels: ModelInfo[] = upscalerModels.map((m: { model_id: string; base_price: number; description?: string; api_schema?: { api_schemas?: { api_path: string; request_schema?: { properties?: Record<string, unknown> } }[] } }) => {
+      const apiPath = m.api_schema?.api_schemas?.[0]?.api_path || `/api/v3/${m.model_id}`;
+      const providerSlash = m.model_id.indexOf('/');
+      const provider = m.model_id.slice(0, providerSlash);
+      const props = m.api_schema?.api_schemas?.[0]?.request_schema?.properties || {};
+      const imageField: 'image' | 'images' = props.images ? 'images' : 'image';
+
+      const friendlyName = m.model_id
+        .split('/')
+        .slice(1)
+        .join(' ')
+        .replace(/-/g, ' ')
+        .replace(/\b\w/g, (c: string) => c.toUpperCase());
+
+      return {
+        id: `wavespeed-upscale:${m.model_id}`,
+        name: friendlyName,
+        provider: PROVIDER_NAMES[provider] || provider,
+        type: 'upscaler' as const,
+        price: m.base_price,
+        description: m.description || '',
+        apiPath,
+        hasEditVariant: false,
+        editImageField: imageField,
+      };
+    });
+    upscaleModels.sort((a, b) => a.provider.localeCompare(b.provider) || a.name.localeCompare(b.name));
+
     cachedModels = models;
+    cachedEditModels = editModels;
+    cachedUpscaleModels = upscaleModels;
     cacheTimestamp = Date.now();
     return models;
   } catch (err) {
@@ -235,6 +302,39 @@ async function fetchAllowedImage(urlStr: string): Promise<string> {
   return `data:image/png;base64,${imgBuf.toString('base64')}`;
 }
 
+async function extractWavespeedOutput(json: Record<string, unknown>): Promise<string> {
+  const data = json.data as Record<string, unknown> | undefined;
+  if ((json.code as number) !== 200 || (data?.status as string) === 'failed') {
+    throw new Error((data?.error as string) || (json.message as string) || 'Wavespeed request failed');
+  }
+
+  const outputs = (data?.outputs as string[]) || [];
+  if (outputs.length) {
+    const output = outputs[0];
+    if (output.startsWith('http')) return await fetchAllowedImage(output);
+    return `data:image/jpeg;base64,${output}`;
+  }
+
+  if ((data?.status as string) === 'completed' && (data?.urls as Record<string, string>)?.get) {
+    const pollUrl = (data!.urls as Record<string, string>).get;
+    if (!isAllowedWavespeedUrl(pollUrl)) {
+      throw new Error('Blocked: poll URL from untrusted host');
+    }
+    const pollRes = await fetch(pollUrl, {
+      headers: { Authorization: `Bearer ${WAVESPEED_API_KEY}` },
+    });
+    const pollJson = await pollRes.json();
+    const pollOutputs = pollJson.data?.outputs || pollJson.outputs || [];
+    if (pollOutputs.length) {
+      const img = pollOutputs[0];
+      if (img.startsWith('http')) return await fetchAllowedImage(img);
+      return `data:image/png;base64,${img}`;
+    }
+  }
+
+  throw new Error('No image output from Wavespeed');
+}
+
 async function generateWithWavespeed(
   apiPath: string,
   editApiPath: string | undefined,
@@ -308,7 +408,26 @@ app.get('/api/models', async (_req, res) => {
   try {
     const wavespeedModels = await fetchWavespeedModels();
     const allModels = getAllModels(wavespeedModels);
-    res.json({ models: allModels });
+
+    const editModels: ModelInfo[] = [
+      {
+        id: 'replit:gpt-image-1',
+        name: 'GPT Image 1 (DALL-E)',
+        provider: 'Replit Built-in',
+        type: 'image-to-image',
+        price: 0,
+        description: 'OpenAI DALL-E image editing via Replit integration',
+        apiPath: '',
+        hasEditVariant: false,
+      },
+      ...(cachedEditModels || []),
+    ];
+
+    res.json({
+      models: allModels,
+      editModels,
+      upscaleModels: cachedUpscaleModels || [],
+    });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to fetch models' });
   }
@@ -390,6 +509,112 @@ app.post('/api/generate-reference', async (req, res) => {
     return res.status(500).json({
       error: err instanceof Error ? err.message : 'Reference image generation failed',
     });
+  }
+});
+
+app.post('/api/edit-image', async (req, res) => {
+  const { sourceImage, prompt, modelId } = req.body;
+
+  if (!sourceImage || !prompt || !modelId) {
+    return res.status(400).json({ error: 'sourceImage, prompt, and modelId are required' });
+  }
+
+  try {
+    let imageUrl: string;
+    let modelName = modelId;
+
+    if (modelId === 'replit:gpt-image-1') {
+      imageUrl = await generateWithReplit(prompt, sourceImage);
+      modelName = 'GPT Image 1 (DALL-E)';
+    } else if (modelId.startsWith('wavespeed-edit:')) {
+      await fetchWavespeedModels();
+      const editModel = (cachedEditModels || []).find(m => m.id === modelId);
+      if (!editModel) {
+        return res.status(400).json({ error: 'Unknown edit model ID' });
+      }
+      modelName = editModel.name;
+
+      const { mimeType, data } = stripDataPrefix(sourceImage);
+      const b64Url = `data:${mimeType};base64,${data}`;
+      const payload: Record<string, unknown> = {
+        prompt,
+        enable_sync_mode: true,
+        enable_base64_output: true,
+      };
+      if (editModel.editImageField === 'images') {
+        payload.images = [b64Url];
+      } else {
+        payload.image = b64Url;
+      }
+
+      const url = `https://api.wavespeed.ai${editModel.apiPath}`;
+      const apiRes = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${WAVESPEED_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+      const json = await apiRes.json();
+      imageUrl = await extractWavespeedOutput(json);
+    } else {
+      return res.status(400).json({ error: 'Unknown model ID' });
+    }
+
+    return res.json({ imageUrl, model: modelName });
+  } catch (err) {
+    console.error('[edit-image] Error:', err instanceof Error ? err.message : err);
+    return res.status(500).json({ error: err instanceof Error ? err.message : 'Image editing failed' });
+  }
+});
+
+app.post('/api/upscale-image', async (req, res) => {
+  const { sourceImage, modelId } = req.body;
+
+  if (!sourceImage || !modelId) {
+    return res.status(400).json({ error: 'sourceImage and modelId are required' });
+  }
+
+  if (!modelId.startsWith('wavespeed-upscale:')) {
+    return res.status(400).json({ error: 'Invalid upscale model ID' });
+  }
+
+  try {
+    await fetchWavespeedModels();
+    const upscaleModel = (cachedUpscaleModels || []).find(m => m.id === modelId);
+    if (!upscaleModel) {
+      return res.status(400).json({ error: 'Unknown upscale model ID' });
+    }
+
+    const { mimeType, data } = stripDataPrefix(sourceImage);
+    const b64Url = `data:${mimeType};base64,${data}`;
+    const payload: Record<string, unknown> = {
+      enable_sync_mode: true,
+      enable_base64_output: true,
+    };
+    if (upscaleModel.editImageField === 'images') {
+      payload.images = [b64Url];
+    } else {
+      payload.image = b64Url;
+    }
+
+    const url = `https://api.wavespeed.ai${upscaleModel.apiPath}`;
+    const apiRes = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${WAVESPEED_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+    const json = await apiRes.json();
+    const imageUrl = await extractWavespeedOutput(json);
+
+    return res.json({ imageUrl, model: upscaleModel.name });
+  } catch (err) {
+    console.error('[upscale-image] Error:', err instanceof Error ? err.message : err);
+    return res.status(500).json({ error: err instanceof Error ? err.message : 'Image upscaling failed' });
   }
 });
 
@@ -484,7 +709,7 @@ pushSchema().then(() => {
     console.log(`[AI Image Server] Listening on port ${PORT}`);
     if (WAVESPEED_API_KEY) {
       fetchWavespeedModels().then(models => {
-        console.log(`[Wavespeed] Loaded ${models.length} image generation models`);
+        console.log(`[Wavespeed] Loaded ${models.length} generation, ${(cachedEditModels || []).length} edit, ${(cachedUpscaleModels || []).length} upscale models`);
       });
     } else {
       console.warn('[Wavespeed] No API key configured — only built-in models available');

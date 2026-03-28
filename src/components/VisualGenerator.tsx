@@ -15,11 +15,15 @@ import {
   Loader2,
   ChevronDown,
   Cpu,
+  Pencil,
+  ArrowUpCircle,
 } from 'lucide-react';
 import { Persona, GeneratedImage } from '../types';
 import {
   generateImage,
-  fetchAvailableModels,
+  fetchAllModelTypes,
+  editImage,
+  upscaleImage,
   type ModelInfo,
   type GenerateImageResult,
 } from '../services/imageService';
@@ -49,6 +53,8 @@ const MOODS = [
   'Confident', 'Friendly', 'Thoughtful', 'Playful', 'Professional', 'Seductive'
 ];
 
+type PostGenAction = null | 'edit' | 'upscale';
+
 export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClose, onSaveImage }) => {
   const [prompt, setPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -60,19 +66,32 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
   const [globalError, setGlobalError] = useState<string | null>(null);
 
   const [models, setModels] = useState<ModelInfo[]>([]);
+  const [editModels, setEditModels] = useState<ModelInfo[]>([]);
+  const [upscaleModels, setUpscaleModels] = useState<ModelInfo[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [modelsLoading, setModelsLoading] = useState(true);
+
+  const [postAction, setPostAction] = useState<PostGenAction>(null);
+  const [editPrompt, setEditPrompt] = useState('');
+  const [selectedEditModel, setSelectedEditModel] = useState('');
+  const [selectedUpscaleModel, setSelectedUpscaleModel] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const hasRefImage = !!persona.referenceImage;
 
   useEffect(() => {
-    fetchAvailableModels()
-      .then((m) => {
+    fetchAllModelTypes()
+      .then(({ models: m, editModels: em, upscaleModels: um }) => {
         setModels(m);
+        setEditModels(em);
+        setUpscaleModels(um);
         const preferred = hasRefImage
           ? m.find(x => x.hasEditVariant) || m[0]
           : m[0];
         if (preferred) setSelectedModel(preferred.id);
+        if (em.length > 0) setSelectedEditModel(em[0].id);
+        if (um.length > 0) setSelectedUpscaleModel(um[0].id);
       })
       .catch(() => setGlobalError('Failed to load available models.'))
       .finally(() => setModelsLoading(false));
@@ -96,6 +115,24 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
     return groups;
   }, [sortedModels]);
 
+  const groupedEditModels = useMemo(() => {
+    const groups: Record<string, ModelInfo[]> = {};
+    editModels.forEach((m) => {
+      if (!groups[m.provider]) groups[m.provider] = [];
+      groups[m.provider].push(m);
+    });
+    return groups;
+  }, [editModels]);
+
+  const groupedUpscaleModels = useMemo(() => {
+    const groups: Record<string, ModelInfo[]> = {};
+    upscaleModels.forEach((m) => {
+      if (!groups[m.provider]) groups[m.provider] = [];
+      groups[m.provider].push(m);
+    });
+    return groups;
+  }, [upscaleModels]);
+
   const selectedModelInfo = useMemo(() => models.find(m => m.id === selectedModel), [models, selectedModel]);
 
   const handleGenerate = async () => {
@@ -103,6 +140,8 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
     setIsGenerating(true);
     setGlobalError(null);
     setResult(null);
+    setPostAction(null);
+    setActionError(null);
 
     try {
       const data = await generateImage({
@@ -119,6 +158,39 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
       setGlobalError(err.message || 'Generation failed. Please try again.');
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleEdit = async () => {
+    if (!result?.imageUrl || !editPrompt.trim() || !selectedEditModel) return;
+    setIsProcessing(true);
+    setActionError(null);
+
+    try {
+      const data = await editImage(result.imageUrl, editPrompt, selectedEditModel);
+      setResult({ imageUrl: data.imageUrl, model: data.model, promptUsed: editPrompt });
+      setPostAction(null);
+      setEditPrompt('');
+    } catch (err: any) {
+      setActionError(err.message || 'Editing failed.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleUpscale = async () => {
+    if (!result?.imageUrl || !selectedUpscaleModel) return;
+    setIsProcessing(true);
+    setActionError(null);
+
+    try {
+      const data = await upscaleImage(result.imageUrl, selectedUpscaleModel);
+      setResult({ imageUrl: data.imageUrl, model: data.model, promptUsed: result.promptUsed });
+      setPostAction(null);
+    } catch (err: any) {
+      setActionError(err.message || 'Upscaling failed.');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -228,10 +300,14 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
             </div>
 
             <div className="aspect-square max-h-[400px] rounded-2xl bg-zinc-950 border border-zinc-800 overflow-hidden relative group mx-auto w-full max-w-[400px]">
-              {isGenerating ? (
+              {isGenerating || isProcessing ? (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
                   <Loader2 className="w-10 h-10 animate-spin text-purple-500" />
-                  <p className="text-xs text-zinc-500 animate-pulse">Generating with {selectedModelInfo?.name || 'AI'}...</p>
+                  <p className="text-xs text-zinc-500 animate-pulse">
+                    {isProcessing
+                      ? (postAction === 'upscale' ? 'Upscaling...' : 'Editing...')
+                      : `Generating with ${selectedModelInfo?.name || 'AI'}...`}
+                  </p>
                 </div>
               ) : result?.imageUrl ? (
                 <>
@@ -264,14 +340,134 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
               </div>
             )}
 
-            {result?.imageUrl && (
-              <button
-                onClick={handleSave}
-                className="w-full py-3 rounded-xl text-sm font-bold transition-all bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white flex items-center justify-center gap-2 shadow-lg shadow-purple-500/20"
-              >
-                <CheckCircle className="w-4 h-4" />
-                Save to Visual Library
-              </button>
+            {result?.imageUrl && !isProcessing && (
+              <>
+                <button
+                  onClick={handleSave}
+                  className="w-full py-3 rounded-xl text-sm font-bold transition-all bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white flex items-center justify-center gap-2 shadow-lg shadow-purple-500/20"
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  Save to Visual Library
+                </button>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => { setPostAction(postAction === 'edit' ? null : 'edit'); setActionError(null); }}
+                    className={`py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all border ${
+                      postAction === 'edit'
+                        ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-500/20'
+                        : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700 hover:border-zinc-600'
+                    }`}
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                    Edit Image
+                  </button>
+                  <button
+                    onClick={() => { setPostAction(postAction === 'upscale' ? null : 'upscale'); setActionError(null); }}
+                    className={`py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all border ${
+                      postAction === 'upscale'
+                        ? 'bg-emerald-600 text-white border-emerald-500 shadow-lg shadow-emerald-500/20'
+                        : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700 hover:border-zinc-600'
+                    }`}
+                  >
+                    <ArrowUpCircle className="w-3.5 h-3.5" />
+                    Upscale Image
+                  </button>
+                </div>
+
+                {postAction === 'edit' && (
+                  <div className="p-4 rounded-2xl bg-blue-950/30 border border-blue-500/20 space-y-3">
+                    <p className="text-xs font-bold text-blue-400 uppercase tracking-wider">Edit with AI</p>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] uppercase tracking-wider font-bold text-zinc-500 ml-1 flex items-center gap-1">
+                        <Cpu className="w-2.5 h-2.5" /> Edit Model
+                      </label>
+                      <div className="relative">
+                        <select
+                          value={selectedEditModel}
+                          onChange={(e) => setSelectedEditModel(e.target.value)}
+                          className="w-full bg-zinc-800 border-zinc-700 rounded-xl px-3 py-2 text-sm text-white focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-8"
+                        >
+                          {Object.entries(groupedEditModels).map(([provider, providerModels]) => (
+                            <optgroup key={provider} label={provider}>
+                              {providerModels.map((m) => (
+                                <option key={m.id} value={m.id}>
+                                  {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ))}
+                        </select>
+                        <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500 pointer-events-none" />
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] uppercase tracking-wider font-bold text-zinc-500 ml-1">What to change</label>
+                      <textarea
+                        value={editPrompt}
+                        onChange={(e) => setEditPrompt(e.target.value)}
+                        placeholder="e.g. Change background to a beach sunset, add sunglasses, make hair blonde..."
+                        className="w-full bg-zinc-800 border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white min-h-[60px] focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+                      />
+                    </div>
+                    {actionError && (
+                      <div className="flex items-center gap-2 p-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        {actionError}
+                      </div>
+                    )}
+                    <button
+                      onClick={handleEdit}
+                      disabled={!editPrompt.trim() || !selectedEditModel || isProcessing}
+                      className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                    >
+                      <Pencil className="w-3.5 h-3.5" /> Apply Edit
+                    </button>
+                  </div>
+                )}
+
+                {postAction === 'upscale' && (
+                  <div className="p-4 rounded-2xl bg-emerald-950/30 border border-emerald-500/20 space-y-3">
+                    <p className="text-xs font-bold text-emerald-400 uppercase tracking-wider">Upscale Image</p>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] uppercase tracking-wider font-bold text-zinc-500 ml-1 flex items-center gap-1">
+                        <Cpu className="w-2.5 h-2.5" /> Upscale Model
+                      </label>
+                      <div className="relative">
+                        <select
+                          value={selectedUpscaleModel}
+                          onChange={(e) => setSelectedUpscaleModel(e.target.value)}
+                          className="w-full bg-zinc-800 border-zinc-700 rounded-xl px-3 py-2 text-sm text-white focus:ring-2 focus:ring-emerald-500 outline-none appearance-none pr-8"
+                        >
+                          {Object.entries(groupedUpscaleModels).map(([provider, providerModels]) => (
+                            <optgroup key={provider} label={provider}>
+                              {providerModels.map((m) => (
+                                <option key={m.id} value={m.id}>
+                                  {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ))}
+                        </select>
+                        <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500 pointer-events-none" />
+                      </div>
+                    </div>
+                    {actionError && (
+                      <div className="flex items-center gap-2 p-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        {actionError}
+                      </div>
+                    )}
+                    <button
+                      onClick={handleUpscale}
+                      disabled={!selectedUpscaleModel || isProcessing}
+                      className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                    >
+                      <ArrowUpCircle className="w-3.5 h-3.5" /> Upscale Now
+                    </button>
+                  </div>
+                )}
+              </>
             )}
 
             <div className="grid grid-cols-2 gap-4">
@@ -345,7 +541,7 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
         <div className="p-5 bg-zinc-950 border-t border-zinc-800">
           <button
             onClick={handleGenerate}
-            disabled={isGenerating || !selectedModel}
+            disabled={isGenerating || isProcessing || !selectedModel}
             className="w-full bg-white text-black font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 hover:bg-zinc-200 transition-colors disabled:opacity-50 text-sm"
           >
             {isGenerating ? (
