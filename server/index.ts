@@ -437,12 +437,14 @@ ${refNote}
 Create a realistic, visually compelling image suitable for social media.`.trim();
   }
 
+  const SKIP = (v: string | undefined) => !v || v === 'None' || v === 'Custom';
+
   if (hasRef && useEditInstructionStyle) {
     const sceneParts: string[] = [];
-    if (environment && environment !== 'Custom') sceneParts.push(`${environment} environment`);
-    if (outfitStyle && outfitStyle !== 'Custom') sceneParts.push(`${outfitStyle} outfit`);
-    if (framing && framing !== 'Custom') sceneParts.push(`${framing} framing`);
-    if (mood && mood !== 'Custom') sceneParts.push(`${mood} mood`);
+    if (!SKIP(environment)) sceneParts.push(`${environment} environment`);
+    if (!SKIP(outfitStyle)) sceneParts.push(`${outfitStyle} outfit`);
+    if (!SKIP(framing)) sceneParts.push(`${framing} framing`);
+    if (!SKIP(mood)) sceneParts.push(`${mood} mood`);
     if (visualStyle) sceneParts.push(`${visualStyle} visual style`);
     if (additionalInstructions) sceneParts.push(additionalInstructions);
     return `The reference image shows the EXACT person. Keep their face, hair, skin tone, and body proportions perfectly identical. Place them in a new scene: ${sceneParts.join(', ')}. Photorealistic, cinematic lighting, professional social media quality.`;
@@ -455,10 +457,10 @@ Create a realistic, visually compelling image suitable for social media.`.trim()
   if (hasRef) {
     parts.push('CRITICAL: The reference image shows the EXACT person. Preserve ALL facial features identically — same face shape, eyes, nose, lips, skin tone, hair color and texture. The output person must look like the same individual as the reference. Do NOT change the face or identity.');
   }
-  if (environment && environment !== 'Custom') parts.push(`Environment: ${environment}.`);
-  if (outfitStyle && outfitStyle !== 'Custom') parts.push(`Outfit: ${outfitStyle}.`);
-  if (framing && framing !== 'Custom') parts.push(`Framing: ${framing}.`);
-  if (mood && mood !== 'Custom') parts.push(`Mood: ${mood}.`);
+  if (!SKIP(environment)) parts.push(`Environment: ${environment}.`);
+  if (!SKIP(outfitStyle)) parts.push(`Outfit: ${outfitStyle}.`);
+  if (!SKIP(framing)) parts.push(`Framing: ${framing}.`);
+  if (!SKIP(mood)) parts.push(`Mood: ${mood}.`);
   if (additionalInstructions) parts.push(`Additional details: ${additionalInstructions}`);
   parts.push('Cinematic lighting. Ultra-realistic, professional social media quality.');
 

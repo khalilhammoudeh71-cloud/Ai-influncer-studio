@@ -39,25 +39,25 @@ interface VisualGeneratorProps {
   onSaveImage: (image: GeneratedImage) => void;
 }
 
-const CUSTOM = 'Custom';
+const NONE = 'None';
 
 const ENVIRONMENTS = [
-  CUSTOM, 'Luxury Hotel', 'Modern Apartment', 'Rooftop Lounge', 'Beach Resort',
+  NONE, 'Luxury Hotel', 'Modern Apartment', 'Rooftop Lounge', 'Beach Resort',
   'Yacht Deck', 'Upscale Restaurant', 'Private Gym', 'Beauty Studio',
   'Dental Office', 'Creator Studio', 'City Street', 'Penthouse'
 ];
 
 const OUTFITS = [
-  CUSTOM, 'Casual Chic', 'Luxury Evening', 'Business Professional', 'Fitness Wear',
+  NONE, 'Casual Chic', 'Luxury Evening', 'Business Professional', 'Fitness Wear',
   'Medical Scrubs', 'Edgy Streetwear', 'Glamorous Gown', 'Home Lounge'
 ];
 
 const FRAMING = [
-  CUSTOM, 'Portrait', 'Selfie Style', 'Full Body', 'Half Body', 'Candid', 'Cinematic'
+  NONE, 'Portrait', 'Selfie Style', 'Full Body', 'Half Body', 'Candid', 'Cinematic'
 ];
 
 const MOODS = [
-  CUSTOM, 'Confident', 'Friendly', 'Thoughtful', 'Playful', 'Professional', 'Seductive'
+  NONE, 'Confident', 'Friendly', 'Thoughtful', 'Playful', 'Professional', 'Seductive'
 ];
 
 type PostGenAction = null | 'edit' | 'upscale';
@@ -75,10 +75,10 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
   const [genMode, setGenMode] = useState<GenMode>('image');
   const [prompt, setPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
-  const [selectedEnv, setSelectedEnv] = useState(ENVIRONMENTS[1]);
-  const [selectedOutfit, setSelectedOutfit] = useState(OUTFITS[1]);
-  const [selectedFraming, setSelectedFraming] = useState(FRAMING[1]);
-  const [selectedMood, setSelectedMood] = useState(MOODS[1]);
+  const [selectedEnv, setSelectedEnv] = useState(ENVIRONMENTS[0]);
+  const [selectedOutfit, setSelectedOutfit] = useState(OUTFITS[0]);
+  const [selectedFraming, setSelectedFraming] = useState(FRAMING[0]);
+  const [selectedMood, setSelectedMood] = useState(MOODS[0]);
   const [result, setResult] = useState<GenerateImageResult | null>(null);
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [imageHistory, setImageHistory] = useState<ImageVersion[]>([]);
@@ -787,18 +787,12 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
 
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-zinc-500 uppercase">
-                {(selectedEnv === CUSTOM || selectedOutfit === CUSTOM || selectedFraming === CUSTOM || selectedMood === CUSTOM)
-                  ? 'Your Prompt (describe custom details here)'
-                  : 'Additional Instructions (Optional)'}
+                Additional Instructions (Optional)
               </label>
               <textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                placeholder={
-                  (selectedEnv === CUSTOM || selectedOutfit === CUSTOM || selectedFraming === CUSTOM || selectedMood === CUSTOM)
-                    ? 'Describe everything here — environment, outfit, mood, pose, lighting, etc.'
-                    : 'e.g. Holding a coffee cup, direct eye contact, cinematic lighting...'
-                }
+                placeholder="e.g. Holding a coffee cup, direct eye contact, cinematic lighting..."
                 className="w-full bg-zinc-800 border-zinc-700 rounded-xl px-4 py-3 text-sm text-white min-h-[70px] focus:ring-2 focus:ring-purple-500 outline-none resize-none"
               />
             </div>
