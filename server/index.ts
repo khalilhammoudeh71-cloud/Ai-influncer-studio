@@ -969,15 +969,15 @@ app.post('/api/create-prompts', async (req, res) => {
     const systemPrompt = `You are an expert AI image prompt engineer creating prompts for an AI influencer named ${persona.name}.
 Persona details: Niche: ${persona.niche}. Tone/Style: ${persona.tone}.${persona.visualStyle ? ` Visual Style: ${persona.visualStyle}.` : ''}${persona.platform ? ` Platform: ${persona.platform}.` : ''}
 
-Generate exactly ${n} distinct, production-ready AI image generation prompts based on the user's request.
-Each prompt should be highly detailed, photorealistic, and suitable for social media.
+You MUST generate EXACTLY ${n} distinct, production-ready AI image generation prompts based on the user's request. Do not stop early — write all ${n} prompts before finishing.
+Each prompt should be highly detailed, photorealistic, and suitable for social media. Keep each prompt to 2-3 sentences.
 Include specific details about: lighting, composition, environment, mood, camera angle, and visual style.
-Output ONLY the ${n} prompts, one per line, each starting with its number and a period (e.g. "1. "). No extra commentary.`;
+Output ONLY the ${n} numbered prompts. Format: "1. [prompt]\\n2. [prompt]\\n..." — no extra commentary, no blank lines between prompts.`;
 
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: `${systemPrompt}\n\nUser request: ${request.trim()}`,
-      config: { maxOutputTokens: 2048, temperature: 0.85 },
+      config: { maxOutputTokens: 4096, temperature: 0.85 },
     });
 
     const raw = response.text?.trim() || '';
