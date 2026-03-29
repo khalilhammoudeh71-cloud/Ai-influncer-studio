@@ -977,21 +977,14 @@ Output ONLY the ${n} prompts, one per line, each starting with its number and a 
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: `${systemPrompt}\n\nUser request: ${request.trim()}`,
-      config: { maxOutputTokens: 1024, temperature: 0.85 },
+      config: { maxOutputTokens: 2048, temperature: 0.85 },
     });
 
     const raw = response.text?.trim() || '';
-    const promptRegex = /^\d+[\.\)]\s+([\s\S]+?)(?=\n\d+[\.\)]|\n\n\d+[\.\)]|$)/gm;
-    const prompts: string[] = [];
-    let match: RegExpExecArray | null;
-    while ((match = promptRegex.exec(raw)) !== null) {
-      const p = match[1].trim();
-      if (p.length > 10) prompts.push(p);
-    }
-    if (!prompts.length) {
-      const fallback = raw.split('\n').map((l: string) => l.replace(/^\d+[\.\)]\s*/, '').trim()).filter((p: string) => p.length > 10);
-      prompts.push(...fallback);
-    }
+    const parts = raw.split(/\n(?=\d+[\.\)]\s)/);
+    const prompts: string[] = parts
+      .map((part: string) => part.replace(/^\d+[\.\)]\s+/, '').trim())
+      .filter((p: string) => p.length > 10);
     if (!prompts.length) {
       throw new Error('No prompts returned from AI');
     }
