@@ -610,7 +610,8 @@ async function generateWithWavespeed(
   editApiPath: string | undefined,
   editImageField: 'image' | 'images' | undefined,
   prompt: string,
-  referenceImage?: string
+  referenceImage?: string,
+  imageWeight?: number
 ): Promise<string> {
   const hasRef = !!referenceImage;
   const useEditPath = hasRef && editApiPath;
@@ -633,7 +634,8 @@ async function generateWithWavespeed(
       payload.image = b64Url;
     }
     // Preserve identity: lower strength = output stays closer to the reference face/body
-    payload.strength = 0.65;
+    payload.strength = typeof imageWeight === 'number' ? imageWeight : 0.35;
+    console.log('[Wavespeed] Using strength (imageWeight):', payload.strength);
   }
 
   const url = `https://api.wavespeed.ai${usePath}`;
@@ -935,7 +937,7 @@ app.post('/api/angle-image', async (req, res) => {
 });
 
 app.post('/api/generate-image', async (req, res) => {
-  const { referenceImage, modelId, ...rest } = req.body as ImageGenRequest & { modelId: string };
+  const { referenceImage, modelId, imageWeight, ...rest } = req.body as ImageGenRequest & { modelId: string; imageWeight?: number };
   const prompt = buildPrompt(rest);
 
   if (!modelId) {
@@ -956,7 +958,7 @@ app.post('/api/generate-image', async (req, res) => {
         return res.status(400).json({ error: 'Unknown or unavailable model ID' });
       }
       modelName = modelInfo.name;
-      imageUrl = await generateWithWavespeed(modelInfo.apiPath, modelInfo.editApiPath, modelInfo.editImageField, prompt, referenceImage);
+      imageUrl = await generateWithWavespeed(modelInfo.apiPath, modelInfo.editApiPath, modelInfo.editImageField, prompt, referenceImage, imageWeight);
     } else {
       return res.status(400).json({ error: 'Unknown model ID' });
     }

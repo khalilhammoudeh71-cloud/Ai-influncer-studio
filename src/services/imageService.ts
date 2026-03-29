@@ -28,6 +28,7 @@ export interface GenerateImageParams {
   additionalInstructions?: string;
   isChatContext?: boolean;
   chatPrompt?: string;
+  imageWeight?: number;
 }
 
 export interface GenerateImageResult {
@@ -78,7 +79,7 @@ export async function fetchAllModelTypes(): Promise<{ models: ModelInfo[]; editM
 }
 
 export async function generateImage(params: GenerateImageParams): Promise<GenerateImageResult> {
-  const { persona, modelId, ...restParams } = params;
+  const { persona, modelId, imageWeight, ...restParams } = params;
 
   const payload = {
     modelId,
@@ -88,6 +89,7 @@ export async function generateImage(params: GenerateImageParams): Promise<Genera
     tone: persona.tone,
     visualStyle: persona.visualStyle || 'Realistic, highly detailed',
     referenceImage: persona.referenceImage || null,
+    ...(imageWeight !== undefined ? { imageWeight } : {}),
     ...restParams,
   };
 

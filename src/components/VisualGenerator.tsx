@@ -104,6 +104,7 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
   const [videoResult, setVideoResult] = useState<{ videoUrl: string; model: string } | null>(null);
   const [videoSourceImage, setVideoSourceImage] = useState<string | null>(null);
   const [videoSourceImageName, setVideoSourceImageName] = useState<string | null>(null);
+  const [imageWeight, setImageWeight] = useState(0.35);
 
   const hasRefImage = !!persona.referenceImage;
 
@@ -199,6 +200,7 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
         framing: selectedFraming,
         mood: selectedMood,
         additionalInstructions: prompt,
+        ...(hasRefImage && selectedModelInfo?.hasEditVariant ? { imageWeight } : {}),
       });
       setResult(data);
       const version: ImageVersion = {
@@ -456,6 +458,31 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
                       🔓 Uncensored
                     </span>
                   )}
+                </div>
+              )}
+              {hasRefImage && selectedModelInfo?.hasEditVariant && (
+                <div className="mt-3 p-3 bg-zinc-800/60 rounded-xl border border-zinc-700/50 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-zinc-400 uppercase tracking-wide">
+                      Image Weight
+                    </label>
+                    <span className="text-xs font-mono text-purple-300 bg-purple-500/10 px-2 py-0.5 rounded-full">
+                      {Math.round(imageWeight * 100)}%
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0.1}
+                    max={0.9}
+                    step={0.05}
+                    value={imageWeight}
+                    onChange={(e) => setImageWeight(parseFloat(e.target.value))}
+                    className="w-full accent-purple-500"
+                  />
+                  <div className="flex justify-between text-[10px] text-zinc-500">
+                    <span>Same face</span>
+                    <span>Creative</span>
+                  </div>
                 </div>
               )}
             </div>
