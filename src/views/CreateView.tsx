@@ -247,7 +247,17 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     setActionError(null);
 
     try {
-      const personaWithRef = effectiveRefImage ? { ...persona, referenceImage: effectiveRefImage } : { ...persona, referenceImage: undefined };
+      const isIdentityModel = selectedModelInfo?.isIdentityModel ?? false;
+      const identityFallback = isIdentityModel ? (persona.referenceImage ?? undefined) : undefined;
+      const resolvedRef = effectiveRefImage || identityFallback || undefined;
+
+      if (isIdentityModel && !resolvedRef) {
+        setGlobalError('This model requires a face reference image. Please upload a photo or set a reference image on your persona profile.');
+        setIsGenerating(false);
+        return;
+      }
+
+      const personaWithRef = resolvedRef ? { ...persona, referenceImage: resolvedRef } : { ...persona, referenceImage: undefined };
       const data = await generateImage({
         persona: personaWithRef,
         modelId: selectedModel,
@@ -656,11 +666,20 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
             {selectedModelInfo.provider}
           </span>
-          {hasRefImage && selectedModelInfo.hasEditVariant && (
+          {selectedModelInfo.isIdentityModel && (
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-300 border border-violet-500/30">★ Face-consistent</span>
+          )}
+          {!selectedModelInfo.isIdentityModel && hasRefImage && selectedModelInfo.hasEditVariant && (
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-500/20 text-green-300 border border-green-500/30">Uses reference image</span>
           )}
-          {hasRefImage && !selectedModelInfo.hasEditVariant && (
+          {!selectedModelInfo.isIdentityModel && hasRefImage && !selectedModelInfo.hasEditVariant && (
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/30">Text-only — will ignore reference</span>
+          )}
+          {selectedModelInfo.isIdentityModel && !effectiveRefImage && persona.referenceImage && (
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">Using persona face</span>
+          )}
+          {selectedModelInfo.isIdentityModel && !effectiveRefImage && !persona.referenceImage && (
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/30">⚠ Needs face photo</span>
           )}
           {selectedModelInfo.price > 0 && (
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">${selectedModelInfo.price.toFixed(3)} per image</span>
