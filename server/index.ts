@@ -515,7 +515,8 @@ async function resolveOutputImage(output: string): Promise<string> {
   }
   if (output.startsWith('http')) {
     console.log('[Wavespeed] Output: URL, fetching:', output.substring(0, 120));
-    return await fetchAllowedImage(output);
+    // Use resolveImageToDataUrl so any HTTPS image URL is accepted (not just Wavespeed CDN)
+    return await resolveImageToDataUrl(output);
   }
   const dataUrl = normalizeBase64Output(output);
   console.log('[Wavespeed] Output: raw base64, length:', output.length, 'detected type:', dataUrl.substring(5, dataUrl.indexOf(';')));
