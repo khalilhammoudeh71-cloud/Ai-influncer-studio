@@ -547,47 +547,49 @@ async function extractWavespeedOutput(json: Record<string, unknown>): Promise<st
     return await resolveOutputImage(imageUrl);
   }
 
-  if ((data?.status as string) === 'completed' && (data?.urls as Record<string, string>)?.get) {
-    const pollUrl = (data!.urls as Record<string, string>).get;
-    console.log('[Wavespeed] No outputs yet, polling:', pollUrl.substring(0, 120));
-    if (!isAllowedWavespeedUrl(pollUrl)) {
-      throw new Error('Blocked: poll URL from untrusted host');
+  const asyncStatuses = new Set(['created', 'pending', 'queued', 'processing', 'completed']);
+  const status = data?.status as string | undefined;
+  if (status && asyncStatuses.has(status)) {
+    const pollUrl = (data?.urls as Record<string, string>)?.get
+      || (data?.id ? `https://api.wavespeed.ai/api/v3/predictions/${data.id}/result` : null);
+
+    if (pollUrl && isAllowedWavespeedUrl(pollUrl)) {
+      console.log('[Wavespeed] Async job (status:', status, '). Polling:', pollUrl.substring(0, 120));
+      for (let attempt = 0; attempt < 60; attempt++) {
+        await new Promise(r => setTimeout(r, 3000));
+        const pollRes = await fetch(pollUrl, {
+          headers: { Authorization: `Bearer ${WAVESPEED_API_KEY}` },
+        });
+        const pollJson = await pollRes.json();
+        const pollData = pollJson.data || {};
+        console.log('[Wavespeed] Poll attempt', attempt + 1, 'status:', pollData.status, 'outputs:', (pollData.outputs || []).length);
+
+        if (pollData.status === 'failed') {
+          throw new Error(pollData.error || 'Wavespeed generation failed during polling');
+        }
+
+        const pollOutputs = pollData.outputs || pollJson.outputs || [];
+        if (pollOutputs.length) {
+          return await resolveOutputImage(pollOutputs[0]);
+        }
+
+        const pollOutput = pollData.output as string | undefined;
+        if (pollOutput) {
+          return await resolveOutputImage(pollOutput);
+        }
+
+        const pollImageUrl = (pollData.image_url || pollData.imageUrl || pollData.image || pollData.url) as string | undefined;
+        if (pollImageUrl) {
+          return await resolveOutputImage(pollImageUrl);
+        }
+
+        if (pollData.status === 'completed') {
+          console.log('[Wavespeed] Poll completed but no outputs. Keys:', Object.keys(pollData).join(','));
+          throw new Error('Wavespeed returned completed status but no image data');
+        }
+      }
+      throw new Error('Wavespeed polling timed out after 3 minutes');
     }
-    for (let attempt = 0; attempt < 10; attempt++) {
-      const pollRes = await fetch(pollUrl, {
-        headers: { Authorization: `Bearer ${WAVESPEED_API_KEY}` },
-      });
-      const pollJson = await pollRes.json();
-      const pollData = pollJson.data || {};
-      console.log('[Wavespeed] Poll attempt', attempt + 1, 'status:', pollData.status, 'outputs:', (pollData.outputs || []).length);
-
-      if (pollData.status === 'failed') {
-        throw new Error(pollData.error || 'Wavespeed generation failed during polling');
-      }
-
-      const pollOutputs = pollData.outputs || pollJson.outputs || [];
-      if (pollOutputs.length) {
-        return await resolveOutputImage(pollOutputs[0]);
-      }
-
-      const pollOutput = pollData.output as string | undefined;
-      if (pollOutput) {
-        return await resolveOutputImage(pollOutput);
-      }
-
-      const pollImageUrl = (pollData.image_url || pollData.imageUrl || pollData.image || pollData.url) as string | undefined;
-      if (pollImageUrl) {
-        return await resolveOutputImage(pollImageUrl);
-      }
-
-      if (pollData.status === 'completed' && !pollOutputs.length) {
-        console.log('[Wavespeed] Poll completed but no outputs, full data keys:', Object.keys(pollData).join(','));
-        throw new Error('Wavespeed returned completed status but no image data');
-      }
-
-      await new Promise(r => setTimeout(r, 2000));
-    }
-    throw new Error('Wavespeed polling timed out after 10 attempts');
   }
 
   console.log('[Wavespeed] No outputs found. Full data keys:', data ? Object.keys(data).join(',') : 'none');
