@@ -812,7 +812,7 @@ app.post('/api/generate-content', async (req, res) => {
     }
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: 'gemini-2.5-flash',
       contents: `${systemPrompt}\n\n${userPrompt}`,
       config: {
         maxOutputTokens: 2048,
@@ -878,7 +878,7 @@ Chat rules:
       : `${systemPrompt}\n\nFan: ${userMessage}\n${persona.name}:`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: 'gemini-2.5-flash',
       contents: fullPrompt,
       config: { maxOutputTokens: 400, temperature: 0.92 },
     });
@@ -975,7 +975,7 @@ Include specific details about: lighting, composition, environment, mood, camera
 Output ONLY the ${n} prompts, one per line, each starting with its number and a period (e.g. "1. "). No extra commentary.`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: 'gemini-2.5-flash',
       contents: `${systemPrompt}\n\nUser request: ${request.trim()}`,
       config: { maxOutputTokens: 1024, temperature: 0.85 },
     });
