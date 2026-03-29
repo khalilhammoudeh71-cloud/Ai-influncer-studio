@@ -767,10 +767,14 @@ app.get('/api/models', async (_req, res) => {
 });
 
 function getGeminiClient(): GoogleGenAI {
+  const directKey = process.env.GEMINI_API_KEY;
+  if (directKey) {
+    return new GoogleGenAI({ apiKey: directKey });
+  }
   const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
   const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
   if (!apiKey || !baseUrl) {
-    throw new Error('Gemini integration not configured. Please enable it in your Replit integrations.');
+    throw new Error('Gemini API key not configured. Please add GEMINI_API_KEY to your environment variables.');
   }
   return new GoogleGenAI({ apiKey, httpOptions: { baseUrl } });
 }
