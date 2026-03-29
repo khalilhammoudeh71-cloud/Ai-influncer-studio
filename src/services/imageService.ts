@@ -8,6 +8,8 @@ export interface ModelInfo {
   price: number;
   description: string;
   hasEditVariant: boolean;
+  editHasStrengthControl?: boolean;
+  isIdentityModel?: boolean;
   nsfw?: boolean;
 }
 

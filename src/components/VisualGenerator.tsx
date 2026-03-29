@@ -116,7 +116,7 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
         setUpscaleModels(um);
         setVideoModels(vm);
         const preferred = hasRefImage
-          ? m.find(x => x.hasEditVariant) || m[0]
+          ? m.find(x => x.isIdentityModel) || m.find(x => x.hasEditVariant) || m[0]
           : m[0];
         if (preferred) setSelectedModel(preferred.id);
         if (em.length > 0) setSelectedEditModel(em[0].id);
@@ -130,6 +130,8 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
   const sortedModels = useMemo(() => {
     if (!hasRefImage) return models;
     return [...models].sort((a, b) => {
+      if (a.isIdentityModel && !b.isIdentityModel) return -1;
+      if (!a.isIdentityModel && b.isIdentityModel) return 1;
       if (a.hasEditVariant && !b.hasEditVariant) return -1;
       if (!a.hasEditVariant && b.hasEditVariant) return 1;
       return 0;
@@ -200,7 +202,7 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
         framing: selectedFraming,
         mood: selectedMood,
         additionalInstructions: prompt,
-        ...(hasRefImage && selectedModelInfo?.hasEditVariant ? { imageWeight } : {}),
+        ...(hasRefImage && selectedModelInfo?.hasEditVariant && selectedModelInfo.editHasStrengthControl ? { imageWeight } : {}),
       });
       setResult(data);
       const version: ImageVersion = {
@@ -424,7 +426,7 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
                       <optgroup key={provider} label={provider}>
                         {providerModels.map((m) => (
                           <option key={m.id} value={m.id}>
-                            {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}{m.nsfw ? ' 🔓 NSFW' : ''}{hasRefImage && !m.hasEditVariant ? ' ⚠ No ref support' : ''}
+                            {m.isIdentityModel ? '★ ' : ''}{m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}{m.nsfw ? ' 🔓 NSFW' : ''}{hasRefImage && !m.hasEditVariant ? ' ⚠ No ref support' : ''}
                           </option>
                         ))}
                       </optgroup>
@@ -438,7 +440,12 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
                     {selectedModelInfo.provider}
                   </span>
-                  {hasRefImage && selectedModelInfo.hasEditVariant && (
+                  {hasRefImage && selectedModelInfo.isIdentityModel && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                      ★ Face-consistent
+                    </span>
+                  )}
+                  {hasRefImage && selectedModelInfo.hasEditVariant && !selectedModelInfo.isIdentityModel && (
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-500/20 text-green-300 border border-green-500/30">
                       Uses reference image
                     </span>
@@ -460,7 +467,7 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
                   )}
                 </div>
               )}
-              {hasRefImage && selectedModelInfo?.hasEditVariant && (
+              {hasRefImage && selectedModelInfo?.hasEditVariant && selectedModelInfo.editHasStrengthControl && (
                 <div className="mt-3 p-3 bg-zinc-800/60 rounded-xl border border-zinc-700/50 space-y-2">
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-bold text-zinc-400 uppercase tracking-wide">

@@ -33,6 +33,8 @@ interface ModelInfo {
   hasEditVariant: boolean;
   editApiPath?: string;
   editImageField?: 'image' | 'images';
+  editHasStrengthControl?: boolean;
+  isIdentityModel?: boolean;
   nsfw?: boolean;
 }
 
@@ -168,14 +170,15 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
       return `/api/v3/${m.model_id}`;
     }
 
-    const editLookup = new Map<string, { model: { model_id: string; api_schema?: { api_schemas?: { api_path: string; request_schema?: { properties?: Record<string, unknown> } }[] } }; imageField: 'image' | 'images' }>();
+    const editLookup = new Map<string, { model: { model_id: string; api_schema?: { api_schemas?: { api_path: string; request_schema?: { properties?: Record<string, unknown> } }[] } }; imageField: 'image' | 'images'; hasStrengthControl: boolean }>();
     imageToImage.forEach((m: { model_id: string; api_schema?: { api_schemas?: { api_path: string; request_schema?: { properties?: Record<string, unknown> } }[] } }) => {
       const base = m.model_id
         .replace('/edit', '')
         .replace('/image-to-image', '');
       const props = m.api_schema?.api_schemas?.[0]?.request_schema?.properties || {};
       const imageField: 'image' | 'images' = props.images ? 'images' : 'image';
-      editLookup.set(base, { model: m, imageField });
+      const hasStrengthControl = 'strength' in props || 'denoise_strength' in props;
+      editLookup.set(base, { model: m, imageField, hasStrengthControl });
     });
 
     const editModelIds = new Set(imageToImage.map((m: { model_id: string }) => m.model_id));
@@ -211,9 +214,42 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
           ? resolveApiPath(editModel)
           : undefined,
         editImageField: hasRealEditVariant ? editEntry?.imageField : undefined,
+        editHasStrengthControl: hasRealEditVariant ? (editEntry?.hasStrengthControl ?? false) : undefined,
         nsfw: isNsfwModel(m.model_id),
       };
     });
+
+    const identityModelDefs = [
+      {
+        modelId: 'wavespeed-ai/flux-pulid',
+        name: 'FLUX PuLID',
+        price: 0.02,
+        description: 'Face-consistent generation via PuLID identity injection',
+      },
+      {
+        modelId: 'wavespeed-ai/instant-character',
+        name: 'Instant Character',
+        price: 0.10,
+        description: 'Identity-consistent character generation',
+      },
+    ];
+    const identityModels: ModelInfo[] = identityModelDefs
+      .filter(def => rawModels.some((m: { model_id: string }) => m.model_id === def.modelId))
+      .map(def => ({
+        id: `wavespeed:${def.modelId}`,
+        name: def.name,
+        provider: 'Wavespeed AI',
+        type: 'text-to-image' as const,
+        price: def.price,
+        description: def.description,
+        apiPath: `/api/v3/${def.modelId}`,
+        hasEditVariant: true,
+        editApiPath: `/api/v3/${def.modelId}`,
+        editImageField: 'image' as const,
+        editHasStrengthControl: false,
+        isIdentityModel: true,
+        nsfw: false,
+      }));
 
     models.sort((a, b) => a.provider.localeCompare(b.provider) || a.name.localeCompare(b.name));
 
@@ -338,12 +374,12 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
     ];
     videoModels.sort((a, b) => a.provider.localeCompare(b.provider) || a.name.localeCompare(b.name));
 
-    cachedModels = models;
+    cachedModels = [...identityModels, ...models];
     cachedEditModels = editModels;
     cachedUpscaleModels = upscaleModels;
     cachedVideoModels = videoModels;
     cacheTimestamp = Date.now();
-    return models;
+    return cachedModels;
   } catch (err) {
     console.error('[Wavespeed] Failed to fetch models:', err);
     return cachedModels || [];
@@ -381,11 +417,17 @@ interface ImageGenRequest {
   referenceImage?: string;
 }
 
-function buildPrompt(body: ImageGenRequest): string {
+function buildPrompt(body: ImageGenRequest, useEditInstructionStyle = false): string {
   const { personaName, niche, tone, visualStyle, environment, outfitStyle, framing, mood, additionalInstructions, isChatContext, chatPrompt, referenceImage } = body;
   const hasRef = !!referenceImage;
 
   if (isChatContext) {
+    if (hasRef && useEditInstructionStyle) {
+      const sceneParts: string[] = [];
+      if (chatPrompt) sceneParts.push(chatPrompt);
+      if (visualStyle) sceneParts.push(`Visual style: ${visualStyle}`);
+      return `The reference image shows the EXACT person. Keep their face, hair, skin tone, and body proportions identical. Generate them in the following scene: ${sceneParts.join('. ')}. Photorealistic, high-quality social media photo.`;
+    }
     const refNote = hasRef
       ? 'CRITICAL: The reference image shows the EXACT person to depict. Preserve all facial features identically — same face shape, eyes, nose, mouth, skin tone, hair color and texture. The person must look like the same individual.'
       : '';
@@ -393,6 +435,17 @@ function buildPrompt(body: ImageGenRequest): string {
 The user requested: "${chatPrompt}".
 ${refNote}
 Create a realistic, visually compelling image suitable for social media.`.trim();
+  }
+
+  if (hasRef && useEditInstructionStyle) {
+    const sceneParts: string[] = [];
+    if (environment && environment !== 'Custom') sceneParts.push(`${environment} environment`);
+    if (outfitStyle && outfitStyle !== 'Custom') sceneParts.push(`${outfitStyle} outfit`);
+    if (framing && framing !== 'Custom') sceneParts.push(`${framing} framing`);
+    if (mood && mood !== 'Custom') sceneParts.push(`${mood} mood`);
+    if (visualStyle) sceneParts.push(`${visualStyle} visual style`);
+    if (additionalInstructions) sceneParts.push(additionalInstructions);
+    return `The reference image shows the EXACT person. Keep their face, hair, skin tone, and body proportions perfectly identical. Place them in a new scene: ${sceneParts.join(', ')}. Photorealistic, cinematic lighting, professional social media quality.`;
   }
 
   const parts = [
@@ -611,12 +664,13 @@ async function generateWithWavespeed(
   editImageField: 'image' | 'images' | undefined,
   prompt: string,
   referenceImage?: string,
-  imageWeight?: number
+  imageWeight?: number,
+  editHasStrengthControl?: boolean
 ): Promise<string> {
   const hasRef = !!referenceImage;
   const useEditPath = hasRef && editApiPath;
   const usePath = useEditPath ? editApiPath! : apiPath;
-  console.log('[Wavespeed] Generate:', { hasRef, usePath, apiPath });
+  console.log('[Wavespeed] Generate:', { hasRef, usePath, apiPath, editHasStrengthControl });
 
   const payload: Record<string, unknown> = {
     prompt,
@@ -633,12 +687,15 @@ async function generateWithWavespeed(
     } else {
       payload.image = b64Url;
     }
-    // Preserve identity: lower strength = output stays closer to the reference face/body
-    const clampedWeight = (typeof imageWeight === 'number' && isFinite(imageWeight))
-      ? Math.min(0.9, Math.max(0.1, imageWeight))
-      : 0.35;
-    payload.strength = clampedWeight;
-    console.log('[Wavespeed] Using strength (imageWeight):', payload.strength);
+    if (editHasStrengthControl) {
+      const clampedWeight = (typeof imageWeight === 'number' && isFinite(imageWeight))
+        ? Math.min(0.9, Math.max(0.1, imageWeight))
+        : 0.35;
+      payload.strength = clampedWeight;
+      console.log('[Wavespeed] Using strength (imageWeight):', payload.strength);
+    } else {
+      console.log('[Wavespeed] Model does not support strength param — using instruction-based reference mode');
+    }
   }
 
   const url = `https://api.wavespeed.ai${usePath}`;
@@ -941,7 +998,6 @@ app.post('/api/angle-image', async (req, res) => {
 
 app.post('/api/generate-image', async (req, res) => {
   const { referenceImage, modelId, imageWeight, ...rest } = req.body as ImageGenRequest & { modelId: string; imageWeight?: number };
-  const prompt = buildPrompt(rest);
 
   if (!modelId) {
     return res.status(400).json({ error: 'modelId is required' });
@@ -952,6 +1008,7 @@ app.post('/api/generate-image', async (req, res) => {
     let modelName = modelId;
 
     if (modelId === 'replit:gpt-image-1') {
+      const prompt = buildPrompt({ ...rest, referenceImage });
       imageUrl = await generateWithReplit(prompt, referenceImage);
       modelName = 'gpt-image-1';
     } else if (modelId.startsWith('wavespeed:')) {
@@ -960,8 +1017,13 @@ app.post('/api/generate-image', async (req, res) => {
       if (!modelInfo) {
         return res.status(400).json({ error: 'Unknown or unavailable model ID' });
       }
+      const hasRef = !!referenceImage;
+      const useEditPath = hasRef && !!modelInfo.editApiPath;
+      const useInstructionStyle = useEditPath && !modelInfo.editHasStrengthControl;
+      const prompt = buildPrompt({ ...rest, referenceImage }, useInstructionStyle);
+      console.log('[generate-image] Model:', modelInfo.name, '| hasRef:', hasRef, '| useEditPath:', useEditPath, '| useInstructionStyle:', useInstructionStyle, '| editHasStrengthControl:', modelInfo.editHasStrengthControl);
       modelName = modelInfo.name;
-      imageUrl = await generateWithWavespeed(modelInfo.apiPath, modelInfo.editApiPath, modelInfo.editImageField, prompt, referenceImage, imageWeight);
+      imageUrl = await generateWithWavespeed(modelInfo.apiPath, modelInfo.editApiPath, modelInfo.editImageField, prompt, referenceImage, imageWeight, modelInfo.editHasStrengthControl);
     } else {
       return res.status(400).json({ error: 'Unknown model ID' });
     }
