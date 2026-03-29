@@ -31,6 +31,7 @@ import {
   generateVideo,
   generateContent,
   enhancePrompt,
+  createPrompts,
   fetchAllModelTypes,
   editImage,
   upscaleImage,
@@ -110,6 +111,14 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const [textTopic, setTextTopic] = useState('');
   const [textResult, setTextResult] = useState('');
   const [sceneCount, setSceneCount] = useState(3);
+
+  const [promptTab, setPromptTab] = useState<'create' | 'enhance'>('create');
+  const [createRequest, setCreateRequest] = useState('');
+  const [promptCount, setPromptCount] = useState(3);
+  const [createdPrompts, setCreatedPrompts] = useState<string[]>([]);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [copiedPromptIndex, setCopiedPromptIndex] = useState<number | null>(null);
 
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [editModels, setEditModels] = useState<ModelInfo[]>([]);
@@ -386,6 +395,38 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     } finally {
       setIsGenerating(false);
     }
+  };
+
+  const handleCreatePrompts = async () => {
+    if (!createRequest.trim()) return;
+    setIsCreating(true);
+    setCreateError(null);
+    setCreatedPrompts([]);
+    try {
+      const prompts = await createPrompts({
+        request: createRequest,
+        count: promptCount,
+        persona: {
+          name: persona.name,
+          niche: persona.niche,
+          tone: persona.tone,
+          visualStyle: persona.visualStyle,
+          platform: persona.platform,
+        },
+      });
+      setCreatedPrompts(prompts);
+    } catch (err: unknown) {
+      setCreateError(err instanceof Error ? err.message : 'Prompt creation failed.');
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const copyPrompt = (text: string, index: number) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedPromptIndex(index);
+      setTimeout(() => setCopiedPromptIndex(null), 1800);
+    });
   };
 
   const handleAngleGenerate = async () => {
@@ -940,18 +981,136 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
   const renderTextMode = () => {
     const isPromptMode = mode === 'prompt';
-    const isTranscriptMode = mode === 'transcript';
     const isMultiScene = mode === 'multi-scene';
     const placeholders: Record<string, string> = {
-      'prompt': 'Enter a topic or idea for your AI image/video prompt...',
+      'prompt': 'Paste a rough prompt idea to polish it...',
       'transcript': 'Enter a topic or hook for your video script...',
       'multi-scene': 'Enter a topic for your multi-scene video script...',
     };
     const buttonLabels: Record<string, string> = {
-      'prompt': 'Generate Prompt',
+      'prompt': 'Enhance Prompt',
       'transcript': 'Generate Transcript',
       'multi-scene': 'Generate Multi-Scene Script',
     };
+
+    if (isPromptMode) {
+      return (
+        <div className="space-y-4">
+          <div className="flex bg-zinc-800/60 rounded-xl p-1 gap-1">
+            {(['create', 'enhance'] as const).map(tab => (
+              <button
+                key={tab}
+                onClick={() => setPromptTab(tab)}
+                className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all capitalize ${promptTab === tab ? 'bg-gradient-to-r from-emerald-600 to-teal-500 text-white shadow' : 'text-zinc-400 hover:text-white'}`}
+              >
+                {tab === 'create' ? '✦ Create' : '⚡ Enhance'}
+              </button>
+            ))}
+          </div>
+
+          {promptTab === 'create' ? (
+            <div className="space-y-4">
+              <textarea
+                value={createRequest}
+                onChange={e => setCreateRequest(e.target.value)}
+                placeholder={`e.g. "3 luxury hotel rooftop prompts at golden hour" or "beach photoshoot, moody cinematic lighting"`}
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder-zinc-500 resize-none h-24 outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-zinc-500 uppercase">Number of Prompts</label>
+                <div className="flex gap-2">
+                  {[1, 3, 5].map(n => (
+                    <button
+                      key={n}
+                      onClick={() => setPromptCount(n)}
+                      className={`px-4 py-1.5 rounded-lg text-sm font-bold transition-all ${promptCount === n ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <button
+                onClick={handleCreatePrompts}
+                disabled={isCreating || !createRequest.trim()}
+                className="w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-emerald-600 to-teal-500 hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+              >
+                {isCreating ? <><Loader2 className="w-4 h-4 animate-spin" /> Creating prompts...</> : <><Sparkles className="w-4 h-4" /> Create Prompts</>}
+              </button>
+              {createError && (
+                <div className="flex items-start gap-2 bg-red-500/10 border border-red-500/30 rounded-xl p-3 text-sm text-red-400">
+                  <span className="shrink-0 mt-0.5">⚠</span> {createError}
+                </div>
+              )}
+              {createdPrompts.length > 0 && (
+                <div className="space-y-3">
+                  {createdPrompts.map((p, i) => (
+                    <div key={i} className="bg-zinc-800/50 border border-zinc-700 rounded-2xl p-4 relative group">
+                      <div className="absolute top-3 right-3 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => copyPrompt(p, i)}
+                          className="p-1.5 bg-zinc-700 hover:bg-zinc-600 rounded-lg transition-colors"
+                          title="Copy prompt"
+                        >
+                          {copiedPromptIndex === i ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5 text-zinc-400" />}
+                        </button>
+                      </div>
+                      <p className="text-xs text-emerald-400 font-bold mb-1.5 uppercase tracking-wide">Prompt {i + 1}</p>
+                      <p className="text-sm text-gray-300 leading-relaxed pr-10">{p}</p>
+                      <button
+                        onClick={() => copyPrompt(p, i)}
+                        className="mt-3 text-xs text-emerald-400 hover:text-emerald-300 font-semibold transition-colors flex items-center gap-1"
+                      >
+                        {copiedPromptIndex === i ? <><Check className="w-3 h-3" /> Copied!</> : <><Copy className="w-3 h-3" /> Copy prompt</>}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <textarea
+                value={textTopic}
+                onChange={e => setTextTopic(e.target.value)}
+                placeholder={placeholders['prompt']}
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder-zinc-500 resize-none h-24 outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+              <button
+                onClick={handleTextGenerate}
+                disabled={isGenerating || !textTopic.trim()}
+                className="w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-emerald-600 to-teal-500 hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+              >
+                {isGenerating ? <><Loader2 className="w-4 h-4 animate-spin" /> Enhancing...</> : <><Sparkles className="w-4 h-4" /> Enhance Prompt</>}
+              </button>
+              {textResult && (
+                <div className="bg-zinc-800/50 border border-zinc-700 rounded-2xl p-4 relative">
+                  <div className="absolute top-3 right-3 flex gap-1.5">
+                    <button onClick={() => copyToClipboard(textResult)} className="p-1.5 bg-zinc-700 hover:bg-zinc-600 rounded-lg transition-colors" title="Copy">
+                      {copied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5 text-zinc-400" />}
+                    </button>
+                    <button
+                      onClick={() => {
+                        const blob = new Blob([textResult], { type: 'text/plain' });
+                        const url = URL.createObjectURL(blob);
+                        downloadFile(url, 'txt');
+                        URL.revokeObjectURL(url);
+                      }}
+                      className="p-1.5 bg-zinc-700 hover:bg-zinc-600 rounded-lg transition-colors" title="Export"
+                    >
+                      <Download className="w-3.5 h-3.5 text-zinc-400" />
+                    </button>
+                  </div>
+                  <div className="prose prose-invert prose-sm max-w-none pr-16">
+                    <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{textResult}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      );
+    }
 
     return (
       <div className="space-y-4">

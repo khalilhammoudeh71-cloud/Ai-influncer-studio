@@ -180,6 +180,29 @@ export async function generateVideo(prompt: string, modelId: string, sourceImage
   return { videoUrl: data.videoUrl, model: data.model };
 }
 
+export async function createPrompts(params: {
+  request: string;
+  count: number;
+  persona: { name: string; niche: string; tone: string; visualStyle?: string; platform?: string };
+}): Promise<string[]> {
+  const response = await fetch('/api/create-prompts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+
+  const contentType = response.headers.get('content-type');
+  if (!contentType || !contentType.includes('application/json')) {
+    throw new Error('Prompt API not reachable. Make sure the backend server is running.');
+  }
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || 'Prompt creation failed.');
+  }
+  return data.prompts as string[];
+}
+
 export async function enhancePrompt(text: string): Promise<string> {
   const response = await fetch('/api/enhance-prompt', {
     method: 'POST',

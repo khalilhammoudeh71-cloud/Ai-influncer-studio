@@ -944,6 +944,55 @@ app.post('/api/enhance-prompt', async (req, res) => {
   }
 });
 
+app.post('/api/create-prompts', async (req, res) => {
+  const { request, count, persona } = req.body as {
+    request: string;
+    count: number;
+    persona: { name: string; niche: string; tone: string; visualStyle?: string; platform?: string };
+  };
+
+  if (!request || typeof request !== 'string' || !request.trim()) {
+    return res.status(400).json({ error: 'request is required' });
+  }
+  if (!persona || !persona.name) {
+    return res.status(400).json({ error: 'persona is required' });
+  }
+
+  const n = Math.min(Math.max(Math.round(count || 3), 1), 10);
+
+  try {
+    const ai = getGeminiClient();
+    const systemPrompt = `You are an expert AI image prompt engineer creating prompts for an AI influencer named ${persona.name}.
+Persona details: Niche: ${persona.niche}. Tone/Style: ${persona.tone}.${persona.visualStyle ? ` Visual Style: ${persona.visualStyle}.` : ''}${persona.platform ? ` Platform: ${persona.platform}.` : ''}
+
+Generate exactly ${n} distinct, production-ready AI image generation prompts based on the user's request.
+Each prompt should be highly detailed, photorealistic, and suitable for social media.
+Include specific details about: lighting, composition, environment, mood, camera angle, and visual style.
+Output ONLY the ${n} prompts, one per line, each starting with its number and a period (e.g. "1. "). No extra commentary.`;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: `${systemPrompt}\n\nUser request: ${request.trim()}`,
+      config: { maxOutputTokens: 1024, temperature: 0.85 },
+    });
+
+    const raw = response.text?.trim() || '';
+    const lines = raw.split('\n').map((l: string) => l.trim()).filter(Boolean);
+    const prompts: string[] = lines
+      .map((line: string) => line.replace(/^\d+[\.\)]\s*/, '').trim())
+      .filter((p: string) => p.length > 10);
+
+    if (!prompts.length) {
+      throw new Error('No prompts returned from AI');
+    }
+
+    return res.json({ prompts: prompts.slice(0, n) });
+  } catch (err) {
+    console.error('[create-prompts] Error:', err instanceof Error ? err.message : err);
+    return res.status(500).json({ error: err instanceof Error ? err.message : 'Prompt creation failed' });
+  }
+});
+
 app.post('/api/angle-image', async (req, res) => {
   const { imageBase64, modelId, horizontalAngle, verticalAngle, distance } = req.body as {
     imageBase64: string;
