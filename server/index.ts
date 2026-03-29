@@ -625,11 +625,15 @@ async function generateWithWavespeed(
 
   if (useEditPath) {
     const b64Url = await resolveImageToDataUrl(referenceImage!);
-    if (editImageField === 'images') {
+    const imageField = editImageField === 'images' ? 'images' : 'image';
+    console.log('[Wavespeed] Sending reference image via field:', imageField, '(data URL length:', b64Url.length, ')');
+    if (imageField === 'images') {
       payload.images = [b64Url];
     } else {
       payload.image = b64Url;
     }
+    // Preserve identity: lower strength = output stays closer to the reference face/body
+    payload.strength = 0.65;
   }
 
   const url = `https://api.wavespeed.ai${usePath}`;
