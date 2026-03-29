@@ -634,7 +634,10 @@ async function generateWithWavespeed(
       payload.image = b64Url;
     }
     // Preserve identity: lower strength = output stays closer to the reference face/body
-    payload.strength = typeof imageWeight === 'number' ? imageWeight : 0.35;
+    const clampedWeight = (typeof imageWeight === 'number' && isFinite(imageWeight))
+      ? Math.min(0.9, Math.max(0.1, imageWeight))
+      : 0.35;
+    payload.strength = clampedWeight;
     console.log('[Wavespeed] Using strength (imageWeight):', payload.strength);
   }
 
