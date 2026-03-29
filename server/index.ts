@@ -474,10 +474,25 @@ async function resolveImageToDataUrl(input: string): Promise<string> {
     return input;
   }
   if (input.startsWith('http://') || input.startsWith('https://')) {
-    if (!isAllowedWavespeedUrl(input)) {
-      throw new Error('Only Wavespeed CDN URLs or base64/data URLs are accepted as source images');
+    // For Wavespeed URLs use the existing trusted fetch path
+    if (isAllowedWavespeedUrl(input)) {
+      return await fetchAllowedImage(input);
     }
-    return await fetchAllowedImage(input);
+    // For any other HTTPS image URL (e.g. visual library images from other CDNs),
+    // fetch and validate that the response is actually an image
+    if (input.startsWith('https://')) {
+      const imgRes = await fetch(input);
+      if (!imgRes.ok) throw new Error(`Failed to fetch source image: ${imgRes.status}`);
+      const ct = imgRes.headers.get('content-type') || '';
+      if (!ct.startsWith('image/')) {
+        throw new Error(`Source URL did not return an image (got: ${ct})`);
+      }
+      const imgBuf = Buffer.from(await imgRes.arrayBuffer());
+      const mimeType = ct.split(';')[0].trim();
+      console.log('[Image] Fetched external image, size:', imgBuf.length, 'type:', mimeType);
+      return `data:${mimeType};base64,${imgBuf.toString('base64')}`;
+    }
+    throw new Error('Only HTTPS image URLs or base64/data URLs are accepted as source images');
   }
   return `data:image/png;base64,${input}`;
 }
