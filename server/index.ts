@@ -1006,9 +1006,10 @@ app.post('/api/generate-image', async (req, res) => {
   try {
     let imageUrl: string;
     let modelName = modelId;
+    let prompt = '';
 
     if (modelId === 'replit:gpt-image-1') {
-      const prompt = buildPrompt({ ...rest, referenceImage });
+      prompt = buildPrompt({ ...rest, referenceImage });
       imageUrl = await generateWithReplit(prompt, referenceImage);
       modelName = 'gpt-image-1';
     } else if (modelId.startsWith('wavespeed:')) {
@@ -1020,7 +1021,7 @@ app.post('/api/generate-image', async (req, res) => {
       const hasRef = !!referenceImage;
       const useEditPath = hasRef && !!modelInfo.editApiPath;
       const useInstructionStyle = useEditPath && !modelInfo.editHasStrengthControl;
-      const prompt = buildPrompt({ ...rest, referenceImage }, useInstructionStyle);
+      prompt = buildPrompt({ ...rest, referenceImage }, useInstructionStyle);
       console.log('[generate-image] Model:', modelInfo.name, '| hasRef:', hasRef, '| useEditPath:', useEditPath, '| useInstructionStyle:', useInstructionStyle, '| editHasStrengthControl:', modelInfo.editHasStrengthControl);
       modelName = modelInfo.name;
       imageUrl = await generateWithWavespeed(modelInfo.apiPath, modelInfo.editApiPath, modelInfo.editImageField, prompt, referenceImage, imageWeight, modelInfo.editHasStrengthControl);
