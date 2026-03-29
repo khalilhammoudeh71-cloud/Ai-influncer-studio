@@ -977,11 +977,17 @@ Output ONLY the ${n} prompts, one per line, each starting with its number and a 
     });
 
     const raw = response.text?.trim() || '';
-    const lines = raw.split('\n').map((l: string) => l.trim()).filter(Boolean);
-    const prompts: string[] = lines
-      .map((line: string) => line.replace(/^\d+[\.\)]\s*/, '').trim())
-      .filter((p: string) => p.length > 10);
-
+    const promptRegex = /^\d+[\.\)]\s+([\s\S]+?)(?=\n\d+[\.\)]|\n\n\d+[\.\)]|$)/gm;
+    const prompts: string[] = [];
+    let match: RegExpExecArray | null;
+    while ((match = promptRegex.exec(raw)) !== null) {
+      const p = match[1].trim();
+      if (p.length > 10) prompts.push(p);
+    }
+    if (!prompts.length) {
+      const fallback = raw.split('\n').map((l: string) => l.replace(/^\d+[\.\)]\s*/, '').trim()).filter((p: string) => p.length > 10);
+      prompts.push(...fallback);
+    }
     if (!prompts.length) {
       throw new Error('No prompts returned from AI');
     }

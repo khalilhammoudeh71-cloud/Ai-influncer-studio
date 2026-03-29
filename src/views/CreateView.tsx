@@ -1057,12 +1057,20 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                       </div>
                       <p className="text-xs text-emerald-400 font-bold mb-1.5 uppercase tracking-wide">Prompt {i + 1}</p>
                       <p className="text-sm text-gray-300 leading-relaxed pr-10">{p}</p>
-                      <button
-                        onClick={() => copyPrompt(p, i)}
-                        className="mt-3 text-xs text-emerald-400 hover:text-emerald-300 font-semibold transition-colors flex items-center gap-1"
-                      >
-                        {copiedPromptIndex === i ? <><Check className="w-3 h-3" /> Copied!</> : <><Copy className="w-3 h-3" /> Copy prompt</>}
-                      </button>
+                      <div className="mt-3 flex items-center gap-3">
+                        <button
+                          onClick={() => copyPrompt(p, i)}
+                          className="text-xs text-zinc-400 hover:text-white font-semibold transition-colors flex items-center gap-1"
+                        >
+                          {copiedPromptIndex === i ? <><Check className="w-3 h-3 text-green-400" /> Copied!</> : <><Copy className="w-3 h-3" /> Copy</>}
+                        </button>
+                        <button
+                          onClick={() => { setImagePrompt(p); setMode('image'); setGlobalError(null); }}
+                          className="text-xs text-emerald-400 hover:text-emerald-300 font-bold transition-colors flex items-center gap-1"
+                        >
+                          <ChevronsRight className="w-3 h-3" /> Use this prompt
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
