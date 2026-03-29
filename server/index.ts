@@ -382,24 +382,32 @@ interface ImageGenRequest {
 }
 
 function buildPrompt(body: ImageGenRequest): string {
-  const { personaName, niche, tone, visualStyle, environment, outfitStyle, framing, mood, additionalInstructions, isChatContext, chatPrompt } = body;
+  const { personaName, niche, tone, visualStyle, environment, outfitStyle, framing, mood, additionalInstructions, isChatContext, chatPrompt, referenceImage } = body;
+  const hasRef = !!referenceImage;
 
   if (isChatContext) {
+    const refNote = hasRef
+      ? 'CRITICAL: The reference image shows the EXACT person to depict. Preserve all facial features identically — same face shape, eyes, nose, mouth, skin tone, hair color and texture. The person must look like the same individual.'
+      : '';
     return `A high-quality, photorealistic social media photo of an AI influencer named ${personaName}. Niche: ${niche}. Tone/Style: ${tone}. Visual Style: ${visualStyle}.
 The user requested: "${chatPrompt}".
-Create a realistic, visually compelling image suitable for social media. Maintain consistent, detailed facial features matching any provided reference.`;
+${refNote}
+Create a realistic, visually compelling image suitable for social media.`.trim();
   }
 
   const parts = [
     `A high-quality, photorealistic social media photo of an AI influencer named ${personaName}.`,
     `Niche: ${niche}. Tone/Style: ${tone}. Visual Style: ${visualStyle}.`,
   ];
+  if (hasRef) {
+    parts.push('CRITICAL: The reference image shows the EXACT person. Preserve ALL facial features identically — same face shape, eyes, nose, lips, skin tone, hair color and texture. The output person must look like the same individual as the reference. Do NOT change the face or identity.');
+  }
   if (environment && environment !== 'Custom') parts.push(`Environment: ${environment}.`);
   if (outfitStyle && outfitStyle !== 'Custom') parts.push(`Outfit: ${outfitStyle}.`);
   if (framing && framing !== 'Custom') parts.push(`Framing: ${framing}.`);
   if (mood && mood !== 'Custom') parts.push(`Mood: ${mood}.`);
   if (additionalInstructions) parts.push(`Additional details: ${additionalInstructions}`);
-  parts.push('Create a realistic, highly detailed image suitable for a professional social media post. Maintain consistent facial features matching any provided reference. Cinematic lighting.');
+  parts.push('Cinematic lighting. Ultra-realistic, professional social media quality.');
 
   return parts.join('\n');
 }
