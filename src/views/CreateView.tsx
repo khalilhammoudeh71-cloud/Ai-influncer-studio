@@ -426,6 +426,17 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     navigator.clipboard.writeText(text).then(() => {
       setCopiedPromptIndex(index);
       setTimeout(() => setCopiedPromptIndex(null), 1800);
+    }).catch(() => {
+      const el = document.createElement('textarea');
+      el.value = text;
+      el.style.position = 'fixed';
+      el.style.opacity = '0';
+      document.body.appendChild(el);
+      el.select();
+      try { document.execCommand('copy'); } catch (_) {}
+      document.body.removeChild(el);
+      setCopiedPromptIndex(index);
+      setTimeout(() => setCopiedPromptIndex(null), 1800);
     });
   };
 
