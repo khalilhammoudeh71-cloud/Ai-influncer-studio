@@ -211,7 +211,6 @@ function App() {
     switch (activeTab) {
       case 'personas': return <PersonasView personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} selectedId={selectedPersonaId} />;
       case 'planner': return <PlannerView persona={activePersona} personas={personas} onSelectPersona={setSelectedPersonaId} />;
-      case 'create': return <CreateView persona={activePersona} personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} />;
       case 'assistant': return <AssistantView persona={activePersona} personas={personas} />;
       case 'chat': return <ChatView personas={personas} activePersona={activePersona} />;
       case 'settings': return <SettingsView />;
@@ -222,7 +221,10 @@ function App() {
   return (
     <div className="flex flex-col h-screen bg-[#0A0A0A] text-white overflow-hidden font-sans">
       <main className="flex-1 overflow-y-auto pb-24">
-        {renderContent()}
+        <div style={{ display: activeTab === 'create' ? 'block' : 'none' }}>
+          <CreateView persona={activePersona} personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} />
+        </div>
+        {activeTab !== 'create' && renderContent()}
       </main>
       <nav className="fixed bottom-0 left-0 right-0 bg-[#121212]/90 backdrop-blur-xl border-t border-white/5 pb-8 pt-3 px-2 z-50">
         <div className="flex justify-around items-center max-w-md mx-auto">
