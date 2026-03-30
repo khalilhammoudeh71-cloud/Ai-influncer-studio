@@ -64,11 +64,13 @@ const NSFW_MODEL_FRAGMENTS = [
   '/wan-2',
   'alibaba/wan',
   'seededit',
+  'seedream',
   'firered',
   'higgsfield',
   '/uso',
   'z-image',
   'glm-image',
+  'spicy',
 ];
 
 function isNsfwModel(modelId: string): boolean {
