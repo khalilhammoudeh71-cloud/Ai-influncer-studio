@@ -430,7 +430,9 @@ function buildPrompt(body: ImageGenRequest, useEditInstructionStyle = false): st
       const sceneParts: string[] = [];
       if (chatPrompt) sceneParts.push(chatPrompt);
       if (visualStyle) sceneParts.push(`Visual style: ${visualStyle}`);
-      let p = `The reference image shows the EXACT person. Keep their face, hair, skin tone, and body proportions identical. Generate them in the following scene: ${sceneParts.join('. ')}. Photorealistic, high-quality social media photo.`;
+      let p = `The reference image shows the EXACT person. Keep their face, hair, skin tone, and body proportions identical.`;
+      if (faceDescriptor) p += ` Appearance: ${faceDescriptor}.`;
+      p += ` Generate them in the following scene: ${sceneParts.join('. ')}. Photorealistic, high-quality social media photo.`;
       if (naturalLook) p += ` ${realismTerms}`;
       return p;
     }
@@ -459,7 +461,9 @@ function buildPrompt(body: ImageGenRequest, useEditInstructionStyle = false): st
     if (!SKIP(mood)) sceneParts.push(`${mood} mood`);
     if (visualStyle) sceneParts.push(`${visualStyle} visual style`);
     if (additionalInstructions) sceneParts.push(additionalInstructions);
-    let p = `The reference image shows the EXACT person. Keep their face, hair, skin tone, and body proportions perfectly identical. Place them in a new scene: ${sceneParts.join(', ')}. Photorealistic, cinematic lighting, professional social media quality.`;
+    let p = `The reference image shows the EXACT person. Keep their face, hair, skin tone, and body proportions perfectly identical.`;
+    if (faceDescriptor) p += ` Appearance: ${faceDescriptor}.`;
+    p += ` Place them in a new scene: ${sceneParts.join(', ')}. Photorealistic, cinematic lighting, professional social media quality.`;
     if (naturalLook) p += ` ${realismTerms}`;
     return p;
   }
@@ -1477,6 +1481,7 @@ async function pushSchema() {
       );
       ALTER TABLE generated_images ADD COLUMN IF NOT EXISTS media_type TEXT DEFAULT 'image';
       ALTER TABLE personas ADD COLUMN IF NOT EXISTS face_descriptor TEXT;
+      ALTER TABLE personas ADD COLUMN IF NOT EXISTS natural_look BOOLEAN DEFAULT true;
       CREATE TABLE IF NOT EXISTS revenue_entries (
         id SERIAL PRIMARY KEY,
         client_id TEXT NOT NULL UNIQUE,

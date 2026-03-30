@@ -43,6 +43,7 @@ function personaToClient(row: typeof personas.$inferSelect, images: typeof gener
     contentGoals: row.contentGoals,
     personaNotes: row.personaNotes,
     faceDescriptor: row.faceDescriptor || undefined,
+    naturalLook: row.naturalLook ?? true,
     visualLibrary: images.map(imageToClient),
   };
 }
@@ -112,6 +113,7 @@ router.post('/personas', async (req, res) => {
       contentGoals: body.contentGoals || '',
       personaNotes: body.personaNotes || '',
       faceDescriptor: body.faceDescriptor || null,
+      naturalLook: body.naturalLook ?? true,
     }).onConflictDoUpdate({
       target: personas.clientId,
       set: {
@@ -131,6 +133,7 @@ router.post('/personas', async (req, res) => {
         contentGoals: body.contentGoals || '',
         personaNotes: body.personaNotes || '',
         faceDescriptor: body.faceDescriptor || null,
+        naturalLook: body.naturalLook ?? true,
       },
     }).returning();
     res.json(personaToClient(row));
@@ -161,6 +164,7 @@ router.put('/personas/:clientId', async (req, res) => {
       contentGoals: body.contentGoals || '',
       personaNotes: body.personaNotes || '',
       faceDescriptor: body.faceDescriptor || null,
+      naturalLook: body.naturalLook ?? true,
     }).where(eq(personas.clientId, clientId)).returning();
     if (!row) return res.status(404).json({ error: 'Persona not found' });
     const imgs = await db.select().from(generatedImages).where(eq(generatedImages.personaClientId, clientId));
@@ -435,6 +439,39 @@ function getGeminiClientForRoutes(): GoogleGenAI {
   if (!apiKey) throw new Error('Gemini API key not configured');
   return new GoogleGenAI({ apiKey, ...(baseUrl ? { httpOptions: { baseUrl } } : {}) });
 }
+
+router.post('/analyze-face', async (req, res) => {
+  const { personaId, imageBase64 } = req.body as { personaId?: string; imageBase64?: string };
+  if (!personaId) return res.status(400).json({ error: 'personaId is required' });
+  try {
+    const imageBase64ToUse = imageBase64 || null;
+    let imageData: string | null = imageBase64ToUse;
+    if (!imageData) {
+      const [persona] = await db.select().from(personas).where(eq(personas.clientId, personaId));
+      if (!persona) return res.status(404).json({ error: 'Persona not found' });
+      imageData = persona.referenceImage;
+    }
+    if (!imageData) return res.status(400).json({ error: 'No reference image provided.' });
+    const genAI = getGeminiClientForRoutes();
+    const match = imageData.match(/^data:([^;]+);base64,(.+)$/);
+    const mimeType = (match ? match[1] : 'image/jpeg') as string;
+    const data = match ? match[2] : imageData;
+    const result = await genAI.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: [{ role: 'user', parts: [
+        { inlineData: { mimeType, data } },
+        { text: `Analyze this person's face and physical appearance in detail. Provide a concise but comprehensive description that can be used to consistently re-create this person in AI image generation prompts. Include: face shape, eye color and shape, skin tone, hair color and style, lip shape, any distinctive features, approximate age range, and overall facial structure. Format as a single paragraph of 3-5 sentences. Start with the age and apparent gender.` }
+      ]}]
+    });
+    const descriptor = result.text?.trim() || '';
+    if (!descriptor) return res.status(500).json({ error: 'Gemini did not return a face description' });
+    try { await db.update(personas).set({ faceDescriptor: descriptor }).where(eq(personas.clientId, personaId)); } catch {}
+    res.json({ faceDescriptor: descriptor });
+  } catch (err) {
+    console.error('[API] analyze-face error:', err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Face analysis failed' });
+  }
+});
 
 router.post('/personas/:personaClientId/analyze-face', async (req, res) => {
   try {

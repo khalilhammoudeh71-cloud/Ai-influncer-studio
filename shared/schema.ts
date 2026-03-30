@@ -34,6 +34,7 @@ export const personas = pgTable("personas", {
   contentGoals: text("content_goals").notNull().default(""),
   personaNotes: text("persona_notes").notNull().default(""),
   faceDescriptor: text("face_descriptor"),
+  naturalLook: boolean("natural_look").default(true),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });

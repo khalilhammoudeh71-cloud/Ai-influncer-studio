@@ -29,6 +29,7 @@ export type Persona = {
   contentGoals: string;
   personaNotes: string;
   faceDescriptor?: string;
+  naturalLook?: boolean;
   visualLibrary?: GeneratedImage[];
 };
 
