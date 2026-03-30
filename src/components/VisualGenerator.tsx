@@ -81,6 +81,7 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
   const [selectedMood, setSelectedMood] = useState(MOODS[0]);
   const [result, setResult] = useState<GenerateImageResult | null>(null);
   const [globalError, setGlobalError] = useState<string | null>(null);
+  const [isSaved, setIsSaved] = useState(false);
   const [imageHistory, setImageHistory] = useState<ImageVersion[]>([]);
   const [activeHistoryIndex, setActiveHistoryIndex] = useState(0);
 
@@ -284,7 +285,7 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
   };
 
   const handleSave = () => {
-    if (!activeVersion?.imageUrl) return;
+    if (!activeVersion?.imageUrl || isSaved) return;
     const image: GeneratedImage = {
       id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       url: activeVersion.imageUrl,
@@ -296,7 +297,8 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
       model: activeVersion.model,
     };
     onSaveImage(image);
-    onClose();
+    setIsSaved(true);
+    setTimeout(() => setIsSaved(false), 2500);
   };
 
   const handleGenerateVideo = async () => {
@@ -567,10 +569,11 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
               <>
                 <button
                   onClick={handleSave}
-                  className="w-full py-3 rounded-xl text-sm font-bold transition-all bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white flex items-center justify-center gap-2 shadow-lg shadow-purple-500/20"
+                  disabled={isSaved}
+                  className={`w-full py-3 rounded-xl text-sm font-bold transition-all text-white flex items-center justify-center gap-2 shadow-lg ${isSaved ? 'bg-emerald-600 shadow-emerald-500/20 cursor-default' : 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 shadow-purple-500/20'}`}
                 >
                   <CheckCircle className="w-4 h-4" />
-                  Save to Visual Library
+                  {isSaved ? 'Saved to Library!' : 'Save to Visual Library'}
                 </button>
 
                 <div className="grid grid-cols-2 gap-3">

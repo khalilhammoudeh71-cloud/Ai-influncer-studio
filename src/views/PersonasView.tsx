@@ -1387,10 +1387,6 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
           persona={activePersonaForGen} 
           onClose={() => {
             setShowGenerator(false);
-            if (viewingPersona) {
-              const fresh = personas.find(p => p.id === viewingPersona.id);
-              if (fresh) setViewingPersona(fresh);
-            }
           }} 
           onSaveImage={handleSaveGeneratedImage}
         />
