@@ -305,8 +305,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
     try {
       const isIdentityModel = selectedModelInfo?.isIdentityModel ?? false;
-      const identityFallback = isIdentityModel ? (activePersona.referenceImage ?? undefined) : undefined;
-      const resolvedRef = effectiveRefImage || identityFallback || undefined;
+      // Always fall back to the persona's own reference image so models can see the person's face
+      const resolvedRef = effectiveRefImage || (activePersona.referenceImage ?? undefined);
 
       if (isIdentityModel && !resolvedRef) {
         setGlobalError('This model requires a face reference image. Please upload a photo or set a reference image on your persona profile.');
@@ -786,8 +786,13 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               <ImageIcon className="w-3 h-3" /> Reference Image (optional)
             </label>
             <div className="flex gap-2 items-start">
-              {effectiveRefImage && (
-                <img src={effectiveRefImage} alt="" className="w-14 h-14 rounded-xl object-cover shrink-0 border border-zinc-700" />
+              {(effectiveRefImage || (!effectiveRefImage && activePersona.referenceImage)) && (
+                <div className="relative shrink-0">
+                  <img src={effectiveRefImage || activePersona.referenceImage!} alt="" className="w-14 h-14 rounded-xl object-cover border border-zinc-700" />
+                  {!effectiveRefImage && activePersona.referenceImage && (
+                    <span className="absolute -bottom-1 -right-1 text-[8px] bg-purple-600 text-white rounded px-1 leading-4">Persona</span>
+                  )}
+                </div>
               )}
               <div className="flex-1 space-y-1.5">
                 <div className="relative">
@@ -815,7 +820,11 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 Clear reference image
               </button>
             )}
-            <p className="text-[10px] text-zinc-600">Models with ref support will use this for consistency</p>
+            <p className="text-[10px] text-zinc-600">
+              {!effectiveRefImage && activePersona.referenceImage
+                ? "Using persona's saved reference photo for consistency"
+                : 'Models with ref support will use this for consistency'}
+            </p>
           </>
         )}
       </div>
