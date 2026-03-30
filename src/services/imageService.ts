@@ -28,6 +28,7 @@ export interface GenerateImageParams {
   framing?: string;
   mood?: string;
   additionalInstructions?: string;
+  additionalImages?: string[];
   isChatContext?: boolean;
   chatPrompt?: string;
   imageWeight?: number;

@@ -323,6 +323,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         framing: selectedFraming,
         mood: selectedMood,
         additionalInstructions: imagePrompt,
+        additionalImages: additionalImages.length > 0 ? additionalImages.map(img => img.url) : undefined,
         naturalLook,
         identityLock,
       });

@@ -415,6 +415,7 @@ interface ImageGenRequest {
   isChatContext?: boolean;
   chatPrompt?: string;
   referenceImage?: string;
+  additionalImages?: string[];
   aspectRatio?: string;
   faceDescriptor?: string;
   naturalLook?: boolean;
@@ -705,12 +706,13 @@ async function generateWithWavespeed(
   referenceImage?: string,
   imageWeight?: number,
   editHasStrengthControl?: boolean,
-  aspectRatio?: string
+  aspectRatio?: string,
+  additionalImages?: string[]
 ): Promise<string> {
   const hasRef = !!referenceImage;
   const useEditPath = hasRef && editApiPath;
   const usePath = useEditPath ? editApiPath! : apiPath;
-  console.log('[Wavespeed] Generate:', { hasRef, usePath, apiPath, editHasStrengthControl });
+  console.log('[Wavespeed] Generate:', { hasRef, usePath, apiPath, editHasStrengthControl, additionalImageCount: additionalImages?.length ?? 0 });
 
   const payload: Record<string, unknown> = {
     prompt,
@@ -727,9 +729,20 @@ async function generateWithWavespeed(
     const imageField = editImageField === 'images' ? 'images' : 'image';
     console.log('[Wavespeed] Sending reference image via field:', imageField, '(data URL length:', b64Url.length, ')');
     if (imageField === 'images') {
-      payload.images = [b64Url];
+      // Resolve any additional images and append them to the array
+      const extraB64Urls = additionalImages && additionalImages.length > 0
+        ? await Promise.all(additionalImages.map(img => resolveImageToDataUrl(img)))
+        : [];
+      payload.images = [b64Url, ...extraB64Urls];
+      console.log('[Wavespeed] images array length:', (payload.images as string[]).length);
     } else {
       payload.image = b64Url;
+      // For singular-image models, attach the first additional image to image2 if provided
+      if (additionalImages && additionalImages.length > 0) {
+        const extra = await resolveImageToDataUrl(additionalImages[0]);
+        payload.image2 = extra;
+        console.log('[Wavespeed] Attached additional image as image2');
+      }
     }
     if (editHasStrengthControl) {
       const clampedWeight = (typeof imageWeight === 'number' && isFinite(imageWeight))
@@ -1093,7 +1106,7 @@ app.post('/api/angle-image', async (req, res) => {
 });
 
 app.post('/api/generate-image', async (req, res) => {
-  const { referenceImage, modelId, imageWeight, aspectRatio, ...rest } = req.body as ImageGenRequest & { modelId: string; imageWeight?: number };
+  const { referenceImage, additionalImages, modelId, imageWeight, aspectRatio, ...rest } = req.body as ImageGenRequest & { modelId: string; imageWeight?: number };
 
   if (!modelId) {
     return res.status(400).json({ error: 'modelId is required' });
@@ -1120,7 +1133,7 @@ app.post('/api/generate-image', async (req, res) => {
       prompt = buildPrompt({ ...rest, referenceImage }, useInstructionStyle);
       console.log('[generate-image] Model:', modelInfo.name, '| hasRef:', hasRef, '| useEditPath:', useEditPath, '| useInstructionStyle:', useInstructionStyle, '| editHasStrengthControl:', modelInfo.editHasStrengthControl);
       modelName = modelInfo.name;
-      imageUrl = await generateWithWavespeed(modelInfo.apiPath, modelInfo.editApiPath, modelInfo.editImageField, prompt, referenceImage, imageWeight, modelInfo.editHasStrengthControl, aspectRatio);
+      imageUrl = await generateWithWavespeed(modelInfo.apiPath, modelInfo.editApiPath, modelInfo.editImageField, prompt, referenceImage, imageWeight, modelInfo.editHasStrengthControl, aspectRatio, additionalImages);
     } else {
       return res.status(400).json({ error: 'Unknown model ID' });
     }
