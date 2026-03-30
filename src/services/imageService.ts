@@ -33,6 +33,7 @@ export interface GenerateImageParams {
   imageWeight?: number;
   aspectRatio?: string;
   naturalLook?: boolean;
+  identityLock?: boolean;
 }
 
 export interface GenerateImageResult {

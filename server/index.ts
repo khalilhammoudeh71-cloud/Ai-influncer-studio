@@ -418,12 +418,14 @@ interface ImageGenRequest {
   aspectRatio?: string;
   faceDescriptor?: string;
   naturalLook?: boolean;
+  identityLock?: boolean;
 }
 
 function buildPrompt(body: ImageGenRequest, useEditInstructionStyle = false): string {
-  const { personaName, niche, tone, visualStyle, environment, outfitStyle, framing, mood, additionalInstructions, isChatContext, chatPrompt, referenceImage, faceDescriptor, naturalLook } = body;
+  const { personaName, niche, tone, visualStyle, environment, outfitStyle, framing, mood, additionalInstructions, isChatContext, chatPrompt, referenceImage, faceDescriptor, naturalLook, identityLock } = body;
   const hasRef = !!referenceImage;
   const realismTerms = 'Candid photography, natural skin texture, subtle skin pores, film grain, not over-retouched, authentic photograph.';
+  const identityLockTerms = 'IDENTITY LOCK: Reproduce the exact same facial features in every detail — identical bone structure, eye shape and spacing, nose shape, lip shape, and jawline. This is the same person. Do not reinterpret or alter the face.';
 
   if (isChatContext) {
     if (hasRef && useEditInstructionStyle) {
@@ -433,6 +435,7 @@ function buildPrompt(body: ImageGenRequest, useEditInstructionStyle = false): st
       let p = `The reference image shows the EXACT person. Keep their face, hair, skin tone, and body proportions identical.`;
       if (faceDescriptor) p += ` Appearance: ${faceDescriptor}.`;
       p += ` Generate them in the following scene: ${sceneParts.join('. ')}. Photorealistic, high-quality social media photo.`;
+      if (identityLock) p += ` ${identityLockTerms}`;
       if (naturalLook) p += ` ${realismTerms}`;
       return p;
     }
@@ -447,6 +450,7 @@ function buildPrompt(body: ImageGenRequest, useEditInstructionStyle = false): st
       descriptorNote,
       'Create a realistic, visually compelling image suitable for social media.',
     ];
+    if (identityLock) parts.push(identityLockTerms);
     if (naturalLook) parts.push(realismTerms);
     return parts.filter(Boolean).join('\n').trim();
   }
@@ -464,6 +468,7 @@ function buildPrompt(body: ImageGenRequest, useEditInstructionStyle = false): st
     let p = `The reference image shows the EXACT person. Keep their face, hair, skin tone, and body proportions perfectly identical.`;
     if (faceDescriptor) p += ` Appearance: ${faceDescriptor}.`;
     p += ` Place them in a new scene: ${sceneParts.join(', ')}. Photorealistic, cinematic lighting, professional social media quality.`;
+    if (identityLock) p += ` ${identityLockTerms}`;
     if (naturalLook) p += ` ${realismTerms}`;
     return p;
   }
@@ -484,6 +489,7 @@ function buildPrompt(body: ImageGenRequest, useEditInstructionStyle = false): st
   if (!SKIP(mood)) parts.push(`Mood: ${mood}.`);
   if (additionalInstructions) parts.push(`Additional details: ${additionalInstructions}`);
   parts.push('Cinematic lighting. Ultra-realistic, professional social media quality.');
+  if (identityLock) parts.push(identityLockTerms);
   if (naturalLook) parts.push(realismTerms);
 
   return parts.join('\n');
@@ -1482,6 +1488,7 @@ async function pushSchema() {
       ALTER TABLE generated_images ADD COLUMN IF NOT EXISTS media_type TEXT DEFAULT 'image';
       ALTER TABLE personas ADD COLUMN IF NOT EXISTS face_descriptor TEXT;
       ALTER TABLE personas ADD COLUMN IF NOT EXISTS natural_look BOOLEAN DEFAULT true;
+      ALTER TABLE personas ADD COLUMN IF NOT EXISTS identity_lock BOOLEAN DEFAULT true;
       CREATE TABLE IF NOT EXISTS revenue_entries (
         id SERIAL PRIMARY KEY,
         client_id TEXT NOT NULL UNIQUE,

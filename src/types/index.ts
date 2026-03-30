@@ -30,6 +30,7 @@ export type Persona = {
   personaNotes: string;
   faceDescriptor?: string;
   naturalLook?: boolean;
+  identityLock?: boolean;
   visualLibrary?: GeneratedImage[];
 };
 

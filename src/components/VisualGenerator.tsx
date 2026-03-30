@@ -122,11 +122,18 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
   const [videoSourceImageName, setVideoSourceImageName] = useState<string | null>(null);
   const [imageWeight, setImageWeight] = useState(0.35);
   const [naturalLook, setNaturalLook] = useState(persona.naturalLook ?? true);
+  const [identityLock, setIdentityLock] = useState(persona.identityLock ?? true);
 
   const handleNaturalLookToggle = () => {
     const next = !naturalLook;
     setNaturalLook(next);
     api.personas.update({ ...persona, naturalLook: next }).catch(() => {});
+  };
+
+  const handleIdentityLockToggle = () => {
+    const next = !identityLock;
+    setIdentityLock(next);
+    api.personas.update({ ...persona, identityLock: next }).catch(() => {});
   };
 
   const hasRefImage = !!persona.referenceImage;
@@ -233,6 +240,7 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
         additionalInstructions: prompt,
         aspectRatio: selectedAspectRatio,
         naturalLook,
+        identityLock,
         ...(hasRefImage && selectedModelInfo?.hasEditVariant && selectedModelInfo.editHasStrengthControl ? { imageWeight } : {}),
       });
       setResult(data);
@@ -844,6 +852,19 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${naturalLook ? 'bg-purple-600' : 'bg-zinc-700'}`}
               >
                 <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${naturalLook ? 'translate-x-6' : 'translate-x-1'}`} />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between px-1">
+              <div>
+                <p className="text-xs font-bold text-zinc-400 uppercase tracking-wide">Identity Lock</p>
+                <p className="text-[10px] text-zinc-600 mt-0.5">Same exact face, bone structure &amp; features</p>
+              </div>
+              <button
+                onClick={handleIdentityLockToggle}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${identityLock ? 'bg-purple-600' : 'bg-zinc-700'}`}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${identityLock ? 'translate-x-6' : 'translate-x-1'}`} />
               </button>
             </div>
 

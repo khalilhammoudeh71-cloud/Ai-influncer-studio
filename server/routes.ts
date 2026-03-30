@@ -44,6 +44,7 @@ function personaToClient(row: typeof personas.$inferSelect, images: typeof gener
     personaNotes: row.personaNotes,
     faceDescriptor: row.faceDescriptor || undefined,
     naturalLook: row.naturalLook ?? true,
+    identityLock: row.identityLock ?? true,
     visualLibrary: images.map(imageToClient),
   };
 }
@@ -114,6 +115,7 @@ router.post('/personas', async (req, res) => {
       personaNotes: body.personaNotes || '',
       faceDescriptor: body.faceDescriptor || null,
       naturalLook: body.naturalLook ?? true,
+      identityLock: body.identityLock ?? true,
     }).onConflictDoUpdate({
       target: personas.clientId,
       set: {
@@ -134,6 +136,7 @@ router.post('/personas', async (req, res) => {
         personaNotes: body.personaNotes || '',
         faceDescriptor: body.faceDescriptor || null,
         naturalLook: body.naturalLook ?? true,
+        identityLock: body.identityLock ?? true,
       },
     }).returning();
     res.json(personaToClient(row));
@@ -165,6 +168,7 @@ router.put('/personas/:clientId', async (req, res) => {
       personaNotes: body.personaNotes || '',
       faceDescriptor: body.faceDescriptor || null,
       naturalLook: body.naturalLook ?? true,
+      identityLock: body.identityLock ?? true,
     }).where(eq(personas.clientId, clientId)).returning();
     if (!row) return res.status(404).json({ error: 'Persona not found' });
     const imgs = await db.select().from(generatedImages).where(eq(generatedImages.personaClientId, clientId));
