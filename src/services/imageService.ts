@@ -31,6 +31,7 @@ export interface GenerateImageParams {
   isChatContext?: boolean;
   chatPrompt?: string;
   imageWeight?: number;
+  aspectRatio?: string;
 }
 
 export interface GenerateImageResult {

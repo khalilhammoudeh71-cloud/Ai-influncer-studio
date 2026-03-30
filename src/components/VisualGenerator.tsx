@@ -21,6 +21,7 @@ import {
   Upload,
   Video,
   Film,
+  Maximize2,
 } from 'lucide-react';
 import { Persona, GeneratedImage } from '../types';
 import {
@@ -60,6 +61,17 @@ const MOODS = [
   NONE, 'Confident', 'Friendly', 'Thoughtful', 'Playful', 'Professional', 'Seductive'
 ];
 
+const ASPECT_RATIOS = [
+  { value: '1:1',  label: '1:1  — Square' },
+  { value: '9:16', label: '9:16 — Portrait (Story/Reel)' },
+  { value: '16:9', label: '16:9 — Landscape (YouTube)' },
+  { value: '4:5',  label: '4:5  — Feed Portrait' },
+  { value: '5:4',  label: '5:4  — Feed Landscape' },
+  { value: '2:3',  label: '2:3  — Editorial' },
+  { value: '3:2',  label: '3:2  — Wide' },
+  { value: '21:9', label: '21:9 — Cinematic' },
+];
+
 type PostGenAction = null | 'edit' | 'upscale';
 
 interface ImageVersion {
@@ -79,6 +91,7 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
   const [selectedOutfit, setSelectedOutfit] = useState(OUTFITS[0]);
   const [selectedFraming, setSelectedFraming] = useState(FRAMING[0]);
   const [selectedMood, setSelectedMood] = useState(MOODS[0]);
+  const [selectedAspectRatio, setSelectedAspectRatio] = useState(ASPECT_RATIOS[0].value);
   const [result, setResult] = useState<GenerateImageResult | null>(null);
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [isSaved, setIsSaved] = useState(false);
@@ -210,6 +223,7 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
         framing: selectedFraming,
         mood: selectedMood,
         additionalInstructions: prompt,
+        aspectRatio: selectedAspectRatio,
         ...(hasRefImage && selectedModelInfo?.hasEditVariant && selectedModelInfo.editHasStrengthControl ? { imageWeight } : {}),
       });
       setResult(data);
@@ -794,6 +808,21 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
                   </select>
                 </div>
               </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-1.5">
+                <Maximize2 className="w-3 h-3" /> Aspect Ratio
+              </label>
+              <select
+                value={selectedAspectRatio}
+                onChange={(e) => setSelectedAspectRatio(e.target.value)}
+                className="w-full bg-zinc-800 border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white focus:ring-2 focus:ring-purple-500 outline-none"
+              >
+                {ASPECT_RATIOS.map(r => (
+                  <option key={r.value} value={r.value}>{r.label}</option>
+                ))}
+              </select>
             </div>
 
             <div className="space-y-1.5">

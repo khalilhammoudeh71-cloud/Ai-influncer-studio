@@ -415,6 +415,7 @@ interface ImageGenRequest {
   isChatContext?: boolean;
   chatPrompt?: string;
   referenceImage?: string;
+  aspectRatio?: string;
 }
 
 function buildPrompt(body: ImageGenRequest, useEditInstructionStyle = false): string {
@@ -475,7 +476,14 @@ function stripDataPrefix(dataUrl: string): { data: string; mimeType: string } {
   return { mimeType: 'image/png', data: dataUrl };
 }
 
-async function generateWithReplit(prompt: string, referenceImage?: string | string[]): Promise<string> {
+function aspectRatioToReplitSize(ar?: string): '1024x1024' | '1792x1024' | '1024x1792' {
+  if (!ar) return '1024x1024';
+  if (ar === '16:9' || ar === '3:2' || ar === '5:4' || ar === '21:9') return '1792x1024';
+  if (ar === '9:16' || ar === '2:3' || ar === '4:5') return '1024x1792';
+  return '1024x1024';
+}
+
+async function generateWithReplit(prompt: string, referenceImage?: string | string[], aspectRatio?: string): Promise<string> {
   const client = getOpenAIClient();
   let response;
 
@@ -494,12 +502,14 @@ async function generateWithReplit(prompt: string, referenceImage?: string | stri
       image: imageFiles as any,
       prompt,
       n: 1,
+      size: aspectRatioToReplitSize(aspectRatio),
     });
   } else {
     response = await client.images.generate({
       model: 'gpt-image-1',
       prompt,
       n: 1,
+      size: aspectRatioToReplitSize(aspectRatio),
     });
   }
 
@@ -667,7 +677,8 @@ async function generateWithWavespeed(
   prompt: string,
   referenceImage?: string,
   imageWeight?: number,
-  editHasStrengthControl?: boolean
+  editHasStrengthControl?: boolean,
+  aspectRatio?: string
 ): Promise<string> {
   const hasRef = !!referenceImage;
   const useEditPath = hasRef && editApiPath;
@@ -679,6 +690,10 @@ async function generateWithWavespeed(
     enable_sync_mode: true,
     enable_base64_output: true,
   };
+
+  if (aspectRatio) {
+    payload.aspect_ratio = aspectRatio;
+  }
 
   if (useEditPath) {
     const b64Url = await resolveImageToDataUrl(referenceImage!);
@@ -1051,7 +1066,7 @@ app.post('/api/angle-image', async (req, res) => {
 });
 
 app.post('/api/generate-image', async (req, res) => {
-  const { referenceImage, modelId, imageWeight, ...rest } = req.body as ImageGenRequest & { modelId: string; imageWeight?: number };
+  const { referenceImage, modelId, imageWeight, aspectRatio, ...rest } = req.body as ImageGenRequest & { modelId: string; imageWeight?: number };
 
   if (!modelId) {
     return res.status(400).json({ error: 'modelId is required' });
@@ -1064,7 +1079,7 @@ app.post('/api/generate-image', async (req, res) => {
 
     if (modelId === 'replit:gpt-image-1') {
       prompt = buildPrompt({ ...rest, referenceImage });
-      imageUrl = await generateWithReplit(prompt, referenceImage);
+      imageUrl = await generateWithReplit(prompt, referenceImage, aspectRatio);
       modelName = 'gpt-image-1';
     } else if (modelId.startsWith('wavespeed:')) {
       const wavespeedModels = await fetchWavespeedModels();
@@ -1078,7 +1093,7 @@ app.post('/api/generate-image', async (req, res) => {
       prompt = buildPrompt({ ...rest, referenceImage }, useInstructionStyle);
       console.log('[generate-image] Model:', modelInfo.name, '| hasRef:', hasRef, '| useEditPath:', useEditPath, '| useInstructionStyle:', useInstructionStyle, '| editHasStrengthControl:', modelInfo.editHasStrengthControl);
       modelName = modelInfo.name;
-      imageUrl = await generateWithWavespeed(modelInfo.apiPath, modelInfo.editApiPath, modelInfo.editImageField, prompt, referenceImage, imageWeight, modelInfo.editHasStrengthControl);
+      imageUrl = await generateWithWavespeed(modelInfo.apiPath, modelInfo.editApiPath, modelInfo.editImageField, prompt, referenceImage, imageWeight, modelInfo.editHasStrengthControl, aspectRatio);
     } else {
       return res.status(400).json({ error: 'Unknown model ID' });
     }
