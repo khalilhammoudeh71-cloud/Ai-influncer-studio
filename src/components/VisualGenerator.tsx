@@ -33,6 +33,7 @@ import {
   type ModelInfo,
   type GenerateImageResult,
 } from '../services/imageService';
+import { api } from '../services/apiService';
 
 interface VisualGeneratorProps {
   persona: Persona;
@@ -120,7 +121,13 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
   const [videoSourceImage, setVideoSourceImage] = useState<string | null>(null);
   const [videoSourceImageName, setVideoSourceImageName] = useState<string | null>(null);
   const [imageWeight, setImageWeight] = useState(0.35);
-  const [naturalLook, setNaturalLook] = useState(true);
+  const [naturalLook, setNaturalLook] = useState(persona.naturalLook ?? true);
+
+  const handleNaturalLookToggle = () => {
+    const next = !naturalLook;
+    setNaturalLook(next);
+    api.personas.update({ ...persona, naturalLook: next }).catch(() => {});
+  };
 
   const hasRefImage = !!persona.referenceImage;
 
@@ -833,7 +840,7 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
                 <p className="text-[10px] text-zinc-600 mt-0.5">Film grain, candid, no over-retouching</p>
               </div>
               <button
-                onClick={() => setNaturalLook(v => !v)}
+                onClick={handleNaturalLookToggle}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${naturalLook ? 'bg-purple-600' : 'bg-zinc-700'}`}
               >
                 <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${naturalLook ? 'translate-x-6' : 'translate-x-1'}`} />

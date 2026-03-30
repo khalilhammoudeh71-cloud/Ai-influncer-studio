@@ -680,21 +680,19 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                         </div>
                       )}
 
-                      {editingPersona.faceDescriptor !== undefined && (
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] uppercase tracking-wider font-bold text-gray-500 ml-1 flex items-center gap-1">
-                            <Sparkles size={10} /> Face Description (editable)
-                          </label>
-                          <textarea
-                            value={editingPersona.faceDescriptor}
-                            onChange={e => setEditingPersona({ ...editingPersona, faceDescriptor: e.target.value })}
-                            rows={4}
-                            className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white focus:ring-2 focus:ring-indigo-500/50 outline-none resize-none leading-relaxed"
-                            placeholder="AI-generated face description will appear here. You can edit it manually."
-                          />
-                          <p className="text-[10px] text-gray-600 ml-1">This description is injected into every generation prompt to anchor the persona's identity.</p>
-                        </div>
-                      )}
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] uppercase tracking-wider font-bold text-gray-500 ml-1 flex items-center gap-1">
+                          <Sparkles size={10} /> Face Description (editable)
+                        </label>
+                        <textarea
+                          value={editingPersona.faceDescriptor || ''}
+                          onChange={e => setEditingPersona({ ...editingPersona, faceDescriptor: e.target.value || undefined })}
+                          rows={4}
+                          className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white focus:ring-2 focus:ring-indigo-500/50 outline-none resize-none leading-relaxed"
+                          placeholder="Click 'Analyze Face with AI' to auto-generate, or manually type an appearance description..."
+                        />
+                        <p className="text-[10px] text-gray-600 ml-1">Injected into every generation prompt to anchor the persona's identity.</p>
+                      </div>
                     </div>
                   )}
 
