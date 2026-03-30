@@ -40,8 +40,27 @@ import {
   type ModelInfo,
   type GenerateImageResult,
 } from '../services/imageService';
+import { api } from '../services/apiService';
 
 type CreateMode = 'image' | 'video' | 'prompt' | 'transcript' | 'multi-scene' | 'angle';
+
+const ANONYMOUS_PERSONA: Persona = {
+  id: 'none',
+  name: '',
+  niche: '',
+  tone: 'Photorealistic',
+  platform: '',
+  status: 'Draft',
+  avatar: '',
+  personalityTraits: [],
+  visualStyle: 'Realistic, highly detailed',
+  audienceType: '',
+  contentBoundaries: '',
+  bio: '',
+  brandVoiceRules: '',
+  contentGoals: '',
+  personaNotes: '',
+};
 
 interface CreateViewProps {
   persona: Persona;
@@ -75,6 +94,40 @@ interface ImageVersion {
 }
 
 export default function CreateView({ persona, personas, setPersonas, onSelectPersona }: CreateViewProps) {
+  const [localPersonaId, setLocalPersonaId] = useState<string>(persona.id);
+  const [naturalLook, setNaturalLook] = useState(persona.naturalLook ?? true);
+  const [identityLock, setIdentityLock] = useState(persona.identityLock ?? true);
+
+  const activePersona = useMemo(() => {
+    if (localPersonaId === 'none') return ANONYMOUS_PERSONA;
+    return personas.find(p => p.id === localPersonaId) || persona;
+  }, [localPersonaId, personas, persona]);
+
+  useEffect(() => {
+    if (localPersonaId !== 'none') setLocalPersonaId(persona.id);
+  }, [persona.id]);
+
+  useEffect(() => {
+    setNaturalLook(activePersona.naturalLook ?? true);
+    setIdentityLock(activePersona.identityLock ?? true);
+  }, [activePersona.id]);
+
+  const handleNaturalLookToggle = () => {
+    const next = !naturalLook;
+    setNaturalLook(next);
+    if (localPersonaId !== 'none') {
+      api.personas.update({ ...activePersona, naturalLook: next, identityLock }).catch(() => {});
+    }
+  };
+
+  const handleIdentityLockToggle = () => {
+    const next = !identityLock;
+    setIdentityLock(next);
+    if (localPersonaId !== 'none') {
+      api.personas.update({ ...activePersona, naturalLook, identityLock: next }).catch(() => {});
+    }
+  };
+
   const [mode, setMode] = useState<CreateMode>('image');
 
   const [imagePrompt, setImagePrompt] = useState('');
@@ -248,7 +301,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
     try {
       const isIdentityModel = selectedModelInfo?.isIdentityModel ?? false;
-      const identityFallback = isIdentityModel ? (persona.referenceImage ?? undefined) : undefined;
+      const identityFallback = isIdentityModel ? (activePersona.referenceImage ?? undefined) : undefined;
       const resolvedRef = effectiveRefImage || identityFallback || undefined;
 
       if (isIdentityModel && !resolvedRef) {
@@ -257,7 +310,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         return;
       }
 
-      const personaWithRef = resolvedRef ? { ...persona, referenceImage: resolvedRef } : { ...persona, referenceImage: undefined };
+      const personaWithRef = resolvedRef ? { ...activePersona, referenceImage: resolvedRef } : { ...activePersona, referenceImage: undefined };
       const data = await generateImage({
         persona: personaWithRef,
         modelId: selectedModel,
@@ -266,6 +319,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         framing: selectedFraming,
         mood: selectedMood,
         additionalInstructions: imagePrompt,
+        naturalLook,
+        identityLock,
       });
       setImageResult(data);
       const version: ImageVersion = { imageUrl: data.imageUrl, model: data.model, promptUsed: data.promptUsed || imagePrompt || '', label: 'Original' };
@@ -334,7 +389,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       if (isI2VModel && !sourceImg) {
         throw new Error('Image-to-video models require a source image. Select a persona or upload an image.');
       }
-      const data = await generateVideo(videoPrompt, selectedVideoModel, sourceImg || undefined);
+      const data = await generateVideo(videoPrompt, selectedVideoModel, sourceImg || undefined, identityLock, naturalLook);
       setVideoResult(data);
     } catch (err: unknown) {
       setGlobalError(err instanceof Error ? err.message : 'Video generation failed.');
@@ -357,7 +412,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       const frameData = await frameRes.json();
       if (!frameRes.ok) throw new Error(frameData.error || 'Could not extract last frame');
 
-      const data = await generateVideo(videoPrompt, selectedVideoModel, frameData.frameDataUrl);
+      const data = await generateVideo(videoPrompt, selectedVideoModel, frameData.frameDataUrl, identityLock, naturalLook);
       setExtendResult(data);
     } catch (err: unknown) {
       setExtendError(err instanceof Error ? err.message : 'Video extension failed.');
@@ -675,10 +730,10 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           {!selectedModelInfo.isIdentityModel && hasRefImage && !selectedModelInfo.hasEditVariant && (
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/30">Text-only — will ignore reference</span>
           )}
-          {selectedModelInfo.isIdentityModel && !effectiveRefImage && persona.referenceImage && (
+          {selectedModelInfo.isIdentityModel && !effectiveRefImage && activePersona.referenceImage && (
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">Using persona face</span>
           )}
-          {selectedModelInfo.isIdentityModel && !effectiveRefImage && !persona.referenceImage && (
+          {selectedModelInfo.isIdentityModel && !effectiveRefImage && !activePersona.referenceImage && (
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/30">⚠ Needs face photo</span>
           )}
           {selectedModelInfo.price > 0 && (
@@ -771,6 +826,33 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         placeholder="Additional instructions (optional)..."
         className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder-zinc-500 resize-none h-20 outline-none focus:ring-2 focus:ring-purple-500"
       />
+
+      <div className="flex flex-col gap-3 px-1">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs font-bold text-zinc-400 uppercase tracking-wide">Natural Look</p>
+            <p className="text-[10px] text-zinc-600 mt-0.5">Film grain, candid, no over-retouching</p>
+          </div>
+          <button
+            onClick={handleNaturalLookToggle}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${naturalLook ? 'bg-purple-600' : 'bg-zinc-700'}`}
+          >
+            <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${naturalLook ? 'translate-x-6' : 'translate-x-1'}`} />
+          </button>
+        </div>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs font-bold text-zinc-400 uppercase tracking-wide">Identity Lock</p>
+            <p className="text-[10px] text-zinc-600 mt-0.5">Same exact face, bone structure &amp; features</p>
+          </div>
+          <button
+            onClick={handleIdentityLockToggle}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${identityLock ? 'bg-purple-600' : 'bg-zinc-700'}`}
+          >
+            <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${identityLock ? 'translate-x-6' : 'translate-x-1'}`} />
+          </button>
+        </div>
+      </div>
 
       <button
         onClick={handleImageGenerate}
@@ -1433,7 +1515,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     <div className="p-6 max-w-3xl mx-auto">
       <header className="mb-6 pt-4">
         <h1 className="text-3xl font-bold tracking-tight">Create Studio</h1>
-        <p className="text-gray-400 text-sm mt-1">Generate content as {persona.name}</p>
+        <p className="text-gray-400 text-sm mt-1">Generate content{localPersonaId !== 'none' ? ` as ${activePersona.name}` : ''}</p>
       </header>
 
       <div className="flex bg-zinc-800/50 rounded-2xl p-1 gap-1 mb-5 overflow-x-auto">
@@ -1456,23 +1538,29 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         })}
       </div>
 
-      {personas.length > 1 && (
-        <div className="mb-5">
-          <label className="text-xs font-bold text-zinc-500 uppercase mb-1.5 block">Active Persona</label>
-          <div className="relative">
-            <select
-              value={persona.id}
-              onChange={e => onSelectPersona(e.target.value)}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none appearance-none pr-10"
-            >
-              {personas.map(p => (
-                <option key={p.id} value={p.id}>{p.name} — {p.niche}</option>
-              ))}
-            </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
-          </div>
+      <div className="mb-5">
+        <label className="text-xs font-bold text-zinc-500 uppercase mb-1.5 block">Active Persona</label>
+        <div className="relative">
+          <select
+            value={localPersonaId}
+            onChange={e => {
+              const v = e.target.value;
+              setLocalPersonaId(v);
+              if (v !== 'none') onSelectPersona(v);
+            }}
+            className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none appearance-none pr-10"
+          >
+            <option value="none">None — Upload my own image</option>
+            {personas.map(p => (
+              <option key={p.id} value={p.id}>{p.name}{p.niche ? ` — ${p.niche}` : ''}</option>
+            ))}
+          </select>
+          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
         </div>
-      )}
+        {localPersonaId === 'none' && (
+          <p className="text-[10px] text-zinc-500 mt-1 ml-1">No persona context — use the Reference Image section below to upload your own photo.</p>
+        )}
+      </div>
 
       {globalError && (
         <div className="mb-4 bg-red-500/10 border border-red-500/20 rounded-xl p-3 flex items-start gap-2">
