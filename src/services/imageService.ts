@@ -163,9 +163,11 @@ export async function upscaleImage(sourceImage: string, modelId: string): Promis
   return { imageUrl: data.imageUrl, model: data.model };
 }
 
-export async function generateVideo(prompt: string, modelId: string, sourceImage?: string): Promise<{ videoUrl: string; model: string }> {
-  const body: Record<string, string> = { prompt, modelId };
+export async function generateVideo(prompt: string, modelId: string, sourceImage?: string, identityLock?: boolean, naturalLook?: boolean): Promise<{ videoUrl: string; model: string }> {
+  const body: Record<string, unknown> = { prompt, modelId };
   if (sourceImage) body.sourceImage = sourceImage;
+  if (identityLock !== undefined) body.identityLock = identityLock;
+  if (naturalLook !== undefined) body.naturalLook = naturalLook;
   const response = await fetch('/api/generate-video', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

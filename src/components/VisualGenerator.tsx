@@ -127,13 +127,13 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
   const handleNaturalLookToggle = () => {
     const next = !naturalLook;
     setNaturalLook(next);
-    api.personas.update({ ...persona, naturalLook: next }).catch(() => {});
+    api.personas.update({ ...persona, naturalLook: next, identityLock }).catch(() => {});
   };
 
   const handleIdentityLockToggle = () => {
     const next = !identityLock;
     setIdentityLock(next);
-    api.personas.update({ ...persona, identityLock: next }).catch(() => {});
+    api.personas.update({ ...persona, naturalLook, identityLock: next }).catch(() => {});
   };
 
   const hasRefImage = !!persona.referenceImage;
@@ -355,7 +355,7 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
         throw new Error('Image-to-video models require a source image. Upload one or set a persona reference image.');
       }
 
-      const data = await generateVideo(prompt, selectedVideoModel, sourceImg || undefined);
+      const data = await generateVideo(prompt, selectedVideoModel, sourceImg || undefined, identityLock, naturalLook);
       setVideoResult(data);
     } catch (err: any) {
       setGlobalError(err.message || 'Video generation failed. Please try again.');
