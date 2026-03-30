@@ -557,7 +557,7 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
                       onClick={() => overrideRefInputRef.current?.click()}
                       className="text-[10px] px-2 py-1 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-zinc-300 hover:text-white transition-colors font-medium"
                     >
-                      Change
+                      Upload different
                     </button>
                     {overrideRefImage && (
                       <button
