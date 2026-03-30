@@ -1364,8 +1364,8 @@ app.post('/api/generate-video', async (req, res) => {
   const identityLockTerms = 'IDENTITY LOCK: Reproduce the exact same facial features in every detail — identical bone structure, eye shape and spacing, nose shape, lip shape, and jawline. This is the same person. Do not reinterpret or alter the face.';
   const realismTerms = 'Candid photography, natural skin texture, subtle skin pores, film grain, not over-retouched, authentic photograph.';
   let prompt = rawPrompt.trim();
-  if (identityLock !== false) prompt += ` ${identityLockTerms}`;
-  if (naturalLook !== false) prompt += ` ${realismTerms}`;
+  if (identityLock === true) prompt += ` ${identityLockTerms}`;
+  if (naturalLook === true) prompt += ` ${realismTerms}`;
 
   try {
     await fetchWavespeedModels();
