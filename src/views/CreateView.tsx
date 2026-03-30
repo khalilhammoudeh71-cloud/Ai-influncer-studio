@@ -116,7 +116,9 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     const next = !naturalLook;
     setNaturalLook(next);
     if (localPersonaId !== 'none') {
-      api.personas.update({ ...activePersona, naturalLook: next, identityLock }).catch(() => {});
+      api.personas.update({ ...activePersona, naturalLook: next, identityLock }).catch(() => {
+        setGlobalError('Failed to save Natural Look preference.');
+      });
     }
   };
 
@@ -124,7 +126,9 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     const next = !identityLock;
     setIdentityLock(next);
     if (localPersonaId !== 'none') {
-      api.personas.update({ ...activePersona, naturalLook, identityLock: next }).catch(() => {});
+      api.personas.update({ ...activePersona, naturalLook, identityLock: next }).catch(() => {
+        setGlobalError('Failed to save Identity Lock preference.');
+      });
     }
   };
 
