@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Camera,
   Sparkles,
@@ -82,6 +82,7 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
   const [result, setResult] = useState<GenerateImageResult | null>(null);
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [isSaved, setIsSaved] = useState(false);
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [imageHistory, setImageHistory] = useState<ImageVersion[]>([]);
   const [activeHistoryIndex, setActiveHistoryIndex] = useState(0);
 
@@ -108,6 +109,12 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
   const [imageWeight, setImageWeight] = useState(0.35);
 
   const hasRefImage = !!persona.referenceImage;
+
+  useEffect(() => {
+    return () => {
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     fetchAllModelTypes()
@@ -298,7 +305,8 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
     };
     onSaveImage(image);
     setIsSaved(true);
-    setTimeout(() => setIsSaved(false), 2500);
+    if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+    savedTimerRef.current = setTimeout(() => setIsSaved(false), 2500);
   };
 
   const handleGenerateVideo = async () => {
