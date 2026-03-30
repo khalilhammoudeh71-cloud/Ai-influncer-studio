@@ -44,6 +44,8 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
   const [refModelsLoading, setRefModelsLoading] = useState(false);
   const [refGenerating, setRefGenerating] = useState(false);
   const [refError, setRefError] = useState<string | null>(null);
+  const [analyzingFace, setAnalyzingFace] = useState(false);
+  const [faceAnalysisError, setFaceAnalysisError] = useState<string | null>(null);
 
   useEffect(() => {
     if (editingPersona) {
@@ -323,6 +325,20 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
         }
       };
       reader.readAsDataURL(file);
+    }
+  };
+
+  const handleAnalyzeFace = async () => {
+    if (!editingPersona) return;
+    setAnalyzingFace(true);
+    setFaceAnalysisError(null);
+    try {
+      const result = await api.personas.analyzeFace(editingPersona.id, editingPersona.referenceImage);
+      setEditingPersona({ ...editingPersona, faceDescriptor: result.faceDescriptor });
+    } catch (err) {
+      setFaceAnalysisError(err instanceof Error ? err.message : 'Face analysis failed');
+    } finally {
+      setAnalyzingFace(false);
     }
   };
 
@@ -628,20 +644,57 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                   </div>
 
                   {editingPersona.referenceImage && (
-                    <div className="relative aspect-video rounded-2xl overflow-hidden border border-white/10 group mb-3">
-                      <img 
-                        src={editingPersona.referenceImage} 
-                        alt="Reference" 
-                        className="w-full h-full object-cover"
-                      />
-                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm">
-                        <button
-                          onClick={() => setEditingPersona({...editingPersona, referenceImage: undefined})}
-                          className="bg-red-500 text-white px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5"
-                        >
-                          <X size={12} /> Remove
-                        </button>
+                    <div className="space-y-2 mb-3">
+                      <div className="relative aspect-video rounded-2xl overflow-hidden border border-white/10 group">
+                        <img 
+                          src={editingPersona.referenceImage} 
+                          alt="Reference" 
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm">
+                          <button
+                            onClick={() => setEditingPersona({...editingPersona, referenceImage: undefined, faceDescriptor: undefined})}
+                            className="bg-red-500 text-white px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5"
+                          >
+                            <X size={12} /> Remove
+                          </button>
+                        </div>
                       </div>
+
+                      <button
+                        onClick={handleAnalyzeFace}
+                        disabled={analyzingFace}
+                        className="w-full py-2 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/30 text-indigo-300 text-xs font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                      >
+                        {analyzingFace ? (
+                          <><Loader2 size={13} className="animate-spin" /> Analyzing face...</>
+                        ) : (
+                          <><Sparkles size={13} /> {editingPersona.faceDescriptor ? 'Re-analyze Face' : 'Analyze Face with AI'}</>
+                        )}
+                      </button>
+
+                      {faceAnalysisError && (
+                        <div className="flex items-center gap-2 p-2 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+                          <AlertTriangle size={12} className="shrink-0" />
+                          {faceAnalysisError}
+                        </div>
+                      )}
+
+                      {editingPersona.faceDescriptor !== undefined && (
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] uppercase tracking-wider font-bold text-gray-500 ml-1 flex items-center gap-1">
+                            <Sparkles size={10} /> Face Description (editable)
+                          </label>
+                          <textarea
+                            value={editingPersona.faceDescriptor}
+                            onChange={e => setEditingPersona({ ...editingPersona, faceDescriptor: e.target.value })}
+                            rows={4}
+                            className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white focus:ring-2 focus:ring-indigo-500/50 outline-none resize-none leading-relaxed"
+                            placeholder="AI-generated face description will appear here. You can edit it manually."
+                          />
+                          <p className="text-[10px] text-gray-600 ml-1">This description is injected into every generation prompt to anchor the persona's identity.</p>
+                        </div>
+                      )}
                     </div>
                   )}
 

@@ -416,26 +416,37 @@ interface ImageGenRequest {
   chatPrompt?: string;
   referenceImage?: string;
   aspectRatio?: string;
+  faceDescriptor?: string;
+  naturalLook?: boolean;
 }
 
 function buildPrompt(body: ImageGenRequest, useEditInstructionStyle = false): string {
-  const { personaName, niche, tone, visualStyle, environment, outfitStyle, framing, mood, additionalInstructions, isChatContext, chatPrompt, referenceImage } = body;
+  const { personaName, niche, tone, visualStyle, environment, outfitStyle, framing, mood, additionalInstructions, isChatContext, chatPrompt, referenceImage, faceDescriptor, naturalLook } = body;
   const hasRef = !!referenceImage;
+  const realismTerms = 'Candid photography, natural skin texture, subtle skin pores, film grain, not over-retouched, authentic photograph.';
 
   if (isChatContext) {
     if (hasRef && useEditInstructionStyle) {
       const sceneParts: string[] = [];
       if (chatPrompt) sceneParts.push(chatPrompt);
       if (visualStyle) sceneParts.push(`Visual style: ${visualStyle}`);
-      return `The reference image shows the EXACT person. Keep their face, hair, skin tone, and body proportions identical. Generate them in the following scene: ${sceneParts.join('. ')}. Photorealistic, high-quality social media photo.`;
+      let p = `The reference image shows the EXACT person. Keep their face, hair, skin tone, and body proportions identical. Generate them in the following scene: ${sceneParts.join('. ')}. Photorealistic, high-quality social media photo.`;
+      if (naturalLook) p += ` ${realismTerms}`;
+      return p;
     }
     const refNote = hasRef
       ? 'CRITICAL: The reference image shows the EXACT person to depict. Preserve all facial features identically — same face shape, eyes, nose, mouth, skin tone, hair color and texture. The person must look like the same individual.'
       : '';
-    return `A high-quality, photorealistic social media photo of an AI influencer named ${personaName}. Niche: ${niche}. Tone/Style: ${tone}. Visual Style: ${visualStyle}.
-The user requested: "${chatPrompt}".
-${refNote}
-Create a realistic, visually compelling image suitable for social media.`.trim();
+    const descriptorNote = faceDescriptor ? `\nAppearance: ${faceDescriptor}` : '';
+    const parts = [
+      `A high-quality, photorealistic social media photo of an AI influencer named ${personaName}. Niche: ${niche}. Tone/Style: ${tone}. Visual Style: ${visualStyle}.`,
+      `The user requested: "${chatPrompt}".`,
+      refNote,
+      descriptorNote,
+      'Create a realistic, visually compelling image suitable for social media.',
+    ];
+    if (naturalLook) parts.push(realismTerms);
+    return parts.filter(Boolean).join('\n').trim();
   }
 
   const SKIP = (v: string | undefined) => !v || v === 'None' || v === 'Custom';
@@ -448,13 +459,18 @@ Create a realistic, visually compelling image suitable for social media.`.trim()
     if (!SKIP(mood)) sceneParts.push(`${mood} mood`);
     if (visualStyle) sceneParts.push(`${visualStyle} visual style`);
     if (additionalInstructions) sceneParts.push(additionalInstructions);
-    return `The reference image shows the EXACT person. Keep their face, hair, skin tone, and body proportions perfectly identical. Place them in a new scene: ${sceneParts.join(', ')}. Photorealistic, cinematic lighting, professional social media quality.`;
+    let p = `The reference image shows the EXACT person. Keep their face, hair, skin tone, and body proportions perfectly identical. Place them in a new scene: ${sceneParts.join(', ')}. Photorealistic, cinematic lighting, professional social media quality.`;
+    if (naturalLook) p += ` ${realismTerms}`;
+    return p;
   }
 
   const parts = [
     `A high-quality, photorealistic social media photo of an AI influencer named ${personaName}.`,
     `Niche: ${niche}. Tone/Style: ${tone}. Visual Style: ${visualStyle}.`,
   ];
+  if (faceDescriptor) {
+    parts.push(`Appearance: ${faceDescriptor}`);
+  }
   if (hasRef) {
     parts.push('CRITICAL: The reference image shows the EXACT person. Preserve ALL facial features identically — same face shape, eyes, nose, lips, skin tone, hair color and texture. The output person must look like the same individual as the reference. Do NOT change the face or identity.');
   }
@@ -464,6 +480,7 @@ Create a realistic, visually compelling image suitable for social media.`.trim()
   if (!SKIP(mood)) parts.push(`Mood: ${mood}.`);
   if (additionalInstructions) parts.push(`Additional details: ${additionalInstructions}`);
   parts.push('Cinematic lighting. Ultra-realistic, professional social media quality.');
+  if (naturalLook) parts.push(realismTerms);
 
   return parts.join('\n');
 }
@@ -1459,6 +1476,7 @@ async function pushSchema() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
       );
       ALTER TABLE generated_images ADD COLUMN IF NOT EXISTS media_type TEXT DEFAULT 'image';
+      ALTER TABLE personas ADD COLUMN IF NOT EXISTS face_descriptor TEXT;
       CREATE TABLE IF NOT EXISTS revenue_entries (
         id SERIAL PRIMARY KEY,
         client_id TEXT NOT NULL UNIQUE,

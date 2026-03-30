@@ -32,6 +32,7 @@ export interface GenerateImageParams {
   chatPrompt?: string;
   imageWeight?: number;
   aspectRatio?: string;
+  naturalLook?: boolean;
 }
 
 export interface GenerateImageResult {
@@ -92,6 +93,7 @@ export async function generateImage(params: GenerateImageParams): Promise<Genera
     tone: persona.tone,
     visualStyle: persona.visualStyle || 'Realistic, highly detailed',
     referenceImage: persona.referenceImage || null,
+    faceDescriptor: persona.faceDescriptor || null,
     ...(imageWeight !== undefined ? { imageWeight } : {}),
     ...restParams,
   };

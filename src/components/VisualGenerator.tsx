@@ -120,6 +120,7 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
   const [videoSourceImage, setVideoSourceImage] = useState<string | null>(null);
   const [videoSourceImageName, setVideoSourceImageName] = useState<string | null>(null);
   const [imageWeight, setImageWeight] = useState(0.35);
+  const [naturalLook, setNaturalLook] = useState(true);
 
   const hasRefImage = !!persona.referenceImage;
 
@@ -224,6 +225,7 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
         mood: selectedMood,
         additionalInstructions: prompt,
         aspectRatio: selectedAspectRatio,
+        naturalLook,
         ...(hasRefImage && selectedModelInfo?.hasEditVariant && selectedModelInfo.editHasStrengthControl ? { imageWeight } : {}),
       });
       setResult(data);
@@ -823,6 +825,19 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
                   <option key={r.value} value={r.value}>{r.label}</option>
                 ))}
               </select>
+            </div>
+
+            <div className="flex items-center justify-between px-1">
+              <div>
+                <p className="text-xs font-bold text-zinc-400 uppercase tracking-wide">Natural Look</p>
+                <p className="text-[10px] text-zinc-600 mt-0.5">Film grain, candid, no over-retouching</p>
+              </div>
+              <button
+                onClick={() => setNaturalLook(v => !v)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${naturalLook ? 'bg-purple-600' : 'bg-zinc-700'}`}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${naturalLook ? 'translate-x-6' : 'translate-x-1'}`} />
+              </button>
             </div>
 
             <div className="space-y-1.5">

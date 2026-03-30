@@ -28,6 +28,7 @@ export type Persona = {
   brandVoiceRules: string;
   contentGoals: string;
   personaNotes: string;
+  faceDescriptor?: string;
   visualLibrary?: GeneratedImage[];
 };
 

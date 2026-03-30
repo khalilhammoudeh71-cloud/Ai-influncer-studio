@@ -1,5 +1,18 @@
 import type { Persona, GeneratedImage, RevenueEntry, PlannedPost } from '../types';
 
+async function requestWithBody<T>(url: string, body: unknown): Promise<T> {
+  const res = await fetch(`/api${url}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || res.statusText);
+  }
+  return res.json();
+}
+
 const API_BASE = '/api';
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
@@ -23,6 +36,7 @@ export const api = {
     create: (p: Persona) => request<Persona>('/personas', { method: 'POST', body: JSON.stringify(p) }),
     update: (p: Persona) => request<Persona>(`/personas/${encodeURIComponent(p.id)}`, { method: 'PUT', body: JSON.stringify(p) }),
     delete: (id: string) => request<void>(`/personas/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    analyzeFace: (id: string, referenceImage?: string) => requestWithBody<{ faceDescriptor: string }>(`/personas/${encodeURIComponent(id)}/analyze-face`, { referenceImage }),
   },
 
   images: {

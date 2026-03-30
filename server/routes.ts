@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { db } from './db';
 import { personas, generatedImages, revenueEntries, plannedPosts } from '../shared/schema';
 import { eq, and } from 'drizzle-orm';
+import { GoogleGenAI } from '@google/genai';
 
 interface PlannedPostInput {
   day: number;
@@ -41,6 +42,7 @@ function personaToClient(row: typeof personas.$inferSelect, images: typeof gener
     brandVoiceRules: row.brandVoiceRules,
     contentGoals: row.contentGoals,
     personaNotes: row.personaNotes,
+    faceDescriptor: row.faceDescriptor || undefined,
     visualLibrary: images.map(imageToClient),
   };
 }
@@ -109,6 +111,7 @@ router.post('/personas', async (req, res) => {
       brandVoiceRules: body.brandVoiceRules || '',
       contentGoals: body.contentGoals || '',
       personaNotes: body.personaNotes || '',
+      faceDescriptor: body.faceDescriptor || null,
     }).onConflictDoUpdate({
       target: personas.clientId,
       set: {
@@ -127,6 +130,7 @@ router.post('/personas', async (req, res) => {
         brandVoiceRules: body.brandVoiceRules || '',
         contentGoals: body.contentGoals || '',
         personaNotes: body.personaNotes || '',
+        faceDescriptor: body.faceDescriptor || null,
       },
     }).returning();
     res.json(personaToClient(row));
@@ -156,6 +160,7 @@ router.put('/personas/:clientId', async (req, res) => {
       brandVoiceRules: body.brandVoiceRules || '',
       contentGoals: body.contentGoals || '',
       personaNotes: body.personaNotes || '',
+      faceDescriptor: body.faceDescriptor || null,
     }).where(eq(personas.clientId, clientId)).returning();
     if (!row) return res.status(404).json({ error: 'Persona not found' });
     const imgs = await db.select().from(generatedImages).where(eq(generatedImages.personaClientId, clientId));
@@ -419,6 +424,67 @@ router.post('/migrate', async (req, res) => {
   } catch (err) {
     console.error('[API] POST /migrate error:', err);
     res.status(500).json({ error: err instanceof Error ? err.message : 'Unknown error' });
+  }
+});
+
+function getGeminiClientForRoutes(): GoogleGenAI {
+  const directKey = process.env.GEMINI_API_KEY;
+  if (directKey) return new GoogleGenAI({ apiKey: directKey });
+  const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+  const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
+  if (!apiKey) throw new Error('Gemini API key not configured');
+  return new GoogleGenAI({ apiKey, ...(baseUrl ? { httpOptions: { baseUrl } } : {}) });
+}
+
+router.post('/personas/:personaClientId/analyze-face', async (req, res) => {
+  try {
+    const { personaClientId } = req.params;
+    const { referenceImage: bodyImage } = req.body as { referenceImage?: string };
+
+    let imageBase64 = bodyImage || null;
+
+    if (!imageBase64) {
+      const [persona] = await db.select().from(personas).where(eq(personas.clientId, personaClientId));
+      if (!persona) return res.status(404).json({ error: 'Persona not found' });
+      imageBase64 = persona.referenceImage;
+    }
+
+    if (!imageBase64) return res.status(400).json({ error: 'No reference image provided. Upload a reference image first.' });
+
+    const genAI = getGeminiClientForRoutes();
+
+    const match = imageBase64.match(/^data:([^;]+);base64,(.+)$/);
+    const mimeType = (match ? match[1] : 'image/jpeg') as string;
+    const data = match ? match[2] : imageBase64;
+
+    const result = await genAI.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            { inlineData: { mimeType, data } },
+            {
+              text: `Analyze this person's face and physical appearance in detail. Provide a concise but comprehensive description that can be used to consistently re-create this person in AI image generation prompts. Include: face shape, eye color and shape, skin tone (use descriptive terms like "warm olive", "deep ebony", "fair porcelain"), hair color and style, lip shape, any distinctive features (dimples, freckles, moles), approximate age range, and overall facial structure. Format your response as a single paragraph of 3-5 sentences that reads naturally and could be included in an image generation prompt. Start with the age and apparent gender, then describe key features. Be specific and descriptive.`
+            }
+          ]
+        }
+      ]
+    });
+
+    const descriptor = result.text?.trim() || '';
+    if (!descriptor) return res.status(500).json({ error: 'Gemini did not return a face description' });
+
+    try {
+      await db.update(personas).set({ faceDescriptor: descriptor }).where(eq(personas.clientId, personaClientId));
+    } catch {
+      // Persona may not be saved to DB yet; descriptor is still returned to the frontend
+    }
+
+    res.json({ faceDescriptor: descriptor });
+  } catch (err) {
+    console.error('[API] analyze-face error:', err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Face analysis failed' });
   }
 });
 

@@ -33,6 +33,7 @@ export const personas = pgTable("personas", {
   brandVoiceRules: text("brand_voice_rules").notNull().default(""),
   contentGoals: text("content_goals").notNull().default(""),
   personaNotes: text("persona_notes").notNull().default(""),
+  faceDescriptor: text("face_descriptor"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
