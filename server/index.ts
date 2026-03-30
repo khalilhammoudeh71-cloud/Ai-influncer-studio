@@ -80,13 +80,13 @@ const ANGLE_MODEL_CONFIGS: Record<string, { name: string; apiPath: string; image
   'angle-qwen-multiple': {
     name: 'Qwen Multiple Angles',
     apiPath: '/api/v3/wavespeed-ai/qwen-image/edit-multiple-angles',
-    imageField: 'image',
+    imageField: 'images',
     nsfw: false,
   },
   'angle-qwen-multiple-2509': {
     name: 'Qwen Multiple Angles v2',
     apiPath: '/api/v3/wavespeed-ai/qwen-image/edit-2509-multiple-angles',
-    imageField: 'image',
+    imageField: 'images',
     nsfw: false,
   },
   'angle-wan22': {
