@@ -1515,6 +1515,7 @@ async function pushSchema() {
       ALTER TABLE personas ADD COLUMN IF NOT EXISTS face_descriptor TEXT;
       ALTER TABLE personas ADD COLUMN IF NOT EXISTS natural_look BOOLEAN DEFAULT true;
       ALTER TABLE personas ADD COLUMN IF NOT EXISTS identity_lock BOOLEAN DEFAULT true;
+      ALTER TABLE personas ADD COLUMN IF NOT EXISTS alternate_reference_image TEXT;
       CREATE TABLE IF NOT EXISTS revenue_entries (
         id SERIAL PRIMARY KEY,
         client_id TEXT NOT NULL UNIQUE,

@@ -20,6 +20,7 @@ export type Persona = {
   status: string;
   avatar: string;
   referenceImage?: string; // Base64 or local blob URL
+  alternateReferenceImage?: string; // Secondary reference (style, outfit, pose, etc.)
   personalityTraits: string[];
   visualStyle: string;
   audienceType: string;

@@ -25,6 +25,7 @@ export const personas = pgTable("personas", {
   status: text("status").notNull().default("Draft"),
   avatar: text("avatar").notNull().default(""),
   referenceImage: text("reference_image"),
+  alternateReferenceImage: text("alternate_reference_image"),
   personalityTraits: text("personality_traits").notNull().default("[]"),
   visualStyle: text("visual_style").notNull().default(""),
   audienceType: text("audience_type").notNull().default(""),
