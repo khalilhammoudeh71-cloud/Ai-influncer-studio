@@ -68,3 +68,8 @@ WAVESPEED_API_KEY = "0deb472fcfd8091e9ff596aaacfe6a71cbf01dc7213189cb21a55248523
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 60000
+
+[deployment]
+deploymentTarget = "autoscale"
+run = ["npm", "start"]
+build = ["npm", "run", "build"]
