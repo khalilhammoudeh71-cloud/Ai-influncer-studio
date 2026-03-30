@@ -1356,15 +1356,16 @@ async function extractWavespeedVideoOutput(json: Record<string, unknown>): Promi
 
 app.post('/api/generate-video', async (req, res) => {
   const { prompt: rawPrompt, modelId, sourceImage, identityLock, naturalLook } = req.body;
-  const identityLockTerms = 'IDENTITY LOCK: Reproduce the exact same facial features in every detail — identical bone structure, eye shape and spacing, nose shape, lip shape, and jawline. This is the same person. Do not reinterpret or alter the face.';
-  const realismTerms = 'Candid photography, natural skin texture, subtle skin pores, film grain, not over-retouched, authentic photograph.';
-  let prompt = rawPrompt as string;
-  if (identityLock !== false) prompt += ` ${identityLockTerms}`;
-  if (naturalLook !== false) prompt += ` ${realismTerms}`;
 
-  if (!prompt || !modelId) {
+  if (!rawPrompt || typeof rawPrompt !== 'string' || !rawPrompt.trim() || !modelId) {
     return res.status(400).json({ error: 'prompt and modelId are required' });
   }
+
+  const identityLockTerms = 'IDENTITY LOCK: Reproduce the exact same facial features in every detail — identical bone structure, eye shape and spacing, nose shape, lip shape, and jawline. This is the same person. Do not reinterpret or alter the face.';
+  const realismTerms = 'Candid photography, natural skin texture, subtle skin pores, film grain, not over-retouched, authentic photograph.';
+  let prompt = rawPrompt.trim();
+  if (identityLock !== false) prompt += ` ${identityLockTerms}`;
+  if (naturalLook !== false) prompt += ` ${realismTerms}`;
 
   try {
     await fetchWavespeedModels();
