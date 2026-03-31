@@ -406,11 +406,11 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     setExtendError(null);
 
     try {
-      const sourceImg = isI2VModel ? effectiveVideoSourceImage : undefined;
+      const sourceImg = effectiveVideoSourceImage || undefined;
       if (isI2VModel && !sourceImg) {
         throw new Error('Image-to-video models require a source image. Select a persona or upload an image.');
       }
-      const data = await generateVideo(videoPrompt, selectedVideoModel, sourceImg || undefined, identityLock, naturalLook);
+      const data = await generateVideo(videoPrompt, selectedVideoModel, sourceImg, identityLock, naturalLook);
       setVideoResult(data);
     } catch (err: unknown) {
       setGlobalError(err instanceof Error ? err.message : 'Video generation failed.');
@@ -1003,43 +1003,43 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     <div className="space-y-4">
       {renderVideoModelSelect()}
 
-      {isI2VModel && (
-        <div className="space-y-1.5">
-          <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-1.5">
-            <ImageIcon className="w-3 h-3" /> Source Image <span className="text-red-400 text-[10px] font-normal normal-case ml-0.5">required</span>
-          </label>
-          <div className="flex gap-2 items-start">
-            {effectiveVideoSourceImage && (
-              <img src={effectiveVideoSourceImage} alt="" className="w-14 h-14 rounded-xl object-cover shrink-0 border border-zinc-700" />
-            )}
-            <div className="flex-1 space-y-1.5">
-              <div className="relative">
-                <select
-                  value={videoSourcePersonaId}
-                  onChange={e => { setVideoSourcePersonaId(e.target.value); setVideoSourceImage(null); setVideoSourceImageName(null); }}
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-white outline-none appearance-none pr-8"
-                >
-                  <option value="none">Select a persona…</option>
-                  {personas.filter(p => p.referenceImage).map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500 pointer-events-none" />
-              </div>
-              <label className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800 border border-dashed border-zinc-600 rounded-xl cursor-pointer hover:bg-zinc-700/50 transition-colors">
-                <Upload className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-                <span className="text-xs text-zinc-400 truncate">{videoSourceImageName || 'or upload custom image'}</span>
-                <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload(setVideoSourceImage, setVideoSourceImageName)} />
-              </label>
-            </div>
-          </div>
+      <div className="space-y-1.5">
+        <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-1.5">
+          <ImageIcon className="w-3 h-3" /> {isI2VModel ? 'Source Image' : 'Reference Image'}
+          {isI2VModel && <span className="text-red-400 text-[10px] font-normal normal-case ml-0.5">required</span>}
+          {!isI2VModel && <span className="text-zinc-600 text-[10px] font-normal normal-case ml-0.5">optional</span>}
+        </label>
+        <div className="flex gap-2 items-start">
           {effectiveVideoSourceImage && (
-            <button onClick={() => { setVideoSourcePersonaId('none'); setVideoSourceImage(null); setVideoSourceImageName(null); }} className="text-[10px] text-zinc-500 hover:text-red-400 transition-colors">
-              Clear source image
-            </button>
+            <img src={effectiveVideoSourceImage} alt="" className="w-14 h-14 rounded-xl object-cover shrink-0 border border-zinc-700" />
           )}
+          <div className="flex-1 space-y-1.5">
+            <div className="relative">
+              <select
+                value={videoSourcePersonaId}
+                onChange={e => { setVideoSourcePersonaId(e.target.value); setVideoSourceImage(null); setVideoSourceImageName(null); }}
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-white outline-none appearance-none pr-8"
+              >
+                <option value="none">{isI2VModel ? 'Select a persona…' : 'No persona reference'}</option>
+                {personas.filter(p => p.referenceImage).map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500 pointer-events-none" />
+            </div>
+            <label className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800 border border-dashed border-zinc-600 rounded-xl cursor-pointer hover:bg-zinc-700/50 transition-colors">
+              <Upload className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+              <span className="text-xs text-zinc-400 truncate">{videoSourceImageName || 'Upload image'}</span>
+              <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload(setVideoSourceImage, setVideoSourceImageName)} />
+            </label>
+          </div>
         </div>
-      )}
+        {effectiveVideoSourceImage && (
+          <button onClick={() => { setVideoSourcePersonaId('none'); setVideoSourceImage(null); setVideoSourceImageName(null); }} className="text-[10px] text-zinc-500 hover:text-red-400 transition-colors">
+            Clear image
+          </button>
+        )}
+      </div>
 
       <textarea
         value={videoPrompt}

@@ -1701,10 +1701,14 @@ app.post('/api/generate-video', async (req, res) => {
       prompt,
     };
 
-    if (isI2V && sourceImage) {
+    if (sourceImage) {
       const b64Url = await resolveImageToDataUrl(sourceImage);
-      if (videoModel.editImageField === 'images') {
-        payload.images = [b64Url];
+      if (isI2V) {
+        if (videoModel.editImageField === 'images') {
+          payload.images = [b64Url];
+        } else {
+          payload.image = b64Url;
+        }
       } else {
         payload.image = b64Url;
       }
