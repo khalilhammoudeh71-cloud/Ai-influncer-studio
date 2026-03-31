@@ -1227,7 +1227,7 @@ async function generateWithGoogleImagen(
     for (const candidate of candidates) {
       for (const part of candidate.content?.parts ?? []) {
         if (part.inlineData?.data) {
-          console.log('[Google Imagen] Success with gemini-2.0-flash-exp-image-generation');
+          console.log('[Google Imagen] Success with gemini-2.5-flash-image');
           return `data:${part.inlineData.mimeType || 'image/jpeg'};base64,${part.inlineData.data}`;
         }
       }
