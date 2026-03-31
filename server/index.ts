@@ -726,8 +726,12 @@ async function generateWithWavespeed(
 ): Promise<string> {
   const hasRef = !!referenceImage;
   const useEditPath = hasRef && editApiPath;
+  // Some models (e.g. controlnet, img2img variants) take an image on their main apiPath
+  // with no separate editApiPath. Detect these by path patterns.
+  const mainPathAcceptsImage = !editApiPath && /controlnet|img2img|image-to-image/.test(apiPath);
+  const shouldAttachImage = !!(useEditPath || (hasRef && mainPathAcceptsImage));
   const usePath = useEditPath ? editApiPath! : apiPath;
-  console.log('[Wavespeed] Generate:', { hasRef, usePath, apiPath, editHasStrengthControl, additionalImageCount: additionalImages?.length ?? 0 });
+  console.log('[Wavespeed] Generate:', { hasRef, usePath, apiPath, editHasStrengthControl, mainPathAcceptsImage, additionalImageCount: additionalImages?.length ?? 0 });
 
   const payload: Record<string, unknown> = {
     prompt,
@@ -739,7 +743,7 @@ async function generateWithWavespeed(
     payload.aspect_ratio = aspectRatio;
   }
 
-  if (useEditPath) {
+  if (shouldAttachImage) {
     const b64Url = await resolveImageToDataUrl(referenceImage!);
     const imageField = editImageField === 'images' ? 'images' : 'image';
     console.log('[Wavespeed] Sending reference image via field:', imageField, '(data URL length:', b64Url.length, ')');
@@ -759,13 +763,13 @@ async function generateWithWavespeed(
         console.log('[Wavespeed] Attached additional image as image2');
       }
     }
-    if (editHasStrengthControl) {
+    if (useEditPath && editHasStrengthControl) {
       const clampedWeight = (typeof imageWeight === 'number' && isFinite(imageWeight))
         ? Math.min(0.9, Math.max(0.1, imageWeight))
         : 0.35;
       payload.strength = clampedWeight;
       console.log('[Wavespeed] Using strength (imageWeight):', payload.strength);
-    } else {
+    } else if (useEditPath) {
       console.log('[Wavespeed] Model does not support strength param — using instruction-based reference mode');
     }
   }
