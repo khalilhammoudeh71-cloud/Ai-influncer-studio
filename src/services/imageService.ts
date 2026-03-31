@@ -8,9 +8,20 @@ export interface ModelInfo {
   price: number;
   description: string;
   hasEditVariant: boolean;
+  hasReferenceImage?: boolean;
   editHasStrengthControl?: boolean;
   isIdentityModel?: boolean;
   nsfw?: boolean;
+}
+
+export function canUseReference(model: ModelInfo, allModels: ModelInfo[]): boolean {
+  if (model.hasEditVariant || model.hasReferenceImage) return true;
+  if (model.id.endsWith('/sequential')) {
+    const baseId = model.id.replace(/\/sequential$/, '');
+    const base = allModels.find(m => m.id === baseId);
+    if (base && (base.hasEditVariant || base.hasReferenceImage)) return true;
+  }
+  return false;
 }
 
 export const ANGLE_MODELS: { id: string; name: string; price: number; nsfw: boolean }[] = [

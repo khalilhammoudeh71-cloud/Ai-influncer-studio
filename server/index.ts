@@ -1550,11 +1550,21 @@ app.post('/api/generate-image', async (req, res) => {
       imageUrl = await generateWithGoogleImagen(modelId, prompt, referenceImage || undefined, aspectRatio, additionalImages);
     } else if (modelId.startsWith('wavespeed:')) {
       const wavespeedModels = await fetchWavespeedModels();
-      const modelInfo = wavespeedModels.find(m => m.id === modelId);
+      let modelInfo = wavespeedModels.find(m => m.id === modelId);
       if (!modelInfo) {
         return res.status(400).json({ error: 'Unknown or unavailable model ID' });
       }
       const hasRef = !!referenceImage;
+      if (hasRef && !modelInfo.editApiPath) {
+        const baseId = modelId.replace(/\/sequential$/, '');
+        if (baseId !== modelId) {
+          const baseModel = wavespeedModels.find(m => m.id === baseId);
+          if (baseModel?.editApiPath) {
+            console.log('[generate-image] Model has no ref support — switching from', modelId, 'to', baseId);
+            modelInfo = baseModel;
+          }
+        }
+      }
       const useEditPath = hasRef && !!modelInfo.editApiPath;
       const useInstructionStyle = useEditPath && !modelInfo.editHasStrengthControl;
       prompt = buildPrompt({ ...rest, referenceImage }, useInstructionStyle);

@@ -37,6 +37,7 @@ import {
   upscaleImage,
   generateAngleImage,
   ANGLE_MODELS,
+  canUseReference,
   type ModelInfo,
   type GenerateImageResult,
 } from '../services/imageService';
@@ -646,7 +647,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 <optgroup key={provider} label={provider}>
                   {providerModels.map(m => (
                     <option key={m.id} value={m.id}>
-                      {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}{m.nsfw ? ' 🔓 NSFW' : ''}{showRefWarning && hasRefImage && !m.hasEditVariant && !m.hasReferenceImage ? ' ⚠ No ref support' : ''}
+                      {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}{m.nsfw ? ' 🔓 NSFW' : ''}{showRefWarning && hasRefImage && !canUseReference(m, models) ? ' ⚠ No ref support' : ''}
                     </option>
                   ))}
                 </optgroup>
@@ -745,10 +746,10 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           {selectedModelInfo.isIdentityModel && (
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-300 border border-violet-500/30">★ Face-consistent</span>
           )}
-          {!selectedModelInfo.isIdentityModel && hasRefImage && (selectedModelInfo.hasEditVariant || selectedModelInfo.hasReferenceImage) && (
+          {!selectedModelInfo.isIdentityModel && hasRefImage && canUseReference(selectedModelInfo, models) && (
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-500/20 text-green-300 border border-green-500/30">Uses reference image</span>
           )}
-          {!selectedModelInfo.isIdentityModel && hasRefImage && !selectedModelInfo.hasEditVariant && !selectedModelInfo.hasReferenceImage && (
+          {!selectedModelInfo.isIdentityModel && hasRefImage && !canUseReference(selectedModelInfo, models) && (
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/30">Text-only — will ignore reference</span>
           )}
           {selectedModelInfo.isIdentityModel && !effectiveRefImage && activePersona.referenceImage && (

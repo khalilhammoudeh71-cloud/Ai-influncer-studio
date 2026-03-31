@@ -31,6 +31,7 @@ import {
   fetchAllModelTypes,
   editImage,
   upscaleImage,
+  canUseReference,
   type ModelInfo,
   type GenerateImageResult,
 } from '../services/imageService';
@@ -487,7 +488,7 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
                       <optgroup key={provider} label={provider}>
                         {providerModels.map((m) => (
                           <option key={m.id} value={m.id}>
-                            {m.isIdentityModel ? '★ ' : ''}{m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}{m.nsfw ? ' 🔓 NSFW' : ''}{hasRefImage && !m.hasEditVariant && !m.hasReferenceImage ? ' ⚠ No ref support' : ''}
+                            {m.isIdentityModel ? '★ ' : ''}{m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}{m.nsfw ? ' 🔓 NSFW' : ''}{hasRefImage && !canUseReference(m, models) ? ' ⚠ No ref support' : ''}
                           </option>
                         ))}
                       </optgroup>
@@ -506,12 +507,12 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
                       ★ Face-consistent
                     </span>
                   )}
-                  {hasRefImage && (selectedModelInfo.hasEditVariant || selectedModelInfo.hasReferenceImage) && !selectedModelInfo.isIdentityModel && (
+                  {hasRefImage && canUseReference(selectedModelInfo, models) && !selectedModelInfo.isIdentityModel && (
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-500/20 text-green-300 border border-green-500/30">
                       Uses reference image
                     </span>
                   )}
-                  {hasRefImage && !selectedModelInfo.hasEditVariant && !selectedModelInfo.hasReferenceImage && (
+                  {hasRefImage && !canUseReference(selectedModelInfo, models) && (
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/30">
                       Text-only — will ignore reference
                     </span>
