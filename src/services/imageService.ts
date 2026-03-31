@@ -46,6 +46,7 @@ export interface GenerateImageParams {
   aspectRatio?: string;
   naturalLook?: boolean;
   identityLock?: boolean;
+  count?: number;
 }
 
 export interface GenerateImageResult {
@@ -95,8 +96,8 @@ export async function fetchAllModelTypes(): Promise<{ models: ModelInfo[]; editM
   };
 }
 
-export async function generateImage(params: GenerateImageParams): Promise<GenerateImageResult> {
-  const { persona, modelId, imageWeight, ...restParams } = params;
+export async function generateImage(params: GenerateImageParams): Promise<GenerateImageResult | GenerateImageResult[]> {
+  const { persona, modelId, imageWeight, count, ...restParams } = params;
 
   const payload = {
     modelId,
@@ -108,6 +109,7 @@ export async function generateImage(params: GenerateImageParams): Promise<Genera
     referenceImage: persona.referenceImage || null,
     faceDescriptor: persona.faceDescriptor || null,
     ...(imageWeight !== undefined ? { imageWeight } : {}),
+    ...(count && count > 1 ? { count } : {}),
     ...restParams,
   };
 
@@ -135,7 +137,7 @@ export async function generateImage(params: GenerateImageParams): Promise<Genera
     );
   }
 
-  let data: { imageUrl?: string; model?: string; promptUsed?: string; error?: string };
+  let data: { imageUrl?: string; images?: { imageUrl: string; model: string; promptUsed: string }[]; model?: string; promptUsed?: string; error?: string };
   try {
     data = await response.json();
   } catch {
@@ -144,6 +146,14 @@ export async function generateImage(params: GenerateImageParams): Promise<Genera
 
   if (!response.ok) {
     throw new Error(data.error || 'Image generation failed.');
+  }
+
+  if (data.images && data.images.length > 0) {
+    return data.images.map(img => ({
+      imageUrl: img.imageUrl,
+      model: img.model,
+      promptUsed: img.promptUsed || '',
+    }));
   }
 
   return {

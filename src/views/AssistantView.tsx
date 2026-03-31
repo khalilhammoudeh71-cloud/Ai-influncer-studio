@@ -68,12 +68,13 @@ export default function AssistantView({ persona, personas }: AssistantViewProps)
       setMessages(prev => [...prev, pendingReply]);
 
       try {
-        const result = await generateImage({
+        const rawResult = await generateImage({
           persona: activePersona,
           modelId: 'replit:gpt-image-1',
           isChatContext: true,
           chatPrompt: currentInput
         });
+        const result = Array.isArray(rawResult) ? rawResult[0] : rawResult;
 
         setMessages(prev => prev.map(m => m.id === pendingMessageId ? {
           ...m,

@@ -141,6 +141,9 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const [selectedFraming, setSelectedFraming] = useState(FRAMING[0]);
   const [selectedMood, setSelectedMood] = useState(MOODS[0]);
   const [imageResult, setImageResult] = useState<GenerateImageResult | null>(null);
+  const [multiResults, setMultiResults] = useState<GenerateImageResult[]>([]);
+  const [selectedVariation, setSelectedVariation] = useState(0);
+  const [imageCount, setImageCount] = useState(1);
   const [imageHistory, setImageHistory] = useState<ImageVersion[]>([]);
   const [activeHistoryIndex, setActiveHistoryIndex] = useState(0);
   const [postAction, setPostAction] = useState<PostGenAction>(null);
@@ -311,6 +314,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     setIsGenerating(true);
     setGlobalError(null);
     setImageResult(null);
+    setMultiResults([]);
+    setSelectedVariation(0);
     setImageHistory([]);
     setActiveHistoryIndex(0);
     setPostAction(null);
@@ -318,7 +323,6 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
     try {
       const isIdentityModel = selectedModelInfo?.isIdentityModel ?? false;
-      // Always fall back to the persona's own reference image so models can see the person's face
       const allRefs = allRefImages.length > 0
         ? allRefImages
         : (activePersona.referenceImage ? [activePersona.referenceImage] : []);
@@ -332,7 +336,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       }
 
       const personaWithRef = resolvedRef ? { ...activePersona, referenceImage: resolvedRef } : { ...activePersona, referenceImage: undefined };
-      const data = await generateImage({
+      const result = await generateImage({
         persona: personaWithRef,
         modelId: selectedModel,
         environment: selectedEnv,
@@ -343,11 +347,21 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         additionalImages: extraRefs.length > 0 ? extraRefs : undefined,
         naturalLook,
         identityLock,
+        count: imageCount,
       });
-      setImageResult(data);
-      const version: ImageVersion = { imageUrl: data.imageUrl, model: data.model, promptUsed: data.promptUsed || imagePrompt || '', label: 'Original' };
-      setImageHistory([version]);
-      setActiveHistoryIndex(0);
+      if (Array.isArray(result)) {
+        setMultiResults(result);
+        setSelectedVariation(0);
+        setImageResult(result[0]);
+        const version: ImageVersion = { imageUrl: result[0].imageUrl, model: result[0].model, promptUsed: result[0].promptUsed || imagePrompt || '', label: 'Variation 1' };
+        setImageHistory([version]);
+        setActiveHistoryIndex(0);
+      } else {
+        setImageResult(result);
+        const version: ImageVersion = { imageUrl: result.imageUrl, model: result.model, promptUsed: result.promptUsed || imagePrompt || '', label: 'Original' };
+        setImageHistory([version]);
+        setActiveHistoryIndex(0);
+      }
     } catch (err: unknown) {
       setGlobalError(err instanceof Error ? err.message : 'Generation failed.');
     } finally {
@@ -759,7 +773,9 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/30">⚠ Needs face photo</span>
           )}
           {selectedModelInfo.price > 0 && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">${selectedModelInfo.price.toFixed(3)} per image</span>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+              ${selectedModelInfo.price.toFixed(3)}{imageCount > 1 ? ` x${imageCount} = $${(selectedModelInfo.price * imageCount).toFixed(3)}` : ' per image'}
+            </span>
           )}
         </div>
       )}
@@ -882,6 +898,28 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         </div>
       </div>
 
+      <div className="flex items-center justify-between bg-zinc-800/60 rounded-xl px-3 py-2 border border-zinc-700/50">
+        <div>
+          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wide">Variations</p>
+          <p className="text-[10px] text-zinc-600 mt-0.5">Generate multiple images at once</p>
+        </div>
+        <div className="flex gap-1">
+          {[1, 2, 3, 4].map(n => (
+            <button
+              key={n}
+              onClick={() => setImageCount(n)}
+              className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${
+                imageCount === n
+                  ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/30'
+                  : 'bg-zinc-700 text-zinc-400 hover:bg-zinc-600 hover:text-white'
+              }`}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {localPersonaId === 'none' && allRefImages.length === 0 && (
         <p className="text-xs text-amber-400 text-center">Upload your photo above to enable generation</p>
       )}
@@ -890,15 +928,80 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         disabled={isGenerating || !selectedModel || (localPersonaId === 'none' && allRefImages.length === 0)}
         className="w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
       >
-        {isGenerating ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</> : <><Sparkles className="w-4 h-4" /> Generate Image</>}
+        {isGenerating ? (
+          <><Loader2 className="w-4 h-4 animate-spin" /> Generating {imageCount > 1 ? `${imageCount} variations` : ''}...</>
+        ) : (
+          <><Sparkles className="w-4 h-4" /> Generate {imageCount > 1 ? `${imageCount} Images` : 'Image'}</>
+        )}
       </button>
+
+      {multiResults.length > 1 && !isGenerating && (
+        <div className="space-y-2">
+          <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wide">
+            {multiResults.length} Variations — tap to select
+          </p>
+          <div className={`grid gap-2 ${multiResults.length === 2 ? 'grid-cols-2' : multiResults.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+            {multiResults.map((r, idx) => (
+              <button
+                key={idx}
+                onClick={() => {
+                  setSelectedVariation(idx);
+                  setImageResult(r);
+                  const version: ImageVersion = { imageUrl: r.imageUrl, model: r.model, promptUsed: r.promptUsed || imagePrompt || '', label: `Variation ${idx + 1}` };
+                  setImageHistory([version]);
+                  setActiveHistoryIndex(0);
+                }}
+                className={`relative aspect-square rounded-xl overflow-hidden border-2 transition-all ${
+                  selectedVariation === idx
+                    ? 'border-purple-500 ring-2 ring-purple-500/30 scale-[1.02]'
+                    : 'border-zinc-700 hover:border-zinc-500'
+                }`}
+              >
+                <img src={r.imageUrl} alt={`Variation ${idx + 1}`} className="w-full h-full object-cover" />
+                <div className="absolute top-1.5 left-1.5 px-2 py-0.5 bg-black/70 backdrop-blur-sm rounded-md">
+                  <span className="text-[10px] text-white font-bold">#{idx + 1}</span>
+                </div>
+                <div className="absolute bottom-1.5 right-1.5 flex gap-1">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); downloadFile(r.imageUrl, 'png'); }}
+                    className="p-1.5 bg-black/60 backdrop-blur-md rounded-lg text-white hover:bg-black/80"
+                    title="Download"
+                  >
+                    <Download className="w-3 h-3" />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const media: GeneratedImage = {
+                        id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                        url: r.imageUrl,
+                        prompt: r.promptUsed || imagePrompt || '',
+                        timestamp: Date.now(),
+                        environment: selectedEnv,
+                        outfit: selectedOutfit,
+                        framing: selectedFraming,
+                        model: r.model,
+                      };
+                      saveMediaToLibrary(media);
+                    }}
+                    className="p-1.5 bg-purple-600/80 backdrop-blur-md rounded-lg text-white hover:bg-purple-500"
+                    title="Save to library"
+                  >
+                    <CheckCircle className="w-3 h-3" />
+                  </button>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="aspect-square max-h-[400px] rounded-2xl bg-zinc-950 border border-zinc-800 overflow-hidden relative group mx-auto w-full max-w-[400px]">
         {isGenerating || isProcessing ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
             <Loader2 className="w-10 h-10 animate-spin text-purple-500" />
             <p className="text-xs text-zinc-500 animate-pulse">
-              {isProcessing ? (postAction === 'upscale' ? 'Upscaling...' : 'Editing...') : `Generating with ${selectedModelInfo?.name || 'AI'}...`}
+              {isProcessing ? (postAction === 'upscale' ? 'Upscaling...' : 'Editing...') : `Generating${imageCount > 1 ? ` ${imageCount} variations` : ''} with ${selectedModelInfo?.name || 'AI'}...`}
             </p>
           </div>
         ) : imageResult?.imageUrl ? (
@@ -910,7 +1013,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               </button>
             </div>
             <div className="absolute top-2 left-2 px-2.5 py-1 bg-black/60 backdrop-blur-md rounded-lg">
-              <span className="text-[10px] text-white font-medium">{imageResult.model}</span>
+              <span className="text-[10px] text-white font-medium">{imageResult.model}{multiResults.length > 1 ? ` (#${selectedVariation + 1})` : ''}</span>
             </div>
           </>
         ) : (

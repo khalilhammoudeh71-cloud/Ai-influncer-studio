@@ -1384,7 +1384,8 @@ async function generateWithGoogleImagen(
   referenceImage?: string,
   aspectRatio?: string,
   additionalImages?: string[],
-): Promise<string> {
+  count?: number,
+): Promise<string | string[]> {
   // Use the API key directly as a query param — the correct auth method for generativelanguage.googleapis.com
   const apiKey = process.env.GEMINI_API_KEY || process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
   if (!apiKey) throw new Error('Google API key not configured.');
@@ -1432,9 +1433,10 @@ async function generateWithGoogleImagen(
   };
   const geminiModel = GEMINI_MODEL_MAP[modelId] || 'gemini-3.1-flash-image-preview';
   const isGeminiModel = !!GEMINI_MODEL_MAP[modelId];
+  const effectiveCount = count && count > 1 ? Math.min(count, 4) : 1;
   let geminiBlockReason: string | undefined;
-  try {
-    console.log('[Google Imagen] Trying', geminiModel, '| hasRef:', !!referenceImage);
+
+  const doGeminiRequest = async (): Promise<string | null> => {
     const geminiRes = await fetch(`${BASE}/${geminiModel}:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1446,35 +1448,50 @@ async function generateWithGoogleImagen(
     const geminiData = await geminiRes.json() as Record<string, unknown>;
     if (!geminiRes.ok) {
       const err = (geminiData.error as { message?: string } | undefined)?.message;
-      geminiBlockReason = err || `HTTP ${geminiRes.status}`;
-      console.warn('[Google Imagen]', geminiModel, 'HTTP error:', geminiBlockReason);
-    } else {
-      const candidates = (geminiData.candidates as {
-        content?: { parts?: { inlineData?: { mimeType?: string; data?: string } }[] };
-        finishReason?: string;
-        safetyRatings?: unknown[];
-      }[]) ?? [];
-      for (const candidate of candidates) {
-        for (const part of candidate.content?.parts ?? []) {
-          if (part.inlineData?.data) {
-            console.log('[Google Imagen] Success with', geminiModel);
-            return `data:${part.inlineData.mimeType || 'image/jpeg'};base64,${part.inlineData.data}`;
-          }
+      throw new Error(err || `HTTP ${geminiRes.status}`);
+    }
+    const candidates = (geminiData.candidates as {
+      content?: { parts?: { inlineData?: { mimeType?: string; data?: string } }[] };
+      finishReason?: string;
+      safetyRatings?: unknown[];
+    }[]) ?? [];
+    for (const candidate of candidates) {
+      for (const part of candidate.content?.parts ?? []) {
+        if (part.inlineData?.data) {
+          return `data:${part.inlineData.mimeType || 'image/jpeg'};base64,${part.inlineData.data}`;
         }
       }
-      // Response was OK but no image — log finish reason
-      const firstCandidate = candidates[0];
-      geminiBlockReason = firstCandidate?.finishReason || 'no image in response';
-      const promptFeedback = (geminiData.promptFeedback as { blockReason?: string } | undefined)?.blockReason;
-      if (promptFeedback) geminiBlockReason = `prompt blocked: ${promptFeedback}`;
-      console.warn('[Google Imagen]', geminiModel, 'returned no image. reason:', geminiBlockReason, '| safetyRatings:', JSON.stringify(firstCandidate?.safetyRatings ?? []).slice(0, 200));
+    }
+    const firstCandidate = candidates[0];
+    const reason = firstCandidate?.finishReason || 'no image in response';
+    const promptFeedback = (geminiData.promptFeedback as { blockReason?: string } | undefined)?.blockReason;
+    throw new Error(promptFeedback ? `prompt blocked: ${promptFeedback}` : reason);
+  };
+
+  try {
+    console.log('[Google Imagen] Trying', geminiModel, '| hasRef:', !!referenceImage, '| count:', effectiveCount);
+    if (effectiveCount > 1) {
+      const results = await Promise.allSettled(Array.from({ length: effectiveCount }, () => doGeminiRequest()));
+      const images = results.filter((r): r is PromiseFulfilledResult<string | null> => r.status === 'fulfilled' && !!r.value).map(r => r.value!);
+      if (images.length > 0) {
+        console.log('[Google Imagen] Success with', geminiModel, '—', images.length, 'of', effectiveCount, 'images');
+        return images.length === 1 ? images[0] : images;
+      }
+      const firstError = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
+      geminiBlockReason = firstError ? (firstError.reason as Error).message : 'all requests failed';
+    } else {
+      const img = await doGeminiRequest();
+      if (img) {
+        console.log('[Google Imagen] Success with', geminiModel);
+        return img;
+      }
+      geminiBlockReason = 'no image in response';
     }
   } catch (e) {
     geminiBlockReason = e instanceof Error ? e.message : String(e);
     console.warn('[Google Imagen]', geminiModel, 'fetch error:', geminiBlockReason);
   }
 
-  // For Nano Banana / Gemini models, don't fall back to Imagen 4 — they're Gemini-native
   if (isGeminiModel) {
     throw new Error(`${geminiModel} generation failed (${geminiBlockReason || 'unknown'}). Please try again.`);
   }
@@ -1494,13 +1511,13 @@ async function generateWithGoogleImagen(
     throw new Error(`Image generation with reference photo failed (${geminiBlockReason}). Try without a reference image, or use a different model.`);
   }
 
-  console.log('[Google Imagen] Falling back to Imagen 4 predict:', imagenModel);
+  console.log('[Google Imagen] Falling back to Imagen 4 predict:', imagenModel, '| count:', effectiveCount);
   const imagenRes = await fetch(`${BASE}/${imagenModel}:predict?key=${apiKey}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       instances: [{ prompt }],
-      parameters: { sampleCount: 1, aspectRatio: ratio },
+      parameters: { sampleCount: effectiveCount, aspectRatio: ratio },
     }),
   });
   const imagenData = await imagenRes.json() as Record<string, unknown>;
@@ -1509,28 +1526,43 @@ async function generateWithGoogleImagen(
     throw new Error(`Google Imagen 4: ${msg}`);
   }
   const predictions = imagenData.predictions as { bytesBase64Encoded?: string; mimeType?: string }[] | undefined;
-  const imageBytes = predictions?.[0]?.bytesBase64Encoded;
-  const imageMime = predictions?.[0]?.mimeType || 'image/jpeg';
-  if (!imageBytes) throw new Error('Google Imagen 4 returned no image data.');
+  if (!predictions?.length || !predictions[0]?.bytesBase64Encoded) throw new Error('Google Imagen 4 returned no image data.');
+  if (effectiveCount > 1) {
+    const images = predictions
+      .filter(p => p.bytesBase64Encoded)
+      .map(p => `data:${p.mimeType || 'image/jpeg'};base64,${p.bytesBase64Encoded}`);
+    console.log('[Google Imagen] Success with Imagen 4 predict —', images.length, 'images');
+    return images.length === 1 ? images[0] : images;
+  }
   console.log('[Google Imagen] Success with Imagen 4 predict');
-  return `data:${imageMime};base64,${imageBytes}`;
+  return `data:${predictions[0].mimeType || 'image/jpeg'};base64,${predictions[0].bytesBase64Encoded}`;
 }
 
 app.post('/api/generate-image', async (req, res) => {
-  const { referenceImage, additionalImages, modelId, imageWeight, aspectRatio, ...rest } = req.body as ImageGenRequest & { modelId: string; imageWeight?: number };
+  const { referenceImage, additionalImages, modelId, imageWeight, aspectRatio, count: rawCount, ...rest } = req.body as ImageGenRequest & { modelId: string; imageWeight?: number; count?: number };
+  const count = Math.max(1, Math.min(4, Math.floor(Number(rawCount) || 1)));
 
   if (!modelId) {
     return res.status(400).json({ error: 'modelId is required' });
   }
 
   try {
-    let imageUrl: string;
+    let imageUrls: string[] = [];
     let modelName = modelId;
     let prompt = '';
 
     if (modelId === 'replit:gpt-image-1') {
       prompt = buildPrompt({ ...rest, referenceImage });
-      imageUrl = await generateWithReplit(prompt, referenceImage, aspectRatio);
+      if (count > 1) {
+        const results = await Promise.allSettled(Array.from({ length: count }, () => generateWithReplit(prompt, referenceImage, aspectRatio)));
+        imageUrls = results.filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled').map(r => r.value);
+        if (imageUrls.length === 0) {
+          const firstErr = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
+          throw firstErr ? firstErr.reason : new Error('All image generation requests failed');
+        }
+      } else {
+        imageUrls = [await generateWithReplit(prompt, referenceImage, aspectRatio)];
+      }
       modelName = 'gpt-image-1';
     } else if (modelId.startsWith('google:')) {
       prompt = buildPrompt({ ...rest, referenceImage });
@@ -1546,8 +1578,9 @@ app.post('/api/generate-image', async (req, res) => {
         'google:imagen-3-fast': 'Imagen 4 Fast',
       };
       modelName = GOOGLE_NAMES[modelId] || modelId;
-      console.log('[generate-image] Google model:', modelId, '→', modelName, '| hasRef:', !!referenceImage, '| additionalImages:', additionalImages?.length ?? 0);
-      imageUrl = await generateWithGoogleImagen(modelId, prompt, referenceImage || undefined, aspectRatio, additionalImages);
+      console.log('[generate-image] Google model:', modelId, '→', modelName, '| hasRef:', !!referenceImage, '| additionalImages:', additionalImages?.length ?? 0, '| count:', count);
+      const result = await generateWithGoogleImagen(modelId, prompt, referenceImage || undefined, aspectRatio, additionalImages, count);
+      imageUrls = Array.isArray(result) ? result : [result];
     } else if (modelId.startsWith('wavespeed:')) {
       const wavespeedModels = await fetchWavespeedModels();
       let modelInfo = wavespeedModels.find(m => m.id === modelId);
@@ -1568,15 +1601,35 @@ app.post('/api/generate-image', async (req, res) => {
       const useEditPath = hasRef && !!modelInfo.editApiPath;
       const useInstructionStyle = useEditPath && !modelInfo.editHasStrengthControl;
       prompt = buildPrompt({ ...rest, referenceImage }, useInstructionStyle);
-      console.log('[generate-image] Model:', modelInfo.name, '| hasRef:', hasRef, '| useEditPath:', useEditPath, '| useInstructionStyle:', useInstructionStyle, '| editHasStrengthControl:', modelInfo.editHasStrengthControl);
+      console.log('[generate-image] Model:', modelInfo.name, '| hasRef:', hasRef, '| useEditPath:', useEditPath, '| count:', count);
       modelName = modelInfo.name;
-      imageUrl = await generateWithWavespeed(modelInfo.apiPath, modelInfo.editApiPath, modelInfo.editImageField, prompt, referenceImage, imageWeight, modelInfo.editHasStrengthControl, aspectRatio, additionalImages);
+      if (count > 1) {
+        const results = await Promise.allSettled(
+          Array.from({ length: count }, () =>
+            generateWithWavespeed(modelInfo!.apiPath, modelInfo!.editApiPath, modelInfo!.editImageField, prompt, referenceImage, imageWeight, modelInfo!.editHasStrengthControl, aspectRatio, additionalImages)
+          )
+        );
+        imageUrls = results.filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled').map(r => r.value);
+        if (imageUrls.length === 0) {
+          const firstErr = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
+          throw firstErr ? firstErr.reason : new Error('All image generation requests failed');
+        }
+      } else {
+        imageUrls = [await generateWithWavespeed(modelInfo.apiPath, modelInfo.editApiPath, modelInfo.editImageField, prompt, referenceImage, imageWeight, modelInfo.editHasStrengthControl, aspectRatio, additionalImages)];
+      }
     } else {
       return res.status(400).json({ error: 'Unknown model ID' });
     }
 
+    if (count === 1) {
+      return res.json({
+        imageUrl: imageUrls[0],
+        model: modelName,
+        promptUsed: prompt,
+      });
+    }
     return res.json({
-      imageUrl,
+      images: imageUrls.map(url => ({ imageUrl: url, model: modelName, promptUsed: prompt })),
       model: modelName,
       promptUsed: prompt,
     });
