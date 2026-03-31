@@ -1168,41 +1168,42 @@ async function generateWithGoogleImagen(
 ): Promise<string> {
   const ai = getGeminiClient();
   const ratio = (aspectRatio || '1:1') as '1:1' | '3:4' | '4:3' | '9:16' | '16:9';
-
-  if (referenceImage) {
-    // Use Gemini multimodal image generation with reference image as context
-    const b64 = await resolveImageToDataUrl(referenceImage);
-    const mimeMatch = b64.match(/^data:([^;]+);base64,/);
-    const mimeType = (mimeMatch?.[1] || 'image/jpeg') as 'image/jpeg' | 'image/png' | 'image/webp';
-    const imageData = b64.replace(/^data:[^;]+;base64,/, '');
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash-preview-image-generation',
-      contents: [{
-        role: 'user',
-        parts: [
-          { text: `Using this reference image for the person's likeness and style, generate a new image: ${prompt}` },
-          { inlineData: { mimeType, data: imageData } },
-        ],
-      }],
-      config: { responseModalities: ['IMAGE', 'TEXT'] as unknown as string[] },
-    });
-    const parts = response.candidates?.[0]?.content?.parts ?? [];
-    for (const part of parts) {
-      const inline = (part as Record<string, unknown>).inlineData as { mimeType?: string; data?: string } | undefined;
-      if (inline?.data) {
-        return `data:${inline.mimeType || 'image/jpeg'};base64,${inline.data}`;
-      }
-    }
-    throw new Error('Google Imagen returned no image data.');
-  }
-
-  // Text-to-image via Imagen 3
   const imagenModel = modelId === 'google:imagen-3-fast'
     ? 'imagen-3.0-fast-generate-001'
     : 'imagen-3.0-generate-001';
+
+  let finalPrompt = prompt;
+
+  if (referenceImage) {
+    // Use Gemini vision to extract a detailed description of the person from the reference image,
+    // then weave it into the prompt so Imagen 3 generates something faithful to their look.
+    try {
+      const b64 = await resolveImageToDataUrl(referenceImage);
+      const mimeMatch = b64.match(/^data:([^;]+);base64,/);
+      const mimeType = (mimeMatch?.[1] || 'image/jpeg') as 'image/jpeg' | 'image/png' | 'image/webp';
+      const imageData = b64.replace(/^data:[^;]+;base64,/, '');
+      const visionResponse = await ai.models.generateContent({
+        model: 'gemini-2.0-flash',
+        contents: [{
+          role: 'user',
+          parts: [
+            { inlineData: { mimeType, data: imageData } },
+            { text: 'Describe the person in this photo in precise detail: face shape, skin tone, hair color and style, eye color, approximate age, and any distinctive facial features. Be concise — 2-3 sentences max. Do not describe the background or clothing.' },
+          ],
+        }],
+      });
+      const personDescription = visionResponse.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+      if (personDescription) {
+        finalPrompt = `${prompt}\n\nPerson likeness: ${personDescription}`;
+      }
+    } catch (e) {
+      console.warn('[Google Imagen] Vision description failed, using prompt as-is:', e instanceof Error ? e.message : e);
+    }
+  }
+
   const response = await ai.models.generateImages({
     model: imagenModel,
-    prompt,
+    prompt: finalPrompt,
     config: { numberOfImages: 1, aspectRatio: ratio, outputOptions: { mimeType: 'image/jpeg' } },
   });
   const imgBytes = response.generatedImages?.[0]?.image?.imageBytes;
