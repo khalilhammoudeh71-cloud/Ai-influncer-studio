@@ -124,8 +124,7 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
   const [naturalLook, setNaturalLook] = useState(persona.naturalLook ?? true);
   const [identityLock, setIdentityLock] = useState(persona.identityLock ?? true);
 
-  const [overrideRefImage, setOverrideRefImage] = useState<string | null>(null);
-  const [overrideRefImageName, setOverrideRefImageName] = useState<string | null>(null);
+  const [overrideRefImages, setOverrideRefImages] = useState<{ id: string; url: string; name: string }[]>([]);
   const overrideRefInputRef = useRef<HTMLInputElement>(null);
 
   const handleNaturalLookToggle = () => {
@@ -140,8 +139,12 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
     api.personas.update({ ...persona, naturalLook, identityLock: next }).catch(() => {});
   };
 
-  const hasRefImage = !!(overrideRefImage || persona.referenceImage);
-  const activeRefImage = overrideRefImage || persona.referenceImage || null;
+  const allRefImages: string[] = [
+    ...(persona.referenceImage ? [persona.referenceImage] : []),
+    ...overrideRefImages.map(img => img.url),
+  ];
+  const hasRefImage = allRefImages.length > 0;
+  const activeRefImage = allRefImages[0] || null;
 
   useEffect(() => {
     return () => {
@@ -235,8 +238,10 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
     setActionError(null);
 
     try {
-      const personaForGen = overrideRefImage
-        ? { ...persona, referenceImage: overrideRefImage }
+      const primaryRef = allRefImages[0] || undefined;
+      const extraRefs = allRefImages.slice(1);
+      const personaForGen = primaryRef
+        ? { ...persona, referenceImage: primaryRef }
         : persona;
       const data = await generateImage({
         persona: personaForGen,
@@ -247,6 +252,7 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
         mood: selectedMood,
         additionalInstructions: prompt,
         aspectRatio: selectedAspectRatio,
+        additionalImages: extraRefs.length > 0 ? extraRefs : undefined,
         naturalLook,
         identityLock,
         ...(hasRefImage && selectedModelInfo?.hasEditVariant && selectedModelInfo.editHasStrengthControl ? { imageWeight } : {}),
@@ -542,76 +548,80 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
                 </div>
               )}
 
-              {/* Reference image panel */}
-              {activeRefImage && (
-                <div className="mt-3 flex items-center gap-3 bg-zinc-800/60 rounded-xl p-2.5 border border-zinc-700/50">
-                  <img src={activeRefImage} alt="Reference" className="w-12 h-12 rounded-lg object-cover shrink-0 border border-zinc-700" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wide">Reference image</p>
-                    <p className="text-xs text-zinc-300 truncate">
-                      {overrideRefImage ? (overrideRefImageName || 'Custom upload') : 'Persona photo'}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
+              {/* Reference images panel */}
+              <div className="mt-3 bg-zinc-800/60 rounded-xl p-2.5 border border-zinc-700/50 space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wide">
+                    Reference images {allRefImages.length > 0 && <span className="text-purple-300 ml-1">({allRefImages.length})</span>}
+                  </p>
+                  {allRefImages.length < 6 && (
                     <button
                       onClick={() => overrideRefInputRef.current?.click()}
                       className="text-[10px] px-2 py-1 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-zinc-300 hover:text-white transition-colors font-medium"
                     >
-                      Upload different
+                      + Add photo
                     </button>
-                    {overrideRefImage && (
-                      <button
-                        onClick={() => { setOverrideRefImage(null); setOverrideRefImageName(null); }}
-                        className="p-1 hover:bg-white/10 rounded-lg text-zinc-500 hover:text-white transition-colors"
-                        title="Reset to persona reference"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-                  <input
-                    ref={overrideRefInputRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      const reader = new FileReader();
-                      reader.onload = () => {
-                        setOverrideRefImage(reader.result as string);
-                        setOverrideRefImageName(file.name);
-                      };
-                      reader.readAsDataURL(file);
-                      e.target.value = '';
-                    }}
-                  />
+                  )}
                 </div>
-              )}
-
-              {!activeRefImage && (
-                <label className="mt-3 flex items-center gap-2 px-3 py-2.5 bg-zinc-800/60 hover:bg-zinc-700/60 rounded-xl cursor-pointer transition-colors border border-dashed border-zinc-600">
-                  <Upload className="w-3.5 h-3.5 text-zinc-400" />
-                  <span className="text-xs text-zinc-400">Upload a reference image for this session</span>
-                  <input
-                    ref={overrideRefInputRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      const reader = new FileReader();
-                      reader.onload = () => {
-                        setOverrideRefImage(reader.result as string);
-                        setOverrideRefImageName(file.name);
-                      };
-                      reader.readAsDataURL(file);
-                      e.target.value = '';
-                    }}
-                  />
-                </label>
-              )}
+                {allRefImages.length > 0 ? (
+                  <div className="flex gap-2 flex-wrap">
+                    {persona.referenceImage && (
+                      <div className="relative">
+                        <img src={persona.referenceImage} alt="Persona ref" className="w-12 h-12 rounded-lg object-cover border-2 border-purple-500/60" />
+                        <span className="absolute -bottom-1 -right-1 text-[7px] bg-purple-600 text-white rounded px-1 leading-3">Persona</span>
+                      </div>
+                    )}
+                    {overrideRefImages.map(img => (
+                      <div key={img.id} className="relative group">
+                        <img src={img.url} alt={img.name} className="w-12 h-12 rounded-lg object-cover border border-zinc-700" />
+                        <button
+                          onClick={() => setOverrideRefImages(prev => prev.filter(i => i.id !== img.id))}
+                          className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 rounded-full text-white text-[9px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        >×</button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => overrideRefInputRef.current?.click()}
+                    className="w-full flex items-center gap-2 px-3 py-2 bg-zinc-900/50 hover:bg-zinc-700/50 rounded-lg cursor-pointer transition-colors border border-dashed border-zinc-600"
+                  >
+                    <Upload className="w-3.5 h-3.5 text-zinc-400" />
+                    <span className="text-xs text-zinc-400">Upload reference photos for consistency</span>
+                  </button>
+                )}
+                {overrideRefImages.length > 0 && (
+                  <button
+                    onClick={() => setOverrideRefImages([])}
+                    className="text-[10px] text-zinc-500 hover:text-red-400 transition-colors"
+                  >
+                    Clear uploaded
+                  </button>
+                )}
+              </div>
+              <input
+                ref={overrideRefInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  const files = e.target.files;
+                  if (!files) return;
+                  Array.from(files).forEach(file => {
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                      setOverrideRefImages(prev => [...prev, {
+                        id: `or-${Date.now()}-${Math.random().toString(36).slice(2,5)}`,
+                        url: reader.result as string,
+                        name: file.name,
+                      }]);
+                    };
+                    reader.readAsDataURL(file);
+                  });
+                  e.target.value = '';
+                }}
+              />
             </div>
 
             <div className="aspect-square max-h-[400px] rounded-2xl bg-zinc-950 border border-zinc-800 overflow-hidden relative group mx-auto w-full max-w-[400px]">

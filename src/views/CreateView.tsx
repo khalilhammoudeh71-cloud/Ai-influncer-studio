@@ -152,9 +152,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const [actionError, setActionError] = useState<string | null>(null);
 
   const [refPersonaId, setRefPersonaId] = useState<string>('none');
-  const [refCustomImage, setRefCustomImage] = useState<string | null>(null);
-  const [refCustomImageName, setRefCustomImageName] = useState<string | null>(null);
-  const [additionalImages, setAdditionalImages] = useState<{ id: string; url: string; name: string }[]>([]);
+  const [refImages, setRefImages] = useState<{ id: string; url: string; name: string }[]>([]);
 
   const [videoPrompt, setVideoPrompt] = useState('');
   const [videoResult, setVideoResult] = useState<{ videoUrl: string; model: string } | null>(null);
@@ -199,8 +197,12 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const [angleResult, setAngleResult] = useState<{ imageUrl: string; model: string } | null>(null);
 
   const refPersonaImage = refPersonaId !== 'none' ? (personas.find(p => p.id === refPersonaId)?.referenceImage ?? null) : null;
-  const effectiveRefImage = refCustomImage || refPersonaImage || null;
-  const hasRefImage = !!effectiveRefImage;
+  const allRefImages: string[] = [
+    ...(refPersonaImage ? [refPersonaImage] : []),
+    ...refImages.map(img => img.url),
+  ];
+  const effectiveRefImage = allRefImages[0] || null;
+  const hasRefImage = allRefImages.length > 0;
 
   const videoSourcePersonaImage = videoSourcePersonaId !== 'none' ? (personas.find(p => p.id === videoSourcePersonaId)?.referenceImage ?? null) : null;
   const effectiveVideoSourceImage = videoSourceImage || videoSourcePersonaImage || null;
@@ -306,7 +308,11 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     try {
       const isIdentityModel = selectedModelInfo?.isIdentityModel ?? false;
       // Always fall back to the persona's own reference image so models can see the person's face
-      const resolvedRef = effectiveRefImage || (activePersona.referenceImage ?? undefined);
+      const allRefs = allRefImages.length > 0
+        ? allRefImages
+        : (activePersona.referenceImage ? [activePersona.referenceImage] : []);
+      const resolvedRef = allRefs[0] || undefined;
+      const extraRefs = allRefs.slice(1);
 
       if (isIdentityModel && !resolvedRef) {
         setGlobalError('This model requires a face reference image. Please upload a photo or set a reference image on your persona profile.');
@@ -323,7 +329,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         framing: selectedFraming,
         mood: selectedMood,
         additionalInstructions: imagePrompt,
-        additionalImages: additionalImages.length > 0 ? additionalImages.map(img => img.url) : undefined,
+        additionalImages: extraRefs.length > 0 ? extraRefs : undefined,
         naturalLook,
         identityLock,
       });
@@ -532,11 +538,11 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     }
   };
 
-  const handleAddAdditionalImage = (file: File) => {
+  const handleAddRefImage = (file: File) => {
     const reader = new FileReader();
     reader.onload = () => {
       const url = reader.result as string;
-      setAdditionalImages(prev => [...prev, { id: `ai-${Date.now()}`, url, name: file.name }]);
+      setRefImages(prev => [...prev, { id: `ri-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, url, name: file.name }]);
     };
     reader.readAsDataURL(file);
   };
@@ -755,100 +761,50 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       </div>
 
       <div className="space-y-1.5">
-        {localPersonaId === 'none' ? (
-          <>
-            <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-1.5">
-              <ImageIcon className="w-3 h-3" /> Your Photo <span className="text-red-400">*</span>
-            </label>
-            <div className="flex gap-2 items-start">
-              {refCustomImage && (
-                <img src={refCustomImage} alt="" className="w-14 h-14 rounded-xl object-cover shrink-0 border border-zinc-700" />
-              )}
-              <div className="flex-1 space-y-1.5">
-                <label className={`flex items-center gap-2 px-3 py-2.5 border border-dashed rounded-xl cursor-pointer transition-colors ${refCustomImage ? 'bg-purple-900/20 border-purple-500/40 hover:bg-purple-900/30' : 'bg-zinc-800 border-zinc-600 hover:bg-zinc-700/50'}`}>
-                  <Upload className={`w-3.5 h-3.5 shrink-0 ${refCustomImage ? 'text-purple-400' : 'text-zinc-400'}`} />
-                  <span className={`text-xs truncate ${refCustomImage ? 'text-purple-300' : 'text-zinc-400'}`}>{refCustomImageName || 'Upload your photo (required)'}</span>
-                  <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload(setRefCustomImage, setRefCustomImageName)} />
-                </label>
-                {!refCustomImage && (
-                  <p className="text-[10px] text-amber-400/80">Upload a photo to generate in No-Persona mode</p>
-                )}
-              </div>
-            </div>
-            {refCustomImage && (
-              <button onClick={() => { setRefCustomImage(null); setRefCustomImageName(null); }} className="text-[10px] text-zinc-500 hover:text-red-400 transition-colors">
-                Clear photo
-              </button>
-            )}
-          </>
-        ) : (
-          <>
-            <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-1.5">
-              <ImageIcon className="w-3 h-3" /> Reference Image (optional)
-            </label>
-            <div className="flex gap-2 items-start">
-              {(effectiveRefImage || (!effectiveRefImage && activePersona.referenceImage)) && (
-                <div className="relative shrink-0">
-                  <img src={effectiveRefImage || activePersona.referenceImage!} alt="" className="w-14 h-14 rounded-xl object-cover border border-zinc-700" />
-                  {!effectiveRefImage && activePersona.referenceImage && (
-                    <span className="absolute -bottom-1 -right-1 text-[8px] bg-purple-600 text-white rounded px-1 leading-4">Persona</span>
-                  )}
-                </div>
-              )}
-              <div className="flex-1 space-y-1.5">
-                <div className="relative">
-                  <select
-                    value={refPersonaId}
-                    onChange={e => { setRefPersonaId(e.target.value); setRefCustomImage(null); setRefCustomImageName(null); }}
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-white outline-none appearance-none pr-8"
-                  >
-                    <option value="none">None</option>
-                    {personas.filter(p => p.referenceImage).map(p => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500 pointer-events-none" />
-                </div>
-                <label className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800 border border-dashed border-zinc-600 rounded-xl cursor-pointer hover:bg-zinc-700/50 transition-colors">
-                  <Upload className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-                  <span className="text-xs text-zinc-400 truncate">{refCustomImageName || 'or upload custom image'}</span>
-                  <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload(setRefCustomImage, setRefCustomImageName)} />
-                </label>
-              </div>
-            </div>
-            {(refCustomImage || (refPersonaId !== 'none')) && (
-              <button onClick={() => { setRefPersonaId('none'); setRefCustomImage(null); setRefCustomImageName(null); }} className="text-[10px] text-zinc-500 hover:text-red-400 transition-colors">
-                Clear reference image
-              </button>
-            )}
-            <p className="text-[10px] text-zinc-600">
-              {!effectiveRefImage && activePersona.referenceImage
-                ? "Using persona's saved reference photo for consistency"
-                : 'Models with ref support will use this for consistency'}
-            </p>
-          </>
-        )}
-      </div>
-
-      <div className="space-y-1.5">
         <div className="flex items-center justify-between">
           <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-1.5">
-            <Upload className="w-3 h-3" /> Additional Images (optional)
+            <ImageIcon className="w-3 h-3" /> Reference Images {localPersonaId === 'none' && <span className="text-red-400">*</span>}
+            {allRefImages.length > 0 && (
+              <span className="text-[10px] font-mono text-purple-300 bg-purple-500/10 px-1.5 py-0.5 rounded-full">{allRefImages.length}</span>
+            )}
           </label>
-          {additionalImages.length < 4 && (
+          {allRefImages.length < 6 && (
             <label className="text-[10px] text-purple-400 hover:text-purple-300 cursor-pointer transition-colors flex items-center gap-1">
-              <Upload className="w-3 h-3" /> Add
-              <input type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleAddAdditionalImage(f); e.target.value = ''; }} />
+              <Upload className="w-3 h-3" /> Add photo
+              <input type="file" accept="image/*" multiple className="hidden" onChange={e => { const files = e.target.files; if (files) { Array.from(files).forEach(f => handleAddRefImage(f)); } e.target.value = ''; }} />
             </label>
           )}
         </div>
-        {additionalImages.length > 0 ? (
+
+        {localPersonaId !== 'none' && (
+          <div className="relative">
+            <select
+              value={refPersonaId}
+              onChange={e => { setRefPersonaId(e.target.value); }}
+              className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-white outline-none appearance-none pr-8"
+            >
+              <option value="none">No persona reference</option>
+              {personas.filter(p => p.referenceImage).map(p => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500 pointer-events-none" />
+          </div>
+        )}
+
+        {allRefImages.length > 0 ? (
           <div className="flex gap-2 flex-wrap">
-            {additionalImages.map(img => (
+            {refPersonaImage && (
+              <div className="relative group">
+                <img src={refPersonaImage} alt="Persona ref" className="w-14 h-14 rounded-xl object-cover border-2 border-purple-500/60" />
+                <span className="absolute -bottom-1 -right-1 text-[8px] bg-purple-600 text-white rounded px-1 leading-4">Persona</span>
+              </div>
+            )}
+            {refImages.map(img => (
               <div key={img.id} className="relative group">
                 <img src={img.url} alt={img.name} className="w-14 h-14 rounded-xl object-cover border border-zinc-700" />
                 <button
-                  onClick={() => setAdditionalImages(prev => prev.filter(i => i.id !== img.id))}
+                  onClick={() => setRefImages(prev => prev.filter(i => i.id !== img.id))}
                   className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-600 rounded-full text-white text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                 >×</button>
                 <p className="text-[9px] text-zinc-500 truncate max-w-[56px] mt-0.5">{img.name}</p>
@@ -858,9 +814,26 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         ) : (
           <label className="flex items-center gap-2 px-3 py-2.5 bg-zinc-800 border border-dashed border-zinc-700 rounded-xl cursor-pointer hover:bg-zinc-700/50 transition-colors">
             <Upload className="w-4 h-4 text-zinc-500" />
-            <span className="text-sm text-zinc-500">Upload extra images for context (backgrounds, products…)</span>
-            <input type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleAddAdditionalImage(f); e.target.value = ''; }} />
+            <span className="text-sm text-zinc-500">
+              {localPersonaId === 'none' ? 'Upload your photos (required)' : 'Upload reference photos for identity consistency'}
+            </span>
+            <input type="file" accept="image/*" multiple className="hidden" onChange={e => { const files = e.target.files; if (files) { Array.from(files).forEach(f => handleAddRefImage(f)); } e.target.value = ''; }} />
           </label>
+        )}
+        {allRefImages.length > 0 && (
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] text-zinc-600">
+              {allRefImages.length === 1 ? '1 reference photo' : `${allRefImages.length} reference photos`} — all sent to Gemini for consistency
+            </p>
+            {(refImages.length > 0 || refPersonaId !== 'none') && (
+              <button onClick={() => { setRefImages([]); setRefPersonaId('none'); }} className="text-[10px] text-zinc-500 hover:text-red-400 transition-colors">
+                Clear all
+              </button>
+            )}
+          </div>
+        )}
+        {localPersonaId === 'none' && allRefImages.length === 0 && (
+          <p className="text-[10px] text-amber-400/80">Upload at least one photo to generate in No-Persona mode</p>
         )}
       </div>
 
@@ -898,12 +871,12 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         </div>
       </div>
 
-      {localPersonaId === 'none' && !refCustomImage && (
+      {localPersonaId === 'none' && allRefImages.length === 0 && (
         <p className="text-xs text-amber-400 text-center">Upload your photo above to enable generation</p>
       )}
       <button
         onClick={handleImageGenerate}
-        disabled={isGenerating || !selectedModel || (localPersonaId === 'none' && !refCustomImage)}
+        disabled={isGenerating || !selectedModel || (localPersonaId === 'none' && allRefImages.length === 0)}
         className="w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
       >
         {isGenerating ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</> : <><Sparkles className="w-4 h-4" /> Generate Image</>}
