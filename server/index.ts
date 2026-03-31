@@ -779,7 +779,16 @@ async function generateWithWavespeed(
     body: JSON.stringify(payload),
   });
 
-  const json = await res.json();
+  const rawText = await res.text();
+  let json: Record<string, unknown>;
+  try {
+    json = JSON.parse(rawText);
+  } catch {
+    console.error('[Wavespeed] Non-JSON response (status', res.status, '):', rawText.substring(0, 200));
+    if (res.status === 429) throw new Error('Wavespeed rate limit reached. Please wait a moment and try again.');
+    if (res.status === 402) throw new Error('Insufficient Wavespeed credits. Please top up your account.');
+    throw new Error('Wavespeed service temporarily unavailable. Please try again in a moment.');
+  }
   console.log('[Wavespeed] Response code:', json.code, 'message:', json.message || '');
 
   if (json.code === 400 && useEditPath && /model not found/i.test(json.message || '')) {
@@ -797,7 +806,13 @@ async function generateWithWavespeed(
       },
       body: JSON.stringify(fallbackPayload),
     });
-    const fallbackJson = await fallbackRes.json();
+    const fallbackText = await fallbackRes.text();
+    let fallbackJson: Record<string, unknown>;
+    try {
+      fallbackJson = JSON.parse(fallbackText);
+    } catch {
+      throw new Error('Wavespeed service temporarily unavailable. Please try again in a moment.');
+    }
     console.log('[Wavespeed] Fallback response code:', fallbackJson.code);
     return await extractWavespeedOutput(fallbackJson);
   }
