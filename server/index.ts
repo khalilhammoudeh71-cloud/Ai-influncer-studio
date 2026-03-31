@@ -12,7 +12,7 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: '20mb' }));
+app.use(express.json({ limit: '100mb' }));
 app.use('/api', apiRoutes);
 
 function getOpenAIClient(): OpenAI {
