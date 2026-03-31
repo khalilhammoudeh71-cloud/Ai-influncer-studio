@@ -654,7 +654,7 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
             {multiResults.length > 1 && !isGenerating && (
               <div className="space-y-2">
                 <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wide">
-                  {multiResults.length} Variations — tap to select
+                  {multiResults.length} Variation{multiResults.length !== 1 ? 's' : ''}{multiResults.length < imageCount ? ` (${imageCount - multiResults.length} failed)` : ''} — tap to select
                 </p>
                 <div className={`grid gap-2 ${multiResults.length === 2 ? 'grid-cols-2' : multiResults.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
                   {multiResults.map((r, idx) => (
