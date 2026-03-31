@@ -1193,6 +1193,7 @@ async function generateWithGoogleImagen(
   prompt: string,
   referenceImage?: string,
   aspectRatio?: string,
+  additionalImages?: string[],
 ): Promise<string> {
   // Use the API key directly as a query param — the correct auth method for generativelanguage.googleapis.com
   const apiKey = process.env.GEMINI_API_KEY || process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
@@ -1201,18 +1202,36 @@ async function generateWithGoogleImagen(
   const BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
   const ratio = aspectRatio || '1:1';
 
-  // Build content parts (shared between Gemini and Imagen paths)
-  const contentParts: unknown[] = [];
-  if (referenceImage) {
-    const b64 = await resolveImageToDataUrl(referenceImage);
+  // Helper to push an image URL as an inlineData part
+  const pushImage = async (url: string) => {
+    const b64 = await resolveImageToDataUrl(url);
     const mimeMatch = b64.match(/^data:([^;]+);base64,/);
     const mimeType = mimeMatch?.[1] || 'image/jpeg';
     const data = b64.replace(/^data:[^;]+;base64,/, '');
-    contentParts.push({ inlineData: { mimeType, data } });
-    contentParts.push({ text: `Generate a new image of the same person from this reference photo in a new scene: ${prompt}` });
+    return { inlineData: { mimeType, data } };
+  };
+
+  // Build content parts — reference image first, then additional images, then text
+  const contentParts: unknown[] = [];
+  const hasImages = !!(referenceImage || (additionalImages && additionalImages.length > 0));
+
+  if (referenceImage) {
+    contentParts.push(await pushImage(referenceImage));
+  }
+  if (additionalImages && additionalImages.length > 0) {
+    for (const img of additionalImages) {
+      contentParts.push(await pushImage(img));
+    }
+  }
+
+  if (hasImages) {
+    const imgCount = (referenceImage ? 1 : 0) + (additionalImages?.length ?? 0);
+    contentParts.push({ text: `Using the ${imgCount > 1 ? 'provided reference photos' : 'reference photo'} for identity and style consistency, generate a new image: ${prompt}` });
   } else {
     contentParts.push({ text: prompt });
   }
+
+  console.log('[Google Imagen] contentParts breakdown — images:', contentParts.length - 1, '| hasRef:', !!referenceImage, '| additionalImages:', additionalImages?.length ?? 0);
 
   // 1. Try latest Gemini image generation model (3.1 → 3 → 2.5 fallback chain)
   const geminiModel = 'gemini-3.1-flash-image-preview';
@@ -1264,8 +1283,8 @@ async function generateWithGoogleImagen(
     ? 'imagen-4.0-fast-generate-001'
     : 'imagen-4.0-generate-001';
 
-  if (referenceImage && geminiBlockReason) {
-    // Gemini failed with reference image — Imagen 4 can't use it either, so throw a clear error
+  if (hasImages && geminiBlockReason) {
+    // Gemini failed with input images — Imagen 4 can't use them either, so throw a clear error
     throw new Error(`Image generation with reference photo failed (${geminiBlockReason}). Try without a reference image, or use a different model.`);
   }
 
@@ -1310,16 +1329,16 @@ app.post('/api/generate-image', async (req, res) => {
     } else if (modelId.startsWith('google:')) {
       prompt = buildPrompt({ ...rest, referenceImage });
       modelName = modelId === 'google:imagen-3-fast' ? 'Imagen 4 Fast' : 'Imagen 4';
-      console.log('[generate-image] Google Imagen model:', modelId, '| hasRef:', !!referenceImage);
-      imageUrl = await generateWithGoogleImagen(modelId, prompt, referenceImage || undefined, aspectRatio);
+      console.log('[generate-image] Google Imagen model:', modelId, '| hasRef:', !!referenceImage, '| additionalImages:', additionalImages?.length ?? 0);
+      imageUrl = await generateWithGoogleImagen(modelId, prompt, referenceImage || undefined, aspectRatio, additionalImages);
     } else if (modelId.startsWith('wavespeed:') && /nano-banana/.test(modelId)) {
       // Nano Banana = Google's models on Wavespeed — route through Gemini API per user preference
       prompt = buildPrompt({ ...rest, referenceImage });
       const isNanoBanana2 = modelId.includes('nano-banana-2');
       modelName = isNanoBanana2 ? 'Nano Banana 2 (Gemini)' : 'Nano Banana Pro (Gemini)';
       const imagenModelId = isNanoBanana2 ? 'google:imagen-3-fast' : 'google:imagen-3';
-      console.log('[generate-image] Nano Banana → Gemini Imagen:', imagenModelId, '| hasRef:', !!referenceImage);
-      imageUrl = await generateWithGoogleImagen(imagenModelId, prompt, referenceImage || undefined, aspectRatio);
+      console.log('[generate-image] Nano Banana → Gemini Imagen:', imagenModelId, '| hasRef:', !!referenceImage, '| additionalImages:', additionalImages?.length ?? 0);
+      imageUrl = await generateWithGoogleImagen(imagenModelId, prompt, referenceImage || undefined, aspectRatio, additionalImages);
     } else if (modelId.startsWith('wavespeed:')) {
       const wavespeedModels = await fetchWavespeedModels();
       const modelInfo = wavespeedModels.find(m => m.id === modelId);
