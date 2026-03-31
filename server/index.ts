@@ -840,6 +840,31 @@ app.get('/api/models', async (_req, res) => {
     const wavespeedModels = await fetchWavespeedModels();
     const allModels = getAllModels(wavespeedModels);
 
+    const googleImagenModels: ModelInfo[] = [
+      {
+        id: 'google:imagen-3',
+        name: 'Imagen 4',
+        provider: 'Google',
+        type: 'text-to-image',
+        price: 0,
+        description: 'Google Imagen 4 via Gemini API. High-quality image generation.',
+        apiPath: '',
+        hasEditVariant: false,
+        hasReferenceImage: true,
+      },
+      {
+        id: 'google:imagen-3-fast',
+        name: 'Imagen 4 Fast',
+        provider: 'Google',
+        type: 'text-to-image',
+        price: 0,
+        description: 'Google Imagen 4 Fast via Gemini API. Fast generation.',
+        apiPath: '',
+        hasEditVariant: false,
+        hasReferenceImage: false,
+      },
+    ];
+
     const editModels: ModelInfo[] = [
       {
         id: 'replit:gpt-image-1',
@@ -855,7 +880,7 @@ app.get('/api/models', async (_req, res) => {
     ];
 
     res.json({
-      models: allModels,
+      models: [...googleImagenModels, ...allModels],
       editModels,
       upscaleModels: cachedUpscaleModels || [],
       videoModels: cachedVideoModels || [],
@@ -1165,66 +1190,80 @@ async function generateWithGoogleImagen(
   referenceImage?: string,
   aspectRatio?: string,
 ): Promise<string> {
-  // Use direct client (no proxy) for image generation
-  const aiDirect = getGeminiDirectClient();
+  // Use the API key directly as a query param — the correct auth method for generativelanguage.googleapis.com
+  const apiKey = process.env.GEMINI_API_KEY || process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+  if (!apiKey) throw new Error('Google API key not configured.');
 
-  const parts: { text?: string; inlineData?: { mimeType: string; data: string } }[] = [];
+  const BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
+  const ratio = aspectRatio || '1:1';
 
+  // Build content parts (shared between Gemini and Imagen paths)
+  const contentParts: unknown[] = [];
   if (referenceImage) {
     const b64 = await resolveImageToDataUrl(referenceImage);
     const mimeMatch = b64.match(/^data:([^;]+);base64,/);
     const mimeType = mimeMatch?.[1] || 'image/jpeg';
-    const imageData = b64.replace(/^data:[^;]+;base64,/, '');
-    parts.push({ inlineData: { mimeType, data: imageData } });
-    parts.push({ text: `Generate a new image of the same person from the reference photo in this new scene: ${prompt}` });
+    const data = b64.replace(/^data:[^;]+;base64,/, '');
+    contentParts.push({ inlineData: { mimeType, data } });
+    contentParts.push({ text: `Generate a new image of the same person from this reference photo in a new scene: ${prompt}` });
   } else {
-    parts.push({ text: prompt });
+    contentParts.push({ text: prompt });
   }
 
-  // Try Gemini native image generation (generateContent with image modality)
-  // Falls back to Imagen 3 predict if the model supports it
-  const imageGenModels = [
-    'gemini-2.0-flash-exp-image-generation',
-    'gemini-2.0-flash-exp',
-  ];
-
-  for (const model of imageGenModels) {
-    try {
-      console.log('[Google Imagen] Trying model:', model);
-      const response = await aiDirect.models.generateContent({
-        model,
-        contents: [{ role: 'user', parts }],
-        config: { responseModalities: ['IMAGE', 'TEXT'] as unknown as string[] },
-      });
-      const responseParts = response.candidates?.[0]?.content?.parts ?? [];
-      for (const part of responseParts) {
-        const inline = (part as Record<string, unknown>).inlineData as { mimeType?: string; data?: string } | undefined;
-        if (inline?.data) {
-          console.log('[Google Imagen] Success with model:', model);
-          return `data:${inline.mimeType || 'image/jpeg'};base64,${inline.data}`;
+  // 1. Try Gemini 2.5 Flash image generation (generateContent endpoint, native image output)
+  const geminiModel = 'gemini-2.5-flash-image';
+  try {
+    console.log('[Google Imagen] Trying gemini-2.5-flash-image via direct fetch');
+    const geminiRes = await fetch(`${BASE}/${geminiModel}:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: contentParts }],
+        generationConfig: { responseModalities: ['IMAGE', 'TEXT'] },
+      }),
+    });
+    const geminiData = await geminiRes.json() as Record<string, unknown>;
+    const candidates = (geminiData.candidates as { content?: { parts?: { inlineData?: { mimeType?: string; data?: string } }[] } }[]) ?? [];
+    for (const candidate of candidates) {
+      for (const part of candidate.content?.parts ?? []) {
+        if (part.inlineData?.data) {
+          console.log('[Google Imagen] Success with gemini-2.0-flash-exp-image-generation');
+          return `data:${part.inlineData.mimeType || 'image/jpeg'};base64,${part.inlineData.data}`;
         }
       }
-    } catch (e) {
-      console.warn('[Google Imagen] Model', model, 'failed:', e instanceof Error ? e.message : String(e).slice(0, 120));
     }
+    if (!geminiRes.ok) {
+      const err = (geminiData.error as { message?: string } | undefined)?.message;
+      console.warn('[Google Imagen] gemini-2.5-flash-image failed:', err || JSON.stringify(geminiData).slice(0, 200));
+    }
+  } catch (e) {
+    console.warn('[Google Imagen] gemini-2.5-flash-image fetch error:', e instanceof Error ? e.message : String(e));
   }
 
-  // Final fallback: Imagen 3 predict endpoint
-  const ratio = (aspectRatio || '1:1') as '1:1' | '3:4' | '4:3' | '9:16' | '16:9';
+  // 2. Imagen 4 predict endpoint (works when key has Imagen access, same as AI Studio)
   const imagenModel = modelId === 'google:imagen-3-fast'
-    ? 'imagen-3.0-fast-generate-001'
-    : 'imagen-3.0-generate-001';
-  console.log('[Google Imagen] Falling back to Imagen 3 predict:', imagenModel);
-  const imgResponse = await aiDirect.models.generateImages({
-    model: imagenModel,
-    prompt: referenceImage
-      ? `Portrait photo: ${prompt}` // prompt enriched for person-consistency
-      : prompt,
-    config: { numberOfImages: 1, aspectRatio: ratio, outputOptions: { mimeType: 'image/jpeg' } },
+    ? 'imagen-4.0-fast-generate-001'
+    : 'imagen-4.0-generate-001';
+  console.log('[Google Imagen] Trying Imagen 4 predict:', imagenModel);
+  const imagenRes = await fetch(`${BASE}/${imagenModel}:predict?key=${apiKey}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      instances: [{ prompt: referenceImage ? `Portrait photo consistent with described person: ${prompt}` : prompt }],
+      parameters: { sampleCount: 1, aspectRatio: ratio },
+    }),
   });
-  const imgBytes = imgResponse.generatedImages?.[0]?.image?.imageBytes;
-  if (!imgBytes) throw new Error('Google image generation returned no image data.');
-  return `data:image/jpeg;base64,${imgBytes}`;
+  const imagenData = await imagenRes.json() as Record<string, unknown>;
+  if (!imagenRes.ok) {
+    const msg = ((imagenData.error as { message?: string } | undefined)?.message) || JSON.stringify(imagenData).slice(0, 300);
+    throw new Error(`Google Imagen: ${msg}`);
+  }
+  const predictions = imagenData.predictions as { bytesBase64Encoded?: string; mimeType?: string }[] | undefined;
+  const imageBytes = predictions?.[0]?.bytesBase64Encoded;
+  const imageMime = predictions?.[0]?.mimeType || 'image/jpeg';
+  if (!imageBytes) throw new Error('Google Imagen returned no image data.');
+  console.log('[Google Imagen] Success with Imagen 3 predict');
+  return `data:${imageMime};base64,${imageBytes}`;
 }
 
 app.post('/api/generate-image', async (req, res) => {
@@ -1245,9 +1284,17 @@ app.post('/api/generate-image', async (req, res) => {
       modelName = 'gpt-image-1';
     } else if (modelId.startsWith('google:')) {
       prompt = buildPrompt({ ...rest, referenceImage });
-      modelName = modelId === 'google:imagen-3-fast' ? 'Imagen 3 Fast' : 'Imagen 3';
+      modelName = modelId === 'google:imagen-3-fast' ? 'Imagen 4 Fast' : 'Imagen 4';
       console.log('[generate-image] Google Imagen model:', modelId, '| hasRef:', !!referenceImage);
       imageUrl = await generateWithGoogleImagen(modelId, prompt, referenceImage || undefined, aspectRatio);
+    } else if (modelId.startsWith('wavespeed:') && /nano-banana/.test(modelId)) {
+      // Nano Banana = Google's Imagen on Wavespeed — route through Gemini API instead
+      prompt = buildPrompt({ ...rest, referenceImage });
+      const isNanoBanana2 = modelId.includes('nano-banana-2');
+      modelName = isNanoBanana2 ? 'Nano Banana 2 (via Gemini)' : 'Nano Banana Pro (via Gemini)';
+      const imagenModelId = isNanoBanana2 ? 'google:imagen-3-fast' : 'google:imagen-3';
+      console.log('[generate-image] Nano Banana → Gemini Imagen:', imagenModelId);
+      imageUrl = await generateWithGoogleImagen(imagenModelId, prompt, referenceImage || undefined, aspectRatio);
     } else if (modelId.startsWith('wavespeed:')) {
       const wavespeedModels = await fetchWavespeedModels();
       const modelInfo = wavespeedModels.find(m => m.id === modelId);
