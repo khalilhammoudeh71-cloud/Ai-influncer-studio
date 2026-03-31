@@ -840,31 +840,6 @@ app.get('/api/models', async (_req, res) => {
     const wavespeedModels = await fetchWavespeedModels();
     const allModels = getAllModels(wavespeedModels);
 
-    const googleImagenModels: ModelInfo[] = [
-      {
-        id: 'google:imagen-3',
-        name: 'Imagen 3',
-        provider: 'Google',
-        type: 'text-to-image',
-        price: 0,
-        description: 'Google Imagen 3 — high quality image generation via Gemini integration. Supports reference image for guided generation.',
-        apiPath: '',
-        hasEditVariant: false,
-        hasReferenceImage: true,
-      },
-      {
-        id: 'google:imagen-3-fast',
-        name: 'Imagen 3 Fast',
-        provider: 'Google',
-        type: 'text-to-image',
-        price: 0,
-        description: 'Google Imagen 3 Fast — faster, lower-cost image generation via Gemini integration.',
-        apiPath: '',
-        hasEditVariant: false,
-        hasReferenceImage: false,
-      },
-    ];
-
     const editModels: ModelInfo[] = [
       {
         id: 'replit:gpt-image-1',
@@ -880,7 +855,7 @@ app.get('/api/models', async (_req, res) => {
     ];
 
     res.json({
-      models: [...googleImagenModels, ...allModels],
+      models: allModels,
       editModels,
       upscaleModels: cachedUpscaleModels || [],
       videoModels: cachedVideoModels || [],
