@@ -889,6 +889,16 @@ function getGeminiClient(): GoogleGenAI {
   return new GoogleGenAI({ apiKey, httpOptions: { baseUrl } });
 }
 
+// Imagen 3 uses Google's /predict endpoint which isn't supported by the integration proxy.
+// This client uses the API key directly against Google's standard endpoint.
+function getGeminiDirectClient(): GoogleGenAI {
+  const apiKey = process.env.GEMINI_API_KEY || process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error('Gemini API key not configured.');
+  }
+  return new GoogleGenAI({ apiKey });
+}
+
 app.post('/api/generate-content', async (req, res) => {
   const { type, topic, persona, sceneCount } = req.body;
 
@@ -1166,7 +1176,8 @@ async function generateWithGoogleImagen(
   referenceImage?: string,
   aspectRatio?: string,
 ): Promise<string> {
-  const ai = getGeminiClient();
+  // Use direct client (no proxy) — Imagen's /predict endpoint isn't supported by the integration proxy
+  const aiDirect = getGeminiDirectClient();
   const ratio = (aspectRatio || '1:1') as '1:1' | '3:4' | '4:3' | '9:16' | '16:9';
   const imagenModel = modelId === 'google:imagen-3-fast'
     ? 'imagen-3.0-fast-generate-001'
@@ -1175,15 +1186,16 @@ async function generateWithGoogleImagen(
   let finalPrompt = prompt;
 
   if (referenceImage) {
-    // Use Gemini vision to extract a detailed description of the person from the reference image,
-    // then weave it into the prompt so Imagen 3 generates something faithful to their look.
+    // Use Gemini vision (via proxied client, confirmed working) to describe the person,
+    // then weave that into the Imagen prompt for likeness consistency.
     try {
+      const aiProxy = getGeminiClient();
       const b64 = await resolveImageToDataUrl(referenceImage);
       const mimeMatch = b64.match(/^data:([^;]+);base64,/);
       const mimeType = (mimeMatch?.[1] || 'image/jpeg') as 'image/jpeg' | 'image/png' | 'image/webp';
       const imageData = b64.replace(/^data:[^;]+;base64,/, '');
-      const visionResponse = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
+      const visionResponse = await aiProxy.models.generateContent({
+        model: 'gemini-2.5-flash',
         contents: [{
           role: 'user',
           parts: [
@@ -1195,13 +1207,14 @@ async function generateWithGoogleImagen(
       const personDescription = visionResponse.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
       if (personDescription) {
         finalPrompt = `${prompt}\n\nPerson likeness: ${personDescription}`;
+        console.log('[Google Imagen] Vision description added to prompt');
       }
     } catch (e) {
       console.warn('[Google Imagen] Vision description failed, using prompt as-is:', e instanceof Error ? e.message : e);
     }
   }
 
-  const response = await ai.models.generateImages({
+  const response = await aiDirect.models.generateImages({
     model: imagenModel,
     prompt: finalPrompt,
     config: { numberOfImages: 1, aspectRatio: ratio, outputOptions: { mimeType: 'image/jpeg' } },
