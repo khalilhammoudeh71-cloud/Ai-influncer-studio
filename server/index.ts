@@ -407,7 +407,9 @@ function getAllModels(wavespeedModels: ModelInfo[]): ModelInfo[] {
       hasEditVariant: true,
     },
   ];
-  return [...builtIn, ...wavespeedModels];
+  // Filter out Google/Nano Banana models from Wavespeed — these are served directly via Gemini API
+  const filtered = wavespeedModels.filter(m => !/nano-banana/i.test(m.id));
+  return [...builtIn, ...filtered];
 }
 
 interface ImageGenRequest {
@@ -846,12 +848,23 @@ app.get('/api/models', async (_req, res) => {
 
     const googleImagenModels: ModelInfo[] = [
       {
+        id: 'google:gemini-image',
+        name: 'Gemini 3.1 Image',
+        provider: 'Google',
+        type: 'text-to-image',
+        price: 0,
+        description: 'Google Gemini 3.1 Flash Image — latest model with reference image support.',
+        apiPath: '',
+        hasEditVariant: false,
+        hasReferenceImage: true,
+      },
+      {
         id: 'google:imagen-3',
         name: 'Imagen 4',
         provider: 'Google',
         type: 'text-to-image',
         price: 0,
-        description: 'Google Imagen 4 via Gemini API. High-quality image generation.',
+        description: 'Google Imagen 4 via Gemini API. High-quality text-to-image.',
         apiPath: '',
         hasEditVariant: false,
         hasReferenceImage: true,
@@ -862,7 +875,7 @@ app.get('/api/models', async (_req, res) => {
         provider: 'Google',
         type: 'text-to-image',
         price: 0,
-        description: 'Google Imagen 4 Fast via Gemini API. Fast generation.',
+        description: 'Google Imagen 4 Fast via Gemini API. Fastest generation.',
         apiPath: '',
         hasEditVariant: false,
         hasReferenceImage: false,
@@ -1277,6 +1290,11 @@ async function generateWithGoogleImagen(
     console.warn('[Google Imagen]', geminiModel, 'fetch error:', geminiBlockReason);
   }
 
+  // For google:gemini-image, don't fall back to Imagen 4 — it's a Gemini-only model
+  if (modelId === 'google:gemini-image') {
+    throw new Error(`Gemini 3.1 image generation failed (${geminiBlockReason || 'unknown'}). Please try again.`);
+  }
+
   // 2. Imagen 4 predict endpoint — text-only (no reference image support)
   // Only use as fallback when there's no reference image, or when gemini failed on text-only too
   const imagenModel = modelId === 'google:imagen-3-fast'
@@ -1328,17 +1346,15 @@ app.post('/api/generate-image', async (req, res) => {
       modelName = 'gpt-image-1';
     } else if (modelId.startsWith('google:')) {
       prompt = buildPrompt({ ...rest, referenceImage });
-      modelName = modelId === 'google:imagen-3-fast' ? 'Imagen 4 Fast' : 'Imagen 4';
-      console.log('[generate-image] Google Imagen model:', modelId, '| hasRef:', !!referenceImage, '| additionalImages:', additionalImages?.length ?? 0);
+      if (modelId === 'google:gemini-image') {
+        modelName = 'Gemini 3.1 Image';
+      } else if (modelId === 'google:imagen-3-fast') {
+        modelName = 'Imagen 4 Fast';
+      } else {
+        modelName = 'Imagen 4';
+      }
+      console.log('[generate-image] Google model:', modelId, '→', modelName, '| hasRef:', !!referenceImage, '| additionalImages:', additionalImages?.length ?? 0);
       imageUrl = await generateWithGoogleImagen(modelId, prompt, referenceImage || undefined, aspectRatio, additionalImages);
-    } else if (modelId.startsWith('wavespeed:') && /nano-banana/.test(modelId)) {
-      // Nano Banana = Google's models on Wavespeed — route through Gemini API per user preference
-      prompt = buildPrompt({ ...rest, referenceImage });
-      const isNanoBanana2 = modelId.includes('nano-banana-2');
-      modelName = isNanoBanana2 ? 'Nano Banana 2 (Gemini)' : 'Nano Banana Pro (Gemini)';
-      const imagenModelId = isNanoBanana2 ? 'google:imagen-3-fast' : 'google:imagen-3';
-      console.log('[generate-image] Nano Banana → Gemini Imagen:', imagenModelId, '| hasRef:', !!referenceImage, '| additionalImages:', additionalImages?.length ?? 0);
-      imageUrl = await generateWithGoogleImagen(imagenModelId, prompt, referenceImage || undefined, aspectRatio, additionalImages);
     } else if (modelId.startsWith('wavespeed:')) {
       const wavespeedModels = await fetchWavespeedModels();
       const modelInfo = wavespeedModels.find(m => m.id === modelId);
