@@ -950,7 +950,7 @@ app.post('/api/generate-content', async (req, res) => {
     }
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.1-pro-preview',
       contents: `${systemPrompt}\n\n${userPrompt}`,
       config: {
         maxOutputTokens: 2048,
@@ -1016,7 +1016,7 @@ Chat rules:
       : `${systemPrompt}\n\nFan: ${userMessage}\n${persona.name}:`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.1-pro-preview',
       contents: fullPrompt,
       config: { maxOutputTokens: 400, temperature: 0.92 },
     });
@@ -1113,7 +1113,7 @@ Include specific details about: lighting, composition, environment, mood, camera
 Output ONLY the ${n} numbered prompts. Format: "1. [prompt]\\n2. [prompt]\\n..." — no extra commentary, no blank lines between prompts.`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.1-pro-preview',
       contents: `${systemPrompt}\n\nUser request: ${request.trim()}`,
       config: { maxOutputTokens: 4096, temperature: 0.85 },
     });
@@ -1214,11 +1214,11 @@ async function generateWithGoogleImagen(
     contentParts.push({ text: prompt });
   }
 
-  // 1. Try Gemini 2.5 Flash image generation (generateContent endpoint, native image output)
-  const geminiModel = 'gemini-2.5-flash-image';
+  // 1. Try latest Gemini image generation model (3.1 → 3 → 2.5 fallback chain)
+  const geminiModel = 'gemini-3.1-flash-image-preview';
   let geminiBlockReason: string | undefined;
   try {
-    console.log('[Google Imagen] Trying gemini-2.5-flash-image | hasRef:', !!referenceImage);
+    console.log('[Google Imagen] Trying', geminiModel, '| hasRef:', !!referenceImage);
     const geminiRes = await fetch(`${BASE}/${geminiModel}:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1231,7 +1231,7 @@ async function generateWithGoogleImagen(
     if (!geminiRes.ok) {
       const err = (geminiData.error as { message?: string } | undefined)?.message;
       geminiBlockReason = err || `HTTP ${geminiRes.status}`;
-      console.warn('[Google Imagen] gemini-2.5-flash-image HTTP error:', geminiBlockReason);
+      console.warn('[Google Imagen]', geminiModel, 'HTTP error:', geminiBlockReason);
     } else {
       const candidates = (geminiData.candidates as {
         content?: { parts?: { inlineData?: { mimeType?: string; data?: string } }[] };
@@ -1241,7 +1241,7 @@ async function generateWithGoogleImagen(
       for (const candidate of candidates) {
         for (const part of candidate.content?.parts ?? []) {
           if (part.inlineData?.data) {
-            console.log('[Google Imagen] Success with gemini-2.5-flash-image');
+            console.log('[Google Imagen] Success with', geminiModel);
             return `data:${part.inlineData.mimeType || 'image/jpeg'};base64,${part.inlineData.data}`;
           }
         }
@@ -1251,11 +1251,11 @@ async function generateWithGoogleImagen(
       geminiBlockReason = firstCandidate?.finishReason || 'no image in response';
       const promptFeedback = (geminiData.promptFeedback as { blockReason?: string } | undefined)?.blockReason;
       if (promptFeedback) geminiBlockReason = `prompt blocked: ${promptFeedback}`;
-      console.warn('[Google Imagen] gemini-2.5-flash-image returned no image. reason:', geminiBlockReason, '| safetyRatings:', JSON.stringify(firstCandidate?.safetyRatings ?? []).slice(0, 200));
+      console.warn('[Google Imagen]', geminiModel, 'returned no image. reason:', geminiBlockReason, '| safetyRatings:', JSON.stringify(firstCandidate?.safetyRatings ?? []).slice(0, 200));
     }
   } catch (e) {
     geminiBlockReason = e instanceof Error ? e.message : String(e);
-    console.warn('[Google Imagen] gemini-2.5-flash-image fetch error:', geminiBlockReason);
+    console.warn('[Google Imagen]', geminiModel, 'fetch error:', geminiBlockReason);
   }
 
   // 2. Imagen 4 predict endpoint — text-only (no reference image support)
