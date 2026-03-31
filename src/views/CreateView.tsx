@@ -69,7 +69,7 @@ interface CreateViewProps {
   onSelectPersona: (id: string) => void;
 }
 
-const CUSTOM = 'Custom';
+const CUSTOM = 'None';
 const ENVIRONMENTS = [CUSTOM, 'Luxury Hotel', 'Modern Apartment', 'Rooftop Lounge', 'Beach Resort', 'Yacht Deck', 'Upscale Restaurant', 'Private Gym', 'Beauty Studio', 'City Street', 'Penthouse'];
 const OUTFITS = [CUSTOM, 'Casual Chic', 'Luxury Evening', 'Business Professional', 'Fitness Wear', 'Edgy Streetwear', 'Glamorous Gown', 'Home Lounge'];
 const FRAMING = [CUSTOM, 'Portrait', 'Selfie Style', 'Full Body', 'Half Body', 'Candid', 'Cinematic'];
@@ -135,10 +135,10 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const [mode, setMode] = useState<CreateMode>('image');
 
   const [imagePrompt, setImagePrompt] = useState('');
-  const [selectedEnv, setSelectedEnv] = useState(ENVIRONMENTS[1]);
-  const [selectedOutfit, setSelectedOutfit] = useState(OUTFITS[1]);
-  const [selectedFraming, setSelectedFraming] = useState(FRAMING[1]);
-  const [selectedMood, setSelectedMood] = useState(MOODS[1]);
+  const [selectedEnv, setSelectedEnv] = useState(ENVIRONMENTS[0]);
+  const [selectedOutfit, setSelectedOutfit] = useState(OUTFITS[0]);
+  const [selectedFraming, setSelectedFraming] = useState(FRAMING[0]);
+  const [selectedMood, setSelectedMood] = useState(MOODS[0]);
   const [imageResult, setImageResult] = useState<GenerateImageResult | null>(null);
   const [imageHistory, setImageHistory] = useState<ImageVersion[]>([]);
   const [activeHistoryIndex, setActiveHistoryIndex] = useState(0);
