@@ -950,11 +950,51 @@ app.get('/api/models', async (_req, res) => {
       ...(cachedEditModels || []),
     ];
 
+    const googleVideoModels: ModelInfo[] = [
+      {
+        id: 'google:veo-3',
+        name: 'Veo 3',
+        provider: 'Google (Gemini API)',
+        type: 'text-to-video' as const,
+        price: 0,
+        description: 'Google Veo 3 — free via your Gemini API key. Supports reference images.',
+        apiPath: 'veo-3.0-generate-preview',
+        hasEditVariant: false,
+        hasReferenceImage: true,
+      },
+      {
+        id: 'google:veo-3-fast',
+        name: 'Veo 3 Fast',
+        provider: 'Google (Gemini API)',
+        type: 'text-to-video' as const,
+        price: 0,
+        description: 'Google Veo 3 Fast — free via your Gemini API key. Supports reference images.',
+        apiPath: 'veo-3.0-fast-generate-preview',
+        hasEditVariant: false,
+        hasReferenceImage: true,
+      },
+      {
+        id: 'google:veo-2',
+        name: 'Veo 2',
+        provider: 'Google (Gemini API)',
+        type: 'text-to-video' as const,
+        price: 0,
+        description: 'Google Veo 2 — free via your Gemini API key. Supports reference images.',
+        apiPath: 'veo-2.0-generate-001',
+        hasEditVariant: false,
+        hasReferenceImage: true,
+      },
+    ];
+
+    const wavespeedVideoModels = (cachedVideoModels || []).filter(m =>
+      !m.id.includes('google/veo')
+    );
+
     res.json({
       models: [...googleImagenModels, ...allModels],
       editModels,
       upscaleModels: cachedUpscaleModels || [],
-      videoModels: cachedVideoModels || [],
+      videoModels: [...googleVideoModels, ...wavespeedVideoModels],
     });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to fetch models' });
@@ -982,6 +1022,89 @@ function getGeminiDirectClient(): GoogleGenAI {
     throw new Error('Gemini API key not configured.');
   }
   return new GoogleGenAI({ apiKey });
+}
+
+async function generateWithGeminiVideo(geminiModelId: string, prompt: string, sourceImage?: string): Promise<string> {
+  const apiKey = process.env.GEMINI_API_KEY || process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+  if (!apiKey) throw new Error('Gemini API key not configured.');
+
+  const ai = new GoogleGenAI({ apiKey });
+
+  const params: Record<string, unknown> = {
+    model: geminiModelId,
+    config: {
+      personGeneration: 'allow_all',
+      numberOfVideos: 1,
+    },
+  };
+
+  if (sourceImage) {
+    let b64Data: string;
+    let mimeType = 'image/jpeg';
+    if (sourceImage.startsWith('data:')) {
+      b64Data = sourceImage.replace(/^data:[^;]+;base64,/, '');
+      mimeType = sourceImage.match(/^data:([^;]+);/)?.[1] || 'image/jpeg';
+    } else if (sourceImage.startsWith('http')) {
+      const resolved = await resolveImageToDataUrl(sourceImage);
+      b64Data = resolved.replace(/^data:[^;]+;base64,/, '');
+      mimeType = resolved.match(/^data:([^;]+);/)?.[1] || 'image/jpeg';
+    } else {
+      b64Data = sourceImage;
+    }
+
+    params.image = {
+      imageBytes: b64Data,
+      mimeType,
+    };
+    if (prompt) params.prompt = prompt;
+    console.log('[Gemini Video] Using image-to-video mode with prompt');
+  } else {
+    params.prompt = prompt;
+    console.log('[Gemini Video] Using text-to-video mode');
+  }
+
+  console.log('[Gemini Video] Calling generateVideos with model:', geminiModelId);
+  let operation = await ai.models.generateVideos(params as any);
+
+  const maxPolls = 120;
+  for (let i = 0; i < maxPolls && !operation.done; i++) {
+    await new Promise(r => setTimeout(r, 5000));
+    console.log('[Gemini Video] Poll attempt', i + 1, 'done:', operation.done);
+    operation = await ai.operations.getVideosOperation({ operation });
+  }
+
+  if (!operation.done) {
+    throw new Error('Video generation timed out after 10 minutes. Please try again.');
+  }
+
+  if (operation.error) {
+    throw new Error(`Video generation failed: ${JSON.stringify(operation.error)}`);
+  }
+
+  const generatedVideo = operation.response?.generatedVideos?.[0];
+  if (!generatedVideo?.video) {
+    const raiCount = operation.response?.raiMediaFilteredCount;
+    if (raiCount && raiCount > 0) {
+      throw new Error('Video was blocked by content safety filters. Try adjusting your prompt.');
+    }
+    throw new Error('No video was generated. Please try again.');
+  }
+
+  const videoUri = (generatedVideo.video as any).uri;
+  if (!videoUri) {
+    throw new Error('Generated video has no URI. Please try again.');
+  }
+
+  console.log('[Gemini Video] Got video URI:', videoUri.substring(0, 80));
+
+  const downloadRes = await fetch(`${videoUri}?key=${apiKey}`);
+  if (!downloadRes.ok) {
+    throw new Error(`Failed to download generated video: ${downloadRes.status}`);
+  }
+  const videoBuf = Buffer.from(await downloadRes.arrayBuffer());
+  const videoBase64 = videoBuf.toString('base64');
+  console.log('[Gemini Video] Downloaded video, size:', videoBuf.length, 'bytes');
+  return `data:video/mp4;base64,${videoBase64}`;
 }
 
 app.post('/api/generate-content', async (req, res) => {
@@ -1685,6 +1808,20 @@ app.post('/api/generate-video', async (req, res) => {
   if (naturalLook === true) prompt += ` ${realismTerms}`;
 
   try {
+    const GOOGLE_VEO_MAP: Record<string, string> = {
+      'google:veo-3': 'veo-3.0-generate-preview',
+      'google:veo-3-fast': 'veo-3.0-fast-generate-preview',
+      'google:veo-2': 'veo-2.0-generate-001',
+    };
+
+    if (GOOGLE_VEO_MAP[modelId]) {
+      const geminiModelId = GOOGLE_VEO_MAP[modelId];
+      console.log('[Video Gen] Google Veo model:', modelId, '→', geminiModelId, '| hasImage:', !!sourceImage);
+      const videoUrl = await generateWithGeminiVideo(geminiModelId, prompt, sourceImage || undefined);
+      const displayName = modelId.replace('google:', '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      return res.json({ videoUrl, model: displayName });
+    }
+
     await fetchWavespeedModels();
     const videoModel = (cachedVideoModels || []).find(m => m.id === modelId);
     if (!videoModel) {
