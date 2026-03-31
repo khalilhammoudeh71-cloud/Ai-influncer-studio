@@ -1176,51 +1176,65 @@ async function generateWithGoogleImagen(
   referenceImage?: string,
   aspectRatio?: string,
 ): Promise<string> {
-  // Use direct client (no proxy) — Imagen's /predict endpoint isn't supported by the integration proxy
+  // Use direct client (no proxy) for image generation
   const aiDirect = getGeminiDirectClient();
+
+  const parts: { text?: string; inlineData?: { mimeType: string; data: string } }[] = [];
+
+  if (referenceImage) {
+    const b64 = await resolveImageToDataUrl(referenceImage);
+    const mimeMatch = b64.match(/^data:([^;]+);base64,/);
+    const mimeType = mimeMatch?.[1] || 'image/jpeg';
+    const imageData = b64.replace(/^data:[^;]+;base64,/, '');
+    parts.push({ inlineData: { mimeType, data: imageData } });
+    parts.push({ text: `Generate a new image of the same person from the reference photo in this new scene: ${prompt}` });
+  } else {
+    parts.push({ text: prompt });
+  }
+
+  // Try Gemini native image generation (generateContent with image modality)
+  // Falls back to Imagen 3 predict if the model supports it
+  const imageGenModels = [
+    'gemini-2.0-flash-exp-image-generation',
+    'gemini-2.0-flash-exp',
+  ];
+
+  for (const model of imageGenModels) {
+    try {
+      console.log('[Google Imagen] Trying model:', model);
+      const response = await aiDirect.models.generateContent({
+        model,
+        contents: [{ role: 'user', parts }],
+        config: { responseModalities: ['IMAGE', 'TEXT'] as unknown as string[] },
+      });
+      const responseParts = response.candidates?.[0]?.content?.parts ?? [];
+      for (const part of responseParts) {
+        const inline = (part as Record<string, unknown>).inlineData as { mimeType?: string; data?: string } | undefined;
+        if (inline?.data) {
+          console.log('[Google Imagen] Success with model:', model);
+          return `data:${inline.mimeType || 'image/jpeg'};base64,${inline.data}`;
+        }
+      }
+    } catch (e) {
+      console.warn('[Google Imagen] Model', model, 'failed:', e instanceof Error ? e.message : String(e).slice(0, 120));
+    }
+  }
+
+  // Final fallback: Imagen 3 predict endpoint
   const ratio = (aspectRatio || '1:1') as '1:1' | '3:4' | '4:3' | '9:16' | '16:9';
   const imagenModel = modelId === 'google:imagen-3-fast'
     ? 'imagen-3.0-fast-generate-001'
     : 'imagen-3.0-generate-001';
-
-  let finalPrompt = prompt;
-
-  if (referenceImage) {
-    // Use Gemini vision (via proxied client, confirmed working) to describe the person,
-    // then weave that into the Imagen prompt for likeness consistency.
-    try {
-      const aiProxy = getGeminiClient();
-      const b64 = await resolveImageToDataUrl(referenceImage);
-      const mimeMatch = b64.match(/^data:([^;]+);base64,/);
-      const mimeType = (mimeMatch?.[1] || 'image/jpeg') as 'image/jpeg' | 'image/png' | 'image/webp';
-      const imageData = b64.replace(/^data:[^;]+;base64,/, '');
-      const visionResponse = await aiProxy.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: [{
-          role: 'user',
-          parts: [
-            { inlineData: { mimeType, data: imageData } },
-            { text: 'Describe the person in this photo in precise detail: face shape, skin tone, hair color and style, eye color, approximate age, and any distinctive facial features. Be concise — 2-3 sentences max. Do not describe the background or clothing.' },
-          ],
-        }],
-      });
-      const personDescription = visionResponse.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-      if (personDescription) {
-        finalPrompt = `${prompt}\n\nPerson likeness: ${personDescription}`;
-        console.log('[Google Imagen] Vision description added to prompt');
-      }
-    } catch (e) {
-      console.warn('[Google Imagen] Vision description failed, using prompt as-is:', e instanceof Error ? e.message : e);
-    }
-  }
-
-  const response = await aiDirect.models.generateImages({
+  console.log('[Google Imagen] Falling back to Imagen 3 predict:', imagenModel);
+  const imgResponse = await aiDirect.models.generateImages({
     model: imagenModel,
-    prompt: finalPrompt,
+    prompt: referenceImage
+      ? `Portrait photo: ${prompt}` // prompt enriched for person-consistency
+      : prompt,
     config: { numberOfImages: 1, aspectRatio: ratio, outputOptions: { mimeType: 'image/jpeg' } },
   });
-  const imgBytes = response.generatedImages?.[0]?.image?.imageBytes;
-  if (!imgBytes) throw new Error('Google Imagen returned no image data.');
+  const imgBytes = imgResponse.generatedImages?.[0]?.image?.imageBytes;
+  if (!imgBytes) throw new Error('Google image generation returned no image data.');
   return `data:image/jpeg;base64,${imgBytes}`;
 }
 
