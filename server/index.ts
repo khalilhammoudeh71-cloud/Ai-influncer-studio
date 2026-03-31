@@ -1836,13 +1836,31 @@ app.post('/api/generate-video', async (req, res) => {
     }
 
     if (!isI2V && sourceImage) {
-      const t2vBaseId = modelId.replace('wavespeed-t2v:', '');
-      const i2vId = `wavespeed-i2v:${t2vBaseId}/image-to-video`;
-      const i2vModel = (cachedVideoModels || []).find(m => m.id === i2vId);
+      const t2vRawId = modelId.replace('wavespeed-t2v:', '');
+      const candidates = [
+        `wavespeed-i2v:${t2vRawId}/image-to-video`,
+        `wavespeed-i2v:${t2vRawId.replace('/text-to-video-fast', '/image-to-video-fast')}`,
+        `wavespeed-i2v:${t2vRawId.replace('/text-to-video', '/image-to-video')}`,
+        `wavespeed-i2v:${t2vRawId.replace(/-t2v-/, '-i2v-')}`,
+      ];
+      const allVideoModels = cachedVideoModels || [];
+      let i2vModel: ModelInfo | undefined;
+      for (const cand of candidates) {
+        i2vModel = allVideoModels.find(m => m.id === cand);
+        if (i2vModel) break;
+      }
+      if (!i2vModel) {
+        const t2vBase = t2vRawId.split('/').slice(0, 2).join('/');
+        i2vModel = allVideoModels.find(m =>
+          m.id.startsWith('wavespeed-i2v:') && m.id.includes(t2vBase) && m.type === 'image-to-video'
+        );
+      }
       if (i2vModel) {
-        console.log('[Video Gen] T2V model has reference image — switching to I2V variant:', i2vId);
+        console.log('[Video Gen] T2V model has reference image — switching to I2V variant:', i2vModel.id);
         activeModel = i2vModel;
         isI2V = true;
+      } else {
+        console.log('[Video Gen] No I2V variant found for T2V model:', modelId, '— sending image directly');
       }
     }
 
