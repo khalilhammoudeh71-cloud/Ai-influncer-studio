@@ -1691,10 +1691,22 @@ app.post('/api/generate-video', async (req, res) => {
       return res.status(400).json({ error: 'Unknown video model ID' });
     }
 
-    const isI2V = modelId.startsWith('wavespeed-i2v:');
+    let isI2V = modelId.startsWith('wavespeed-i2v:');
+    let activeModel = videoModel;
 
     if (isI2V && !sourceImage) {
       return res.status(400).json({ error: 'Image-to-video models require a source image' });
+    }
+
+    if (!isI2V && sourceImage) {
+      const t2vBaseId = modelId.replace('wavespeed-t2v:', '');
+      const i2vId = `wavespeed-i2v:${t2vBaseId}/image-to-video`;
+      const i2vModel = (cachedVideoModels || []).find(m => m.id === i2vId);
+      if (i2vModel) {
+        console.log('[Video Gen] T2V model has reference image — switching to I2V variant:', i2vId);
+        activeModel = i2vModel;
+        isI2V = true;
+      }
     }
 
     const payload: Record<string, unknown> = {
@@ -1703,19 +1715,15 @@ app.post('/api/generate-video', async (req, res) => {
 
     if (sourceImage) {
       const b64Url = await resolveImageToDataUrl(sourceImage);
-      if (isI2V) {
-        if (videoModel.editImageField === 'images') {
-          payload.images = [b64Url];
-        } else {
-          payload.image = b64Url;
-        }
+      if (isI2V && activeModel.editImageField === 'images') {
+        payload.images = [b64Url];
       } else {
         payload.image = b64Url;
       }
     }
 
-    console.log('[Video Gen] Model:', videoModel.name, 'Path:', videoModel.apiPath, 'Type:', isI2V ? 'i2v' : 't2v');
-    const url = `https://api.wavespeed.ai${videoModel.apiPath}`;
+    console.log('[Video Gen] Model:', activeModel.name, 'Path:', activeModel.apiPath, 'Type:', isI2V ? 'i2v' : 't2v', '| hasImage:', !!sourceImage);
+    const url = `https://api.wavespeed.ai${activeModel.apiPath}`;
     const apiRes = await fetch(url, {
       method: 'POST',
       headers: {
@@ -1727,7 +1735,7 @@ app.post('/api/generate-video', async (req, res) => {
     const json = await apiRes.json();
     const videoUrl = await extractWavespeedVideoOutput(json);
 
-    return res.json({ videoUrl, model: videoModel.name });
+    return res.json({ videoUrl, model: activeModel.name });
   } catch (err) {
     console.error('[generate-video] Error:', err instanceof Error ? err.message : err);
     return res.status(500).json({ error: err instanceof Error ? err.message : 'Video generation failed' });
