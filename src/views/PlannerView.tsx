@@ -48,24 +48,28 @@ export default function PlannerView({ persona, personas, onSelectPersona }: Plan
   };
 
   return (
-    <div className="p-6">
-      <header className="mb-8 pt-4">
-        <h1 className="text-3xl font-bold tracking-tight text-[var(--text-primary)]">Content Planner</h1>
-        <div className="flex items-center gap-4 mt-1">
-          {persona.referenceImage && (
-            <img 
-              src={persona.referenceImage} 
-              alt={persona.name} 
-              className="w-10 h-10 rounded-xl object-cover ring-2 ring-violet-500/20"
-            />
-          )}
-          <p className="text-[var(--text-secondary)] text-sm">Scale velocity for {persona.name}</p>
+    <div className="p-5">
+      <header className="premium-header mb-8 pt-6 pb-2">
+        <div className="relative z-10">
+          <h1 className="text-3xl font-extrabold tracking-tight">
+            <span className="gradient-text">Content Planner</span>
+          </h1>
+          <div className="flex items-center gap-3 mt-2">
+            {persona.referenceImage && (
+              <img 
+                src={persona.referenceImage} 
+                alt={persona.name} 
+                className="w-8 h-8 rounded-lg object-cover ring-2 ring-violet-500/25 shadow-lg shadow-violet-500/10"
+              />
+            )}
+            <p className="text-[var(--text-tertiary)] text-sm font-medium">Scale velocity for <span className="text-violet-400">{persona.name}</span></p>
+          </div>
         </div>
       </header>
 
-      <div className="grid grid-cols-2 gap-4 mb-8">
-        <div className="bg-[var(--bg-surface)] p-3 rounded-2xl border border-[var(--border-subtle)] relative">
-          <label className="text-[10px] uppercase font-bold text-[var(--text-muted)] mb-1 block tracking-wider">Persona</label>
+      <div className="grid grid-cols-2 gap-3 mb-8">
+        <div className="premium-card p-3.5 rounded-xl relative">
+          <label className="text-[9px] uppercase font-bold text-[var(--text-muted)] mb-1 block tracking-[0.15em]">Persona</label>
           <select
             value={persona.id}
             onChange={e => onSelectPersona(e.target.value)}
@@ -77,12 +81,12 @@ export default function PlannerView({ persona, personas, onSelectPersona }: Plan
           </select>
           <ChevronDown size={13} className="absolute right-3 bottom-3.5 text-[var(--text-muted)] pointer-events-none" />
         </div>
-        <div className="bg-[var(--bg-surface)] p-3 rounded-2xl border border-[var(--border-subtle)] cursor-pointer hover:bg-[var(--bg-elevated)] transition-colors duration-200" onClick={() => {
+        <div className="premium-card p-3.5 rounded-xl cursor-pointer" onClick={() => {
             const platforms = ['Instagram', 'TikTok', 'YouTube', 'Twitter/X'];
             const nextIdx = (platforms.indexOf(platform) + 1) % platforms.length;
             setPlatform(platforms[nextIdx]);
         }}>
-          <label className="text-[10px] uppercase font-bold text-[var(--text-muted)] mb-1 block tracking-wider">Platform</label>
+          <label className="text-[9px] uppercase font-bold text-[var(--text-muted)] mb-1 block tracking-[0.15em]">Platform</label>
           <div className="flex justify-between items-center text-sm font-medium text-[var(--text-primary)]">
             {platform}
             <ChevronDown size={14} className="text-[var(--text-muted)]" />
@@ -101,18 +105,20 @@ export default function PlannerView({ persona, personas, onSelectPersona }: Plan
           transition={{ duration: 0.4 }}
           className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl p-8 flex flex-col items-center text-center"
         >
-          <div className="w-16 h-16 bg-violet-500/10 rounded-2xl flex items-center justify-center mb-4">
-            <Sparkles className="text-violet-400" size={32} />
+          <div className="w-20 h-20 rounded-2xl flex items-center justify-center mb-5 relative">
+            <div className="absolute inset-0 bg-gradient-to-br from-violet-500/20 to-fuchsia-500/20 rounded-2xl" />
+            <div className="absolute inset-0 bg-gradient-to-br from-violet-500/10 to-fuchsia-500/10 rounded-2xl animate-pulse" />
+            <Sparkles className="text-violet-400 relative z-10" size={36} />
           </div>
-          <h2 className="text-lg font-bold mb-2 text-[var(--text-primary)]">No weekly plan active</h2>
-          <p className="text-[var(--text-tertiary)] text-sm mb-6 max-w-[200px]">
-            Ready to generate 7 days of {persona.tone.toLowerCase()} content?
+          <h2 className="text-xl font-bold mb-2 text-[var(--text-primary)]">No weekly plan active</h2>
+          <p className="text-[var(--text-tertiary)] text-sm mb-8 max-w-[220px] leading-relaxed">
+            Ready to generate 7 days of <span className="text-violet-400">{persona.tone.split(',')[0].toLowerCase().trim()}</span> content?
           </p>
           <motion.button 
-            whileHover={{ scale: 1.02 }}
+            whileHover={{ scale: 1.02, y: -1 }}
             whileTap={{ scale: 0.97 }}
             onClick={handleGenerate}
-            className="w-full bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 py-4 rounded-2xl font-bold transition-all flex items-center justify-center gap-2 text-white shadow-lg shadow-violet-500/20"
+            className="w-full premium-button py-4 flex items-center justify-center gap-2 text-white"
           >
             <Sparkles size={18} />
             Generate Weekly Plan
@@ -136,11 +142,12 @@ export default function PlannerView({ persona, personas, onSelectPersona }: Plan
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: idx * 0.05, duration: 0.3 }}
-              className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl p-4 flex gap-4 hover:border-[var(--border-strong)] transition-colors duration-200"
+              className="premium-card rounded-xl p-4 flex gap-4"
             >
-              <div className="bg-violet-500/10 h-12 w-12 rounded-xl flex flex-col items-center justify-center text-violet-400 font-bold shrink-0">
-                <span className="text-[10px] uppercase opacity-60">Day</span>
-                <span className="leading-none">{post.day}</span>
+              <div className="h-12 w-12 rounded-xl flex flex-col items-center justify-center font-bold shrink-0 relative overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-br from-violet-500/15 to-fuchsia-500/15" />
+                <span className="text-[9px] uppercase text-violet-300/60 relative z-10">Day</span>
+                <span className="leading-none text-violet-300 relative z-10">{post.day}</span>
               </div>
               <div className="flex-1">
                 <div className="flex justify-between items-start mb-1">

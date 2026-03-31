@@ -1661,22 +1661,29 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
   return (
     <div className="p-6 max-w-3xl mx-auto">
-      <header className="mb-6 pt-4">
-        <h1 className="text-3xl font-bold tracking-tight">Create Studio</h1>
-        <p className="text-[var(--text-secondary)] text-sm mt-1">Generate content{localPersonaId !== 'none' ? ` as ${activePersona.name}` : ''}</p>
+      <header className="premium-header mb-6 pt-6 pb-2">
+        <div className="relative z-10">
+          <h1 className="text-3xl font-extrabold tracking-tight">
+            <span className="gradient-text">Create Studio</span>
+          </h1>
+          <p className="text-[var(--text-tertiary)] text-sm mt-1.5 font-medium">
+            Generate content{localPersonaId !== 'none' ? <> as <span className="text-violet-400">{activePersona.name}</span></> : ''}
+          </p>
+        </div>
       </header>
 
-      <div className="flex bg-[var(--bg-elevated)]/50 rounded-2xl p-1 gap-1 mb-5 overflow-x-auto">
+      <div className="flex premium-card rounded-2xl p-1.5 gap-1 mb-5 overflow-x-auto">
         {MODE_CONFIG.map(m => {
           const Icon = m.icon;
+          const isActive = mode === m.id;
           return (
             <button
               key={m.id}
               onClick={() => { setMode(m.id); setGlobalError(null); }}
-              className={`flex-1 min-w-0 flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
-                mode === m.id
+              className={`flex-1 min-w-0 flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-xs font-bold transition-all duration-200 whitespace-nowrap relative ${
+                isActive
                   ? `bg-gradient-to-r ${m.gradient} text-white shadow-lg`
-                  : 'text-[var(--text-secondary)] hover:text-white hover:bg-[var(--bg-overlay)]/50'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-white/[0.03]'
               }`}
             >
               <Icon className="w-3.5 h-3.5 shrink-0" />

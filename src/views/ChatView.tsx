@@ -245,10 +245,12 @@ export default function ChatView({ personas, activePersona: propActivePersona }:
 
   return (
     <div className="h-full flex flex-col bg-[var(--bg-base)]">
-      <header className="sticky top-0 z-10 bg-[var(--bg-base)] border-b border-[var(--border-subtle)]">
-        <div className="p-5 pt-10 space-y-3">
+      <header className="sticky top-0 z-10 bg-[var(--bg-base)] border-b border-[var(--border-subtle)] premium-header">
+        <div className="p-5 pt-10 space-y-3 relative z-10">
           <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold tracking-tight text-[var(--text-primary)]">Chat</h1>
+            <h1 className="text-2xl font-extrabold tracking-tight">
+              <span className="gradient-text">Chat</span>
+            </h1>
             {activePersona.referenceImage && (
               <div className="flex items-center gap-2 bg-violet-500/10 rounded-full px-3 py-1.5 border border-violet-500/20">
                 <Camera size={12} className="text-violet-400" />
@@ -346,9 +348,9 @@ export default function ChatView({ personas, activePersona: propActivePersona }:
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="sticky bottom-0 bg-[var(--bg-base)] border-t border-[var(--border-subtle)] p-4 pb-8">
-        <div className="flex items-end gap-3">
-          <div className="flex-1 bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-xl px-4 py-3 focus-within:border-violet-500/40 transition-colors duration-200">
+      <div className="sticky bottom-0 bg-gradient-to-t from-[var(--bg-base)] via-[var(--bg-base)] to-transparent p-4 pb-8 pt-6">
+        <div className="flex items-end gap-2.5">
+          <div className="flex-1 premium-input px-4 py-3 focus-within:border-violet-500/40">
             <textarea
               ref={inputRef}
               value={input}
@@ -361,14 +363,14 @@ export default function ChatView({ personas, activePersona: propActivePersona }:
             />
           </div>
           <motion.button
-            whileTap={{ scale: 0.9 }}
+            whileTap={{ scale: 0.88 }}
             onClick={handleSend}
             disabled={!input.trim() || isGenerating}
             className={cn(
               'w-11 h-11 rounded-xl flex items-center justify-center transition-all flex-shrink-0',
               input.trim() && !isGenerating
-                ? 'bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-lg shadow-violet-500/20'
-                : 'bg-[var(--bg-elevated)] text-[var(--text-muted)]'
+                ? 'premium-button'
+                : 'bg-[var(--bg-elevated)] text-[var(--text-muted)] border border-[var(--border-subtle)]'
             )}
           >
             {isGenerating ? (
@@ -378,8 +380,8 @@ export default function ChatView({ personas, activePersona: propActivePersona }:
             )}
           </motion.button>
         </div>
-        <p className="text-[10px] text-[var(--text-muted)] text-center mt-2">
-          Ask for images or videos anytime — the persona will generate them using their reference image.
+        <p className="text-[10px] text-[var(--text-muted)] text-center mt-2.5 tracking-wide">
+          Ask for images or videos anytime
         </p>
       </div>
     </div>
@@ -397,7 +399,7 @@ function MessageBubble({ msg, persona }: { msg: ChatMessage; persona: Persona })
         transition={{ duration: 0.2 }}
         className="flex justify-end"
       >
-        <div className="max-w-[80%] bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white rounded-2xl rounded-br-sm px-4 py-2.5 text-sm leading-relaxed">
+        <div className="max-w-[80%] bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white rounded-2xl rounded-br-sm px-4 py-2.5 text-sm leading-relaxed shadow-lg shadow-violet-500/15">
           {msg.content}
         </div>
       </motion.div>

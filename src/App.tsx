@@ -43,44 +43,68 @@ export const INTERNAL_FALLBACK_PERSONAS: Persona[] = [
 function Onboarding({ onComplete }: { onComplete: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen p-8 text-center bg-[var(--bg-base)] relative overflow-hidden">
-      <div className="absolute top-[-20%] left-[-15%] w-[60%] h-[60%] bg-violet-500/8 blur-[150px] rounded-full" />
-      <div className="absolute bottom-[-20%] right-[-15%] w-[60%] h-[60%] bg-fuchsia-500/8 blur-[150px] rounded-full" />
-      <div className="absolute top-[30%] right-[10%] w-[30%] h-[30%] bg-amber-500/5 blur-[100px] rounded-full" />
+      <div className="absolute top-[-30%] left-[-20%] w-[70%] h-[70%] bg-violet-600/10 blur-[180px] rounded-full" />
+      <div className="absolute bottom-[-30%] right-[-20%] w-[70%] h-[70%] bg-fuchsia-600/10 blur-[180px] rounded-full" />
+      <div className="absolute top-[20%] right-[5%] w-[40%] h-[40%] bg-amber-500/5 blur-[120px] rounded-full" />
+      <div className="absolute bottom-[30%] left-[10%] w-[25%] h-[25%] bg-sky-500/5 blur-[100px] rounded-full" />
       <motion.div
-        initial={{ opacity: 0, y: 30 }}
+        initial={{ opacity: 0, y: 40 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+        transition={{ duration: 1, ease: [0.22, 1, 0.36, 1] }}
         className="z-10 max-w-sm"
       >
-        <div className="mb-10 flex justify-center">
+        <div className="mb-12 flex justify-center">
           <motion.div
-            initial={{ scale: 0.8, rotate: -5 }}
+            initial={{ scale: 0.6, rotate: -10 }}
             animate={{ scale: 1, rotate: 3 }}
-            transition={{ duration: 1, ease: [0.22, 1, 0.36, 1], delay: 0.2 }}
-            className="w-24 h-24 bg-gradient-to-br from-violet-500 to-fuchsia-600 rounded-3xl flex items-center justify-center shadow-2xl shadow-violet-500/25"
+            transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1], delay: 0.2 }}
+            className="relative"
           >
-            <Users size={48} className="text-white" strokeWidth={1.5} />
+            <div className="absolute inset-0 bg-gradient-to-br from-violet-500 to-fuchsia-600 rounded-[28px] blur-xl opacity-40" />
+            <div className="relative w-28 h-28 bg-gradient-to-br from-violet-500 to-fuchsia-600 rounded-[28px] flex items-center justify-center shadow-2xl"
+              style={{ boxShadow: '0 20px 60px -12px rgba(139, 92, 246, 0.4)' }}
+            >
+              <Users size={52} className="text-white" strokeWidth={1.5} />
+            </div>
           </motion.div>
         </div>
-        <h1 className="text-4xl font-bold tracking-tight mb-4">
+        <motion.h1
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3, duration: 0.8 }}
+          className="text-[42px] font-extrabold tracking-tight mb-4 leading-[1.1]"
+        >
           <span className="gradient-text">AI Influencer</span>
           <br />
           <span className="text-[var(--text-primary)]">Studio</span>
-        </h1>
-        <p className="text-[var(--text-secondary)] text-base mb-12 leading-relaxed">
+        </motion.h1>
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.5, duration: 0.8 }}
+          className="text-[var(--text-secondary)] text-[15px] mb-14 leading-relaxed max-w-[280px] mx-auto"
+        >
           The premium command center for your digital personas. Plan, create, and scale your AI empire.
-        </p>
+        </motion.p>
         <motion.button
-          whileHover={{ scale: 1.02 }}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.7, duration: 0.6 }}
+          whileHover={{ scale: 1.03, y: -2 }}
           whileTap={{ scale: 0.97 }}
           onClick={onComplete}
-          className="w-full py-4 px-8 bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white font-semibold rounded-2xl transition-all shadow-xl shadow-violet-500/20 hover:shadow-violet-500/30"
+          className="w-full premium-button py-4.5 px-8 text-white font-bold rounded-2xl text-base"
         >
           Get Started
         </motion.button>
-        <p className="mt-8 text-[10px] text-[var(--text-muted)] uppercase tracking-[0.2em] font-medium">
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.9, duration: 0.8 }}
+          className="mt-10 text-[10px] text-[var(--text-muted)] uppercase tracking-[0.25em] font-medium"
+        >
           Experience the future of creation
-        </p>
+        </motion.p>
       </motion.div>
     </div>
   );
@@ -239,8 +263,9 @@ function App() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-[var(--bg-base)] text-[var(--text-primary)] overflow-hidden">
-      <main className="flex-1 overflow-y-auto pb-24">
+    <div className="flex flex-col h-screen bg-[var(--bg-base)] text-[var(--text-primary)] overflow-hidden relative">
+      <div className="ambient-glow top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-violet-500/[0.04] blur-[100px] rounded-full" />
+      <main className="flex-1 overflow-y-auto pb-28 relative z-10">
         <div style={{ display: activeTab === 'create' ? 'block' : 'none' }}>
           <CreateView persona={activePersona} personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} />
         </div>
@@ -248,52 +273,68 @@ function App() {
           {activeTab !== 'create' && (
             <motion.div
               key={activeTab}
-              initial={{ opacity: 0, y: 8 }}
+              initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+              transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
             >
               {renderContent()}
             </motion.div>
           )}
         </AnimatePresence>
       </main>
-      <nav className="fixed bottom-0 left-0 right-0 glass-strong border-t border-[var(--border-subtle)] pb-8 pt-2 px-2 z-50">
-        <div className="flex justify-around items-center max-w-md mx-auto">
-          {tabs.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as Tab)}
-                className={cn(
-                  "flex flex-col items-center gap-0.5 transition-all duration-300 min-w-[56px] py-1",
-                  isActive ? "text-violet-400" : "text-[var(--text-muted)] hover:text-[var(--text-tertiary)]"
-                )}
-              >
-                <div className={cn(
-                  "p-2 rounded-2xl transition-all duration-300 relative",
-                  isActive && "bg-violet-500/12"
-                )}>
+      <nav className="fixed bottom-0 left-0 right-0 z-50">
+        <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-base)] via-[var(--bg-base)]/95 to-transparent pointer-events-none" style={{ height: '140%', bottom: 0, top: 'auto' }} />
+        <div className="relative glass-strong border-t border-[var(--border-subtle)] pb-7 pt-2.5 px-4">
+          <div className="flex justify-around items-center max-w-md mx-auto">
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id as Tab)}
+                  className="flex flex-col items-center gap-0.5 min-w-[52px] py-1 relative"
+                >
+                  <div className="relative p-2">
+                    {isActive && (
+                      <motion.div
+                        layoutId="nav-pill"
+                        className="absolute inset-0 rounded-xl"
+                        style={{
+                          background: 'linear-gradient(135deg, rgba(139,92,246,0.2) 0%, rgba(217,70,239,0.15) 100%)',
+                          boxShadow: '0 0 20px -4px rgba(139,92,246,0.3)',
+                        }}
+                        transition={{ type: "spring", stiffness: 400, damping: 28 }}
+                      />
+                    )}
+                    <Icon
+                      size={20}
+                      strokeWidth={isActive ? 2.5 : 1.5}
+                      className={cn(
+                        "relative z-10 transition-colors duration-300",
+                        isActive ? "text-violet-300" : "text-[var(--text-muted)]"
+                      )}
+                    />
+                  </div>
+                  <span className={cn(
+                    "text-[10px] font-semibold tracking-wide transition-all duration-300",
+                    isActive ? "text-violet-300" : "text-[var(--text-muted)]"
+                  )}>
+                    {tab.label}
+                  </span>
                   {isActive && (
                     <motion.div
-                      layoutId="nav-indicator"
-                      className="absolute inset-0 bg-violet-500/12 rounded-2xl"
-                      transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                      layoutId="nav-dot"
+                      className="absolute -top-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-violet-400"
+                      style={{ boxShadow: '0 0 6px rgba(139,92,246,0.6)' }}
+                      transition={{ type: "spring", stiffness: 400, damping: 28 }}
                     />
                   )}
-                  <Icon size={20} strokeWidth={isActive ? 2.5 : 1.8} className="relative z-10" />
-                </div>
-                <span className={cn(
-                  "text-[10px] font-medium tracking-wide transition-all duration-300",
-                  isActive ? "text-violet-400" : "text-[var(--text-muted)]"
-                )}>
-                  {tab.label}
-                </span>
-              </button>
-            );
-          })}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </nav>
     </div>

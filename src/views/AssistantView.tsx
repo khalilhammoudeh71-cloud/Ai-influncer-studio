@@ -123,16 +123,18 @@ export default function AssistantView({ persona, personas }: AssistantViewProps)
 
   return (
     <div className="h-full flex flex-col">
-      <header className="p-6 pt-10 border-b border-[var(--border-subtle)] bg-[var(--bg-base)] sticky top-0 z-10">
-        <div className="flex justify-between items-center mb-4">
+      <header className="p-5 pt-10 border-b border-[var(--border-subtle)] bg-[var(--bg-base)] sticky top-0 z-10 premium-header">
+        <div className="flex justify-between items-center mb-4 relative z-10">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-[var(--text-primary)]">AI Assistant</h1>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div>
-              <span className="text-xs text-violet-400 font-medium">AI Mode</span>
+            <h1 className="text-2xl font-extrabold tracking-tight">
+              <span className="gradient-text">AI Assistant</span>
+            </h1>
+            <div className="flex items-center gap-1.5 mt-1">
+              <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full status-dot text-emerald-400"></div>
+              <span className="text-xs text-violet-400 font-medium">Live</span>
             </div>
           </div>
-          <button className="bg-[var(--bg-elevated)] p-2.5 rounded-xl border border-[var(--border-subtle)] hover:bg-[var(--bg-overlay)] transition-colors duration-200">
+          <button className="premium-card p-2.5 rounded-xl">
             <History size={20} className="text-[var(--text-secondary)]" />
           </button>
         </div>
@@ -162,12 +164,12 @@ export default function AssistantView({ persona, personas }: AssistantViewProps)
           </div>
         </div>
 
-        <div className="flex bg-[var(--bg-surface)] p-1 rounded-xl border border-[var(--border-subtle)]">
+        <div className="flex premium-card p-1 rounded-xl">
           <button 
             onClick={() => setActiveSegment('chat')}
             className={cn(
               "flex-1 py-2 text-xs font-bold rounded-lg transition-all duration-200",
-              activeSegment === 'chat' ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-lg shadow-violet-500/20" : "text-[var(--text-tertiary)]"
+              activeSegment === 'chat' ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-lg shadow-violet-500/15" : "text-[var(--text-muted)]"
             )}
           >
             Chat
@@ -176,7 +178,7 @@ export default function AssistantView({ persona, personas }: AssistantViewProps)
             onClick={() => setActiveSegment('replies')}
             className={cn(
               "flex-1 py-2 text-xs font-bold rounded-lg transition-all duration-200",
-              activeSegment === 'replies' ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-lg shadow-violet-500/20" : "text-[var(--text-tertiary)]"
+              activeSegment === 'replies' ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-lg shadow-violet-500/15" : "text-[var(--text-muted)]"
             )}
           >
             Replies
@@ -266,15 +268,15 @@ export default function AssistantView({ persona, personas }: AssistantViewProps)
               value={replyInput}
               onChange={(e) => setReplyInput(e.target.value)}
               placeholder="Ex: 'You are so pretty! Where did you get that jacket?'"
-              className="w-full bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-xl p-4 text-sm min-h-[100px] focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/50 transition-all duration-200 text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
+              className="w-full premium-input p-4 text-sm min-h-[100px] outline-none text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
             />
           </div>
           
           <motion.button 
-            whileHover={{ scale: 1.02 }}
+            whileHover={{ scale: 1.02, y: -1 }}
             whileTap={{ scale: 0.97 }}
             onClick={handleGenerateReplies}
-            className="w-full bg-gradient-to-r from-violet-600 to-fuchsia-600 py-4 rounded-xl font-bold flex items-center justify-center gap-2 text-white shadow-lg shadow-violet-500/20"
+            className="w-full premium-button py-4 flex items-center justify-center gap-2 text-white"
           >
              <MessageSquareQuote size={18} />
              Generate Replies
@@ -289,7 +291,7 @@ export default function AssistantView({ persona, personas }: AssistantViewProps)
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: idx * 0.1 }}
-                  className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl p-4 relative hover:border-[var(--border-strong)] transition-colors duration-200"
+                  className="premium-card rounded-xl p-4 relative"
                 >
                   <button 
                     onClick={() => navigator.clipboard.writeText(reply)}
@@ -306,8 +308,8 @@ export default function AssistantView({ persona, personas }: AssistantViewProps)
       )}
 
       {activeSegment === 'chat' && (
-        <div className="p-4 bg-[var(--bg-base)] border-t border-[var(--border-subtle)]">
-          <div className="relative flex items-center gap-2 max-w-2xl mx-auto bg-[var(--bg-surface)] p-2 rounded-xl border border-[var(--border-default)] focus-within:border-violet-500/50 transition-colors duration-200">
+        <div className="p-4 bg-gradient-to-t from-[var(--bg-base)] via-[var(--bg-base)] to-transparent pt-6 border-t border-[var(--border-subtle)]">
+          <div className="relative flex items-center gap-2 max-w-2xl mx-auto premium-input p-2 focus-within:border-violet-500/40">
             <input 
               type="text" 
               value={input}
@@ -317,12 +319,15 @@ export default function AssistantView({ persona, personas }: AssistantViewProps)
               className="flex-1 bg-transparent border-none outline-none text-sm px-2 py-1.5 text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
             />
             <motion.button 
-              whileTap={{ scale: 0.9 }}
+              whileTap={{ scale: 0.88 }}
               onClick={sendMessage}
-              className="bg-gradient-to-r from-violet-600 to-fuchsia-600 p-2 rounded-lg hover:from-violet-500 hover:to-fuchsia-500 transition-all disabled:opacity-50"
+              className={cn(
+                "p-2.5 rounded-xl transition-all",
+                input.trim() ? "premium-button" : "bg-[var(--bg-elevated)] text-[var(--text-muted)]"
+              )}
               disabled={!input.trim()}
             >
-              <Send size={18} className="text-white" />
+              <Send size={16} className="text-white" />
             </motion.button>
           </div>
         </div>

@@ -53,10 +53,12 @@ export default function RevenueView({ persona }: RevenueViewProps) {
 
   return (
     <div className="p-6">
-      <header className="flex justify-between items-center mb-8 pt-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-[var(--text-primary)]">Revenue</h1>
-          <p className="text-[var(--text-secondary)] text-sm mt-1">Earnings for {persona.name}</p>
+      <header className="premium-header flex justify-between items-start mb-8 pt-6 pb-2">
+        <div className="relative z-10">
+          <h1 className="text-3xl font-extrabold tracking-tight">
+            <span className="gradient-text">Revenue</span>
+          </h1>
+          <p className="text-[var(--text-tertiary)] text-sm mt-1.5 font-medium">Earnings for <span className="text-violet-400">{persona.name}</span></p>
         </div>
         <motion.button 
           whileTap={{ scale: 0.9 }}
@@ -93,14 +95,14 @@ export default function RevenueView({ persona }: RevenueViewProps) {
         </div>
       </motion.div>
 
-      <div className="grid grid-cols-2 gap-4 mb-8">
-        <button className="flex flex-col items-center justify-center gap-2 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl p-5 hover:border-violet-500/30 transition-all duration-200 group">
-          <div className="bg-violet-500/10 p-3 rounded-xl group-hover:bg-violet-500/20 transition-colors">
-            <PieChart className="text-violet-400" size={24} />
+      <div className="grid grid-cols-2 gap-3 mb-8">
+        <button className="premium-card flex flex-col items-center justify-center gap-2.5 rounded-xl p-5 group">
+          <div className="bg-gradient-to-br from-violet-500/15 to-fuchsia-500/10 p-3 rounded-xl group-hover:from-violet-500/25 group-hover:to-fuchsia-500/15 transition-all">
+            <PieChart className="text-violet-400" size={22} />
           </div>
-          <span className="text-sm font-medium text-[var(--text-primary)]">By Persona</span>
+          <span className="text-sm font-semibold text-[var(--text-primary)]">By Persona</span>
         </button>
-        <button className="flex flex-col items-center justify-center gap-2 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl p-5 hover:border-violet-500/30 transition-all duration-200 group">
+        <button className="premium-card flex flex-col items-center justify-center gap-2.5 rounded-xl p-5 group">
           <div className="bg-violet-500/10 p-3 rounded-xl group-hover:bg-violet-500/20 transition-colors">
             <Wallet className="text-violet-400" size={24} />
           </div>
@@ -119,10 +121,10 @@ export default function RevenueView({ persona }: RevenueViewProps) {
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: idx * 0.05 }}
-            className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl p-4 flex items-center justify-between hover:border-[var(--border-strong)] transition-colors duration-200"
+            className="premium-card rounded-xl p-4 flex items-center justify-between"
           >
             <div className="flex items-center gap-4">
-              <div className="bg-[var(--bg-elevated)] p-3 rounded-xl border border-[var(--border-subtle)]">
+              <div className="bg-gradient-to-br from-violet-500/10 to-fuchsia-500/5 p-3 rounded-xl border border-[var(--border-subtle)]">
                 {entry.source === 'Brand Deal' ? <CreditCard size={20} className="text-violet-400" /> : <DollarSign size={20} className="text-emerald-400" />}
               </div>
               <div>

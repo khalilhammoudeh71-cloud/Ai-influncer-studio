@@ -472,53 +472,67 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
   };
 
   return (
-    <div className="p-6">
-      <header className="flex justify-between items-center mb-8 pt-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Personas</h1>
-          <p className="text-[var(--text-secondary)] text-sm mt-1">Manage your AI identities</p>
+    <div className="p-5">
+      <header className="premium-header mb-8 pt-6 pb-2">
+        <div className="flex justify-between items-start relative z-10">
+          <div>
+            <h1 className="text-3xl font-extrabold tracking-tight">
+              <span className="gradient-text">Personas</span>
+            </h1>
+            <p className="text-[var(--text-tertiary)] text-sm mt-1.5 font-medium">
+              {personas.length} {personas.length === 1 ? 'identity' : 'identities'} managed
+            </p>
+          </div>
+          <motion.button 
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.92 }}
+            onClick={handleAddPersona}
+            className="premium-button p-3 rounded-xl"
+          >
+            <Plus size={22} />
+          </motion.button>
         </div>
-        <button 
-          onClick={handleAddPersona}
-          className="bg-violet-600 hover:bg-violet-500 p-2.5 rounded-full shadow-lg shadow-violet-600/20 transition-all active:scale-95"
-        >
-          <Plus size={24} />
-        </button>
       </header>
 
       <div className="relative mb-6">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]" size={18} />
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" size={16} />
         <input 
           type="text" 
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search personas..." 
-          className="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl py-3 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50 transition-all"
+          className="w-full premium-input py-3.5 pl-11 pr-4 text-sm outline-none text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
         />
       </div>
 
       <div className="grid gap-4">
-        {filteredPersonas.map((persona) => {
+        {filteredPersonas.map((persona, idx) => {
           const isSelected = selectedId === persona.id;
           return (
-            <div 
-              key={persona.id} 
+            <motion.div 
+              key={persona.id}
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: idx * 0.06, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
               onClick={() => {
                 onSelectPersona(persona.id);
                 const fresh = personas.find(p => p.id === persona.id) || persona;
                 setViewingPersona(fresh);
               }}
               className={cn(
-                "group relative bg-[var(--bg-surface)] border rounded-2xl p-5 cursor-pointer transition-all duration-300 overflow-hidden",
-                isSelected ? "border-violet-500 ring-1 ring-violet-500/50" : "border-[var(--border-subtle)] hover:border-[var(--border-strong)]"
+                "group relative rounded-2xl p-5 cursor-pointer overflow-hidden",
+                isSelected ? "premium-card-selected" : "premium-card"
               )}
             >
-              <div className="absolute top-0 right-0 p-4 opacity-40 group-hover:opacity-100 transition-opacity flex gap-2 z-10">
+              {isSelected && (
+                <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-violet-500 via-fuchsia-500 to-violet-500 opacity-80" />
+              )}
+              <div className="absolute top-0 right-0 p-3 opacity-0 group-hover:opacity-100 transition-all duration-200 flex gap-1.5 z-10">
                 <button 
                   onClick={(e) => handleDeletePersona(e, persona.id)}
-                  className="p-1.5 hover:bg-rose-500/20 hover:text-rose-400 rounded-lg transition-colors text-[var(--text-tertiary)]"
+                  className="p-2 hover:bg-rose-500/15 hover:text-rose-400 rounded-xl transition-all text-[var(--text-muted)] backdrop-blur-sm"
                 >
-                  <Trash2 size={18} />
+                  <Trash2 size={16} />
                 </button>
                 <button 
                   onClick={(e) => {
@@ -526,81 +540,84 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                     setActivePersonaForGen(persona);
                     setShowGenerator(true);
                   }}
-                  className="p-1.5 hover:bg-violet-500/20 text-violet-400 rounded-lg transition-colors"
+                  className="p-2 hover:bg-violet-500/15 text-violet-400 rounded-xl transition-all backdrop-blur-sm"
                   title="Generate Visuals"
                 >
-                  <Sparkles size={18} />
+                  <Sparkles size={16} />
                 </button>
                 <button 
                   onClick={(e) => {
                     e.stopPropagation();
                     handleOpenEdit(persona);
                   }}
-                  className="p-1.5 hover:bg-[var(--bg-overlay)] rounded-lg transition-colors text-[var(--text-tertiary)]"
+                  className="p-2 hover:bg-[var(--bg-overlay)] rounded-xl transition-all text-[var(--text-muted)] backdrop-blur-sm"
                 >
-                  <Edit2 size={18} />
+                  <Edit2 size={16} />
                 </button>
               </div>
               
               <div className="flex gap-4">
                 <div className="relative">
                   {persona.referenceImage ? (
-                    <img 
-                      src={persona.referenceImage} 
-                      alt={persona.name} 
-                      className="w-16 h-16 rounded-2xl object-cover ring-2 ring-violet-500/20"
-                    />
+                    <div className="w-[68px] h-[68px] rounded-2xl overflow-hidden ring-2 ring-violet-500/25 shadow-lg shadow-violet-500/10">
+                      <img 
+                        src={persona.referenceImage} 
+                        alt={persona.name} 
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
                   ) : (
-                    <img 
-                      src={persona.avatar} 
-                      alt={persona.name} 
-                      className="w-16 h-16 rounded-2xl object-cover"
-                    />
+                    <div className="w-[68px] h-[68px] rounded-2xl overflow-hidden ring-1 ring-[var(--border-default)]">
+                      <img 
+                        src={persona.avatar} 
+                        alt={persona.name} 
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
                   )}
                   <div className={cn(
-                    "absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-[var(--border-subtle)]",
-                    persona.status === 'Active' ? "bg-emerald-500" : "bg-gray-500"
+                    "absolute -bottom-0.5 -right-0.5 status-dot border-2 border-[var(--bg-surface)]",
+                    persona.status === 'Active' ? "bg-emerald-400 text-emerald-400" : "bg-gray-500 text-gray-500"
                   )}></div>
                 </div>
                 
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <h3 className="font-bold text-lg">{persona.name}</h3>
-                    <span className={cn(
-                      "text-[10px] uppercase tracking-widest font-bold px-2 py-0.5 rounded-full border",
-                      isSelected ? "text-violet-400 border-violet-400/20 bg-violet-400/5" : "text-[var(--text-tertiary)] border-[var(--border-subtle)] bg-[var(--bg-elevated)]"
-                    )}>
-                      {isSelected ? 'Active' : persona.status}
-                    </span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2.5 mb-1">
+                    <h3 className="font-bold text-[17px] truncate">{persona.name}</h3>
+                    {isSelected && (
+                      <span className="text-[9px] uppercase tracking-widest font-bold px-2.5 py-1 rounded-lg bg-gradient-to-r from-violet-500/15 to-fuchsia-500/15 text-violet-300 border border-violet-500/20 shrink-0">
+                        Active
+                      </span>
+                    )}
                   </div>
-                  <p className="text-[var(--text-secondary)] text-sm">{persona.niche}</p>
+                  <p className="text-[var(--text-secondary)] text-[13px]">{persona.niche}</p>
                   
                   {persona.visualLibrary && persona.visualLibrary.length > 0 && (
-                    <div className="flex gap-2 mt-3 overflow-hidden">
+                    <div className="flex gap-1.5 mt-3 overflow-hidden">
                       {persona.visualLibrary.slice(-4).map((img) => (
-                        <div key={img.id} className="w-10 h-10 rounded-lg overflow-hidden border border-[var(--border-default)] shrink-0">
+                        <div key={img.id} className="w-9 h-9 rounded-lg overflow-hidden border border-[var(--border-subtle)] shrink-0 opacity-80 group-hover:opacity-100 transition-opacity">
                           <img src={img.url} alt="" className="w-full h-full object-cover" />
                         </div>
                       ))}
                       {persona.visualLibrary.length > 4 && (
-                        <div className="w-10 h-10 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-default)] flex items-center justify-center text-[10px] text-[var(--text-tertiary)] font-bold shrink-0">
+                        <div className="w-9 h-9 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] flex items-center justify-center text-[10px] text-[var(--text-muted)] font-bold shrink-0">
                           +{persona.visualLibrary.length - 4}
                         </div>
                       )}
                     </div>
                   )}
 
-                  <div className="flex flex-wrap items-center gap-2 mt-3">
-                    <span className="text-[11px] bg-[var(--bg-elevated)] text-[var(--text-primary)] px-2 py-1 rounded-md border border-[var(--border-subtle)]">
-                      {persona.tone}
+                  <div className="flex flex-wrap items-center gap-1.5 mt-3">
+                    <span className="tag-pill">
+                      {persona.tone.split(',')[0].trim()}
                     </span>
-                    <span className="text-[11px] bg-[var(--bg-elevated)] text-[var(--text-primary)] px-2 py-1 rounded-md border border-[var(--border-subtle)]">
+                    <span className="tag-pill">
                       {persona.platform}
                     </span>
                   </div>
                 </div>
               </div>
-            </div>
+            </motion.div>
           );
         })}
 
