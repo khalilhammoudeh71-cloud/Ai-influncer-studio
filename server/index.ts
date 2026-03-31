@@ -849,18 +849,40 @@ app.get('/api/models', async (_req, res) => {
 
     const googleImagenModels: ModelInfo[] = [
       {
-        id: 'google:gemini-image',
-        name: 'Gemini 3.1 Image',
+        id: 'google:nano-banana-2',
+        name: 'Nano Banana 2',
         provider: 'Google',
         type: 'text-to-image',
         price: 0,
-        description: 'Google Gemini 3.1 Flash Image — latest model with reference image support.',
+        description: 'Gemini 3.1 Flash Image — latest model with reference image support.',
         apiPath: '',
         hasEditVariant: false,
         hasReferenceImage: true,
       },
       {
-        id: 'google:imagen-3',
+        id: 'google:nano-banana-pro',
+        name: 'Nano Banana Pro',
+        provider: 'Google',
+        type: 'text-to-image',
+        price: 0,
+        description: 'Gemini 3 Pro Image — high-quality generation with reference support.',
+        apiPath: '',
+        hasEditVariant: false,
+        hasReferenceImage: true,
+      },
+      {
+        id: 'google:nano-banana',
+        name: 'Nano Banana',
+        provider: 'Google',
+        type: 'text-to-image',
+        price: 0,
+        description: 'Gemini 2.5 Flash Image — fast generation with reference support.',
+        apiPath: '',
+        hasEditVariant: false,
+        hasReferenceImage: true,
+      },
+      {
+        id: 'google:imagen-4',
         name: 'Imagen 4',
         provider: 'Google',
         type: 'text-to-image',
@@ -868,15 +890,26 @@ app.get('/api/models', async (_req, res) => {
         description: 'Google Imagen 4 via Gemini API. High-quality text-to-image.',
         apiPath: '',
         hasEditVariant: false,
-        hasReferenceImage: true,
+        hasReferenceImage: false,
       },
       {
-        id: 'google:imagen-3-fast',
+        id: 'google:imagen-4-fast',
         name: 'Imagen 4 Fast',
         provider: 'Google',
         type: 'text-to-image',
         price: 0,
         description: 'Google Imagen 4 Fast via Gemini API. Fastest generation.',
+        apiPath: '',
+        hasEditVariant: false,
+        hasReferenceImage: false,
+      },
+      {
+        id: 'google:imagen-4-ultra',
+        name: 'Imagen 4 Ultra',
+        provider: 'Google',
+        type: 'text-to-image',
+        price: 0,
+        description: 'Google Imagen 4 Ultra via Gemini API. Highest quality.',
         apiPath: '',
         hasEditVariant: false,
         hasReferenceImage: false,
@@ -1247,8 +1280,15 @@ async function generateWithGoogleImagen(
 
   console.log('[Google Imagen] contentParts breakdown — images:', contentParts.length - 1, '| hasRef:', !!referenceImage, '| additionalImages:', additionalImages?.length ?? 0);
 
-  // 1. Try latest Gemini image generation model (3.1 → 3 → 2.5 fallback chain)
-  const geminiModel = 'gemini-3.1-flash-image-preview';
+  // Map model IDs to their actual Gemini API model names
+  const GEMINI_MODEL_MAP: Record<string, string> = {
+    'google:nano-banana-2': 'gemini-3.1-flash-image-preview',
+    'google:nano-banana-pro': 'gemini-3-pro-image-preview',
+    'google:nano-banana': 'gemini-2.5-flash-image',
+    'google:gemini-image': 'gemini-3.1-flash-image-preview',
+  };
+  const geminiModel = GEMINI_MODEL_MAP[modelId] || 'gemini-3.1-flash-image-preview';
+  const isGeminiModel = !!GEMINI_MODEL_MAP[modelId];
   let geminiBlockReason: string | undefined;
   try {
     console.log('[Google Imagen] Trying', geminiModel, '| hasRef:', !!referenceImage);
@@ -1291,16 +1331,20 @@ async function generateWithGoogleImagen(
     console.warn('[Google Imagen]', geminiModel, 'fetch error:', geminiBlockReason);
   }
 
-  // For google:gemini-image, don't fall back to Imagen 4 — it's a Gemini-only model
-  if (modelId === 'google:gemini-image') {
-    throw new Error(`Gemini 3.1 image generation failed (${geminiBlockReason || 'unknown'}). Please try again.`);
+  // For Nano Banana / Gemini models, don't fall back to Imagen 4 — they're Gemini-native
+  if (isGeminiModel) {
+    throw new Error(`${geminiModel} generation failed (${geminiBlockReason || 'unknown'}). Please try again.`);
   }
 
   // 2. Imagen 4 predict endpoint — text-only (no reference image support)
-  // Only use as fallback when there's no reference image, or when gemini failed on text-only too
-  const imagenModel = modelId === 'google:imagen-3-fast'
-    ? 'imagen-4.0-fast-generate-001'
-    : 'imagen-4.0-generate-001';
+  const IMAGEN_MODEL_MAP: Record<string, string> = {
+    'google:imagen-4-fast': 'imagen-4.0-fast-generate-001',
+    'google:imagen-4-ultra': 'imagen-4.0-ultra-generate-001',
+    'google:imagen-4': 'imagen-4.0-generate-001',
+    'google:imagen-3': 'imagen-4.0-generate-001',
+    'google:imagen-3-fast': 'imagen-4.0-fast-generate-001',
+  };
+  const imagenModel = IMAGEN_MODEL_MAP[modelId] || 'imagen-4.0-generate-001';
 
   if (hasImages && geminiBlockReason) {
     // Gemini failed with input images — Imagen 4 can't use them either, so throw a clear error
@@ -1347,13 +1391,18 @@ app.post('/api/generate-image', async (req, res) => {
       modelName = 'gpt-image-1';
     } else if (modelId.startsWith('google:')) {
       prompt = buildPrompt({ ...rest, referenceImage });
-      if (modelId === 'google:gemini-image') {
-        modelName = 'Gemini 3.1 Image';
-      } else if (modelId === 'google:imagen-3-fast') {
-        modelName = 'Imagen 4 Fast';
-      } else {
-        modelName = 'Imagen 4';
-      }
+      const GOOGLE_NAMES: Record<string, string> = {
+        'google:nano-banana-2': 'Nano Banana 2',
+        'google:nano-banana-pro': 'Nano Banana Pro',
+        'google:nano-banana': 'Nano Banana',
+        'google:gemini-image': 'Gemini 3.1 Image',
+        'google:imagen-4': 'Imagen 4',
+        'google:imagen-4-fast': 'Imagen 4 Fast',
+        'google:imagen-4-ultra': 'Imagen 4 Ultra',
+        'google:imagen-3': 'Imagen 4',
+        'google:imagen-3-fast': 'Imagen 4 Fast',
+      };
+      modelName = GOOGLE_NAMES[modelId] || modelId;
       console.log('[generate-image] Google model:', modelId, '→', modelName, '| hasRef:', !!referenceImage, '| additionalImages:', additionalImages?.length ?? 0);
       imageUrl = await generateWithGoogleImagen(modelId, prompt, referenceImage || undefined, aspectRatio, additionalImages);
     } else if (modelId.startsWith('wavespeed:')) {
