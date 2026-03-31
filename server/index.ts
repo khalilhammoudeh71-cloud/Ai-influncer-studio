@@ -771,14 +771,28 @@ async function generateWithWavespeed(
   }
 
   const url = `https://api.wavespeed.ai${usePath}`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${WAVESPEED_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
+  const wsController = new AbortController();
+  const wsTimeout = setTimeout(() => wsController.abort(), 120000);
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${WAVESPEED_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+      signal: wsController.signal,
+    });
+  } catch (fetchErr) {
+    clearTimeout(wsTimeout);
+    if ((fetchErr as Error)?.name === 'AbortError') {
+      throw new Error('Image generation timed out. The model may be busy — please try again.');
+    }
+    throw fetchErr;
+  } finally {
+    clearTimeout(wsTimeout);
+  }
 
   const rawText = await res.text();
   let json: Record<string, unknown>;
