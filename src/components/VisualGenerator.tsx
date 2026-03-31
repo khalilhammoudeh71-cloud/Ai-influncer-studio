@@ -174,21 +174,25 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
   }, []);
 
   const sortedModels = useMemo(() => {
-    if (!hasRefImage) return models;
     return [...models].sort((a, b) => {
-      if (a.isIdentityModel && !b.isIdentityModel) return -1;
-      if (!a.isIdentityModel && b.isIdentityModel) return 1;
-      if (a.hasEditVariant && !b.hasEditVariant) return -1;
-      if (!a.hasEditVariant && b.hasEditVariant) return 1;
+      const aIsGeminiApi = a.id.startsWith('google:');
+      const bIsGeminiApi = b.id.startsWith('google:');
+      if (aIsGeminiApi && !bIsGeminiApi) return -1;
+      if (!aIsGeminiApi && bIsGeminiApi) return 1;
+      const aIsBuiltIn = a.id.startsWith('replit:');
+      const bIsBuiltIn = b.id.startsWith('replit:');
+      if (aIsBuiltIn && !bIsBuiltIn) return -1;
+      if (!aIsBuiltIn && bIsBuiltIn) return 1;
       return 0;
     });
-  }, [models, hasRefImage]);
+  }, [models]);
 
   const groupedModels = useMemo(() => {
     const groups: Record<string, ModelInfo[]> = {};
     sortedModels.forEach((m) => {
-      if (!groups[m.provider]) groups[m.provider] = [];
-      groups[m.provider].push(m);
+      const label = m.id.startsWith('google:') ? 'Google (Gemini API)' : m.provider;
+      if (!groups[label]) groups[label] = [];
+      groups[label].push(m);
     });
     return groups;
   }, [sortedModels]);
@@ -483,7 +487,7 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
                       <optgroup key={provider} label={provider}>
                         {providerModels.map((m) => (
                           <option key={m.id} value={m.id}>
-                            {m.isIdentityModel ? '★ ' : ''}{m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}{m.nsfw ? ' 🔓 NSFW' : ''}{hasRefImage && !m.hasEditVariant ? ' ⚠ No ref support' : ''}
+                            {m.isIdentityModel ? '★ ' : ''}{m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}{m.nsfw ? ' 🔓 NSFW' : ''}{hasRefImage && !m.hasEditVariant && !m.hasReferenceImage ? ' ⚠ No ref support' : ''}
                           </option>
                         ))}
                       </optgroup>
@@ -502,12 +506,12 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
                       ★ Face-consistent
                     </span>
                   )}
-                  {hasRefImage && selectedModelInfo.hasEditVariant && !selectedModelInfo.isIdentityModel && (
+                  {hasRefImage && (selectedModelInfo.hasEditVariant || selectedModelInfo.hasReferenceImage) && !selectedModelInfo.isIdentityModel && (
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-500/20 text-green-300 border border-green-500/30">
                       Uses reference image
                     </span>
                   )}
-                  {hasRefImage && !selectedModelInfo.hasEditVariant && (
+                  {hasRefImage && !selectedModelInfo.hasEditVariant && !selectedModelInfo.hasReferenceImage && (
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/30">
                       Text-only — will ignore reference
                     </span>

@@ -218,6 +218,7 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
         description: m.description || '',
         apiPath,
         hasEditVariant: hasRealEditVariant,
+        hasReferenceImage: hasRealEditVariant,
         editApiPath: hasRealEditVariant && editModel
           ? resolveApiPath(editModel)
           : undefined,
