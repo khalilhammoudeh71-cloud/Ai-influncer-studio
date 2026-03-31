@@ -100,22 +100,35 @@ export async function generateImage(params: GenerateImageParams): Promise<Genera
     ...restParams,
   };
 
-  const response = await fetch('/api/generate-image', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+  let response: Response;
+  try {
+    response = await fetch('/api/generate-image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch (fetchErr) {
+    throw new Error('Could not reach the server. It may have restarted — please try again.');
+  }
 
   const contentType = response.headers.get('content-type');
   if (!contentType || !contentType.includes('application/json')) {
-    throw new Error('Server temporarily unavailable. Please try again in a moment.');
+    const text = await response.text().catch(() => '');
+    console.error('[ImageService] Non-JSON response:', response.status, text.substring(0, 200));
+    if (response.status === 413) {
+      throw new Error('Request too large. Try using fewer or smaller reference images.');
+    }
+    throw new Error(text
+      ? `Server error (${response.status}): ${text.substring(0, 100)}`
+      : `Server error (${response.status}). Please try again.`
+    );
   }
 
   let data: { imageUrl?: string; model?: string; promptUsed?: string; error?: string };
   try {
     data = await response.json();
   } catch {
-    throw new Error('Server temporarily unavailable. Please try again in a moment.');
+    throw new Error(`Server returned invalid response (${response.status}). Please try again.`);
   }
 
   if (!response.ok) {
