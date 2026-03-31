@@ -41,6 +41,7 @@ interface ModelInfo {
   editHasStrengthControl?: boolean;
   isIdentityModel?: boolean;
   nsfw?: boolean;
+  hasReferenceImage?: boolean;
 }
 
 const NSFW_MODEL_IDS = new Set([
@@ -825,6 +826,31 @@ app.get('/api/models', async (_req, res) => {
     const wavespeedModels = await fetchWavespeedModels();
     const allModels = getAllModels(wavespeedModels);
 
+    const googleImagenModels: ModelInfo[] = [
+      {
+        id: 'google:imagen-3',
+        name: 'Imagen 3',
+        provider: 'Google',
+        type: 'text-to-image',
+        price: 0,
+        description: 'Google Imagen 3 — high quality image generation via Gemini integration. Supports reference image for guided generation.',
+        apiPath: '',
+        hasEditVariant: false,
+        hasReferenceImage: true,
+      },
+      {
+        id: 'google:imagen-3-fast',
+        name: 'Imagen 3 Fast',
+        provider: 'Google',
+        type: 'text-to-image',
+        price: 0,
+        description: 'Google Imagen 3 Fast — faster, lower-cost image generation via Gemini integration.',
+        apiPath: '',
+        hasEditVariant: false,
+        hasReferenceImage: false,
+      },
+    ];
+
     const editModels: ModelInfo[] = [
       {
         id: 'replit:gpt-image-1',
@@ -840,7 +866,7 @@ app.get('/api/models', async (_req, res) => {
     ];
 
     res.json({
-      models: allModels,
+      models: [...googleImagenModels, ...allModels],
       editModels,
       upscaleModels: cachedUpscaleModels || [],
       videoModels: cachedVideoModels || [],
@@ -1134,6 +1160,56 @@ app.post('/api/angle-image', async (req, res) => {
   }
 });
 
+async function generateWithGoogleImagen(
+  modelId: string,
+  prompt: string,
+  referenceImage?: string,
+  aspectRatio?: string,
+): Promise<string> {
+  const ai = getGeminiClient();
+  const ratio = (aspectRatio || '1:1') as '1:1' | '3:4' | '4:3' | '9:16' | '16:9';
+
+  if (referenceImage) {
+    // Use Gemini multimodal image generation with reference image as context
+    const b64 = await resolveImageToDataUrl(referenceImage);
+    const mimeMatch = b64.match(/^data:([^;]+);base64,/);
+    const mimeType = (mimeMatch?.[1] || 'image/jpeg') as 'image/jpeg' | 'image/png' | 'image/webp';
+    const imageData = b64.replace(/^data:[^;]+;base64,/, '');
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.0-flash-preview-image-generation',
+      contents: [{
+        role: 'user',
+        parts: [
+          { text: `Using this reference image for the person's likeness and style, generate a new image: ${prompt}` },
+          { inlineData: { mimeType, data: imageData } },
+        ],
+      }],
+      config: { responseModalities: ['IMAGE', 'TEXT'] as unknown as string[] },
+    });
+    const parts = response.candidates?.[0]?.content?.parts ?? [];
+    for (const part of parts) {
+      const inline = (part as Record<string, unknown>).inlineData as { mimeType?: string; data?: string } | undefined;
+      if (inline?.data) {
+        return `data:${inline.mimeType || 'image/jpeg'};base64,${inline.data}`;
+      }
+    }
+    throw new Error('Google Imagen returned no image data.');
+  }
+
+  // Text-to-image via Imagen 3
+  const imagenModel = modelId === 'google:imagen-3-fast'
+    ? 'imagen-3.0-fast-generate-001'
+    : 'imagen-3.0-generate-001';
+  const response = await ai.models.generateImages({
+    model: imagenModel,
+    prompt,
+    config: { numberOfImages: 1, aspectRatio: ratio, outputOptions: { mimeType: 'image/jpeg' } },
+  });
+  const imgBytes = response.generatedImages?.[0]?.image?.imageBytes;
+  if (!imgBytes) throw new Error('Google Imagen returned no image data.');
+  return `data:image/jpeg;base64,${imgBytes}`;
+}
+
 app.post('/api/generate-image', async (req, res) => {
   const { referenceImage, additionalImages, modelId, imageWeight, aspectRatio, ...rest } = req.body as ImageGenRequest & { modelId: string; imageWeight?: number };
 
@@ -1150,6 +1226,11 @@ app.post('/api/generate-image', async (req, res) => {
       prompt = buildPrompt({ ...rest, referenceImage });
       imageUrl = await generateWithReplit(prompt, referenceImage, aspectRatio);
       modelName = 'gpt-image-1';
+    } else if (modelId.startsWith('google:')) {
+      prompt = buildPrompt({ ...rest, referenceImage });
+      modelName = modelId === 'google:imagen-3-fast' ? 'Imagen 3 Fast' : 'Imagen 3';
+      console.log('[generate-image] Google Imagen model:', modelId, '| hasRef:', !!referenceImage);
+      imageUrl = await generateWithGoogleImagen(modelId, prompt, referenceImage || undefined, aspectRatio);
     } else if (modelId.startsWith('wavespeed:')) {
       const wavespeedModels = await fetchWavespeedModels();
       const modelInfo = wavespeedModels.find(m => m.id === modelId);
