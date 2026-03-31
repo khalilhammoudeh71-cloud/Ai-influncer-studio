@@ -596,11 +596,20 @@ async function resolveImageToDataUrl(input: string): Promise<string> {
       const imgRes = await fetch(input);
       if (!imgRes.ok) throw new Error(`Failed to fetch source image: ${imgRes.status}`);
       const ct = imgRes.headers.get('content-type') || '';
-      if (!ct.startsWith('image/')) {
-        throw new Error(`Source URL did not return an image (got: ${ct})`);
-      }
       const imgBuf = Buffer.from(await imgRes.arrayBuffer());
-      const mimeType = ct.split(';')[0].trim();
+      let mimeType = ct.split(';')[0].trim();
+      if (!mimeType.startsWith('image/')) {
+        if (mimeType === 'application/octet-stream' || !mimeType) {
+          const sig = imgBuf.slice(0, 4);
+          if (sig[0] === 0x89 && sig[1] === 0x50) mimeType = 'image/png';
+          else if (sig[0] === 0xFF && sig[1] === 0xD8) mimeType = 'image/jpeg';
+          else if (sig[0] === 0x52 && sig[1] === 0x49) mimeType = 'image/webp';
+          else mimeType = 'image/png';
+          console.log('[Image] Content-type was', ct, '→ detected as', mimeType, 'from magic bytes');
+        } else {
+          throw new Error(`Source URL did not return an image (got: ${ct})`);
+        }
+      }
       console.log('[Image] Fetched external image, size:', imgBuf.length, 'type:', mimeType);
       return `data:${mimeType};base64,${imgBuf.toString('base64')}`;
     }
