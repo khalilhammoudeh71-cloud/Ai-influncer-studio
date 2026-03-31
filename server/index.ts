@@ -1291,14 +1291,6 @@ app.post('/api/generate-image', async (req, res) => {
       modelName = modelId === 'google:imagen-3-fast' ? 'Imagen 4 Fast' : 'Imagen 4';
       console.log('[generate-image] Google Imagen model:', modelId, '| hasRef:', !!referenceImage);
       imageUrl = await generateWithGoogleImagen(modelId, prompt, referenceImage || undefined, aspectRatio);
-    } else if (modelId.startsWith('wavespeed:') && /nano-banana/.test(modelId)) {
-      // Nano Banana = Google's Imagen on Wavespeed — route through Gemini API instead
-      prompt = buildPrompt({ ...rest, referenceImage });
-      const isNanoBanana2 = modelId.includes('nano-banana-2');
-      modelName = isNanoBanana2 ? 'Nano Banana 2 (via Gemini)' : 'Nano Banana Pro (via Gemini)';
-      const imagenModelId = isNanoBanana2 ? 'google:imagen-3-fast' : 'google:imagen-3';
-      console.log('[generate-image] Nano Banana → Gemini Imagen:', imagenModelId);
-      imageUrl = await generateWithGoogleImagen(imagenModelId, prompt, referenceImage || undefined, aspectRatio);
     } else if (modelId.startsWith('wavespeed:')) {
       const wavespeedModels = await fetchWavespeedModels();
       const modelInfo = wavespeedModels.find(m => m.id === modelId);
