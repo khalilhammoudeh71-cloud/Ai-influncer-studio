@@ -796,18 +796,18 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           <div className="flex gap-2 flex-wrap">
             {refPersonaImage && (
               <div className="relative group">
-                <img src={refPersonaImage} alt="Persona ref" className="w-14 h-14 rounded-xl object-cover border-2 border-purple-500/60" />
+                <img src={refPersonaImage} alt="Persona ref" className="w-20 h-20 rounded-xl object-cover border-2 border-purple-500/60" />
                 <span className="absolute -bottom-1 -right-1 text-[8px] bg-purple-600 text-white rounded px-1 leading-4">Persona</span>
               </div>
             )}
             {refImages.map(img => (
               <div key={img.id} className="relative group">
-                <img src={img.url} alt={img.name} className="w-14 h-14 rounded-xl object-cover border border-zinc-700" />
+                <img src={img.url} alt={img.name} className="w-20 h-20 rounded-xl object-cover border border-zinc-700" />
                 <button
                   onClick={() => setRefImages(prev => prev.filter(i => i.id !== img.id))}
-                  className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-600 rounded-full text-white text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="absolute -top-1.5 -left-1.5 w-5 h-5 bg-red-600 hover:bg-red-500 rounded-full text-white text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all shadow-lg"
                 >×</button>
-                <p className="text-[9px] text-zinc-500 truncate max-w-[56px] mt-0.5">{img.name}</p>
+                <p className="text-[9px] text-zinc-500 truncate max-w-[80px] mt-0.5">{img.name}</p>
               </div>
             ))}
           </div>

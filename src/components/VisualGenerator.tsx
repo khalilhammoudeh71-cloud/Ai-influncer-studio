@@ -567,16 +567,16 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
                   <div className="flex gap-2 flex-wrap">
                     {persona.referenceImage && (
                       <div className="relative">
-                        <img src={persona.referenceImage} alt="Persona ref" className="w-12 h-12 rounded-lg object-cover border-2 border-purple-500/60" />
+                        <img src={persona.referenceImage} alt="Persona ref" className="w-16 h-16 rounded-lg object-cover border-2 border-purple-500/60" />
                         <span className="absolute -bottom-1 -right-1 text-[7px] bg-purple-600 text-white rounded px-1 leading-3">Persona</span>
                       </div>
                     )}
                     {overrideRefImages.map(img => (
                       <div key={img.id} className="relative group">
-                        <img src={img.url} alt={img.name} className="w-12 h-12 rounded-lg object-cover border border-zinc-700" />
+                        <img src={img.url} alt={img.name} className="w-16 h-16 rounded-lg object-cover border border-zinc-700" />
                         <button
                           onClick={() => setOverrideRefImages(prev => prev.filter(i => i.id !== img.id))}
-                          className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 rounded-full text-white text-[9px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                          className="absolute -top-1.5 -left-1.5 w-5 h-5 bg-red-600 hover:bg-red-500 rounded-full text-white text-[9px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all shadow-lg"
                         >×</button>
                       </div>
                     ))}
