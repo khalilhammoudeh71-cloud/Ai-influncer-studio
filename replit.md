@@ -37,7 +37,7 @@ Schema is auto-created on server startup via `CREATE TABLE IF NOT EXISTS`.
 src/
   App.tsx              - Main app with API-backed state, loading, localStorage migration
   main.tsx             - Entry point
-  index.css            - Tailwind import with @source directive
+  index.css            - Tailwind import, CSS custom properties (design tokens), utility classes (.glass, .gradient-text, .animate-shimmer)
   types/index.ts       - TypeScript types (Persona, GeneratedImage, PlannedPost, RevenueEntry)
   utils/cn.ts          - Tailwind class merge utility
   utils/personaEngine.ts - Deterministic content generation engine
@@ -82,6 +82,17 @@ server/
 - Backend: `npm run server` on port 3001
 - Vite proxies all `/api` requests to the backend (port 3001)
 - Env vars: `DATABASE_URL`, `AI_INTEGRATIONS_OPENAI_API_KEY`, `AI_INTEGRATIONS_OPENAI_BASE_URL`, `WAVESPEED_API_KEY`
+
+## Design System
+- **Color Palette**: CSS custom properties in `src/index.css`
+  - Backgrounds: `--bg-base: #09090b`, `--bg-surface: #131316`, `--bg-elevated: #1a1a1f`, `--bg-overlay: #222228`
+  - Borders: `--border-subtle`, `--border-default`, `--border-strong` (white with varying opacity)
+  - Text: `--text-primary: #f4f4f5`, `--text-secondary: #a1a1aa`, `--text-tertiary: #63637a`, `--text-muted: #3f3f50`
+  - Accent gradients: violet-600 to fuchsia-600 (primary), amber/gold (premium), emerald (success), rose (danger)
+- **Typography**: Inter (Google Fonts), applied globally
+- **Animations**: Framer Motion for page transitions (AnimatePresence), nav indicator (layoutId spring), staggered list items, modals (spring slide-up)
+- **Utility Classes**: `.glass` / `.glass-strong` (backdrop-blur), `.gradient-text`, `.gradient-border`, `.animate-shimmer`, `.animate-fade-in-up`
+- **UI Components**: `src/components/ui/index.tsx` — Card, Button (primary/secondary/ghost/danger/accent variants), Input, Badge
 
 ## CSS Configuration
 - Uses `@tailwindcss/postcss` (NOT `@tailwindcss/vite` — that caused HMR crash loops due to oxide scanner)

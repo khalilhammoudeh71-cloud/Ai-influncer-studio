@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { motion } from 'framer-motion';
 import {
   Copy,
   Sparkles,
@@ -81,7 +82,7 @@ const MODE_CONFIG: { id: CreateMode; label: string; icon: typeof ImageIcon; grad
   { id: 'video', label: 'Video', icon: Video, gradient: 'from-pink-600 to-orange-500', ringClass: 'focus:ring-pink-500' },
   { id: 'prompt', label: 'Prompt', icon: Wand2, gradient: 'from-emerald-600 to-teal-500', ringClass: 'focus:ring-emerald-500' },
   { id: 'transcript', label: 'Transcript', icon: FileText, gradient: 'from-amber-500 to-orange-500', ringClass: 'focus:ring-amber-500' },
-  { id: 'multi-scene', label: 'Multi-Scene', icon: Film, gradient: 'from-indigo-600 to-purple-500', ringClass: 'focus:ring-indigo-500' },
+  { id: 'multi-scene', label: 'Multi-Scene', icon: Film, gradient: 'from-violet-600 to-purple-500', ringClass: 'focus:ring-violet-500' },
   { id: 'angle', label: 'Angle', icon: Camera, gradient: 'from-cyan-600 to-sky-500', ringClass: 'focus:ring-cyan-500' },
 ];
 
@@ -643,11 +644,11 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     const selectedInfo = allModels.find(m => m.id === value);
     return (
       <div className="space-y-1.5">
-        <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-1.5">
+        <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase flex items-center gap-1.5">
           <Cpu className="w-3 h-3" /> AI Model
         </label>
         {modelsLoading ? (
-          <div className="flex items-center gap-2 px-3 py-2.5 bg-zinc-800 rounded-xl text-sm text-zinc-400">
+          <div className="flex items-center gap-2 px-3 py-2.5 bg-[var(--bg-elevated)] rounded-xl text-sm text-[var(--text-secondary)]">
             <Loader2 className="w-4 h-4 animate-spin" /> Loading models...
           </div>
         ) : (
@@ -655,7 +656,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             <select
               value={value}
               onChange={e => onChange(e.target.value)}
-              className="w-full bg-zinc-800 border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white focus:ring-2 focus:ring-purple-500 outline-none appearance-none pr-10"
+              className="w-full bg-[var(--bg-elevated)] border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white focus:ring-2 focus:ring-purple-500 outline-none appearance-none pr-10"
             >
               {Object.entries(grouped).map(([provider, providerModels]) => (
                 <optgroup key={provider} label={provider}>
@@ -667,11 +668,11 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 </optgroup>
               ))}
             </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-tertiary)] pointer-events-none" />
           </div>
         )}
         {selectedInfo?.nsfw && (
-          <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/30">
+          <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">
             🔓 Uncensored — NSFW content supported
           </span>
         )}
@@ -684,11 +685,11 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     const selectedVideoInfo = videoModels.find(m => m.id === selectedVideoModel);
     return (
       <div className="space-y-1.5">
-        <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-1.5">
+        <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase flex items-center gap-1.5">
           <Cpu className="w-3 h-3" /> Video Model
         </label>
         {modelsLoading ? (
-          <div className="flex items-center gap-2 px-3 py-2.5 bg-zinc-800 rounded-xl text-sm text-zinc-400">
+          <div className="flex items-center gap-2 px-3 py-2.5 bg-[var(--bg-elevated)] rounded-xl text-sm text-[var(--text-secondary)]">
             <Loader2 className="w-4 h-4 animate-spin" /> Loading models...
           </div>
         ) : (
@@ -696,7 +697,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             <select
               value={selectedVideoModel}
               onChange={e => setSelectedVideoModel(e.target.value)}
-              className="w-full bg-zinc-800 border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white focus:ring-2 focus:ring-pink-500 outline-none appearance-none pr-10"
+              className="w-full bg-[var(--bg-elevated)] border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white focus:ring-2 focus:ring-pink-500 outline-none appearance-none pr-10"
             >
               {Object.keys(t2v).length > 0 && (
                 <optgroup label="Text-to-Video">
@@ -721,11 +722,11 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 </optgroup>
               )}
             </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-tertiary)] pointer-events-none" />
           </div>
         )}
         {selectedVideoInfo?.nsfw && (
-          <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/30">
+          <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">
             🔓 Uncensored — NSFW content supported
           </span>
         )}
@@ -735,13 +736,13 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
   const renderDropdown = (label: string, Icon: typeof Layout, value: string, onChange: (v: string) => void, options: string[]) => (
     <div className="space-y-1">
-      <label className="text-[10px] font-bold text-zinc-500 uppercase flex items-center gap-1">
+      <label className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase flex items-center gap-1">
         <Icon className="w-3 h-3" /> {label}
       </label>
       <select
         value={value}
         onChange={e => onChange(e.target.value)}
-        className="w-full bg-zinc-800 rounded-lg px-2 py-1.5 text-xs text-white outline-none appearance-none"
+        className="w-full bg-[var(--bg-elevated)] rounded-lg px-2 py-1.5 text-xs text-white outline-none appearance-none"
       >
         {options.map(o => <option key={o} value={o}>{o}</option>)}
       </select>
@@ -761,7 +762,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-300 border border-violet-500/30">★ Face-consistent</span>
           )}
           {!selectedModelInfo.isIdentityModel && hasRefImage && canUseReference(selectedModelInfo, models) && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-500/20 text-green-300 border border-green-500/30">Uses reference image</span>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-green-300 border border-green-500/30">Uses reference image</span>
           )}
           {!selectedModelInfo.isIdentityModel && hasRefImage && !canUseReference(selectedModelInfo, models) && (
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/30">Text-only — will ignore reference</span>
@@ -770,7 +771,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">Using persona face</span>
           )}
           {selectedModelInfo.isIdentityModel && !effectiveRefImage && !activePersona.referenceImage && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/30">⚠ Needs face photo</span>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">⚠ Needs face photo</span>
           )}
           {selectedModelInfo.price > 0 && (
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
@@ -789,8 +790,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
-          <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-1.5">
-            <ImageIcon className="w-3 h-3" /> Reference Images {localPersonaId === 'none' && <span className="text-red-400">*</span>}
+          <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase flex items-center gap-1.5">
+            <ImageIcon className="w-3 h-3" /> Reference Images {localPersonaId === 'none' && <span className="text-rose-400">*</span>}
             {allRefImages.length > 0 && (
               <span className="text-[10px] font-mono text-purple-300 bg-purple-500/10 px-1.5 py-0.5 rounded-full">{allRefImages.length}</span>
             )}
@@ -808,14 +809,14 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             <select
               value={refPersonaId}
               onChange={e => { setRefPersonaId(e.target.value); }}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-white outline-none appearance-none pr-8"
+              className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2 text-sm text-white outline-none appearance-none pr-8"
             >
               <option value="none">No persona reference</option>
               {personas.filter(p => p.referenceImage).map(p => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
-            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500 pointer-events-none" />
+            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-tertiary)] pointer-events-none" />
           </div>
         )}
 
@@ -829,19 +830,19 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             )}
             {refImages.map(img => (
               <div key={img.id} className="relative group">
-                <img src={img.url} alt={img.name} className="w-20 h-20 rounded-xl object-cover border border-zinc-700" />
+                <img src={img.url} alt={img.name} className="w-20 h-20 rounded-xl object-cover border border-[var(--border-default)]" />
                 <button
                   onClick={() => setRefImages(prev => prev.filter(i => i.id !== img.id))}
-                  className="absolute -top-1.5 -left-1.5 w-5 h-5 bg-red-600 hover:bg-red-500 rounded-full text-white text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all shadow-lg"
+                  className="absolute -top-1.5 -left-1.5 w-5 h-5 bg-red-600 hover:bg-rose-500 rounded-full text-white text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all shadow-lg"
                 >×</button>
-                <p className="text-[9px] text-zinc-500 truncate max-w-[80px] mt-0.5">{img.name}</p>
+                <p className="text-[9px] text-[var(--text-tertiary)] truncate max-w-[80px] mt-0.5">{img.name}</p>
               </div>
             ))}
           </div>
         ) : (
-          <label className="flex items-center gap-2 px-3 py-2.5 bg-zinc-800 border border-dashed border-zinc-700 rounded-xl cursor-pointer hover:bg-zinc-700/50 transition-colors">
-            <Upload className="w-4 h-4 text-zinc-500" />
-            <span className="text-sm text-zinc-500">
+          <label className="flex items-center gap-2 px-3 py-2.5 bg-[var(--bg-elevated)] border border-dashed border-[var(--border-default)] rounded-xl cursor-pointer hover:bg-[var(--bg-overlay)]/50 transition-colors">
+            <Upload className="w-4 h-4 text-[var(--text-tertiary)]" />
+            <span className="text-sm text-[var(--text-tertiary)]">
               {localPersonaId === 'none' ? 'Upload your photos (required)' : 'Upload reference photos for identity consistency'}
             </span>
             <input type="file" accept="image/*" multiple className="hidden" onChange={e => { const files = e.target.files; if (files) { Array.from(files).forEach(f => handleAddRefImage(f)); } e.target.value = ''; }} />
@@ -849,11 +850,11 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         )}
         {allRefImages.length > 0 && (
           <div className="flex items-center justify-between">
-            <p className="text-[10px] text-zinc-600">
+            <p className="text-[10px] text-[var(--text-muted)]">
               {allRefImages.length === 1 ? '1 reference photo' : `${allRefImages.length} reference photos`} — all sent to Gemini for consistency
             </p>
             {(refImages.length > 0 || refPersonaId !== 'none') && (
-              <button onClick={() => { setRefImages([]); setRefPersonaId('none'); }} className="text-[10px] text-zinc-500 hover:text-red-400 transition-colors">
+              <button onClick={() => { setRefImages([]); setRefPersonaId('none'); }} className="text-[10px] text-[var(--text-tertiary)] hover:text-rose-400 transition-colors">
                 Clear all
               </button>
             )}
@@ -868,40 +869,40 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         value={imagePrompt}
         onChange={e => setImagePrompt(e.target.value)}
         placeholder="Additional instructions (optional)..."
-        className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder-zinc-500 resize-none h-20 outline-none focus:ring-2 focus:ring-purple-500"
+        className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white placeholder-[var(--text-muted)] resize-none h-20 outline-none focus:ring-2 focus:ring-purple-500"
       />
 
       <div className="flex flex-col gap-3 px-1">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-xs font-bold text-zinc-400 uppercase tracking-wide">Natural Look</p>
-            <p className="text-[10px] text-zinc-600 mt-0.5">Film grain, candid, no over-retouching</p>
+            <p className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wide">Natural Look</p>
+            <p className="text-[10px] text-[var(--text-muted)] mt-0.5">Film grain, candid, no over-retouching</p>
           </div>
           <button
             onClick={handleNaturalLookToggle}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${naturalLook ? 'bg-purple-600' : 'bg-zinc-700'}`}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${naturalLook ? 'bg-purple-600' : 'bg-[var(--bg-overlay)]'}`}
           >
             <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${naturalLook ? 'translate-x-6' : 'translate-x-1'}`} />
           </button>
         </div>
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-xs font-bold text-zinc-400 uppercase tracking-wide">Identity Lock</p>
-            <p className="text-[10px] text-zinc-600 mt-0.5">Same exact face, bone structure &amp; features</p>
+            <p className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wide">Identity Lock</p>
+            <p className="text-[10px] text-[var(--text-muted)] mt-0.5">Same exact face, bone structure &amp; features</p>
           </div>
           <button
             onClick={handleIdentityLockToggle}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${identityLock ? 'bg-purple-600' : 'bg-zinc-700'}`}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${identityLock ? 'bg-purple-600' : 'bg-[var(--bg-overlay)]'}`}
           >
             <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${identityLock ? 'translate-x-6' : 'translate-x-1'}`} />
           </button>
         </div>
       </div>
 
-      <div className="flex items-center justify-between bg-zinc-800/60 rounded-xl px-3 py-2 border border-zinc-700/50">
+      <div className="flex items-center justify-between bg-[var(--bg-elevated)]/60 rounded-xl px-3 py-2 border border-[var(--border-default)]/50">
         <div>
-          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wide">Variations</p>
-          <p className="text-[10px] text-zinc-600 mt-0.5">Generate multiple images at once</p>
+          <p className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wide">Variations</p>
+          <p className="text-[10px] text-[var(--text-muted)] mt-0.5">Generate multiple images at once</p>
         </div>
         <div className="flex gap-1">
           {[1, 2, 3, 4].map(n => (
@@ -911,7 +912,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${
                 imageCount === n
                   ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/30'
-                  : 'bg-zinc-700 text-zinc-400 hover:bg-zinc-600 hover:text-white'
+                  : 'bg-[var(--bg-overlay)] text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)] hover:text-white'
               }`}
             >
               {n}
@@ -937,7 +938,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
       {multiResults.length > 1 && !isGenerating && (
         <div className="space-y-2">
-          <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wide">
+          <p className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-wide">
             {multiResults.length} Variation{multiResults.length !== 1 ? 's' : ''}{multiResults.length < imageCount ? ` (${imageCount - multiResults.length} failed)` : ''} — tap to select
           </p>
           <div className={`grid gap-2 ${multiResults.length === 2 ? 'grid-cols-2' : multiResults.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
@@ -954,7 +955,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 className={`relative aspect-square rounded-xl overflow-hidden border-2 transition-all ${
                   selectedVariation === idx
                     ? 'border-purple-500 ring-2 ring-purple-500/30 scale-[1.02]'
-                    : 'border-zinc-700 hover:border-zinc-500'
+                    : 'border-[var(--border-default)] hover:border-[var(--border-strong)]'
                 }`}
               >
                 <img src={r.imageUrl} alt={`Variation ${idx + 1}`} className="w-full h-full object-cover" />
@@ -996,11 +997,11 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         </div>
       )}
 
-      <div className="aspect-square max-h-[400px] rounded-2xl bg-zinc-950 border border-zinc-800 overflow-hidden relative group mx-auto w-full max-w-[400px]">
+      <div className="aspect-square max-h-[400px] rounded-2xl bg-[var(--bg-base)] border border-[var(--border-subtle)] overflow-hidden relative group mx-auto w-full max-w-[400px]">
         {isGenerating || isProcessing ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
             <Loader2 className="w-10 h-10 animate-spin text-purple-500" />
-            <p className="text-xs text-zinc-500 animate-pulse">
+            <p className="text-xs text-[var(--text-tertiary)] animate-pulse">
               {isProcessing ? (postAction === 'upscale' ? 'Upscaling...' : 'Editing...') : `Generating${imageCount > 1 ? ` ${imageCount} variations` : ''} with ${selectedModelInfo?.name || 'AI'}...`}
             </p>
           </div>
@@ -1018,8 +1019,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           </>
         ) : (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-            <ImageIcon className="w-12 h-12 text-zinc-700 opacity-30" />
-            <p className="text-xs text-zinc-600">Select a model and generate</p>
+            <ImageIcon className="w-12 h-12 text-[var(--text-muted)] opacity-30" />
+            <p className="text-xs text-[var(--text-muted)]">Select a model and generate</p>
           </div>
         )}
       </div>
@@ -1027,15 +1028,15 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       {imageHistory.length > 1 && (
         <div className="space-y-1.5">
           <div className="flex items-center gap-1.5">
-            <History className="w-3 h-3 text-zinc-500" />
-            <span className="text-[10px] uppercase tracking-wider font-bold text-zinc-500">Version History</span>
+            <History className="w-3 h-3 text-[var(--text-tertiary)]" />
+            <span className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-tertiary)]">Version History</span>
           </div>
           <div className="flex gap-2 overflow-x-auto pb-1">
             {imageHistory.map((version, idx) => (
               <button
                 key={idx}
                 onClick={() => { setActiveHistoryIndex(idx); setImageResult({ imageUrl: version.imageUrl, model: version.model, promptUsed: version.promptUsed }); }}
-                className={`shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 transition-all ${idx === activeHistoryIndex ? 'border-purple-500 ring-2 ring-purple-500/30' : 'border-zinc-700 hover:border-zinc-500'}`}
+                className={`shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 transition-all ${idx === activeHistoryIndex ? 'border-purple-500 ring-2 ring-purple-500/30' : 'border-[var(--border-default)] hover:border-[var(--border-strong)]'}`}
               >
                 <img src={version.imageUrl} alt={version.label} className="w-full h-full object-cover" />
               </button>
@@ -1047,10 +1048,10 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       {activeVersion && !isGenerating && !isProcessing && (
         <div className="space-y-3">
           <div className="flex gap-2">
-            <button onClick={() => setPostAction(postAction === 'edit' ? null : 'edit')} className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${postAction === 'edit' ? 'bg-blue-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}>
+            <button onClick={() => setPostAction(postAction === 'edit' ? null : 'edit')} className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${postAction === 'edit' ? 'bg-blue-600 text-white' : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-white'}`}>
               <Pencil className="w-3.5 h-3.5" /> Edit
             </button>
-            <button onClick={() => setPostAction(postAction === 'upscale' ? null : 'upscale')} className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${postAction === 'upscale' ? 'bg-green-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}>
+            <button onClick={() => setPostAction(postAction === 'upscale' ? null : 'upscale')} className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${postAction === 'upscale' ? 'bg-green-600 text-white' : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-white'}`}>
               <ArrowUpCircle className="w-3.5 h-3.5" /> Upscale
             </button>
             <button onClick={handleSaveImage} disabled={saved} className="flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 bg-purple-600 hover:bg-purple-500 text-white transition-all disabled:opacity-50">
@@ -1065,18 +1066,18 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 setCopied(true);
                 setTimeout(() => setCopied(false), 2000);
               }}
-              className="w-full py-2 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-all border border-zinc-700"
+              className="w-full py-2 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 bg-[var(--bg-elevated)] hover:bg-[var(--bg-overlay)] text-[var(--text-primary)] hover:text-white transition-all border border-[var(--border-default)]"
             >
-              {copied ? <><Check className="w-3.5 h-3.5 text-green-400" /> Prompt Copied!</> : <><Copy className="w-3.5 h-3.5" /> Copy Prompt</>}
+              {copied ? <><Check className="w-3.5 h-3.5 text-emerald-400" /> Prompt Copied!</> : <><Copy className="w-3.5 h-3.5" /> Copy Prompt</>}
             </button>
           )}
 
           {postAction === 'edit' && (
-            <div className="bg-zinc-800/50 border border-zinc-700 rounded-xl p-3 space-y-2">
+            <div className="bg-[var(--bg-elevated)]/50 border border-[var(--border-default)] rounded-xl p-3 space-y-2">
               {renderModelSelect(selectedEditModel, setSelectedEditModel, groupedEditModels)}
-              <textarea value={editPrompt} onChange={e => setEditPrompt(e.target.value)} placeholder="Describe what to change..." className="w-full bg-zinc-900 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-500 resize-none h-16 outline-none" />
+              <textarea value={editPrompt} onChange={e => setEditPrompt(e.target.value)} placeholder="Describe what to change..." className="w-full bg-[var(--bg-surface)] rounded-lg px-3 py-2 text-sm text-white placeholder-[var(--text-muted)] resize-none h-16 outline-none" />
               <div className="flex gap-2">
-                <label className="flex-1 flex items-center gap-2 px-3 py-2 bg-zinc-900 rounded-lg cursor-pointer hover:bg-zinc-800 text-xs text-zinc-400">
+                <label className="flex-1 flex items-center gap-2 px-3 py-2 bg-[var(--bg-surface)] rounded-lg cursor-pointer hover:bg-[var(--bg-elevated)] text-xs text-[var(--text-secondary)]">
                   <Upload className="w-3.5 h-3.5" />
                   {editAdditionalImageName || 'Add reference (optional)'}
                   <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload(setEditAdditionalImage, setEditAdditionalImageName)} />
@@ -1085,17 +1086,17 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                   {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Apply'}
                 </button>
               </div>
-              {actionError && <p className="text-xs text-red-400">{actionError}</p>}
+              {actionError && <p className="text-xs text-rose-400">{actionError}</p>}
             </div>
           )}
 
           {postAction === 'upscale' && (
-            <div className="bg-zinc-800/50 border border-zinc-700 rounded-xl p-3 space-y-2">
+            <div className="bg-[var(--bg-elevated)]/50 border border-[var(--border-default)] rounded-xl p-3 space-y-2">
               {renderModelSelect(selectedUpscaleModel, setSelectedUpscaleModel, groupedUpscaleModels)}
-              <button onClick={handleUpscale} disabled={isProcessing} className="w-full py-2 bg-green-600 hover:bg-green-500 rounded-lg text-xs font-bold disabled:opacity-50 flex items-center justify-center gap-2">
+              <button onClick={handleUpscale} disabled={isProcessing} className="w-full py-2 bg-green-600 hover:bg-emerald-500 rounded-lg text-xs font-bold disabled:opacity-50 flex items-center justify-center gap-2">
                 {isProcessing ? <><Loader2 className="w-4 h-4 animate-spin" /> Upscaling...</> : <><ArrowUpCircle className="w-3.5 h-3.5" /> Upscale Now</>}
               </button>
-              {actionError && <p className="text-xs text-red-400">{actionError}</p>}
+              {actionError && <p className="text-xs text-rose-400">{actionError}</p>}
             </div>
           )}
         </div>
@@ -1108,38 +1109,38 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       {renderVideoModelSelect()}
 
       <div className="space-y-1.5">
-        <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-1.5">
+        <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase flex items-center gap-1.5">
           <ImageIcon className="w-3 h-3" /> {isI2VModel ? 'Source Image' : 'Reference Image'}
-          {isI2VModel && <span className="text-red-400 text-[10px] font-normal normal-case ml-0.5">required</span>}
-          {!isI2VModel && <span className="text-zinc-600 text-[10px] font-normal normal-case ml-0.5">optional</span>}
+          {isI2VModel && <span className="text-rose-400 text-[10px] font-normal normal-case ml-0.5">required</span>}
+          {!isI2VModel && <span className="text-[var(--text-muted)] text-[10px] font-normal normal-case ml-0.5">optional</span>}
         </label>
         <div className="flex gap-2 items-start">
           {effectiveVideoSourceImage && (
-            <img src={effectiveVideoSourceImage} alt="" className="w-14 h-14 rounded-xl object-cover shrink-0 border border-zinc-700" />
+            <img src={effectiveVideoSourceImage} alt="" className="w-14 h-14 rounded-xl object-cover shrink-0 border border-[var(--border-default)]" />
           )}
           <div className="flex-1 space-y-1.5">
             <div className="relative">
               <select
                 value={videoSourcePersonaId}
                 onChange={e => { setVideoSourcePersonaId(e.target.value); setVideoSourceImage(null); setVideoSourceImageName(null); }}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-white outline-none appearance-none pr-8"
+                className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2 text-sm text-white outline-none appearance-none pr-8"
               >
                 <option value="none">{isI2VModel ? 'Select a persona…' : 'No persona reference'}</option>
                 {personas.filter(p => p.referenceImage).map(p => (
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
               </select>
-              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500 pointer-events-none" />
+              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-tertiary)] pointer-events-none" />
             </div>
-            <label className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800 border border-dashed border-zinc-600 rounded-xl cursor-pointer hover:bg-zinc-700/50 transition-colors">
-              <Upload className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-              <span className="text-xs text-zinc-400 truncate">{videoSourceImageName || 'Upload image'}</span>
+            <label className="flex items-center gap-2 px-3 py-1.5 bg-[var(--bg-elevated)] border border-dashed border-[var(--border-strong)] rounded-xl cursor-pointer hover:bg-[var(--bg-overlay)]/50 transition-colors">
+              <Upload className="w-3.5 h-3.5 text-[var(--text-secondary)] shrink-0" />
+              <span className="text-xs text-[var(--text-secondary)] truncate">{videoSourceImageName || 'Upload image'}</span>
               <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload(setVideoSourceImage, setVideoSourceImageName)} />
             </label>
           </div>
         </div>
         {effectiveVideoSourceImage && (
-          <button onClick={() => { setVideoSourcePersonaId('none'); setVideoSourceImage(null); setVideoSourceImageName(null); }} className="text-[10px] text-zinc-500 hover:text-red-400 transition-colors">
+          <button onClick={() => { setVideoSourcePersonaId('none'); setVideoSourceImage(null); setVideoSourceImageName(null); }} className="text-[10px] text-[var(--text-tertiary)] hover:text-rose-400 transition-colors">
             Clear image
           </button>
         )}
@@ -1149,7 +1150,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         value={videoPrompt}
         onChange={e => setVideoPrompt(e.target.value)}
         placeholder="Describe the video you want to create..."
-        className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder-zinc-500 resize-none h-24 outline-none focus:ring-2 focus:ring-pink-500"
+        className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white placeholder-[var(--text-muted)] resize-none h-24 outline-none focus:ring-2 focus:ring-pink-500"
       />
 
       <button
@@ -1160,11 +1161,11 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         {isGenerating ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating Video...</> : <><Video className="w-4 h-4" /> Generate Video</>}
       </button>
 
-      <div className="aspect-video max-h-[360px] rounded-2xl bg-zinc-950 border border-zinc-800 overflow-hidden relative mx-auto w-full">
+      <div className="aspect-video max-h-[360px] rounded-2xl bg-[var(--bg-base)] border border-[var(--border-subtle)] overflow-hidden relative mx-auto w-full">
         {isGenerating ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
             <Loader2 className="w-10 h-10 animate-spin text-pink-500" />
-            <p className="text-xs text-zinc-500 animate-pulse">Generating video... this may take a minute</p>
+            <p className="text-xs text-[var(--text-tertiary)] animate-pulse">Generating video... this may take a minute</p>
           </div>
         ) : videoResult?.videoUrl ? (
           <>
@@ -1175,8 +1176,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           </>
         ) : (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-            <Film className="w-12 h-12 text-zinc-700 opacity-30" />
-            <p className="text-xs text-zinc-600">Select a model and generate</p>
+            <Film className="w-12 h-12 text-[var(--text-muted)] opacity-30" />
+            <p className="text-xs text-[var(--text-muted)]">Select a model and generate</p>
           </div>
         )}
       </div>
@@ -1184,7 +1185,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       {videoResult && (
         <div className="space-y-2">
           <div className="flex gap-2">
-            <button onClick={() => downloadFile(videoResult.videoUrl, 'mp4')} className="flex-1 py-2 rounded-xl text-xs font-bold bg-zinc-800 text-zinc-300 hover:text-white flex items-center justify-center gap-1.5">
+            <button onClick={() => downloadFile(videoResult.videoUrl, 'mp4')} className="flex-1 py-2 rounded-xl text-xs font-bold bg-[var(--bg-elevated)] text-[var(--text-primary)] hover:text-white flex items-center justify-center gap-1.5">
               <Download className="w-3.5 h-3.5" /> Download
             </button>
             <button onClick={handleSaveVideo} disabled={saved} className="flex-1 py-2 rounded-xl text-xs font-bold bg-pink-600 hover:bg-pink-500 text-white flex items-center justify-center gap-1.5 disabled:opacity-50">
@@ -1204,27 +1205,27 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           </button>
 
           {extendError && (
-            <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">
-              <AlertCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
-              <span className="text-xs text-red-300">{extendError}</span>
+            <div className="flex items-center gap-2 bg-rose-500/10 border border-rose-500/20 rounded-xl px-3 py-2">
+              <AlertCircle className="w-3.5 h-3.5 text-rose-400 flex-shrink-0" />
+              <span className="text-xs text-rose-300">{extendError}</span>
             </div>
           )}
 
           {extendResult?.videoUrl && (
             <div className="space-y-2 pt-1">
               <div className="flex items-center gap-2">
-                <div className="h-px flex-1 bg-white/5" />
+                <div className="h-px flex-1 bg-[var(--bg-elevated)]" />
                 <span className="text-[10px] uppercase tracking-widest text-violet-400 font-bold">Extended</span>
-                <div className="h-px flex-1 bg-white/5" />
+                <div className="h-px flex-1 bg-[var(--bg-elevated)]" />
               </div>
-              <div className="aspect-video max-h-[360px] rounded-2xl bg-zinc-950 border border-violet-500/20 overflow-hidden relative mx-auto w-full">
+              <div className="aspect-video max-h-[360px] rounded-2xl bg-[var(--bg-base)] border border-violet-500/20 overflow-hidden relative mx-auto w-full">
                 <video src={extendResult.videoUrl} controls autoPlay loop className="absolute inset-0 w-full h-full object-contain" />
                 <div className="absolute top-2 left-2 px-2.5 py-1 bg-black/60 backdrop-blur-md rounded-lg">
                   <span className="text-[10px] text-violet-300 font-medium">{extendResult.model} · Extended</span>
                 </div>
               </div>
               <div className="flex gap-2">
-                <button onClick={() => downloadFile(extendResult.videoUrl, 'mp4')} className="flex-1 py-2 rounded-xl text-xs font-bold bg-zinc-800 text-zinc-300 hover:text-white flex items-center justify-center gap-1.5">
+                <button onClick={() => downloadFile(extendResult.videoUrl, 'mp4')} className="flex-1 py-2 rounded-xl text-xs font-bold bg-[var(--bg-elevated)] text-[var(--text-primary)] hover:text-white flex items-center justify-center gap-1.5">
                   <Download className="w-3.5 h-3.5" /> Download Extended
                 </button>
                 <button onClick={handleSaveExtendedVideo} className="flex-1 py-2 rounded-xl text-xs font-bold bg-violet-600 hover:bg-violet-500 text-white flex items-center justify-center gap-1.5">
@@ -1255,12 +1256,12 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     if (isPromptMode) {
       return (
         <div className="space-y-4">
-          <div className="flex bg-zinc-800/60 rounded-xl p-1 gap-1">
+          <div className="flex bg-[var(--bg-elevated)]/60 rounded-xl p-1 gap-1">
             {(['create', 'enhance'] as const).map(tab => (
               <button
                 key={tab}
                 onClick={() => setPromptTab(tab)}
-                className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all capitalize ${promptTab === tab ? 'bg-gradient-to-r from-emerald-600 to-teal-500 text-white shadow' : 'text-zinc-400 hover:text-white'}`}
+                className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all capitalize ${promptTab === tab ? 'bg-gradient-to-r from-emerald-600 to-teal-500 text-white shadow' : 'text-[var(--text-secondary)] hover:text-white'}`}
               >
                 {tab === 'create' ? '✦ Create' : '⚡ Enhance'}
               </button>
@@ -1273,16 +1274,16 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 value={createRequest}
                 onChange={e => setCreateRequest(e.target.value)}
                 placeholder={`e.g. "3 luxury hotel rooftop prompts at golden hour" or "beach photoshoot, moody cinematic lighting"`}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder-zinc-500 resize-none h-24 outline-none focus:ring-2 focus:ring-emerald-500"
+                className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white placeholder-[var(--text-muted)] resize-none h-24 outline-none focus:ring-2 focus:ring-emerald-500"
               />
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-zinc-500 uppercase">Number of Prompts</label>
+                <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase">Number of Prompts</label>
                 <div className="flex gap-2">
                   {[1, 3, 5].map(n => (
                     <button
                       key={n}
                       onClick={() => setPromptCount(n)}
-                      className={`px-4 py-1.5 rounded-lg text-sm font-bold transition-all ${promptCount === n ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}
+                      className={`px-4 py-1.5 rounded-lg text-sm font-bold transition-all ${promptCount === n ? 'bg-emerald-600 text-white' : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-white'}`}
                     >
                       {n}
                     </button>
@@ -1297,31 +1298,31 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 {isCreating ? <><Loader2 className="w-4 h-4 animate-spin" /> Creating prompts...</> : <><Sparkles className="w-4 h-4" /> Create Prompts</>}
               </button>
               {createError && (
-                <div className="flex items-start gap-2 bg-red-500/10 border border-red-500/30 rounded-xl p-3 text-sm text-red-400">
+                <div className="flex items-start gap-2 bg-rose-500/10 border border-rose-500/30 rounded-xl p-3 text-sm text-rose-400">
                   <span className="shrink-0 mt-0.5">⚠</span> {createError}
                 </div>
               )}
               {createdPrompts.length > 0 && (
                 <div className="space-y-3">
                   {createdPrompts.map((p, i) => (
-                    <div key={i} className="bg-zinc-800/50 border border-zinc-700 rounded-2xl p-4 relative group">
+                    <div key={i} className="bg-[var(--bg-elevated)]/50 border border-[var(--border-default)] rounded-2xl p-4 relative group">
                       <div className="absolute top-3 right-3 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
                           onClick={() => copyPrompt(p, i)}
-                          className="p-1.5 bg-zinc-700 hover:bg-zinc-600 rounded-lg transition-colors"
+                          className="p-1.5 bg-[var(--bg-overlay)] hover:bg-[var(--bg-overlay)] rounded-lg transition-colors"
                           title="Copy prompt"
                         >
-                          {copiedPromptIndex === i ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5 text-zinc-400" />}
+                          {copiedPromptIndex === i ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-[var(--text-secondary)]" />}
                         </button>
                       </div>
                       <p className="text-xs text-emerald-400 font-bold mb-1.5 uppercase tracking-wide">Prompt {i + 1}</p>
-                      <p className="text-sm text-gray-300 leading-relaxed pr-10">{p}</p>
+                      <p className="text-sm text-[var(--text-primary)] leading-relaxed pr-10">{p}</p>
                       <div className="mt-3 flex items-center gap-3">
                         <button
                           onClick={() => copyPrompt(p, i)}
-                          className="text-xs text-zinc-400 hover:text-white font-semibold transition-colors flex items-center gap-1"
+                          className="text-xs text-[var(--text-secondary)] hover:text-white font-semibold transition-colors flex items-center gap-1"
                         >
-                          {copiedPromptIndex === i ? <><Check className="w-3 h-3 text-green-400" /> Copied!</> : <><Copy className="w-3 h-3" /> Copy</>}
+                          {copiedPromptIndex === i ? <><Check className="w-3 h-3 text-emerald-400" /> Copied!</> : <><Copy className="w-3 h-3" /> Copy</>}
                         </button>
                         <button
                           onClick={() => { setImagePrompt(p); setMode('image'); setGlobalError(null); }}
@@ -1341,7 +1342,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 value={textTopic}
                 onChange={e => setTextTopic(e.target.value)}
                 placeholder={placeholders['prompt']}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder-zinc-500 resize-none h-24 outline-none focus:ring-2 focus:ring-emerald-500"
+                className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white placeholder-[var(--text-muted)] resize-none h-24 outline-none focus:ring-2 focus:ring-emerald-500"
               />
               <button
                 onClick={handleTextGenerate}
@@ -1351,10 +1352,10 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 {isGenerating ? <><Loader2 className="w-4 h-4 animate-spin" /> Enhancing...</> : <><Sparkles className="w-4 h-4" /> Enhance Prompt</>}
               </button>
               {textResult && (
-                <div className="bg-zinc-800/50 border border-zinc-700 rounded-2xl p-4 relative">
+                <div className="bg-[var(--bg-elevated)]/50 border border-[var(--border-default)] rounded-2xl p-4 relative">
                   <div className="absolute top-3 right-3 flex gap-1.5">
-                    <button onClick={() => copyToClipboard(textResult)} className="p-1.5 bg-zinc-700 hover:bg-zinc-600 rounded-lg transition-colors" title="Copy">
-                      {copied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5 text-zinc-400" />}
+                    <button onClick={() => copyToClipboard(textResult)} className="p-1.5 bg-[var(--bg-overlay)] hover:bg-[var(--bg-overlay)] rounded-lg transition-colors" title="Copy">
+                      {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-[var(--text-secondary)]" />}
                     </button>
                     <button
                       onClick={() => {
@@ -1363,13 +1364,13 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                         downloadFile(url, 'txt');
                         URL.revokeObjectURL(url);
                       }}
-                      className="p-1.5 bg-zinc-700 hover:bg-zinc-600 rounded-lg transition-colors" title="Export"
+                      className="p-1.5 bg-[var(--bg-overlay)] hover:bg-[var(--bg-overlay)] rounded-lg transition-colors" title="Export"
                     >
-                      <Download className="w-3.5 h-3.5 text-zinc-400" />
+                      <Download className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
                     </button>
                   </div>
                   <div className="prose prose-invert prose-sm max-w-none pr-16">
-                    <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{textResult}</p>
+                    <p className="text-sm text-[var(--text-primary)] leading-relaxed whitespace-pre-wrap">{textResult}</p>
                   </div>
                 </div>
               )}
@@ -1385,18 +1386,18 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           value={textTopic}
           onChange={e => setTextTopic(e.target.value)}
           placeholder={placeholders[mode]}
-          className={`w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder-zinc-500 resize-none h-24 outline-none focus:ring-2 ${currentModeConfig.ringClass}`}
+          className={`w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white placeholder-[var(--text-muted)] resize-none h-24 outline-none focus:ring-2 ${currentModeConfig.ringClass}`}
         />
 
         {isMultiScene && (
           <div className="space-y-1.5">
-            <label className="text-xs font-bold text-zinc-500 uppercase">Scene Count</label>
+            <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase">Scene Count</label>
             <div className="flex gap-2">
               {[2, 3, 4, 5, 6].map(n => (
                 <button
                   key={n}
                   onClick={() => setSceneCount(n)}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-all ${sceneCount === n ? 'bg-indigo-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-all ${sceneCount === n ? 'bg-violet-600 text-white' : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-white'}`}
                 >
                   {n}
                 </button>
@@ -1415,10 +1416,10 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
         {textResult && (
           <div className="space-y-3">
-            <div className="bg-zinc-800/50 border border-zinc-700 rounded-2xl p-4 relative">
+            <div className="bg-[var(--bg-elevated)]/50 border border-[var(--border-default)] rounded-2xl p-4 relative">
               <div className="absolute top-3 right-3 flex gap-1.5">
-                <button onClick={() => copyToClipboard(textResult)} className="p-1.5 bg-zinc-700 hover:bg-zinc-600 rounded-lg transition-colors" title="Copy">
-                  {copied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5 text-zinc-400" />}
+                <button onClick={() => copyToClipboard(textResult)} className="p-1.5 bg-[var(--bg-overlay)] hover:bg-[var(--bg-overlay)] rounded-lg transition-colors" title="Copy">
+                  {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-[var(--text-secondary)]" />}
                 </button>
                 <button
                   onClick={() => {
@@ -1427,13 +1428,13 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                     downloadFile(url, 'txt');
                     URL.revokeObjectURL(url);
                   }}
-                  className="p-1.5 bg-zinc-700 hover:bg-zinc-600 rounded-lg transition-colors" title="Export"
+                  className="p-1.5 bg-[var(--bg-overlay)] hover:bg-[var(--bg-overlay)] rounded-lg transition-colors" title="Export"
                 >
-                  <Download className="w-3.5 h-3.5 text-zinc-400" />
+                  <Download className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
                 </button>
               </div>
               <div className="prose prose-invert prose-sm max-w-none pr-16">
-                <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{textResult}</p>
+                <p className="text-sm text-[var(--text-primary)] leading-relaxed whitespace-pre-wrap">{textResult}</p>
               </div>
             </div>
           </div>
@@ -1480,47 +1481,47 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     return (
       <div className="space-y-5">
         <div className="space-y-1.5">
-          <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-1.5">
+          <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase flex items-center gap-1.5">
             <Upload className="w-3 h-3" /> Source Image
           </label>
-          <label className="flex items-center gap-3 px-3 py-3 bg-zinc-800 border border-zinc-700 rounded-xl cursor-pointer hover:bg-zinc-700/50 transition-colors">
+          <label className="flex items-center gap-3 px-3 py-3 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl cursor-pointer hover:bg-[var(--bg-overlay)]/50 transition-colors">
             {angleSourceImage ? (
               <img src={angleSourceImage} alt="" className="w-14 h-14 rounded-lg object-cover" />
             ) : persona.referenceImage ? (
               <img src={persona.referenceImage} alt="" className="w-14 h-14 rounded-lg object-cover opacity-60" />
             ) : (
-              <div className="w-14 h-14 rounded-lg bg-zinc-700 flex items-center justify-center">
-                <Upload className="w-5 h-5 text-zinc-500" />
+              <div className="w-14 h-14 rounded-lg bg-[var(--bg-overlay)] flex items-center justify-center">
+                <Upload className="w-5 h-5 text-[var(--text-tertiary)]" />
               </div>
             )}
             <div className="flex-1 min-w-0">
               <p className="text-sm text-white truncate">{angleSourceImageName || (persona.referenceImage ? 'Using persona reference' : 'Upload image to reangle')}</p>
-              <p className="text-[10px] text-zinc-500">Upload a photo to change its camera angle</p>
+              <p className="text-[10px] text-[var(--text-tertiary)]">Upload a photo to change its camera angle</p>
             </div>
             <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload(setAngleSourceImage, setAngleSourceImageName)} />
           </label>
           {angleSourceImage && (
-            <button onClick={() => { setAngleSourceImage(null); setAngleSourceImageName(null); }} className="text-[10px] text-zinc-500 hover:text-red-400 transition-colors">
+            <button onClick={() => { setAngleSourceImage(null); setAngleSourceImageName(null); }} className="text-[10px] text-[var(--text-tertiary)] hover:text-rose-400 transition-colors">
               Remove uploaded image
             </button>
           )}
         </div>
 
         <div className="space-y-3">
-          <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-1.5">
+          <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase flex items-center gap-1.5">
             <Camera className="w-3 h-3" /> Camera Angle
           </label>
-          <div className="bg-zinc-800/60 border border-zinc-700 rounded-2xl p-4 space-y-4">
+          <div className="bg-[var(--bg-elevated)]/60 border border-[var(--border-default)] rounded-2xl p-4 space-y-4">
             <div>
-              <p className="text-[10px] font-bold text-zinc-500 uppercase mb-2">Horizontal Direction</p>
+              <p className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase mb-2">Horizontal Direction</p>
               <div className="grid grid-cols-3 gap-1.5 max-w-[200px] mx-auto">
                 {grid.map((row, ri) =>
                   row.map((cell, ci) => {
                     if (!cell) {
                       return (
                         <div key={`${ri}-${ci}`} className="h-12 flex items-center justify-center">
-                          <div className="w-8 h-8 rounded-full bg-zinc-700/40 flex items-center justify-center">
-                            <Camera className="w-4 h-4 text-zinc-600" />
+                          <div className="w-8 h-8 rounded-full bg-[var(--bg-overlay)]/40 flex items-center justify-center">
+                            <Camera className="w-4 h-4 text-[var(--text-muted)]" />
                           </div>
                         </div>
                       );
@@ -1533,7 +1534,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                         className={`h-12 rounded-xl text-[10px] font-bold transition-all ${
                           isActive
                             ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/30'
-                            : 'bg-zinc-700/60 text-zinc-400 hover:bg-zinc-600/60 hover:text-white'
+                            : 'bg-[var(--bg-overlay)]/60 text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)] hover:text-white'
                         }`}
                       >
                         {cell.label}
@@ -1545,7 +1546,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             </div>
 
             <div>
-              <p className="text-[10px] font-bold text-zinc-500 uppercase mb-2">Vertical Elevation</p>
+              <p className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase mb-2">Vertical Elevation</p>
               <div className="flex gap-1.5">
                 {VERTICAL_POSITIONS.map(p => (
                   <button
@@ -1554,7 +1555,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                     className={`flex-1 py-2 rounded-xl text-[10px] font-bold transition-all ${
                       angleVertical === p.id
                         ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/30'
-                        : 'bg-zinc-700/60 text-zinc-400 hover:bg-zinc-600/60 hover:text-white'
+                        : 'bg-[var(--bg-overlay)]/60 text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)] hover:text-white'
                     }`}
                   >
                     {p.label}
@@ -1564,7 +1565,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             </div>
 
             <div>
-              <p className="text-[10px] font-bold text-zinc-500 uppercase mb-2">Shot Distance</p>
+              <p className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase mb-2">Shot Distance</p>
               <div className="flex gap-1.5">
                 {DISTANCE_OPTIONS.map(p => (
                   <button
@@ -1573,7 +1574,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                     className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
                       angleDistance === p.id
                         ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/30'
-                        : 'bg-zinc-700/60 text-zinc-400 hover:bg-zinc-600/60 hover:text-white'
+                        : 'bg-[var(--bg-overlay)]/60 text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)] hover:text-white'
                     }`}
                   >
                     {p.label}
@@ -1585,14 +1586,14 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-1.5">
+          <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase flex items-center gap-1.5">
             <Cpu className="w-3 h-3" /> Model
           </label>
           <div className="relative">
             <select
               value={angleModel}
               onChange={e => setAngleModel(e.target.value)}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white focus:ring-2 focus:ring-cyan-500 outline-none appearance-none pr-10"
+              className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white focus:ring-2 focus:ring-cyan-500 outline-none appearance-none pr-10"
             >
               {ANGLE_MODELS.map(m => (
                 <option key={m.id} value={m.id}>
@@ -1600,10 +1601,10 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 </option>
               ))}
             </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-tertiary)] pointer-events-none" />
           </div>
           {angleModelInfo?.nsfw && (
-            <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/30">
+            <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">
               🔓 Uncensored — NSFW content supported
             </span>
           )}
@@ -1620,14 +1621,14 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         </button>
 
         {!angleSourceImg && !isGenerating && (
-          <p className="text-center text-xs text-zinc-500">Upload an image or set a persona reference image to get started</p>
+          <p className="text-center text-xs text-[var(--text-tertiary)]">Upload an image or set a persona reference image to get started</p>
         )}
 
-        <div className="aspect-square max-h-[400px] rounded-2xl bg-zinc-950 border border-zinc-800 overflow-hidden relative group mx-auto w-full max-w-[400px]">
+        <div className="aspect-square max-h-[400px] rounded-2xl bg-[var(--bg-base)] border border-[var(--border-subtle)] overflow-hidden relative group mx-auto w-full max-w-[400px]">
           {isGenerating ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
               <Loader2 className="w-10 h-10 animate-spin text-cyan-500" />
-              <p className="text-xs text-zinc-500 animate-pulse">Repositioning camera...</p>
+              <p className="text-xs text-[var(--text-tertiary)] animate-pulse">Repositioning camera...</p>
             </div>
           ) : angleResult?.imageUrl ? (
             <>
@@ -1643,8 +1644,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             </>
           ) : (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-              <Camera className="w-12 h-12 text-zinc-700 opacity-30" />
-              <p className="text-xs text-zinc-600">Select angle and generate</p>
+              <Camera className="w-12 h-12 text-[var(--text-muted)] opacity-30" />
+              <p className="text-xs text-[var(--text-muted)]">Select angle and generate</p>
             </div>
           )}
         </div>
@@ -1662,10 +1663,10 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     <div className="p-6 max-w-3xl mx-auto">
       <header className="mb-6 pt-4">
         <h1 className="text-3xl font-bold tracking-tight">Create Studio</h1>
-        <p className="text-gray-400 text-sm mt-1">Generate content{localPersonaId !== 'none' ? ` as ${activePersona.name}` : ''}</p>
+        <p className="text-[var(--text-secondary)] text-sm mt-1">Generate content{localPersonaId !== 'none' ? ` as ${activePersona.name}` : ''}</p>
       </header>
 
-      <div className="flex bg-zinc-800/50 rounded-2xl p-1 gap-1 mb-5 overflow-x-auto">
+      <div className="flex bg-[var(--bg-elevated)]/50 rounded-2xl p-1 gap-1 mb-5 overflow-x-auto">
         {MODE_CONFIG.map(m => {
           const Icon = m.icon;
           return (
@@ -1675,7 +1676,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               className={`flex-1 min-w-0 flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
                 mode === m.id
                   ? `bg-gradient-to-r ${m.gradient} text-white shadow-lg`
-                  : 'text-zinc-400 hover:text-white hover:bg-zinc-700/50'
+                  : 'text-[var(--text-secondary)] hover:text-white hover:bg-[var(--bg-overlay)]/50'
               }`}
             >
               <Icon className="w-3.5 h-3.5 shrink-0" />
@@ -1686,7 +1687,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       </div>
 
       <div className="mb-5">
-        <label className="text-xs font-bold text-zinc-500 uppercase mb-1.5 block">Active Persona</label>
+        <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase mb-1.5 block">Active Persona</label>
         <div className="relative">
           <select
             value={localPersonaId}
@@ -1695,24 +1696,24 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               setLocalPersonaId(v);
               if (v !== 'none') onSelectPersona(v);
             }}
-            className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none appearance-none pr-10"
+            className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white outline-none appearance-none pr-10"
           >
             <option value="none">None — Upload my own image</option>
             {personas.map(p => (
               <option key={p.id} value={p.id}>{p.name}{p.niche ? ` — ${p.niche}` : ''}</option>
             ))}
           </select>
-          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
+          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-tertiary)] pointer-events-none" />
         </div>
         {localPersonaId === 'none' && (
-          <p className="text-[10px] text-zinc-500 mt-1 ml-1">No persona context — use the Reference Image section below to upload your own photo.</p>
+          <p className="text-[10px] text-[var(--text-tertiary)] mt-1 ml-1">No persona context — use the Reference Image section below to upload your own photo.</p>
         )}
       </div>
 
       {globalError && (
-        <div className="mb-4 bg-red-500/10 border border-red-500/20 rounded-xl p-3 flex items-start gap-2">
-          <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-          <p className="text-sm text-red-300">{globalError}</p>
+        <div className="mb-4 bg-rose-500/10 border border-rose-500/20 rounded-xl p-3 flex items-start gap-2">
+          <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+          <p className="text-sm text-rose-300">{globalError}</p>
         </div>
       )}
 

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Send, Bot, ChevronDown, ImageIcon, Video, Loader2, AlertCircle, Camera } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { Persona } from '../types';
 import { ModelInfo, fetchAllModelTypes, editImage, generateVideo } from '../services/imageService';
 import { cn } from '../utils/cn';
@@ -243,15 +244,15 @@ export default function ChatView({ personas, activePersona: propActivePersona }:
   }
 
   return (
-    <div className="h-full flex flex-col bg-[#0A0A0A]">
-      <header className="sticky top-0 z-10 bg-[#0A0A0A] border-b border-white/5">
+    <div className="h-full flex flex-col bg-[var(--bg-base)]">
+      <header className="sticky top-0 z-10 bg-[var(--bg-base)] border-b border-[var(--border-subtle)]">
         <div className="p-5 pt-10 space-y-3">
           <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold tracking-tight">Chat</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-[var(--text-primary)]">Chat</h1>
             {activePersona.referenceImage && (
-              <div className="flex items-center gap-2 bg-white/5 rounded-full px-3 py-1.5">
-                <Camera size={12} className="text-indigo-400" />
-                <span className="text-[10px] text-gray-400">Ref image ready</span>
+              <div className="flex items-center gap-2 bg-violet-500/10 rounded-full px-3 py-1.5 border border-violet-500/20">
+                <Camera size={12} className="text-violet-400" />
+                <span className="text-[10px] text-violet-300">Ref image ready</span>
               </div>
             )}
           </div>
@@ -261,8 +262,8 @@ export default function ChatView({ personas, activePersona: propActivePersona }:
               {activePersona.referenceImage ? (
                 <img src={activePersona.referenceImage} alt="" className="w-6 h-6 rounded-full object-cover" />
               ) : (
-                <div className="w-6 h-6 rounded-full bg-indigo-600/30 flex items-center justify-center">
-                  <Bot size={12} className="text-indigo-400" />
+                <div className="w-6 h-6 rounded-full bg-violet-600/30 flex items-center justify-center">
+                  <Bot size={12} className="text-violet-400" />
                 </div>
               )}
             </div>
@@ -271,18 +272,18 @@ export default function ChatView({ personas, activePersona: propActivePersona }:
               onChange={e => {
                 setSelectedPersonaId(e.target.value);
               }}
-              className="w-full bg-[#1A1A1A] border border-white/10 rounded-2xl pl-11 pr-9 py-2.5 text-sm text-white outline-none appearance-none focus:border-indigo-500/50 transition-colors"
+              className="w-full bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-xl pl-11 pr-9 py-2.5 text-sm text-[var(--text-primary)] outline-none appearance-none focus:border-violet-500/50 transition-colors duration-200"
             >
               {personas.map(p => (
                 <option key={p.id} value={p.id}>{p.name} — {p.niche}</option>
               ))}
             </select>
-            <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+            <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none" />
           </div>
 
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-[9px] uppercase tracking-wider font-bold text-gray-600 block mb-1">
+              <label className="text-[9px] uppercase tracking-[0.15em] font-bold text-[var(--text-muted)] block mb-1">
                 Image Model
               </label>
               <div className="relative">
@@ -290,7 +291,7 @@ export default function ChatView({ personas, activePersona: propActivePersona }:
                   value={selectedEditModelId}
                   onChange={e => setSelectedEditModelId(e.target.value)}
                   disabled={!modelsLoaded || editModels.length === 0}
-                  className="w-full bg-[#1A1A1A] border border-white/10 rounded-xl px-3 pr-7 py-2 text-xs text-white outline-none appearance-none focus:border-indigo-500/50 transition-colors disabled:opacity-50"
+                  className="w-full bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-lg px-3 pr-7 py-2 text-xs text-[var(--text-primary)] outline-none appearance-none focus:border-violet-500/50 transition-colors duration-200 disabled:opacity-50"
                 >
                   {editModels.length === 0 && <option value="">Loading…</option>}
                   {editModels.map(m => (
@@ -299,17 +300,17 @@ export default function ChatView({ personas, activePersona: propActivePersona }:
                     </option>
                   ))}
                 </select>
-                <ChevronDown size={11} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+                <ChevronDown size={11} className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none" />
               </div>
               {selectedEditModel && isNsfw(selectedEditModel) && (
-                <span className="inline-flex items-center gap-1 mt-1 text-[9px] font-bold uppercase tracking-wider text-red-300 bg-red-500/20 border border-red-500/30 rounded-full px-2 py-0.5">
+                <span className="inline-flex items-center gap-1 mt-1 text-[9px] font-bold uppercase tracking-wider text-rose-300 bg-rose-500/20 border border-rose-500/30 rounded-full px-2 py-0.5">
                   🔓 NSFW
                 </span>
               )}
             </div>
 
             <div>
-              <label className="text-[9px] uppercase tracking-wider font-bold text-gray-600 block mb-1">
+              <label className="text-[9px] uppercase tracking-[0.15em] font-bold text-[var(--text-muted)] block mb-1">
                 Video Model
               </label>
               <div className="relative">
@@ -317,7 +318,7 @@ export default function ChatView({ personas, activePersona: propActivePersona }:
                   value={selectedVideoModelId}
                   onChange={e => setSelectedVideoModelId(e.target.value)}
                   disabled={!modelsLoaded || videoModels.length === 0}
-                  className="w-full bg-[#1A1A1A] border border-white/10 rounded-xl px-3 pr-7 py-2 text-xs text-white outline-none appearance-none focus:border-indigo-500/50 transition-colors disabled:opacity-50"
+                  className="w-full bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-lg px-3 pr-7 py-2 text-xs text-[var(--text-primary)] outline-none appearance-none focus:border-violet-500/50 transition-colors duration-200 disabled:opacity-50"
                 >
                   {videoModels.length === 0 && <option value="">Loading…</option>}
                   {videoModels.map(m => (
@@ -326,10 +327,10 @@ export default function ChatView({ personas, activePersona: propActivePersona }:
                     </option>
                   ))}
                 </select>
-                <ChevronDown size={11} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+                <ChevronDown size={11} className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none" />
               </div>
               {selectedVideoModel && isNsfw(selectedVideoModel) && (
-                <span className="inline-flex items-center gap-1 mt-1 text-[9px] font-bold uppercase tracking-wider text-red-300 bg-red-500/20 border border-red-500/30 rounded-full px-2 py-0.5">
+                <span className="inline-flex items-center gap-1 mt-1 text-[9px] font-bold uppercase tracking-wider text-rose-300 bg-rose-500/20 border border-rose-500/30 rounded-full px-2 py-0.5">
                   🔓 NSFW
                 </span>
               )}
@@ -345,9 +346,9 @@ export default function ChatView({ personas, activePersona: propActivePersona }:
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="sticky bottom-0 bg-[#0A0A0A] border-t border-white/5 p-4 pb-8">
+      <div className="sticky bottom-0 bg-[var(--bg-base)] border-t border-[var(--border-subtle)] p-4 pb-8">
         <div className="flex items-end gap-3">
-          <div className="flex-1 bg-[#1A1A1A] border border-white/10 rounded-2xl px-4 py-3 focus-within:border-indigo-500/40 transition-colors">
+          <div className="flex-1 bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-xl px-4 py-3 focus-within:border-violet-500/40 transition-colors duration-200">
             <textarea
               ref={inputRef}
               value={input}
@@ -355,18 +356,19 @@ export default function ChatView({ personas, activePersona: propActivePersona }:
               onKeyDown={handleKeyDown}
               placeholder={`Message ${activePersona.name}…`}
               rows={1}
-              className="w-full bg-transparent text-sm text-white placeholder-gray-500 outline-none resize-none leading-relaxed"
+              className="w-full bg-transparent text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none resize-none leading-relaxed"
               style={{ maxHeight: '120px' }}
             />
           </div>
-          <button
+          <motion.button
+            whileTap={{ scale: 0.9 }}
             onClick={handleSend}
             disabled={!input.trim() || isGenerating}
             className={cn(
-              'w-11 h-11 rounded-2xl flex items-center justify-center transition-all flex-shrink-0',
+              'w-11 h-11 rounded-xl flex items-center justify-center transition-all flex-shrink-0',
               input.trim() && !isGenerating
-                ? 'bg-indigo-600 hover:bg-indigo-500 text-white active:scale-95'
-                : 'bg-white/5 text-gray-600'
+                ? 'bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-lg shadow-violet-500/20'
+                : 'bg-[var(--bg-elevated)] text-[var(--text-muted)]'
             )}
           >
             {isGenerating ? (
@@ -374,9 +376,9 @@ export default function ChatView({ personas, activePersona: propActivePersona }:
             ) : (
               <Send size={18} />
             )}
-          </button>
+          </motion.button>
         </div>
-        <p className="text-[10px] text-gray-600 text-center mt-2">
+        <p className="text-[10px] text-[var(--text-muted)] text-center mt-2">
           Ask for images or videos anytime — the persona will generate them using their reference image.
         </p>
       </div>
@@ -389,55 +391,65 @@ function MessageBubble({ msg, persona }: { msg: ChatMessage; persona: Persona })
 
   if (isUser) {
     return (
-      <div className="flex justify-end">
-        <div className="max-w-[80%] bg-indigo-600 text-white rounded-2xl rounded-br-sm px-4 py-2.5 text-sm leading-relaxed">
+      <motion.div
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.2 }}
+        className="flex justify-end"
+      >
+        <div className="max-w-[80%] bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white rounded-2xl rounded-br-sm px-4 py-2.5 text-sm leading-relaxed">
           {msg.content}
         </div>
-      </div>
+      </motion.div>
     );
   }
 
   return (
-    <div className="flex gap-3 items-end">
-      <div className="flex-shrink-0 w-8 h-8 rounded-full overflow-hidden bg-indigo-600/20 flex items-center justify-center">
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2 }}
+      className="flex gap-3 items-end"
+    >
+      <div className="flex-shrink-0 w-8 h-8 rounded-full overflow-hidden bg-violet-600/20 flex items-center justify-center">
         {persona.referenceImage ? (
           <img src={persona.referenceImage} alt="" className="w-full h-full object-cover" />
         ) : (
-          <Bot size={14} className="text-indigo-400" />
+          <Bot size={14} className="text-violet-400" />
         )}
       </div>
 
       <div className="max-w-[80%]">
         {msg.type === 'text' && (
-          <div className="bg-[#1A1A1A] border border-white/5 text-gray-100 rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm leading-relaxed">
+          <div className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-primary)] rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm leading-relaxed">
             {msg.content}
           </div>
         )}
 
         {msg.type === 'loading' && (
-          <div className="bg-[#1A1A1A] border border-white/5 rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-2">
-            <Loader2 size={14} className="animate-spin text-indigo-400" />
-            <span className="text-xs text-gray-500">Generating…</span>
+          <div className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-2">
+            <Loader2 size={14} className="animate-spin text-violet-400" />
+            <span className="text-xs text-[var(--text-tertiary)]">Generating…</span>
           </div>
         )}
 
         {msg.type === 'image' && (
-          <div className="rounded-2xl rounded-bl-sm overflow-hidden border border-white/10 max-w-xs">
+          <div className="rounded-2xl rounded-bl-sm overflow-hidden border border-[var(--border-default)] max-w-xs">
             <img
               src={msg.content}
               alt="Generated"
               className="w-full object-cover"
               onError={e => { (e.target as HTMLImageElement).alt = 'Failed to load image'; }}
             />
-            <div className="bg-[#1A1A1A] px-3 py-1.5 flex items-center gap-1.5">
-              <ImageIcon size={11} className="text-indigo-400" />
-              <span className="text-[10px] text-gray-500">Generated image</span>
+            <div className="bg-[var(--bg-surface)] px-3 py-1.5 flex items-center gap-1.5">
+              <ImageIcon size={11} className="text-violet-400" />
+              <span className="text-[10px] text-[var(--text-tertiary)]">Generated image</span>
             </div>
           </div>
         )}
 
         {msg.type === 'video' && (
-          <div className="rounded-2xl rounded-bl-sm overflow-hidden border border-white/10 max-w-xs">
+          <div className="rounded-2xl rounded-bl-sm overflow-hidden border border-[var(--border-default)] max-w-xs">
             <video
               src={msg.content}
               controls
@@ -447,20 +459,20 @@ function MessageBubble({ msg, persona }: { msg: ChatMessage; persona: Persona })
               playsInline
               className="w-full"
             />
-            <div className="bg-[#1A1A1A] px-3 py-1.5 flex items-center gap-1.5">
-              <Video size={11} className="text-indigo-400" />
-              <span className="text-[10px] text-gray-500">Generated video</span>
+            <div className="bg-[var(--bg-surface)] px-3 py-1.5 flex items-center gap-1.5">
+              <Video size={11} className="text-violet-400" />
+              <span className="text-[10px] text-[var(--text-tertiary)]">Generated video</span>
             </div>
           </div>
         )}
 
         {msg.type === 'error' && (
-          <div className="bg-red-500/10 border border-red-500/20 rounded-2xl rounded-bl-sm px-4 py-2.5 flex items-start gap-2">
-            <AlertCircle size={14} className="text-red-400 mt-0.5 flex-shrink-0" />
-            <span className="text-xs text-red-300">{msg.content}</span>
+          <div className="bg-rose-500/10 border border-rose-500/20 rounded-2xl rounded-bl-sm px-4 py-2.5 flex items-start gap-2">
+            <AlertCircle size={14} className="text-rose-400 mt-0.5 flex-shrink-0" />
+            <span className="text-xs text-rose-300">{msg.content}</span>
           </div>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 }

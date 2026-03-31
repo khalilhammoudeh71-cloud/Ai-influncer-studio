@@ -1,5 +1,6 @@
 import { Plus, Search, Edit2, Trash2, X, Check, Camera, Upload, Image as ImageIcon, AlertTriangle, Sparkles, ArrowLeft, Download, Heart, Trash, Eye, Loader2, ChevronDown, Cpu, Wand2, Pencil, ArrowUpCircle, Film } from 'lucide-react';
 import { useState, useRef, useEffect, useMemo } from 'react';
+import { motion } from 'framer-motion';
 import { cn } from '../utils/cn';
 import { Persona, GeneratedImage } from '../types';
 import { VisualGenerator } from '../components/VisualGenerator';
@@ -475,24 +476,24 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
       <header className="flex justify-between items-center mb-8 pt-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Personas</h1>
-          <p className="text-gray-400 text-sm mt-1">Manage your AI identities</p>
+          <p className="text-[var(--text-secondary)] text-sm mt-1">Manage your AI identities</p>
         </div>
         <button 
           onClick={handleAddPersona}
-          className="bg-indigo-600 hover:bg-indigo-500 p-2.5 rounded-full shadow-lg shadow-indigo-600/20 transition-all active:scale-95"
+          className="bg-violet-600 hover:bg-violet-500 p-2.5 rounded-full shadow-lg shadow-violet-600/20 transition-all active:scale-95"
         >
           <Plus size={24} />
         </button>
       </header>
 
       <div className="relative mb-6">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]" size={18} />
         <input 
           type="text" 
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search personas..." 
-          className="w-full bg-[#1A1A1A] border border-white/5 rounded-2xl py-3 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all"
+          className="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl py-3 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50 transition-all"
         />
       </div>
 
@@ -508,14 +509,14 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                 setViewingPersona(fresh);
               }}
               className={cn(
-                "group relative bg-[#1A1A1A] border rounded-3xl p-5 cursor-pointer transition-all duration-300 overflow-hidden",
-                isSelected ? "border-indigo-500 ring-1 ring-indigo-500/50" : "border-white/5 hover:border-white/20"
+                "group relative bg-[var(--bg-surface)] border rounded-2xl p-5 cursor-pointer transition-all duration-300 overflow-hidden",
+                isSelected ? "border-violet-500 ring-1 ring-violet-500/50" : "border-[var(--border-subtle)] hover:border-[var(--border-strong)]"
               )}
             >
               <div className="absolute top-0 right-0 p-4 opacity-40 group-hover:opacity-100 transition-opacity flex gap-2 z-10">
                 <button 
                   onClick={(e) => handleDeletePersona(e, persona.id)}
-                  className="p-1.5 hover:bg-red-500/20 hover:text-red-400 rounded-lg transition-colors text-gray-500"
+                  className="p-1.5 hover:bg-rose-500/20 hover:text-rose-400 rounded-lg transition-colors text-[var(--text-tertiary)]"
                 >
                   <Trash2 size={18} />
                 </button>
@@ -525,7 +526,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                     setActivePersonaForGen(persona);
                     setShowGenerator(true);
                   }}
-                  className="p-1.5 hover:bg-indigo-500/20 text-indigo-400 rounded-lg transition-colors"
+                  className="p-1.5 hover:bg-violet-500/20 text-violet-400 rounded-lg transition-colors"
                   title="Generate Visuals"
                 >
                   <Sparkles size={18} />
@@ -535,7 +536,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                     e.stopPropagation();
                     handleOpenEdit(persona);
                   }}
-                  className="p-1.5 hover:bg-white/10 rounded-lg transition-colors text-gray-500"
+                  className="p-1.5 hover:bg-[var(--bg-overlay)] rounded-lg transition-colors text-[var(--text-tertiary)]"
                 >
                   <Edit2 size={18} />
                 </button>
@@ -547,7 +548,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                     <img 
                       src={persona.referenceImage} 
                       alt={persona.name} 
-                      className="w-16 h-16 rounded-2xl object-cover ring-2 ring-indigo-500/20"
+                      className="w-16 h-16 rounded-2xl object-cover ring-2 ring-violet-500/20"
                     />
                   ) : (
                     <img 
@@ -557,8 +558,8 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                     />
                   )}
                   <div className={cn(
-                    "absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-[#1A1A1A]",
-                    persona.status === 'Active' ? "bg-green-500" : "bg-gray-500"
+                    "absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-[var(--border-subtle)]",
+                    persona.status === 'Active' ? "bg-emerald-500" : "bg-gray-500"
                   )}></div>
                 </div>
                 
@@ -567,22 +568,22 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                     <h3 className="font-bold text-lg">{persona.name}</h3>
                     <span className={cn(
                       "text-[10px] uppercase tracking-widest font-bold px-2 py-0.5 rounded-full border",
-                      isSelected ? "text-indigo-400 border-indigo-400/20 bg-indigo-400/5" : "text-gray-500 border-gray-500/20 bg-gray-500/5"
+                      isSelected ? "text-violet-400 border-violet-400/20 bg-violet-400/5" : "text-[var(--text-tertiary)] border-[var(--border-subtle)] bg-[var(--bg-elevated)]"
                     )}>
                       {isSelected ? 'Active' : persona.status}
                     </span>
                   </div>
-                  <p className="text-gray-400 text-sm">{persona.niche}</p>
+                  <p className="text-[var(--text-secondary)] text-sm">{persona.niche}</p>
                   
                   {persona.visualLibrary && persona.visualLibrary.length > 0 && (
                     <div className="flex gap-2 mt-3 overflow-hidden">
                       {persona.visualLibrary.slice(-4).map((img) => (
-                        <div key={img.id} className="w-10 h-10 rounded-lg overflow-hidden border border-white/10 shrink-0">
+                        <div key={img.id} className="w-10 h-10 rounded-lg overflow-hidden border border-[var(--border-default)] shrink-0">
                           <img src={img.url} alt="" className="w-full h-full object-cover" />
                         </div>
                       ))}
                       {persona.visualLibrary.length > 4 && (
-                        <div className="w-10 h-10 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-[10px] text-gray-500 font-bold shrink-0">
+                        <div className="w-10 h-10 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-default)] flex items-center justify-center text-[10px] text-[var(--text-tertiary)] font-bold shrink-0">
                           +{persona.visualLibrary.length - 4}
                         </div>
                       )}
@@ -590,10 +591,10 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                   )}
 
                   <div className="flex flex-wrap items-center gap-2 mt-3">
-                    <span className="text-[11px] bg-white/5 text-gray-300 px-2 py-1 rounded-md border border-white/5">
+                    <span className="text-[11px] bg-[var(--bg-elevated)] text-[var(--text-primary)] px-2 py-1 rounded-md border border-[var(--border-subtle)]">
                       {persona.tone}
                     </span>
-                    <span className="text-[11px] bg-white/5 text-gray-300 px-2 py-1 rounded-md border border-white/5">
+                    <span className="text-[11px] bg-[var(--bg-elevated)] text-[var(--text-primary)] px-2 py-1 rounded-md border border-[var(--border-subtle)]">
                       {persona.platform}
                     </span>
                   </div>
@@ -605,25 +606,25 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
 
         {deleteConfirmId && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-            <div className="bg-[#1A1A1A] w-full max-w-sm rounded-[32px] border border-white/10 p-8 shadow-2xl animate-in fade-in zoom-in duration-200">
+            <div className="bg-[var(--bg-surface)] w-full max-w-sm rounded-2xl border border-[var(--border-default)] p-8 shadow-2xl animate-in fade-in zoom-in duration-200">
               <div className="flex flex-col items-center text-center">
-                <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mb-6 text-red-500">
+                <div className="w-16 h-16 bg-rose-500/10 rounded-full flex items-center justify-center mb-6 text-red-500">
                   <AlertTriangle size={32} />
                 </div>
                 <h3 className="text-xl font-bold mb-2">Delete Persona?</h3>
-                <p className="text-gray-400 text-sm mb-8 leading-relaxed">
+                <p className="text-[var(--text-secondary)] text-sm mb-8 leading-relaxed">
                   This action is permanent and will remove all content plans and settings associated with this persona.
                 </p>
                 <div className="grid grid-cols-2 gap-3 w-full">
                   <button 
                     onClick={() => setDeleteConfirmId(null)}
-                    className="py-3.5 px-4 bg-white/5 hover:bg-white/10 rounded-2xl font-bold transition-all active:scale-95"
+                    className="py-3.5 px-4 bg-[var(--bg-elevated)] hover:bg-[var(--bg-overlay)] rounded-2xl font-bold transition-all active:scale-95"
                   >
                     Cancel
                   </button>
                   <button 
                     onClick={confirmDelete}
-                    className="py-3.5 px-4 bg-red-600 hover:bg-red-500 rounded-2xl font-bold shadow-lg shadow-red-600/20 transition-all active:scale-95"
+                    className="py-3.5 px-4 bg-red-600 hover:bg-rose-500 rounded-2xl font-bold shadow-lg shadow-red-600/20 transition-all active:scale-95"
                   >
                     Delete
                   </button>
@@ -635,22 +636,22 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
 
         {editingPersona && (
           <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/80 backdrop-blur-sm p-4">
-            <div className="bg-[#121212] w-full max-w-xl rounded-t-[40px] border-t border-x border-white/10 overflow-hidden animate-in slide-in-from-bottom duration-300 max-h-[90vh] flex flex-col">
-              <header className="px-6 pt-8 pb-4 flex justify-between items-center bg-[#121212] border-b border-white/5">
+            <div className="bg-[var(--bg-surface)] w-full max-w-xl rounded-t-[40px] border-t border-x border-[var(--border-default)] overflow-hidden animate-in slide-in-from-bottom duration-300 max-h-[90vh] flex flex-col">
+              <header className="px-6 pt-8 pb-4 flex justify-between items-center bg-[var(--bg-surface)] border-b border-[var(--border-subtle)]">
                 <div>
                   <h2 className="text-xl font-bold">Edit Persona</h2>
-                  <p className="text-xs text-gray-500">Fine-tune your AI identity</p>
+                  <p className="text-xs text-[var(--text-tertiary)]">Fine-tune your AI identity</p>
                 </div>
                 <div className="flex gap-2">
                   <button 
                     onClick={() => setEditingPersona(null)}
-                    className="p-2 hover:bg-white/5 rounded-full text-gray-400"
+                    className="p-2 hover:bg-[var(--bg-elevated)] rounded-full text-[var(--text-secondary)]"
                   >
                     <X size={20} />
                   </button>
                   <button 
                     onClick={handleUpdatePersona}
-                    className="p-2 bg-indigo-600 hover:bg-indigo-500 rounded-full text-white shadow-lg shadow-indigo-600/20"
+                    className="p-2 bg-violet-600 hover:bg-violet-500 rounded-full text-white shadow-lg shadow-violet-600/20"
                   >
                     <Check size={20} />
                   </button>
@@ -664,29 +665,29 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                     <img 
                       src={editingPersona.avatar} 
                       alt="Avatar" 
-                      className="w-24 h-24 rounded-3xl object-cover ring-4 ring-white/5"
+                      className="w-24 h-24 rounded-2xl object-cover ring-4 ring-white/5"
                     />
-                    <div className="absolute inset-0 bg-black/40 rounded-3xl flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="absolute inset-0 bg-black/40 rounded-2xl flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                       <Camera size={24} />
                     </div>
                   </div>
                 </div>
 
                 {/* Reference Image Section */}
-                <section className="bg-white/5 border border-white/10 rounded-3xl p-6 space-y-4">
+                <section className="bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-2xl p-6 space-y-4">
                   <div className="flex items-center gap-3 mb-2">
-                    <div className="p-2 bg-indigo-500/20 rounded-xl text-indigo-400">
+                    <div className="p-2 bg-violet-500/20 rounded-xl text-violet-400">
                       <ImageIcon size={20} />
                     </div>
                     <div>
                       <h3 className="text-sm font-bold">Reference Image</h3>
-                      <p className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">Face / Style Reference</p>
+                      <p className="text-[10px] text-[var(--text-tertiary)] uppercase tracking-wider font-semibold">Face / Style Reference</p>
                     </div>
                   </div>
 
                   {editingPersona.referenceImage && (
                     <div className="space-y-2 mb-3">
-                      <div className="relative aspect-video rounded-2xl overflow-hidden border border-white/10 group">
+                      <div className="relative aspect-video rounded-2xl overflow-hidden border border-[var(--border-default)] group">
                         <img 
                           src={editingPersona.referenceImage} 
                           alt="Reference" 
@@ -695,7 +696,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                         <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm">
                           <button
                             onClick={() => setEditingPersona({...editingPersona, referenceImage: undefined, faceDescriptor: undefined})}
-                            className="bg-red-500 text-white px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5"
+                            className="bg-rose-500 text-white px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5"
                           >
                             <X size={12} /> Remove
                           </button>
@@ -705,7 +706,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                       <button
                         onClick={handleAnalyzeFace}
                         disabled={analyzingFace}
-                        className="w-full py-2 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/30 text-indigo-300 text-xs font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                        className="w-full py-2 rounded-xl bg-violet-600/20 hover:bg-violet-600/30 border border-violet-500/30 text-violet-300 text-xs font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-50"
                       >
                         {analyzingFace ? (
                           <><Loader2 size={13} className="animate-spin" /> Analyzing face...</>
@@ -715,34 +716,34 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                       </button>
 
                       {faceAnalysisError && (
-                        <div className="flex items-center gap-2 p-2 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+                        <div className="flex items-center gap-2 p-2 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">
                           <AlertTriangle size={12} className="shrink-0" />
                           {faceAnalysisError}
                         </div>
                       )}
 
                       <div className="space-y-1.5">
-                        <label className="text-[10px] uppercase tracking-wider font-bold text-gray-500 ml-1 flex items-center gap-1">
+                        <label className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] ml-1 flex items-center gap-1">
                           <Sparkles size={10} /> Face Description (editable)
                         </label>
                         <textarea
                           value={editingPersona.faceDescriptor || ''}
                           onChange={e => setEditingPersona({ ...editingPersona, faceDescriptor: e.target.value || undefined })}
                           rows={4}
-                          className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white focus:ring-2 focus:ring-indigo-500/50 outline-none resize-none leading-relaxed"
+                          className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-xs text-white focus:ring-2 focus:ring-violet-500/50 outline-none resize-none leading-relaxed"
                           placeholder="Click 'Analyze Face with AI' to auto-generate, or manually type an appearance description..."
                         />
-                        <p className="text-[10px] text-gray-600 ml-1">Injected into every generation prompt to anchor the persona's identity.</p>
+                        <p className="text-[10px] text-[var(--text-muted)] ml-1">Injected into every generation prompt to anchor the persona's identity.</p>
                       </div>
                     </div>
                   )}
 
-                  <div className="flex rounded-xl bg-white/5 p-0.5 gap-0.5">
+                  <div className="flex rounded-xl bg-[var(--bg-elevated)] p-0.5 gap-0.5">
                     <button
                       onClick={() => setRefMode('upload')}
                       className={cn(
                         "flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-all",
-                        refMode === 'upload' ? "bg-indigo-600 text-white shadow" : "text-gray-400 hover:text-white"
+                        refMode === 'upload' ? "bg-violet-600 text-white shadow" : "text-[var(--text-secondary)] hover:text-white"
                       )}
                     >
                       <Upload size={13} /> {editingPersona.referenceImage ? 'Replace' : 'Upload'}
@@ -751,7 +752,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                       onClick={() => setRefMode('generate')}
                       className={cn(
                         "flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-all",
-                        refMode === 'generate' ? "bg-indigo-600 text-white shadow" : "text-gray-400 hover:text-white"
+                        refMode === 'generate' ? "bg-violet-600 text-white shadow" : "text-[var(--text-secondary)] hover:text-white"
                       )}
                     >
                       <Wand2 size={13} /> Generate with AI
@@ -761,27 +762,27 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                   {refMode === 'upload' ? (
                         <div 
                           onClick={() => fileInputRef.current?.click()}
-                          className="relative border-2 border-dashed border-white/10 rounded-2xl py-10 text-center cursor-pointer hover:border-indigo-500/50 hover:bg-white/[0.02] transition-all"
+                          className="relative border-2 border-dashed border-[var(--border-default)] rounded-2xl py-10 text-center cursor-pointer hover:border-violet-500/50 hover:bg-white/[0.02] transition-all"
                         >
                           <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload} />
                           <div className="flex flex-col items-center gap-3">
-                            <div className="p-3 bg-white/5 rounded-full text-gray-400">
+                            <div className="p-3 bg-[var(--bg-elevated)] rounded-full text-[var(--text-secondary)]">
                               <Upload size={24} />
                             </div>
                             <div>
-                              <p className="text-sm font-medium text-gray-300">Tap to upload reference</p>
-                              <p className="text-xs text-gray-500 mt-1">PNG, JPG up to 5MB</p>
+                              <p className="text-sm font-medium text-[var(--text-primary)]">Tap to upload reference</p>
+                              <p className="text-xs text-[var(--text-tertiary)] mt-1">PNG, JPG up to 5MB</p>
                             </div>
                           </div>
                         </div>
                       ) : (
                         <div className="space-y-3">
                           <div className="space-y-1.5">
-                            <label className="text-[10px] uppercase tracking-wider font-bold text-gray-500 ml-1 flex items-center gap-1">
+                            <label className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] ml-1 flex items-center gap-1">
                               <Cpu size={10} /> Model
                             </label>
                             {refModelsLoading ? (
-                              <div className="flex items-center gap-2 px-3 py-2.5 bg-white/5 rounded-xl text-xs text-gray-400">
+                              <div className="flex items-center gap-2 px-3 py-2.5 bg-[var(--bg-elevated)] rounded-xl text-xs text-[var(--text-secondary)]">
                                 <Loader2 className="w-3 h-3 animate-spin" /> Loading models...
                               </div>
                             ) : (
@@ -789,7 +790,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                                 <select
                                   value={refSelectedModel}
                                   onChange={(e) => setRefSelectedModel(e.target.value)}
-                                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white focus:ring-2 focus:ring-indigo-500/50 outline-none appearance-none pr-8"
+                                  className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white focus:ring-2 focus:ring-violet-500/50 outline-none appearance-none pr-8"
                                 >
                                   {Object.entries(refGroupedModels).map(([provider, providerModels]) => (
                                     <optgroup key={provider} label={provider}>
@@ -801,23 +802,23 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                                     </optgroup>
                                   ))}
                                 </select>
-                                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500 pointer-events-none" />
+                                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-tertiary)] pointer-events-none" />
                               </div>
                             )}
                           </div>
 
                           <div className="space-y-1.5">
-                            <label className="text-[10px] uppercase tracking-wider font-bold text-gray-500 ml-1">Describe your persona's look</label>
+                            <label className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] ml-1">Describe your persona's look</label>
                             <textarea
                               value={refPrompt}
                               onChange={(e) => setRefPrompt(e.target.value)}
                               placeholder="e.g. A beautiful 25-year-old woman with long dark hair, green eyes, warm smile, professional headshot style..."
-                              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white min-h-[80px] focus:ring-2 focus:ring-indigo-500/50 outline-none resize-none"
+                              className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white min-h-[80px] focus:ring-2 focus:ring-violet-500/50 outline-none resize-none"
                             />
                           </div>
 
                           {refError && (
-                            <div className="flex items-center gap-2 p-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+                            <div className="flex items-center gap-2 p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">
                               <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                               {refError}
                             </div>
@@ -826,7 +827,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                           <button
                             onClick={handleGenerateRef}
                             disabled={refGenerating || !refPrompt.trim() || !refSelectedModel}
-                            className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-50 shadow-lg shadow-indigo-600/20"
+                            className="w-full py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-50 shadow-lg shadow-violet-600/20"
                           >
                             {refGenerating ? (
                               <><Loader2 size={14} className="animate-spin" /> Generating...</>
@@ -839,7 +840,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                 </section>
 
                 {/* Alternate Reference Image Section */}
-                <section className="bg-white/5 border border-white/10 rounded-3xl p-6 space-y-4">
+                <section className="bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-2xl p-6 space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className="p-2 bg-purple-500/20 rounded-xl text-purple-400">
@@ -847,13 +848,13 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                       </div>
                       <div>
                         <h3 className="text-sm font-bold">Alternate Reference Image</h3>
-                        <p className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">Style / Outfit / Pose Reference</p>
+                        <p className="text-[10px] text-[var(--text-tertiary)] uppercase tracking-wider font-semibold">Style / Outfit / Pose Reference</p>
                       </div>
                     </div>
                     {editingPersona.alternateReferenceImage && (
                       <button
                         onClick={() => setEditingPersona({ ...editingPersona, alternateReferenceImage: undefined })}
-                        className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1 transition-colors"
+                        className="text-xs text-rose-400 hover:text-rose-300 flex items-center gap-1 transition-colors"
                       >
                         <X size={12} /> Remove
                       </button>
@@ -861,7 +862,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                   </div>
 
                   {editingPersona.alternateReferenceImage ? (
-                    <div className="relative aspect-video rounded-2xl overflow-hidden border border-white/10 group">
+                    <div className="relative aspect-video rounded-2xl overflow-hidden border border-[var(--border-default)] group">
                       <img
                         src={editingPersona.alternateReferenceImage}
                         alt="Alternate Reference"
@@ -879,55 +880,55 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                   ) : (
                     <div
                       onClick={() => altFileInputRef.current?.click()}
-                      className="relative border-2 border-dashed border-white/10 rounded-2xl py-8 text-center cursor-pointer hover:border-purple-500/50 hover:bg-white/[0.02] transition-all"
+                      className="relative border-2 border-dashed border-[var(--border-default)] rounded-2xl py-8 text-center cursor-pointer hover:border-purple-500/50 hover:bg-white/[0.02] transition-all"
                     >
                       <div className="flex flex-col items-center gap-3">
-                        <div className="p-3 bg-white/5 rounded-full text-gray-400">
+                        <div className="p-3 bg-[var(--bg-elevated)] rounded-full text-[var(--text-secondary)]">
                           <Upload size={22} />
                         </div>
                         <div>
-                          <p className="text-sm font-medium text-gray-300">Upload alternate reference</p>
-                          <p className="text-xs text-gray-500 mt-1">Different from your main reference — style, outfit, pose, etc.</p>
+                          <p className="text-sm font-medium text-[var(--text-primary)]">Upload alternate reference</p>
+                          <p className="text-xs text-[var(--text-tertiary)] mt-1">Different from your main reference — style, outfit, pose, etc.</p>
                         </div>
                       </div>
                     </div>
                   )}
                   <input type="file" ref={altFileInputRef} className="hidden" accept="image/*" onChange={handleAltImageUpload} />
-                  <p className="text-[10px] text-gray-600 ml-1">Use this as an additional creative reference during image generation — separate from your identity photo.</p>
+                  <p className="text-[10px] text-[var(--text-muted)] ml-1">Use this as an additional creative reference during image generation — separate from your identity photo.</p>
                 </section>
 
                 {/* Form Fields */}
                 <div className="space-y-8 pb-10">
                   {/* Core Identity Section */}
                   <section className="space-y-4">
-                    <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-indigo-400/80 mb-4 px-1">Core Identity</h3>
+                    <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-violet-400/80 mb-4 px-1">Core Identity</h3>
                     <div className="space-y-4">
                       <div className="space-y-1.5">
-                        <label className="text-[10px] uppercase tracking-wider font-bold text-gray-500 ml-1">Name</label>
+                        <label className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] ml-1">Name</label>
                         <input 
                           value={editingPersona.name}
                           onChange={e => setEditingPersona({...editingPersona, name: e.target.value})}
-                          className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 px-4 focus:ring-2 focus:ring-indigo-500/50 outline-none transition-all"
+                          className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-2xl py-3 px-4 focus:ring-2 focus:ring-violet-500/50 outline-none transition-all"
                           placeholder="e.g. Aria Thorne"
                         />
                       </div>
 
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1.5">
-                          <label className="text-[10px] uppercase tracking-wider font-bold text-gray-500 ml-1">Niche</label>
+                          <label className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] ml-1">Niche</label>
                           <input 
                             value={editingPersona.niche}
                             onChange={e => setEditingPersona({...editingPersona, niche: e.target.value})}
-                            className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 px-4 focus:ring-2 focus:ring-indigo-500/50 outline-none transition-all"
+                            className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-2xl py-3 px-4 focus:ring-2 focus:ring-violet-500/50 outline-none transition-all"
                             placeholder="e.g. Luxury Travel"
                           />
                         </div>
                         <div className="space-y-1.5">
-                          <label className="text-[10px] uppercase tracking-wider font-bold text-gray-500 ml-1">Tone</label>
+                          <label className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] ml-1">Tone</label>
                           <input 
                             value={editingPersona.tone}
                             onChange={e => setEditingPersona({...editingPersona, tone: e.target.value})}
-                            className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 px-4 focus:ring-2 focus:ring-indigo-500/50 outline-none transition-all"
+                            className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-2xl py-3 px-4 focus:ring-2 focus:ring-violet-500/50 outline-none transition-all"
                             placeholder="e.g. Elegant, Elite"
                           />
                         </div>
@@ -935,20 +936,20 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
 
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1.5">
-                          <label className="text-[10px] uppercase tracking-wider font-bold text-gray-500 ml-1">Platform Focus</label>
+                          <label className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] ml-1">Platform Focus</label>
                           <input 
                             value={editingPersona.platform}
                             onChange={e => setEditingPersona({...editingPersona, platform: e.target.value})}
-                            className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 px-4 focus:ring-2 focus:ring-indigo-500/50 outline-none transition-all"
+                            className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-2xl py-3 px-4 focus:ring-2 focus:ring-violet-500/50 outline-none transition-all"
                             placeholder="e.g. Instagram"
                           />
                         </div>
                         <div className="space-y-1.5">
-                          <label className="text-[10px] uppercase tracking-wider font-bold text-gray-500 ml-1">Status</label>
+                          <label className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] ml-1">Status</label>
                           <select 
                             value={editingPersona.status}
                             onChange={e => setEditingPersona({...editingPersona, status: e.target.value})}
-                            className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 px-4 focus:ring-2 focus:ring-indigo-500/50 outline-none transition-all appearance-none"
+                            className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-2xl py-3 px-4 focus:ring-2 focus:ring-violet-500/50 outline-none transition-all appearance-none"
                           >
                             <option value="Active">Active</option>
                             <option value="Draft">Draft</option>
@@ -958,12 +959,12 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                       </div>
 
                       <div className="space-y-1.5">
-                        <label className="text-[10px] uppercase tracking-wider font-bold text-gray-500 ml-1">Short Bio / Context</label>
+                        <label className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] ml-1">Short Bio / Context</label>
                         <textarea 
                           value={editingPersona.bio}
                           onChange={e => setEditingPersona({...editingPersona, bio: e.target.value})}
                           rows={3}
-                          className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 px-4 focus:ring-2 focus:ring-indigo-500/50 outline-none transition-all resize-none"
+                          className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-2xl py-3 px-4 focus:ring-2 focus:ring-violet-500/50 outline-none transition-all resize-none"
                           placeholder="What's the story behind this persona?"
                         />
                       </div>
@@ -972,33 +973,33 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
 
                   {/* Personality & Voice Section */}
                   <section className="space-y-4">
-                    <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-indigo-400/80 mb-4 px-1">Personality & Voice</h3>
+                    <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-violet-400/80 mb-4 px-1">Personality & Voice</h3>
                     <div className="space-y-4">
                       <div className="space-y-1.5">
-                        <label className="text-[10px] uppercase tracking-wider font-bold text-gray-500 ml-1">Personality Traits</label>
+                        <label className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] ml-1">Personality Traits</label>
                         <input 
                           value={editingPersona.personalityTraits?.join(', ') || ''}
                           onChange={e => setEditingPersona({...editingPersona, personalityTraits: e.target.value.split(',').map(s => s.trim())})}
-                          className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 px-4 focus:ring-2 focus:ring-indigo-500/50 outline-none transition-all"
+                          className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-2xl py-3 px-4 focus:ring-2 focus:ring-violet-500/50 outline-none transition-all"
                           placeholder="e.g. Ambitious, Sophisticated, Witty (comma separated)"
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-[10px] uppercase tracking-wider font-bold text-gray-500 ml-1">Brand Voice Rules</label>
+                        <label className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] ml-1">Brand Voice Rules</label>
                         <textarea 
                           value={editingPersona.brandVoiceRules}
                           onChange={e => setEditingPersona({...editingPersona, brandVoiceRules: e.target.value})}
                           rows={3}
-                          className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 px-4 focus:ring-2 focus:ring-indigo-500/50 outline-none transition-all resize-none"
+                          className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-2xl py-3 px-4 focus:ring-2 focus:ring-violet-500/50 outline-none transition-all resize-none"
                           placeholder="e.g. Always use emojis ✨, use short sentences..."
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-[10px] uppercase tracking-wider font-bold text-gray-500 ml-1">Audience Type</label>
+                        <label className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] ml-1">Audience Type</label>
                         <input 
                           value={editingPersona.audienceType}
                           onChange={e => setEditingPersona({...editingPersona, audienceType: e.target.value})}
-                          className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 px-4 focus:ring-2 focus:ring-indigo-500/50 outline-none transition-all"
+                          className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-2xl py-3 px-4 focus:ring-2 focus:ring-violet-500/50 outline-none transition-all"
                           placeholder="e.g. Aspiring entrepreneurs, Gen Z fashionistas"
                         />
                       </div>
@@ -1007,33 +1008,33 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
 
                   {/* Content Rules Section */}
                   <section className="space-y-4">
-                    <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-indigo-400/80 mb-4 px-1">Content Rules</h3>
+                    <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-violet-400/80 mb-4 px-1">Content Rules</h3>
                     <div className="space-y-4">
                       <div className="space-y-1.5">
-                        <label className="text-[10px] uppercase tracking-wider font-bold text-gray-500 ml-1">Visual Style</label>
+                        <label className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] ml-1">Visual Style</label>
                         <input 
                           value={editingPersona.visualStyle}
                           onChange={e => setEditingPersona({...editingPersona, visualStyle: e.target.value})}
-                          className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 px-4 focus:ring-2 focus:ring-indigo-500/50 outline-none transition-all"
+                          className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-2xl py-3 px-4 focus:ring-2 focus:ring-violet-500/50 outline-none transition-all"
                           placeholder="e.g. High-contrast, minimalist, pastel colors"
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-[10px] uppercase tracking-wider font-bold text-gray-500 ml-1">Content Boundaries</label>
+                        <label className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] ml-1">Content Boundaries</label>
                         <textarea 
                           value={editingPersona.contentBoundaries}
                           onChange={e => setEditingPersona({...editingPersona, contentBoundaries: e.target.value})}
                           rows={2}
-                          className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 px-4 focus:ring-2 focus:ring-indigo-500/50 outline-none transition-all resize-none"
+                          className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-2xl py-3 px-4 focus:ring-2 focus:ring-violet-500/50 outline-none transition-all resize-none"
                           placeholder="e.g. Never discuss politics, avoid profanity..."
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-[10px] uppercase tracking-wider font-bold text-gray-500 ml-1">Content Goals</label>
+                        <label className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] ml-1">Content Goals</label>
                         <input 
                           value={editingPersona.contentGoals}
                           onChange={e => setEditingPersona({...editingPersona, contentGoals: e.target.value})}
-                          className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 px-4 focus:ring-2 focus:ring-indigo-500/50 outline-none transition-all"
+                          className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-2xl py-3 px-4 focus:ring-2 focus:ring-violet-500/50 outline-none transition-all"
                           placeholder="e.g. Build mystery, establish authority"
                         />
                       </div>
@@ -1042,15 +1043,15 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
 
                   {/* Advanced Section */}
                   <section className="space-y-4">
-                    <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-indigo-400/80 mb-4 px-1">Advanced</h3>
+                    <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-violet-400/80 mb-4 px-1">Advanced</h3>
                     <div className="space-y-4">
                       <div className="space-y-1.5">
-                        <label className="text-[10px] uppercase tracking-wider font-bold text-gray-500 ml-1">Persona Notes</label>
+                        <label className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] ml-1">Persona Notes</label>
                         <textarea 
                           value={editingPersona.personaNotes}
                           onChange={e => setEditingPersona({...editingPersona, personaNotes: e.target.value})}
                           rows={3}
-                          className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 px-4 focus:ring-2 focus:ring-indigo-500/50 outline-none transition-all resize-none"
+                          className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-2xl py-3 px-4 focus:ring-2 focus:ring-violet-500/50 outline-none transition-all resize-none"
                           placeholder="Internal notes, research, or reminders..."
                         />
                       </div>
@@ -1059,10 +1060,10 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                 </div>
               </div>
 
-              <div className="p-6 border-t border-white/5 bg-white/[0.02]">
+              <div className="p-6 border-t border-[var(--border-subtle)] bg-white/[0.02]">
                 <button 
                   onClick={handleUpdatePersona}
-                  className="w-full bg-indigo-600 hover:bg-indigo-500 py-4 rounded-2xl font-bold shadow-lg shadow-indigo-600/20 transition-all active:scale-95"
+                  className="w-full bg-violet-600 hover:bg-violet-500 py-4 rounded-2xl font-bold shadow-lg shadow-violet-600/20 transition-all active:scale-95"
                 >
                   Save Changes
                 </button>
@@ -1072,12 +1073,12 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
         )}
 
         {personas.length === 0 && (
-          <div className="text-center py-12 px-4 border-2 border-dashed border-white/5 rounded-[40px] bg-white/[0.02]">
-            <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <Plus className="text-gray-500" size={32} />
+          <div className="text-center py-12 px-4 border-2 border-dashed border-[var(--border-subtle)] rounded-[40px] bg-white/[0.02]">
+            <div className="w-16 h-16 bg-[var(--bg-elevated)] rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <Plus className="text-[var(--text-tertiary)]" size={32} />
             </div>
             <h3 className="text-lg font-semibold mb-2">No personas yet</h3>
-            <p className="text-gray-400 text-sm max-w-xs mx-auto mb-8 leading-relaxed">
+            <p className="text-[var(--text-secondary)] text-sm max-w-xs mx-auto mb-8 leading-relaxed">
               Create your first AI identity to start planning and generating content.
             </p>
           </div>
@@ -1085,7 +1086,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
 
         <button 
           onClick={handleAddPersona}
-          className="flex items-center justify-center gap-2 w-full py-8 border-2 border-dashed border-white/5 rounded-3xl text-gray-500 hover:text-gray-400 hover:border-white/10 transition-all group"
+          className="flex items-center justify-center gap-2 w-full py-8 border-2 border-dashed border-[var(--border-subtle)] rounded-2xl text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:border-[var(--border-default)] transition-all group"
         >
           <Plus size={20} className="group-hover:scale-110 transition-transform" />
           <span className="font-medium text-sm">Add New Persona</span>
@@ -1093,11 +1094,11 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
       </div>
 
       {viewingPersona && (
-        <div className="fixed inset-0 z-50 bg-[#0A0A0A] overflow-y-auto animate-in fade-in duration-200">
-          <header className="sticky top-0 z-10 bg-[#0A0A0A]/90 backdrop-blur-xl border-b border-white/5 px-5 py-4 flex items-center justify-between">
+        <div className="fixed inset-0 z-50 bg-[var(--bg-base)] overflow-y-auto animate-in fade-in duration-200">
+          <header className="sticky top-0 z-10 bg-[var(--bg-base)]/90 backdrop-blur-xl border-b border-[var(--border-subtle)] px-5 py-4 flex items-center justify-between">
             <button 
               onClick={() => { setViewingPersona(null); setPreviewImage(null); }}
-              className="p-2 hover:bg-white/5 rounded-full text-gray-400 transition-colors"
+              className="p-2 hover:bg-[var(--bg-elevated)] rounded-full text-[var(--text-secondary)] transition-colors"
             >
               <ArrowLeft size={22} />
             </button>
@@ -1108,7 +1109,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                   setActivePersonaForGen(viewingPersona);
                   setShowGenerator(true);
                 }}
-                className="p-2 bg-indigo-600 hover:bg-indigo-500 rounded-full text-white transition-colors"
+                className="p-2 bg-violet-600 hover:bg-violet-500 rounded-full text-white transition-colors"
               >
                 <Sparkles size={18} />
               </button>
@@ -1119,7 +1120,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                   setPreviewImage(null);
                   handleOpenEdit(vp);
                 }}
-                className="p-2 hover:bg-white/5 rounded-full text-gray-400 transition-colors"
+                className="p-2 hover:bg-[var(--bg-elevated)] rounded-full text-[var(--text-secondary)] transition-colors"
               >
                 <Edit2 size={18} />
               </button>
@@ -1133,7 +1134,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                   <img 
                     src={viewingPersona.referenceImage} 
                     alt={viewingPersona.name} 
-                    className="w-20 h-20 rounded-2xl object-cover ring-2 ring-indigo-500/20"
+                    className="w-20 h-20 rounded-2xl object-cover ring-2 ring-violet-500/20"
                   />
                 ) : (
                   <img 
@@ -1143,29 +1144,29 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                   />
                 )}
                 <div className={cn(
-                  "absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-[#0A0A0A]",
-                  viewingPersona.status === 'Active' ? "bg-green-500" : "bg-gray-500"
+                  "absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-[var(--border-subtle)]",
+                  viewingPersona.status === 'Active' ? "bg-emerald-500" : "bg-gray-500"
                 )} />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-gray-400 text-sm">{viewingPersona.niche}</p>
+                <p className="text-[var(--text-secondary)] text-sm">{viewingPersona.niche}</p>
                 <div className="flex flex-wrap items-center gap-2 mt-2">
-                  <span className="text-[11px] bg-white/5 text-gray-300 px-2 py-1 rounded-md border border-white/5">
+                  <span className="text-[11px] bg-[var(--bg-elevated)] text-[var(--text-primary)] px-2 py-1 rounded-md border border-[var(--border-subtle)]">
                     {viewingPersona.tone}
                   </span>
-                  <span className="text-[11px] bg-white/5 text-gray-300 px-2 py-1 rounded-md border border-white/5">
+                  <span className="text-[11px] bg-[var(--bg-elevated)] text-[var(--text-primary)] px-2 py-1 rounded-md border border-[var(--border-subtle)]">
                     {viewingPersona.platform}
                   </span>
                 </div>
                 {viewingPersona.bio && (
-                  <p className="text-gray-500 text-xs mt-2 line-clamp-2">{viewingPersona.bio}</p>
+                  <p className="text-[var(--text-tertiary)] text-xs mt-2 line-clamp-2">{viewingPersona.bio}</p>
                 )}
               </div>
             </div>
 
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold text-lg">Creations</h3>
-              <span className="text-xs text-gray-500 font-medium">
+              <span className="text-xs text-[var(--text-tertiary)] font-medium">
                 {viewingPersona.visualLibrary?.length || 0} images
               </span>
             </div>
@@ -1175,7 +1176,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                 {viewingPersona.visualLibrary.map((img) => (
                   <div 
                     key={img.id} 
-                    className="relative group rounded-2xl overflow-hidden border border-white/5 bg-[#1A1A1A] cursor-pointer"
+                    className="relative group rounded-2xl overflow-hidden border border-[var(--border-subtle)] bg-[var(--bg-surface)] cursor-pointer"
                     onClick={() => openPreviewImage(img)}
                   >
                     <div className="aspect-square">
@@ -1214,7 +1215,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                       <p className="text-[10px] text-white/70 truncate">{img.prompt || 'Generated image'}</p>
                       <div className="flex items-center gap-2 mt-1">
                         {img.model && (
-                          <span className="text-[9px] bg-white/10 text-white/60 px-1.5 py-0.5 rounded">{img.model}</span>
+                          <span className="text-[9px] bg-[var(--bg-overlay)] text-white/60 px-1.5 py-0.5 rounded">{img.model}</span>
                         )}
                         {img.environment && (
                           <span className="text-[9px] text-white/40">{img.environment}</span>
@@ -1225,12 +1226,12 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                 ))}
               </div>
             ) : (
-              <div className="text-center py-16 bg-[#1A1A1A] rounded-3xl border border-white/5">
-                <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                  <ImageIcon className="text-gray-600" size={32} />
+              <div className="text-center py-16 bg-[var(--bg-surface)] rounded-2xl border border-[var(--border-subtle)]">
+                <div className="w-16 h-16 bg-[var(--bg-elevated)] rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <ImageIcon className="text-[var(--text-muted)]" size={32} />
                 </div>
-                <h3 className="text-base font-semibold mb-2 text-gray-300">No creations yet</h3>
-                <p className="text-gray-500 text-sm max-w-[220px] mx-auto mb-6 leading-relaxed">
+                <h3 className="text-base font-semibold mb-2 text-[var(--text-primary)]">No creations yet</h3>
+                <p className="text-[var(--text-tertiary)] text-sm max-w-[220px] mx-auto mb-6 leading-relaxed">
                   Generate visuals for this persona to see them here.
                 </p>
                 <button 
@@ -1238,7 +1239,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                     setActivePersonaForGen(viewingPersona);
                     setShowGenerator(true);
                   }}
-                  className="bg-indigo-600 hover:bg-indigo-500 px-6 py-3 rounded-2xl font-bold text-sm transition-all active:scale-95 inline-flex items-center gap-2"
+                  className="bg-violet-600 hover:bg-violet-500 px-6 py-3 rounded-2xl font-bold text-sm transition-all active:scale-95 inline-flex items-center gap-2"
                 >
                   <Sparkles size={16} />
                   Generate Visuals
@@ -1252,7 +1253,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
               <div className="relative max-w-lg w-full mt-8" onClick={(e) => e.stopPropagation()}>
                 <button 
                   onClick={() => { if (!previewProcessing) setPreviewImage(null); }}
-                  className="absolute -top-12 right-0 p-2 text-gray-400 hover:text-white transition-colors"
+                  className="absolute -top-12 right-0 p-2 text-[var(--text-secondary)] hover:text-white transition-colors"
                 >
                   <X size={24} />
                 </button>
@@ -1263,13 +1264,13 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                       controls 
                       autoPlay 
                       loop 
-                      className="w-full rounded-2xl border border-white/10"
+                      className="w-full rounded-2xl border border-[var(--border-default)]"
                     />
                   ) : (
                     <img 
                       src={previewImage.url} 
                       alt={previewImage.prompt || ''} 
-                      className="w-full rounded-2xl border border-white/10"
+                      className="w-full rounded-2xl border border-[var(--border-default)]"
                     />
                   )}
                   {previewProcessing && (
@@ -1281,28 +1282,28 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                     </div>
                   )}
                 </div>
-                <div className="mt-4 bg-[#1A1A1A] rounded-2xl border border-white/5 p-4">
+                <div className="mt-4 bg-[var(--bg-surface)] rounded-2xl border border-[var(--border-subtle)] p-4">
                   {previewImage.prompt && (
-                    <p className="text-sm text-gray-300 mb-3">{previewImage.prompt}</p>
+                    <p className="text-sm text-[var(--text-primary)] mb-3">{previewImage.prompt}</p>
                   )}
                   <div className="flex flex-wrap items-center gap-2">
                     {previewImage.model && (
-                      <span className="text-[10px] bg-indigo-500/10 text-indigo-400 px-2 py-1 rounded-md border border-indigo-500/20">
+                      <span className="text-[10px] bg-violet-500/10 text-violet-400 px-2 py-1 rounded-md border border-violet-500/20">
                         {previewImage.model}
                       </span>
                     )}
                     {previewImage.environment && (
-                      <span className="text-[10px] bg-white/5 text-gray-400 px-2 py-1 rounded-md border border-white/5">
+                      <span className="text-[10px] bg-[var(--bg-elevated)] text-[var(--text-secondary)] px-2 py-1 rounded-md border border-[var(--border-subtle)]">
                         {previewImage.environment}
                       </span>
                     )}
                     {previewImage.outfit && (
-                      <span className="text-[10px] bg-white/5 text-gray-400 px-2 py-1 rounded-md border border-white/5">
+                      <span className="text-[10px] bg-[var(--bg-elevated)] text-[var(--text-secondary)] px-2 py-1 rounded-md border border-[var(--border-subtle)]">
                         {previewImage.outfit}
                       </span>
                     )}
                     {previewImage.framing && (
-                      <span className="text-[10px] bg-white/5 text-gray-400 px-2 py-1 rounded-md border border-white/5">
+                      <span className="text-[10px] bg-[var(--bg-elevated)] text-[var(--text-secondary)] px-2 py-1 rounded-md border border-[var(--border-subtle)]">
                         {previewImage.framing}
                       </span>
                     )}
@@ -1315,7 +1316,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                       className={`flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold transition-all border ${
                         previewAction === 'edit'
                           ? 'bg-blue-600 text-white border-blue-500'
-                          : 'bg-white/5 text-zinc-300 border-white/5 hover:bg-white/10'
+                          : 'bg-[var(--bg-elevated)] text-[var(--text-primary)] border-[var(--border-subtle)] hover:bg-[var(--bg-overlay)]'
                       }`}
                     >
                       <Pencil size={14} /> Edit
@@ -1326,7 +1327,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                       className={`flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold transition-all border ${
                         previewAction === 'upscale'
                           ? 'bg-emerald-600 text-white border-emerald-500'
-                          : 'bg-white/5 text-zinc-300 border-white/5 hover:bg-white/10'
+                          : 'bg-[var(--bg-elevated)] text-[var(--text-primary)] border-[var(--border-subtle)] hover:bg-[var(--bg-overlay)]'
                       }`}
                     >
                       <ArrowUpCircle size={14} /> Upscale
@@ -1337,7 +1338,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                       className={`flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold transition-all border ${
                         previewAction === 'video'
                           ? 'bg-pink-600 text-white border-pink-500'
-                          : 'bg-white/5 text-zinc-300 border-white/5 hover:bg-white/10'
+                          : 'bg-[var(--bg-elevated)] text-[var(--text-primary)] border-[var(--border-subtle)] hover:bg-[var(--bg-overlay)]'
                       }`}
                     >
                       <Film size={14} /> Video
@@ -1351,7 +1352,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                         <select
                           value={previewSelectedEditModel}
                           onChange={(e) => setPreviewSelectedEditModel(e.target.value)}
-                          className="w-full bg-zinc-800 border-zinc-700 rounded-lg px-3 py-2 text-xs text-white focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-8"
+                          className="w-full bg-[var(--bg-elevated)] border-[var(--border-default)] rounded-lg px-3 py-2 text-xs text-white focus:ring-2 focus:ring-blue-500 outline-none appearance-none pr-8"
                         >
                           {Object.entries(groupedPreviewEditModels).map(([provider, providerModels]) => (
                             <optgroup key={provider} label={provider}>
@@ -1363,29 +1364,29 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                             </optgroup>
                           ))}
                         </select>
-                        <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500 pointer-events-none" />
+                        <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-tertiary)] pointer-events-none" />
                       </div>
                       <textarea
                         value={previewEditPrompt}
                         onChange={(e) => setPreviewEditPrompt(e.target.value)}
                         placeholder="Describe what to change or how to combine with uploaded image..."
-                        className="w-full bg-zinc-800 border-zinc-700 rounded-lg px-3 py-2 text-xs text-white min-h-[50px] focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+                        className="w-full bg-[var(--bg-elevated)] border-[var(--border-default)] rounded-lg px-3 py-2 text-xs text-white min-h-[50px] focus:ring-2 focus:ring-blue-500 outline-none resize-none"
                       />
                       {previewAdditionalImage ? (
-                        <div className="flex items-center gap-2 bg-zinc-800 rounded-lg p-2">
+                        <div className="flex items-center gap-2 bg-[var(--bg-elevated)] rounded-lg p-2">
                           <img src={previewAdditionalImage} alt="Additional" className="w-8 h-8 rounded-md object-cover" />
-                          <span className="text-[10px] text-zinc-300 truncate flex-1">{previewAdditionalImageName}</span>
+                          <span className="text-[10px] text-[var(--text-primary)] truncate flex-1">{previewAdditionalImageName}</span>
                           <button
                             onClick={() => { setPreviewAdditionalImage(null); setPreviewAdditionalImageName(null); }}
-                            className="p-1 hover:bg-white/10 rounded text-zinc-400 hover:text-white transition-colors"
+                            className="p-1 hover:bg-[var(--bg-overlay)] rounded text-[var(--text-secondary)] hover:text-white transition-colors"
                           >
                             <X className="w-3 h-3" />
                           </button>
                         </div>
                       ) : (
-                        <label className="flex items-center gap-2 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg cursor-pointer transition-colors border border-dashed border-zinc-600">
-                          <Upload className="w-3 h-3 text-zinc-400" />
-                          <span className="text-[10px] text-zinc-400">Upload background, product, or person to combine</span>
+                        <label className="flex items-center gap-2 px-3 py-2 bg-[var(--bg-elevated)] hover:bg-[var(--bg-overlay)] rounded-lg cursor-pointer transition-colors border border-dashed border-[var(--border-strong)]">
+                          <Upload className="w-3 h-3 text-[var(--text-secondary)]" />
+                          <span className="text-[10px] text-[var(--text-secondary)]">Upload background, product, or person to combine</span>
                           <input
                             type="file"
                             accept="image/*"
@@ -1405,7 +1406,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                         </label>
                       )}
                       {previewActionError && (
-                        <p className="text-[10px] text-red-400 flex items-center gap-1"><AlertTriangle className="w-3 h-3" />{previewActionError}</p>
+                        <p className="text-[10px] text-rose-400 flex items-center gap-1"><AlertTriangle className="w-3 h-3" />{previewActionError}</p>
                       )}
                       <button
                         onClick={handlePreviewEdit}
@@ -1424,7 +1425,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                         <select
                           value={previewSelectedUpscaleModel}
                           onChange={(e) => setPreviewSelectedUpscaleModel(e.target.value)}
-                          className="w-full bg-zinc-800 border-zinc-700 rounded-lg px-3 py-2 text-xs text-white focus:ring-2 focus:ring-emerald-500 outline-none appearance-none pr-8"
+                          className="w-full bg-[var(--bg-elevated)] border-[var(--border-default)] rounded-lg px-3 py-2 text-xs text-white focus:ring-2 focus:ring-emerald-500 outline-none appearance-none pr-8"
                         >
                           {Object.entries(groupedPreviewUpscaleModels).map(([provider, providerModels]) => (
                             <optgroup key={provider} label={provider}>
@@ -1436,10 +1437,10 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                             </optgroup>
                           ))}
                         </select>
-                        <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500 pointer-events-none" />
+                        <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-tertiary)] pointer-events-none" />
                       </div>
                       {previewActionError && (
-                        <p className="text-[10px] text-red-400 flex items-center gap-1"><AlertTriangle className="w-3 h-3" />{previewActionError}</p>
+                        <p className="text-[10px] text-rose-400 flex items-center gap-1"><AlertTriangle className="w-3 h-3" />{previewActionError}</p>
                       )}
                       <button
                         onClick={handlePreviewUpscale}
@@ -1458,7 +1459,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                         <select
                           value={previewSelectedVideoModel}
                           onChange={(e) => setPreviewSelectedVideoModel(e.target.value)}
-                          className="w-full bg-zinc-800 border-zinc-700 rounded-lg px-3 py-2 text-xs text-white focus:ring-2 focus:ring-pink-500 outline-none appearance-none pr-8"
+                          className="w-full bg-[var(--bg-elevated)] border-[var(--border-default)] rounded-lg px-3 py-2 text-xs text-white focus:ring-2 focus:ring-pink-500 outline-none appearance-none pr-8"
                         >
                           {Object.entries(groupedPreviewVideoModels).map(([provider, providerModels]) => (
                             <optgroup key={provider} label={provider}>
@@ -1470,19 +1471,19 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                             </optgroup>
                           ))}
                         </select>
-                        <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500 pointer-events-none" />
+                        <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-tertiary)] pointer-events-none" />
                       </div>
                       <textarea
                         value={previewVideoPrompt}
                         onChange={(e) => setPreviewVideoPrompt(e.target.value)}
                         placeholder="Describe the motion — e.g. 'She turns to the camera and smiles, hair blowing in the wind'"
-                        className="w-full bg-zinc-800 border-zinc-700 rounded-lg px-3 py-2 text-xs text-white min-h-[50px] focus:ring-2 focus:ring-pink-500 outline-none resize-none"
+                        className="w-full bg-[var(--bg-elevated)] border-[var(--border-default)] rounded-lg px-3 py-2 text-xs text-white min-h-[50px] focus:ring-2 focus:ring-pink-500 outline-none resize-none"
                       />
-                      <p className="text-[10px] text-zinc-500 flex items-center gap-1">
+                      <p className="text-[10px] text-[var(--text-tertiary)] flex items-center gap-1">
                         <ImageIcon className="w-3 h-3" /> This image will be used as the source frame
                       </p>
                       {previewActionError && (
-                        <p className="text-[10px] text-red-400 flex items-center gap-1"><AlertTriangle className="w-3 h-3" />{previewActionError}</p>
+                        <p className="text-[10px] text-rose-400 flex items-center gap-1"><AlertTriangle className="w-3 h-3" />{previewActionError}</p>
                       )}
                       <button
                         onClick={handlePreviewVideo}
@@ -1499,7 +1500,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                     <a
                       href={previewImage.url}
                       download={`${viewingPersona.name.replace(/\s+/g, '_')}_${previewImage.id}.png`}
-                      className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-white/5 hover:bg-white/10 rounded-xl text-xs font-bold transition-colors"
+                      className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-[var(--bg-elevated)] hover:bg-[var(--bg-overlay)] rounded-xl text-xs font-bold transition-colors"
                     >
                       <Download size={14} /> Download
                     </a>
@@ -1520,7 +1521,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                         api.images.delete(viewingPersona.id, previewImage.id).catch(err => console.error('[API] Image delete error:', err));
                         setPreviewImage(null);
                       }}
-                      className="flex items-center justify-center gap-2 py-2.5 px-4 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl text-xs font-bold transition-colors"
+                      className="flex items-center justify-center gap-2 py-2.5 px-4 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-xl text-xs font-bold transition-colors"
                     >
                       <Trash size={14} /> Delete
                     </button>

@@ -21,7 +21,7 @@
     "drizzle-orm": "^0.45.2",
     "drizzle-zod": "^0.8.3",
     "express": "^5.2.1",
-    "framer-motion": "^12.35.0",
+    "framer-motion": "^12.38.0",
     "lucide-react": "^0.575.0",
     "openai": "^6.32.0",
     "p-limit": "^7.3.0",

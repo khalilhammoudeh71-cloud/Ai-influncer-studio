@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { TrendingUp, Plus, DollarSign, Wallet, CreditCard, ChevronRight, PieChart, X } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Persona, RevenueEntry } from '../types';
 import { api } from '../services/apiService';
 
@@ -54,81 +55,93 @@ export default function RevenueView({ persona }: RevenueViewProps) {
     <div className="p-6">
       <header className="flex justify-between items-center mb-8 pt-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Revenue</h1>
-          <p className="text-gray-400 text-sm mt-1">Earnings for {persona.name}</p>
+          <h1 className="text-3xl font-bold tracking-tight text-[var(--text-primary)]">Revenue</h1>
+          <p className="text-[var(--text-secondary)] text-sm mt-1">Earnings for {persona.name}</p>
         </div>
-        <button 
+        <motion.button 
+          whileTap={{ scale: 0.9 }}
           onClick={() => setShowAddForm(true)}
-          className="bg-indigo-600 hover:bg-indigo-500 p-2.5 rounded-full shadow-lg transition-all active:scale-95"
+          className="bg-gradient-to-r from-violet-600 to-fuchsia-600 p-2.5 rounded-full shadow-lg shadow-violet-500/20 transition-all"
         >
-          <Plus size={24} />
-        </button>
+          <Plus size={24} className="text-white" />
+        </motion.button>
       </header>
 
-      <div className="bg-indigo-600 rounded-[32px] p-6 mb-8 relative overflow-hidden">
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className="bg-gradient-to-br from-violet-600 to-fuchsia-600 rounded-2xl p-6 mb-8 relative overflow-hidden"
+      >
         <div className="absolute top-0 right-0 p-8 opacity-10">
           <TrendingUp size={120} />
         </div>
         <div className="relative z-10">
-          <span className="text-indigo-200 text-xs font-bold uppercase tracking-widest">Total Earnings ({persona.name})</span>
-          <h2 className="text-4xl font-black mt-2 mb-6 tracking-tight">${totalPersonaRevenue.toLocaleString()}.00</h2>
+          <span className="text-violet-200 text-xs font-bold uppercase tracking-[0.15em]">Total Earnings ({persona.name})</span>
+          <h2 className="text-4xl font-black mt-2 mb-6 tracking-tight text-white">${totalPersonaRevenue.toLocaleString()}.00</h2>
           
           <div className="grid grid-cols-2 gap-4">
-             <div className="bg-white/10 backdrop-blur-md rounded-2xl p-3 border border-white/10">
-                <span className="text-[10px] text-indigo-100 block opacity-70 uppercase font-bold">Projected</span>
-                <span className="font-bold text-lg">${(totalPersonaRevenue * 1.5).toLocaleString()}</span>
+             <div className="bg-white/10 backdrop-blur-md rounded-xl p-3 border border-white/10">
+                <span className="text-[10px] text-violet-100 block opacity-70 uppercase font-bold">Projected</span>
+                <span className="font-bold text-lg text-white">${(totalPersonaRevenue * 1.5).toLocaleString()}</span>
              </div>
-             <div className="bg-white/10 backdrop-blur-md rounded-2xl p-3 border border-white/10">
-                <span className="text-[10px] text-indigo-100 block opacity-70 uppercase font-bold">Growth</span>
-                <span className="font-bold text-lg">+14.2%</span>
+             <div className="bg-white/10 backdrop-blur-md rounded-xl p-3 border border-white/10">
+                <span className="text-[10px] text-violet-100 block opacity-70 uppercase font-bold">Growth</span>
+                <span className="font-bold text-lg text-white">+14.2%</span>
              </div>
           </div>
         </div>
-      </div>
+      </motion.div>
 
       <div className="grid grid-cols-2 gap-4 mb-8">
-        <button className="flex flex-col items-center justify-center gap-2 bg-[#1A1A1A] border border-white/5 rounded-3xl p-5 hover:border-indigo-500/30 transition-all group">
-          <div className="bg-indigo-500/10 p-3 rounded-2xl group-hover:bg-indigo-500/20 transition-colors">
-            <PieChart className="text-indigo-400" size={24} />
+        <button className="flex flex-col items-center justify-center gap-2 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl p-5 hover:border-violet-500/30 transition-all duration-200 group">
+          <div className="bg-violet-500/10 p-3 rounded-xl group-hover:bg-violet-500/20 transition-colors">
+            <PieChart className="text-violet-400" size={24} />
           </div>
-          <span className="text-sm font-medium">By Persona</span>
+          <span className="text-sm font-medium text-[var(--text-primary)]">By Persona</span>
         </button>
-        <button className="flex flex-col items-center justify-center gap-2 bg-[#1A1A1A] border border-white/5 rounded-3xl p-5 hover:border-indigo-500/30 transition-all group">
-          <div className="bg-indigo-500/10 p-3 rounded-2xl group-hover:bg-indigo-500/20 transition-colors">
-            <Wallet className="text-indigo-400" size={24} />
+        <button className="flex flex-col items-center justify-center gap-2 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl p-5 hover:border-violet-500/30 transition-all duration-200 group">
+          <div className="bg-violet-500/10 p-3 rounded-xl group-hover:bg-violet-500/20 transition-colors">
+            <Wallet className="text-violet-400" size={24} />
           </div>
-          <span className="text-sm font-medium">Withdraw</span>
+          <span className="text-sm font-medium text-[var(--text-primary)]">Withdraw</span>
         </button>
       </div>
 
       <div className="space-y-4">
         <div className="flex justify-between items-center mb-2 px-1">
-          <h3 className="font-bold text-lg">Transactions</h3>
+          <h3 className="font-bold text-lg text-[var(--text-primary)]">Transactions</h3>
         </div>
 
-        {entries.length > 0 ? entries.map((entry) => (
-          <div key={entry.id} className="bg-[#1A1A1A] border border-white/5 rounded-2xl p-4 flex items-center justify-between">
+        {entries.length > 0 ? entries.map((entry, idx) => (
+          <motion.div
+            key={entry.id}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: idx * 0.05 }}
+            className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl p-4 flex items-center justify-between hover:border-[var(--border-strong)] transition-colors duration-200"
+          >
             <div className="flex items-center gap-4">
-              <div className="bg-white/5 p-3 rounded-xl border border-white/5">
-                {entry.source === 'Brand Deal' ? <CreditCard size={20} className="text-indigo-400" /> : <DollarSign size={20} className="text-green-400" />}
+              <div className="bg-[var(--bg-elevated)] p-3 rounded-xl border border-[var(--border-subtle)]">
+                {entry.source === 'Brand Deal' ? <CreditCard size={20} className="text-violet-400" /> : <DollarSign size={20} className="text-emerald-400" />}
               </div>
               <div>
-                <h4 className="font-bold text-sm">{entry.source}</h4>
-                <p className="text-[11px] text-gray-500">{entry.platform} • {entry.date}</p>
-                {entry.notes && <p className="text-[11px] text-gray-600 mt-0.5">{entry.notes}</p>}
+                <h4 className="font-bold text-sm text-[var(--text-primary)]">{entry.source}</h4>
+                <p className="text-[11px] text-[var(--text-tertiary)]">{entry.platform} • {entry.date}</p>
+                {entry.notes && <p className="text-[11px] text-[var(--text-muted)] mt-0.5">{entry.notes}</p>}
               </div>
             </div>
             <div className="text-right">
-              <span className="font-black text-sm text-white">+${entry.amount}</span>
-              <ChevronRight size={14} className="text-gray-700 ml-auto mt-1" />
+              <span className="font-black text-sm text-emerald-400">+${entry.amount}</span>
+              <ChevronRight size={14} className="text-[var(--text-muted)] ml-auto mt-1" />
             </div>
-          </div>
+          </motion.div>
         )) : (
-          <div className="text-center py-10 bg-[#1A1A1A] rounded-2xl border border-white/5">
-            <p className="text-gray-500 text-sm italic">No entries for this persona yet.</p>
+          <div className="text-center py-10 bg-[var(--bg-surface)] rounded-xl border border-[var(--border-subtle)]">
+            <p className="text-[var(--text-tertiary)] text-sm italic">No entries for this persona yet.</p>
             <button 
               onClick={() => setShowAddForm(true)}
-              className="mt-4 text-indigo-400 text-xs font-bold uppercase tracking-wider"
+              className="mt-4 text-violet-400 text-xs font-bold uppercase tracking-wider hover:text-violet-300 transition-colors"
             >
               Add your first entry
             </button>
@@ -136,68 +149,82 @@ export default function RevenueView({ persona }: RevenueViewProps) {
         )}
       </div>
 
-      {showAddForm && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="bg-[#1A1A1A] w-full max-w-sm rounded-[32px] border border-white/10 p-8 shadow-2xl">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-bold">Add Revenue</h3>
-              <button onClick={() => setShowAddForm(false)} className="p-2 hover:bg-white/5 rounded-full text-gray-400">
-                <X size={20} />
-              </button>
-            </div>
-            <div className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-[10px] uppercase tracking-wider font-bold text-gray-500 ml-1">Amount ($)</label>
-                <input 
-                  type="number"
-                  value={newEntry.amount}
-                  onChange={e => setNewEntry({...newEntry, amount: e.target.value})}
-                  placeholder="0.00"
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 px-4 focus:ring-2 focus:ring-indigo-500/50 outline-none transition-all text-white"
-                />
+      <AnimatePresence>
+        {showAddForm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex items-end justify-center bg-black/60 backdrop-blur-sm p-4"
+          >
+            <motion.div
+              initial={{ y: 100 }}
+              animate={{ y: 0 }}
+              exit={{ y: 100 }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              className="bg-[var(--bg-surface)] w-full max-w-sm rounded-2xl border border-[var(--border-default)] p-8 shadow-2xl"
+            >
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl font-bold text-[var(--text-primary)]">Add Revenue</h3>
+                <button onClick={() => setShowAddForm(false)} className="p-2 hover:bg-[var(--bg-elevated)] rounded-xl text-[var(--text-secondary)] transition-colors">
+                  <X size={20} />
+                </button>
               </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] uppercase tracking-wider font-bold text-gray-500 ml-1">Source</label>
-                <select 
-                  value={newEntry.source}
-                  onChange={e => setNewEntry({...newEntry, source: e.target.value})}
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 px-4 focus:ring-2 focus:ring-indigo-500/50 outline-none transition-all text-white appearance-none"
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] uppercase tracking-[0.15em] font-bold text-[var(--text-muted)] ml-1">Amount ($)</label>
+                  <input 
+                    type="number"
+                    value={newEntry.amount}
+                    onChange={e => setNewEntry({...newEntry, amount: e.target.value})}
+                    placeholder="0.00"
+                    className="w-full bg-[var(--bg-input)] border border-[var(--border-default)] rounded-xl py-3 px-4 focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/50 outline-none transition-all text-[var(--text-primary)]"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] uppercase tracking-[0.15em] font-bold text-[var(--text-muted)] ml-1">Source</label>
+                  <select 
+                    value={newEntry.source}
+                    onChange={e => setNewEntry({...newEntry, source: e.target.value})}
+                    className="w-full bg-[var(--bg-input)] border border-[var(--border-default)] rounded-xl py-3 px-4 focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/50 outline-none transition-all text-[var(--text-primary)] appearance-none"
+                  >
+                    <option value="Brand Deal">Brand Deal</option>
+                    <option value="Subscription">Subscription</option>
+                    <option value="Affiliate">Affiliate</option>
+                    <option value="Sponsorship">Sponsorship</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] uppercase tracking-[0.15em] font-bold text-[var(--text-muted)] ml-1">Platform</label>
+                  <input 
+                    value={newEntry.platform}
+                    onChange={e => setNewEntry({...newEntry, platform: e.target.value})}
+                    className="w-full bg-[var(--bg-input)] border border-[var(--border-default)] rounded-xl py-3 px-4 focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/50 outline-none transition-all text-[var(--text-primary)]"
+                    placeholder="e.g. Instagram"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] uppercase tracking-[0.15em] font-bold text-[var(--text-muted)] ml-1">Notes</label>
+                  <input 
+                    value={newEntry.notes}
+                    onChange={e => setNewEntry({...newEntry, notes: e.target.value})}
+                    className="w-full bg-[var(--bg-input)] border border-[var(--border-default)] rounded-xl py-3 px-4 focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/50 outline-none transition-all text-[var(--text-primary)]"
+                    placeholder="Optional description"
+                  />
+                </div>
+                <motion.button 
+                  whileTap={{ scale: 0.97 }}
+                  onClick={handleAddEntry}
+                  className="w-full bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 py-4 rounded-xl font-bold shadow-lg shadow-violet-500/20 transition-all mt-2 text-white"
                 >
-                  <option value="Brand Deal">Brand Deal</option>
-                  <option value="Subscription">Subscription</option>
-                  <option value="Affiliate">Affiliate</option>
-                  <option value="Sponsorship">Sponsorship</option>
-                  <option value="Other">Other</option>
-                </select>
+                  Add Entry
+                </motion.button>
               </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] uppercase tracking-wider font-bold text-gray-500 ml-1">Platform</label>
-                <input 
-                  value={newEntry.platform}
-                  onChange={e => setNewEntry({...newEntry, platform: e.target.value})}
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 px-4 focus:ring-2 focus:ring-indigo-500/50 outline-none transition-all text-white"
-                  placeholder="e.g. Instagram"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] uppercase tracking-wider font-bold text-gray-500 ml-1">Notes</label>
-                <input 
-                  value={newEntry.notes}
-                  onChange={e => setNewEntry({...newEntry, notes: e.target.value})}
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 px-4 focus:ring-2 focus:ring-indigo-500/50 outline-none transition-all text-white"
-                  placeholder="Optional description"
-                />
-              </div>
-              <button 
-                onClick={handleAddEntry}
-                className="w-full bg-indigo-600 hover:bg-indigo-500 py-4 rounded-2xl font-bold shadow-lg shadow-indigo-600/20 transition-all active:scale-95 mt-2"
-              >
-                Add Entry
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

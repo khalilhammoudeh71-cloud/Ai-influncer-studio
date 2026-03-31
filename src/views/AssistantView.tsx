@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Send, User, Bot, Sparkles, MessageSquareQuote, History, Copy, Download, Heart, RefreshCw, ChevronDown } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { cn } from '../utils/cn';
 import { Persona } from '../types';
 import { generateAssistantReply, generatePersonaContent } from '../utils/personaEngine';
@@ -122,52 +123,51 @@ export default function AssistantView({ persona, personas }: AssistantViewProps)
 
   return (
     <div className="h-full flex flex-col">
-      <header className="p-6 pt-10 border-b border-white/5 bg-[#0A0A0A] sticky top-0 z-10">
+      <header className="p-6 pt-10 border-b border-[var(--border-subtle)] bg-[var(--bg-base)] sticky top-0 z-10">
         <div className="flex justify-between items-center mb-4">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">AI Assistant</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-[var(--text-primary)]">AI Assistant</h1>
             <div className="flex items-center gap-1.5 mt-0.5">
-              <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
-              <span className="text-xs text-indigo-400 font-medium">AI Mode</span>
+              <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div>
+              <span className="text-xs text-violet-400 font-medium">AI Mode</span>
             </div>
           </div>
-          <button className="bg-white/5 p-2.5 rounded-2xl hover:bg-white/10 transition-colors">
-            <History size={20} className="text-gray-400" />
+          <button className="bg-[var(--bg-elevated)] p-2.5 rounded-xl border border-[var(--border-subtle)] hover:bg-[var(--bg-overlay)] transition-colors duration-200">
+            <History size={20} className="text-[var(--text-secondary)]" />
           </button>
         </div>
 
         <div className="mb-4">
-          <label className="text-[10px] uppercase tracking-wider font-bold text-gray-600 block mb-1.5">Persona</label>
+          <label className="text-[10px] uppercase tracking-[0.15em] font-bold text-[var(--text-muted)] block mb-1.5">Persona</label>
           <div className="relative">
             <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center gap-2 pointer-events-none">
               {activePersona.referenceImage ? (
                 <img src={activePersona.referenceImage} alt="" className="w-6 h-6 rounded-full object-cover" />
               ) : (
-                <div className="w-6 h-6 rounded-full bg-indigo-600/30 flex items-center justify-center">
-                  <Bot size={12} className="text-indigo-400" />
+                <div className="w-6 h-6 rounded-full bg-violet-600/30 flex items-center justify-center">
+                  <Bot size={12} className="text-violet-400" />
                 </div>
               )}
             </div>
             <select
               value={selectedPersonaId}
               onChange={e => handlePersonaChange(e.target.value)}
-              className="w-full bg-[#1A1A1A] border border-white/10 rounded-2xl pl-11 pr-9 py-2.5 text-sm text-white outline-none appearance-none focus:border-indigo-500/50 transition-colors"
+              className="w-full bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-xl pl-11 pr-9 py-2.5 text-sm text-[var(--text-primary)] outline-none appearance-none focus:border-violet-500/50 transition-colors duration-200"
             >
               {personas.map(p => (
                 <option key={p.id} value={p.id}>{p.name} — {p.niche}</option>
               ))}
             </select>
-            <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+            <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none" />
           </div>
         </div>
 
-        {/* Segmented Control */}
-        <div className="flex bg-[#1A1A1A] p-1 rounded-2xl">
+        <div className="flex bg-[var(--bg-surface)] p-1 rounded-xl border border-[var(--border-subtle)]">
           <button 
             onClick={() => setActiveSegment('chat')}
             className={cn(
-              "flex-1 py-2 text-xs font-bold rounded-xl transition-all",
-              activeSegment === 'chat' ? "bg-indigo-600 text-white shadow-lg" : "text-gray-500"
+              "flex-1 py-2 text-xs font-bold rounded-lg transition-all duration-200",
+              activeSegment === 'chat' ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-lg shadow-violet-500/20" : "text-[var(--text-tertiary)]"
             )}
           >
             Chat
@@ -175,8 +175,8 @@ export default function AssistantView({ persona, personas }: AssistantViewProps)
           <button 
             onClick={() => setActiveSegment('replies')}
             className={cn(
-              "flex-1 py-2 text-xs font-bold rounded-xl transition-all",
-              activeSegment === 'replies' ? "bg-indigo-600 text-white shadow-lg" : "text-gray-500"
+              "flex-1 py-2 text-xs font-bold rounded-lg transition-all duration-200",
+              activeSegment === 'replies' ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-lg shadow-violet-500/20" : "text-[var(--text-tertiary)]"
             )}
           >
             Replies
@@ -186,24 +186,32 @@ export default function AssistantView({ persona, personas }: AssistantViewProps)
 
       {activeSegment === 'chat' ? (
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
-          {messages.map((m) => (
-            <div key={m.id} className={cn(
-              "flex gap-3",
-              m.role === 'user' ? "flex-row-reverse" : "flex-row"
-            )}>
+          {messages.map((m, idx) => (
+            <motion.div
+              key={m.id}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: idx * 0.03, duration: 0.3 }}
+              className={cn(
+                "flex gap-3",
+                m.role === 'user' ? "flex-row-reverse" : "flex-row"
+              )}
+            >
               <div className={cn(
                 "w-8 h-8 rounded-xl flex items-center justify-center shrink-0",
-                m.role === 'assistant' ? "bg-indigo-600/20 text-indigo-400" : "bg-white/10 text-gray-400"
+                m.role === 'assistant' ? "bg-violet-600/20 text-violet-400" : "bg-[var(--bg-elevated)] text-[var(--text-secondary)]"
               )}>
                 {m.role === 'assistant' ? <Bot size={18} /> : <User size={18} />}
               </div>
               <div className={cn(
-                "p-4 rounded-3xl max-w-[80%] text-sm leading-relaxed overflow-hidden",
-                m.role === 'assistant' ? (m.error ? "bg-red-500/10 text-red-400 border border-red-500/20" : "bg-[#1A1A1A] text-gray-200") : "bg-indigo-600 text-white"
+                "p-4 rounded-2xl max-w-[80%] text-sm leading-relaxed overflow-hidden",
+                m.role === 'assistant' 
+                  ? (m.error ? "bg-rose-500/10 text-rose-400 border border-rose-500/20" : "bg-[var(--bg-surface)] text-[var(--text-primary)] border border-[var(--border-subtle)]") 
+                  : "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white"
               )}>
                 {m.isGenerating ? (
                   <div className="flex items-center gap-3">
-                    <div className="w-4 h-4 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
+                    <div className="w-4 h-4 border-2 border-violet-500/30 border-t-violet-500 rounded-full animate-spin" />
                     <span>{m.content}</span>
                   </div>
                 ) : (
@@ -211,7 +219,7 @@ export default function AssistantView({ persona, personas }: AssistantViewProps)
                 )}
                 
                 {m.type === 'image' && m.imageUrl && (
-                  <div className="mt-4 rounded-2xl overflow-hidden border border-white/5 relative group/img">
+                  <div className="mt-4 rounded-xl overflow-hidden border border-[var(--border-subtle)] relative group/img">
                     <img src={m.imageUrl} alt="Generated" className="w-full aspect-square object-cover transition-opacity duration-300" />
                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity backdrop-blur-sm">
                       <div className="flex gap-2">
@@ -229,21 +237,23 @@ export default function AssistantView({ persona, personas }: AssistantViewProps)
                   </div>
                 )}
               </div>
-            </div>
+            </motion.div>
           ))}
 
           {messages.length === 1 && (
             <div className="grid grid-cols-1 gap-2 mt-8">
-              <p className="text-[10px] uppercase font-bold text-gray-600 mb-1 ml-1">Quick Actions</p>
+              <p className="text-[10px] uppercase font-bold text-[var(--text-muted)] mb-1 ml-1 tracking-[0.15em]">Quick Actions</p>
               {STARTER_PROMPTS.map((prompt) => (
-                <button 
+                <motion.button 
                   key={prompt}
+                  whileHover={{ scale: 1.01 }}
+                  whileTap={{ scale: 0.99 }}
                   onClick={() => setInput(prompt)}
-                  className="bg-[#1A1A1A] border border-white/5 text-left p-4 rounded-2xl text-xs text-gray-400 hover:border-indigo-500/30 hover:text-indigo-400 transition-all flex items-center justify-between group"
+                  className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-left p-4 rounded-xl text-xs text-[var(--text-secondary)] hover:border-violet-500/30 hover:text-violet-400 transition-all duration-200 flex items-center justify-between group"
                 >
                   {prompt}
-                  <Sparkles size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" />
-                </button>
+                  <Sparkles size={14} className="opacity-0 group-hover:opacity-100 transition-opacity text-violet-400" />
+                </motion.button>
               ))}
             </div>
           )}
@@ -251,61 +261,69 @@ export default function AssistantView({ persona, personas }: AssistantViewProps)
       ) : (
         <div className="flex-1 p-6 overflow-y-auto space-y-8">
           <div>
-            <label className="text-xs font-bold text-gray-500 uppercase tracking-widest block mb-2">Paste Comment / DM</label>
+            <label className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-[0.15em] block mb-2">Paste Comment / DM</label>
             <textarea 
               value={replyInput}
               onChange={(e) => setReplyInput(e.target.value)}
               placeholder="Ex: 'You are so pretty! Where did you get that jacket?'"
-              className="w-full bg-[#1A1A1A] border border-white/5 rounded-2xl p-4 text-sm min-h-[100px] focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              className="w-full bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-xl p-4 text-sm min-h-[100px] focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/50 transition-all duration-200 text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
             />
           </div>
           
-          <button 
+          <motion.button 
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.97 }}
             onClick={handleGenerateReplies}
-            className="w-full bg-indigo-600 py-4 rounded-2xl font-bold flex items-center justify-center gap-2"
+            className="w-full bg-gradient-to-r from-violet-600 to-fuchsia-600 py-4 rounded-xl font-bold flex items-center justify-center gap-2 text-white shadow-lg shadow-violet-500/20"
           >
              <MessageSquareQuote size={18} />
              Generate Replies
-          </button>
+          </motion.button>
 
           {generatedReplies.length > 0 && (
             <div className="space-y-4">
-              <label className="text-xs font-bold text-gray-500 uppercase tracking-widest block mb-2">Suggestions</label>
+              <label className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-[0.15em] block mb-2">Suggestions</label>
               {generatedReplies.map((reply, idx) => (
-                <div key={idx} className="bg-[#1A1A1A] border border-white/5 rounded-2xl p-4 relative">
+                <motion.div
+                  key={idx}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: idx * 0.1 }}
+                  className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl p-4 relative hover:border-[var(--border-strong)] transition-colors duration-200"
+                >
                   <button 
                     onClick={() => navigator.clipboard.writeText(reply)}
-                    className="absolute top-4 right-4 text-gray-600 hover:text-white transition-colors"
+                    className="absolute top-4 right-4 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
                   >
                     <Copy size={16} />
                   </button>
-                  <p className="text-sm text-gray-300 leading-relaxed pr-8 whitespace-pre-wrap">{reply}</p>
-                </div>
+                  <p className="text-sm text-[var(--text-secondary)] leading-relaxed pr-8 whitespace-pre-wrap">{reply}</p>
+                </motion.div>
               ))}
             </div>
           )}
         </div>
       )}
 
-      {/* Input area for Chat */}
       {activeSegment === 'chat' && (
-        <div className="p-4 bg-[#0A0A0A] border-t border-white/5">
-          <div className="relative flex items-center gap-2 max-w-2xl mx-auto bg-[#1A1A1A] p-2 rounded-2xl border border-white/10 focus-within:border-indigo-500/50 transition-colors">
+        <div className="p-4 bg-[var(--bg-base)] border-t border-[var(--border-subtle)]">
+          <div className="relative flex items-center gap-2 max-w-2xl mx-auto bg-[var(--bg-surface)] p-2 rounded-xl border border-[var(--border-default)] focus-within:border-violet-500/50 transition-colors duration-200">
             <input 
               type="text" 
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
               placeholder="Message your assistant..." 
-              className="flex-1 bg-transparent border-none outline-none text-sm px-2 py-1.5"
+              className="flex-1 bg-transparent border-none outline-none text-sm px-2 py-1.5 text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
             />
-            <button 
+            <motion.button 
+              whileTap={{ scale: 0.9 }}
               onClick={sendMessage}
-              className="bg-indigo-600 p-2 rounded-xl hover:bg-indigo-500 transition-all active:scale-95 disabled:opacity-50 disabled:active:scale-100"
+              className="bg-gradient-to-r from-violet-600 to-fuchsia-600 p-2 rounded-lg hover:from-violet-500 hover:to-fuchsia-500 transition-all disabled:opacity-50"
               disabled={!input.trim()}
             >
-              <Send size={18} />
-            </button>
+              <Send size={18} className="text-white" />
+            </motion.button>
           </div>
         </div>
       )}
