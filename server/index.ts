@@ -616,7 +616,8 @@ function normalizeBase64Output(raw: string): string {
   return `data:${mimeType};base64,${raw}`;
 }
 
-async function resolveOutputImage(output: string): Promise<string> {
+async function resolveOutputImage(output: string | null | undefined): Promise<string> {
+  if (!output) throw new Error('Image generation returned no output (may have been blocked by content filter).');
   if (output.startsWith('data:')) {
     console.log('[Wavespeed] Output: already a data URL, length:', output.length);
     return output;
@@ -639,9 +640,15 @@ async function extractWavespeedOutput(json: Record<string, unknown>): Promise<st
     throw new Error((data?.error as string) || (json.message as string) || 'Wavespeed request failed');
   }
 
-  const outputs = (data?.outputs as string[]) || [];
+  const outputs = ((data?.outputs as (string | null)[]) || []).filter((o): o is string => !!o);
   if (outputs.length) {
     return await resolveOutputImage(outputs[0]);
+  }
+
+  // All outputs were null — likely blocked by NSFW filter
+  const rawOutputs = (data?.outputs as unknown[]) || [];
+  if (rawOutputs.length > 0 && rawOutputs.every(o => o === null)) {
+    throw new Error('Image was blocked by the content filter. Try a different model or adjust your prompt.');
   }
 
   const output = data?.output as string | undefined;
@@ -677,7 +684,7 @@ async function extractWavespeedOutput(json: Record<string, unknown>): Promise<st
           throw new Error(pollData.error || 'Wavespeed generation failed during polling');
         }
 
-        const pollOutputs = pollData.outputs || pollJson.outputs || [];
+        const pollOutputs = ((pollData.outputs || pollJson.outputs || []) as (string | null)[]).filter((o): o is string => !!o);
         if (pollOutputs.length) {
           return await resolveOutputImage(pollOutputs[0]);
         }
