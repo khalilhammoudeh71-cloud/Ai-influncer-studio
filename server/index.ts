@@ -650,7 +650,11 @@ async function extractWavespeedOutput(json: Record<string, unknown>): Promise<st
   console.log('[Wavespeed] Response code:', json.code, 'status:', data?.status, 'keys:', data ? Object.keys(data).join(',') : 'none');
 
   if ((json.code as number) !== 200 || (data?.status as string) === 'failed') {
-    throw new Error((data?.error as string) || (json.message as string) || 'Wavespeed request failed');
+    const errMsg = (data?.error as string) || (json.message as string) || 'Wavespeed request failed';
+    if (/not finished/i.test(errMsg)) {
+      throw new Error('This model is currently busy or overloaded. Please try again in a moment, or use a different model.');
+    }
+    throw new Error(errMsg);
   }
 
   const outputs = ((data?.outputs as (string | null)[]) || []).filter((o): o is string => !!o);
