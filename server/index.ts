@@ -10,6 +10,13 @@ import apiRoutes from './routes';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+process.on('uncaughtException', (err) => {
+  console.error('[Server] Uncaught exception:', err.message, err.stack?.split('\n')[1]);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[Server] Unhandled rejection:', reason instanceof Error ? reason.message : reason);
+});
+
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '100mb' }));
@@ -1847,6 +1854,16 @@ async function pushSchema() {
     console.error('[DB] Schema push error:', err);
   }
 }
+
+// Global error handler — always return JSON, never HTML error pages
+app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error('[Server] Unhandled error:', err.message);
+  const status = (err as any).status || (err as any).statusCode || 500;
+  if ((err as any).type === 'entity.too.large' || err.message?.includes('too large')) {
+    return res.status(413).json({ error: 'Request too large. Try using fewer or smaller reference images.' });
+  }
+  return res.status(status).json({ error: err.message || 'Internal server error' });
+});
 
 // In production, serve the built frontend and catch-all for SPA routing
 if (process.env.NODE_ENV === 'production') {
