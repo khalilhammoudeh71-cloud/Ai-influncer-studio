@@ -108,18 +108,23 @@ export async function generateImage(params: GenerateImageParams): Promise<Genera
 
   const contentType = response.headers.get('content-type');
   if (!contentType || !contentType.includes('application/json')) {
-    throw new Error('Image API not reachable. Make sure the backend server is running.');
+    throw new Error('Server temporarily unavailable. Please try again in a moment.');
   }
 
-  const data = await response.json();
+  let data: { imageUrl?: string; model?: string; promptUsed?: string; error?: string };
+  try {
+    data = await response.json();
+  } catch {
+    throw new Error('Server temporarily unavailable. Please try again in a moment.');
+  }
 
   if (!response.ok) {
     throw new Error(data.error || 'Image generation failed.');
   }
 
   return {
-    imageUrl: data.imageUrl,
-    model: data.model,
+    imageUrl: data.imageUrl!,
+    model: data.model!,
     promptUsed: data.promptUsed || '',
   };
 }
