@@ -944,6 +944,19 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             </button>
           </div>
 
+          {activeVersion?.promptUsed && (
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(activeVersion.promptUsed);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              }}
+              className="w-full py-2 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-all border border-zinc-700"
+            >
+              {copied ? <><Check className="w-3.5 h-3.5 text-green-400" /> Prompt Copied!</> : <><Copy className="w-3.5 h-3.5" /> Copy Prompt</>}
+            </button>
+          )}
+
           {postAction === 'edit' && (
             <div className="bg-zinc-800/50 border border-zinc-700 rounded-xl p-3 space-y-2">
               {renderModelSelect(selectedEditModel, setSelectedEditModel, groupedEditModels)}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Camera,
+  Copy,
   Sparkles,
   Image as ImageIcon,
   X,
@@ -125,6 +126,7 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
   const [identityLock, setIdentityLock] = useState(persona.identityLock ?? true);
 
   const [overrideRefImages, setOverrideRefImages] = useState<{ id: string; url: string; name: string }[]>([]);
+  const [promptCopied, setPromptCopied] = useState(false);
   const overrideRefInputRef = useRef<HTMLInputElement>(null);
 
   const handleNaturalLookToggle = () => {
@@ -728,6 +730,19 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
                     Upscale Image
                   </button>
                 </div>
+
+                {activeVersion?.promptUsed && (
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(activeVersion.promptUsed);
+                      setPromptCopied(true);
+                      setTimeout(() => setPromptCopied(false), 2000);
+                    }}
+                    className="w-full py-2 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-all border border-zinc-700"
+                  >
+                    {promptCopied ? <><CheckCircle className="w-3.5 h-3.5 text-green-400" /> Prompt Copied!</> : <><Copy className="w-3.5 h-3.5" /> Copy Prompt</>}
+                  </button>
+                )}
 
                 {postAction === 'edit' && (
                   <div className="p-4 rounded-2xl bg-blue-950/30 border border-blue-500/20 space-y-3">
