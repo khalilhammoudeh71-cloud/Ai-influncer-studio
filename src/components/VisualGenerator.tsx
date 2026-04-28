@@ -33,6 +33,7 @@ import {
   editImage,
   upscaleImage,
   canUseReference,
+  enhancePrompt,
   type ModelInfo,
   type GenerateImageResult,
 } from '../services/imageService';
@@ -134,6 +135,27 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
   const [promptCopied, setPromptCopied] = useState(false);
   const overrideRefInputRef = useRef<HTMLInputElement>(null);
 
+  const [isEnhancingPrompt, setIsEnhancingPrompt] = useState(false);
+  const [isEnhancingEditPrompt, setIsEnhancingEditPrompt] = useState(false);
+  const [isEnhancingVideoPrompt, setIsEnhancingVideoPrompt] = useState(false);
+
+  const handleEnhance = async (
+    value: string,
+    setValue: (v: string) => void,
+    setLoading: (v: boolean) => void
+  ) => {
+    if (!value.trim() || setLoading === null) return;
+    setLoading(true);
+    try {
+      const enhanced = await enhancePrompt(value);
+      setValue(enhanced);
+    } catch {
+      /* silently ignore */
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleNaturalLookToggle = () => {
     const next = !naturalLook;
     setNaturalLook(next);
@@ -148,6 +170,7 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
 
   const allRefImages: string[] = [
     ...(persona.referenceImage ? [persona.referenceImage] : []),
+    ...(persona.additionalReferenceImages ?? []),
     ...overrideRefImages.map(img => img.url),
   ];
   const hasRefImage = allRefImages.length > 0;
@@ -864,7 +887,18 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
                       </div>
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] ml-1">What to change</label>
+                      <div className="flex items-center justify-between ml-1">
+                        <label className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-tertiary)]">What to change</label>
+                        <button
+                          onClick={() => handleEnhance(editPrompt, setEditPrompt, setIsEnhancingEditPrompt)}
+                          disabled={isEnhancingEditPrompt || !editPrompt.trim()}
+                          className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-blue-600/20 hover:bg-blue-600/40 border border-blue-500/30 text-blue-300 disabled:opacity-40 transition-all"
+                          title="Enhance prompt with Wavespeed AI"
+                        >
+                          {isEnhancingEditPrompt ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                          Enhance
+                        </button>
+                      </div>
                       <textarea
                         value={editPrompt}
                         onChange={(e) => setEditPrompt(e.target.value)}
@@ -1088,9 +1122,20 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase">
-                Additional Instructions (Optional)
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase">
+                  Additional Instructions (Optional)
+                </label>
+                <button
+                  onClick={() => handleEnhance(prompt, setPrompt, setIsEnhancingPrompt)}
+                  disabled={isEnhancingPrompt || !prompt.trim()}
+                  className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-violet-600/20 hover:bg-violet-600/40 border border-violet-500/30 text-violet-300 disabled:opacity-40 transition-all"
+                  title="Enhance prompt with Wavespeed AI"
+                >
+                  {isEnhancingPrompt ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                  Enhance
+                </button>
+              </div>
               <textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
@@ -1273,7 +1318,18 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
             )}
 
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase">Video Prompt</label>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase">Video Prompt</label>
+                <button
+                  onClick={() => handleEnhance(prompt, setPrompt, setIsEnhancingVideoPrompt)}
+                  disabled={isEnhancingVideoPrompt || !prompt.trim()}
+                  className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-pink-600/20 hover:bg-pink-600/40 border border-pink-500/30 text-pink-300 disabled:opacity-40 transition-all"
+                  title="Enhance prompt with Wavespeed AI"
+                >
+                  {isEnhancingVideoPrompt ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                  Enhance
+                </button>
+              </div>
               <textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}

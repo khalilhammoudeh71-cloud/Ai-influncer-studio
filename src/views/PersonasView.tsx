@@ -5,7 +5,7 @@ import { cn } from '../utils/cn';
 import { Persona, GeneratedImage } from '../types';
 import { VisualGenerator } from '../components/VisualGenerator';
 import { api } from '../services/apiService';
-import { fetchAvailableModels, fetchAllModelTypes, generateReferenceImage, editImage, upscaleImage, generateVideo, type ModelInfo } from '../services/imageService';
+import { fetchAvailableModels, fetchAllModelTypes, generateReferenceImage, editImage, upscaleImage, generateVideo, enhancePrompt, type ModelInfo } from '../services/imageService';
 
 interface PersonasViewProps {
   personas: Persona[];
@@ -265,9 +265,8 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
     }
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file && editingPersona) {
+  const compressImage = (file: File): Promise<string> =>
+    new Promise((resolve) => {
       const reader = new FileReader();
       reader.onloadend = () => {
         try {
@@ -277,57 +276,43 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
             const MAX_SIZE = 500;
             let width = img.width;
             let height = img.height;
-
             if (width > height) {
-              if (width > MAX_SIZE) {
-                height *= MAX_SIZE / width;
-                width = MAX_SIZE;
-              }
+              if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; }
             } else {
-              if (height > MAX_SIZE) {
-                width *= MAX_SIZE / height;
-                height = MAX_SIZE;
-              }
+              if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; }
             }
-
             canvas.width = width;
             canvas.height = height;
             const ctx = canvas.getContext('2d');
             if (ctx) {
               ctx.drawImage(img, 0, 0, width, height);
-              // Compress to JPEG to save space in localStorage
-              const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-              setEditingPersona({
-                ...editingPersona,
-                referenceImage: dataUrl
-              });
+              resolve(canvas.toDataURL('image/jpeg', 0.8));
             } else {
-              // Fallback if canvas context fails
-              setEditingPersona({
-                ...editingPersona,
-                referenceImage: reader.result as string
-              });
+              resolve(reader.result as string);
             }
           };
-          img.onerror = () => {
-            // Fallback if image loading fails
-            setEditingPersona({
-              ...editingPersona,
-              referenceImage: reader.result as string
-            });
-          };
+          img.onerror = () => resolve(reader.result as string);
           img.src = reader.result as string;
-        } catch (err) {
-          console.error('Image compression failed', err);
-          // Fallback
-          setEditingPersona({
-            ...editingPersona,
-            referenceImage: reader.result as string
-          });
+        } catch {
+          resolve(reader.result as string);
         }
       };
       reader.readAsDataURL(file);
-    }
+    });
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length || !editingPersona) return;
+    const compressed = await Promise.all(files.map(compressImage));
+    const [primary, ...extras] = compressed;
+    const existingExtras = editingPersona.additionalReferenceImages || [];
+    setEditingPersona({
+      ...editingPersona,
+      referenceImage: primary,
+      faceDescriptor: undefined,
+      additionalReferenceImages: [...existingExtras, ...extras],
+    });
+    e.target.value = '';
   };
 
   const handleAltImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -712,13 +697,42 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                         />
                         <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm">
                           <button
-                            onClick={() => setEditingPersona({...editingPersona, referenceImage: undefined, faceDescriptor: undefined})}
+                            onClick={() => setEditingPersona({...editingPersona, referenceImage: undefined, faceDescriptor: undefined, additionalReferenceImages: undefined})}
                             className="bg-rose-500 text-white px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5"
                           >
-                            <X size={12} /> Remove
+                            <X size={12} /> Remove All
                           </button>
                         </div>
                       </div>
+
+                      {/* Additional reference images */}
+                      {(editingPersona.additionalReferenceImages?.length ?? 0) > 0 && (
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] ml-1">Additional Reference Images</label>
+                          <div className="flex flex-wrap gap-2">
+                            {editingPersona.additionalReferenceImages!.map((img, idx) => (
+                              <div key={idx} className="relative group w-14 h-14 rounded-xl overflow-hidden border border-[var(--border-default)]">
+                                <img src={img} alt={`Ref ${idx + 2}`} className="w-full h-full object-cover" />
+                                <button
+                                  onClick={() => {
+                                    const updated = editingPersona.additionalReferenceImages!.filter((_, i) => i !== idx);
+                                    setEditingPersona({ ...editingPersona, additionalReferenceImages: updated.length ? updated : undefined });
+                                  }}
+                                  className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                >
+                                  <X size={14} className="text-white" />
+                                </button>
+                              </div>
+                            ))}
+                            <button
+                              onClick={() => fileInputRef.current?.click()}
+                              className="w-14 h-14 rounded-xl border-2 border-dashed border-[var(--border-default)] hover:border-violet-500/50 flex items-center justify-center text-[var(--text-muted)] hover:text-violet-400 transition-colors"
+                            >
+                              <Plus size={18} />
+                            </button>
+                          </div>
+                        </div>
+                      )}
 
                       <button
                         onClick={handleAnalyzeFace}
@@ -781,14 +795,14 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                           onClick={() => fileInputRef.current?.click()}
                           className="relative border-2 border-dashed border-[var(--border-default)] rounded-2xl py-10 text-center cursor-pointer hover:border-violet-500/50 hover:bg-white/[0.02] transition-all"
                         >
-                          <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload} />
+                          <input type="file" ref={fileInputRef} className="hidden" accept="image/*" multiple onChange={handleImageUpload} />
                           <div className="flex flex-col items-center gap-3">
                             <div className="p-3 bg-[var(--bg-elevated)] rounded-full text-[var(--text-secondary)]">
                               <Upload size={24} />
                             </div>
                             <div>
-                              <p className="text-sm font-medium text-[var(--text-primary)]">Tap to upload reference</p>
-                              <p className="text-xs text-[var(--text-tertiary)] mt-1">PNG, JPG up to 5MB</p>
+                              <p className="text-sm font-medium text-[var(--text-primary)]">Tap to upload reference(s)</p>
+                              <p className="text-xs text-[var(--text-tertiary)] mt-1">Select one or multiple images at once</p>
                             </div>
                           </div>
                         </div>
