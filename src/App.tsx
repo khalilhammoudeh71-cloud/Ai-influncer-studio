@@ -6,7 +6,9 @@ import {
   PlusCircle, 
   MessageSquare, 
   MessageCircle,
-  Settings
+  Settings,
+  Mic,
+  Wrench
 } from 'lucide-react';
 import { cn } from './utils/cn';
 import { Persona, RevenueEntry, PlannedPost } from './types';
@@ -17,8 +19,10 @@ import CreateView from './views/CreateView';
 import AssistantView from './views/AssistantView';
 import ChatView from './views/ChatView';
 import SettingsView from './views/SettingsView';
+import VoiceView from './views/VoiceView';
+import AIToolsView from './views/AIToolsView';
 
-type Tab = 'personas' | 'planner' | 'create' | 'assistant' | 'chat' | 'settings';
+type Tab = 'personas' | 'planner' | 'create' | 'assistant' | 'chat' | 'settings' | 'voice' | 'ai-tools';
 
 export const INTERNAL_FALLBACK_PERSONAS: Persona[] = [
   {
@@ -246,6 +250,8 @@ function App() {
     { id: 'personas', label: 'Personas', icon: Users },
     { id: 'planner', label: 'Planner', icon: Calendar },
     { id: 'create', label: 'Create', icon: PlusCircle },
+    { id: 'voice', label: 'Voice', icon: Mic },
+    { id: 'ai-tools', label: 'AI Tools', icon: Wrench },
     { id: 'assistant', label: 'Assistant', icon: MessageSquare },
     { id: 'chat', label: 'Chat', icon: MessageCircle },
     { id: 'settings', label: 'Settings', icon: Settings },
@@ -255,6 +261,8 @@ function App() {
     switch (activeTab) {
       case 'personas': return <PersonasView personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} selectedId={selectedPersonaId} />;
       case 'planner': return <PlannerView persona={activePersona} personas={personas} onSelectPersona={setSelectedPersonaId} />;
+      case 'voice': return <VoiceView persona={activePersona} personas={personas} onSelectPersona={setSelectedPersonaId} />;
+      case 'ai-tools': return <AIToolsView persona={activePersona} personas={personas} onSelectPersona={setSelectedPersonaId} />;
       case 'assistant': return <AssistantView persona={activePersona} personas={personas} />;
       case 'chat': return <ChatView personas={personas} activePersona={activePersona} />;
       case 'settings': return <SettingsView />;

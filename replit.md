@@ -1,7 +1,7 @@
 # AI Influencer Studio
 
 ## Overview
-A React web application for managing AI influencer personas. Users can create personas, generate content plans, create captions/scripts, chat with an AI assistant, track revenue, and generate images using 114+ AI models.
+A React web application for managing AI influencer personas. Users can create personas, generate content plans, create captions/scripts, chat with an AI assistant, track revenue, generate images using 114+ AI models, manage AI voice/audio, and access AI creative tools (face swap, virtual try-on, background removal, hairstyle, headshot studio, time machine, story chains, talking head).
 
 ## Tech Stack
 - **Frontend**: React 19 + TypeScript, Vite (port 5000)
@@ -39,18 +39,30 @@ src/
   main.tsx             - Entry point
   index.css            - Tailwind import, CSS custom properties (design tokens), utility classes (.glass, .gradient-text, .animate-shimmer)
   types/index.ts       - TypeScript types (Persona, GeneratedImage, PlannedPost, RevenueEntry)
-  utils/cn.ts          - Tailwind class merge utility
-  utils/personaEngine.ts - Deterministic content generation engine
+  lib/
+    supabase.ts        - Supabase client stub (safe no-op if VITE_SUPABASE_URL not set)
+  utils/
+    cn.ts              - Tailwind class merge utility
+    personaEngine.ts   - Deterministic content generation engine
+    imageProcessing.ts - HEIC/image resize+compress utility for file uploads
   services/
-    apiService.ts      - Frontend API client for all CRUD operations
-    imageService.ts    - Frontend client for image generation API (single-model generation)
+    apiService.ts      - Frontend API client for all CRUD operations (including api.voice.*, api.images.generateVideo)
+    imageService.ts    - Image/video generation client (faceSwap, removeBackground, virtualTryOn, textToSpeech, generateTalkingHead, lookSwap)
   components/
-    ui/index.tsx       - Reusable UI components (Card, Button, Input, Badge)
     VisualGenerator.tsx - Image generation modal with model dropdown (114+ models grouped by provider)
+    VoiceStudio.tsx    - TTS voice studio component
+    TalkingHeadStudio.tsx - Talking head video generation component
+    StoryChainStudio.tsx - AI story chain visual component
+    HeadshotStudio.tsx - Professional headshot generator component
+    TimeMachine.tsx    - Age/era transformation component
+    HairstyleTryOn.tsx - Hairstyle try-on component
+    RotatingHeroImages.tsx - Infinite-scroll hero image carousel
   views/
     PersonasView.tsx   - CRUD for personas with search, detail/creations view, visual library
     PlannerView.tsx    - 7-day content plan generator (persisted per persona/platform)
     CreateView.tsx     - Caption, video script, image prompt generation
+    VoiceView.tsx      - AI voice studio (TTS, talking head, audio generation)
+    AIToolsView.tsx    - AI creative tools (face swap, virtual try-on, bg removal, hairstyle, headshot, etc.)
     AssistantView.tsx  - Chat and reply generation (uses gpt-image-1 for image requests)
     RevenueView.tsx    - Revenue tracking per persona (API-backed)
     SettingsView.tsx   - Static settings page

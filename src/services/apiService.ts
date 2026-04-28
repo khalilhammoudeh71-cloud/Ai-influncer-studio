@@ -45,6 +45,8 @@ export const api = {
       request<GeneratedImage>(`/personas/${encodeURIComponent(personaId)}/images`, { method: 'POST', body: JSON.stringify(img) }),
     delete: (personaId: string, imageId: string) =>
       request<void>(`/personas/${encodeURIComponent(personaId)}/images/${encodeURIComponent(imageId)}`, { method: 'DELETE' }),
+    generateVideo: (params: { prompt: string; modelId: string; sourceImage?: string | null; identityLock?: boolean; naturalLook?: boolean }) =>
+      requestWithBody<{ videoUrl: string }>('/generate-video', params),
   },
 
   revenue: {
@@ -68,4 +70,53 @@ export const api = {
     revenueEntries: Record<string, RevenueEntry[]>;
     plannedPosts: Record<string, Record<string, PlannedPost[]>>;
   }) => request<{ success: boolean }>('/migrate', { method: 'POST', body: JSON.stringify(data) }),
+
+  updatePersonaInVault: async (persona: Persona) => {
+    return request<Persona>(`/personas/${encodeURIComponent(persona.id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(persona),
+    });
+  },
+
+  getConfigStatus: async () => {
+    try {
+      return await request<{
+        openai: boolean;
+        gemini: boolean;
+        wavespeed: boolean;
+        elevenlabs: boolean;
+        database: boolean;
+        databaseConnected: boolean;
+      }>('/config-status');
+    } catch {
+      return { openai: false, gemini: false, wavespeed: false, elevenlabs: false, database: false, databaseConnected: false };
+    }
+  },
+
+  voice: {
+    getVoices: () =>
+      request<{ voices: Array<{
+        voice_id: string;
+        name: string;
+        category: string;
+        description: string;
+        preview_url: string;
+        labels: Record<string, string>;
+        settings: { stability: number; similarity_boost: number; style: number };
+      }> }>('/elevenlabs-voices'),
+    generateScript: (params: { topic: string; persona: Persona; mode?: string; existingScript?: string; length?: string }) =>
+      requestWithBody<{ script: string }>('/generate-voice-script', params),
+    generateSpeech: (params: {
+      text: string;
+      voice?: string;
+      performancePrompt?: string;
+      backgroundAtmosphere?: string;
+      engine?: 'elevenlabs' | 'openai' | 'gemini';
+      voiceId?: string;
+      voiceSettings?: { stability?: number; similarity_boost?: number; style?: number };
+    }) =>
+      requestWithBody<{ audioUrl: string; engine?: string }>('/generate-speech', params),
+    translateText: (params: { text: string; targetLanguage: string }) =>
+      requestWithBody<{ translatedText: string }>('/translate-text', params),
+  },
 };

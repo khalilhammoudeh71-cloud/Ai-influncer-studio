@@ -1,4 +1,14 @@
 import { Persona } from '../types';
+import { supabase } from '../lib/supabase';
+import { compressForUpload } from '../utils/imageProcessing';
+
+async function authFetch(url: string, options: RequestInit = {}) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  const headers: Record<string, string> = { ...options.headers as Record<string, string> };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  return fetch(url, { ...options, headers });
+}
 
 export interface ModelInfo {
   id: string;
@@ -343,4 +353,137 @@ export async function generateReferenceImage(prompt: string, modelId: string): P
     model: data.model,
     promptUsed: data.promptUsed || '',
   };
+}
+
+export async function faceSwap(targetImage: string, swapImage: string, faceEnhance = true): Promise<{ imageUrl: string; model: string }> {
+  const compressedTarget = await compressForUpload(targetImage);
+  const compressedSwap = await compressForUpload(swapImage);
+  const response = await authFetch('/api/face-swap', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ targetImage: compressedTarget, swapImage: compressedSwap, faceEnhance }),
+  });
+  const contentType = response.headers.get('content-type');
+  if (!contentType || !contentType.includes('application/json')) {
+    const text = await response.text().catch(() => '');
+    if (response.status === 413) throw new Error('Request too large — try with smaller images.');
+    throw new Error(text ? `Server error (${response.status}): ${text.substring(0, 150)}` : `Server error (${response.status}). Please try again.`);
+  }
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Face swap failed.');
+  return { imageUrl: data.imageUrl, model: data.model };
+}
+
+export async function lookSwap(params: {
+  sourceImage: string;
+  faceReferenceImage?: string;
+  prompt: string;
+  swapType: 'outfit' | 'background' | 'hairstyle' | 'full-scene';
+  modelId?: string;
+  aspectRatio?: string;
+  postProcessFaceSwap?: boolean;
+}): Promise<{ imageUrl: string; model: string; promptUsed: string }> {
+  const compressedSource = await compressForUpload(params.sourceImage);
+  const compressedFaceRef = params.faceReferenceImage ? await compressForUpload(params.faceReferenceImage) : undefined;
+  const response = await authFetch('/api/look-swap', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...params, sourceImage: compressedSource, faceReferenceImage: compressedFaceRef }),
+  });
+  const contentType = response.headers.get('content-type');
+  if (!contentType || !contentType.includes('application/json')) {
+    const text = await response.text().catch(() => '');
+    if (response.status === 413) throw new Error('Request too large — try with smaller images.');
+    throw new Error(text ? `Server error (${response.status}): ${text.substring(0, 150)}` : `Server error (${response.status}). Please try again.`);
+  }
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Look swap failed.');
+  return { imageUrl: data.imageUrl, model: data.model, promptUsed: data.promptUsed || '' };
+}
+
+export async function removeBackground(image: string): Promise<{ imageUrl: string; model: string }> {
+  const compressed = await compressForUpload(image);
+  const response = await authFetch('/api/remove-background', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image: compressed }),
+  });
+  const contentType = response.headers.get('content-type');
+  if (!contentType || !contentType.includes('application/json')) {
+    const text = await response.text().catch(() => '');
+    if (response.status === 413) throw new Error('Request too large — try with a smaller image.');
+    throw new Error(text ? `Server error (${response.status}): ${text.substring(0, 150)}` : `Server error (${response.status}).`);
+  }
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Background removal failed.');
+  return { imageUrl: data.imageUrl, model: data.model };
+}
+
+export const TTS_VOICES = [
+  { id: 'Aoede', name: 'Aoede', gender: 'Female', desc: 'Warm, bright' },
+  { id: 'Charon', name: 'Charon', gender: 'Male', desc: 'Deep, authoritative' },
+  { id: 'Fenrir', name: 'Fenrir', gender: 'Male', desc: 'Smooth, modern' },
+  { id: 'Kore', name: 'Kore', gender: 'Female', desc: 'Clear, natural' },
+  { id: 'Puck', name: 'Puck', gender: 'Male', desc: 'Energetic, youthful' },
+] as const;
+
+export async function textToSpeech(params: {
+  text: string;
+  voiceName?: string;
+  speed?: number;
+}): Promise<{ audioUrl: string; voice: string; model: string }> {
+  const response = await authFetch('/api/text-to-speech', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Text-to-speech failed.');
+  return { audioUrl: data.audioUrl, voice: data.voice, model: data.model };
+}
+
+export async function generateTalkingHead(params: {
+  portraitImage: string;
+  audioUrl?: string;
+  script?: string;
+  voiceName?: string;
+}): Promise<{ videoUrl: string; model: string }> {
+  const compressed = await compressForUpload(params.portraitImage);
+  const response = await authFetch('/api/talking-head', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...params, portraitImage: compressed }),
+  });
+  const contentType = response.headers.get('content-type');
+  if (!contentType || !contentType.includes('application/json')) {
+    const text = await response.text().catch(() => '');
+    if (response.status === 413) throw new Error('Request too large — try with a smaller image.');
+    throw new Error(text ? `Server error (${response.status}): ${text.substring(0, 150)}` : `Server error (${response.status}).`);
+  }
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Talking head generation failed.');
+  return { videoUrl: data.videoUrl, model: data.model };
+}
+
+export async function virtualTryOn(
+  personImage: string,
+  garmentImage: string,
+  garmentDescription?: string
+): Promise<{ imageUrl: string; model: string }> {
+  const compressedPerson = await compressForUpload(personImage);
+  const compressedGarment = await compressForUpload(garmentImage);
+  const response = await authFetch('/api/virtual-tryon', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ personImage: compressedPerson, garmentImage: compressedGarment, garmentDescription }),
+  });
+  const contentType = response.headers.get('content-type');
+  if (!contentType || !contentType.includes('application/json')) {
+    const text = await response.text().catch(() => '');
+    if (response.status === 413) throw new Error('Request too large — try with smaller images.');
+    throw new Error(text ? `Server error (${response.status}): ${text.substring(0, 150)}` : `Server error (${response.status}).`);
+  }
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Virtual try-on failed.');
+  return { imageUrl: data.imageUrl, model: data.model };
 }
