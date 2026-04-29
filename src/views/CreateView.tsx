@@ -793,7 +793,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   );
 
   const renderImageMode = () => (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
 
       {/* ══ LEFT COLUMN — Controls ══ */}
       <div className="space-y-3">
@@ -972,7 +972,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       </div>{/* end left column */}
 
       {/* ══ RIGHT COLUMN — Output ══ */}
-      <div className="space-y-3 md:sticky md:top-4">
+      <div className="space-y-3 lg:sticky lg:top-4">
 
         {/* Multi-variation thumbnails */}
         {multiResults.length > 1 && !isGenerating && (
@@ -1149,137 +1149,144 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   );
 
   const renderVideoMode = () => (
-    <div className="space-y-4">
-      {renderVideoModelSelect()}
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
 
-      <div className="space-y-1.5">
-        <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase flex items-center gap-1.5">
-          <ImageIcon className="w-3 h-3" /> {isI2VModel ? 'Source Image' : 'Reference Image'}
-          {isI2VModel && <span className="text-rose-400 text-[10px] font-normal normal-case ml-0.5">required</span>}
-          {!isI2VModel && <span className="text-[var(--text-muted)] text-[10px] font-normal normal-case ml-0.5">optional</span>}
-        </label>
-        <div className="flex gap-2 items-start">
-          {effectiveVideoSourceImage && (
-            <img src={effectiveVideoSourceImage} alt="" className="w-14 h-14 rounded-xl object-cover shrink-0 border border-[var(--border-default)]" />
-          )}
-          <div className="flex-1 space-y-1.5">
-            <div className="relative">
-              <select
-                value={videoSourcePersonaId}
-                onChange={e => { setVideoSourcePersonaId(e.target.value); setVideoSourceImage(null); setVideoSourceImageName(null); }}
-                className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2 text-sm text-white outline-none appearance-none pr-8"
-              >
-                <option value="none">{isI2VModel ? 'Select a persona…' : 'No persona reference'}</option>
-                {personas.filter(p => p.referenceImage).map(p => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-tertiary)] pointer-events-none" />
-            </div>
-            <label className="flex items-center gap-2 px-3 py-1.5 bg-[var(--bg-elevated)] border border-dashed border-[var(--border-strong)] rounded-xl cursor-pointer hover:bg-[var(--bg-overlay)]/50 transition-colors">
-              <Upload className="w-3.5 h-3.5 text-[var(--text-secondary)] shrink-0" />
-              <span className="text-xs text-[var(--text-secondary)] truncate">{videoSourceImageName || 'Upload image'}</span>
-              <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload(setVideoSourceImage, setVideoSourceImageName)} />
-            </label>
-          </div>
-        </div>
-        {effectiveVideoSourceImage && (
-          <button onClick={() => { setVideoSourcePersonaId('none'); setVideoSourceImage(null); setVideoSourceImageName(null); }} className="text-[10px] text-[var(--text-tertiary)] hover:text-rose-400 transition-colors">
-            Clear image
-          </button>
-        )}
-      </div>
+      {/* ══ LEFT COLUMN — Controls ══ */}
+      <div className="space-y-4">
+        {renderVideoModelSelect()}
 
-      <textarea
-        value={videoPrompt}
-        onChange={e => setVideoPrompt(e.target.value)}
-        placeholder="Describe the video you want to create..."
-        className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white placeholder-[var(--text-muted)] resize-none h-24 outline-none focus:ring-2 focus:ring-pink-500"
-      />
-
-      <button
-        onClick={handleVideoGenerate}
-        disabled={isGenerating || !selectedVideoModel || !videoPrompt.trim()}
-        className="w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-pink-600 to-orange-500 hover:from-pink-500 hover:to-orange-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
-      >
-        {isGenerating ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating Video...</> : <><Video className="w-4 h-4" /> Generate Video</>}
-      </button>
-
-      <div className="aspect-video max-h-[360px] rounded-2xl bg-[var(--bg-base)] border border-[var(--border-subtle)] overflow-hidden relative mx-auto w-full">
-        {isGenerating ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-            <Loader2 className="w-10 h-10 animate-spin text-pink-500" />
-            <p className="text-xs text-[var(--text-tertiary)] animate-pulse">Generating video... this may take a minute</p>
-          </div>
-        ) : videoResult?.videoUrl ? (
-          <>
-            <video src={videoResult.videoUrl} controls className="absolute inset-0 w-full h-full object-contain" />
-            <div className="absolute top-2 left-2 px-2.5 py-1 bg-black/60 backdrop-blur-md rounded-lg">
-              <span className="text-[10px] text-white font-medium">{videoResult.model}</span>
-            </div>
-          </>
-        ) : (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-            <Film className="w-12 h-12 text-[var(--text-muted)] opacity-30" />
-            <p className="text-xs text-[var(--text-muted)]">Select a model and generate</p>
-          </div>
-        )}
-      </div>
-
-      {videoResult && (
-        <div className="space-y-2">
-          <div className="flex gap-2">
-            <button onClick={() => downloadFile(videoResult.videoUrl, 'mp4')} className="flex-1 py-2 rounded-xl text-xs font-bold bg-[var(--bg-elevated)] text-[var(--text-primary)] hover:text-white flex items-center justify-center gap-1.5">
-              <Download className="w-3.5 h-3.5" /> Download
-            </button>
-            <button onClick={handleSaveVideo} disabled={saved} className="flex-1 py-2 rounded-xl text-xs font-bold bg-pink-600 hover:bg-pink-500 text-white flex items-center justify-center gap-1.5 disabled:opacity-50">
-              {saved ? <><Check className="w-3.5 h-3.5" /> Saved!</> : <><CheckCircle className="w-3.5 h-3.5" /> Save to Library</>}
-            </button>
-          </div>
-          <button
-            onClick={handleExtendVideo}
-            disabled={isExtending || isGenerating}
-            className="w-full py-2.5 rounded-xl text-xs font-bold bg-violet-600/20 border border-violet-500/30 text-violet-300 hover:bg-violet-600/30 hover:text-violet-200 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
-          >
-            {isExtending ? (
-              <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Extracting last frame & generating…</>
-            ) : (
-              <><ChevronsRight className="w-3.5 h-3.5" /> Extend Video</>
+        <div className="space-y-1.5">
+          <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase flex items-center gap-1.5">
+            <ImageIcon className="w-3 h-3" /> {isI2VModel ? 'Source Image' : 'Reference Image'}
+            {isI2VModel && <span className="text-rose-400 text-[10px] font-normal normal-case ml-0.5">required</span>}
+            {!isI2VModel && <span className="text-[var(--text-muted)] text-[10px] font-normal normal-case ml-0.5">optional</span>}
+          </label>
+          <div className="flex gap-2 items-start">
+            {effectiveVideoSourceImage && (
+              <img src={effectiveVideoSourceImage} alt="" className="w-14 h-14 rounded-xl object-cover shrink-0 border border-[var(--border-default)]" />
             )}
-          </button>
+            <div className="flex-1 space-y-1.5">
+              <div className="relative">
+                <select
+                  value={videoSourcePersonaId}
+                  onChange={e => { setVideoSourcePersonaId(e.target.value); setVideoSourceImage(null); setVideoSourceImageName(null); }}
+                  className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2 text-sm text-white outline-none appearance-none pr-8"
+                >
+                  <option value="none">{isI2VModel ? 'Select a persona…' : 'No persona reference'}</option>
+                  {personas.filter(p => p.referenceImage).map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-tertiary)] pointer-events-none" />
+              </div>
+              <label className="flex items-center gap-2 px-3 py-1.5 bg-[var(--bg-elevated)] border border-dashed border-[var(--border-strong)] rounded-xl cursor-pointer hover:bg-[var(--bg-overlay)]/50 transition-colors">
+                <Upload className="w-3.5 h-3.5 text-[var(--text-secondary)] shrink-0" />
+                <span className="text-xs text-[var(--text-secondary)] truncate">{videoSourceImageName || 'Upload image'}</span>
+                <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload(setVideoSourceImage, setVideoSourceImageName)} />
+              </label>
+            </div>
+          </div>
+          {effectiveVideoSourceImage && (
+            <button onClick={() => { setVideoSourcePersonaId('none'); setVideoSourceImage(null); setVideoSourceImageName(null); }} className="text-[10px] text-[var(--text-tertiary)] hover:text-rose-400 transition-colors">
+              Clear image
+            </button>
+          )}
+        </div>
 
-          {extendError && (
-            <div className="flex items-center gap-2 bg-rose-500/10 border border-rose-500/20 rounded-xl px-3 py-2">
-              <AlertCircle className="w-3.5 h-3.5 text-rose-400 flex-shrink-0" />
-              <span className="text-xs text-rose-300">{extendError}</span>
+        <textarea
+          value={videoPrompt}
+          onChange={e => setVideoPrompt(e.target.value)}
+          placeholder="Describe the video you want to create..."
+          className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white placeholder-[var(--text-muted)] resize-none h-28 outline-none focus:ring-2 focus:ring-pink-500"
+        />
+
+        <button
+          onClick={handleVideoGenerate}
+          disabled={isGenerating || !selectedVideoModel || !videoPrompt.trim()}
+          className="w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-pink-600 to-orange-500 hover:from-pink-500 hover:to-orange-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+        >
+          {isGenerating ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating Video...</> : <><Video className="w-4 h-4" /> Generate Video</>}
+        </button>
+      </div>
+
+      {/* ══ RIGHT COLUMN — Output ══ */}
+      <div className="space-y-3 lg:sticky lg:top-4">
+        <div className="aspect-video rounded-2xl bg-[var(--bg-base)] border border-[var(--border-subtle)] overflow-hidden relative">
+          {isGenerating ? (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+              <Loader2 className="w-10 h-10 animate-spin text-pink-500" />
+              <p className="text-xs text-[var(--text-tertiary)] animate-pulse">Generating video... this may take a minute</p>
+            </div>
+          ) : videoResult?.videoUrl ? (
+            <>
+              <video src={videoResult.videoUrl} controls className="absolute inset-0 w-full h-full object-contain" />
+              <div className="absolute top-2 left-2 px-2.5 py-1 bg-black/60 backdrop-blur-md rounded-lg">
+                <span className="text-[10px] text-white font-medium">{videoResult.model}</span>
+              </div>
+            </>
+          ) : (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+              <Film className="w-10 h-10 text-[var(--text-muted)] opacity-25" />
+              <p className="text-xs text-[var(--text-muted)]">Your video will appear here</p>
             </div>
           )}
+        </div>
 
-          {extendResult?.videoUrl && (
-            <div className="space-y-2 pt-1">
-              <div className="flex items-center gap-2">
-                <div className="h-px flex-1 bg-[var(--bg-elevated)]" />
-                <span className="text-[10px] uppercase tracking-widest text-violet-400 font-bold">Extended</span>
-                <div className="h-px flex-1 bg-[var(--bg-elevated)]" />
+        {videoResult && (
+          <div className="space-y-2">
+            <div className="flex gap-2">
+              <button onClick={() => downloadFile(videoResult.videoUrl, 'mp4')} className="flex-1 py-2 rounded-xl text-xs font-bold bg-[var(--bg-elevated)] text-[var(--text-primary)] hover:text-white flex items-center justify-center gap-1.5">
+                <Download className="w-3.5 h-3.5" /> Download
+              </button>
+              <button onClick={handleSaveVideo} disabled={saved} className="flex-1 py-2 rounded-xl text-xs font-bold bg-pink-600 hover:bg-pink-500 text-white flex items-center justify-center gap-1.5 disabled:opacity-50">
+                {saved ? <><Check className="w-3.5 h-3.5" /> Saved!</> : <><CheckCircle className="w-3.5 h-3.5" /> Save to Library</>}
+              </button>
+            </div>
+            <button
+              onClick={handleExtendVideo}
+              disabled={isExtending || isGenerating}
+              className="w-full py-2.5 rounded-xl text-xs font-bold bg-violet-600/20 border border-violet-500/30 text-violet-300 hover:bg-violet-600/30 hover:text-violet-200 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+            >
+              {isExtending ? (
+                <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Extracting last frame & generating…</>
+              ) : (
+                <><ChevronsRight className="w-3.5 h-3.5" /> Extend Video</>
+              )}
+            </button>
+
+            {extendError && (
+              <div className="flex items-center gap-2 bg-rose-500/10 border border-rose-500/20 rounded-xl px-3 py-2">
+                <AlertCircle className="w-3.5 h-3.5 text-rose-400 flex-shrink-0" />
+                <span className="text-xs text-rose-300">{extendError}</span>
               </div>
-              <div className="aspect-video max-h-[360px] rounded-2xl bg-[var(--bg-base)] border border-violet-500/20 overflow-hidden relative mx-auto w-full">
-                <video src={extendResult.videoUrl} controls autoPlay loop className="absolute inset-0 w-full h-full object-contain" />
-                <div className="absolute top-2 left-2 px-2.5 py-1 bg-black/60 backdrop-blur-md rounded-lg">
-                  <span className="text-[10px] text-violet-300 font-medium">{extendResult.model} · Extended</span>
+            )}
+
+            {extendResult?.videoUrl && (
+              <div className="space-y-2 pt-1">
+                <div className="flex items-center gap-2">
+                  <div className="h-px flex-1 bg-[var(--bg-elevated)]" />
+                  <span className="text-[10px] uppercase tracking-widest text-violet-400 font-bold">Extended</span>
+                  <div className="h-px flex-1 bg-[var(--bg-elevated)]" />
+                </div>
+                <div className="aspect-video rounded-2xl bg-[var(--bg-base)] border border-violet-500/20 overflow-hidden relative">
+                  <video src={extendResult.videoUrl} controls autoPlay loop className="absolute inset-0 w-full h-full object-contain" />
+                  <div className="absolute top-2 left-2 px-2.5 py-1 bg-black/60 backdrop-blur-md rounded-lg">
+                    <span className="text-[10px] text-violet-300 font-medium">{extendResult.model} · Extended</span>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => downloadFile(extendResult.videoUrl, 'mp4')} className="flex-1 py-2 rounded-xl text-xs font-bold bg-[var(--bg-elevated)] text-[var(--text-primary)] hover:text-white flex items-center justify-center gap-1.5">
+                    <Download className="w-3.5 h-3.5" /> Download Extended
+                  </button>
+                  <button onClick={handleSaveExtendedVideo} className="flex-1 py-2 rounded-xl text-xs font-bold bg-violet-600 hover:bg-violet-500 text-white flex items-center justify-center gap-1.5">
+                    <CheckCircle className="w-3.5 h-3.5" /> Save Extended
+                  </button>
                 </div>
               </div>
-              <div className="flex gap-2">
-                <button onClick={() => downloadFile(extendResult.videoUrl, 'mp4')} className="flex-1 py-2 rounded-xl text-xs font-bold bg-[var(--bg-elevated)] text-[var(--text-primary)] hover:text-white flex items-center justify-center gap-1.5">
-                  <Download className="w-3.5 h-3.5" /> Download Extended
-                </button>
-                <button onClick={handleSaveExtendedVideo} className="flex-1 py-2 rounded-xl text-xs font-bold bg-violet-600 hover:bg-violet-500 text-white flex items-center justify-center gap-1.5">
-                  <CheckCircle className="w-3.5 h-3.5" /> Save Extended
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 
@@ -1297,192 +1304,190 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       'multi-scene': 'Generate Multi-Scene Script',
     };
 
+    const textOutputPanel = (result: string) => (
+      <div className="bg-[var(--bg-elevated)]/50 border border-[var(--border-default)] rounded-2xl p-4 relative min-h-[120px]">
+        {result ? (
+          <>
+            <div className="absolute top-3 right-3 flex gap-1.5">
+              <button onClick={() => copyToClipboard(result)} className="p-1.5 bg-[var(--bg-overlay)] hover:bg-[var(--bg-overlay)] rounded-lg transition-colors" title="Copy">
+                {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-[var(--text-secondary)]" />}
+              </button>
+              <button
+                onClick={() => {
+                  const blob = new Blob([result], { type: 'text/plain' });
+                  const url = URL.createObjectURL(blob);
+                  downloadFile(url, 'txt');
+                  URL.revokeObjectURL(url);
+                }}
+                className="p-1.5 bg-[var(--bg-overlay)] hover:bg-[var(--bg-overlay)] rounded-lg transition-colors" title="Export"
+              >
+                <Download className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
+              </button>
+            </div>
+            <div className="prose prose-invert prose-sm max-w-none pr-16">
+              <p className="text-sm text-[var(--text-primary)] leading-relaxed whitespace-pre-wrap">{result}</p>
+            </div>
+          </>
+        ) : (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+            <FileText className="w-10 h-10 text-[var(--text-muted)] opacity-25" />
+            <p className="text-xs text-[var(--text-muted)]">Your output will appear here</p>
+          </div>
+        )}
+      </div>
+    );
+
     if (isPromptMode) {
       return (
-        <div className="space-y-4">
-          <div className="flex bg-[var(--bg-elevated)]/60 rounded-xl p-1 gap-1">
-            {(['create', 'enhance'] as const).map(tab => (
-              <button
-                key={tab}
-                onClick={() => setPromptTab(tab)}
-                className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all capitalize ${promptTab === tab ? 'bg-gradient-to-r from-emerald-600 to-teal-500 text-white shadow' : 'text-[var(--text-secondary)] hover:text-white'}`}
-              >
-                {tab === 'create' ? '✦ Create' : '⚡ Enhance'}
-              </button>
-            ))}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+          {/* LEFT: controls */}
+          <div className="space-y-4">
+            <div className="flex bg-[var(--bg-elevated)]/60 rounded-xl p-1 gap-1">
+              {(['create', 'enhance'] as const).map(tab => (
+                <button
+                  key={tab}
+                  onClick={() => setPromptTab(tab)}
+                  className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all capitalize ${promptTab === tab ? 'bg-gradient-to-r from-emerald-600 to-teal-500 text-white shadow' : 'text-[var(--text-secondary)] hover:text-white'}`}
+                >
+                  {tab === 'create' ? '✦ Create' : '⚡ Enhance'}
+                </button>
+              ))}
+            </div>
+
+            {promptTab === 'create' ? (
+              <div className="space-y-4">
+                <textarea
+                  value={createRequest}
+                  onChange={e => setCreateRequest(e.target.value)}
+                  placeholder={`e.g. "3 luxury hotel rooftop prompts at golden hour" or "beach photoshoot, moody cinematic lighting"`}
+                  className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white placeholder-[var(--text-muted)] resize-none h-28 outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase">Number of Prompts</label>
+                  <div className="flex gap-2">
+                    {[1, 3, 5].map(n => (
+                      <button
+                        key={n}
+                        onClick={() => setPromptCount(n)}
+                        className={`px-4 py-1.5 rounded-lg text-sm font-bold transition-all ${promptCount === n ? 'bg-emerald-600 text-white' : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-white'}`}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <button
+                  onClick={handleCreatePrompts}
+                  disabled={isCreating || !createRequest.trim()}
+                  className="w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-emerald-600 to-teal-500 hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                >
+                  {isCreating ? <><Loader2 className="w-4 h-4 animate-spin" /> Creating prompts...</> : <><Sparkles className="w-4 h-4" /> Create Prompts</>}
+                </button>
+                {createError && (
+                  <div className="flex items-start gap-2 bg-rose-500/10 border border-rose-500/30 rounded-xl p-3 text-sm text-rose-400">
+                    <span className="shrink-0 mt-0.5">⚠</span> {createError}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <textarea
+                  value={textTopic}
+                  onChange={e => setTextTopic(e.target.value)}
+                  placeholder={placeholders['prompt']}
+                  className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white placeholder-[var(--text-muted)] resize-none h-28 outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+                <button
+                  onClick={handleTextGenerate}
+                  disabled={isGenerating || !textTopic.trim()}
+                  className="w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-emerald-600 to-teal-500 hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                >
+                  {isGenerating ? <><Loader2 className="w-4 h-4 animate-spin" /> Enhancing...</> : <><Sparkles className="w-4 h-4" /> Enhance Prompt</>}
+                </button>
+              </div>
+            )}
           </div>
 
-          {promptTab === 'create' ? (
-            <div className="space-y-4">
-              <textarea
-                value={createRequest}
-                onChange={e => setCreateRequest(e.target.value)}
-                placeholder={`e.g. "3 luxury hotel rooftop prompts at golden hour" or "beach photoshoot, moody cinematic lighting"`}
-                className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white placeholder-[var(--text-muted)] resize-none h-24 outline-none focus:ring-2 focus:ring-emerald-500"
-              />
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase">Number of Prompts</label>
-                <div className="flex gap-2">
-                  {[1, 3, 5].map(n => (
-                    <button
-                      key={n}
-                      onClick={() => setPromptCount(n)}
-                      className={`px-4 py-1.5 rounded-lg text-sm font-bold transition-all ${promptCount === n ? 'bg-emerald-600 text-white' : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-white'}`}
-                    >
-                      {n}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <button
-                onClick={handleCreatePrompts}
-                disabled={isCreating || !createRequest.trim()}
-                className="w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-emerald-600 to-teal-500 hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
-              >
-                {isCreating ? <><Loader2 className="w-4 h-4 animate-spin" /> Creating prompts...</> : <><Sparkles className="w-4 h-4" /> Create Prompts</>}
-              </button>
-              {createError && (
-                <div className="flex items-start gap-2 bg-rose-500/10 border border-rose-500/30 rounded-xl p-3 text-sm text-rose-400">
-                  <span className="shrink-0 mt-0.5">⚠</span> {createError}
-                </div>
-              )}
-              {createdPrompts.length > 0 && (
+          {/* RIGHT: output */}
+          <div className="lg:sticky lg:top-4 space-y-3">
+            {promptTab === 'create' ? (
+              createdPrompts.length > 0 ? (
                 <div className="space-y-3">
                   {createdPrompts.map((p, i) => (
                     <div key={i} className="bg-[var(--bg-elevated)]/50 border border-[var(--border-default)] rounded-2xl p-4 relative group">
                       <div className="absolute top-3 right-3 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button
-                          onClick={() => copyPrompt(p, i)}
-                          className="p-1.5 bg-[var(--bg-overlay)] hover:bg-[var(--bg-overlay)] rounded-lg transition-colors"
-                          title="Copy prompt"
-                        >
+                        <button onClick={() => copyPrompt(p, i)} className="p-1.5 bg-[var(--bg-overlay)] rounded-lg transition-colors" title="Copy prompt">
                           {copiedPromptIndex === i ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-[var(--text-secondary)]" />}
                         </button>
                       </div>
                       <p className="text-xs text-emerald-400 font-bold mb-1.5 uppercase tracking-wide">Prompt {i + 1}</p>
                       <p className="text-sm text-[var(--text-primary)] leading-relaxed pr-10">{p}</p>
                       <div className="mt-3 flex items-center gap-3">
-                        <button
-                          onClick={() => copyPrompt(p, i)}
-                          className="text-xs text-[var(--text-secondary)] hover:text-white font-semibold transition-colors flex items-center gap-1"
-                        >
+                        <button onClick={() => copyPrompt(p, i)} className="text-xs text-[var(--text-secondary)] hover:text-white font-semibold transition-colors flex items-center gap-1">
                           {copiedPromptIndex === i ? <><Check className="w-3 h-3 text-emerald-400" /> Copied!</> : <><Copy className="w-3 h-3" /> Copy</>}
                         </button>
-                        <button
-                          onClick={() => { setImagePrompt(p); setMode('image'); setGlobalError(null); }}
-                          className="text-xs text-emerald-400 hover:text-emerald-300 font-bold transition-colors flex items-center gap-1"
-                        >
+                        <button onClick={() => { setImagePrompt(p); setMode('image'); setGlobalError(null); }} className="text-xs text-emerald-400 hover:text-emerald-300 font-bold transition-colors flex items-center gap-1">
                           <ChevronsRight className="w-3 h-3" /> Use this prompt
                         </button>
                       </div>
                     </div>
                   ))}
                 </div>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <textarea
-                value={textTopic}
-                onChange={e => setTextTopic(e.target.value)}
-                placeholder={placeholders['prompt']}
-                className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white placeholder-[var(--text-muted)] resize-none h-24 outline-none focus:ring-2 focus:ring-emerald-500"
-              />
-              <button
-                onClick={handleTextGenerate}
-                disabled={isGenerating || !textTopic.trim()}
-                className="w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-emerald-600 to-teal-500 hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
-              >
-                {isGenerating ? <><Loader2 className="w-4 h-4 animate-spin" /> Enhancing...</> : <><Sparkles className="w-4 h-4" /> Enhance Prompt</>}
-              </button>
-              {textResult && (
-                <div className="bg-[var(--bg-elevated)]/50 border border-[var(--border-default)] rounded-2xl p-4 relative">
-                  <div className="absolute top-3 right-3 flex gap-1.5">
-                    <button onClick={() => copyToClipboard(textResult)} className="p-1.5 bg-[var(--bg-overlay)] hover:bg-[var(--bg-overlay)] rounded-lg transition-colors" title="Copy">
-                      {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-[var(--text-secondary)]" />}
-                    </button>
-                    <button
-                      onClick={() => {
-                        const blob = new Blob([textResult], { type: 'text/plain' });
-                        const url = URL.createObjectURL(blob);
-                        downloadFile(url, 'txt');
-                        URL.revokeObjectURL(url);
-                      }}
-                      className="p-1.5 bg-[var(--bg-overlay)] hover:bg-[var(--bg-overlay)] rounded-lg transition-colors" title="Export"
-                    >
-                      <Download className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
-                    </button>
-                  </div>
-                  <div className="prose prose-invert prose-sm max-w-none pr-16">
-                    <p className="text-sm text-[var(--text-primary)] leading-relaxed whitespace-pre-wrap">{textResult}</p>
-                  </div>
+              ) : (
+                <div className="bg-[var(--bg-elevated)]/50 border border-[var(--border-default)] rounded-2xl min-h-[160px] flex flex-col items-center justify-center gap-2">
+                  <Sparkles className="w-10 h-10 text-[var(--text-muted)] opacity-25" />
+                  <p className="text-xs text-[var(--text-muted)]">Generated prompts will appear here</p>
                 </div>
-              )}
-            </div>
-          )}
+              )
+            ) : (
+              textOutputPanel(textResult)
+            )}
+          </div>
         </div>
       );
     }
 
     return (
-      <div className="space-y-4">
-        <textarea
-          value={textTopic}
-          onChange={e => setTextTopic(e.target.value)}
-          placeholder={placeholders[mode]}
-          className={`w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white placeholder-[var(--text-muted)] resize-none h-24 outline-none focus:ring-2 ${currentModeConfig.ringClass}`}
-        />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+        {/* LEFT: controls */}
+        <div className="space-y-4">
+          <textarea
+            value={textTopic}
+            onChange={e => setTextTopic(e.target.value)}
+            placeholder={placeholders[mode]}
+            className={`w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white placeholder-[var(--text-muted)] resize-none h-28 outline-none focus:ring-2 ${currentModeConfig.ringClass}`}
+          />
 
-        {isMultiScene && (
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase">Scene Count</label>
-            <div className="flex gap-2">
-              {[2, 3, 4, 5, 6].map(n => (
-                <button
-                  key={n}
-                  onClick={() => setSceneCount(n)}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-all ${sceneCount === n ? 'bg-violet-600 text-white' : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-white'}`}
-                >
-                  {n}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <button
-          onClick={handleTextGenerate}
-          disabled={isGenerating || !textTopic.trim()}
-          className={`w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r ${currentModeConfig.gradient} hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2`}
-        >
-          {isGenerating ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</> : <><Sparkles className="w-4 h-4" /> {buttonLabels[mode]}</>}
-        </button>
-
-        {textResult && (
-          <div className="space-y-3">
-            <div className="bg-[var(--bg-elevated)]/50 border border-[var(--border-default)] rounded-2xl p-4 relative">
-              <div className="absolute top-3 right-3 flex gap-1.5">
-                <button onClick={() => copyToClipboard(textResult)} className="p-1.5 bg-[var(--bg-overlay)] hover:bg-[var(--bg-overlay)] rounded-lg transition-colors" title="Copy">
-                  {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-[var(--text-secondary)]" />}
-                </button>
-                <button
-                  onClick={() => {
-                    const blob = new Blob([textResult], { type: 'text/plain' });
-                    const url = URL.createObjectURL(blob);
-                    downloadFile(url, 'txt');
-                    URL.revokeObjectURL(url);
-                  }}
-                  className="p-1.5 bg-[var(--bg-overlay)] hover:bg-[var(--bg-overlay)] rounded-lg transition-colors" title="Export"
-                >
-                  <Download className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
-                </button>
-              </div>
-              <div className="prose prose-invert prose-sm max-w-none pr-16">
-                <p className="text-sm text-[var(--text-primary)] leading-relaxed whitespace-pre-wrap">{textResult}</p>
+          {isMultiScene && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase">Scene Count</label>
+              <div className="flex gap-2">
+                {[2, 3, 4, 5, 6].map(n => (
+                  <button
+                    key={n}
+                    onClick={() => setSceneCount(n)}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-all ${sceneCount === n ? 'bg-violet-600 text-white' : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-white'}`}
+                  >
+                    {n}
+                  </button>
+                ))}
               </div>
             </div>
-          </div>
-        )}
+          )}
+
+          <button
+            onClick={handleTextGenerate}
+            disabled={isGenerating || !textTopic.trim()}
+            className={`w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r ${currentModeConfig.gradient} hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2`}
+          >
+            {isGenerating ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</> : <><Sparkles className="w-4 h-4" /> {buttonLabels[mode]}</>}
+          </button>
+        </div>
+
+        {/* RIGHT: output */}
+        <div className="lg:sticky lg:top-4">
+          {textOutputPanel(textResult)}
+        </div>
       </div>
     );
   };
@@ -1523,188 +1528,195 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     HORIZONTAL_POSITIONS.forEach(p => { grid[p.row][p.col] = p; });
 
     return (
-      <div className="space-y-5">
-        <div className="space-y-1.5">
-          <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase flex items-center gap-1.5">
-            <Upload className="w-3 h-3" /> Source Image
-          </label>
-          <label className="flex items-center gap-3 px-3 py-3 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl cursor-pointer hover:bg-[var(--bg-overlay)]/50 transition-colors">
-            {angleSourceImage ? (
-              <img src={angleSourceImage} alt="" className="w-14 h-14 rounded-lg object-cover" />
-            ) : persona.referenceImage ? (
-              <img src={persona.referenceImage} alt="" className="w-14 h-14 rounded-lg object-cover opacity-60" />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+
+        {/* ══ LEFT COLUMN — Controls ══ */}
+        <div className="space-y-5">
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase flex items-center gap-1.5">
+              <Upload className="w-3 h-3" /> Source Image
+            </label>
+            <label className="flex items-center gap-3 px-3 py-3 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl cursor-pointer hover:bg-[var(--bg-overlay)]/50 transition-colors">
+              {angleSourceImage ? (
+                <img src={angleSourceImage} alt="" className="w-14 h-14 rounded-lg object-cover" />
+              ) : persona.referenceImage ? (
+                <img src={persona.referenceImage} alt="" className="w-14 h-14 rounded-lg object-cover opacity-60" />
+              ) : (
+                <div className="w-14 h-14 rounded-lg bg-[var(--bg-overlay)] flex items-center justify-center">
+                  <Upload className="w-5 h-5 text-[var(--text-tertiary)]" />
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-white truncate">{angleSourceImageName || (persona.referenceImage ? 'Using persona reference' : 'Upload image to reangle')}</p>
+                <p className="text-[10px] text-[var(--text-tertiary)]">Upload a photo to change its camera angle</p>
+              </div>
+              <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload(setAngleSourceImage, setAngleSourceImageName)} />
+            </label>
+            {angleSourceImage && (
+              <button onClick={() => { setAngleSourceImage(null); setAngleSourceImageName(null); }} className="text-[10px] text-[var(--text-tertiary)] hover:text-rose-400 transition-colors">
+                Remove uploaded image
+              </button>
+            )}
+          </div>
+
+          <div className="space-y-3">
+            <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase flex items-center gap-1.5">
+              <Camera className="w-3 h-3" /> Camera Angle
+            </label>
+            <div className="bg-[var(--bg-elevated)]/60 border border-[var(--border-default)] rounded-2xl p-4 space-y-4">
+              <div>
+                <p className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase mb-2">Horizontal Direction</p>
+                <div className="grid grid-cols-3 gap-1.5 max-w-[200px] mx-auto">
+                  {grid.map((row, ri) =>
+                    row.map((cell, ci) => {
+                      if (!cell) {
+                        return (
+                          <div key={`${ri}-${ci}`} className="h-12 flex items-center justify-center">
+                            <div className="w-8 h-8 rounded-full bg-[var(--bg-overlay)]/40 flex items-center justify-center">
+                              <Camera className="w-4 h-4 text-[var(--text-muted)]" />
+                            </div>
+                          </div>
+                        );
+                      }
+                      const isActive = angleHorizontal === cell.id;
+                      return (
+                        <button
+                          key={cell.id}
+                          onClick={() => setAngleHorizontal(cell.id)}
+                          className={`h-12 rounded-xl text-[10px] font-bold transition-all ${
+                            isActive
+                              ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/30'
+                              : 'bg-[var(--bg-overlay)]/60 text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)] hover:text-white'
+                          }`}
+                        >
+                          {cell.label}
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase mb-2">Vertical Elevation</p>
+                <div className="flex gap-1.5">
+                  {VERTICAL_POSITIONS.map(p => (
+                    <button
+                      key={p.id}
+                      onClick={() => setAngleVertical(p.id)}
+                      className={`flex-1 py-2 rounded-xl text-[10px] font-bold transition-all ${
+                        angleVertical === p.id
+                          ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/30'
+                          : 'bg-[var(--bg-overlay)]/60 text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)] hover:text-white'
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase mb-2">Shot Distance</p>
+                <div className="flex gap-1.5">
+                  {DISTANCE_OPTIONS.map(p => (
+                    <button
+                      key={p.id}
+                      onClick={() => setAngleDistance(p.id)}
+                      className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
+                        angleDistance === p.id
+                          ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/30'
+                          : 'bg-[var(--bg-overlay)]/60 text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)] hover:text-white'
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase flex items-center gap-1.5">
+              <Cpu className="w-3 h-3" /> Model
+            </label>
+            <div className="relative">
+              <select
+                value={angleModel}
+                onChange={e => setAngleModel(e.target.value)}
+                className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white focus:ring-2 focus:ring-cyan-500 outline-none appearance-none pr-10"
+              >
+                {ANGLE_MODELS.map(m => (
+                  <option key={m.id} value={m.id}>
+                    {m.name} (${m.price.toFixed(3)}){m.nsfw ? ' 🔞' : ''}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-tertiary)] pointer-events-none" />
+            </div>
+            {angleModelInfo?.nsfw && (
+              <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                🔞 Uncensored — NSFW content enabled
+              </span>
+            )}
+          </div>
+
+          <button
+            onClick={handleAngleGenerate}
+            disabled={isGenerating || !angleSourceImg}
+            className="w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-cyan-600 to-sky-500 hover:from-cyan-500 hover:to-sky-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+          >
+            {isGenerating
+              ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</>
+              : <><Camera className="w-4 h-4" /> Apply Camera Angle</>}
+          </button>
+
+          {!angleSourceImg && !isGenerating && (
+            <p className="text-center text-xs text-[var(--text-tertiary)]">Upload an image or set a persona reference image to get started</p>
+          )}
+        </div>
+
+        {/* ══ RIGHT COLUMN — Output ══ */}
+        <div className="space-y-3 lg:sticky lg:top-4">
+          <div className="aspect-square rounded-2xl bg-[var(--bg-base)] border border-[var(--border-subtle)] overflow-hidden relative group">
+            {isGenerating ? (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+                <Loader2 className="w-10 h-10 animate-spin text-cyan-500" />
+                <p className="text-xs text-[var(--text-tertiary)] animate-pulse">Repositioning camera...</p>
+              </div>
+            ) : angleResult?.imageUrl ? (
+              <>
+                <img src={angleResult.imageUrl} alt="Angle result" className="absolute inset-0 w-full h-full object-contain" />
+                <div className="absolute bottom-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button onClick={() => downloadFile(angleResult.imageUrl, 'png')} className="p-2 bg-black/60 backdrop-blur-md rounded-lg text-white hover:bg-black/80" title="Download">
+                    <Download className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="absolute top-2 left-2 px-2.5 py-1 bg-black/60 backdrop-blur-md rounded-lg">
+                  <span className="text-[10px] text-white font-medium">{angleResult.model}</span>
+                </div>
+              </>
             ) : (
-              <div className="w-14 h-14 rounded-lg bg-[var(--bg-overlay)] flex items-center justify-center">
-                <Upload className="w-5 h-5 text-[var(--text-tertiary)]" />
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                <Camera className="w-10 h-10 text-[var(--text-muted)] opacity-25" />
+                <p className="text-xs text-[var(--text-muted)]">Your reangled image will appear here</p>
               </div>
             )}
-            <div className="flex-1 min-w-0">
-              <p className="text-sm text-white truncate">{angleSourceImageName || (persona.referenceImage ? 'Using persona reference' : 'Upload image to reangle')}</p>
-              <p className="text-[10px] text-[var(--text-tertiary)]">Upload a photo to change its camera angle</p>
-            </div>
-            <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload(setAngleSourceImage, setAngleSourceImageName)} />
-          </label>
-          {angleSourceImage && (
-            <button onClick={() => { setAngleSourceImage(null); setAngleSourceImageName(null); }} className="text-[10px] text-[var(--text-tertiary)] hover:text-rose-400 transition-colors">
-              Remove uploaded image
+          </div>
+
+          {angleResult && !isGenerating && (
+            <button onClick={handleSaveAngleImage} disabled={saved} className="w-full py-2.5 rounded-xl text-sm font-bold bg-cyan-600 hover:bg-cyan-500 text-white flex items-center justify-center gap-2 disabled:opacity-50 transition-all">
+              {saved ? <><Check className="w-4 h-4" /> Saved!</> : <><CheckCircle className="w-4 h-4" /> Save to Library</>}
             </button>
           )}
         </div>
-
-        <div className="space-y-3">
-          <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase flex items-center gap-1.5">
-            <Camera className="w-3 h-3" /> Camera Angle
-          </label>
-          <div className="bg-[var(--bg-elevated)]/60 border border-[var(--border-default)] rounded-2xl p-4 space-y-4">
-            <div>
-              <p className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase mb-2">Horizontal Direction</p>
-              <div className="grid grid-cols-3 gap-1.5 max-w-[200px] mx-auto">
-                {grid.map((row, ri) =>
-                  row.map((cell, ci) => {
-                    if (!cell) {
-                      return (
-                        <div key={`${ri}-${ci}`} className="h-12 flex items-center justify-center">
-                          <div className="w-8 h-8 rounded-full bg-[var(--bg-overlay)]/40 flex items-center justify-center">
-                            <Camera className="w-4 h-4 text-[var(--text-muted)]" />
-                          </div>
-                        </div>
-                      );
-                    }
-                    const isActive = angleHorizontal === cell.id;
-                    return (
-                      <button
-                        key={cell.id}
-                        onClick={() => setAngleHorizontal(cell.id)}
-                        className={`h-12 rounded-xl text-[10px] font-bold transition-all ${
-                          isActive
-                            ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/30'
-                            : 'bg-[var(--bg-overlay)]/60 text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)] hover:text-white'
-                        }`}
-                      >
-                        {cell.label}
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-
-            <div>
-              <p className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase mb-2">Vertical Elevation</p>
-              <div className="flex gap-1.5">
-                {VERTICAL_POSITIONS.map(p => (
-                  <button
-                    key={p.id}
-                    onClick={() => setAngleVertical(p.id)}
-                    className={`flex-1 py-2 rounded-xl text-[10px] font-bold transition-all ${
-                      angleVertical === p.id
-                        ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/30'
-                        : 'bg-[var(--bg-overlay)]/60 text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)] hover:text-white'
-                    }`}
-                  >
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <p className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase mb-2">Shot Distance</p>
-              <div className="flex gap-1.5">
-                {DISTANCE_OPTIONS.map(p => (
-                  <button
-                    key={p.id}
-                    onClick={() => setAngleDistance(p.id)}
-                    className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
-                      angleDistance === p.id
-                        ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/30'
-                        : 'bg-[var(--bg-overlay)]/60 text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)] hover:text-white'
-                    }`}
-                  >
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-1.5">
-          <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase flex items-center gap-1.5">
-            <Cpu className="w-3 h-3" /> Model
-          </label>
-          <div className="relative">
-            <select
-              value={angleModel}
-              onChange={e => setAngleModel(e.target.value)}
-              className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white focus:ring-2 focus:ring-cyan-500 outline-none appearance-none pr-10"
-            >
-              {ANGLE_MODELS.map(m => (
-                <option key={m.id} value={m.id}>
-                  {m.name} (${m.price.toFixed(3)}){m.nsfw ? ' 🔞' : ''}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-tertiary)] pointer-events-none" />
-          </div>
-          {angleModelInfo?.nsfw && (
-            <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">
-              🔞 Uncensored — NSFW content enabled
-            </span>
-          )}
-        </div>
-
-        <button
-          onClick={handleAngleGenerate}
-          disabled={isGenerating || !angleSourceImg}
-          className="w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-cyan-600 to-sky-500 hover:from-cyan-500 hover:to-sky-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
-        >
-          {isGenerating
-            ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</>
-            : <><Camera className="w-4 h-4" /> Apply Camera Angle</>}
-        </button>
-
-        {!angleSourceImg && !isGenerating && (
-          <p className="text-center text-xs text-[var(--text-tertiary)]">Upload an image or set a persona reference image to get started</p>
-        )}
-
-        <div className="aspect-square max-h-[400px] rounded-2xl bg-[var(--bg-base)] border border-[var(--border-subtle)] overflow-hidden relative group mx-auto w-full max-w-[400px]">
-          {isGenerating ? (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-              <Loader2 className="w-10 h-10 animate-spin text-cyan-500" />
-              <p className="text-xs text-[var(--text-tertiary)] animate-pulse">Repositioning camera...</p>
-            </div>
-          ) : angleResult?.imageUrl ? (
-            <>
-              <img src={angleResult.imageUrl} alt="Angle result" className="absolute inset-0 w-full h-full object-contain" />
-              <div className="absolute bottom-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button onClick={() => downloadFile(angleResult.imageUrl, 'png')} className="p-2 bg-black/60 backdrop-blur-md rounded-lg text-white hover:bg-black/80" title="Download">
-                  <Download className="w-4 h-4" />
-                </button>
-              </div>
-              <div className="absolute top-2 left-2 px-2.5 py-1 bg-black/60 backdrop-blur-md rounded-lg">
-                <span className="text-[10px] text-white font-medium">{angleResult.model}</span>
-              </div>
-            </>
-          ) : (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-              <Camera className="w-12 h-12 text-[var(--text-muted)] opacity-30" />
-              <p className="text-xs text-[var(--text-muted)]">Select angle and generate</p>
-            </div>
-          )}
-        </div>
-
-        {angleResult && !isGenerating && (
-          <button onClick={handleSaveAngleImage} disabled={saved} className="w-full py-2.5 rounded-xl text-sm font-bold bg-cyan-600 hover:bg-cyan-500 text-white flex items-center justify-center gap-2 disabled:opacity-50 transition-all">
-            {saved ? <><Check className="w-4 h-4" /> Saved!</> : <><CheckCircle className="w-4 h-4" /> Save to Library</>}
-          </button>
-        )}
       </div>
     );
   };
 
   return (
-    <div className="p-6 max-w-3xl mx-auto">
+    <div className="p-6 max-w-[1400px] mx-auto w-full">
       <header className="premium-header mb-6 pt-6 pb-2">
         <div className="relative z-10">
           <h1 className="text-3xl font-extrabold tracking-tight">
