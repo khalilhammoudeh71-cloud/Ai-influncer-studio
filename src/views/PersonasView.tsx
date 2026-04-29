@@ -512,39 +512,11 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
               {isSelected && (
                 <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-violet-500 via-fuchsia-500 to-violet-500 opacity-80" />
               )}
-              <div className="absolute top-0 right-0 p-3 opacity-0 group-hover:opacity-100 transition-all duration-200 flex gap-1.5 z-10">
-                <button 
-                  onClick={(e) => handleDeletePersona(e, persona.id)}
-                  className="p-2 hover:bg-rose-500/15 hover:text-rose-400 rounded-xl transition-all text-[var(--text-muted)] backdrop-blur-sm"
-                >
-                  <Trash2 size={16} />
-                </button>
-                <button 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setActivePersonaForGen(persona);
-                    setShowGenerator(true);
-                  }}
-                  className="p-2 hover:bg-violet-500/15 text-violet-400 rounded-xl transition-all backdrop-blur-sm"
-                  title="Generate Visuals"
-                >
-                  <Sparkles size={16} />
-                </button>
-                <button 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleOpenEdit(persona);
-                  }}
-                  className="p-2 hover:bg-[var(--bg-overlay)] rounded-xl transition-all text-[var(--text-muted)] backdrop-blur-sm"
-                >
-                  <Edit2 size={16} />
-                </button>
-              </div>
               
-              <div className="flex gap-4">
-                <div className="relative">
+              <div className="flex gap-4 items-center">
+                <div className="relative shrink-0">
                   {persona.referenceImage ? (
-                    <div className="w-[68px] h-[68px] rounded-2xl overflow-hidden ring-2 ring-violet-500/25 shadow-lg shadow-violet-500/10">
+                    <div className="w-[88px] h-[88px] rounded-2xl overflow-hidden ring-2 ring-violet-500/25 shadow-lg shadow-violet-500/10">
                       <img 
                         src={persona.referenceImage} 
                         alt={persona.name} 
@@ -552,7 +524,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                       />
                     </div>
                   ) : (
-                    <div className="w-[68px] h-[68px] rounded-2xl overflow-hidden ring-1 ring-[var(--border-default)]">
+                    <div className="w-[88px] h-[88px] rounded-2xl overflow-hidden ring-1 ring-[var(--border-default)]">
                       <img 
                         src={persona.avatar} 
                         alt={persona.name} 
@@ -600,6 +572,31 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                       {persona.platform}
                     </span>
                   </div>
+                </div>
+
+                {/* Always-visible CTA column */}
+                <div className="flex flex-col items-center gap-2 shrink-0 pl-1" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleOpenEdit(persona); }}
+                    className="w-9 h-9 flex items-center justify-center rounded-xl bg-[var(--bg-elevated)] hover:bg-violet-500/20 text-[var(--text-secondary)] hover:text-violet-400 transition-all active:scale-90 border border-[var(--border-subtle)]"
+                    title="Edit persona"
+                  >
+                    <Edit2 size={15} />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setActivePersonaForGen(persona); setShowGenerator(true); }}
+                    className="w-9 h-9 flex items-center justify-center rounded-xl bg-violet-500/15 hover:bg-violet-500/30 text-violet-400 hover:text-violet-300 transition-all active:scale-90 border border-violet-500/20"
+                    title="Generate image / video"
+                  >
+                    <Sparkles size={15} />
+                  </button>
+                  <button
+                    onClick={(e) => handleDeletePersona(e, persona.id)}
+                    className="w-9 h-9 flex items-center justify-center rounded-xl bg-[var(--bg-elevated)] hover:bg-rose-500/20 text-[var(--text-muted)] hover:text-rose-400 transition-all active:scale-90 border border-[var(--border-subtle)]"
+                    title="Delete persona"
+                  >
+                    <Trash2 size={15} />
+                  </button>
                 </div>
               </div>
             </motion.div>
@@ -1129,9 +1126,10 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
           <header className="sticky top-0 z-10 bg-[var(--bg-base)]/90 backdrop-blur-xl border-b border-[var(--border-subtle)] px-5 py-4 flex items-center justify-between">
             <button 
               onClick={() => { setViewingPersona(null); setPreviewImage(null); }}
-              className="p-2 hover:bg-[var(--bg-elevated)] rounded-full text-[var(--text-secondary)] transition-colors"
+              className="flex items-center gap-1.5 px-3 py-2 bg-[var(--bg-elevated)] hover:bg-[var(--bg-overlay)] rounded-xl text-[var(--text-primary)] font-semibold text-sm transition-all active:scale-95 border border-[var(--border-subtle)]"
             >
-              <ArrowLeft size={22} />
+              <ArrowLeft size={18} />
+              Back
             </button>
             <h2 className="text-lg font-bold truncate mx-4">{viewingPersona.name}</h2>
             <div className="flex gap-2">
