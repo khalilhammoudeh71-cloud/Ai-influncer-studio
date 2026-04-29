@@ -130,6 +130,14 @@ const ASPECT_RATIO_OPTIONS = [
   { value: '21:9', label: 'Cinematic (21:9)' },
 ];
 
+const RESOLUTION_OPTIONS: Record<string, { value: 'standard' | 'hd'; label: string }[]> = {
+  venice:    [{ value: 'standard', label: 'Standard (~1024px)' }, { value: 'hd', label: 'HD (~1536px)' }],
+  wavespeed: [{ value: 'standard', label: 'Standard' }],
+  google:    [{ value: 'standard', label: 'Standard' }],
+  openai:    [{ value: 'standard', label: 'Standard' }],
+  default:   [{ value: 'standard', label: 'Standard' }, { value: 'hd', label: 'HD' }],
+};
+
 export default function CreateView({ persona, personas, setPersonas, onSelectPersona }: CreateViewProps) {
   const [localPersonaId, setLocalPersonaId] = useState<string>(persona.id);
   const [naturalLook, setNaturalLook] = useState(persona.naturalLook ?? true);
@@ -241,6 +249,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const [personaPickerOpen, setPersonaPickerOpen] = useState(false);
 
   const [selectedAspectRatio, setSelectedAspectRatio] = useState('1:1');
+  const [selectedResolution, setSelectedResolution] = useState<'standard' | 'hd'>('standard');
   const [generatedFeed, setGeneratedFeed] = useState<GeneratedEntry[]>([]);
   const [focusedEntryId, setFocusedEntryId] = useState<string | null>(null);
   const [excludePersonaRef, setExcludePersonaRef] = useState(false);
@@ -321,6 +330,15 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   }, [videoModels]);
 
   const selectedModelInfo = useMemo(() => models.find(m => m.id === selectedModel), [models, selectedModel]);
+
+  const resolutionOpts = useMemo(() => {
+    const p = selectedModelInfo?.provider?.toLowerCase() ?? '';
+    if (p.includes('venice')) return RESOLUTION_OPTIONS.venice;
+    if (p.includes('wavespeed')) return RESOLUTION_OPTIONS.wavespeed;
+    if (p.includes('google')) return RESOLUTION_OPTIONS.google;
+    if (p.includes('openai')) return RESOLUTION_OPTIONS.openai;
+    return RESOLUTION_OPTIONS.default;
+  }, [selectedModelInfo]);
   const isI2VModel = selectedVideoModel.startsWith('wavespeed-i2v:');
 
   const copyToClipboard = (text: string) => {
@@ -392,6 +410,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         identityLock,
         count: imageCount,
         aspectRatio: selectedAspectRatio,
+        resolution: selectedResolution,
       });
 
       const now = Date.now();
@@ -936,20 +955,38 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           ))}
         </div>
 
-        {/* Aspect Ratio */}
-        <div>
-          <label className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase block mb-1">Aspect Ratio</label>
-          <div className="relative">
-            <select
-              value={selectedAspectRatio}
-              onChange={e => setSelectedAspectRatio(e.target.value)}
-              className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2 text-xs text-white outline-none appearance-none pr-7"
-            >
-              {ASPECT_RATIO_OPTIONS.map(ar => (
-                <option key={ar.value} value={ar.value}>{ar.label}</option>
-              ))}
-            </select>
-            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-tertiary)] pointer-events-none" />
+        {/* Aspect Ratio + Resolution */}
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase block mb-1">Aspect Ratio</label>
+            <div className="relative">
+              <select
+                value={selectedAspectRatio}
+                onChange={e => setSelectedAspectRatio(e.target.value)}
+                className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2 text-xs text-white outline-none appearance-none pr-7"
+              >
+                {ASPECT_RATIO_OPTIONS.map(ar => (
+                  <option key={ar.value} value={ar.value}>{ar.label}</option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-tertiary)] pointer-events-none" />
+            </div>
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase block mb-1">Resolution</label>
+            <div className="relative">
+              <select
+                value={resolutionOpts.length > 1 ? selectedResolution : 'standard'}
+                onChange={e => setSelectedResolution(e.target.value as 'standard' | 'hd')}
+                disabled={resolutionOpts.length <= 1}
+                className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2 text-xs text-white outline-none appearance-none pr-7 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {resolutionOpts.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-tertiary)] pointer-events-none" />
+            </div>
           </div>
         </div>
 

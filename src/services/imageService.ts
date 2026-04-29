@@ -54,6 +54,7 @@ export interface GenerateImageParams {
   chatPrompt?: string;
   imageWeight?: number;
   aspectRatio?: string;
+  resolution?: 'standard' | 'hd';
   naturalLook?: boolean;
   identityLock?: boolean;
   count?: number;

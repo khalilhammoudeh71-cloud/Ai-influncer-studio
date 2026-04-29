@@ -513,6 +513,7 @@ interface ImageGenRequest {
   referenceImage?: string;
   additionalImages?: string[];
   aspectRatio?: string;
+  resolution?: string;
   faceDescriptor?: string;
   naturalLook?: boolean;
   identityLock?: boolean;
@@ -677,7 +678,7 @@ async function generateWithDirectOpenAI(prompt: string, referenceImage?: string 
   return `data:image/png;base64,${b64}`;
 }
 
-function veniceAspectRatioDimensions(ar?: string): { width: number; height: number } {
+function veniceAspectRatioDimensions(ar?: string, resolution?: string): { width: number; height: number } {
   const MAP: Record<string, [number, number]> = {
     '1:1': [1024, 1024],
     '16:9': [1344, 768],
@@ -689,13 +690,20 @@ function veniceAspectRatioDimensions(ar?: string): { width: number; height: numb
     '21:9': [1344, 576],
   };
   const [w, h] = MAP[ar || '1:1'] || [1024, 1024];
+  if (resolution === 'hd') {
+    const scale = 1.5;
+    return {
+      width: Math.min(2048, Math.round(w * scale / 64) * 64),
+      height: Math.min(2048, Math.round(h * scale / 64) * 64),
+    };
+  }
   return { width: w, height: h };
 }
 
-async function generateWithVenice(rawModelId: string, prompt: string, aspectRatio?: string, nsfw = false): Promise<string> {
+async function generateWithVenice(rawModelId: string, prompt: string, aspectRatio?: string, nsfw = false, resolution?: string): Promise<string> {
   if (!VENICE_API_KEY) throw new Error('Venice API key not configured');
 
-  const { width, height } = veniceAspectRatioDimensions(aspectRatio);
+  const { width, height } = veniceAspectRatioDimensions(aspectRatio, resolution);
   const payload = {
     model: rawModelId,
     prompt,
@@ -1629,7 +1637,12 @@ async function generateWithGoogleImagen(
 
   if (hasImages) {
     const imgCount = (referenceImage ? 1 : 0) + (additionalImages?.length ?? 0);
-    contentParts.push({ text: `Using the ${imgCount > 1 ? 'provided reference photos' : 'reference photo'} for identity and style consistency, generate a new image: ${prompt}` });
+    if (imgCount > 1) {
+      const personLabels = Array.from({ length: imgCount }, (_, i) => `Image ${i + 1} shows a distinct person (Person ${i + 1})`).join('. ');
+      contentParts.push({ text: `${personLabels}. Generate a photorealistic image that includes ALL ${imgCount} people together in the same scene. Every person from every reference image MUST appear in the output — do not omit any person. Scene: ${prompt}` });
+    } else {
+      contentParts.push({ text: `Using the reference photo for identity and style consistency, generate a new image: ${prompt}` });
+    }
   } else {
     contentParts.push({ text: prompt });
   }
@@ -1751,7 +1764,7 @@ async function generateWithGoogleImagen(
 }
 
 app.post('/api/generate-image', async (req, res) => {
-  const { referenceImage, additionalImages, modelId, imageWeight, aspectRatio, count: rawCount, ...rest } = req.body as ImageGenRequest & { modelId: string; imageWeight?: number; count?: number };
+  const { referenceImage, additionalImages, modelId, imageWeight, aspectRatio, resolution, count: rawCount, ...rest } = req.body as ImageGenRequest & { modelId: string; imageWeight?: number; count?: number };
   const count = Math.max(1, Math.min(4, Math.floor(Number(rawCount) || 1)));
 
   if (!modelId) {
@@ -1796,14 +1809,14 @@ app.post('/api/generate-image', async (req, res) => {
       const allVeniceModels = cachedVeniceModels || [];
       const veniceModel = allVeniceModels.find(m => m.id === modelId);
       if (count > 1) {
-        const results = await Promise.allSettled(Array.from({ length: count }, () => generateWithVenice(veniceModelId, prompt, aspectRatio, isNsfw)));
+        const results = await Promise.allSettled(Array.from({ length: count }, () => generateWithVenice(veniceModelId, prompt, aspectRatio, isNsfw, resolution)));
         imageUrls = results.filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled').map(r => r.value);
         if (imageUrls.length === 0) {
           const firstErr = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
           throw firstErr ? firstErr.reason : new Error('All Venice image generation requests failed');
         }
       } else {
-        imageUrls = [await generateWithVenice(veniceModelId, prompt, aspectRatio, isNsfw)];
+        imageUrls = [await generateWithVenice(veniceModelId, prompt, aspectRatio, isNsfw, resolution)];
       }
       modelName = veniceModel?.name || veniceModelId;
     } else if (modelId.startsWith('google:')) {
