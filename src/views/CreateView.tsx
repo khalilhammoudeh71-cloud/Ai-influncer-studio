@@ -443,10 +443,15 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       const data = await editImage(activeVersion.imageUrl, editPrompt, selectedEditModel, editAdditionalImage || undefined);
       const newResult = { imageUrl: data.imageUrl, model: data.model, promptUsed: editPrompt };
       setImageResult(newResult);
-      const version: ImageVersion = { imageUrl: data.imageUrl, model: data.model, promptUsed: editPrompt, label: `Edit ${imageHistory.filter(v => v.label.startsWith('Edit')).length + 1}` };
+      const editLabel = `Edit ${imageHistory.filter(v => v.label.startsWith('Edit')).length + 1}`;
+      const version: ImageVersion = { imageUrl: data.imageUrl, model: data.model, promptUsed: editPrompt, label: editLabel };
       const newHistory = [...imageHistory, version];
       setImageHistory(newHistory);
       setActiveHistoryIndex(newHistory.length - 1);
+      const now = Date.now();
+      const entry: GeneratedEntry = { id: `edit-${now}`, imageUrl: data.imageUrl, model: data.model, promptUsed: editPrompt, label: editLabel, timestamp: now };
+      setGeneratedFeed(prev => [entry, ...prev]);
+      setFocusedEntryId(entry.id);
       setPostAction(null);
       setEditPrompt('');
       setEditAdditionalImage(null);
@@ -466,10 +471,15 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       const data = await upscaleImage(activeVersion.imageUrl, selectedUpscaleModel);
       const newResult = { imageUrl: data.imageUrl, model: data.model, promptUsed: activeVersion.promptUsed };
       setImageResult(newResult);
-      const version: ImageVersion = { imageUrl: data.imageUrl, model: data.model, promptUsed: activeVersion.promptUsed, label: `Upscale ${imageHistory.filter(v => v.label.startsWith('Upscale')).length + 1}` };
+      const upscaleLabel = `Upscale ${imageHistory.filter(v => v.label.startsWith('Upscale')).length + 1}`;
+      const version: ImageVersion = { imageUrl: data.imageUrl, model: data.model, promptUsed: activeVersion.promptUsed, label: upscaleLabel };
       const newHistory = [...imageHistory, version];
       setImageHistory(newHistory);
       setActiveHistoryIndex(newHistory.length - 1);
+      const now = Date.now();
+      const entry: GeneratedEntry = { id: `upscale-${now}`, imageUrl: data.imageUrl, model: data.model, promptUsed: activeVersion.promptUsed, label: upscaleLabel, timestamp: now };
+      setGeneratedFeed(prev => [entry, ...prev]);
+      setFocusedEntryId(entry.id);
       setPostAction(null);
     } catch (err: unknown) {
       setActionError(err instanceof Error ? err.message : 'Upscaling failed.');
