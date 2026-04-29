@@ -793,12 +793,189 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   );
 
   const renderImageMode = () => (
-    <div className="space-y-4">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
 
-      {/* ══ OUTPUT — always at top ══ */}
+      {/* ══ LEFT COLUMN — Controls ══ */}
+      <div className="space-y-3">
 
-      {/* Multi-variation thumbnails */}
-      {multiResults.length > 1 && !isGenerating && (
+        {/* Quick Styles */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-wide">Quick Styles</p>
+            {activeQuickStyle && (
+              <button onClick={clearQuickStyle} className="text-[10px] text-purple-400 hover:text-purple-300 transition-colors">Clear</button>
+            )}
+          </div>
+          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+            {QUICK_STYLES.map(qs => (
+              <button
+                key={qs.id}
+                onClick={() => applyQuickStyle(qs)}
+                className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+                  activeQuickStyle === qs.id
+                    ? 'bg-gradient-to-r from-purple-600 to-violet-600 text-white border-transparent shadow-lg shadow-purple-500/20'
+                    : 'bg-white/5 border-white/10 text-[var(--text-secondary)] hover:bg-white/10 hover:text-white'
+                }`}
+              >
+                <span>{qs.emoji}</span>
+                <span>{qs.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* AI Model */}
+        {renderModelSelect(selectedModel, setSelectedModel, groupedModels, true)}
+        {selectedModelInfo && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">{selectedModelInfo.provider}</span>
+            {selectedModelInfo.isIdentityModel && <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-300 border border-violet-500/30">★ Face-consistent</span>}
+            {!selectedModelInfo.isIdentityModel && hasRefImage && canUseReference(selectedModelInfo, models) && <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-green-300 border border-emerald-500/30">Uses reference image</span>}
+            {!selectedModelInfo.isIdentityModel && hasRefImage && !canUseReference(selectedModelInfo, models) && <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/30">Text-only — will ignore reference</span>}
+            {selectedModelInfo.isIdentityModel && !effectiveRefImage && activePersona.referenceImage && <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">Using persona face</span>}
+            {selectedModelInfo.isIdentityModel && !effectiveRefImage && !activePersona.referenceImage && <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">⚠ Needs face photo</span>}
+            {selectedModelInfo.price > 0 && <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">${selectedModelInfo.price.toFixed(3)}{imageCount > 1 ? ` x${imageCount} = $${(selectedModelInfo.price * imageCount).toFixed(3)}` : ' per image'}</span>}
+          </div>
+        )}
+
+        {/* Style dropdowns 2×2 */}
+        <div className="grid grid-cols-2 gap-2">
+          {[
+            { label: 'Environment', value: selectedEnv, onChange: (v: string) => { clearQuickStyle(); setSelectedEnv(v); }, options: ENVIRONMENTS },
+            { label: 'Outfit',      value: selectedOutfit, onChange: (v: string) => { clearQuickStyle(); setSelectedOutfit(v); }, options: OUTFITS },
+            { label: 'Framing',     value: selectedFraming, onChange: (v: string) => { clearQuickStyle(); setSelectedFraming(v); }, options: FRAMING },
+            { label: 'Mood',        value: selectedMood, onChange: (v: string) => { clearQuickStyle(); setSelectedMood(v); }, options: MOODS },
+          ].map(({ label, value, onChange, options }) => (
+            <div key={label}>
+              <label className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase block mb-1">{label}</label>
+              <div className="relative">
+                <select
+                  value={value}
+                  onChange={e => onChange(e.target.value)}
+                  className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2 text-xs text-white outline-none appearance-none pr-7"
+                >
+                  {options.map(o => <option key={o} value={o}>{o}</option>)}
+                </select>
+                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-tertiary)] pointer-events-none" />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Reference Images */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase flex items-center gap-1.5">
+              <ImageIcon className="w-3 h-3" /> Reference Images {localPersonaId === 'none' && <span className="text-rose-400">*</span>}
+              {allRefImages.length > 0 && <span className="text-[10px] font-mono text-purple-300 bg-purple-500/10 px-1.5 py-0.5 rounded-full">{allRefImages.length}</span>}
+            </label>
+            {allRefImages.length < 6 && (
+              <label className="text-[10px] text-purple-400 hover:text-purple-300 cursor-pointer transition-colors flex items-center gap-1">
+                <Upload className="w-3 h-3" /> Add photo
+                <input type="file" accept="image/*" multiple className="hidden" onChange={e => { const files = e.target.files; if (files) { Array.from(files).forEach(f => handleAddRefImage(f)); } e.target.value = ''; }} />
+              </label>
+            )}
+          </div>
+
+          {localPersonaId !== 'none' && (
+            <div className="relative">
+              <select value={refPersonaId} onChange={e => setRefPersonaId(e.target.value)} className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2 text-sm text-white outline-none appearance-none pr-8">
+                <option value="none">No persona reference</option>
+                {personas.filter(p => p.referenceImage).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-tertiary)] pointer-events-none" />
+            </div>
+          )}
+
+          {allRefImages.length > 0 ? (
+            <div className="flex gap-2 flex-wrap">
+              {refPersonaImage && (
+                <div className="relative group">
+                  <img src={refPersonaImage} alt="Persona ref" className="w-16 h-16 rounded-xl object-cover border-2 border-purple-500/60" />
+                  <span className="absolute -bottom-1 -right-1 text-[8px] bg-purple-600 text-white rounded px-1 leading-4">Persona</span>
+                </div>
+              )}
+              {refImages.map(img => (
+                <div key={img.id} className="relative group">
+                  <img src={img.url} alt={img.name} className="w-16 h-16 rounded-xl object-cover border border-[var(--border-default)]" />
+                  <button onClick={() => setRefImages(prev => prev.filter(i => i.id !== img.id))} className="absolute -top-1.5 -left-1.5 w-5 h-5 bg-red-600 hover:bg-rose-500 rounded-full text-white text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all shadow-lg">×</button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <label className="flex items-center gap-2 px-3 py-3 bg-[var(--bg-elevated)] border border-dashed border-white/10 rounded-xl cursor-pointer hover:bg-white/5 transition-colors group">
+              <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center shrink-0">
+                <Upload className="w-4 h-4 text-purple-400" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-[var(--text-secondary)] group-hover:text-white transition-colors">{localPersonaId === 'none' ? 'Upload your photos (required)' : 'Upload reference photos'}</p>
+                <p className="text-[10px] text-[var(--text-muted)]">For face & identity consistency</p>
+              </div>
+              <input type="file" accept="image/*" multiple className="hidden" onChange={e => { const files = e.target.files; if (files) { Array.from(files).forEach(f => handleAddRefImage(f)); } e.target.value = ''; }} />
+            </label>
+          )}
+          {allRefImages.length > 0 && (refImages.length > 0 || refPersonaId !== 'none') && (
+            <button onClick={() => { setRefImages([]); setRefPersonaId('none'); }} className="text-[10px] text-[var(--text-tertiary)] hover:text-rose-400 transition-colors">Clear all</button>
+          )}
+          {localPersonaId === 'none' && allRefImages.length === 0 && (
+            <p className="text-[10px] text-amber-400/80">Upload at least one photo to generate in No-Persona mode</p>
+          )}
+        </div>
+
+        {/* Instructions */}
+        <textarea value={imagePrompt} onChange={e => setImagePrompt(e.target.value)} placeholder="Additional instructions (optional)..." className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white placeholder-[var(--text-muted)] resize-none h-20 outline-none focus:ring-2 focus:ring-purple-500" />
+
+        {/* Advanced Settings */}
+        <div className="rounded-2xl border border-white/8 overflow-hidden">
+          <button onClick={() => setAdvancedOpen(v => !v)} className="w-full flex items-center justify-between px-4 py-3 bg-[var(--bg-elevated)]/50 hover:bg-white/5 transition-colors">
+            <div className="flex items-center gap-2">
+              <SlidersHorizontal className="w-3.5 h-3.5 text-purple-400" />
+              <span className="text-xs font-bold text-[var(--text-secondary)]">Advanced</span>
+              {!advancedOpen && <span className="text-[10px] text-[var(--text-muted)]">{[naturalLook && 'Natural Look', identityLock && 'Identity Lock', `×${imageCount}`].filter(Boolean).join(' · ')}</span>}
+            </div>
+            {advancedOpen ? <ChevronUp className="w-4 h-4 text-[var(--text-tertiary)]" /> : <ChevronDown className="w-4 h-4 text-[var(--text-tertiary)]" />}
+          </button>
+          {advancedOpen && (
+            <div className="px-4 py-3 space-y-4 bg-[var(--bg-elevated)]/20 border-t border-white/5">
+              <div className="flex items-center justify-between">
+                <div><p className="text-xs font-bold text-[var(--text-secondary)]">Natural Look</p><p className="text-[10px] text-[var(--text-muted)] mt-0.5">Film grain, candid, no over-retouching</p></div>
+                <button onClick={handleNaturalLookToggle} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${naturalLook ? 'bg-purple-600' : 'bg-[var(--bg-overlay)]'}`}>
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${naturalLook ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
+              </div>
+              <div className="flex items-center justify-between">
+                <div><p className="text-xs font-bold text-[var(--text-secondary)]">Identity Lock</p><p className="text-[10px] text-[var(--text-muted)] mt-0.5">Same exact face, bone structure &amp; features</p></div>
+                <button onClick={handleIdentityLockToggle} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${identityLock ? 'bg-purple-600' : 'bg-[var(--bg-overlay)]'}`}>
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${identityLock ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
+              </div>
+              <div className="flex items-center justify-between">
+                <div><p className="text-xs font-bold text-[var(--text-secondary)]">Variations</p><p className="text-[10px] text-[var(--text-muted)] mt-0.5">Generate multiple images at once</p></div>
+                <div className="flex gap-1">
+                  {[1, 2, 3, 4].map(n => (
+                    <button key={n} onClick={() => setImageCount(n)} className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${imageCount === n ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/30' : 'bg-[var(--bg-overlay)] text-[var(--text-secondary)] hover:text-white'}`}>{n}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Generate button */}
+        {localPersonaId === 'none' && allRefImages.length === 0 && (
+          <p className="text-xs text-amber-400 text-center">Upload your photo above to enable generation</p>
+        )}
+        <button onClick={handleImageGenerate} disabled={isGenerating || !selectedModel || (localPersonaId === 'none' && allRefImages.length === 0)} className="w-full py-3.5 rounded-xl font-bold text-sm bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-lg shadow-purple-500/20">
+          {isGenerating ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating {imageCount > 1 ? `${imageCount} variations` : ''}...</> : <><Sparkles className="w-4 h-4" /> Generate {imageCount > 1 ? `${imageCount} Images` : 'Image'}</>}
+        </button>
+
+      </div>{/* end left column */}
+
+      {/* ══ RIGHT COLUMN — Output ══ */}
+      <div className="space-y-3 md:sticky md:top-4">
+
+        {/* Multi-variation thumbnails */}
+        {multiResults.length > 1 && !isGenerating && (
         <div className="space-y-2">
           <p className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-wide">
             {multiResults.length} Variation{multiResults.length !== 1 ? 's' : ''}{multiResults.length < imageCount ? ` (${imageCount - multiResults.length} failed)` : ''} — tap to select
@@ -881,23 +1058,9 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             </div>
           </>
         ) : (
-          /* Placeholder when no image yet */
-          <div className="p-3">
-            <div className="grid grid-cols-3 gap-2 mb-3">
-              {[
-                { gradient: 'from-purple-900/60 to-violet-800/40', label: 'Luxury Hotel' },
-                { gradient: 'from-rose-900/60 to-pink-800/40', label: 'Beach Day' },
-                { gradient: 'from-blue-900/60 to-indigo-800/40', label: 'Night Out' },
-              ].map(p => (
-                <div key={p.label} className={`aspect-square rounded-xl bg-gradient-to-br ${p.gradient} flex flex-col items-end justify-end p-2 border border-white/5`}>
-                  <span className="text-[9px] text-white/50 font-medium">{p.label}</span>
-                </div>
-              ))}
-            </div>
-            <div className="flex flex-col items-center justify-center py-3 gap-1.5">
-              <Sparkles className="w-6 h-6 text-purple-500/50" />
-              <p className="text-xs text-[var(--text-muted)]">Configure below and hit Generate</p>
-            </div>
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+            <ImageIcon className="w-10 h-10 text-[var(--text-muted)] opacity-25" />
+            <p className="text-xs text-[var(--text-muted)]">Your image will appear here</p>
           </div>
         )}
       </div>
@@ -981,251 +1144,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         </div>
       )}
 
-      {/* ── divider ── */}
-      <div className="border-t border-white/5 pt-2" />
-
-      {/* ══ CONTROLS below ══ */}
-
-      {/* ── Quick Styles ── */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <p className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-wide">Quick Styles</p>
-          {activeQuickStyle && (
-            <button onClick={clearQuickStyle} className="text-[10px] text-purple-400 hover:text-purple-300 transition-colors">Clear</button>
-          )}
-        </div>
-        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-          {QUICK_STYLES.map(qs => (
-            <button
-              key={qs.id}
-              onClick={() => applyQuickStyle(qs)}
-              className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
-                activeQuickStyle === qs.id
-                  ? 'bg-gradient-to-r from-purple-600 to-violet-600 text-white border-transparent shadow-lg shadow-purple-500/20'
-                  : 'bg-white/5 border-white/10 text-[var(--text-secondary)] hover:bg-white/10 hover:text-white'
-              }`}
-            >
-              <span>{qs.emoji}</span>
-              <span>{qs.label}</span>
-            </button>
-          ))}
-        </div>
       </div>
-
-      {/* ── AI Model ── */}
-      {renderModelSelect(selectedModel, setSelectedModel, groupedModels, true)}
-
-      {selectedModelInfo && (
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
-            {selectedModelInfo.provider}
-          </span>
-          {selectedModelInfo.isIdentityModel && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-300 border border-violet-500/30">★ Face-consistent</span>
-          )}
-          {!selectedModelInfo.isIdentityModel && hasRefImage && canUseReference(selectedModelInfo, models) && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-green-300 border border-emerald-500/30">Uses reference image</span>
-          )}
-          {!selectedModelInfo.isIdentityModel && hasRefImage && !canUseReference(selectedModelInfo, models) && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/30">Text-only — will ignore reference</span>
-          )}
-          {selectedModelInfo.isIdentityModel && !effectiveRefImage && activePersona.referenceImage && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">Using persona face</span>
-          )}
-          {selectedModelInfo.isIdentityModel && !effectiveRefImage && !activePersona.referenceImage && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">⚠ Needs face photo</span>
-          )}
-          {selectedModelInfo.price > 0 && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
-              ${selectedModelInfo.price.toFixed(3)}{imageCount > 1 ? ` x${imageCount} = $${(selectedModelInfo.price * imageCount).toFixed(3)}` : ' per image'}
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* ── Style Chips ── */}
-      <div className="bg-[var(--bg-elevated)]/40 rounded-2xl p-3.5 space-y-3 border border-white/5">
-        {renderChipSelector('Environment', MapPin, selectedEnv, setSelectedEnv, ENVIRONMENTS)}
-        {renderChipSelector('Outfit', Shirt, selectedOutfit, setSelectedOutfit, OUTFITS)}
-        {renderChipSelector('Framing', Layout, selectedFraming, setSelectedFraming, FRAMING)}
-        {renderChipSelector('Mood', Smile, selectedMood, setSelectedMood, MOODS)}
-      </div>
-
-      {/* ── Reference Images ── */}
-      <div className="space-y-1.5">
-        <div className="flex items-center justify-between">
-          <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase flex items-center gap-1.5">
-            <ImageIcon className="w-3 h-3" /> Reference Images {localPersonaId === 'none' && <span className="text-rose-400">*</span>}
-            {allRefImages.length > 0 && (
-              <span className="text-[10px] font-mono text-purple-300 bg-purple-500/10 px-1.5 py-0.5 rounded-full">{allRefImages.length}</span>
-            )}
-          </label>
-          {allRefImages.length < 6 && (
-            <label className="text-[10px] text-purple-400 hover:text-purple-300 cursor-pointer transition-colors flex items-center gap-1">
-              <Upload className="w-3 h-3" /> Add photo
-              <input type="file" accept="image/*" multiple className="hidden" onChange={e => { const files = e.target.files; if (files) { Array.from(files).forEach(f => handleAddRefImage(f)); } e.target.value = ''; }} />
-            </label>
-          )}
-        </div>
-
-        {localPersonaId !== 'none' && (
-          <div className="relative">
-            <select
-              value={refPersonaId}
-              onChange={e => { setRefPersonaId(e.target.value); }}
-              className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2 text-sm text-white outline-none appearance-none pr-8"
-            >
-              <option value="none">No persona reference</option>
-              {personas.filter(p => p.referenceImage).map(p => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
-            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-tertiary)] pointer-events-none" />
-          </div>
-        )}
-
-        {allRefImages.length > 0 ? (
-          <div className="flex gap-2 flex-wrap">
-            {refPersonaImage && (
-              <div className="relative group">
-                <img src={refPersonaImage} alt="Persona ref" className="w-20 h-20 rounded-xl object-cover border-2 border-purple-500/60" />
-                <span className="absolute -bottom-1 -right-1 text-[8px] bg-purple-600 text-white rounded px-1 leading-4">Persona</span>
-              </div>
-            )}
-            {refImages.map(img => (
-              <div key={img.id} className="relative group">
-                <img src={img.url} alt={img.name} className="w-20 h-20 rounded-xl object-cover border border-[var(--border-default)]" />
-                <button
-                  onClick={() => setRefImages(prev => prev.filter(i => i.id !== img.id))}
-                  className="absolute -top-1.5 -left-1.5 w-5 h-5 bg-red-600 hover:bg-rose-500 rounded-full text-white text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all shadow-lg"
-                >×</button>
-                <p className="text-[9px] text-[var(--text-tertiary)] truncate max-w-[80px] mt-0.5">{img.name}</p>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <label className="flex items-center gap-2 px-3 py-3 bg-[var(--bg-elevated)] border border-dashed border-white/10 rounded-xl cursor-pointer hover:bg-white/5 transition-colors group">
-            <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center shrink-0">
-              <Upload className="w-4 h-4 text-purple-400" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold text-[var(--text-secondary)] group-hover:text-white transition-colors">
-                {localPersonaId === 'none' ? 'Upload your photos (required)' : 'Upload reference photos'}
-              </p>
-              <p className="text-[10px] text-[var(--text-muted)]">For face & identity consistency</p>
-            </div>
-            <input type="file" accept="image/*" multiple className="hidden" onChange={e => { const files = e.target.files; if (files) { Array.from(files).forEach(f => handleAddRefImage(f)); } e.target.value = ''; }} />
-          </label>
-        )}
-        {allRefImages.length > 0 && (
-          <div className="flex items-center justify-between">
-            <p className="text-[10px] text-[var(--text-muted)]">
-              {allRefImages.length === 1 ? '1 reference photo' : `${allRefImages.length} reference photos`} — all sent to Gemini for consistency
-            </p>
-            {(refImages.length > 0 || refPersonaId !== 'none') && (
-              <button onClick={() => { setRefImages([]); setRefPersonaId('none'); }} className="text-[10px] text-[var(--text-tertiary)] hover:text-rose-400 transition-colors">
-                Clear all
-              </button>
-            )}
-          </div>
-        )}
-        {localPersonaId === 'none' && allRefImages.length === 0 && (
-          <p className="text-[10px] text-amber-400/80">Upload at least one photo to generate in No-Persona mode</p>
-        )}
-      </div>
-
-      {/* ── Instructions ── */}
-      <textarea
-        value={imagePrompt}
-        onChange={e => setImagePrompt(e.target.value)}
-        placeholder="Additional instructions (optional)..."
-        className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white placeholder-[var(--text-muted)] resize-none h-20 outline-none focus:ring-2 focus:ring-purple-500"
-      />
-
-      {/* ── Advanced Settings (collapsible) ── */}
-      <div className="rounded-2xl border border-white/8 overflow-hidden">
-        <button
-          onClick={() => setAdvancedOpen(v => !v)}
-          className="w-full flex items-center justify-between px-4 py-3 bg-[var(--bg-elevated)]/50 hover:bg-white/5 transition-colors"
-        >
-          <div className="flex items-center gap-2">
-            <SlidersHorizontal className="w-3.5 h-3.5 text-purple-400" />
-            <span className="text-xs font-bold text-[var(--text-secondary)]">Advanced</span>
-            {!advancedOpen && (
-              <span className="text-[10px] text-[var(--text-muted)]">
-                {[naturalLook && 'Natural Look', identityLock && 'Identity Lock', `×${imageCount}`].filter(Boolean).join(' · ')}
-              </span>
-            )}
-          </div>
-          {advancedOpen ? <ChevronUp className="w-4 h-4 text-[var(--text-tertiary)]" /> : <ChevronDown className="w-4 h-4 text-[var(--text-tertiary)]" />}
-        </button>
-
-        {advancedOpen && (
-          <div className="px-4 py-3 space-y-4 bg-[var(--bg-elevated)]/20 border-t border-white/5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-bold text-[var(--text-secondary)]">Natural Look</p>
-                <p className="text-[10px] text-[var(--text-muted)] mt-0.5">Film grain, candid, no over-retouching</p>
-              </div>
-              <button
-                onClick={handleNaturalLookToggle}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${naturalLook ? 'bg-purple-600' : 'bg-[var(--bg-overlay)]'}`}
-              >
-                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${naturalLook ? 'translate-x-6' : 'translate-x-1'}`} />
-              </button>
-            </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-bold text-[var(--text-secondary)]">Identity Lock</p>
-                <p className="text-[10px] text-[var(--text-muted)] mt-0.5">Same exact face, bone structure &amp; features</p>
-              </div>
-              <button
-                onClick={handleIdentityLockToggle}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${identityLock ? 'bg-purple-600' : 'bg-[var(--bg-overlay)]'}`}
-              >
-                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${identityLock ? 'translate-x-6' : 'translate-x-1'}`} />
-              </button>
-            </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-bold text-[var(--text-secondary)]">Variations</p>
-                <p className="text-[10px] text-[var(--text-muted)] mt-0.5">Generate multiple images at once</p>
-              </div>
-              <div className="flex gap-1">
-                {[1, 2, 3, 4].map(n => (
-                  <button
-                    key={n}
-                    onClick={() => setImageCount(n)}
-                    className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${
-                      imageCount === n
-                        ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/30'
-                        : 'bg-[var(--bg-overlay)] text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)] hover:text-white'
-                    }`}
-                  >
-                    {n}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {localPersonaId === 'none' && allRefImages.length === 0 && (
-        <p className="text-xs text-amber-400 text-center">Upload your photo above to enable generation</p>
-      )}
-      <button
-        onClick={handleImageGenerate}
-        disabled={isGenerating || !selectedModel || (localPersonaId === 'none' && allRefImages.length === 0)}
-        className="w-full py-3.5 rounded-xl font-bold text-sm bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-lg shadow-purple-500/20"
-      >
-        {isGenerating ? (
-          <><Loader2 className="w-4 h-4 animate-spin" /> Generating {imageCount > 1 ? `${imageCount} variations` : ''}...</>
-        ) : (
-          <><Sparkles className="w-4 h-4" /> Generate {imageCount > 1 ? `${imageCount} Images` : 'Image'}</>
-        )}
-      </button>
-
     </div>
   );
 
