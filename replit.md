@@ -104,9 +104,10 @@ server/
   - Text: `--text-primary: #f4f4f5`, `--text-secondary: #a1a1aa`, `--text-tertiary: #63637a`, `--text-muted: #3f3f50`
   - Accent gradients: violet-600 to fuchsia-600 (primary), amber/gold (premium), emerald (success), rose (danger)
 - **Typography**: Inter (Google Fonts via @import), applied globally
-- **Animations**: Framer Motion (AnimatePresence page transitions, spring nav indicator, staggered list items, modals), CSS keyframes (fadeInUp, shimmer, skeleton-wave, glow-ping, hero-float)
-- **App Shell**: Fixed top app bar (54px) + scrollable 8-tab bottom nav bar (88px). Main content area uses `pt-[54px] pb-[88px]`.
-- **Utility Classes**: `.glass` / `.glass-strong` (backdrop-blur), `.gradient-text`, `.gradient-border`, `.premium-card` / `.premium-card-selected`, `.premium-button`, `.premium-input`, `.premium-header`, `.tag-pill`, `.skeleton` (loading shimmer), `.scrollbar-hide`, `.bubble-user` / `.bubble-assistant`, `.ring-glow`, `.avatar-ring`, `.stagger-1..5`, `.chip-gradient`, `.section-label`
+- **Animations**: Framer Motion (AnimatePresence direction-aware slide+blur tab transitions, spring nav indicator via `layoutId="nav-pill"`, animated segment control pill in AssistantView, staggered list items, modals), CSS keyframes (fadeInUp, shimmer, skeleton-wave, glow-ping, hero-float, typing-dot)
+- **App Shell**: Fixed top app bar (54px, Sparkles logo + "Influencer" subtitle) + scrollable 8-tab bottom nav bar (88px). Main content area uses `pt-[54px] pb-[88px]`. Tab transitions are direction-aware (left/right slide based on tab index order).
+- **CSS Variables**: `--accent-primary: #8b5cf6` and `--accent-secondary: #d946ef` added as aliases for LandingView + AIToolsView compatibility
+- **Utility Classes**: `.glass` / `.glass-strong` / `.glass-card` (backdrop-blur), `.gradient-text`, `.gradient-border`, `.premium-card` / `.premium-card-selected`, `.premium-button`, `.premium-input`, `.premium-header`, `.tag-pill`, `.skeleton` (loading shimmer), `.scrollbar-hide`, `.bubble-user` / `.bubble-assistant`, `.ring-glow`, `.avatar-ring`, `.stagger-1..5`, `.chip-gradient`, `.section-label`, `.stat-chip` (frosted stat chip), `.divider-gradient` (gradient hr), `.neon-line` (glowing accent line), `.typing-dot` (animated chat loading dots), `.segment-control` (iOS-style segment background)
 - **UI Components**: `src/components/ui/index.tsx` — Card, Button (primary/secondary/ghost/danger/accent variants), Input, Badge
 
 ## CSS Configuration

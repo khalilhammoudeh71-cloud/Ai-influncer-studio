@@ -429,9 +429,10 @@ function MessageBubble({ msg, persona }: { msg: ChatMessage; persona: Persona })
         )}
 
         {msg.type === 'loading' && (
-          <div className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-2">
-            <Loader2 size={14} className="animate-spin text-violet-400" />
-            <span className="text-xs text-[var(--text-tertiary)]">Generating…</span>
+          <div className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl rounded-bl-sm px-5 py-3.5 flex items-center gap-2.5">
+            <span className="typing-dot" />
+            <span className="typing-dot" />
+            <span className="typing-dot" />
           </div>
         )}
 

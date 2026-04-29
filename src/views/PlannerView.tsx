@@ -126,11 +126,14 @@ export default function PlannerView({ persona, personas, onSelectPersona }: Plan
         </motion.div>
       ) : (
         <div className="space-y-4">
-          <div className="flex justify-between items-center mb-2">
-            <h3 className="font-bold text-[var(--text-primary)]">Next 7 Days</h3>
+          <div className="flex justify-between items-center mb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="neon-line w-3" />
+              <h3 className="font-bold text-[var(--text-primary)]">Next 7 Days</h3>
+            </div>
             <button 
               onClick={handleReset}
-              className="text-violet-400 text-xs font-bold uppercase tracking-wider hover:text-violet-300 transition-colors"
+              className="text-[var(--text-muted)] text-xs font-bold uppercase tracking-wider hover:text-rose-400 transition-colors"
             >
               Reset
             </button>

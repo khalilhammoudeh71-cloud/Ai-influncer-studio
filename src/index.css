@@ -25,6 +25,9 @@
   --accent-emerald: #10b981;
   --accent-sky: #38bdf8;
 
+  --accent-primary: #8b5cf6;
+  --accent-secondary: #d946ef;
+
   --gradient-primary: linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%);
   --gradient-accent: linear-gradient(135deg, #7c3aed 0%, #ec4899 50%, #f59e0b 100%);
   --gradient-surface: linear-gradient(180deg, rgba(139,92,246,0.08) 0%, transparent 60%);
@@ -113,6 +116,14 @@ input, textarea, select {
   background: rgba(14, 14, 18, 0.92);
   backdrop-filter: blur(40px) saturate(180%);
   -webkit-backdrop-filter: blur(40px) saturate(180%);
+}
+
+.glass-card {
+  background: rgba(22, 22, 25, 0.85);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: var(--shadow-card);
 }
 
 .gradient-text {
@@ -385,4 +396,62 @@ input, textarea, select {
 /* ─── Inter font numeric ─────────────────────────────────────── */
 .tabular-nums {
   font-variant-numeric: tabular-nums;
+}
+
+/* ─── Typing dots (chat loading indicator) ───────────────────── */
+@keyframes typing-dot {
+  0%, 60%, 100% { opacity: 0.25; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-3px); }
+}
+
+.typing-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent-violet);
+  display: inline-block;
+  animation: typing-dot 1.4s ease-in-out infinite;
+}
+
+.typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+/* ─── Frosted stat chip ──────────────────────────────────────── */
+.stat-chip {
+  background: rgba(139, 92, 246, 0.06);
+  border: 1px solid rgba(139, 92, 246, 0.12);
+  border-radius: 12px;
+  padding: 8px 14px;
+}
+
+/* ─── Gradient divider ───────────────────────────────────────── */
+.divider-gradient {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(139,92,246,0.2), transparent);
+}
+
+/* ─── Card inner glow on active/hover ────────────────────────── */
+.card-glow-hover:hover::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(ellipse at 50% 0%, rgba(139,92,246,0.06) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+/* ─── iOS-style segment control ─────────────────────────────── */
+.segment-control {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 3px;
+}
+
+/* ─── Neon line accent ───────────────────────────────────────── */
+.neon-line {
+  height: 2px;
+  background: linear-gradient(90deg, #8b5cf6, #d946ef);
+  box-shadow: 0 0 8px rgba(139,92,246,0.6), 0 0 16px rgba(217,70,239,0.3);
+  border-radius: 999px;
 }

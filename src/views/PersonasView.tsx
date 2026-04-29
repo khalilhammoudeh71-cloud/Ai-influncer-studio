@@ -463,14 +463,14 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
   return (
     <div className="p-5">
       {!viewingPersona && <>
-      <header className="premium-header mb-8 pt-6 pb-2">
+      <header className="premium-header mb-6 pt-6 pb-2">
         <div className="flex justify-between items-start relative z-10">
           <div>
             <h1 className="text-3xl font-extrabold tracking-tight">
               <span className="gradient-text">Personas</span>
             </h1>
             <p className="text-[var(--text-tertiary)] text-sm mt-1.5 font-medium">
-              {personas.length} {personas.length === 1 ? 'identity' : 'identities'} managed
+              Your AI identity studio
             </p>
           </div>
           <motion.button 
@@ -482,7 +482,26 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
             <Plus size={22} />
           </motion.button>
         </div>
+
+        {personas.length > 0 && (
+          <div className="flex gap-3 mt-4 relative z-10">
+            <div className="stat-chip flex-1 text-center">
+              <div className="text-lg font-black text-[var(--text-primary)] tabular-nums">{personas.length}</div>
+              <div className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-[0.12em] mt-0.5">Total</div>
+            </div>
+            <div className="stat-chip flex-1 text-center">
+              <div className="text-lg font-black text-emerald-400 tabular-nums">{personas.filter(p => p.status === 'Active').length}</div>
+              <div className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-[0.12em] mt-0.5">Active</div>
+            </div>
+            <div className="stat-chip flex-1 text-center">
+              <div className="text-lg font-black text-violet-400 tabular-nums">{new Set(personas.map(p => p.platform)).size}</div>
+              <div className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-[0.12em] mt-0.5">Platforms</div>
+            </div>
+          </div>
+        )}
       </header>
+
+      <div className="divider-gradient mb-5" />
 
       <div className="relative mb-6">
         <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" size={16} />
@@ -1104,24 +1123,55 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
         , document.body)}
 
         {personas.length === 0 && (
-          <div className="text-center py-12 px-4 border-2 border-dashed border-[var(--border-subtle)] rounded-[40px] bg-white/[0.02]">
-            <div className="w-16 h-16 bg-[var(--bg-elevated)] rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <Plus className="text-[var(--text-tertiary)]" size={32} />
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+            className="text-center py-14 px-6 relative overflow-hidden rounded-3xl"
+            style={{ background: 'linear-gradient(145deg, rgba(139,92,246,0.04) 0%, rgba(14,14,18,0.8) 60%, rgba(217,70,239,0.03) 100%)', border: '1px solid rgba(139,92,246,0.12)' }}
+          >
+            <div className="absolute inset-0 pointer-events-none overflow-hidden rounded-3xl">
+              <div className="absolute top-[-60px] left-1/2 -translate-x-1/2 w-[300px] h-[160px] rounded-full"
+                style={{ background: 'radial-gradient(ellipse, rgba(139,92,246,0.08) 0%, transparent 70%)' }} />
             </div>
-            <h3 className="text-lg font-semibold mb-2">No personas yet</h3>
-            <p className="text-[var(--text-secondary)] text-sm max-w-xs mx-auto mb-8 leading-relaxed">
-              Create your first AI identity to start planning and generating content.
-            </p>
-          </div>
+            <div className="relative z-10">
+              <div className="w-20 h-20 mx-auto mb-5 relative">
+                <div className="absolute inset-0 rounded-2xl animate-pulse"
+                  style={{ background: 'linear-gradient(135deg, rgba(139,92,246,0.2), rgba(217,70,239,0.15))' }} />
+                <div className="relative w-full h-full rounded-2xl flex items-center justify-center"
+                  style={{ background: 'linear-gradient(135deg, rgba(139,92,246,0.15), rgba(217,70,239,0.1))', border: '1px solid rgba(139,92,246,0.2)' }}>
+                  <Sparkles className="text-violet-400" size={32} />
+                </div>
+              </div>
+              <h3 className="text-xl font-bold mb-2 text-[var(--text-primary)]">Build your first AI identity</h3>
+              <p className="text-[var(--text-tertiary)] text-sm max-w-[240px] mx-auto mb-8 leading-relaxed">
+                Create a persona and start generating viral content, voices, and images.
+              </p>
+              <motion.button
+                whileHover={{ scale: 1.02, y: -1 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={handleAddPersona}
+                className="premium-button px-8 py-3.5 mx-auto flex items-center gap-2 text-white"
+              >
+                <Plus size={18} />
+                Create First Persona
+              </motion.button>
+            </div>
+          </motion.div>
         )}
 
-        <button 
-          onClick={handleAddPersona}
-          className="flex items-center justify-center gap-2 w-full py-8 border-2 border-dashed border-[var(--border-subtle)] rounded-2xl text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:border-[var(--border-default)] transition-all group"
-        >
-          <Plus size={20} className="group-hover:scale-110 transition-transform" />
-          <span className="font-medium text-sm">Add New Persona</span>
-        </button>
+        {personas.length > 0 && (
+          <motion.button 
+            whileHover={{ scale: 1.01 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={handleAddPersona}
+            className="flex items-center justify-center gap-2 w-full py-5 rounded-2xl text-[var(--text-tertiary)] hover:text-violet-400 transition-all group"
+            style={{ border: '2px dashed rgba(139,92,246,0.15)', background: 'rgba(139,92,246,0.02)' }}
+          >
+            <Plus size={18} className="group-hover:scale-110 transition-transform" />
+            <span className="font-semibold text-sm">Add New Persona</span>
+          </motion.button>
+        )}
       </div>
 
       </>}

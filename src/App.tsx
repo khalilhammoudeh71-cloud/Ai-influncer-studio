@@ -8,7 +8,8 @@ import {
   MessageCircle,
   Settings,
   Mic,
-  Wrench
+  Wrench,
+  Sparkles
 } from 'lucide-react';
 import { cn } from './utils/cn';
 import { Persona, RevenueEntry, PlannedPost } from './types';
@@ -67,6 +68,7 @@ function App() {
   });
 
   const hasMigrated = useRef(false);
+  const prevTabRef = useRef<Tab>('personas');
 
   const loadPersonas = useCallback(async () => {
     try {
@@ -164,12 +166,29 @@ function App() {
     return (
       <div className="flex items-center justify-center min-h-screen bg-[var(--bg-base)]">
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="flex flex-col items-center gap-4"
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+          className="flex flex-col items-center gap-5"
         >
-          <div className="w-8 h-8 border-2 border-violet-500/30 border-t-violet-500 rounded-full animate-spin" />
-          <p className="text-[var(--text-tertiary)] text-sm">Loading your studio...</p>
+          <div className="relative">
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center"
+              style={{ background: 'linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%)', boxShadow: '0 8px 40px -8px rgba(139,92,246,0.6)' }}
+            >
+              <Sparkles size={28} className="text-white" />
+            </div>
+            <div className="absolute -inset-1 rounded-2xl border border-violet-500/20 animate-pulse" />
+          </div>
+          <div className="flex flex-col items-center gap-2">
+            <p className="text-[var(--text-primary)] text-sm font-semibold">Loading your studio</p>
+            <div className="flex gap-1.5">
+              {[0,1,2].map(i => (
+                <div key={i} className="w-1.5 h-1.5 rounded-full bg-violet-400/60 animate-bounce"
+                  style={{ animationDelay: `${i * 0.15}s` }}
+                />
+              ))}
+            </div>
+          </div>
         </motion.div>
       </div>
     );
@@ -187,6 +206,12 @@ function App() {
     { id: 'chat', label: 'Chat', icon: MessageCircle },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
+
+  const getTabDirection = (from: Tab, to: Tab) => {
+    const fromIdx = tabs.findIndex(t => t.id === from);
+    const toIdx = tabs.findIndex(t => t.id === to);
+    return toIdx > fromIdx ? 1 : -1;
+  };
 
   const renderContent = () => {
     switch (activeTab) {
@@ -211,11 +236,14 @@ function App() {
           <div className="flex items-center gap-2.5">
             <div
               className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
-              style={{ background: 'linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%)', boxShadow: '0 2px 12px -2px rgba(139,92,246,0.45)' }}
+              style={{ background: 'linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%)', boxShadow: '0 2px 16px -2px rgba(139,92,246,0.55)' }}
             >
-              <Users size={16} className="text-white" strokeWidth={2} />
+              <Sparkles size={15} className="text-white" strokeWidth={2} />
             </div>
-            <span className="text-[15px] font-extrabold tracking-tight gradient-text">AI Studio</span>
+            <div className="flex flex-col leading-none">
+              <span className="text-[15px] font-extrabold tracking-tight gradient-text">AI Studio</span>
+              <span className="text-[9px] font-bold text-[var(--text-muted)] tracking-[0.12em] uppercase">Influencer</span>
+            </div>
           </div>
 
           <motion.button
@@ -248,14 +276,15 @@ function App() {
         <div style={{ display: activeTab === 'create' ? 'block' : 'none' }}>
           <CreateView persona={activePersona} personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} />
         </div>
-        <AnimatePresence mode="wait">
+        <AnimatePresence mode="wait" custom={getTabDirection(prevTabRef.current, activeTab)}>
           {activeTab !== 'create' && (
             <motion.div
               key={activeTab}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+              custom={getTabDirection(prevTabRef.current, activeTab)}
+              initial={(dir: number) => ({ opacity: 0, x: dir * 18, filter: 'blur(2px)' })}
+              animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
+              exit={(dir: number) => ({ opacity: 0, x: dir * -18, filter: 'blur(2px)' })}
+              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
             >
               {renderContent()}
             </motion.div>
@@ -267,7 +296,7 @@ function App() {
       <nav className="fixed bottom-0 left-0 right-0 z-50">
         <div className="action-bar" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
           <div
-            className="flex items-center gap-0.5 px-2 pt-2 pb-3 overflow-x-auto scrollbar-hide"
+            className="flex items-center gap-0 px-1 pt-2 pb-3.5 overflow-x-auto scrollbar-hide"
           >
             {tabs.map((tab) => {
               const Icon = tab.icon;
@@ -275,7 +304,7 @@ function App() {
               return (
                 <motion.button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id as Tab)}
+                  onClick={() => { prevTabRef.current = activeTab; setActiveTab(tab.id as Tab); }}
                   whileTap={{ scale: 0.9 }}
                   className="flex flex-col items-center gap-0.5 min-w-[60px] flex-1 py-1 relative"
                 >

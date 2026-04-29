@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Send, User, Bot, Sparkles, MessageSquareQuote, History, Copy, Download, Heart, RefreshCw, ChevronDown } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../utils/cn';
 import { Persona } from '../types';
 import { generateAssistantReply, generatePersonaContent } from '../utils/personaEngine';
@@ -164,25 +164,30 @@ export default function AssistantView({ persona, personas }: AssistantViewProps)
           </div>
         </div>
 
-        <div className="flex premium-card p-1 rounded-xl">
-          <button 
-            onClick={() => setActiveSegment('chat')}
-            className={cn(
-              "flex-1 py-2 text-xs font-bold rounded-lg transition-all duration-200",
-              activeSegment === 'chat' ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-lg shadow-violet-500/15" : "text-[var(--text-muted)]"
-            )}
-          >
-            Chat
-          </button>
-          <button 
-            onClick={() => setActiveSegment('replies')}
-            className={cn(
-              "flex-1 py-2 text-xs font-bold rounded-lg transition-all duration-200",
-              activeSegment === 'replies' ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-lg shadow-violet-500/15" : "text-[var(--text-muted)]"
-            )}
-          >
-            Replies
-          </button>
+        <div className="flex segment-control relative">
+          {(['chat', 'replies'] as const).map(seg => (
+            <button
+              key={seg}
+              onClick={() => setActiveSegment(seg)}
+              className={cn(
+                "flex-1 py-2 text-xs font-bold rounded-[9px] relative z-10 transition-colors duration-200",
+                activeSegment === seg ? "text-white" : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+              )}
+            >
+              {seg === 'chat' ? 'Chat' : 'Replies'}
+            </button>
+          ))}
+          <motion.div
+            layoutId="assistant-segment-pill"
+            className="absolute inset-y-[3px] rounded-[9px] pointer-events-none"
+            style={{
+              left: activeSegment === 'chat' ? '3px' : '50%',
+              right: activeSegment === 'replies' ? '3px' : '50%',
+              background: 'linear-gradient(135deg, #7c3aed 0%, #d946ef 100%)',
+              boxShadow: '0 2px 12px -2px rgba(139,92,246,0.4)',
+            }}
+            transition={{ type: 'spring', stiffness: 500, damping: 38 }}
+          />
         </div>
       </header>
 
@@ -212,9 +217,13 @@ export default function AssistantView({ persona, personas }: AssistantViewProps)
                   : "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white"
               )}>
                 {m.isGenerating ? (
-                  <div className="flex items-center gap-3">
-                    <div className="w-4 h-4 border-2 border-violet-500/30 border-t-violet-500 rounded-full animate-spin" />
-                    <span>{m.content}</span>
+                  <div className="flex items-center gap-3 py-0.5">
+                    <div className="flex gap-1.5 items-center">
+                      <span className="typing-dot" />
+                      <span className="typing-dot" />
+                      <span className="typing-dot" />
+                    </div>
+                    <span className="text-[var(--text-tertiary)] text-xs">{m.content}</span>
                   </div>
                 ) : (
                   m.content
