@@ -2361,15 +2361,18 @@ async function handleTTS(req: express.Request, res: express.Response) {
     }
   }
 
-  // Gemini TTS (default) — uses integration proxy; falls back to OpenAI if unavailable
+  // Gemini TTS (default) — prefer direct key (supports audio modalities), fall back to integration proxy, then OpenAI
+  const geminiDirectKey = process.env.GEMINI_API_KEY;
   const geminiIntKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
   const geminiIntBase = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
-  const geminiAi = geminiIntKey && geminiIntBase
-    ? new GoogleGenAI({ apiKey: geminiIntKey, baseURL: geminiIntBase } as ConstructorParameters<typeof GoogleGenAI>[0])
-    : null;
+  const geminiAi = geminiDirectKey
+    ? new GoogleGenAI({ apiKey: geminiDirectKey })
+    : geminiIntKey && geminiIntBase
+      ? new GoogleGenAI({ apiKey: geminiIntKey, baseURL: geminiIntBase } as ConstructorParameters<typeof GoogleGenAI>[0])
+      : null;
 
   if (!geminiAi) {
-    // No working Gemini — fall directly to OpenAI
+    // No Gemini available — fall directly to OpenAI
     try {
       const openaiKey = process.env.Openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY || '';
       const openaiBase = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
@@ -2541,10 +2544,15 @@ app.post('/api/talking-head', async (req, res) => {
 
   let resolvedAudioUrl = audioUrl || '';
 
-  // If no audio URL provided, generate TTS from script via Gemini
+  // If no audio URL provided, generate TTS from script via Gemini (prefer direct key for audio modalities)
   if (!resolvedAudioUrl && script) {
     try {
-      const ai = getGeminiClient();
+      const ttsKey = process.env.GEMINI_API_KEY || process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+      const ttsBase = process.env.GEMINI_API_KEY ? undefined : process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
+      if (!ttsKey) throw new Error('No Gemini key for TTS');
+      const ai = ttsBase
+        ? new GoogleGenAI({ apiKey: ttsKey, baseURL: ttsBase } as ConstructorParameters<typeof GoogleGenAI>[0])
+        : new GoogleGenAI({ apiKey: ttsKey });
       const ttsResult = await ai.models.generateContent({
         model: 'gemini-2.5-flash-preview-tts',
         contents: [{ role: 'user', parts: [{ text: script }] }],
