@@ -2230,6 +2230,355 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', wavespeedConfigured: !!WAVESPEED_API_KEY });
 });
 
+// ─── Config Status ────────────────────────────────────────────────────────────
+app.get('/api/config-status', (_req, res) => {
+  res.json({
+    openai: !!(process.env.Openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY),
+    gemini: !!(process.env.GEMINI_API_KEY || process.env.AI_INTEGRATIONS_GEMINI_API_KEY),
+    wavespeed: !!WAVESPEED_API_KEY,
+    elevenlabs: !!(process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key),
+    database: !!process.env.DATABASE_URL,
+    databaseConnected: !!process.env.DATABASE_URL,
+  });
+});
+
+// ─── ElevenLabs Voices ────────────────────────────────────────────────────────
+app.get('/api/elevenlabs-voices', async (_req, res) => {
+  const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key || '';
+  if (!elKey) return res.status(503).json({ error: 'ElevenLabs API key not configured', voices: [] });
+  try {
+    const r = await fetch('https://api.elevenlabs.io/v1/voices', { headers: { 'xi-api-key': elKey } });
+    const data = await r.json() as { voices?: unknown[] };
+    res.json({ voices: data.voices || [] });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to fetch voices', voices: [] });
+  }
+});
+
+// ─── Generate Voice Script ────────────────────────────────────────────────────
+app.post('/api/generate-voice-script', async (req, res) => {
+  const { topic, persona, mode = 'script', existingScript, length = 'medium' } = req.body as {
+    topic: string; persona: { name: string; niche: string; tone: string; platform: string; bio?: string };
+    mode?: string; existingScript?: string; length?: string;
+  };
+  if (!topic && !existingScript) return res.status(400).json({ error: 'topic or existingScript required' });
+
+  const wordCount = length === 'short' ? '60-90' : length === 'long' ? '200-280' : '100-140';
+  let prompt: string;
+  if (mode === 'improve' && existingScript) {
+    prompt = `Improve this script for ${persona.name} (${persona.niche} creator on ${persona.platform}, tone: ${persona.tone}):\n\n${existingScript}\n\nMake it more engaging, natural and suitable for TTS. Return only the improved script text.`;
+  } else {
+    prompt = `Write a ${wordCount}-word voiceover script for ${persona.name}, a ${persona.niche} content creator on ${persona.platform}. Tone: ${persona.tone}. Topic: "${topic}". Write naturally for text-to-speech — conversational, no stage directions, no headings. Return only the script text.`;
+  }
+
+  // Try Gemini integration proxy first, then fall back to OpenAI
+  const geminiIntegrationKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+  const geminiBaseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
+
+  if (geminiIntegrationKey && geminiBaseUrl) {
+    try {
+      const ai = new GoogleGenAI({ apiKey: geminiIntegrationKey, baseURL: geminiBaseUrl } as ConstructorParameters<typeof GoogleGenAI>[0]);
+      const result = await ai.models.generateContent({ model: 'gemini-2.0-flash', contents: [{ role: 'user', parts: [{ text: prompt }] }] });
+      const script = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '';
+      if (script) return res.json({ script });
+    } catch { /* fall through to OpenAI */ }
+  }
+
+  // OpenAI fallback
+  try {
+    const openaiKey = process.env.Openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY || '';
+    const openaiBase = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+    if (!openaiKey) return res.status(503).json({ error: 'No AI provider configured for script generation' });
+    const openai = new OpenAI({ apiKey: openaiKey, ...(openaiBase ? { baseURL: openaiBase } : {}) });
+    const chat = await openai.chat.completions.create({ model: 'gpt-4o-mini', messages: [{ role: 'user', content: prompt }] });
+    const script = chat.choices[0]?.message?.content?.trim() ?? '';
+    res.json({ script });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Script generation failed' });
+  }
+});
+
+// ─── Shared TTS handler ────────────────────────────────────────────────────────
+async function handleTTS(req: express.Request, res: express.Response) {
+  const {
+    text,
+    voiceName, voice: voiceParam,
+    voiceId,
+    engine = 'gemini',
+    speed = 1.0,
+    voiceSettings,
+  } = req.body as {
+    text: string; voiceName?: string; voice?: string; voiceId?: string;
+    engine?: 'gemini' | 'openai' | 'elevenlabs'; speed?: number;
+    voiceSettings?: { stability?: number; similarity_boost?: number; style?: number };
+  };
+  const resolvedVoice = voiceName || voiceParam || 'Aoede';
+
+  if (!text?.trim()) return res.status(400).json({ error: 'text is required' });
+
+  // ElevenLabs
+  if (engine === 'elevenlabs') {
+    const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key || '';
+    if (!elKey) return res.status(503).json({ error: 'ElevenLabs API key not configured' });
+    if (!voiceId) return res.status(400).json({ error: 'voiceId is required for ElevenLabs' });
+    try {
+      const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+        method: 'POST',
+        headers: { 'xi-api-key': elKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text,
+          model_id: 'eleven_multilingual_v2',
+          voice_settings: { stability: voiceSettings?.stability ?? 0.5, similarity_boost: voiceSettings?.similarity_boost ?? 0.75, style: voiceSettings?.style ?? 0.0 },
+        }),
+      });
+      if (!r.ok) {
+        const err = await r.text();
+        return res.status(500).json({ error: `ElevenLabs error: ${err.substring(0, 200)}` });
+      }
+      const buf = Buffer.from(await r.arrayBuffer());
+      const audioUrl = `data:audio/mpeg;base64,${buf.toString('base64')}`;
+      return res.json({ audioUrl, voice: voiceId, model: 'eleven_multilingual_v2', engine: 'elevenlabs' });
+    } catch (err) {
+      return res.status(500).json({ error: err instanceof Error ? err.message : 'ElevenLabs TTS failed' });
+    }
+  }
+
+  // OpenAI TTS
+  if (engine === 'openai') {
+    try {
+      const openaiKey = process.env.Openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY || '';
+      const openaiBase = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+      if (!openaiKey) return res.status(503).json({ error: 'OpenAI API key not configured' });
+      const openai = new OpenAI({ apiKey: openaiKey, ...(openaiBase ? { baseURL: openaiBase } : {}) });
+      const OPENAI_VOICES = ['alloy','echo','fable','onyx','nova','shimmer'];
+      const oaiVoice = (OPENAI_VOICES.includes(resolvedVoice.toLowerCase()) ? resolvedVoice.toLowerCase() : 'nova') as 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer';
+      const mp3 = await openai.audio.speech.create({ model: 'tts-1', voice: oaiVoice, input: text, ...(speed !== 1.0 ? { speed } : {}) });
+      const buf = Buffer.from(await mp3.arrayBuffer());
+      const audioUrl = `data:audio/mpeg;base64,${buf.toString('base64')}`;
+      return res.json({ audioUrl, voice: oaiVoice, model: 'tts-1', engine: 'openai' });
+    } catch (err) {
+      return res.status(500).json({ error: err instanceof Error ? err.message : 'OpenAI TTS failed' });
+    }
+  }
+
+  // Gemini TTS (default) — uses integration proxy; falls back to OpenAI if unavailable
+  const geminiIntKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+  const geminiIntBase = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
+  const geminiAi = geminiIntKey && geminiIntBase
+    ? new GoogleGenAI({ apiKey: geminiIntKey, baseURL: geminiIntBase } as ConstructorParameters<typeof GoogleGenAI>[0])
+    : null;
+
+  if (!geminiAi) {
+    // No working Gemini — fall directly to OpenAI
+    try {
+      const openaiKey = process.env.Openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY || '';
+      const openaiBase = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+      if (!openaiKey) return res.status(503).json({ error: 'No TTS provider configured' });
+      const openai = new OpenAI({ apiKey: openaiKey, ...(openaiBase ? { baseURL: openaiBase } : {}) });
+      const mp3 = await openai.audio.speech.create({ model: 'tts-1', voice: 'nova', input: text });
+      const buf = Buffer.from(await mp3.arrayBuffer());
+      return res.json({ audioUrl: `data:audio/mpeg;base64,${buf.toString('base64')}`, voice: 'nova', model: 'tts-1', engine: 'openai-fallback' });
+    } catch (err2) {
+      return res.status(500).json({ error: err2 instanceof Error ? err2.message : 'TTS failed' });
+    }
+  }
+
+  try {
+    const result = await geminiAi.models.generateContent({
+      model: 'gemini-2.5-flash-preview-tts',
+      contents: [{ role: 'user', parts: [{ text }] }],
+      config: {
+        responseModalities: ['AUDIO'],
+        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: resolvedVoice } } },
+      } as Record<string, unknown>,
+    });
+    const inlineData = result.candidates?.[0]?.content?.parts?.[0]?.inlineData;
+    if (!inlineData?.data) {
+      // Fall back to OpenAI TTS if Gemini returns no audio
+      const openaiKey = process.env.Openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY || '';
+      const openaiBase = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+      if (openaiKey) {
+        const openai = new OpenAI({ apiKey: openaiKey, ...(openaiBase ? { baseURL: openaiBase } : {}) });
+        const mp3 = await openai.audio.speech.create({ model: 'tts-1', voice: 'nova', input: text });
+        const buf = Buffer.from(await mp3.arrayBuffer());
+        return res.json({ audioUrl: `data:audio/mpeg;base64,${buf.toString('base64')}`, voice: 'nova', model: 'tts-1', engine: 'openai-fallback' });
+      }
+      return res.status(500).json({ error: 'Gemini TTS returned no audio data' });
+    }
+    const mimeType = (inlineData.mimeType as string) || 'audio/wav';
+    const audioUrl = `data:${mimeType};base64,${inlineData.data}`;
+    return res.json({ audioUrl, voice: resolvedVoice, model: 'gemini-tts', engine: 'gemini' });
+  } catch (err) {
+    // Final fallback to OpenAI
+    try {
+      const openaiKey = process.env.Openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY || '';
+      const openaiBase = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+      if (openaiKey) {
+        const openai = new OpenAI({ apiKey: openaiKey, ...(openaiBase ? { baseURL: openaiBase } : {}) });
+        const mp3 = await openai.audio.speech.create({ model: 'tts-1', voice: 'nova', input: text });
+        const buf = Buffer.from(await mp3.arrayBuffer());
+        return res.json({ audioUrl: `data:audio/mpeg;base64,${buf.toString('base64')}`, voice: 'nova', model: 'tts-1', engine: 'openai-fallback' });
+      }
+    } catch { /* ignore fallback error */ }
+    return res.status(500).json({ error: err instanceof Error ? err.message : 'Gemini TTS failed' });
+  }
+}
+
+app.post('/api/generate-speech', handleTTS);
+app.post('/api/text-to-speech', handleTTS);
+
+// ─── Face Swap ────────────────────────────────────────────────────────────────
+app.post('/api/face-swap', async (req, res) => {
+  if (!WAVESPEED_API_KEY) return res.status(503).json({ error: 'Wavespeed not configured' });
+  const { targetImage, swapImage, faceEnhance = true } = req.body as { targetImage: string; swapImage: string; faceEnhance?: boolean };
+  if (!targetImage || !swapImage) return res.status(400).json({ error: 'targetImage and swapImage are required' });
+  try {
+    const [tgt, swp] = await Promise.all([resolveImageToDataUrl(targetImage), resolveImageToDataUrl(swapImage)]);
+    const r = await fetch(`${WAVESPEED_BASE}/wavespeed-ai/image-face-swap`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${WAVESPEED_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target_image: tgt, swap_image: swp, face_enhance: faceEnhance }),
+    });
+    const json = await r.json() as Record<string, unknown>;
+    const imageUrl = await extractWavespeedOutput(json);
+    res.json({ imageUrl, model: 'wavespeed-ai/image-face-swap' });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Face swap failed' });
+  }
+});
+
+// ─── Background Removal ───────────────────────────────────────────────────────
+app.post('/api/remove-background', async (req, res) => {
+  if (!WAVESPEED_API_KEY) return res.status(503).json({ error: 'Wavespeed not configured' });
+  const { image } = req.body as { image: string };
+  if (!image) return res.status(400).json({ error: 'image is required' });
+  try {
+    const img = await resolveImageToDataUrl(image);
+    const r = await fetch(`${WAVESPEED_BASE}/wavespeed-ai/image-background-remover`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${WAVESPEED_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: img }),
+    });
+    const json = await r.json() as Record<string, unknown>;
+    const imageUrl = await extractWavespeedOutput(json);
+    res.json({ imageUrl, model: 'wavespeed-ai/image-background-remover' });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Background removal failed' });
+  }
+});
+
+// ─── Virtual Try-On ───────────────────────────────────────────────────────────
+app.post('/api/virtual-tryon', async (req, res) => {
+  if (!WAVESPEED_API_KEY) return res.status(503).json({ error: 'Wavespeed not configured' });
+  const { personImage, garmentImage, garmentDescription = '' } = req.body as { personImage: string; garmentImage: string; garmentDescription?: string };
+  if (!personImage || !garmentImage) return res.status(400).json({ error: 'personImage and garmentImage are required' });
+  try {
+    const [person, garment] = await Promise.all([resolveImageToDataUrl(personImage), resolveImageToDataUrl(garmentImage)]);
+    const r = await fetch(`${WAVESPEED_BASE}/wavespeed-ai/ai-virtual-outfit-tryon`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${WAVESPEED_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model_image: person, garment_image: garment, garment_des: garmentDescription }),
+    });
+    const json = await r.json() as Record<string, unknown>;
+    const imageUrl = await extractWavespeedOutput(json);
+    res.json({ imageUrl, model: 'wavespeed-ai/ai-virtual-outfit-tryon' });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Virtual try-on failed' });
+  }
+});
+
+// ─── Look Swap ────────────────────────────────────────────────────────────────
+app.post('/api/look-swap', async (req, res) => {
+  if (!WAVESPEED_API_KEY) return res.status(503).json({ error: 'Wavespeed not configured' });
+  const { sourceImage, faceReferenceImage, prompt, swapType = 'outfit', aspectRatio = '1:1' } = req.body as {
+    sourceImage: string; faceReferenceImage?: string; prompt: string;
+    swapType?: 'outfit' | 'background' | 'hairstyle' | 'full-scene'; aspectRatio?: string;
+  };
+  if (!sourceImage || !prompt) return res.status(400).json({ error: 'sourceImage and prompt are required' });
+
+  // For outfit swapType with garment ref, use virtual try-on; otherwise use image editing
+  if (swapType === 'outfit' && faceReferenceImage) {
+    try {
+      const [src, ref] = await Promise.all([resolveImageToDataUrl(sourceImage), resolveImageToDataUrl(faceReferenceImage)]);
+      const r = await fetch(`${WAVESPEED_BASE}/wavespeed-ai/ai-virtual-outfit-tryon`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${WAVESPEED_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model_image: src, garment_image: ref, garment_des: prompt }),
+      });
+      const json = await r.json() as Record<string, unknown>;
+      const imageUrl = await extractWavespeedOutput(json);
+      return res.json({ imageUrl, model: 'wavespeed-ai/ai-virtual-outfit-tryon', promptUsed: prompt });
+    } catch (err) {
+      return res.status(500).json({ error: err instanceof Error ? err.message : 'Look swap failed' });
+    }
+  }
+
+  // General look swap via Wavespeed image edit model (Nano Banana Pro)
+  try {
+    const src = await resolveImageToDataUrl(sourceImage);
+    const editModel = swapType === 'background' ? 'google/nano-banana-2/edit-fast' : 'google/nano-banana-pro/edit';
+    const r = await fetch(`${WAVESPEED_BASE}/${editModel}`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${WAVESPEED_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: src, prompt, enable_sync_mode: true, enable_base64_output: true, aspect_ratio: aspectRatio }),
+    });
+    const json = await r.json() as Record<string, unknown>;
+    const imageUrl = await extractWavespeedOutput(json);
+    res.json({ imageUrl, model: editModel, promptUsed: prompt });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Look swap failed' });
+  }
+});
+
+// ─── Talking Head ─────────────────────────────────────────────────────────────
+app.post('/api/talking-head', async (req, res) => {
+  if (!WAVESPEED_API_KEY) return res.status(503).json({ error: 'Wavespeed not configured' });
+  const { portraitImage, audioUrl, script, voiceName = 'Aoede' } = req.body as {
+    portraitImage: string; audioUrl?: string; script?: string; voiceName?: string;
+  };
+  if (!portraitImage) return res.status(400).json({ error: 'portraitImage is required' });
+  if (!audioUrl && !script) return res.status(400).json({ error: 'audioUrl or script is required' });
+
+  let resolvedAudioUrl = audioUrl || '';
+
+  // If no audio URL provided, generate TTS from script via Gemini
+  if (!resolvedAudioUrl && script) {
+    try {
+      const ai = getGeminiClient();
+      const ttsResult = await ai.models.generateContent({
+        model: 'gemini-2.5-flash-preview-tts',
+        contents: [{ role: 'user', parts: [{ text: script }] }],
+        config: {
+          responseModalities: ['AUDIO'],
+          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } },
+        } as Record<string, unknown>,
+      });
+      const inlineData = ttsResult.candidates?.[0]?.content?.parts?.[0]?.inlineData;
+      if (inlineData?.data) {
+        const mimeType = (inlineData.mimeType as string) || 'audio/wav';
+        resolvedAudioUrl = `data:${mimeType};base64,${inlineData.data}`;
+      }
+    } catch {
+      // TTS failed — try with a dummy audio approach or return error
+      return res.status(500).json({ error: 'Failed to generate TTS audio for talking head' });
+    }
+  }
+
+  try {
+    const img = await resolveImageToDataUrl(portraitImage);
+    const r = await fetch(`${WAVESPEED_BASE}/wavespeed-ai/ai-talking-photos`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${WAVESPEED_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_url: img, audio_url: resolvedAudioUrl }),
+    });
+    const json = await r.json() as Record<string, unknown>;
+    const videoUrl = await extractWavespeedVideoOutput(json);
+    res.json({ videoUrl, model: 'wavespeed-ai/ai-talking-photos' });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Talking head generation failed' });
+  }
+});
+
 async function pushSchema() {
   try {
     const pool = new Pool({ connectionString: process.env.DATABASE_URL });
