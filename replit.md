@@ -97,18 +97,20 @@ server/
 
 ## Design System
 - **Color Palette**: CSS custom properties in `src/index.css`
-  - Backgrounds: `--bg-base: #09090b`, `--bg-surface: #131316`, `--bg-elevated: #1a1a1f`, `--bg-overlay: #222228`
+  - Backgrounds: `--bg-base: #050507`, `--bg-surface: #0e0e12`, `--bg-elevated: #161619`, `--bg-overlay: #1e1e23`
   - Borders: `--border-subtle`, `--border-default`, `--border-strong` (white with varying opacity)
   - Text: `--text-primary: #f4f4f5`, `--text-secondary: #a1a1aa`, `--text-tertiary: #63637a`, `--text-muted: #3f3f50`
   - Accent gradients: violet-600 to fuchsia-600 (primary), amber/gold (premium), emerald (success), rose (danger)
-- **Typography**: Inter (Google Fonts), applied globally
-- **Animations**: Framer Motion for page transitions (AnimatePresence), nav indicator (layoutId spring), staggered list items, modals (spring slide-up)
-- **Utility Classes**: `.glass` / `.glass-strong` (backdrop-blur), `.gradient-text`, `.gradient-border`, `.animate-shimmer`, `.animate-fade-in-up`
+- **Typography**: Inter (Google Fonts via @import), applied globally
+- **Animations**: Framer Motion (AnimatePresence page transitions, spring nav indicator, staggered list items, modals), CSS keyframes (fadeInUp, shimmer, skeleton-wave, glow-ping, hero-float)
+- **App Shell**: Fixed top app bar (54px) + scrollable 8-tab bottom nav bar (88px). Main content area uses `pt-[54px] pb-[88px]`.
+- **Utility Classes**: `.glass` / `.glass-strong` (backdrop-blur), `.gradient-text`, `.gradient-border`, `.premium-card` / `.premium-card-selected`, `.premium-button`, `.premium-input`, `.premium-header`, `.tag-pill`, `.skeleton` (loading shimmer), `.scrollbar-hide`, `.bubble-user` / `.bubble-assistant`, `.ring-glow`, `.avatar-ring`, `.stagger-1..5`, `.chip-gradient`, `.section-label`
 - **UI Components**: `src/components/ui/index.tsx` — Card, Button (primary/secondary/ghost/danger/accent variants), Input, Badge
 
 ## CSS Configuration
 - Uses `@tailwindcss/postcss` (NOT `@tailwindcss/vite` — that caused HMR crash loops due to oxide scanner)
 - `postcss.config.js` configures the PostCSS plugin
+- `src/index.css` has `@import url(Google Fonts)` BEFORE `@source` to satisfy CSS spec order requirements
 - `src/index.css` has `@source "../src/**/*.{ts,tsx}"` to scope Tailwind scanning
 - `vite.config.ts` has `server.watch.ignored` for `.local/**`, `.cache/**`, `server/**`, `node_modules/**`
 

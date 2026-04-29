@@ -244,9 +244,9 @@ export default function ChatView({ personas, activePersona: propActivePersona }:
   }
 
   return (
-    <div className="h-full flex flex-col bg-[var(--bg-base)]">
-      <header className="sticky top-0 z-10 bg-[var(--bg-base)] border-b border-[var(--border-subtle)] premium-header">
-        <div className="p-5 pt-10 space-y-3 relative z-10">
+    <div className="flex flex-col bg-[var(--bg-base)]" style={{ height: 'calc(100vh - 142px)' }}>
+      <header className="sticky top-0 z-10 bg-[var(--bg-base)]/95 backdrop-blur-xl border-b border-[var(--border-subtle)] premium-header">
+        <div className="p-5 pt-4 space-y-3 relative z-10">
           <div className="flex items-center justify-between">
             <h1 className="text-2xl font-extrabold tracking-tight">
               <span className="gradient-text">Chat</span>

@@ -122,8 +122,8 @@ export default function AssistantView({ persona, personas }: AssistantViewProps)
   ], [activePersona]);
 
   return (
-    <div className="h-full flex flex-col">
-      <header className="p-5 pt-10 border-b border-[var(--border-subtle)] bg-[var(--bg-base)] sticky top-0 z-10 premium-header">
+    <div className="flex flex-col" style={{ height: 'calc(100vh - 142px)' }}>
+      <header className="p-5 pt-5 border-b border-[var(--border-subtle)] bg-[var(--bg-base)]/95 backdrop-blur-xl sticky top-0 z-10 premium-header">
         <div className="flex justify-between items-center mb-4 relative z-10">
           <div>
             <h1 className="text-2xl font-extrabold tracking-tight">

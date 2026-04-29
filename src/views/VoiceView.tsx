@@ -733,10 +733,11 @@ export default function VoiceView({ persona, personas, onSelectPersona }: VoiceV
   return (
     <div className="max-w-7xl mx-auto p-4 md:p-8 space-y-8">
       {/* Clean Toolbar */}
-      <div className="flex items-center justify-between mb-8">
+      <header className="premium-header mb-8 pt-4 pb-2">
+      <div className="flex items-center justify-between relative z-10">
         <div>
-          <h1 className="text-2xl font-extrabold tracking-tight text-[var(--text-primary)]">AI Voice Studio</h1>
-          <p className="text-[var(--text-tertiary)] text-xs mt-1 font-medium">Write scripts, synthesize voices & generate talking video</p>
+          <h1 className="text-3xl font-extrabold tracking-tight"><span className="gradient-text">Voice Studio</span></h1>
+          <p className="text-[var(--text-tertiary)] text-sm mt-1.5 font-medium">Scripts, synthesis & talking video</p>
         </div>
         <div className="flex items-center gap-4">
           <EngineToggle />
@@ -752,6 +753,7 @@ export default function VoiceView({ persona, personas, onSelectPersona }: VoiceV
           </div>
         </div>
       </div>
+      </header>
 
       {history.length === 0 && !script ? (
         <div className="flex flex-col items-center justify-center py-10 md:py-20 text-center relative overflow-hidden">

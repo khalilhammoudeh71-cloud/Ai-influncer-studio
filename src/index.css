@@ -1,7 +1,6 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap');
 @source "../src/**/*.{ts,tsx}";
-
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 
 :root {
   --bg-base: #050507;
@@ -228,4 +227,162 @@ input, textarea, select {
   position: fixed;
   pointer-events: none;
   z-index: 0;
+}
+
+/* ─── Scrollbar hide ─────────────────────────────────────────── */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* ─── Skeleton loading shimmer ──────────────────────────────── */
+@keyframes skeleton-wave {
+  0% { background-position: -400% 0; }
+  100% { background-position: 400% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--bg-elevated) 25%,
+    rgba(255,255,255,0.04) 50%,
+    var(--bg-elevated) 75%
+  );
+  background-size: 400% 100%;
+  animation: skeleton-wave 2s ease-in-out infinite;
+  border-radius: 8px;
+}
+
+/* ─── Animated gradient border ──────────────────────────────── */
+@keyframes border-flow {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.9; }
+}
+
+.gradient-border-animated::before {
+  animation: border-flow 3s ease-in-out infinite;
+}
+
+/* ─── Glow pulse for status indicators ──────────────────────── */
+@keyframes glow-ping {
+  0% { transform: scale(1); opacity: 0.8; }
+  70% { transform: scale(2); opacity: 0; }
+  100% { transform: scale(2); opacity: 0; }
+}
+
+.glow-ping {
+  animation: glow-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+/* ─── Number counter animation ───────────────────────────────── */
+@keyframes count-up {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── Noise texture overlay ──────────────────────────────────── */
+.noise::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+  pointer-events: none;
+  border-radius: inherit;
+  opacity: 0.4;
+}
+
+/* ─── Tab bar safe area ──────────────────────────────────────── */
+.safe-area-inset {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* ─── Section label ──────────────────────────────────────────── */
+.section-label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* ─── Active glow ring ───────────────────────────────────────── */
+.ring-glow {
+  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.15), 0 0 20px -4px rgba(139, 92, 246, 0.3);
+}
+
+/* ─── Message bubble tail ────────────────────────────────────── */
+.bubble-user {
+  background: linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%);
+  color: white;
+  border-radius: 18px 18px 4px 18px;
+}
+
+.bubble-assistant {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 18px 18px 18px 4px;
+}
+
+/* ─── Frosted action bar ─────────────────────────────────────── */
+.action-bar {
+  background: rgba(14, 14, 18, 0.85);
+  backdrop-filter: blur(32px) saturate(160%);
+  -webkit-backdrop-filter: blur(32px) saturate(160%);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* ─── Hero glow for app icon ─────────────────────────────────── */
+@keyframes hero-float {
+  0%, 100% { transform: translateY(0) rotate(3deg); }
+  50% { transform: translateY(-8px) rotate(3deg); }
+}
+
+.hero-float {
+  animation: hero-float 4s ease-in-out infinite;
+}
+
+/* ─── View fade-in stagger ───────────────────────────────────── */
+.stagger-1 { animation: fadeInUp 0.4s ease-out 0.05s both; }
+.stagger-2 { animation: fadeInUp 0.4s ease-out 0.1s both; }
+.stagger-3 { animation: fadeInUp 0.4s ease-out 0.15s both; }
+.stagger-4 { animation: fadeInUp 0.4s ease-out 0.2s both; }
+.stagger-5 { animation: fadeInUp 0.4s ease-out 0.25s both; }
+
+/* ─── Better focus ring ──────────────────────────────────────── */
+.focus-ring:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--bg-base), 0 0 0 4px rgba(139, 92, 246, 0.5);
+}
+
+/* ─── Gradient chip / badge ──────────────────────────────────── */
+.chip-gradient {
+  background: linear-gradient(135deg, rgba(139,92,246,0.15) 0%, rgba(217,70,239,0.1) 100%);
+  border: 1px solid rgba(139,92,246,0.2);
+  color: #c4b5fd;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+
+/* ─── Pull-to-refresh hint ───────────────────────────────────── */
+@keyframes bounce-down {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(4px); }
+}
+
+/* ─── Persona avatar ring ────────────────────────────────────── */
+.avatar-ring {
+  box-shadow:
+    0 0 0 2px var(--bg-base),
+    0 0 0 4px rgba(139,92,246,0.35),
+    0 4px 16px -4px rgba(139,92,246,0.3);
+}
+
+/* ─── Inter font numeric ─────────────────────────────────────── */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
 }

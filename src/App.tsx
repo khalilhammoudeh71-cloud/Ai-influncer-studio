@@ -64,9 +64,9 @@ function Onboarding({ onComplete }: { onComplete: () => void }) {
             transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1], delay: 0.2 }}
             className="relative"
           >
-            <div className="absolute inset-0 bg-gradient-to-br from-violet-500 to-fuchsia-600 rounded-[28px] blur-xl opacity-40" />
-            <div className="relative w-28 h-28 bg-gradient-to-br from-violet-500 to-fuchsia-600 rounded-[28px] flex items-center justify-center shadow-2xl"
-              style={{ boxShadow: '0 20px 60px -12px rgba(139, 92, 246, 0.4)' }}
+            <div className="absolute inset-0 bg-gradient-to-br from-violet-500 to-fuchsia-600 rounded-[28px] blur-2xl opacity-50" />
+            <div className="relative w-28 h-28 bg-gradient-to-br from-violet-500 to-fuchsia-600 rounded-[28px] flex items-center justify-center"
+              style={{ boxShadow: '0 20px 60px -8px rgba(139, 92, 246, 0.5), inset 0 1px 0 rgba(255,255,255,0.2)' }}
             >
               <Users size={52} className="text-white" strokeWidth={1.5} />
             </div>
@@ -97,7 +97,7 @@ function Onboarding({ onComplete }: { onComplete: () => void }) {
           whileHover={{ scale: 1.03, y: -2 }}
           whileTap={{ scale: 0.97 }}
           onClick={onComplete}
-          className="w-full premium-button py-4.5 px-8 text-white font-bold rounded-2xl text-base"
+          className="w-full premium-button py-[18px] px-8 text-white font-bold rounded-2xl text-base"
         >
           Get Started
         </motion.button>
@@ -273,7 +273,47 @@ function App() {
   return (
     <div className="flex flex-col h-screen bg-[var(--bg-base)] text-[var(--text-primary)] overflow-hidden relative">
       <div className="ambient-glow top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-violet-500/[0.04] blur-[100px] rounded-full" />
-      <main className="flex-1 overflow-y-auto pb-28 relative z-10">
+
+      {/* ── Top app bar ─────────────────────────────────────────── */}
+      <header className="fixed top-0 left-0 right-0 z-50 glass-strong border-b border-[var(--border-subtle)]">
+        <div className="flex items-center justify-between px-5 py-3">
+          <div className="flex items-center gap-2.5">
+            <div
+              className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
+              style={{ background: 'linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%)', boxShadow: '0 2px 12px -2px rgba(139,92,246,0.45)' }}
+            >
+              <Users size={16} className="text-white" strokeWidth={2} />
+            </div>
+            <span className="text-[15px] font-extrabold tracking-tight gradient-text">AI Studio</span>
+          </div>
+
+          <motion.button
+            whileTap={{ scale: 0.94 }}
+            onClick={() => setActiveTab('personas')}
+            className="flex items-center gap-2 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-full pl-1.5 pr-3 py-1 hover:border-violet-500/30 transition-all"
+          >
+            {activePersona.referenceImage ? (
+              <img
+                src={activePersona.referenceImage}
+                alt={activePersona.name}
+                className="w-6 h-6 rounded-full object-cover ring-1 ring-violet-500/40"
+              />
+            ) : (
+              <div className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold text-white"
+                style={{ background: 'linear-gradient(135deg, #8b5cf6, #d946ef)' }}
+              >
+                {activePersona.name.charAt(0).toUpperCase()}
+              </div>
+            )}
+            <span className="text-xs font-semibold text-[var(--text-secondary)] max-w-[110px] truncate">
+              {activePersona.name}
+            </span>
+          </motion.button>
+        </div>
+      </header>
+
+      {/* ── Content ─────────────────────────────────────────────── */}
+      <main className="flex-1 overflow-y-auto pt-[54px] pb-[88px] relative z-10">
         <div style={{ display: activeTab === 'create' ? 'block' : 'none' }}>
           <CreateView persona={activePersona} personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} />
         </div>
@@ -281,52 +321,56 @@ function App() {
           {activeTab !== 'create' && (
             <motion.div
               key={activeTab}
-              initial={{ opacity: 0, y: 12 }}
+              initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
             >
               {renderContent()}
             </motion.div>
           )}
         </AnimatePresence>
       </main>
+
+      {/* ── Bottom tab bar ──────────────────────────────────────── */}
       <nav className="fixed bottom-0 left-0 right-0 z-50">
-        <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-base)] via-[var(--bg-base)]/95 to-transparent pointer-events-none" style={{ height: '140%', bottom: 0, top: 'auto' }} />
-        <div className="relative glass-strong border-t border-[var(--border-subtle)] pb-7 pt-2.5 px-4">
-          <div className="flex justify-around items-center max-w-md mx-auto">
+        <div className="action-bar" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+          <div
+            className="flex items-center gap-0.5 px-2 pt-2 pb-3 overflow-x-auto scrollbar-hide"
+          >
             {tabs.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
               return (
-                <button
+                <motion.button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as Tab)}
-                  className="flex flex-col items-center gap-0.5 min-w-[52px] py-1 relative"
+                  whileTap={{ scale: 0.9 }}
+                  className="flex flex-col items-center gap-0.5 min-w-[60px] flex-1 py-1 relative"
                 >
-                  <div className="relative p-2">
+                  <div className="relative p-2 rounded-xl">
                     {isActive && (
                       <motion.div
                         layoutId="nav-pill"
                         className="absolute inset-0 rounded-xl"
                         style={{
-                          background: 'linear-gradient(135deg, rgba(139,92,246,0.2) 0%, rgba(217,70,239,0.15) 100%)',
-                          boxShadow: '0 0 20px -4px rgba(139,92,246,0.3)',
+                          background: 'linear-gradient(135deg, rgba(139,92,246,0.25) 0%, rgba(217,70,239,0.18) 100%)',
+                          boxShadow: '0 0 24px -4px rgba(139,92,246,0.35)',
                         }}
-                        transition={{ type: "spring", stiffness: 400, damping: 28 }}
+                        transition={{ type: "spring", stiffness: 500, damping: 32 }}
                       />
                     )}
                     <Icon
-                      size={20}
-                      strokeWidth={isActive ? 2.5 : 1.5}
+                      size={21}
+                      strokeWidth={isActive ? 2.2 : 1.6}
                       className={cn(
-                        "relative z-10 transition-colors duration-300",
+                        "relative z-10 transition-all duration-200",
                         isActive ? "text-violet-300" : "text-[var(--text-muted)]"
                       )}
                     />
                   </div>
                   <span className={cn(
-                    "text-[10px] font-semibold tracking-wide transition-all duration-300",
+                    "text-[9.5px] font-bold tracking-wide transition-all duration-200 leading-none",
                     isActive ? "text-violet-300" : "text-[var(--text-muted)]"
                   )}>
                     {tab.label}
@@ -334,12 +378,12 @@ function App() {
                   {isActive && (
                     <motion.div
                       layoutId="nav-dot"
-                      className="absolute -top-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-violet-400"
-                      style={{ boxShadow: '0 0 6px rgba(139,92,246,0.6)' }}
-                      transition={{ type: "spring", stiffness: 400, damping: 28 }}
+                      className="absolute -top-0.5 left-1/2 -translate-x-1/2 w-[18px] h-0.5 rounded-full"
+                      style={{ background: 'linear-gradient(90deg, #8b5cf6, #d946ef)', boxShadow: '0 0 8px rgba(139,92,246,0.6)' }}
+                      transition={{ type: "spring", stiffness: 500, damping: 32 }}
                     />
                   )}
-                </button>
+                </motion.button>
               );
             })}
           </div>

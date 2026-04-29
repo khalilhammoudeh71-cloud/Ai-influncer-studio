@@ -309,8 +309,8 @@ export default function AIToolsView({ persona, personas, onSelectPersona }: AITo
       <div className="flex-1 overflow-y-auto px-6 lg:px-12 py-8 bg-[var(--bg-base)]">
         <div className="max-w-6xl mx-auto space-y-8">
           <div>
-            <h1 className="text-2xl font-black text-[var(--text-primary)]">AI Tool Suite</h1>
-            <p className="text-[var(--text-muted)] text-sm mt-1 mb-8">Specialized editing endpoints for targeted adjustments.</p>
+            <h1 className="text-3xl font-extrabold tracking-tight"><span className="gradient-text">AI Tools</span></h1>
+            <p className="text-[var(--text-tertiary)] text-sm mt-1.5 mb-8 font-medium">Specialized AI editing for your personas</p>
           </div>
           
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
