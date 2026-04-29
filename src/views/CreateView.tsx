@@ -10,7 +10,6 @@ import {
   Wand2,
   Loader2,
   ChevronDown,
-  ChevronUp,
   Cpu,
   Download,
   Upload,
@@ -26,7 +25,6 @@ import {
   History,
   Camera,
   ChevronsRight,
-  SlidersHorizontal,
   UserRound,
   ChevronRight,
   RefreshCw,
@@ -244,7 +242,6 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const [angleModel, setAngleModel] = useState(ANGLE_MODELS[0].id);
   const [angleResult, setAngleResult] = useState<{ imageUrl: string; model: string } | null>(null);
 
-  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [activeQuickStyle, setActiveQuickStyle] = useState<string | null>(null);
   const [personaPickerOpen, setPersonaPickerOpen] = useState(false);
 
@@ -931,6 +928,28 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           </div>
         )}
 
+        {/* Natural Look + Identity Lock toggles */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleNaturalLookToggle}
+            className={`flex items-center gap-2 flex-1 px-3 py-2 rounded-xl border text-xs font-medium transition-all ${naturalLook ? 'bg-purple-500/15 border-purple-500/40 text-purple-300' : 'bg-[var(--bg-elevated)] border-[var(--border-default)] text-[var(--text-tertiary)]'}`}
+          >
+            <div className={`relative w-7 h-4 rounded-full transition-colors flex-shrink-0 ${naturalLook ? 'bg-purple-600' : 'bg-[var(--bg-overlay)]'}`}>
+              <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-transform ${naturalLook ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+            </div>
+            Natural Look
+          </button>
+          <button
+            onClick={handleIdentityLockToggle}
+            className={`flex items-center gap-2 flex-1 px-3 py-2 rounded-xl border text-xs font-medium transition-all ${identityLock ? 'bg-purple-500/15 border-purple-500/40 text-purple-300' : 'bg-[var(--bg-elevated)] border-[var(--border-default)] text-[var(--text-tertiary)]'}`}
+          >
+            <div className={`relative w-7 h-4 rounded-full transition-colors flex-shrink-0 ${identityLock ? 'bg-purple-600' : 'bg-[var(--bg-overlay)]'}`}>
+              <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-transform ${identityLock ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+            </div>
+            Identity Lock
+          </button>
+        </div>
+
         {/* Style dropdowns 2×2 */}
         <div className="grid grid-cols-2 gap-2">
           {[
@@ -1091,43 +1110,16 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           </button>
         </div>
 
-        {/* Advanced Settings */}
-        <div className="rounded-2xl border border-white/8 overflow-hidden">
-          <button onClick={() => setAdvancedOpen(v => !v)} className="w-full flex items-center justify-between px-4 py-3 bg-[var(--bg-elevated)]/50 hover:bg-white/5 transition-colors">
-            <div className="flex items-center gap-2">
-              <SlidersHorizontal className="w-3.5 h-3.5 text-purple-400" />
-              <span className="text-xs font-bold text-[var(--text-secondary)]">Advanced</span>
-              {!advancedOpen && <span className="text-[10px] text-[var(--text-muted)]">{[naturalLook && 'Natural Look', identityLock && 'Identity Lock', `×${imageCount}`].filter(Boolean).join(' · ')}</span>}
-            </div>
-            {advancedOpen ? <ChevronUp className="w-4 h-4 text-[var(--text-tertiary)]" /> : <ChevronDown className="w-4 h-4 text-[var(--text-tertiary)]" />}
-          </button>
-          {advancedOpen && (
-            <div className="px-4 py-3 space-y-4 bg-[var(--bg-elevated)]/20 border-t border-white/5">
-              <div className="flex items-center justify-between">
-                <div><p className="text-xs font-bold text-[var(--text-secondary)]">Natural Look</p><p className="text-[10px] text-[var(--text-muted)] mt-0.5">Film grain, candid, no over-retouching</p></div>
-                <button onClick={handleNaturalLookToggle} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${naturalLook ? 'bg-purple-600' : 'bg-[var(--bg-overlay)]'}`}>
-                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${naturalLook ? 'translate-x-6' : 'translate-x-1'}`} />
-                </button>
-              </div>
-              <div className="flex items-center justify-between">
-                <div><p className="text-xs font-bold text-[var(--text-secondary)]">Identity Lock</p><p className="text-[10px] text-[var(--text-muted)] mt-0.5">Same exact face, bone structure &amp; features</p></div>
-                <button onClick={handleIdentityLockToggle} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${identityLock ? 'bg-purple-600' : 'bg-[var(--bg-overlay)]'}`}>
-                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${identityLock ? 'translate-x-6' : 'translate-x-1'}`} />
-                </button>
-              </div>
-              <div className="flex items-center justify-between">
-                <div><p className="text-xs font-bold text-[var(--text-secondary)]">Variations</p><p className="text-[10px] text-[var(--text-muted)] mt-0.5">Generate multiple images at once</p></div>
-                <div className="flex gap-1">
-                  {[1, 2, 3, 4].map(n => (
-                    <button key={n} onClick={() => setImageCount(n)} className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${imageCount === n ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/30' : 'bg-[var(--bg-overlay)] text-[var(--text-secondary)] hover:text-white'}`}>{n}</button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
+        {/* Variations + Generate */}
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase">Variations</span>
+          <div className="flex gap-1">
+            {[1, 2, 3, 4].map(n => (
+              <button key={n} onClick={() => setImageCount(n)} className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${imageCount === n ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/30' : 'bg-[var(--bg-overlay)] text-[var(--text-secondary)] hover:text-white'}`}>{n}×</button>
+            ))}
+          </div>
         </div>
 
-        {/* Generate button */}
         {localPersonaId === 'none' && allRefImages.length === 0 && (
           <p className="text-xs text-amber-400 text-center">Upload your photo above to enable generation</p>
         )}

@@ -1639,12 +1639,12 @@ async function generateWithGoogleImagen(
     const imgCount = (referenceImage ? 1 : 0) + (additionalImages?.length ?? 0);
     if (imgCount > 1) {
       const personLabels = Array.from({ length: imgCount }, (_, i) => `Image ${i + 1} shows a distinct person (Person ${i + 1})`).join('. ');
-      contentParts.push({ text: `${personLabels}. Generate a photorealistic image that includes ALL ${imgCount} people together in the same scene. Every person from every reference image MUST appear in the output — do not omit any person. Scene: ${prompt}` });
+      contentParts.push({ text: `${personLabels}. Generate a photorealistic image in ${ratio} aspect ratio that includes ALL ${imgCount} people together in the same scene. Every person from every reference image MUST appear in the output — do not omit any person. Scene: ${prompt}` });
     } else {
-      contentParts.push({ text: `Using the reference photo for identity and style consistency, generate a new image: ${prompt}` });
+      contentParts.push({ text: `Using the reference photo for identity and style consistency, generate a new image in ${ratio} aspect ratio: ${prompt}` });
     }
   } else {
-    contentParts.push({ text: prompt });
+    contentParts.push({ text: `Generate an image in ${ratio} aspect ratio: ${prompt}` });
   }
 
   console.log('[Google Imagen] contentParts breakdown — images:', contentParts.length - 1, '| hasRef:', !!referenceImage, '| additionalImages:', additionalImages?.length ?? 0);
