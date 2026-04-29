@@ -24,6 +24,13 @@ import {
   Video,
   Film,
   Maximize2,
+  User,
+  Trees,
+  Palette,
+  Zap,
+  Lock,
+  LayoutGrid,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { Persona, GeneratedImage } from '../types';
 import {
@@ -77,6 +84,81 @@ const ASPECT_RATIOS = [
   { value: '21:9', label: '21:9 — Cinematic' },
 ];
 
+const PICKER_MODE_KEY = 'vg_picker_mode';
+
+type PickerMode = 'by-model' | 'by-goal';
+type GoalKey = 'portrait' | 'lifestyle' | 'artistic' | 'quick' | 'uncensored';
+
+interface GoalCard {
+  key: GoalKey;
+  label: string;
+  description: string;
+  icon: React.ReactNode;
+  nsfw?: boolean;
+}
+
+const GOAL_CARDS: GoalCard[] = [
+  {
+    key: 'portrait',
+    label: 'Portrait photo',
+    description: 'Consistent face, photorealistic',
+    icon: <User className="w-5 h-5" />,
+  },
+  {
+    key: 'lifestyle',
+    label: 'Lifestyle scene',
+    description: 'Full scene, cinematic quality',
+    icon: <Trees className="w-5 h-5" />,
+  },
+  {
+    key: 'artistic',
+    label: 'Artistic / stylized',
+    description: 'Anime, art, or stylized look',
+    icon: <Palette className="w-5 h-5" />,
+  },
+  {
+    key: 'quick',
+    label: 'Quick preview',
+    description: 'Fast and free',
+    icon: <Zap className="w-5 h-5" />,
+  },
+  {
+    key: 'uncensored',
+    label: 'Uncensored',
+    description: 'Adult / no restrictions',
+    icon: <span className="text-base leading-none">🔞</span>,
+    nsfw: true,
+  },
+];
+
+function pickModelForGoal(goal: GoalKey, models: ModelInfo[]): string | null {
+  if (models.length === 0) return null;
+  let match: ModelInfo | undefined;
+  switch (goal) {
+    case 'portrait':
+      match = models.find(m => m.isIdentityModel);
+      break;
+    case 'lifestyle': {
+      const lower = (m: ModelInfo) => (m.name + m.id).toLowerCase();
+      match = models.find(m => !m.isIdentityModel && (lower(m).includes('flux') || lower(m).includes('realistic') || lower(m).includes('photo')));
+      break;
+    }
+    case 'artistic': {
+      const lower = (m: ModelInfo) => (m.name + m.id).toLowerCase();
+      match = models.find(m => lower(m).includes('art') || lower(m).includes('anime') || lower(m).includes('xl'));
+      break;
+    }
+    case 'quick':
+      match = models.find(m => m.price === 0 && !m.id.startsWith('google:'));
+      if (!match) match = models.find(m => m.price === 0);
+      break;
+    case 'uncensored':
+      match = models.find(m => m.nsfw === true);
+      break;
+  }
+  return match?.id ?? models[0]?.id ?? null;
+}
+
 type PostGenAction = null | 'edit' | 'upscale';
 
 interface ImageVersion {
@@ -114,6 +196,23 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [selectedVideoModel, setSelectedVideoModel] = useState<string>('');
   const [modelsLoading, setModelsLoading] = useState(true);
+  const [pickerMode, setPickerMode] = useState<PickerMode>(
+    () => (localStorage.getItem(PICKER_MODE_KEY) as PickerMode | null) ?? 'by-model'
+  );
+  const [selectedGoal, setSelectedGoal] = useState<GoalKey | null>(null);
+
+  const handlePickerMode = (mode: PickerMode) => {
+    setPickerMode(mode);
+    localStorage.setItem(PICKER_MODE_KEY, mode);
+    if (mode === 'by-model') setSelectedGoal(null);
+  };
+
+  const handleGoalSelect = (goal: GoalKey) => {
+    const matched = pickModelForGoal(goal, models);
+    if (!matched) return;
+    setSelectedGoal(goal);
+    setSelectedModel(matched);
+  };
 
   const [postAction, setPostAction] = useState<PostGenAction>(null);
   const [editPrompt, setEditPrompt] = useState('');
@@ -512,12 +611,66 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
 
             {genMode === 'image' && (<>
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase flex items-center gap-1.5">
-                <Cpu className="w-3 h-3" /> AI Model
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase flex items-center gap-1.5">
+                  <Cpu className="w-3 h-3" /> AI Model
+                </label>
+                <div className="flex items-center rounded-lg overflow-hidden border border-[var(--border-default)] text-[10px] font-semibold">
+                  <button
+                    onClick={() => handlePickerMode('by-model')}
+                    className={`flex items-center gap-1 px-2.5 py-1 transition-colors ${pickerMode === 'by-model' ? 'bg-purple-600 text-white' : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-white'}`}
+                  >
+                    <SlidersHorizontal className="w-3 h-3" /> By Model
+                  </button>
+                  <button
+                    onClick={() => handlePickerMode('by-goal')}
+                    className={`flex items-center gap-1 px-2.5 py-1 transition-colors ${pickerMode === 'by-goal' ? 'bg-purple-600 text-white' : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-white'}`}
+                  >
+                    <LayoutGrid className="w-3 h-3" /> By Goal
+                  </button>
+                </div>
+              </div>
               {modelsLoading ? (
                 <div className="flex items-center gap-2 px-3 py-2.5 bg-[var(--bg-elevated)] rounded-xl text-sm text-[var(--text-secondary)]">
                   <Loader2 className="w-4 h-4 animate-spin" /> Loading models...
+                </div>
+              ) : pickerMode === 'by-goal' ? (
+                <div className="grid grid-cols-2 gap-2">
+                  {GOAL_CARDS.map((card) => {
+                    const matched = pickModelForGoal(card.key, models);
+                    const isDisabled = !matched;
+                    const isActive = selectedGoal === card.key;
+                    return (
+                      <button
+                        key={card.key}
+                        onClick={() => !isDisabled && handleGoalSelect(card.key)}
+                        disabled={isDisabled}
+                        title={isDisabled ? 'No matching model available' : undefined}
+                        className={`relative flex flex-col items-start gap-1.5 px-3 py-3 rounded-xl border text-left transition-all ${
+                          isActive
+                            ? 'border-purple-500 bg-purple-500/15 ring-1 ring-purple-500/60'
+                            : isDisabled
+                              ? 'border-[var(--border-default)] bg-[var(--bg-elevated)]/40 opacity-40 cursor-not-allowed'
+                              : 'border-[var(--border-default)] bg-[var(--bg-elevated)] hover:border-purple-400/60 hover:bg-purple-500/5 cursor-pointer'
+                        }`}
+                      >
+                        {isDisabled && (
+                          <Lock className="absolute top-2 right-2 w-3 h-3 text-[var(--text-tertiary)]" />
+                        )}
+                        <span className={`${isActive ? 'text-purple-300' : 'text-[var(--text-secondary)]'}`}>
+                          {card.icon}
+                        </span>
+                        <div>
+                          <p className={`text-xs font-bold leading-tight ${isActive ? 'text-white' : 'text-[var(--text-primary)]'}`}>
+                            {card.label}
+                          </p>
+                          <p className="text-[10px] text-[var(--text-tertiary)] leading-tight mt-0.5">
+                            {card.description}
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="relative">
