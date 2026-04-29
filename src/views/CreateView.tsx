@@ -10,6 +10,7 @@ import {
   Wand2,
   Loader2,
   ChevronDown,
+  ChevronUp,
   Cpu,
   Download,
   Upload,
@@ -25,6 +26,9 @@ import {
   History,
   Camera,
   ChevronsRight,
+  SlidersHorizontal,
+  UserRound,
+  ChevronRight,
 } from 'lucide-react';
 import { Persona, GeneratedImage } from '../types';
 import {
@@ -84,6 +88,15 @@ const MODE_CONFIG: { id: CreateMode; label: string; icon: typeof ImageIcon; grad
   { id: 'transcript', label: 'Transcript', icon: FileText, gradient: 'from-amber-500 to-orange-500', ringClass: 'focus:ring-amber-500' },
   { id: 'multi-scene', label: 'Multi-Scene', icon: Film, gradient: 'from-violet-600 to-purple-500', ringClass: 'focus:ring-violet-500' },
   { id: 'angle', label: 'Angle', icon: Camera, gradient: 'from-cyan-600 to-sky-500', ringClass: 'focus:ring-cyan-500' },
+];
+
+const QUICK_STYLES = [
+  { id: 'beach-day',    label: 'Beach Day',     emoji: '🏖️', env: 'Beach Resort',      outfit: 'Fitness Wear',         framing: 'Full Body',   mood: 'Playful'      },
+  { id: 'night-out',   label: 'Night Out',      emoji: '🌙', env: 'Upscale Restaurant', outfit: 'Luxury Evening',       framing: 'Portrait',    mood: 'Seductive'    },
+  { id: 'power-look',  label: 'Power Look',     emoji: '💼', env: 'Modern Apartment',   outfit: 'Business Professional',framing: 'Half Body',   mood: 'Confident'    },
+  { id: 'gym-session', label: 'Gym Session',    emoji: '💪', env: 'Private Gym',        outfit: 'Fitness Wear',         framing: 'Full Body',   mood: 'Confident'    },
+  { id: 'luxury-vibes',label: 'Luxury Vibes',   emoji: '✨', env: 'Penthouse',           outfit: 'Glamorous Gown',       framing: 'Full Body',   mood: 'Professional' },
+  { id: 'street-style',label: 'Street Style',   emoji: '🛹', env: 'City Street',         outfit: 'Edgy Streetwear',      framing: 'Candid',      mood: 'Playful'      },
 ];
 
 type PostGenAction = null | 'edit' | 'upscale';
@@ -200,6 +213,10 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const [angleDistance, setAngleDistance] = useState('medium shot');
   const [angleModel, setAngleModel] = useState(ANGLE_MODELS[0].id);
   const [angleResult, setAngleResult] = useState<{ imageUrl: string; model: string } | null>(null);
+
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [activeQuickStyle, setActiveQuickStyle] = useState<string | null>(null);
+  const [personaPickerOpen, setPersonaPickerOpen] = useState(false);
 
   const refPersonaImage = refPersonaId !== 'none' ? (personas.find(p => p.id === refPersonaId)?.referenceImage ?? null) : null;
   const allRefImages: string[] = [
@@ -570,6 +587,16 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     reader.readAsDataURL(file);
   };
 
+  const applyQuickStyle = (qs: typeof QUICK_STYLES[0]) => {
+    setSelectedEnv(qs.env);
+    setSelectedOutfit(qs.outfit);
+    setSelectedFraming(qs.framing);
+    setSelectedMood(qs.mood);
+    setActiveQuickStyle(qs.id);
+  };
+
+  const clearQuickStyle = () => setActiveQuickStyle(null);
+
   const handleSaveAngleImage = () => {
     if (!angleResult?.imageUrl) return;
     const media: GeneratedImage = {
@@ -731,23 +758,70 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     );
   };
 
-  const renderDropdown = (label: string, Icon: typeof Layout, value: string, onChange: (v: string) => void, options: string[]) => (
-    <div className="space-y-1">
-      <label className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase flex items-center gap-1">
-        <Icon className="w-3 h-3" /> {label}
-      </label>
-      <select
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        className="w-full bg-[var(--bg-elevated)] rounded-lg px-2 py-1.5 text-xs text-white outline-none appearance-none"
-      >
-        {options.map(o => <option key={o} value={o}>{o}</option>)}
-      </select>
+  const renderChipSelector = (
+    label: string,
+    Icon: typeof Layout,
+    value: string,
+    onChange: (v: string) => void,
+    options: string[],
+    accentClass = 'bg-gradient-to-r from-purple-600 to-violet-600'
+  ) => (
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-1.5">
+        <Icon className="w-3 h-3 text-[var(--text-tertiary)]" />
+        <span className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-wide">{label}</span>
+      </div>
+      <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
+        {options.map(o => {
+          const active = value === o;
+          return (
+            <button
+              key={o}
+              onClick={() => { onChange(o); clearQuickStyle(); }}
+              className={`shrink-0 px-2.5 py-1 rounded-full text-xs font-semibold transition-all border ${
+                active
+                  ? `${accentClass} text-white border-transparent shadow-sm`
+                  : 'bg-white/5 border-white/10 text-[var(--text-secondary)] hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              {o}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 
   const renderImageMode = () => (
     <div className="space-y-4">
+
+      {/* ── Quick Styles ── */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <p className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-wide">Quick Styles</p>
+          {activeQuickStyle && (
+            <button onClick={clearQuickStyle} className="text-[10px] text-purple-400 hover:text-purple-300 transition-colors">Clear</button>
+          )}
+        </div>
+        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+          {QUICK_STYLES.map(qs => (
+            <button
+              key={qs.id}
+              onClick={() => applyQuickStyle(qs)}
+              className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+                activeQuickStyle === qs.id
+                  ? 'bg-gradient-to-r from-purple-600 to-violet-600 text-white border-transparent shadow-lg shadow-purple-500/20'
+                  : 'bg-white/5 border-white/10 text-[var(--text-secondary)] hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              <span>{qs.emoji}</span>
+              <span>{qs.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── AI Model ── */}
       {renderModelSelect(selectedModel, setSelectedModel, groupedModels, true)}
 
       {selectedModelInfo && (
@@ -778,13 +852,15 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-2">
-        {renderDropdown('Environment', MapPin, selectedEnv, setSelectedEnv, ENVIRONMENTS)}
-        {renderDropdown('Outfit', Shirt, selectedOutfit, setSelectedOutfit, OUTFITS)}
-        {renderDropdown('Framing', Layout, selectedFraming, setSelectedFraming, FRAMING)}
-        {renderDropdown('Mood', Smile, selectedMood, setSelectedMood, MOODS)}
+      {/* ── Style Chips ── */}
+      <div className="bg-[var(--bg-elevated)]/40 rounded-2xl p-3.5 space-y-3 border border-white/5">
+        {renderChipSelector('Environment', MapPin, selectedEnv, setSelectedEnv, ENVIRONMENTS)}
+        {renderChipSelector('Outfit', Shirt, selectedOutfit, setSelectedOutfit, OUTFITS)}
+        {renderChipSelector('Framing', Layout, selectedFraming, setSelectedFraming, FRAMING)}
+        {renderChipSelector('Mood', Smile, selectedMood, setSelectedMood, MOODS)}
       </div>
 
+      {/* ── Reference Images ── */}
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
           <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase flex items-center gap-1.5">
@@ -837,11 +913,16 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             ))}
           </div>
         ) : (
-          <label className="flex items-center gap-2 px-3 py-2.5 bg-[var(--bg-elevated)] border border-dashed border-[var(--border-default)] rounded-xl cursor-pointer hover:bg-[var(--bg-overlay)]/50 transition-colors">
-            <Upload className="w-4 h-4 text-[var(--text-tertiary)]" />
-            <span className="text-sm text-[var(--text-tertiary)]">
-              {localPersonaId === 'none' ? 'Upload your photos (required)' : 'Upload reference photos for identity consistency'}
-            </span>
+          <label className="flex items-center gap-2 px-3 py-3 bg-[var(--bg-elevated)] border border-dashed border-white/10 rounded-xl cursor-pointer hover:bg-white/5 transition-colors group">
+            <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center shrink-0">
+              <Upload className="w-4 h-4 text-purple-400" />
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-[var(--text-secondary)] group-hover:text-white transition-colors">
+                {localPersonaId === 'none' ? 'Upload your photos (required)' : 'Upload reference photos'}
+              </p>
+              <p className="text-[10px] text-[var(--text-muted)]">For face & identity consistency</p>
+            </div>
             <input type="file" accept="image/*" multiple className="hidden" onChange={e => { const files = e.target.files; if (files) { Array.from(files).forEach(f => handleAddRefImage(f)); } e.target.value = ''; }} />
           </label>
         )}
@@ -862,6 +943,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         )}
       </div>
 
+      {/* ── Instructions ── */}
       <textarea
         value={imagePrompt}
         onChange={e => setImagePrompt(e.target.value)}
@@ -869,53 +951,73 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white placeholder-[var(--text-muted)] resize-none h-20 outline-none focus:ring-2 focus:ring-purple-500"
       />
 
-      <div className="flex flex-col gap-3 px-1">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wide">Natural Look</p>
-            <p className="text-[10px] text-[var(--text-muted)] mt-0.5">Film grain, candid, no over-retouching</p>
+      {/* ── Advanced Settings (collapsible) ── */}
+      <div className="rounded-2xl border border-white/8 overflow-hidden">
+        <button
+          onClick={() => setAdvancedOpen(v => !v)}
+          className="w-full flex items-center justify-between px-4 py-3 bg-[var(--bg-elevated)]/50 hover:bg-white/5 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <SlidersHorizontal className="w-3.5 h-3.5 text-purple-400" />
+            <span className="text-xs font-bold text-[var(--text-secondary)]">Advanced</span>
+            {!advancedOpen && (
+              <span className="text-[10px] text-[var(--text-muted)]">
+                {[naturalLook && 'Natural Look', identityLock && 'Identity Lock', `×${imageCount}`].filter(Boolean).join(' · ')}
+              </span>
+            )}
           </div>
-          <button
-            onClick={handleNaturalLookToggle}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${naturalLook ? 'bg-purple-600' : 'bg-[var(--bg-overlay)]'}`}
-          >
-            <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${naturalLook ? 'translate-x-6' : 'translate-x-1'}`} />
-          </button>
-        </div>
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wide">Identity Lock</p>
-            <p className="text-[10px] text-[var(--text-muted)] mt-0.5">Same exact face, bone structure &amp; features</p>
-          </div>
-          <button
-            onClick={handleIdentityLockToggle}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${identityLock ? 'bg-purple-600' : 'bg-[var(--bg-overlay)]'}`}
-          >
-            <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${identityLock ? 'translate-x-6' : 'translate-x-1'}`} />
-          </button>
-        </div>
-      </div>
+          {advancedOpen ? <ChevronUp className="w-4 h-4 text-[var(--text-tertiary)]" /> : <ChevronDown className="w-4 h-4 text-[var(--text-tertiary)]" />}
+        </button>
 
-      <div className="flex items-center justify-between bg-[var(--bg-elevated)]/60 rounded-xl px-3 py-2 border border-[var(--border-default)]/50">
-        <div>
-          <p className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wide">Variations</p>
-          <p className="text-[10px] text-[var(--text-muted)] mt-0.5">Generate multiple images at once</p>
-        </div>
-        <div className="flex gap-1">
-          {[1, 2, 3, 4].map(n => (
-            <button
-              key={n}
-              onClick={() => setImageCount(n)}
-              className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${
-                imageCount === n
-                  ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/30'
-                  : 'bg-[var(--bg-overlay)] text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)] hover:text-white'
-              }`}
-            >
-              {n}
-            </button>
-          ))}
-        </div>
+        {advancedOpen && (
+          <div className="px-4 py-3 space-y-4 bg-[var(--bg-elevated)]/20 border-t border-white/5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-[var(--text-secondary)]">Natural Look</p>
+                <p className="text-[10px] text-[var(--text-muted)] mt-0.5">Film grain, candid, no over-retouching</p>
+              </div>
+              <button
+                onClick={handleNaturalLookToggle}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${naturalLook ? 'bg-purple-600' : 'bg-[var(--bg-overlay)]'}`}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${naturalLook ? 'translate-x-6' : 'translate-x-1'}`} />
+              </button>
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-[var(--text-secondary)]">Identity Lock</p>
+                <p className="text-[10px] text-[var(--text-muted)] mt-0.5">Same exact face, bone structure &amp; features</p>
+              </div>
+              <button
+                onClick={handleIdentityLockToggle}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${identityLock ? 'bg-purple-600' : 'bg-[var(--bg-overlay)]'}`}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${identityLock ? 'translate-x-6' : 'translate-x-1'}`} />
+              </button>
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-[var(--text-secondary)]">Variations</p>
+                <p className="text-[10px] text-[var(--text-muted)] mt-0.5">Generate multiple images at once</p>
+              </div>
+              <div className="flex gap-1">
+                {[1, 2, 3, 4].map(n => (
+                  <button
+                    key={n}
+                    onClick={() => setImageCount(n)}
+                    className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${
+                      imageCount === n
+                        ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/30'
+                        : 'bg-[var(--bg-overlay)] text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)] hover:text-white'
+                    }`}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {localPersonaId === 'none' && allRefImages.length === 0 && (
@@ -924,7 +1026,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       <button
         onClick={handleImageGenerate}
         disabled={isGenerating || !selectedModel || (localPersonaId === 'none' && allRefImages.length === 0)}
-        className="w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+        className="w-full py-3.5 rounded-xl font-bold text-sm bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-lg shadow-purple-500/20"
       >
         {isGenerating ? (
           <><Loader2 className="w-4 h-4 animate-spin" /> Generating {imageCount > 1 ? `${imageCount} variations` : ''}...</>
@@ -1669,7 +1771,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         </div>
       </header>
 
-      <div className="flex premium-card rounded-2xl p-1.5 gap-1 mb-5 overflow-x-auto">
+      {/* ── Mode Tabs ── */}
+      <div className="grid grid-cols-3 gap-2 mb-5">
         {MODE_CONFIG.map(m => {
           const Icon = m.icon;
           const isActive = mode === m.id;
@@ -1677,40 +1780,78 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             <button
               key={m.id}
               onClick={() => { setMode(m.id); setGlobalError(null); }}
-              className={`flex-1 min-w-0 flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-xs font-bold transition-all duration-200 whitespace-nowrap relative ${
+              className={`flex flex-col items-center gap-1.5 py-3 rounded-2xl text-xs font-bold transition-all duration-200 border ${
                 isActive
-                  ? `bg-gradient-to-r ${m.gradient} text-white shadow-lg`
-                  : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-white/[0.03]'
+                  ? `bg-gradient-to-br ${m.gradient} text-white border-transparent shadow-lg`
+                  : 'bg-[var(--bg-elevated)]/60 border-white/6 text-[var(--text-secondary)] hover:bg-white/8 hover:text-white hover:border-white/10'
               }`}
             >
-              <Icon className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">{m.label}</span>
+              <Icon className={`w-4 h-4 shrink-0 ${!isActive ? 'opacity-60' : ''}`} />
+              <span>{m.label}</span>
             </button>
           );
         })}
       </div>
 
-      <div className="mb-5">
-        <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase mb-1.5 block">Active Persona</label>
-        <div className="relative">
-          <select
-            value={localPersonaId}
-            onChange={e => {
-              const v = e.target.value;
-              setLocalPersonaId(v);
-              if (v !== 'none') onSelectPersona(v);
-            }}
-            className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white outline-none appearance-none pr-10"
-          >
-            <option value="none">None — Upload my own image</option>
-            {personas.map(p => (
-              <option key={p.id} value={p.id}>{p.name}{p.niche ? ` — ${p.niche}` : ''}</option>
-            ))}
-          </select>
-          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-tertiary)] pointer-events-none" />
+      {/* ── Active Persona Card ── */}
+      <div className="mb-5 relative">
+        <div
+          className="flex items-center gap-3 p-3 bg-[var(--bg-elevated)]/60 rounded-2xl border border-white/8 cursor-pointer hover:border-white/15 transition-all"
+          onClick={() => setPersonaPickerOpen(v => !v)}
+        >
+          <div className="shrink-0">
+            {activePersona.avatar ? (
+              <img src={activePersona.avatar} alt={activePersona.name} className="w-10 h-10 rounded-xl object-cover" />
+            ) : (
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-violet-700 flex items-center justify-center">
+                <UserRound className="w-5 h-5 text-white/80" />
+              </div>
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-bold text-[var(--text-tertiary)] uppercase tracking-wide mb-0.5">Active Persona</p>
+            {localPersonaId === 'none' ? (
+              <p className="text-sm text-[var(--text-secondary)]">No persona — upload your own photo</p>
+            ) : (
+              <p className="text-sm font-semibold text-white truncate">{activePersona.name}{activePersona.niche ? <span className="text-[var(--text-tertiary)] font-normal"> · {activePersona.niche}</span> : ''}</p>
+            )}
+          </div>
+          <ChevronRight className={`w-4 h-4 text-[var(--text-tertiary)] shrink-0 transition-transform ${personaPickerOpen ? 'rotate-90' : ''}`} />
         </div>
-        {localPersonaId === 'none' && (
-          <p className="text-[10px] text-[var(--text-tertiary)] mt-1 ml-1">No persona context — use the Reference Image section below to upload your own photo.</p>
+
+        {personaPickerOpen && (
+          <div className="absolute z-20 left-0 right-0 mt-1.5 bg-[var(--bg-elevated)] border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
+            <button
+              onClick={() => { setLocalPersonaId('none'); setPersonaPickerOpen(false); }}
+              className={`w-full flex items-center gap-3 px-4 py-3 text-sm hover:bg-white/5 transition-colors ${localPersonaId === 'none' ? 'text-purple-300' : 'text-[var(--text-secondary)]'}`}
+            >
+              <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center">
+                <UserRound className="w-4 h-4 text-[var(--text-tertiary)]" />
+              </div>
+              <span>No persona — use my own photo</span>
+              {localPersonaId === 'none' && <Check className="w-3.5 h-3.5 ml-auto text-purple-400" />}
+            </button>
+            {personas.map(p => (
+              <button
+                key={p.id}
+                onClick={() => { setLocalPersonaId(p.id); onSelectPersona(p.id); setPersonaPickerOpen(false); }}
+                className={`w-full flex items-center gap-3 px-4 py-3 text-sm hover:bg-white/5 transition-colors border-t border-white/5 ${localPersonaId === p.id ? 'text-purple-300' : 'text-[var(--text-secondary)]'}`}
+              >
+                {p.avatar ? (
+                  <img src={p.avatar} alt={p.name} className="w-8 h-8 rounded-lg object-cover" />
+                ) : (
+                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-600 to-violet-700 flex items-center justify-center">
+                    <UserRound className="w-4 h-4 text-white/80" />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0 text-left">
+                  <p className="font-semibold text-white truncate">{p.name}</p>
+                  {p.niche && <p className="text-[10px] text-[var(--text-tertiary)] truncate">{p.niche}</p>}
+                </div>
+                {localPersonaId === p.id && <Check className="w-3.5 h-3.5 shrink-0 text-purple-400" />}
+              </button>
+            ))}
+          </div>
         )}
       </div>
 
