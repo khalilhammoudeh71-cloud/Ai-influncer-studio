@@ -440,7 +440,7 @@ router.post('/migrate', async (req, res) => {
 });
 
 function getGeminiClientForRoutes(): GoogleGenAI {
-  const directKey = process.env.GEMINI_API_KEY;
+  const directKey = process.env.Gemini_api_key;
   if (directKey) return new GoogleGenAI({ apiKey: directKey });
   const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
   const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
