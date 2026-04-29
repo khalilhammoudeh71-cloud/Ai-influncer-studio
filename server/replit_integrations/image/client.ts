@@ -9,14 +9,14 @@ export const openai = new OpenAI({
 
 /**
  * Generate an image and return as Buffer.
- * Uses gpt-image-1 model via Replit AI Integrations.
+ * Uses gpt-image-2 model via Replit AI Integrations.
  */
 export async function generateImageBuffer(
   prompt: string,
   size: "1024x1024" | "512x512" | "256x256" = "1024x1024"
 ): Promise<Buffer> {
   const response = await openai.images.generate({
-    model: "gpt-image-1",
+    model: "gpt-image-2",
     prompt,
     size,
   });
@@ -26,7 +26,7 @@ export async function generateImageBuffer(
 
 /**
  * Edit/combine multiple images into a composite.
- * Uses gpt-image-1 model via Replit AI Integrations.
+ * Uses gpt-image-2 model via Replit AI Integrations.
  */
 export async function editImages(
   imageFiles: string[],
@@ -42,7 +42,7 @@ export async function editImages(
   );
 
   const response = await openai.images.edit({
-    model: "gpt-image-1",
+    model: "gpt-image-2",
     image: images,
     prompt,
   });

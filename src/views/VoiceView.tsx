@@ -566,7 +566,7 @@ export default function VoiceView({ persona, personas, onSelectPersona }: VoiceV
         )}
       >
         <Sparkles className="w-3.5 h-3.5" />
-        Gemini 2.0
+        Gemini 2.5 TTS
       </button>
     </div>
   );

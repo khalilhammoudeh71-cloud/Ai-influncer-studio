@@ -629,7 +629,7 @@ async function generateWithReplit(prompt: string, referenceImage?: string | stri
     }));
 
     response = await client.images.edit({
-      model: 'gpt-image-1',
+      model: 'gpt-image-2',
       image: imageFiles as any,
       prompt,
       n: 1,
@@ -637,7 +637,7 @@ async function generateWithReplit(prompt: string, referenceImage?: string | stri
     });
   } else {
     response = await client.images.generate({
-      model: 'gpt-image-1',
+      model: 'gpt-image-2',
       prompt,
       n: 1,
       size: aspectRatioToReplitSize(aspectRatio),
@@ -664,7 +664,7 @@ async function generateWithDirectOpenAI(prompt: string, referenceImage?: string 
       return toFile(buffer, `reference_${i}.${ext}`, { type: mimeType });
     }));
     response = await client.images.edit({
-      model: 'gpt-image-1',
+      model: 'gpt-image-2',
       image: imageFiles as any,
       prompt,
       n: 1,
@@ -672,7 +672,7 @@ async function generateWithDirectOpenAI(prompt: string, referenceImage?: string 
     });
   } else {
     response = await client.images.generate({
-      model: 'gpt-image-1',
+      model: 'gpt-image-2',
       prompt,
       n: 1,
       size: aspectRatioToReplitSize(aspectRatio),
@@ -1132,11 +1132,11 @@ app.get('/api/models', async (_req, res) => {
         hasEditVariant: false,
       }] : [{
         id: 'replit:gpt-image-1',
-        name: 'GPT Image 1 (DALL-E)',
+        name: 'GPT Image 2 (Integration)',
         provider: 'OpenAI',
         type: 'image-to-image' as const,
         price: 0,
-        description: 'OpenAI DALL-E image editing via Replit integration',
+        description: 'OpenAI GPT Image 2 — photorealistic image editing via Replit integration',
         apiPath: '',
         hasEditVariant: false,
       }]),
@@ -1195,18 +1195,18 @@ app.get('/api/models', async (_req, res) => {
 });
 
 function getGeminiDirectKey(): string {
-  return process.env.Gemini_api_key || process.env.GEMINI_API_KEY || process.env.AI_INTEGRATIONS_GEMINI_API_KEY || '';
+  return process.env.Gemini_api_key || process.env.AI_INTEGRATIONS_GEMINI_API_KEY || '';
 }
 
 function getGeminiClient(): GoogleGenAI {
-  const directKey = process.env.Gemini_api_key || process.env.GEMINI_API_KEY;
+  const directKey = process.env.Gemini_api_key;
   if (directKey) {
     return new GoogleGenAI({ apiKey: directKey });
   }
   const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
   const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
   if (!apiKey || !baseUrl) {
-    throw new Error('Gemini API key not configured. Please add GEMINI_API_KEY to your environment variables.');
+    throw new Error('Gemini API key not configured. Please add Gemini_api_key to your environment variables.');
   }
   return new GoogleGenAI({ apiKey, httpOptions: { baseUrl } });
 }
@@ -1760,7 +1760,7 @@ app.post('/api/generate-image', async (req, res) => {
       } else {
         imageUrls = [await generateWithReplit(prompt, referenceImage, aspectRatio)];
       }
-      modelName = 'gpt-image-1';
+      modelName = 'gpt-image-2';
     } else if (modelId === 'openai:gpt-image-2') {
       prompt = buildPrompt({ ...rest, referenceImage });
       if (count > 1) {
@@ -1881,7 +1881,7 @@ app.post('/api/generate-reference', async (req, res) => {
 
     if (modelId === 'replit:gpt-image-1') {
       imageUrl = await generateWithReplit(prompt);
-      modelName = 'gpt-image-1';
+      modelName = 'gpt-image-2';
     } else if (modelId === 'openai:gpt-image-2') {
       imageUrl = await generateWithDirectOpenAI(prompt);
       modelName = 'GPT Image 2';
@@ -1927,7 +1927,7 @@ app.post('/api/edit-image', async (req, res) => {
       const images = [resolvedSource];
       if (resolvedAdditional) images.push(resolvedAdditional);
       imageUrl = await generateWithReplit(prompt, images);
-      modelName = 'GPT Image 1 (DALL-E)';
+      modelName = 'GPT Image 2';
     } else if (modelId === 'openai:gpt-image-2') {
       const resolvedSource = await resolveImageToDataUrl(sourceImage);
       const images = [resolvedSource];
@@ -2293,7 +2293,7 @@ app.post('/api/generate-voice-script', async (req, res) => {
     const openaiBase = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
     if (!openaiKey) return res.status(503).json({ error: 'No AI provider configured for script generation' });
     const openai = new OpenAI({ apiKey: openaiKey, ...(openaiBase ? { baseURL: openaiBase } : {}) });
-    const chat = await openai.chat.completions.create({ model: 'gpt-4o-mini', messages: [{ role: 'user', content: prompt }] });
+    const chat = await openai.chat.completions.create({ model: 'gpt-5.5', messages: [{ role: 'user', content: prompt }] });
     const script = chat.choices[0]?.message?.content?.trim() ?? '';
     res.json({ script });
   } catch (err) {
