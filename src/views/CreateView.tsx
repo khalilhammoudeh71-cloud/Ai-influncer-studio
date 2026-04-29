@@ -1734,18 +1734,41 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           const Icon = m.icon;
           const isActive = mode === m.id;
           return (
-            <button
+            <motion.button
               key={m.id}
               onClick={() => { setMode(m.id); setGlobalError(null); }}
-              className={`flex flex-col items-center gap-1.5 py-3 rounded-2xl text-xs font-bold transition-all duration-200 border ${
+              whileHover={{ scale: 1.04, y: -2 }}
+              whileTap={{ scale: 0.96 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 20 }}
+              className={`relative flex flex-col items-center gap-1.5 py-3.5 rounded-2xl text-xs font-bold border overflow-hidden ${
                 isActive
-                  ? `bg-gradient-to-br ${m.gradient} text-white border-transparent shadow-lg`
-                  : 'bg-[var(--bg-elevated)]/60 border-white/6 text-[var(--text-secondary)] hover:bg-white/8 hover:text-white hover:border-white/10'
+                  ? `bg-gradient-to-br ${m.gradient} text-white border-transparent shadow-xl`
+                  : 'bg-[var(--bg-elevated)] border-white/8 text-[var(--text-secondary)] hover:text-white hover:border-white/20'
               }`}
             >
-              <Icon className={`w-4 h-4 shrink-0 ${!isActive ? 'opacity-60' : ''}`} />
+              {isActive && (
+                <motion.span
+                  className="absolute inset-0 rounded-2xl"
+                  style={{ boxShadow: '0 0 0 2px rgba(255,255,255,0.25) inset' }}
+                  animate={{ opacity: [0.4, 0.9, 0.4] }}
+                  transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+                />
+              )}
+              {!isActive && (
+                <motion.span
+                  className="absolute inset-0 rounded-2xl opacity-0"
+                  whileHover={{ opacity: 1 }}
+                  style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)' }}
+                />
+              )}
+              <motion.span
+                animate={isActive ? { rotate: [0, -8, 8, -4, 4, 0] } : {}}
+                transition={{ duration: 0.5, ease: 'easeInOut' }}
+              >
+                <Icon className={`w-4 h-4 shrink-0 ${isActive ? '' : 'opacity-50'}`} />
+              </motion.span>
               <span>{m.label}</span>
-            </button>
+            </motion.button>
           );
         })}
       </div>
