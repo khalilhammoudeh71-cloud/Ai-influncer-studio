@@ -219,13 +219,10 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
       const providerSlash = m.model_id.indexOf('/');
       const provider = m.model_id.slice(0, providerSlash);
 
-      const friendlyName = m.model_id
-        .replace('/text-to-image', '')
-        .split('/')
-        .slice(1)
-        .join(' ')
-        .replace(/-/g, ' ')
-        .replace(/\b\w/g, (c: string) => c.toUpperCase());
+      const _nameBase = m.model_id.replace('/text-to-image', '');
+      const friendlyName = _nameBase.split('/').slice(1).join(' ')
+        .replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())
+        || _nameBase.split('/')[0].replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 
       return {
         id: `wavespeed:${m.model_id}`,
@@ -287,14 +284,10 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
       const props = m.api_schema?.api_schemas?.[0]?.request_schema?.properties || {};
       const imageField: 'image' | 'images' = props.images ? 'images' : 'image';
 
-      const friendlyName = m.model_id
-        .replace('/image-to-image', '')
-        .replace('/edit', '')
-        .split('/')
-        .slice(1)
-        .join(' ')
-        .replace(/-/g, ' ')
-        .replace(/\b\w/g, (c: string) => c.toUpperCase());
+      const _editBase = m.model_id.replace('/image-to-image', '').replace('/edit', '');
+      const friendlyName = _editBase.split('/').slice(1).join(' ')
+        .replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())
+        || _editBase.split('/')[0].replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 
       return {
         id: `wavespeed-edit:${m.model_id}`,
@@ -1144,6 +1137,28 @@ app.get('/api/models', async (_req, res) => {
     ];
 
     const googleVideoModels: ModelInfo[] = [
+      {
+        id: 'google:veo-3.1',
+        name: 'Veo 3.1',
+        provider: 'Google (Gemini API)',
+        type: 'text-to-video' as const,
+        price: 0,
+        description: 'Google Veo 3.1 — latest model, free via your Gemini API key. Supports reference images.',
+        apiPath: 'veo-3.1-generate-preview',
+        hasEditVariant: false,
+        hasReferenceImage: true,
+      },
+      {
+        id: 'google:veo-3.1-fast',
+        name: 'Veo 3.1 Fast',
+        provider: 'Google (Gemini API)',
+        type: 'text-to-video' as const,
+        price: 0,
+        description: 'Google Veo 3.1 Fast — latest model, free via your Gemini API key. Supports reference images.',
+        apiPath: 'veo-3.1-fast-generate-preview',
+        hasEditVariant: false,
+        hasReferenceImage: true,
+      },
       {
         id: 'google:veo-3',
         name: 'Veo 3',
@@ -2108,6 +2123,8 @@ app.post('/api/generate-video', async (req, res) => {
 
   try {
     const GOOGLE_VEO_MAP: Record<string, string> = {
+      'google:veo-3.1': 'veo-3.1-generate-preview',
+      'google:veo-3.1-fast': 'veo-3.1-fast-generate-preview',
       'google:veo-3': 'veo-3.0-generate-preview',
       'google:veo-3-fast': 'veo-3.0-fast-generate-preview',
       'google:veo-2': 'veo-2.0-generate-001',
