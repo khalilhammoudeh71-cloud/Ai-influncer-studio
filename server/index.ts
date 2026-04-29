@@ -2301,6 +2301,37 @@ app.post('/api/generate-voice-script', async (req, res) => {
   }
 });
 
+// ─── Text Translation ─────────────────────────────────────────────────────────
+app.post('/api/translate-text', async (req, res) => {
+  const { text, targetLanguage } = req.body as { text: string; targetLanguage: string };
+  if (!text || !targetLanguage) return res.status(400).json({ error: 'text and targetLanguage are required' });
+
+  const prompt = `Translate the following script to ${targetLanguage}. Maintain the original tone, impact, and emotional weight. Output ONLY the translated text.\n\n"${text}"`;
+
+  const geminiKey = getGeminiDirectKey();
+  if (geminiKey) {
+    try {
+      const ai = new GoogleGenAI({ apiKey: geminiKey });
+      const result = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: [{ role: 'user', parts: [{ text: prompt }] }] });
+      const translatedText = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '';
+      if (translatedText) return res.json({ translatedText });
+    } catch { /* fall through */ }
+  }
+
+  // OpenAI fallback
+  try {
+    const openaiKey = process.env.Openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY || '';
+    const openaiBase = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+    if (!openaiKey) return res.status(503).json({ error: 'No AI provider configured for translation' });
+    const openai = new OpenAI({ apiKey: openaiKey, ...(openaiBase ? { baseURL: openaiBase } : {}) });
+    const chat = await openai.chat.completions.create({ model: 'gpt-5.5', messages: [{ role: 'user', content: prompt }] });
+    const translatedText = chat.choices[0]?.message?.content?.trim() ?? '';
+    return res.json({ translatedText });
+  } catch (err) {
+    return res.status(500).json({ error: err instanceof Error ? err.message : 'Translation failed' });
+  }
+});
+
 // ─── Shared TTS handler ────────────────────────────────────────────────────────
 async function handleTTS(req: express.Request, res: express.Response) {
   const {
