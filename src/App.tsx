@@ -244,7 +244,7 @@ function App() {
       </header>
 
       {/* ── Content ─────────────────────────────────────────────── */}
-      <main className="flex-1 overflow-y-auto pt-[54px] pb-[88px] relative z-10">
+      <main className="flex-1 overflow-y-auto pt-[54px] pb-[88px]">
         <div style={{ display: activeTab === 'create' ? 'block' : 'none' }}>
           <CreateView persona={activePersona} personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} />
         </div>

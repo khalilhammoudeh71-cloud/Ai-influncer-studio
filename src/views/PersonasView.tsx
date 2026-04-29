@@ -1,5 +1,6 @@
 import { Plus, Search, Edit2, Trash2, X, Check, Camera, Upload, Image as ImageIcon, AlertTriangle, Sparkles, ArrowLeft, Download, Heart, Trash, Eye, Loader2, ChevronDown, Cpu, Wand2, Pencil, ArrowUpCircle, Film } from 'lucide-react';
 import { useState, useRef, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
 import { cn } from '../utils/cn';
 import { Persona, GeneratedImage } from '../types';
@@ -15,6 +16,7 @@ interface PersonasViewProps {
 }
 
 export default function PersonasView({ personas, setPersonas, onSelectPersona, selectedId }: PersonasViewProps) {
+  const [mounted, setMounted] = useState(false);
   const [editingPersona, setEditingPersona] = useState<Persona | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [showGenerator, setShowGenerator] = useState(false);
@@ -48,6 +50,8 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
   const [refError, setRefError] = useState<string | null>(null);
   const [analyzingFace, setAnalyzingFace] = useState(false);
   const [faceAnalysisError, setFaceAnalysisError] = useState<string | null>(null);
+
+  useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
     if (editingPersona) {
@@ -458,6 +462,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
 
   return (
     <div className="p-5">
+      {!viewingPersona && <>
       <header className="premium-header mb-8 pt-6 pb-2">
         <div className="flex justify-between items-start relative z-10">
           <div>
@@ -603,8 +608,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
           );
         })}
 
-        {deleteConfirmId && (
-          <div className="fixed inset-0 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" style={{ zIndex: 10001 }}>
+        {mounted && deleteConfirmId && createPortal(<div className="fixed inset-0 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" style={{ zIndex: 10001 }}>
             <div className="bg-[var(--bg-surface)] w-full max-w-sm rounded-2xl border border-[var(--border-default)] p-8 shadow-2xl animate-in fade-in zoom-in duration-200">
               <div className="flex flex-col items-center text-center">
                 <div className="w-16 h-16 bg-rose-500/10 rounded-full flex items-center justify-center mb-6 text-red-500">
@@ -631,10 +635,9 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
               </div>
             </div>
           </div>
-        )}
+        , document.body)}
 
-        {editingPersona && (
-          <div className="fixed inset-0 flex items-end justify-center bg-black/80 backdrop-blur-sm p-4" style={{ zIndex: 10001 }}>
+        {mounted && editingPersona && createPortal(<div className="fixed inset-0 flex items-end justify-center bg-black/80 backdrop-blur-sm p-4" style={{ zIndex: 10001 }}>
             <div className="bg-[var(--bg-surface)] w-full max-w-xl rounded-t-[40px] border-t border-x border-[var(--border-default)] overflow-hidden animate-in slide-in-from-bottom duration-300 max-h-[90vh] flex flex-col">
               <header className="px-6 pt-8 pb-4 flex justify-between items-center bg-[var(--bg-surface)] border-b border-[var(--border-subtle)]">
                 <div>
@@ -1098,7 +1101,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
               </div>
             </div>
           </div>
-        )}
+        , document.body)}
 
         {personas.length === 0 && (
           <div className="text-center py-12 px-4 border-2 border-dashed border-[var(--border-subtle)] rounded-[40px] bg-white/[0.02]">
@@ -1121,9 +1124,10 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
         </button>
       </div>
 
-      {viewingPersona && (
-        <div className="fixed inset-0 bg-[var(--bg-base)] overflow-y-auto animate-in fade-in duration-200" style={{ zIndex: 9999 }}>
-          <header className="sticky top-0 bg-[var(--bg-base)]/95 backdrop-blur-xl border-b border-[var(--border-subtle)] px-5 py-4 flex items-center justify-between" style={{ zIndex: 10000 }}>
+      </>}
+
+      {viewingPersona && <div className="animate-in fade-in duration-200">
+          <header className="flex items-center justify-between px-0 pt-2 pb-4 border-b border-[var(--border-subtle)] mb-4">
             <button 
               onClick={() => { setViewingPersona(null); setPreviewImage(null); }}
               className="flex items-center gap-2 px-4 py-2.5 bg-violet-600 hover:bg-violet-500 active:scale-95 rounded-xl text-white font-bold text-sm transition-all shadow-lg shadow-violet-600/30"
@@ -1277,7 +1281,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
             )}
           </div>
 
-          {previewImage && (
+          {mounted && previewImage && createPortal(
             <div className="fixed inset-0 flex items-start justify-center bg-black/90 backdrop-blur-sm p-4 pb-24 overflow-y-auto" style={{ zIndex: 10002 }} onClick={() => { if (!previewProcessing) setPreviewImage(null); }}>
               <div className="relative max-w-lg w-full mt-8" onClick={(e) => e.stopPropagation()}>
                 <button 
@@ -1558,9 +1562,9 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                 </div>
               </div>
             </div>
-          )}
+          , document.body)}
         </div>
-      )}
+      }
 
       {showGenerator && activePersonaForGen && (
         <VisualGenerator 
