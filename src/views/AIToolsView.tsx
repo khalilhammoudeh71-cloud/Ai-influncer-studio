@@ -69,7 +69,7 @@ const TOOLS = [
   { 
     id: 'ink', title: 'Ink Studio', icon: PenTool, 
     desc: 'Apply photorealistic tattoos to designated regions.', 
-    color: 'from-zinc-600 to-zinc-900',
+    color: 'from-slate-500 to-slate-700',
     demoBefore: '/demo/ink_before.png',
     demoAfter: '/demo/ink_after.png',
   },

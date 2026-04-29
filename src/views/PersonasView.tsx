@@ -562,7 +562,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                   )}
                   <div className={cn(
                     "absolute -bottom-0.5 -right-0.5 status-dot border-2 border-[var(--bg-surface)]",
-                    persona.status === 'Active' ? "bg-emerald-400 text-emerald-400" : "bg-gray-500 text-gray-500"
+                    persona.status === 'Active' ? "bg-emerald-400 text-emerald-400" : "bg-[var(--text-muted)] text-[var(--text-muted)]"
                   )}></div>
                 </div>
                 
@@ -1176,7 +1176,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                 )}
                 <div className={cn(
                   "absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-[var(--border-subtle)]",
-                  viewingPersona.status === 'Active' ? "bg-emerald-500" : "bg-gray-500"
+                  viewingPersona.status === 'Active' ? "bg-emerald-500" : "bg-[var(--text-muted)]"
                 )} />
               </div>
               <div className="flex-1 min-w-0">
