@@ -516,7 +516,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
               <div className="flex gap-4 items-center">
                 <div className="relative shrink-0">
                   {persona.referenceImage ? (
-                    <div className="w-[88px] h-[88px] rounded-2xl overflow-hidden ring-2 ring-violet-500/25 shadow-lg shadow-violet-500/10">
+                    <div className="w-[110px] h-[110px] rounded-2xl overflow-hidden ring-2 ring-violet-500/25 shadow-lg shadow-violet-500/10">
                       <img 
                         src={persona.referenceImage} 
                         alt={persona.name} 
@@ -524,7 +524,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                       />
                     </div>
                   ) : (
-                    <div className="w-[88px] h-[88px] rounded-2xl overflow-hidden ring-1 ring-[var(--border-default)]">
+                    <div className="w-[110px] h-[110px] rounded-2xl overflow-hidden ring-1 ring-[var(--border-default)]">
                       <img 
                         src={persona.avatar} 
                         alt={persona.name} 
@@ -604,7 +604,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
         })}
 
         {deleteConfirmId && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
             <div className="bg-[var(--bg-surface)] w-full max-w-sm rounded-2xl border border-[var(--border-default)] p-8 shadow-2xl animate-in fade-in zoom-in duration-200">
               <div className="flex flex-col items-center text-center">
                 <div className="w-16 h-16 bg-rose-500/10 rounded-full flex items-center justify-center mb-6 text-red-500">
@@ -634,7 +634,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
         )}
 
         {editingPersona && (
-          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="fixed inset-0 z-[210] flex items-end justify-center bg-black/80 backdrop-blur-sm p-4">
             <div className="bg-[var(--bg-surface)] w-full max-w-xl rounded-t-[40px] border-t border-x border-[var(--border-default)] overflow-hidden animate-in slide-in-from-bottom duration-300 max-h-[90vh] flex flex-col">
               <header className="px-6 pt-8 pb-4 flex justify-between items-center bg-[var(--bg-surface)] border-b border-[var(--border-subtle)]">
                 <div>
@@ -1122,7 +1122,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
       </div>
 
       {viewingPersona && (
-        <div className="fixed inset-0 z-50 bg-[var(--bg-base)] overflow-y-auto animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[200] bg-[var(--bg-base)] overflow-y-auto animate-in fade-in duration-200">
           <header className="sticky top-0 z-10 bg-[var(--bg-base)]/90 backdrop-blur-xl border-b border-[var(--border-subtle)] px-5 py-4 flex items-center justify-between">
             <button 
               onClick={() => { setViewingPersona(null); setPreviewImage(null); }}
