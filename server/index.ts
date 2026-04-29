@@ -1194,8 +1194,12 @@ app.get('/api/models', async (_req, res) => {
   }
 });
 
+function getGeminiDirectKey(): string {
+  return process.env.Gemini_api_key || process.env.GEMINI_API_KEY || process.env.AI_INTEGRATIONS_GEMINI_API_KEY || '';
+}
+
 function getGeminiClient(): GoogleGenAI {
-  const directKey = process.env.GEMINI_API_KEY;
+  const directKey = process.env.Gemini_api_key || process.env.GEMINI_API_KEY;
   if (directKey) {
     return new GoogleGenAI({ apiKey: directKey });
   }
@@ -1210,7 +1214,7 @@ function getGeminiClient(): GoogleGenAI {
 // Imagen 3 uses Google's /predict endpoint which isn't supported by the integration proxy.
 // This client uses the API key directly against Google's standard endpoint.
 function getGeminiDirectClient(): GoogleGenAI {
-  const apiKey = process.env.GEMINI_API_KEY || process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+  const apiKey = getGeminiDirectKey();
   if (!apiKey) {
     throw new Error('Gemini API key not configured.');
   }
@@ -1218,7 +1222,7 @@ function getGeminiDirectClient(): GoogleGenAI {
 }
 
 async function generateWithGeminiVideo(geminiModelId: string, prompt: string, sourceImage?: string): Promise<string> {
-  const apiKey = process.env.GEMINI_API_KEY || process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+  const apiKey = getGeminiDirectKey();
   if (!apiKey) throw new Error('Gemini API key not configured.');
 
   const ai = new GoogleGenAI({ apiKey });
@@ -1580,7 +1584,7 @@ async function generateWithGoogleImagen(
   count?: number,
 ): Promise<string | string[]> {
   // Use the API key directly as a query param — the correct auth method for generativelanguage.googleapis.com
-  const apiKey = process.env.GEMINI_API_KEY || process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+  const apiKey = getGeminiDirectKey();
   if (!apiKey) throw new Error('Google API key not configured.');
 
   const BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
@@ -2234,7 +2238,7 @@ app.get('/api/health', (_req, res) => {
 app.get('/api/config-status', (_req, res) => {
   res.json({
     openai: !!(process.env.Openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY),
-    gemini: !!(process.env.GEMINI_API_KEY || process.env.AI_INTEGRATIONS_GEMINI_API_KEY),
+    gemini: !!getGeminiDirectKey(),
     wavespeed: !!WAVESPEED_API_KEY,
     elevenlabs: !!(process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key),
     database: !!process.env.DATABASE_URL,
@@ -2271,14 +2275,13 @@ app.post('/api/generate-voice-script', async (req, res) => {
     prompt = `Write a ${wordCount}-word voiceover script for ${persona.name}, a ${persona.niche} content creator on ${persona.platform}. Tone: ${persona.tone}. Topic: "${topic}". Write naturally for text-to-speech — conversational, no stage directions, no headings. Return only the script text.`;
   }
 
-  // Try Gemini integration proxy first, then fall back to OpenAI
-  const geminiIntegrationKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
-  const geminiBaseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
+  // Try Gemini first, fall back to OpenAI
+  const geminiKey = getGeminiDirectKey();
 
-  if (geminiIntegrationKey && geminiBaseUrl) {
+  if (geminiKey) {
     try {
-      const ai = new GoogleGenAI({ apiKey: geminiIntegrationKey, baseURL: geminiBaseUrl } as ConstructorParameters<typeof GoogleGenAI>[0]);
-      const result = await ai.models.generateContent({ model: 'gemini-2.0-flash', contents: [{ role: 'user', parts: [{ text: prompt }] }] });
+      const ai = new GoogleGenAI({ apiKey: geminiKey });
+      const result = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: [{ role: 'user', parts: [{ text: prompt }] }] });
       const script = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '';
       if (script) return res.json({ script });
     } catch { /* fall through to OpenAI */ }
@@ -2362,14 +2365,8 @@ async function handleTTS(req: express.Request, res: express.Response) {
   }
 
   // Gemini TTS (default) — prefer direct key (supports audio modalities), fall back to integration proxy, then OpenAI
-  const geminiDirectKey = process.env.GEMINI_API_KEY;
-  const geminiIntKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
-  const geminiIntBase = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
-  const geminiAi = geminiDirectKey
-    ? new GoogleGenAI({ apiKey: geminiDirectKey })
-    : geminiIntKey && geminiIntBase
-      ? new GoogleGenAI({ apiKey: geminiIntKey, baseURL: geminiIntBase } as ConstructorParameters<typeof GoogleGenAI>[0])
-      : null;
+  const geminiTtsKey = getGeminiDirectKey();
+  const geminiAi = geminiTtsKey ? new GoogleGenAI({ apiKey: geminiTtsKey }) : null;
 
   if (!geminiAi) {
     // No Gemini available — fall directly to OpenAI
@@ -2547,12 +2544,9 @@ app.post('/api/talking-head', async (req, res) => {
   // If no audio URL provided, generate TTS from script via Gemini (prefer direct key for audio modalities)
   if (!resolvedAudioUrl && script) {
     try {
-      const ttsKey = process.env.GEMINI_API_KEY || process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
-      const ttsBase = process.env.GEMINI_API_KEY ? undefined : process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
+      const ttsKey = getGeminiDirectKey();
       if (!ttsKey) throw new Error('No Gemini key for TTS');
-      const ai = ttsBase
-        ? new GoogleGenAI({ apiKey: ttsKey, baseURL: ttsBase } as ConstructorParameters<typeof GoogleGenAI>[0])
-        : new GoogleGenAI({ apiKey: ttsKey });
+      const ai = new GoogleGenAI({ apiKey: ttsKey });
       const ttsResult = await ai.models.generateContent({
         model: 'gemini-2.5-flash-preview-tts',
         contents: [{ role: 'user', parts: [{ text: script }] }],
