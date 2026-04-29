@@ -795,6 +795,197 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const renderImageMode = () => (
     <div className="space-y-4">
 
+      {/* ══ OUTPUT — always at top ══ */}
+
+      {/* Multi-variation thumbnails */}
+      {multiResults.length > 1 && !isGenerating && (
+        <div className="space-y-2">
+          <p className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-wide">
+            {multiResults.length} Variation{multiResults.length !== 1 ? 's' : ''}{multiResults.length < imageCount ? ` (${imageCount - multiResults.length} failed)` : ''} — tap to select
+          </p>
+          <div className={`grid gap-2 ${multiResults.length === 2 ? 'grid-cols-2' : multiResults.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+            {multiResults.map((r, idx) => (
+              <button
+                key={idx}
+                onClick={() => {
+                  setSelectedVariation(idx);
+                  setImageResult(r);
+                  const version: ImageVersion = { imageUrl: r.imageUrl, model: r.model, promptUsed: r.promptUsed || imagePrompt || '', label: `Variation ${idx + 1}` };
+                  setImageHistory([version]);
+                  setActiveHistoryIndex(0);
+                }}
+                className={`relative aspect-square rounded-xl overflow-hidden border-2 transition-all ${
+                  selectedVariation === idx
+                    ? 'border-purple-500 ring-2 ring-purple-500/30 scale-[1.02]'
+                    : 'border-[var(--border-default)] hover:border-[var(--border-strong)]'
+                }`}
+              >
+                <img src={r.imageUrl} alt={`Variation ${idx + 1}`} className="w-full h-full object-cover" />
+                <div className="absolute top-1.5 left-1.5 px-2 py-0.5 bg-black/70 backdrop-blur-sm rounded-md">
+                  <span className="text-[10px] text-white font-bold">#{idx + 1}</span>
+                </div>
+                <div className="absolute bottom-1.5 right-1.5 flex gap-1">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); downloadFile(r.imageUrl, 'png'); }}
+                    className="p-1.5 bg-black/60 backdrop-blur-md rounded-lg text-white hover:bg-black/80"
+                    title="Download"
+                  >
+                    <Download className="w-3 h-3" />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const media: GeneratedImage = {
+                        id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                        url: r.imageUrl,
+                        prompt: r.promptUsed || imagePrompt || '',
+                        timestamp: Date.now(),
+                        environment: selectedEnv,
+                        outfit: selectedOutfit,
+                        framing: selectedFraming,
+                        model: r.model,
+                      };
+                      saveMediaToLibrary(media);
+                    }}
+                    className="p-1.5 bg-purple-600/80 backdrop-blur-md rounded-lg text-white hover:bg-purple-500"
+                    title="Save to library"
+                  >
+                    <CheckCircle className="w-3 h-3" />
+                  </button>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Main image display */}
+      <div className="rounded-2xl bg-[var(--bg-base)] border border-[var(--border-subtle)] overflow-hidden relative group" style={{minHeight: '240px'}}>
+        {isGenerating || isProcessing ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+            <Loader2 className="w-10 h-10 animate-spin text-purple-500" />
+            <p className="text-xs text-[var(--text-tertiary)] animate-pulse">
+              {isProcessing ? (postAction === 'upscale' ? 'Upscaling...' : 'Editing...') : `Generating${imageCount > 1 ? ` ${imageCount} variations` : ''} with ${selectedModelInfo?.name || 'AI'}...`}
+            </p>
+          </div>
+        ) : imageResult?.imageUrl ? (
+          <>
+            <img src={imageResult.imageUrl} alt="Generated" className="w-full object-contain max-h-[340px]" />
+            <div className="absolute bottom-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button onClick={() => downloadFile(imageResult.imageUrl, 'png')} className="p-2 bg-black/60 backdrop-blur-md rounded-lg text-white hover:bg-black/80" title="Download">
+                <Download className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="absolute top-2 left-2 px-2.5 py-1 bg-black/60 backdrop-blur-md rounded-lg">
+              <span className="text-[10px] text-white font-medium">{imageResult.model}{multiResults.length > 1 ? ` (#${selectedVariation + 1})` : ''}</span>
+            </div>
+          </>
+        ) : (
+          /* Placeholder when no image yet */
+          <div className="p-3">
+            <div className="grid grid-cols-3 gap-2 mb-3">
+              {[
+                { gradient: 'from-purple-900/60 to-violet-800/40', label: 'Luxury Hotel' },
+                { gradient: 'from-rose-900/60 to-pink-800/40', label: 'Beach Day' },
+                { gradient: 'from-blue-900/60 to-indigo-800/40', label: 'Night Out' },
+              ].map(p => (
+                <div key={p.label} className={`aspect-square rounded-xl bg-gradient-to-br ${p.gradient} flex flex-col items-end justify-end p-2 border border-white/5`}>
+                  <span className="text-[9px] text-white/50 font-medium">{p.label}</span>
+                </div>
+              ))}
+            </div>
+            <div className="flex flex-col items-center justify-center py-3 gap-1.5">
+              <Sparkles className="w-6 h-6 text-purple-500/50" />
+              <p className="text-xs text-[var(--text-muted)]">Configure below and hit Generate</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Version history strip */}
+      {imageHistory.length > 1 && (
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-1.5">
+            <History className="w-3 h-3 text-[var(--text-tertiary)]" />
+            <span className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-tertiary)]">Version History</span>
+          </div>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {imageHistory.map((version, idx) => (
+              <button
+                key={idx}
+                onClick={() => { setActiveHistoryIndex(idx); setImageResult({ imageUrl: version.imageUrl, model: version.model, promptUsed: version.promptUsed }); }}
+                className={`shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 transition-all ${idx === activeHistoryIndex ? 'border-purple-500 ring-2 ring-purple-500/30' : 'border-[var(--border-default)] hover:border-[var(--border-strong)]'}`}
+              >
+                <img src={version.imageUrl} alt={version.label} className="w-full h-full object-cover" />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Post-generation actions */}
+      {activeVersion && !isGenerating && !isProcessing && (
+        <div className="space-y-3">
+          <div className="flex gap-2">
+            <button onClick={() => setPostAction(postAction === 'edit' ? null : 'edit')} className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${postAction === 'edit' ? 'bg-blue-600 text-white' : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-white'}`}>
+              <Pencil className="w-3.5 h-3.5" /> Edit
+            </button>
+            <button onClick={() => setPostAction(postAction === 'upscale' ? null : 'upscale')} className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${postAction === 'upscale' ? 'bg-green-600 text-white' : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-white'}`}>
+              <ArrowUpCircle className="w-3.5 h-3.5" /> Upscale
+            </button>
+            <button onClick={handleSaveImage} disabled={saved} className="flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 bg-purple-600 hover:bg-purple-500 text-white transition-all disabled:opacity-50">
+              {saved ? <><Check className="w-3.5 h-3.5" /> Saved!</> : <><CheckCircle className="w-3.5 h-3.5" /> Save</>}
+            </button>
+          </div>
+
+          {activeVersion?.promptUsed && (
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(activeVersion.promptUsed);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              }}
+              className="w-full py-2 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 bg-[var(--bg-elevated)] hover:bg-[var(--bg-overlay)] text-[var(--text-primary)] hover:text-white transition-all border border-[var(--border-default)]"
+            >
+              {copied ? <><Check className="w-3.5 h-3.5 text-emerald-400" /> Prompt Copied!</> : <><Copy className="w-3.5 h-3.5" /> Copy Prompt</>}
+            </button>
+          )}
+
+          {postAction === 'edit' && (
+            <div className="bg-[var(--bg-elevated)]/50 border border-[var(--border-default)] rounded-xl p-3 space-y-2">
+              {renderModelSelect(selectedEditModel, setSelectedEditModel, groupedEditModels)}
+              <textarea value={editPrompt} onChange={e => setEditPrompt(e.target.value)} placeholder="Describe what to change..." className="w-full bg-[var(--bg-surface)] rounded-lg px-3 py-2 text-sm text-white placeholder-[var(--text-muted)] resize-none h-16 outline-none" />
+              <div className="flex gap-2">
+                <label className="flex-1 flex items-center gap-2 px-3 py-2 bg-[var(--bg-surface)] rounded-lg cursor-pointer hover:bg-[var(--bg-elevated)] text-xs text-[var(--text-secondary)]">
+                  <Upload className="w-3.5 h-3.5" />
+                  {editAdditionalImageName || 'Add reference (optional)'}
+                  <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload(setEditAdditionalImage, setEditAdditionalImageName)} />
+                </label>
+                <button onClick={handleEdit} disabled={isProcessing || !editPrompt.trim()} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs font-bold disabled:opacity-50">
+                  {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Apply'}
+                </button>
+              </div>
+              {actionError && <p className="text-xs text-rose-400">{actionError}</p>}
+            </div>
+          )}
+
+          {postAction === 'upscale' && (
+            <div className="bg-[var(--bg-elevated)]/50 border border-[var(--border-default)] rounded-xl p-3 space-y-2">
+              {renderModelSelect(selectedUpscaleModel, setSelectedUpscaleModel, groupedUpscaleModels)}
+              <button onClick={handleUpscale} disabled={isProcessing} className="w-full py-2 bg-green-600 hover:bg-emerald-500 rounded-lg text-xs font-bold disabled:opacity-50 flex items-center justify-center gap-2">
+                {isProcessing ? <><Loader2 className="w-4 h-4 animate-spin" /> Upscaling...</> : <><ArrowUpCircle className="w-3.5 h-3.5" /> Upscale Now</>}
+              </button>
+              {actionError && <p className="text-xs text-rose-400">{actionError}</p>}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── divider ── */}
+      <div className="border-t border-white/5 pt-2" />
+
+      {/* ══ CONTROLS below ══ */}
+
       {/* ── Quick Styles ── */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
@@ -833,7 +1024,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-300 border border-violet-500/30">★ Face-consistent</span>
           )}
           {!selectedModelInfo.isIdentityModel && hasRefImage && canUseReference(selectedModelInfo, models) && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-green-300 border border-green-500/30">Uses reference image</span>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-green-300 border border-emerald-500/30">Uses reference image</span>
           )}
           {!selectedModelInfo.isIdentityModel && hasRefImage && !canUseReference(selectedModelInfo, models) && (
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/30">Text-only — will ignore reference</span>
@@ -1035,171 +1226,6 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         )}
       </button>
 
-      {multiResults.length > 1 && !isGenerating && (
-        <div className="space-y-2">
-          <p className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-wide">
-            {multiResults.length} Variation{multiResults.length !== 1 ? 's' : ''}{multiResults.length < imageCount ? ` (${imageCount - multiResults.length} failed)` : ''} — tap to select
-          </p>
-          <div className={`grid gap-2 ${multiResults.length === 2 ? 'grid-cols-2' : multiResults.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
-            {multiResults.map((r, idx) => (
-              <button
-                key={idx}
-                onClick={() => {
-                  setSelectedVariation(idx);
-                  setImageResult(r);
-                  const version: ImageVersion = { imageUrl: r.imageUrl, model: r.model, promptUsed: r.promptUsed || imagePrompt || '', label: `Variation ${idx + 1}` };
-                  setImageHistory([version]);
-                  setActiveHistoryIndex(0);
-                }}
-                className={`relative aspect-square rounded-xl overflow-hidden border-2 transition-all ${
-                  selectedVariation === idx
-                    ? 'border-purple-500 ring-2 ring-purple-500/30 scale-[1.02]'
-                    : 'border-[var(--border-default)] hover:border-[var(--border-strong)]'
-                }`}
-              >
-                <img src={r.imageUrl} alt={`Variation ${idx + 1}`} className="w-full h-full object-cover" />
-                <div className="absolute top-1.5 left-1.5 px-2 py-0.5 bg-black/70 backdrop-blur-sm rounded-md">
-                  <span className="text-[10px] text-white font-bold">#{idx + 1}</span>
-                </div>
-                <div className="absolute bottom-1.5 right-1.5 flex gap-1">
-                  <button
-                    onClick={(e) => { e.stopPropagation(); downloadFile(r.imageUrl, 'png'); }}
-                    className="p-1.5 bg-black/60 backdrop-blur-md rounded-lg text-white hover:bg-black/80"
-                    title="Download"
-                  >
-                    <Download className="w-3 h-3" />
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const media: GeneratedImage = {
-                        id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-                        url: r.imageUrl,
-                        prompt: r.promptUsed || imagePrompt || '',
-                        timestamp: Date.now(),
-                        environment: selectedEnv,
-                        outfit: selectedOutfit,
-                        framing: selectedFraming,
-                        model: r.model,
-                      };
-                      saveMediaToLibrary(media);
-                    }}
-                    className="p-1.5 bg-purple-600/80 backdrop-blur-md rounded-lg text-white hover:bg-purple-500"
-                    title="Save to library"
-                  >
-                    <CheckCircle className="w-3 h-3" />
-                  </button>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="aspect-square max-h-[400px] rounded-2xl bg-[var(--bg-base)] border border-[var(--border-subtle)] overflow-hidden relative group mx-auto w-full max-w-[400px]">
-        {isGenerating || isProcessing ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-            <Loader2 className="w-10 h-10 animate-spin text-purple-500" />
-            <p className="text-xs text-[var(--text-tertiary)] animate-pulse">
-              {isProcessing ? (postAction === 'upscale' ? 'Upscaling...' : 'Editing...') : `Generating${imageCount > 1 ? ` ${imageCount} variations` : ''} with ${selectedModelInfo?.name || 'AI'}...`}
-            </p>
-          </div>
-        ) : imageResult?.imageUrl ? (
-          <>
-            <img src={imageResult.imageUrl} alt="Generated" className="absolute inset-0 w-full h-full object-contain" />
-            <div className="absolute bottom-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-              <button onClick={() => downloadFile(imageResult.imageUrl, 'png')} className="p-2 bg-black/60 backdrop-blur-md rounded-lg text-white hover:bg-black/80" title="Download">
-                <Download className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="absolute top-2 left-2 px-2.5 py-1 bg-black/60 backdrop-blur-md rounded-lg">
-              <span className="text-[10px] text-white font-medium">{imageResult.model}{multiResults.length > 1 ? ` (#${selectedVariation + 1})` : ''}</span>
-            </div>
-          </>
-        ) : (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-            <ImageIcon className="w-12 h-12 text-[var(--text-muted)] opacity-30" />
-            <p className="text-xs text-[var(--text-muted)]">Select a model and generate</p>
-          </div>
-        )}
-      </div>
-
-      {imageHistory.length > 1 && (
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-1.5">
-            <History className="w-3 h-3 text-[var(--text-tertiary)]" />
-            <span className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-tertiary)]">Version History</span>
-          </div>
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {imageHistory.map((version, idx) => (
-              <button
-                key={idx}
-                onClick={() => { setActiveHistoryIndex(idx); setImageResult({ imageUrl: version.imageUrl, model: version.model, promptUsed: version.promptUsed }); }}
-                className={`shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 transition-all ${idx === activeHistoryIndex ? 'border-purple-500 ring-2 ring-purple-500/30' : 'border-[var(--border-default)] hover:border-[var(--border-strong)]'}`}
-              >
-                <img src={version.imageUrl} alt={version.label} className="w-full h-full object-cover" />
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {activeVersion && !isGenerating && !isProcessing && (
-        <div className="space-y-3">
-          <div className="flex gap-2">
-            <button onClick={() => setPostAction(postAction === 'edit' ? null : 'edit')} className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${postAction === 'edit' ? 'bg-blue-600 text-white' : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-white'}`}>
-              <Pencil className="w-3.5 h-3.5" /> Edit
-            </button>
-            <button onClick={() => setPostAction(postAction === 'upscale' ? null : 'upscale')} className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${postAction === 'upscale' ? 'bg-green-600 text-white' : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-white'}`}>
-              <ArrowUpCircle className="w-3.5 h-3.5" /> Upscale
-            </button>
-            <button onClick={handleSaveImage} disabled={saved} className="flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 bg-purple-600 hover:bg-purple-500 text-white transition-all disabled:opacity-50">
-              {saved ? <><Check className="w-3.5 h-3.5" /> Saved!</> : <><CheckCircle className="w-3.5 h-3.5" /> Save</>}
-            </button>
-          </div>
-
-          {activeVersion?.promptUsed && (
-            <button
-              onClick={() => {
-                navigator.clipboard.writeText(activeVersion.promptUsed);
-                setCopied(true);
-                setTimeout(() => setCopied(false), 2000);
-              }}
-              className="w-full py-2 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 bg-[var(--bg-elevated)] hover:bg-[var(--bg-overlay)] text-[var(--text-primary)] hover:text-white transition-all border border-[var(--border-default)]"
-            >
-              {copied ? <><Check className="w-3.5 h-3.5 text-emerald-400" /> Prompt Copied!</> : <><Copy className="w-3.5 h-3.5" /> Copy Prompt</>}
-            </button>
-          )}
-
-          {postAction === 'edit' && (
-            <div className="bg-[var(--bg-elevated)]/50 border border-[var(--border-default)] rounded-xl p-3 space-y-2">
-              {renderModelSelect(selectedEditModel, setSelectedEditModel, groupedEditModels)}
-              <textarea value={editPrompt} onChange={e => setEditPrompt(e.target.value)} placeholder="Describe what to change..." className="w-full bg-[var(--bg-surface)] rounded-lg px-3 py-2 text-sm text-white placeholder-[var(--text-muted)] resize-none h-16 outline-none" />
-              <div className="flex gap-2">
-                <label className="flex-1 flex items-center gap-2 px-3 py-2 bg-[var(--bg-surface)] rounded-lg cursor-pointer hover:bg-[var(--bg-elevated)] text-xs text-[var(--text-secondary)]">
-                  <Upload className="w-3.5 h-3.5" />
-                  {editAdditionalImageName || 'Add reference (optional)'}
-                  <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload(setEditAdditionalImage, setEditAdditionalImageName)} />
-                </label>
-                <button onClick={handleEdit} disabled={isProcessing || !editPrompt.trim()} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs font-bold disabled:opacity-50">
-                  {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Apply'}
-                </button>
-              </div>
-              {actionError && <p className="text-xs text-rose-400">{actionError}</p>}
-            </div>
-          )}
-
-          {postAction === 'upscale' && (
-            <div className="bg-[var(--bg-elevated)]/50 border border-[var(--border-default)] rounded-xl p-3 space-y-2">
-              {renderModelSelect(selectedUpscaleModel, setSelectedUpscaleModel, groupedUpscaleModels)}
-              <button onClick={handleUpscale} disabled={isProcessing} className="w-full py-2 bg-green-600 hover:bg-emerald-500 rounded-lg text-xs font-bold disabled:opacity-50 flex items-center justify-center gap-2">
-                {isProcessing ? <><Loader2 className="w-4 h-4 animate-spin" /> Upscaling...</> : <><ArrowUpCircle className="w-3.5 h-3.5" /> Upscale Now</>}
-              </button>
-              {actionError && <p className="text-xs text-rose-400">{actionError}</p>}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 
@@ -1793,66 +1819,26 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         })}
       </div>
 
-      {/* ── Active Persona Card ── */}
-      <div className="mb-5 relative">
-        <div
-          className="flex items-center gap-3 p-3 bg-[var(--bg-elevated)]/60 rounded-2xl border border-white/8 cursor-pointer hover:border-white/15 transition-all"
-          onClick={() => setPersonaPickerOpen(v => !v)}
-        >
-          <div className="shrink-0">
-            {activePersona.avatar ? (
-              <img src={activePersona.avatar} alt={activePersona.name} className="w-10 h-10 rounded-xl object-cover" />
-            ) : (
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-violet-700 flex items-center justify-center">
-                <UserRound className="w-5 h-5 text-white/80" />
-              </div>
-            )}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-bold text-[var(--text-tertiary)] uppercase tracking-wide mb-0.5">Active Persona</p>
-            {localPersonaId === 'none' ? (
-              <p className="text-sm text-[var(--text-secondary)]">No persona — upload your own photo</p>
-            ) : (
-              <p className="text-sm font-semibold text-white truncate">{activePersona.name}{activePersona.niche ? <span className="text-[var(--text-tertiary)] font-normal"> · {activePersona.niche}</span> : ''}</p>
-            )}
-          </div>
-          <ChevronRight className={`w-4 h-4 text-[var(--text-tertiary)] shrink-0 transition-transform ${personaPickerOpen ? 'rotate-90' : ''}`} />
-        </div>
-
-        {personaPickerOpen && (
-          <div className="absolute z-20 left-0 right-0 mt-1.5 bg-[var(--bg-elevated)] border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
-            <button
-              onClick={() => { setLocalPersonaId('none'); setPersonaPickerOpen(false); }}
-              className={`w-full flex items-center gap-3 px-4 py-3 text-sm hover:bg-white/5 transition-colors ${localPersonaId === 'none' ? 'text-purple-300' : 'text-[var(--text-secondary)]'}`}
-            >
-              <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center">
-                <UserRound className="w-4 h-4 text-[var(--text-tertiary)]" />
-              </div>
-              <span>No persona — use my own photo</span>
-              {localPersonaId === 'none' && <Check className="w-3.5 h-3.5 ml-auto text-purple-400" />}
-            </button>
+      {/* ── Active Persona Dropdown ── */}
+      <div className="mb-5">
+        <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase mb-1.5 block">Active Persona</label>
+        <div className="relative">
+          <select
+            value={localPersonaId}
+            onChange={e => {
+              const v = e.target.value;
+              setLocalPersonaId(v);
+              if (v !== 'none') onSelectPersona(v);
+            }}
+            className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white outline-none appearance-none pr-10"
+          >
+            <option value="none">None — Upload my own image</option>
             {personas.map(p => (
-              <button
-                key={p.id}
-                onClick={() => { setLocalPersonaId(p.id); onSelectPersona(p.id); setPersonaPickerOpen(false); }}
-                className={`w-full flex items-center gap-3 px-4 py-3 text-sm hover:bg-white/5 transition-colors border-t border-white/5 ${localPersonaId === p.id ? 'text-purple-300' : 'text-[var(--text-secondary)]'}`}
-              >
-                {p.avatar ? (
-                  <img src={p.avatar} alt={p.name} className="w-8 h-8 rounded-lg object-cover" />
-                ) : (
-                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-600 to-violet-700 flex items-center justify-center">
-                    <UserRound className="w-4 h-4 text-white/80" />
-                  </div>
-                )}
-                <div className="flex-1 min-w-0 text-left">
-                  <p className="font-semibold text-white truncate">{p.name}</p>
-                  {p.niche && <p className="text-[10px] text-[var(--text-tertiary)] truncate">{p.niche}</p>}
-                </div>
-                {localPersonaId === p.id && <Check className="w-3.5 h-3.5 shrink-0 text-purple-400" />}
-              </button>
+              <option key={p.id} value={p.id}>{p.name}{p.niche ? ` — ${p.niche}` : ''}</option>
             ))}
-          </div>
-        )}
+          </select>
+          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-tertiary)] pointer-events-none" />
+        </div>
       </div>
 
       {globalError && (
