@@ -29,6 +29,8 @@ import {
   SlidersHorizontal,
   UserRound,
   ChevronRight,
+  RefreshCw,
+  X,
 } from 'lucide-react';
 import { Persona, GeneratedImage } from '../types';
 import {
@@ -107,6 +109,26 @@ interface ImageVersion {
   promptUsed: string;
   label: string;
 }
+
+interface GeneratedEntry {
+  id: string;
+  imageUrl: string;
+  model: string;
+  promptUsed: string;
+  label: string;
+  timestamp: number;
+}
+
+const ASPECT_RATIO_OPTIONS = [
+  { value: '1:1',  label: 'Square (1:1)' },
+  { value: '16:9', label: 'Landscape (16:9)' },
+  { value: '9:16', label: 'Portrait (9:16)' },
+  { value: '4:5',  label: 'Instagram (4:5)' },
+  { value: '5:4',  label: 'Landscape (5:4)' },
+  { value: '3:2',  label: 'Photo (3:2)' },
+  { value: '2:3',  label: 'Photo Portrait (2:3)' },
+  { value: '21:9', label: 'Cinematic (21:9)' },
+];
 
 export default function CreateView({ persona, personas, setPersonas, onSelectPersona }: CreateViewProps) {
   const [localPersonaId, setLocalPersonaId] = useState<string>(persona.id);
@@ -218,9 +240,15 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const [activeQuickStyle, setActiveQuickStyle] = useState<string | null>(null);
   const [personaPickerOpen, setPersonaPickerOpen] = useState(false);
 
+  const [selectedAspectRatio, setSelectedAspectRatio] = useState('1:1');
+  const [generatedFeed, setGeneratedFeed] = useState<GeneratedEntry[]>([]);
+  const [focusedEntryId, setFocusedEntryId] = useState<string | null>(null);
+  const [excludePersonaRef, setExcludePersonaRef] = useState(false);
+  const [enhancingField, setEnhancingField] = useState<string | null>(null);
+
   const refPersonaImage = refPersonaId !== 'none' ? (personas.find(p => p.id === refPersonaId)?.referenceImage ?? null) : null;
   const allRefImages: string[] = [
-    ...(refPersonaImage ? [refPersonaImage] : []),
+    ...(!excludePersonaRef && refPersonaImage ? [refPersonaImage] : []),
     ...refImages.map(img => img.url),
   ];
   const effectiveRefImage = allRefImages[0] || null;
@@ -363,8 +391,21 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         naturalLook,
         identityLock,
         count: imageCount,
+        aspectRatio: selectedAspectRatio,
       });
+
+      const now = Date.now();
       if (Array.isArray(result)) {
+        const entries: GeneratedEntry[] = result.map((r, i) => ({
+          id: `img-${now}-${i}`,
+          imageUrl: r.imageUrl,
+          model: r.model,
+          promptUsed: r.promptUsed || imagePrompt || '',
+          label: `Variation ${i + 1}`,
+          timestamp: now,
+        }));
+        setGeneratedFeed(prev => [...entries, ...prev]);
+        setFocusedEntryId(entries[0].id);
         setMultiResults(result);
         setSelectedVariation(0);
         setImageResult(result[0]);
@@ -372,6 +413,16 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         setImageHistory([version]);
         setActiveHistoryIndex(0);
       } else {
+        const entry: GeneratedEntry = {
+          id: `img-${now}-0`,
+          imageUrl: result.imageUrl,
+          model: result.model,
+          promptUsed: result.promptUsed || imagePrompt || '',
+          label: 'Generated',
+          timestamp: now,
+        };
+        setGeneratedFeed(prev => [entry, ...prev]);
+        setFocusedEntryId(entry.id);
         setImageResult(result);
         const version: ImageVersion = { imageUrl: result.imageUrl, model: result.model, promptUsed: result.promptUsed || imagePrompt || '', label: 'Original' };
         setImageHistory([version]);
@@ -596,6 +647,19 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   };
 
   const clearQuickStyle = () => setActiveQuickStyle(null);
+
+  const handleEnhanceField = async (text: string, setter: (v: string) => void, fieldKey: string) => {
+    if (!text.trim() || enhancingField) return;
+    setEnhancingField(fieldKey);
+    try {
+      const enhanced = await enhancePrompt(text);
+      setter(enhanced);
+    } catch (err) {
+      setGlobalError(err instanceof Error ? err.message : 'Enhancement failed.');
+    } finally {
+      setEnhancingField(null);
+    }
+  };
 
   const handleSaveAngleImage = () => {
     if (!angleResult?.imageUrl) return;
@@ -862,6 +926,23 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           ))}
         </div>
 
+        {/* Aspect Ratio */}
+        <div>
+          <label className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase block mb-1">Aspect Ratio</label>
+          <div className="relative">
+            <select
+              value={selectedAspectRatio}
+              onChange={e => setSelectedAspectRatio(e.target.value)}
+              className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2 text-xs text-white outline-none appearance-none pr-7"
+            >
+              {ASPECT_RATIO_OPTIONS.map(ar => (
+                <option key={ar.value} value={ar.value}>{ar.label}</option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-tertiary)] pointer-events-none" />
+          </div>
+        </div>
+
         {/* Reference Images */}
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
@@ -887,18 +968,40 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             </div>
           )}
 
-          {allRefImages.length > 0 ? (
+          {allRefImages.length > 0 || refPersonaImage ? (
             <div className="flex gap-2 flex-wrap">
               {refPersonaImage && (
-                <div className="relative group">
-                  <img src={refPersonaImage} alt="Persona ref" className="w-16 h-16 rounded-xl object-cover border-2 border-purple-500/60" />
+                <div className="relative">
+                  <img
+                    src={refPersonaImage}
+                    alt="Persona ref"
+                    className={`w-16 h-16 rounded-xl object-cover border-2 border-purple-500/60 transition-opacity ${excludePersonaRef ? 'opacity-30' : ''}`}
+                  />
+                  {excludePersonaRef && (
+                    <div className="absolute inset-0 flex items-center justify-center rounded-xl">
+                      <span className="text-[8px] text-white/80 font-bold bg-black/50 px-1 rounded">Excluded</span>
+                    </div>
+                  )}
+                  <button
+                    onClick={() => setExcludePersonaRef(v => !v)}
+                    className={`absolute -top-1.5 -left-1.5 w-5 h-5 rounded-full text-white flex items-center justify-center shadow-lg transition-colors ${excludePersonaRef ? 'bg-[var(--bg-overlay)] hover:bg-red-600' : 'bg-red-600 hover:bg-rose-500'}`}
+                    title={excludePersonaRef ? 'Include persona reference' : 'Exclude persona reference'}
+                  >
+                    <X className="w-2.5 h-2.5" />
+                  </button>
                   <span className="absolute -bottom-1 -right-1 text-[8px] bg-purple-600 text-white rounded px-1 leading-4">Persona</span>
                 </div>
               )}
               {refImages.map(img => (
-                <div key={img.id} className="relative group">
+                <div key={img.id} className="relative">
                   <img src={img.url} alt={img.name} className="w-16 h-16 rounded-xl object-cover border border-[var(--border-default)]" />
-                  <button onClick={() => setRefImages(prev => prev.filter(i => i.id !== img.id))} className="absolute -top-1.5 -left-1.5 w-5 h-5 bg-red-600 hover:bg-rose-500 rounded-full text-white text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all shadow-lg">×</button>
+                  <button
+                    onClick={() => setRefImages(prev => prev.filter(i => i.id !== img.id))}
+                    className="absolute -top-1.5 -left-1.5 w-5 h-5 bg-red-600 hover:bg-rose-500 rounded-full text-white flex items-center justify-center shadow-lg transition-colors"
+                    title="Remove"
+                  >
+                    <X className="w-2.5 h-2.5" />
+                  </button>
                 </div>
               ))}
             </div>
@@ -923,7 +1026,23 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         </div>
 
         {/* Instructions */}
-        <textarea value={imagePrompt} onChange={e => setImagePrompt(e.target.value)} placeholder="Additional instructions (optional)..." className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white placeholder-[var(--text-muted)] resize-none h-20 outline-none focus:ring-2 focus:ring-purple-500" />
+        <div className="relative">
+          <textarea
+            value={imagePrompt}
+            onChange={e => setImagePrompt(e.target.value)}
+            placeholder="Additional instructions (optional)..."
+            className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 pr-10 text-sm text-white placeholder-[var(--text-muted)] resize-none h-20 outline-none focus:ring-2 focus:ring-purple-500"
+          />
+          <button
+            type="button"
+            onClick={() => handleEnhanceField(imagePrompt, setImagePrompt, 'imagePrompt')}
+            disabled={!imagePrompt.trim() || !!enhancingField}
+            className="absolute top-2 right-2 p-1.5 rounded-lg bg-[var(--bg-overlay)] hover:bg-purple-500/30 text-purple-400 hover:text-purple-300 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+            title="Enhance prompt with AI"
+          >
+            {enhancingField === 'imagePrompt' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
+          </button>
+        </div>
 
         {/* Advanced Settings */}
         <div className="rounded-2xl border border-white/8 overflow-hidden">
@@ -971,178 +1090,162 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
       </div>{/* end left column */}
 
-      {/* ══ RIGHT COLUMN — Output ══ */}
-      <div className="space-y-3 lg:sticky lg:top-4">
+      {/* ══ RIGHT COLUMN — Scrollable Image Feed ══ */}
+      <div className="flex flex-col gap-3">
 
-        {/* Multi-variation thumbnails */}
-        {multiResults.length > 1 && !isGenerating && (
-        <div className="space-y-2">
-          <p className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-wide">
-            {multiResults.length} Variation{multiResults.length !== 1 ? 's' : ''}{multiResults.length < imageCount ? ` (${imageCount - multiResults.length} failed)` : ''} — tap to select
-          </p>
-          <div className={`grid gap-2 ${multiResults.length === 2 ? 'grid-cols-2' : multiResults.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
-            {multiResults.map((r, idx) => (
-              <button
-                key={idx}
+        {/* Scrollable feed */}
+        <div className="h-[calc(100vh-280px)] min-h-[400px] overflow-y-auto space-y-3 pr-1">
+
+          {/* Loading card at top when generating */}
+          {(isGenerating || isProcessing) && (
+            <div className="rounded-2xl bg-[var(--bg-elevated)]/30 border border-[var(--border-subtle)] flex flex-col items-center justify-center py-20 gap-3">
+              <Loader2 className="w-10 h-10 animate-spin text-purple-500" />
+              <p className="text-xs text-[var(--text-tertiary)] animate-pulse">
+                {isProcessing
+                  ? (postAction === 'upscale' ? 'Upscaling...' : 'Editing...')
+                  : `Generating${imageCount > 1 ? ` ${imageCount} images` : ''} with ${selectedModelInfo?.name || 'AI'}...`}
+              </p>
+            </div>
+          )}
+
+          {/* Generated image cards */}
+          {generatedFeed.map(entry => {
+            const isFocused = focusedEntryId === entry.id;
+            return (
+              <div
+                key={entry.id}
                 onClick={() => {
-                  setSelectedVariation(idx);
-                  setImageResult(r);
-                  const version: ImageVersion = { imageUrl: r.imageUrl, model: r.model, promptUsed: r.promptUsed || imagePrompt || '', label: `Variation ${idx + 1}` };
-                  setImageHistory([version]);
+                  setFocusedEntryId(entry.id);
+                  setImageResult({ imageUrl: entry.imageUrl, model: entry.model, promptUsed: entry.promptUsed });
+                  setImageHistory([{ imageUrl: entry.imageUrl, model: entry.model, promptUsed: entry.promptUsed, label: entry.label }]);
                   setActiveHistoryIndex(0);
+                  setPostAction(null);
                 }}
-                className={`relative aspect-square rounded-xl overflow-hidden border-2 transition-all ${
-                  selectedVariation === idx
-                    ? 'border-purple-500 ring-2 ring-purple-500/30 scale-[1.02]'
-                    : 'border-[var(--border-default)] hover:border-[var(--border-strong)]'
+                className={`relative rounded-2xl overflow-hidden border-2 cursor-pointer transition-all ${
+                  isFocused ? 'border-purple-500 ring-2 ring-purple-500/20' : 'border-[var(--border-subtle)] hover:border-[var(--border-strong)]'
                 }`}
               >
-                <img src={r.imageUrl} alt={`Variation ${idx + 1}`} className="w-full h-full object-cover" />
-                <div className="absolute top-1.5 left-1.5 px-2 py-0.5 bg-black/70 backdrop-blur-sm rounded-md">
-                  <span className="text-[10px] text-white font-bold">#{idx + 1}</span>
+                <img src={entry.imageUrl} alt={entry.label} className="w-full object-contain" />
+
+                {/* Label badge */}
+                <div className="absolute top-2 left-2 px-2.5 py-1 bg-black/60 backdrop-blur-md rounded-lg">
+                  <span className="text-[10px] text-white font-medium">{entry.model}</span>
                 </div>
-                <div className="absolute bottom-1.5 right-1.5 flex gap-1">
+
+                {/* Regenerate button — top right */}
+                <button
+                  onClick={e => { e.stopPropagation(); handleImageGenerate(); }}
+                  className="absolute top-2 right-2 p-2 bg-black/60 backdrop-blur-md rounded-lg text-white hover:bg-purple-600/80 transition-all"
+                  title="Regenerate with current settings"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                </button>
+
+                {/* Download + Save — bottom right */}
+                <div className="absolute bottom-2 right-2 flex gap-1.5">
                   <button
-                    onClick={(e) => { e.stopPropagation(); downloadFile(r.imageUrl, 'png'); }}
-                    className="p-1.5 bg-black/60 backdrop-blur-md rounded-lg text-white hover:bg-black/80"
+                    onClick={e => { e.stopPropagation(); downloadFile(entry.imageUrl, 'png'); }}
+                    className="p-1.5 bg-black/60 backdrop-blur-md rounded-lg text-white hover:bg-black/80 transition-colors"
                     title="Download"
                   >
-                    <Download className="w-3 h-3" />
+                    <Download className="w-3.5 h-3.5" />
                   </button>
                   <button
-                    onClick={(e) => {
+                    onClick={e => {
                       e.stopPropagation();
                       const media: GeneratedImage = {
                         id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-                        url: r.imageUrl,
-                        prompt: r.promptUsed || imagePrompt || '',
+                        url: entry.imageUrl,
+                        prompt: entry.promptUsed,
                         timestamp: Date.now(),
                         environment: selectedEnv,
                         outfit: selectedOutfit,
                         framing: selectedFraming,
-                        model: r.model,
+                        model: entry.model,
                       };
                       saveMediaToLibrary(media);
                     }}
-                    className="p-1.5 bg-purple-600/80 backdrop-blur-md rounded-lg text-white hover:bg-purple-500"
+                    className="p-1.5 bg-purple-600/80 backdrop-blur-md rounded-lg text-white hover:bg-purple-500 transition-colors"
                     title="Save to library"
                   >
-                    <CheckCircle className="w-3 h-3" />
+                    <CheckCircle className="w-3.5 h-3.5" />
                   </button>
                 </div>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
 
-      {/* Main image display */}
-      <div className="rounded-2xl bg-[var(--bg-base)] border border-[var(--border-subtle)] overflow-hidden relative group" style={{minHeight: '240px'}}>
-        {isGenerating || isProcessing ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-            <Loader2 className="w-10 h-10 animate-spin text-purple-500" />
-            <p className="text-xs text-[var(--text-tertiary)] animate-pulse">
-              {isProcessing ? (postAction === 'upscale' ? 'Upscaling...' : 'Editing...') : `Generating${imageCount > 1 ? ` ${imageCount} variations` : ''} with ${selectedModelInfo?.name || 'AI'}...`}
-            </p>
-          </div>
-        ) : imageResult?.imageUrl ? (
-          <>
-            <img src={imageResult.imageUrl} alt="Generated" className="w-full object-contain max-h-[340px]" />
-            <div className="absolute bottom-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-              <button onClick={() => downloadFile(imageResult.imageUrl, 'png')} className="p-2 bg-black/60 backdrop-blur-md rounded-lg text-white hover:bg-black/80" title="Download">
-                <Download className="w-4 h-4" />
+                {/* Label strip at bottom left */}
+                <div className="absolute bottom-2 left-2">
+                  <span className="text-[9px] text-white/60 font-medium">{entry.label}</span>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Empty state */}
+          {generatedFeed.length === 0 && !isGenerating && !isProcessing && (
+            <div className="flex flex-col items-center justify-center h-full min-h-[300px] gap-3">
+              <ImageIcon className="w-12 h-12 text-[var(--text-muted)] opacity-20" />
+              <p className="text-xs text-[var(--text-muted)]">Your images will appear here</p>
+            </div>
+          )}
+        </div>
+
+        {/* Post-generation actions for focused image */}
+        {activeVersion && !isGenerating && !isProcessing && (
+          <div className="space-y-2 border-t border-[var(--border-subtle)] pt-3">
+            <div className="flex gap-2">
+              <button onClick={() => setPostAction(postAction === 'edit' ? null : 'edit')} className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${postAction === 'edit' ? 'bg-blue-600 text-white' : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-white'}`}>
+                <Pencil className="w-3.5 h-3.5" /> Edit
+              </button>
+              <button onClick={() => setPostAction(postAction === 'upscale' ? null : 'upscale')} className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${postAction === 'upscale' ? 'bg-green-600 text-white' : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-white'}`}>
+                <ArrowUpCircle className="w-3.5 h-3.5" /> Upscale
+              </button>
+              <button onClick={handleSaveImage} disabled={saved} className="flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 bg-purple-600 hover:bg-purple-500 text-white transition-all disabled:opacity-50">
+                {saved ? <><Check className="w-3.5 h-3.5" /> Saved!</> : <><CheckCircle className="w-3.5 h-3.5" /> Save</>}
               </button>
             </div>
-            <div className="absolute top-2 left-2 px-2.5 py-1 bg-black/60 backdrop-blur-md rounded-lg">
-              <span className="text-[10px] text-white font-medium">{imageResult.model}{multiResults.length > 1 ? ` (#${selectedVariation + 1})` : ''}</span>
-            </div>
-          </>
-        ) : (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-            <ImageIcon className="w-10 h-10 text-[var(--text-muted)] opacity-25" />
-            <p className="text-xs text-[var(--text-muted)]">Your image will appear here</p>
+
+            {activeVersion?.promptUsed && (
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(activeVersion.promptUsed);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                }}
+                className="w-full py-2 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 bg-[var(--bg-elevated)] hover:bg-[var(--bg-overlay)] text-[var(--text-primary)] hover:text-white transition-all border border-[var(--border-default)]"
+              >
+                {copied ? <><Check className="w-3.5 h-3.5 text-emerald-400" /> Prompt Copied!</> : <><Copy className="w-3.5 h-3.5" /> Copy Prompt</>}
+              </button>
+            )}
+
+            {postAction === 'edit' && (
+              <div className="bg-[var(--bg-elevated)]/50 border border-[var(--border-default)] rounded-xl p-3 space-y-2">
+                {renderModelSelect(selectedEditModel, setSelectedEditModel, groupedEditModels)}
+                <textarea value={editPrompt} onChange={e => setEditPrompt(e.target.value)} placeholder="Describe what to change..." className="w-full bg-[var(--bg-surface)] rounded-lg px-3 py-2 text-sm text-white placeholder-[var(--text-muted)] resize-none h-16 outline-none" />
+                <div className="flex gap-2">
+                  <label className="flex-1 flex items-center gap-2 px-3 py-2 bg-[var(--bg-surface)] rounded-lg cursor-pointer hover:bg-[var(--bg-elevated)] text-xs text-[var(--text-secondary)]">
+                    <Upload className="w-3.5 h-3.5" />
+                    {editAdditionalImageName || 'Add reference (optional)'}
+                    <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload(setEditAdditionalImage, setEditAdditionalImageName)} />
+                  </label>
+                  <button onClick={handleEdit} disabled={isProcessing || !editPrompt.trim()} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs font-bold disabled:opacity-50">
+                    {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Apply'}
+                  </button>
+                </div>
+                {actionError && <p className="text-xs text-rose-400">{actionError}</p>}
+              </div>
+            )}
+
+            {postAction === 'upscale' && (
+              <div className="bg-[var(--bg-elevated)]/50 border border-[var(--border-default)] rounded-xl p-3 space-y-2">
+                {renderModelSelect(selectedUpscaleModel, setSelectedUpscaleModel, groupedUpscaleModels)}
+                <button onClick={handleUpscale} disabled={isProcessing} className="w-full py-2 bg-green-600 hover:bg-emerald-500 rounded-lg text-xs font-bold disabled:opacity-50 flex items-center justify-center gap-2">
+                  {isProcessing ? <><Loader2 className="w-4 h-4 animate-spin" /> Upscaling...</> : <><ArrowUpCircle className="w-3.5 h-3.5" /> Upscale Now</>}
+                </button>
+                {actionError && <p className="text-xs text-rose-400">{actionError}</p>}
+              </div>
+            )}
           </div>
         )}
-      </div>
-
-      {/* Version history strip */}
-      {imageHistory.length > 1 && (
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-1.5">
-            <History className="w-3 h-3 text-[var(--text-tertiary)]" />
-            <span className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-tertiary)]">Version History</span>
-          </div>
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {imageHistory.map((version, idx) => (
-              <button
-                key={idx}
-                onClick={() => { setActiveHistoryIndex(idx); setImageResult({ imageUrl: version.imageUrl, model: version.model, promptUsed: version.promptUsed }); }}
-                className={`shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 transition-all ${idx === activeHistoryIndex ? 'border-purple-500 ring-2 ring-purple-500/30' : 'border-[var(--border-default)] hover:border-[var(--border-strong)]'}`}
-              >
-                <img src={version.imageUrl} alt={version.label} className="w-full h-full object-cover" />
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Post-generation actions */}
-      {activeVersion && !isGenerating && !isProcessing && (
-        <div className="space-y-3">
-          <div className="flex gap-2">
-            <button onClick={() => setPostAction(postAction === 'edit' ? null : 'edit')} className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${postAction === 'edit' ? 'bg-blue-600 text-white' : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-white'}`}>
-              <Pencil className="w-3.5 h-3.5" /> Edit
-            </button>
-            <button onClick={() => setPostAction(postAction === 'upscale' ? null : 'upscale')} className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${postAction === 'upscale' ? 'bg-green-600 text-white' : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-white'}`}>
-              <ArrowUpCircle className="w-3.5 h-3.5" /> Upscale
-            </button>
-            <button onClick={handleSaveImage} disabled={saved} className="flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 bg-purple-600 hover:bg-purple-500 text-white transition-all disabled:opacity-50">
-              {saved ? <><Check className="w-3.5 h-3.5" /> Saved!</> : <><CheckCircle className="w-3.5 h-3.5" /> Save</>}
-            </button>
-          </div>
-
-          {activeVersion?.promptUsed && (
-            <button
-              onClick={() => {
-                navigator.clipboard.writeText(activeVersion.promptUsed);
-                setCopied(true);
-                setTimeout(() => setCopied(false), 2000);
-              }}
-              className="w-full py-2 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 bg-[var(--bg-elevated)] hover:bg-[var(--bg-overlay)] text-[var(--text-primary)] hover:text-white transition-all border border-[var(--border-default)]"
-            >
-              {copied ? <><Check className="w-3.5 h-3.5 text-emerald-400" /> Prompt Copied!</> : <><Copy className="w-3.5 h-3.5" /> Copy Prompt</>}
-            </button>
-          )}
-
-          {postAction === 'edit' && (
-            <div className="bg-[var(--bg-elevated)]/50 border border-[var(--border-default)] rounded-xl p-3 space-y-2">
-              {renderModelSelect(selectedEditModel, setSelectedEditModel, groupedEditModels)}
-              <textarea value={editPrompt} onChange={e => setEditPrompt(e.target.value)} placeholder="Describe what to change..." className="w-full bg-[var(--bg-surface)] rounded-lg px-3 py-2 text-sm text-white placeholder-[var(--text-muted)] resize-none h-16 outline-none" />
-              <div className="flex gap-2">
-                <label className="flex-1 flex items-center gap-2 px-3 py-2 bg-[var(--bg-surface)] rounded-lg cursor-pointer hover:bg-[var(--bg-elevated)] text-xs text-[var(--text-secondary)]">
-                  <Upload className="w-3.5 h-3.5" />
-                  {editAdditionalImageName || 'Add reference (optional)'}
-                  <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload(setEditAdditionalImage, setEditAdditionalImageName)} />
-                </label>
-                <button onClick={handleEdit} disabled={isProcessing || !editPrompt.trim()} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs font-bold disabled:opacity-50">
-                  {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Apply'}
-                </button>
-              </div>
-              {actionError && <p className="text-xs text-rose-400">{actionError}</p>}
-            </div>
-          )}
-
-          {postAction === 'upscale' && (
-            <div className="bg-[var(--bg-elevated)]/50 border border-[var(--border-default)] rounded-xl p-3 space-y-2">
-              {renderModelSelect(selectedUpscaleModel, setSelectedUpscaleModel, groupedUpscaleModels)}
-              <button onClick={handleUpscale} disabled={isProcessing} className="w-full py-2 bg-green-600 hover:bg-emerald-500 rounded-lg text-xs font-bold disabled:opacity-50 flex items-center justify-center gap-2">
-                {isProcessing ? <><Loader2 className="w-4 h-4 animate-spin" /> Upscaling...</> : <><ArrowUpCircle className="w-3.5 h-3.5" /> Upscale Now</>}
-              </button>
-              {actionError && <p className="text-xs text-rose-400">{actionError}</p>}
-            </div>
-          )}
-        </div>
-      )}
 
       </div>
     </div>
@@ -1193,12 +1296,23 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           )}
         </div>
 
-        <textarea
-          value={videoPrompt}
-          onChange={e => setVideoPrompt(e.target.value)}
-          placeholder="Describe the video you want to create..."
-          className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white placeholder-[var(--text-muted)] resize-none h-28 outline-none focus:ring-2 focus:ring-pink-500"
-        />
+        <div className="relative">
+          <textarea
+            value={videoPrompt}
+            onChange={e => setVideoPrompt(e.target.value)}
+            placeholder="Describe the video you want to create..."
+            className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 pr-10 text-sm text-white placeholder-[var(--text-muted)] resize-none h-28 outline-none focus:ring-2 focus:ring-pink-500"
+          />
+          <button
+            type="button"
+            onClick={() => handleEnhanceField(videoPrompt, setVideoPrompt, 'videoPrompt')}
+            disabled={!videoPrompt.trim() || !!enhancingField}
+            className="absolute top-2 right-2 p-1.5 rounded-lg bg-[var(--bg-overlay)] hover:bg-pink-500/30 text-pink-400 hover:text-pink-300 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+            title="Enhance prompt with AI"
+          >
+            {enhancingField === 'videoPrompt' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
+          </button>
+        </div>
 
         <button
           onClick={handleVideoGenerate}
@@ -1356,12 +1470,23 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
             {promptTab === 'create' ? (
               <div className="space-y-4">
-                <textarea
-                  value={createRequest}
-                  onChange={e => setCreateRequest(e.target.value)}
-                  placeholder={`e.g. "3 luxury hotel rooftop prompts at golden hour" or "beach photoshoot, moody cinematic lighting"`}
-                  className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white placeholder-[var(--text-muted)] resize-none h-28 outline-none focus:ring-2 focus:ring-emerald-500"
-                />
+                <div className="relative">
+                  <textarea
+                    value={createRequest}
+                    onChange={e => setCreateRequest(e.target.value)}
+                    placeholder={`e.g. "3 luxury hotel rooftop prompts at golden hour" or "beach photoshoot, moody cinematic lighting"`}
+                    className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 pr-10 text-sm text-white placeholder-[var(--text-muted)] resize-none h-28 outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleEnhanceField(createRequest, setCreateRequest, 'createRequest')}
+                    disabled={!createRequest.trim() || !!enhancingField}
+                    className="absolute top-2 right-2 p-1.5 rounded-lg bg-[var(--bg-overlay)] hover:bg-emerald-500/30 text-emerald-400 hover:text-emerald-300 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                    title="Enhance with AI"
+                  >
+                    {enhancingField === 'createRequest' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase">Number of Prompts</label>
                   <div className="flex gap-2">
@@ -1391,12 +1516,23 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               </div>
             ) : (
               <div className="space-y-4">
-                <textarea
-                  value={textTopic}
-                  onChange={e => setTextTopic(e.target.value)}
-                  placeholder={placeholders['prompt']}
-                  className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white placeholder-[var(--text-muted)] resize-none h-28 outline-none focus:ring-2 focus:ring-emerald-500"
-                />
+                <div className="relative">
+                  <textarea
+                    value={textTopic}
+                    onChange={e => setTextTopic(e.target.value)}
+                    placeholder={placeholders['prompt']}
+                    className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 pr-10 text-sm text-white placeholder-[var(--text-muted)] resize-none h-28 outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleEnhanceField(textTopic, setTextTopic, 'textTopicPrompt')}
+                    disabled={!textTopic.trim() || !!enhancingField}
+                    className="absolute top-2 right-2 p-1.5 rounded-lg bg-[var(--bg-overlay)] hover:bg-emerald-500/30 text-emerald-400 hover:text-emerald-300 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                    title="Enhance with AI"
+                  >
+                    {enhancingField === 'textTopicPrompt' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
                 <button
                   onClick={handleTextGenerate}
                   disabled={isGenerating || !textTopic.trim()}
@@ -1451,12 +1587,23 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         {/* LEFT: controls */}
         <div className="space-y-4">
-          <textarea
-            value={textTopic}
-            onChange={e => setTextTopic(e.target.value)}
-            placeholder={placeholders[mode]}
-            className={`w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white placeholder-[var(--text-muted)] resize-none h-28 outline-none focus:ring-2 ${currentModeConfig.ringClass}`}
-          />
+          <div className="relative">
+            <textarea
+              value={textTopic}
+              onChange={e => setTextTopic(e.target.value)}
+              placeholder={placeholders[mode]}
+              className={`w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 pr-10 text-sm text-white placeholder-[var(--text-muted)] resize-none h-28 outline-none focus:ring-2 ${currentModeConfig.ringClass}`}
+            />
+            <button
+              type="button"
+              onClick={() => handleEnhanceField(textTopic, setTextTopic, 'textTopic')}
+              disabled={!textTopic.trim() || !!enhancingField}
+              className="absolute top-2 right-2 p-1.5 rounded-lg bg-[var(--bg-overlay)] hover:bg-white/10 text-[var(--text-secondary)] hover:text-white transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+              title="Enhance with AI"
+            >
+              {enhancingField === 'textTopic' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
+            </button>
+          </div>
 
           {isMultiScene && (
             <div className="space-y-1.5">
