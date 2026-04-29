@@ -827,7 +827,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                                     <optgroup key={provider} label={provider}>
                                       {providerModels.map((m) => (
                                         <option key={m.id} value={m.id}>
-                                          {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}{m.nsfw ? ' 🔓 NSFW' : ''}
+                                          {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}{m.nsfw ? ' 🔞' : ''}
                                         </option>
                                       ))}
                                     </optgroup>
@@ -1389,7 +1389,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                             <optgroup key={provider} label={provider}>
                               {providerModels.map((m) => (
                                 <option key={m.id} value={m.id}>
-                                  {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}{m.nsfw ? ' 🔓 NSFW' : ''}
+                                  {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}{m.nsfw ? ' 🔞' : ''}
                                 </option>
                               ))}
                             </optgroup>
@@ -1462,7 +1462,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                             <optgroup key={provider} label={provider}>
                               {providerModels.map((m) => (
                                 <option key={m.id} value={m.id}>
-                                  {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}{m.nsfw ? ' 🔓 NSFW' : ''}
+                                  {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}{m.nsfw ? ' 🔞' : ''}
                                 </option>
                               ))}
                             </optgroup>
@@ -1496,7 +1496,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                             <optgroup key={provider} label={provider}>
                               {providerModels.map((m) => (
                                 <option key={m.id} value={m.id}>
-                                  {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}{m.nsfw ? ' 🔓 NSFW' : ''}
+                                  {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}{m.nsfw ? ' 🔞' : ''}
                                 </option>
                               ))}
                             </optgroup>

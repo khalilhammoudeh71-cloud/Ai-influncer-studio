@@ -10,11 +10,12 @@ A React web application for managing AI influencer personas. Users can create pe
 - **Icons**: Lucide React
 - **Database**: PostgreSQL via Drizzle ORM + @neondatabase/serverless
 - **Storage**: Server-side PostgreSQL for all persistent data (personas, images, revenue, planned posts)
-- **Image Generation**:
-  - **Replit Built-in**: OpenAI DALL-E (gpt-image-1) via Replit AI integrations (free)
-  - **Wavespeed AI**: 113+ models from 20+ providers (Google, OpenAI, Midjourney, Stability AI, ByteDance, xAI, etc.) via API key stored as `WAVESPEED_API_KEY`
-  - Models fetched dynamically from Wavespeed API and cached for 30 minutes
-  - URL allowlisting enforced for all Wavespeed response URLs (SSRF protection)
+- **Image Generation** (4 canonical provider groups in picker):
+  - **Gemini** (google: prefix): Nano Banana 2/Pro/base, Imagen 4/4-Fast/4-Ultra via Gemini API key (`GEMINI_API_KEY`) — free
+  - **OpenAI** (openai: prefix): GPT Image 2 via direct `Openai_api_key` secret (~$0.040/img). Falls back to `replit:gpt-image-1` via Replit integration if no direct key
+  - **Wavespeed AI** (wavespeed: prefix): 120+ models via `WAVESPEED_API_KEY` — fetched dynamically, cached 30 min
+  - **Venice AI** (venice: prefix): 24+ image models via `Veniceai_api_key` — fetched dynamically with real pricing; NSFW models flagged with 🔞
+  - NSFW indicators: `🔞` emoji throughout all dropdowns and detail badges (replaced previous `🔓` icon)
 - **Video Generation**:
   - Text-to-video and image-to-video via Wavespeed AI models
   - Model ID prefixes: `wavespeed-t2v:{id}` (text-to-video), `wavespeed-i2v:{id}` (image-to-video)

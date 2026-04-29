@@ -34,6 +34,11 @@ function getOpenAIClient(): OpenAI {
 const WAVESPEED_API_KEY = process.env.WAVESPEED_API_KEY || '';
 const WAVESPEED_BASE = 'https://api.wavespeed.ai/api/v3';
 
+const VENICE_API_KEY = process.env.Veniceai_api_key || '';
+const VENICE_BASE = 'https://api.venice.ai/api/v1';
+
+const OPENAI_DIRECT_KEY = process.env.Openai_api_key || '';
+
 interface ModelInfo {
   id: string;
   name: string;
@@ -84,6 +89,10 @@ const NSFW_MODEL_FRAGMENTS = [
   'z-image',
   'glm-image',
   'spicy',
+  'uncensored',
+  'lustify',
+  'pony-realism',
+  'akuma',
 ];
 
 function isNsfwModel(modelId: string): boolean {
@@ -122,7 +131,9 @@ let cachedModels: ModelInfo[] | null = null;
 let cachedEditModels: ModelInfo[] | null = null;
 let cachedUpscaleModels: ModelInfo[] | null = null;
 let cachedVideoModels: ModelInfo[] | null = null;
+let cachedVeniceModels: ModelInfo[] | null = null;
 let cacheTimestamp = 0;
+let veniceCacheTimestamp = 0;
 const CACHE_TTL = 30 * 60 * 1000;
 
 const SUBSCRIPTION_FREE_MODELS = [
@@ -402,22 +413,96 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
   }
 }
 
-function getAllModels(wavespeedModels: ModelInfo[]): ModelInfo[] {
-  const builtIn: ModelInfo[] = [
-    {
-      id: 'replit:gpt-image-1',
-      name: 'GPT Image 1 (DALL-E)',
-      provider: 'Replit Built-in',
+async function fetchVeniceModels(): Promise<ModelInfo[]> {
+  if (cachedVeniceModels && Date.now() - veniceCacheTimestamp < CACHE_TTL) {
+    return cachedVeniceModels;
+  }
+  if (!VENICE_API_KEY) {
+    console.warn('[Venice] No API key configured — skipping model fetch');
+    cachedVeniceModels = [];
+    return [];
+  }
+
+  try {
+    const res = await fetch(`${VENICE_BASE}/models?type=image`, {
+      headers: { Authorization: `Bearer ${VENICE_API_KEY}` },
+    });
+    if (!res.ok) {
+      console.warn('[Venice] Failed to fetch models:', res.status);
+      cachedVeniceModels = cachedVeniceModels || [];
+      return cachedVeniceModels;
+    }
+    type VeniceModel = { id: string; type?: string; object?: string; model_spec?: { pricing?: { generation?: { usd?: number }; resolutions?: Record<string, { usd?: number }> }; name?: string } };
+    const json = await res.json() as { data?: VeniceModel[]; models?: VeniceModel[] };
+    const rawModels: VeniceModel[] = json.data || json.models || [];
+
+    // Models that duplicate other providers already in the picker
+    const SKIP_IDS = new Set([
+      'gpt-image-2', 'gpt-image-1-5', 'gpt-image-1',
+      'nano-banana-2', 'nano-banana-pro', 'nano-banana',
+    ]);
+
+    // Venice-specific NSFW model IDs (checked case-sensitively against Venice model ids)
+    const VENICE_NSFW_IDS = new Set([
+      'lustify-sdxl', 'lustify-v7', 'lustify-v8',
+      'wai-Illustrious', 'z-image-turbo',
+      'seedream-v4', 'seedream-v5-lite', 'seedream-v5',
+      'wan-2-7-text-to-image', 'wan-2-7-pro-text-to-image',
+    ]);
+
+    const models: ModelInfo[] = rawModels
+      .filter(m => m.type === 'image' && !SKIP_IDS.has(m.id))
+      .map(m => {
+        const spec = m.model_spec || {};
+        const pricing = spec.pricing || {};
+        const genPrice = pricing.generation?.usd
+          ?? (pricing.resolutions ? Object.values(pricing.resolutions)[0]?.usd ?? 0.040 : 0.040);
+        const nsfw = VENICE_NSFW_IDS.has(m.id) || isNsfwModel(m.id);
+        const displayName = spec.name || m.id
+          .split('-')
+          .map(p => p.charAt(0).toUpperCase() + p.slice(1))
+          .join(' ');
+        return {
+          id: `venice:${m.id}`,
+          name: displayName,
+          provider: 'Venice AI',
+          type: 'text-to-image' as const,
+          price: Math.round(genPrice * 1000) / 1000,
+          description: `Venice AI ${displayName}`,
+          apiPath: '',
+          hasEditVariant: false,
+          nsfw,
+        };
+      });
+
+    console.log('[Venice] Fetched', models.length, 'image models');
+    cachedVeniceModels = models;
+    veniceCacheTimestamp = Date.now();
+    return models;
+  } catch (err) {
+    console.error('[Venice] Failed to fetch models:', err);
+    cachedVeniceModels = cachedVeniceModels || [];
+    return cachedVeniceModels;
+  }
+}
+
+function getAllModels(wavespeedModels: ModelInfo[], veniceModels: ModelInfo[] = []): ModelInfo[] {
+  const builtIn: ModelInfo[] = [];
+  if (OPENAI_DIRECT_KEY) {
+    builtIn.push({
+      id: 'openai:gpt-image-2',
+      name: 'GPT Image 2',
+      provider: 'OpenAI',
       type: 'text-to-image',
-      price: 0,
-      description: 'OpenAI DALL-E image generation via Replit integration (included free)',
+      price: 0.040,
+      description: 'OpenAI GPT Image 2 — photorealistic image generation',
       apiPath: '',
       hasEditVariant: true,
-    },
-  ];
+    });
+  }
   // Filter out Google/Nano Banana models from Wavespeed — these are served directly via Gemini API
   const filtered = wavespeedModels.filter(m => !/nano-banana/i.test(m.id));
-  return [...builtIn, ...filtered];
+  return [...builtIn, ...filtered, ...veniceModels];
 }
 
 interface ImageGenRequest {
@@ -562,6 +647,105 @@ async function generateWithReplit(prompt: string, referenceImage?: string | stri
   const b64 = response.data?.[0]?.b64_json;
   if (!b64) throw new Error('OpenAI returned no image data');
   return `data:image/png;base64,${b64}`;
+}
+
+async function generateWithDirectOpenAI(prompt: string, referenceImage?: string | string[], aspectRatio?: string): Promise<string> {
+  if (!OPENAI_DIRECT_KEY) throw new Error('OpenAI API key not configured');
+  const client = new OpenAI({ apiKey: OPENAI_DIRECT_KEY });
+  let response;
+
+  const images = Array.isArray(referenceImage) ? referenceImage : (referenceImage ? [referenceImage] : []);
+
+  if (images.length > 0) {
+    const imageFiles = await Promise.all(images.map(async (img, i) => {
+      const { mimeType, data } = stripDataPrefix(img);
+      const buffer = Buffer.from(data, 'base64');
+      const ext = mimeType.includes('png') ? 'png' : 'jpg';
+      return toFile(buffer, `reference_${i}.${ext}`, { type: mimeType });
+    }));
+    response = await client.images.edit({
+      model: 'gpt-image-1',
+      image: imageFiles as any,
+      prompt,
+      n: 1,
+      size: aspectRatioToReplitSize(aspectRatio),
+    });
+  } else {
+    response = await client.images.generate({
+      model: 'gpt-image-1',
+      prompt,
+      n: 1,
+      size: aspectRatioToReplitSize(aspectRatio),
+    });
+  }
+
+  const b64 = response.data?.[0]?.b64_json;
+  if (!b64) throw new Error('OpenAI returned no image data');
+  return `data:image/png;base64,${b64}`;
+}
+
+function veniceAspectRatioDimensions(ar?: string): { width: number; height: number } {
+  const MAP: Record<string, [number, number]> = {
+    '1:1': [1024, 1024],
+    '16:9': [1344, 768],
+    '9:16': [768, 1344],
+    '4:5': [896, 1120],
+    '5:4': [1120, 896],
+    '2:3': [832, 1248],
+    '3:2': [1248, 832],
+    '21:9': [1344, 576],
+  };
+  const [w, h] = MAP[ar || '1:1'] || [1024, 1024];
+  return { width: w, height: h };
+}
+
+async function generateWithVenice(rawModelId: string, prompt: string, aspectRatio?: string, nsfw = false): Promise<string> {
+  if (!VENICE_API_KEY) throw new Error('Venice API key not configured');
+
+  const { width, height } = veniceAspectRatioDimensions(aspectRatio);
+  const payload = {
+    model: rawModelId,
+    prompt,
+    width,
+    height,
+    steps: 30,
+    safe_mode: !nsfw,
+    format: 'png',
+  };
+
+  const res = await fetch(`${VENICE_BASE}/image/generate`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${VENICE_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Venice API error (${res.status}): ${text.slice(0, 300)}`);
+  }
+
+  const data = await res.json() as {
+    images?: { url?: string; b64_json?: string }[];
+    data?: { url?: string; b64_json?: string }[];
+  };
+
+  const images = data.images || data.data || [];
+  if (images.length > 0) {
+    const img = images[0];
+    if (img.b64_json) return `data:image/png;base64,${img.b64_json}`;
+    if (img.url) {
+      const imgRes = await fetch(img.url);
+      if (!imgRes.ok) throw new Error(`Failed to fetch Venice image: ${imgRes.status}`);
+      const buf = Buffer.from(await imgRes.arrayBuffer());
+      const ct = imgRes.headers.get('content-type') || 'image/png';
+      return `data:${ct.split(';')[0].trim()};base64,${buf.toString('base64')}`;
+    }
+  }
+
+  throw new Error('Venice AI returned no image data');
 }
 
 const WAVESPEED_ALLOWED_HOSTS = ['api.wavespeed.ai', 'wscdn.wavespeed.ai', 'cdn.wavespeed.ai'];
@@ -864,8 +1048,8 @@ async function generateWithWavespeed(
 
 app.get('/api/models', async (_req, res) => {
   try {
-    const wavespeedModels = await fetchWavespeedModels();
-    const allModels = getAllModels(wavespeedModels);
+    const [wavespeedModels, veniceModels] = await Promise.all([fetchWavespeedModels(), fetchVeniceModels()]);
+    const allModels = getAllModels(wavespeedModels, veniceModels);
 
     const googleImagenModels: ModelInfo[] = [
       {
@@ -937,16 +1121,25 @@ app.get('/api/models', async (_req, res) => {
     ];
 
     const editModels: ModelInfo[] = [
-      {
+      ...(OPENAI_DIRECT_KEY ? [{
+        id: 'openai:gpt-image-2',
+        name: 'GPT Image 2 (OpenAI)',
+        provider: 'OpenAI',
+        type: 'image-to-image' as const,
+        price: 0.040,
+        description: 'OpenAI GPT Image 2 — photorealistic image editing',
+        apiPath: '',
+        hasEditVariant: false,
+      }] : [{
         id: 'replit:gpt-image-1',
         name: 'GPT Image 1 (DALL-E)',
-        provider: 'Replit Built-in',
-        type: 'image-to-image',
+        provider: 'OpenAI',
+        type: 'image-to-image' as const,
         price: 0,
         description: 'OpenAI DALL-E image editing via Replit integration',
         apiPath: '',
         hasEditVariant: false,
-      },
+      }]),
       ...(cachedEditModels || []),
     ];
 
@@ -1564,6 +1757,36 @@ app.post('/api/generate-image', async (req, res) => {
         imageUrls = [await generateWithReplit(prompt, referenceImage, aspectRatio)];
       }
       modelName = 'gpt-image-1';
+    } else if (modelId === 'openai:gpt-image-2') {
+      prompt = buildPrompt({ ...rest, referenceImage });
+      if (count > 1) {
+        const results = await Promise.allSettled(Array.from({ length: count }, () => generateWithDirectOpenAI(prompt, referenceImage, aspectRatio)));
+        imageUrls = results.filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled').map(r => r.value);
+        if (imageUrls.length === 0) {
+          const firstErr = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
+          throw firstErr ? firstErr.reason : new Error('All image generation requests failed');
+        }
+      } else {
+        imageUrls = [await generateWithDirectOpenAI(prompt, referenceImage, aspectRatio)];
+      }
+      modelName = 'GPT Image 2';
+    } else if (modelId.startsWith('venice:')) {
+      const veniceModelId = modelId.replace('venice:', '');
+      const isNsfw = isNsfwModel(veniceModelId);
+      prompt = buildPrompt({ ...rest, referenceImage });
+      const allVeniceModels = cachedVeniceModels || [];
+      const veniceModel = allVeniceModels.find(m => m.id === modelId);
+      if (count > 1) {
+        const results = await Promise.allSettled(Array.from({ length: count }, () => generateWithVenice(veniceModelId, prompt, aspectRatio, isNsfw)));
+        imageUrls = results.filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled').map(r => r.value);
+        if (imageUrls.length === 0) {
+          const firstErr = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
+          throw firstErr ? firstErr.reason : new Error('All Venice image generation requests failed');
+        }
+      } else {
+        imageUrls = [await generateWithVenice(veniceModelId, prompt, aspectRatio, isNsfw)];
+      }
+      modelName = veniceModel?.name || veniceModelId;
     } else if (modelId.startsWith('google:')) {
       prompt = buildPrompt({ ...rest, referenceImage });
       const GOOGLE_NAMES: Record<string, string> = {
@@ -1655,6 +1878,9 @@ app.post('/api/generate-reference', async (req, res) => {
     if (modelId === 'replit:gpt-image-1') {
       imageUrl = await generateWithReplit(prompt);
       modelName = 'gpt-image-1';
+    } else if (modelId === 'openai:gpt-image-2') {
+      imageUrl = await generateWithDirectOpenAI(prompt);
+      modelName = 'GPT Image 2';
     } else if (modelId.startsWith('wavespeed:')) {
       const wavespeedModels = await fetchWavespeedModels();
       const modelInfo = wavespeedModels.find(m => m.id === modelId);
@@ -1698,6 +1924,12 @@ app.post('/api/edit-image', async (req, res) => {
       if (resolvedAdditional) images.push(resolvedAdditional);
       imageUrl = await generateWithReplit(prompt, images);
       modelName = 'GPT Image 1 (DALL-E)';
+    } else if (modelId === 'openai:gpt-image-2') {
+      const resolvedSource = await resolveImageToDataUrl(sourceImage);
+      const images = [resolvedSource];
+      if (resolvedAdditional) images.push(resolvedAdditional);
+      imageUrl = await generateWithDirectOpenAI(prompt, images);
+      modelName = 'GPT Image 2';
     } else if (modelId.startsWith('wavespeed-edit:')) {
       await fetchWavespeedModels();
       const editModel = (cachedEditModels || []).find(m => m.id === modelId);

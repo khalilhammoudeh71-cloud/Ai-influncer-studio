@@ -231,28 +231,25 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   }, []);
 
   const sortedModels = useMemo(() => {
-    const sorted = [...models].sort((a, b) => {
-      const aIsGeminiApi = a.id.startsWith('google:');
-      const bIsGeminiApi = b.id.startsWith('google:');
-      if (aIsGeminiApi && !bIsGeminiApi) return -1;
-      if (!aIsGeminiApi && bIsGeminiApi) return 1;
-      const aIsBuiltIn = a.id.startsWith('replit:');
-      const bIsBuiltIn = b.id.startsWith('replit:');
-      if (aIsBuiltIn && !bIsBuiltIn) return -1;
-      if (!aIsBuiltIn && bIsBuiltIn) return 1;
-      return 0;
-    });
-    return sorted;
+    const priority = (m: ModelInfo) =>
+      m.id.startsWith('google:') ? 0
+      : (m.id.startsWith('openai:') || m.id.startsWith('replit:')) ? 1
+      : m.id.startsWith('venice:') ? 3
+      : 2;
+    return [...models].sort((a, b) => priority(a) - priority(b) || a.name.localeCompare(b.name));
   }, [models]);
 
   const groupedModels = useMemo(() => {
-    const groups: Record<string, ModelInfo[]> = {};
+    const ORDER = ['Gemini', 'OpenAI', 'Wavespeed', 'Venice AI'] as const;
+    const groups: Record<string, ModelInfo[]> = { 'Gemini': [], 'OpenAI': [], 'Wavespeed': [], 'Venice AI': [] };
     sortedModels.forEach(m => {
-      const label = m.id.startsWith('google:') ? 'Google (Gemini API)' : m.provider;
-      if (!groups[label]) groups[label] = [];
-      groups[label].push(m);
+      const g = m.id.startsWith('google:') ? 'Gemini'
+        : (m.id.startsWith('openai:') || m.id.startsWith('replit:')) ? 'OpenAI'
+        : m.id.startsWith('venice:') ? 'Venice AI'
+        : 'Wavespeed';
+      groups[g].push(m);
     });
-    return groups;
+    return Object.fromEntries(ORDER.filter(g => groups[g].length > 0).map(g => [g, groups[g]]));
   }, [sortedModels]);
 
   const groupedEditModels = useMemo(() => {
@@ -662,7 +659,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 <optgroup key={provider} label={provider}>
                   {providerModels.map(m => (
                     <option key={m.id} value={m.id}>
-                      {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}{m.nsfw ? ' 🔓 NSFW' : ''}{showRefWarning && hasRefImage && !canUseReference(m, models) ? ' ⚠ No ref support' : ''}
+                      {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}{m.nsfw ? ' 🔞' : ''}{showRefWarning && hasRefImage && !canUseReference(m, models) ? ' ⚠ No ref support' : ''}
                     </option>
                   ))}
                 </optgroup>
@@ -673,7 +670,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         )}
         {selectedInfo?.nsfw && (
           <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">
-            🔓 Uncensored — NSFW content supported
+            🔞 Uncensored — NSFW content enabled
           </span>
         )}
       </div>
@@ -704,7 +701,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                   {Object.entries(t2v).map(([provider, ms]) =>
                     ms.map(m => (
                       <option key={m.id} value={m.id}>
-                        {m.name} ({provider}){m.price > 0 ? ` $${m.price.toFixed(3)}` : ' Free'}{m.nsfw ? ' 🔓 NSFW' : ''}
+                        {m.name} ({provider}){m.price > 0 ? ` $${m.price.toFixed(3)}` : ' Free'}{m.nsfw ? ' 🔞' : ''}
                       </option>
                     ))
                   )}
@@ -715,7 +712,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                   {Object.entries(i2v).map(([provider, ms]) =>
                     ms.map(m => (
                       <option key={m.id} value={m.id}>
-                        {m.name} ({provider}){m.price > 0 ? ` $${m.price.toFixed(3)}` : ' Free'}{m.nsfw ? ' 🔓 NSFW' : ''}
+                        {m.name} ({provider}){m.price > 0 ? ` $${m.price.toFixed(3)}` : ' Free'}{m.nsfw ? ' 🔞' : ''}
                       </option>
                     ))
                   )}
@@ -727,7 +724,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         )}
         {selectedVideoInfo?.nsfw && (
           <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">
-            🔓 Uncensored — NSFW content supported
+            🔞 Uncensored — NSFW content enabled
           </span>
         )}
       </div>
@@ -1597,7 +1594,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             >
               {ANGLE_MODELS.map(m => (
                 <option key={m.id} value={m.id}>
-                  {m.name} (${m.price.toFixed(3)}){m.nsfw ? ' 🔓 NSFW' : ''}
+                  {m.name} (${m.price.toFixed(3)}){m.nsfw ? ' 🔞' : ''}
                 </option>
               ))}
             </select>
@@ -1605,7 +1602,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           </div>
           {angleModelInfo?.nsfw && (
             <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">
-              🔓 Uncensored — NSFW content supported
+              🔞 Uncensored — NSFW content enabled
             </span>
           )}
         </div>

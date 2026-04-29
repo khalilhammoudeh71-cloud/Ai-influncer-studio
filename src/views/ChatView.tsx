@@ -298,7 +298,7 @@ export default function ChatView({ personas, activePersona: propActivePersona }:
                   {editModels.length === 0 && <option value="">Loading…</option>}
                   {editModels.map(m => (
                     <option key={m.id} value={m.id}>
-                      {isNsfw(m) ? '🔓 NSFW — ' : ''}{m.name}
+                      {isNsfw(m) ? '🔞 NSFW — ' : ''}{m.name}
                     </option>
                   ))}
                 </select>
@@ -306,7 +306,7 @@ export default function ChatView({ personas, activePersona: propActivePersona }:
               </div>
               {selectedEditModel && isNsfw(selectedEditModel) && (
                 <span className="inline-flex items-center gap-1 mt-1 text-[9px] font-bold uppercase tracking-wider text-rose-300 bg-rose-500/20 border border-rose-500/30 rounded-full px-2 py-0.5">
-                  🔓 NSFW
+                  🔞 NSFW
                 </span>
               )}
             </div>
@@ -325,7 +325,7 @@ export default function ChatView({ personas, activePersona: propActivePersona }:
                   {videoModels.length === 0 && <option value="">Loading…</option>}
                   {videoModels.map(m => (
                     <option key={m.id} value={m.id}>
-                      {isNsfw(m) ? '🔓 NSFW — ' : ''}{m.name}
+                      {isNsfw(m) ? '🔞 NSFW — ' : ''}{m.name}
                     </option>
                   ))}
                 </select>
@@ -333,7 +333,7 @@ export default function ChatView({ personas, activePersona: propActivePersona }:
               </div>
               {selectedVideoModel && isNsfw(selectedVideoModel) && (
                 <span className="inline-flex items-center gap-1 mt-1 text-[9px] font-bold uppercase tracking-wider text-rose-300 bg-rose-500/20 border border-rose-500/30 rounded-full px-2 py-0.5">
-                  🔓 NSFW
+                  🔞 NSFW
                 </span>
               )}
             </div>
