@@ -58,6 +58,7 @@ src/
     HairstyleTryOn.tsx - Hairstyle try-on component
     RotatingHeroImages.tsx - Infinite-scroll hero image carousel
   views/
+    LandingView.tsx    - Marketing landing page (animated hero, influencer showcase, feature highlights, CTA) shown on first visit; skipped for returning users via localStorage flag
     PersonasView.tsx   - CRUD for personas with search, detail/creations view, visual library
     PlannerView.tsx    - 7-day content plan generator (persisted per persona/platform)
     CreateView.tsx     - Caption, video script, image prompt generation

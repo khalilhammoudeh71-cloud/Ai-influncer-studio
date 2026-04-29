@@ -21,6 +21,7 @@ import ChatView from './views/ChatView';
 import SettingsView from './views/SettingsView';
 import VoiceView from './views/VoiceView';
 import AIToolsView from './views/AIToolsView';
+import LandingView from './views/LandingView';
 
 type Tab = 'personas' | 'planner' | 'create' | 'assistant' | 'chat' | 'settings' | 'voice' | 'ai-tools';
 
@@ -43,76 +44,6 @@ export const INTERNAL_FALLBACK_PERSONAS: Persona[] = [
     personaNotes: 'Internal reference'
   }
 ];
-
-function Onboarding({ onComplete }: { onComplete: () => void }) {
-  return (
-    <div className="flex flex-col items-center justify-center min-h-screen p-8 text-center bg-[var(--bg-base)] relative overflow-hidden">
-      <div className="absolute top-[-30%] left-[-20%] w-[70%] h-[70%] bg-violet-600/10 blur-[180px] rounded-full" />
-      <div className="absolute bottom-[-30%] right-[-20%] w-[70%] h-[70%] bg-fuchsia-600/10 blur-[180px] rounded-full" />
-      <div className="absolute top-[20%] right-[5%] w-[40%] h-[40%] bg-amber-500/5 blur-[120px] rounded-full" />
-      <div className="absolute bottom-[30%] left-[10%] w-[25%] h-[25%] bg-sky-500/5 blur-[100px] rounded-full" />
-      <motion.div
-        initial={{ opacity: 0, y: 40 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 1, ease: [0.22, 1, 0.36, 1] }}
-        className="z-10 max-w-sm"
-      >
-        <div className="mb-12 flex justify-center">
-          <motion.div
-            initial={{ scale: 0.6, rotate: -10 }}
-            animate={{ scale: 1, rotate: 3 }}
-            transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1], delay: 0.2 }}
-            className="relative"
-          >
-            <div className="absolute inset-0 bg-gradient-to-br from-violet-500 to-fuchsia-600 rounded-[28px] blur-2xl opacity-50" />
-            <div className="relative w-28 h-28 bg-gradient-to-br from-violet-500 to-fuchsia-600 rounded-[28px] flex items-center justify-center"
-              style={{ boxShadow: '0 20px 60px -8px rgba(139, 92, 246, 0.5), inset 0 1px 0 rgba(255,255,255,0.2)' }}
-            >
-              <Users size={52} className="text-white" strokeWidth={1.5} />
-            </div>
-          </motion.div>
-        </div>
-        <motion.h1
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3, duration: 0.8 }}
-          className="text-[42px] font-extrabold tracking-tight mb-4 leading-[1.1]"
-        >
-          <span className="gradient-text">AI Influencer</span>
-          <br />
-          <span className="text-[var(--text-primary)]">Studio</span>
-        </motion.h1>
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.5, duration: 0.8 }}
-          className="text-[var(--text-secondary)] text-[15px] mb-14 leading-relaxed max-w-[280px] mx-auto"
-        >
-          The premium command center for your digital personas. Plan, create, and scale your AI empire.
-        </motion.p>
-        <motion.button
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.7, duration: 0.6 }}
-          whileHover={{ scale: 1.03, y: -2 }}
-          whileTap={{ scale: 0.97 }}
-          onClick={onComplete}
-          className="w-full premium-button py-[18px] px-8 text-white font-bold rounded-2xl text-base"
-        >
-          Get Started
-        </motion.button>
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.9, duration: 0.8 }}
-          className="mt-10 text-[10px] text-[var(--text-muted)] uppercase tracking-[0.25em] font-medium"
-        >
-          Experience the future of creation
-        </motion.p>
-      </motion.div>
-    </div>
-  );
-}
 
 function App() {
   const [showOnboarding, setShowOnboarding] = useState(() => {
@@ -226,7 +157,7 @@ function App() {
   };
 
   if (showOnboarding) {
-    return <Onboarding onComplete={handleOnboardingComplete} />;
+    return <LandingView onGetStarted={handleOnboardingComplete} />;
   }
 
   if (isLoading) {
