@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, ChevronRight, Zap, Image as ImageIcon, Target, Mic, Brain, Play, ArrowRight } from 'lucide-react';
+import { Sparkles, ChevronRight, Zap, Image as ImageIcon, Target, Mic, Brain, ArrowRight } from 'lucide-react';
 
 interface LandingViewProps {
   onGetStarted: () => void;
@@ -299,9 +299,11 @@ export default function LandingView({ onGetStarted, isLoggedIn }: LandingViewPro
                 Enter the Studio
                 <ChevronRight size={18} className="group-hover:translate-x-1 transition-transform" />
               </button>
-              <button className="flex items-center gap-2.5 px-7 py-3.5 rounded-full border border-white/10 bg-white/[0.04] text-white font-semibold text-base hover:bg-white/[0.08] transition-colors backdrop-blur-sm">
-                <Play size={16} className="text-[var(--accent-primary)]" />
-                Watch Demo
+              <button
+                onClick={onGetStarted}
+                className="flex items-center gap-2.5 px-7 py-3.5 rounded-full border border-white/10 bg-white/[0.04] text-white font-semibold text-base hover:bg-white/[0.08] transition-colors backdrop-blur-sm"
+              >
+                Try for Free
               </button>
             </motion.div>
 
