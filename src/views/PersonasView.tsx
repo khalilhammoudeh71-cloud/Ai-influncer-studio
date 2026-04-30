@@ -25,7 +25,6 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
   const [viewingPersona, setViewingPersona] = useState<Persona | null>(null);
   const [previewImage, setPreviewImage] = useState<GeneratedImage | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const altFileInputRef = useRef<HTMLInputElement>(null);
 
   const [refMode, setRefMode] = useState<'upload' | 'generate'>('upload');
   const [refPrompt, setRefPrompt] = useState('');
@@ -319,45 +318,6 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
     e.target.value = '';
   };
 
-  const handleAltImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file && editingPersona) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        try {
-          const img = new Image();
-          img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const MAX_SIZE = 500;
-            let width = img.width;
-            let height = img.height;
-            if (width > height) {
-              if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; }
-            } else {
-              if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; }
-            }
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-              ctx.drawImage(img, 0, 0, width, height);
-              const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-              setEditingPersona({ ...editingPersona, alternateReferenceImage: dataUrl });
-            } else {
-              setEditingPersona({ ...editingPersona, alternateReferenceImage: reader.result as string });
-            }
-          };
-          img.onerror = () => {
-            setEditingPersona({ ...editingPersona, alternateReferenceImage: reader.result as string });
-          };
-          img.src = reader.result as string;
-        } catch {
-          setEditingPersona({ ...editingPersona, alternateReferenceImage: reader.result as string });
-        }
-      };
-      reader.readAsDataURL(file);
-    }
-  };
 
   const handleAnalyzeFace = async () => {
     if (!editingPersona) return;
@@ -887,64 +847,6 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                           </button>
                         </div>
                       )}
-                </section>
-
-                {/* Alternate Reference Image Section */}
-                <section className="bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-2xl p-6 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-purple-500/20 rounded-xl text-purple-400">
-                        <ImageIcon size={20} />
-                      </div>
-                      <div>
-                        <h3 className="text-sm font-bold">Alternate Reference Image</h3>
-                        <p className="text-[10px] text-[var(--text-tertiary)] uppercase tracking-wider font-semibold">Style / Outfit / Pose Reference</p>
-                      </div>
-                    </div>
-                    {editingPersona.alternateReferenceImage && (
-                      <button
-                        onClick={() => setEditingPersona({ ...editingPersona, alternateReferenceImage: undefined })}
-                        className="text-xs text-rose-400 hover:text-rose-300 flex items-center gap-1 transition-colors"
-                      >
-                        <X size={12} /> Remove
-                      </button>
-                    )}
-                  </div>
-
-                  {editingPersona.alternateReferenceImage ? (
-                    <div className="relative aspect-video rounded-2xl overflow-hidden border border-[var(--border-default)] group">
-                      <img
-                        src={editingPersona.alternateReferenceImage}
-                        alt="Alternate Reference"
-                        className="w-full h-full object-cover"
-                      />
-                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm">
-                        <button
-                          onClick={() => altFileInputRef.current?.click()}
-                          className="bg-purple-600 text-white px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5"
-                        >
-                          <Upload size={12} /> Replace
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div
-                      onClick={() => altFileInputRef.current?.click()}
-                      className="relative border-2 border-dashed border-[var(--border-default)] rounded-2xl py-8 text-center cursor-pointer hover:border-purple-500/50 hover:bg-white/[0.02] transition-all"
-                    >
-                      <div className="flex flex-col items-center gap-3">
-                        <div className="p-3 bg-[var(--bg-elevated)] rounded-full text-[var(--text-secondary)]">
-                          <Upload size={22} />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-[var(--text-primary)]">Upload alternate reference</p>
-                          <p className="text-xs text-[var(--text-tertiary)] mt-1">Different from your main reference — style, outfit, pose, etc.</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  <input type="file" ref={altFileInputRef} className="hidden" accept="image/*" onChange={handleAltImageUpload} />
-                  <p className="text-[10px] text-[var(--text-muted)] ml-1">Use this as an additional creative reference during image generation — separate from your identity photo.</p>
                 </section>
 
                 {/* Form Fields */}
