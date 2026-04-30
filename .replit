@@ -69,6 +69,6 @@ path = "scripts/post-merge.sh"
 timeoutMs = 60000
 
 [deployment]
-deploymentTarget = "vm"
-run = ["npm", "start"]
+deploymentTarget = "autoscale"
+run = ["npm", "run", "start"]
 build = ["npm", "run", "build"]
