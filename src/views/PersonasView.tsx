@@ -1098,6 +1098,13 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
             </button>
             <h2 className="text-lg font-bold truncate mx-4">{viewingPersona.name}</h2>
             <div className="flex gap-2">
+              <button
+                onClick={() => setRefSheetPersona(viewingPersona)}
+                className="p-2 bg-fuchsia-600/20 hover:bg-fuchsia-600/40 rounded-full text-fuchsia-400 hover:text-fuchsia-300 transition-colors"
+                title="Generate reference sheet (9 angles)"
+              >
+                <LayoutGrid size={18} />
+              </button>
               <button 
                 onClick={() => {
                   setActivePersonaForGen(viewingPersona);
@@ -1157,6 +1164,14 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                 )}
               </div>
             </div>
+
+            <button
+              onClick={() => setRefSheetPersona(viewingPersona)}
+              className="w-full flex items-center justify-center gap-2 py-3 mb-5 bg-fuchsia-600/15 hover:bg-fuchsia-600/25 border border-fuchsia-500/25 hover:border-fuchsia-500/50 rounded-2xl text-fuchsia-300 font-semibold text-sm transition-all active:scale-95"
+            >
+              <LayoutGrid size={16} />
+              Generate Reference Sheet (9 Angles)
+            </button>
 
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold text-lg">Creations</h3>
