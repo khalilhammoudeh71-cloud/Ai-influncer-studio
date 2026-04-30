@@ -1,10 +1,11 @@
-import { Plus, Search, Edit2, Trash2, X, Check, Camera, Upload, Image as ImageIcon, AlertTriangle, Sparkles, ArrowLeft, Download, Heart, Trash, Eye, Loader2, ChevronDown, Cpu, Wand2, Pencil, ArrowUpCircle, Film } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, X, Check, Camera, Upload, Image as ImageIcon, AlertTriangle, Sparkles, ArrowLeft, Download, Heart, Trash, Eye, Loader2, ChevronDown, Cpu, Wand2, Pencil, ArrowUpCircle, Film, LayoutGrid } from 'lucide-react';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
 import { cn } from '../utils/cn';
 import { Persona, GeneratedImage } from '../types';
 import { VisualGenerator } from '../components/VisualGenerator';
+import ReferenceSheetModal from '../components/ReferenceSheetModal';
 import { api } from '../services/apiService';
 import { fetchAvailableModels, fetchAllModelTypes, generateReferenceImage, editImage, upscaleImage, generateVideo, enhancePrompt, type ModelInfo } from '../services/imageService';
 
@@ -21,6 +22,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [showGenerator, setShowGenerator] = useState(false);
   const [activePersonaForGen, setActivePersonaForGen] = useState<Persona | null>(null);
+  const [refSheetPersona, setRefSheetPersona] = useState<Persona | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [viewingPersona, setViewingPersona] = useState<Persona | null>(null);
   const [previewImage, setPreviewImage] = useState<GeneratedImage | null>(null);
@@ -573,6 +575,13 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                     title="Generate image / video"
                   >
                     <Sparkles size={15} />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setRefSheetPersona(persona); }}
+                    className="w-9 h-9 flex items-center justify-center rounded-xl bg-[var(--bg-elevated)] hover:bg-fuchsia-500/20 text-[var(--text-muted)] hover:text-fuchsia-400 transition-all active:scale-90 border border-[var(--border-subtle)]"
+                    title="Generate reference sheet (9 angles)"
+                  >
+                    <LayoutGrid size={15} />
                   </button>
                   <button
                     onClick={(e) => handleDeletePersona(e, persona.id)}
@@ -1525,6 +1534,13 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
             setShowGenerator(false);
           }} 
           onSaveImage={handleSaveGeneratedImage}
+        />
+      )}
+
+      {refSheetPersona && (
+        <ReferenceSheetModal
+          persona={refSheetPersona}
+          onClose={() => setRefSheetPersona(null)}
         />
       )}
     </div>
