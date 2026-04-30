@@ -1778,28 +1778,34 @@ app.post('/api/generate-image', async (req, res) => {
 
     if (modelId === 'replit:gpt-image-1') {
       prompt = buildPrompt({ ...rest, referenceImage });
+      const allReplitRefs = [referenceImage, ...(additionalImages || [])].filter((x): x is string => !!x);
+      const replitRefArg = allReplitRefs.length > 1 ? allReplitRefs : allReplitRefs[0];
+      console.log('[replit:gpt-image-1] Sending', allReplitRefs.length, 'reference image(s) to OpenAI');
       if (count > 1) {
-        const results = await Promise.allSettled(Array.from({ length: count }, () => generateWithReplit(prompt, referenceImage, aspectRatio)));
+        const results = await Promise.allSettled(Array.from({ length: count }, () => generateWithReplit(prompt, replitRefArg, aspectRatio)));
         imageUrls = results.filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled').map(r => r.value);
         if (imageUrls.length === 0) {
           const firstErr = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
           throw firstErr ? firstErr.reason : new Error('All image generation requests failed');
         }
       } else {
-        imageUrls = [await generateWithReplit(prompt, referenceImage, aspectRatio)];
+        imageUrls = [await generateWithReplit(prompt, replitRefArg, aspectRatio)];
       }
       modelName = 'gpt-image-2';
     } else if (modelId === 'openai:gpt-image-2') {
       prompt = buildPrompt({ ...rest, referenceImage });
+      const allOpenAIRefs = [referenceImage, ...(additionalImages || [])].filter((x): x is string => !!x);
+      const openAIRefArg = allOpenAIRefs.length > 1 ? allOpenAIRefs : allOpenAIRefs[0];
+      console.log('[openai:gpt-image-2] Sending', allOpenAIRefs.length, 'reference image(s) to OpenAI');
       if (count > 1) {
-        const results = await Promise.allSettled(Array.from({ length: count }, () => generateWithDirectOpenAI(prompt, referenceImage, aspectRatio)));
+        const results = await Promise.allSettled(Array.from({ length: count }, () => generateWithDirectOpenAI(prompt, openAIRefArg, aspectRatio)));
         imageUrls = results.filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled').map(r => r.value);
         if (imageUrls.length === 0) {
           const firstErr = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
           throw firstErr ? firstErr.reason : new Error('All image generation requests failed');
         }
       } else {
-        imageUrls = [await generateWithDirectOpenAI(prompt, referenceImage, aspectRatio)];
+        imageUrls = [await generateWithDirectOpenAI(prompt, openAIRefArg, aspectRatio)];
       }
       modelName = 'GPT Image 2';
     } else if (modelId.startsWith('venice:')) {
