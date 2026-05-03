@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Toaster } from 'react-hot-toast';
 import { 
   Users, 
+  Search,
   Calendar, 
   PlusCircle, 
   MessageSquare, 
@@ -18,15 +20,14 @@ import PersonasView from './views/PersonasView';
 import PlannerView from './views/PlannerView';
 import CreateView from './views/CreateView';
 import AssistantView from './views/AssistantView';
-import ChatView from './views/ChatView';
 import SettingsView from './views/SettingsView';
-import VoiceView from './views/VoiceView';
-import AIToolsView from './views/AIToolsView';
+import GalleryView from './views/GalleryView';
 import LandingView from './views/LandingView';
+import PersonaBuilderView from './views/PersonaBuilderView';
 
-type Tab = 'personas' | 'planner' | 'create' | 'assistant' | 'chat' | 'settings' | 'voice' | 'ai-tools';
+type Tab = 'personas' | 'create' | 'gallery' | 'assistant' | 'settings';
 
-export const INTERNAL_FALLBACK_PERSONAS: Persona[] = [
+const INTERNAL_FALLBACK_PERSONAS: Persona[] = [
   {
     id: 'fallback-luxury',
     name: 'Luxury Persona',
@@ -198,12 +199,9 @@ function App() {
 
   const tabs = [
     { id: 'personas', label: 'Personas', icon: Users },
-    { id: 'planner', label: 'Planner', icon: Calendar },
     { id: 'create', label: 'Create', icon: PlusCircle },
-    { id: 'voice', label: 'Voice', icon: Mic },
-    { id: 'ai-tools', label: 'AI Tools', icon: Wrench },
+    { id: 'gallery', label: 'Gallery', icon: Sparkles },
     { id: 'assistant', label: 'Assistant', icon: MessageSquare },
-    { id: 'chat', label: 'Chat', icon: MessageCircle },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
@@ -215,88 +213,152 @@ function App() {
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'personas': return <PersonasView personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} selectedId={selectedPersonaId} />;
-      case 'planner': return <PlannerView persona={activePersona} personas={personas} onSelectPersona={setSelectedPersonaId} />;
-      case 'voice': return <VoiceView persona={activePersona} personas={personas} onSelectPersona={setSelectedPersonaId} />;
-      case 'ai-tools': return <AIToolsView persona={activePersona} personas={personas} onSelectPersona={setSelectedPersonaId} />;
+      case 'personas': return <PersonasView personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} selectedId={selectedPersonaId} navigateToTab={setActiveTab} />;
+      case 'create': return <CreateView persona={activePersona} personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} />;
+      case 'gallery': return <GalleryView personas={personas} activePersona={activePersona} />;
       case 'assistant': return <AssistantView persona={activePersona} personas={personas} />;
-      case 'chat': return <ChatView personas={personas} activePersona={activePersona} />;
       case 'settings': return <SettingsView />;
-      default: return <PersonasView personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} selectedId={selectedPersonaId} />;
+      default: return <PersonasView personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} selectedId={selectedPersonaId} navigateToTab={setActiveTab} />;
     }
   };
+
+  if (window.location.pathname === '/persona/builder' || window.location.pathname.includes('/persona/builder')) {
+    const BuilderWrapper = () => {
+      const [p, setP] = useState<Persona>(() => ({
+        id: `user-${Date.now()}`,
+        name: 'Isabella Laurent',
+        niche: 'Luxury Lifestyle',
+        tone: 'Luxury, Confident, Exclusive, Aspirational, High-status, Sophisticated',
+        platform: 'Instagram',
+        status: 'Draft',
+        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150',
+        personalityTraits: ['Elite', 'Exclusive', 'High-status'],
+        visualStyle: 'Sophisticated & Modern',
+        audienceType: 'General',
+        contentBoundaries: '',
+        bio: 'Elite, sophisticated, and influential. Embodies success, refinement, and aspirational living.',
+        brandVoiceRules: '',
+        contentGoals: '',
+        personaNotes: ''
+      }));
+
+      const handleSaveNewPersona = async () => {
+        const updated = [...personas, p];
+        setPersonasLocal(updated);
+        setSelectedPersonaId(p.id);
+        try {
+          await api.personas.create(p);
+        } catch (err) {
+          console.error('[API] Failed to create persona in builder:', err);
+        }
+        window.location.pathname = '/';
+      };
+
+      return (
+        <PersonaBuilderView 
+          persona={p}
+          onChange={setP}
+          onSave={handleSaveNewPersona}
+          onCancel={() => { window.location.pathname = '/'; }}
+        />
+      );
+    };
+
+    try {
+      return <BuilderWrapper />;
+    } catch (err) {
+      return (
+        <div className="min-h-screen bg-[#0B0F17] text-white p-8 flex flex-col items-center justify-center">
+          <h1 className="text-2xl font-bold mb-4">PERSONA BUILDER ROUTE IS WORKING</h1>
+          <p className="text-red-400 mb-2">Error rendering component:</p>
+          <pre className="p-4 bg-black/50 border border-red-500/30 rounded-xl text-xs max-w-lg overflow-auto">
+            {err instanceof Error ? err.stack : String(err)}
+          </pre>
+        </div>
+      );
+    }
+  }
+
 
   return (
     <div className="flex flex-col h-screen bg-[var(--bg-base)] text-[var(--text-primary)] overflow-hidden relative">
       <div className="ambient-glow top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-violet-500/[0.04] blur-[100px] rounded-full" />
 
       {/* ── Top app bar ─────────────────────────────────────────── */}
-      <header className="fixed top-0 left-0 right-0 z-50 glass-strong border-b border-[var(--border-subtle)]">
-        <div className="flex items-center justify-between px-5 py-3">
-          <div className="flex items-center gap-2.5">
-            <div
-              className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
-              style={{ background: 'linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%)', boxShadow: '0 2px 16px -2px rgba(139,92,246,0.55)' }}
-            >
-              <Sparkles size={15} className="text-white" strokeWidth={2} />
+      <header className="flex-none bg-[#0B0F17]/90 backdrop-blur-xl border-b border-[var(--border-subtle)]">
+        <div className="flex items-center justify-between px-6 py-3">
+          
+          {/* Logo */}
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg flex flex-col items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, #00F5C2 0%, #00D4FF 100%)', boxShadow: '0 0 16px rgba(0, 245, 194, 0.4)' }}>
+              <div className="w-0 h-0 border-l-[6px] border-r-[6px] border-b-[10px] border-transparent border-b-[#0B0F17]" />
             </div>
             <div className="flex flex-col leading-none">
-              <span className="text-[15px] font-extrabold tracking-tight gradient-text">AI Studio</span>
-              <span className="text-[9px] font-bold text-[var(--text-muted)] tracking-[0.12em] uppercase">Influencer</span>
+              <span className="text-[14px] font-extrabold tracking-widest text-white uppercase">AI Influencer</span>
+              <span className="text-[10px] font-semibold text-[#00D4FF] tracking-[0.2em] uppercase">Studio</span>
             </div>
           </div>
 
-          <motion.button
-            whileTap={{ scale: 0.94 }}
-            onClick={() => setActiveTab('personas')}
-            className="flex items-center gap-2 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-full pl-1.5 pr-3 py-1 hover:border-violet-500/30 transition-all"
-          >
-            {activePersona.referenceImage ? (
-              <img
-                src={activePersona.referenceImage}
-                alt={activePersona.name}
-                className="w-6 h-6 rounded-full object-cover ring-1 ring-violet-500/40"
-              />
-            ) : (
-              <div className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold text-white"
-                style={{ background: 'linear-gradient(135deg, #8b5cf6, #d946ef)' }}
-              >
-                {activePersona.name.charAt(0).toUpperCase()}
-              </div>
-            )}
-            <span className="text-xs font-semibold text-[var(--text-secondary)] max-w-[110px] truncate">
-              {activePersona.name}
-            </span>
-          </motion.button>
+          {/* Search Bar */}
+          <div className="hidden md:flex flex-1 max-w-xl mx-8 relative">
+            <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+              <Search className="h-4 w-4 text-[var(--text-muted)]" />
+            </div>
+            <input 
+              type="text" 
+              placeholder="Search personas, tools or creations..." 
+              className="w-full bg-[#111827] border border-[#334155] rounded-full py-2.5 pl-11 pr-12 text-sm text-white placeholder-[var(--text-muted)] focus:outline-none focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] transition-all"
+            />
+            <div className="absolute inset-y-0 right-4 flex items-center pointer-events-none">
+              <span className="text-xs font-semibold text-[var(--text-muted)]">⌘K</span>
+            </div>
+          </div>
+
+          {/* Right Actions */}
+          <div className="flex items-center gap-5">
+            <button 
+              onClick={() => setActiveTab('create')}
+              className="hidden sm:flex items-center gap-2 bg-transparent border border-[#00D4FF]/40 px-5 py-2 rounded-full text-sm font-bold text-white hover:bg-[#00D4FF]/10 transition-all shadow-[0_0_16px_rgba(0,212,255,0.15)] hover:shadow-[0_0_24px_rgba(0,212,255,0.3)]"
+            >
+              <PlusCircle size={16} className="text-[#00F5C2]" /> Create
+            </button>
+            <button className="relative text-[var(--text-muted)] hover:text-white transition-colors">
+              <div className="absolute -top-1 -right-1 w-2 h-2 bg-rose-500 rounded-full" />
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+            </button>
+            <button className="w-8 h-8 rounded-full overflow-hidden border border-[#334155] hover:border-[#00D4FF] transition-colors shrink-0">
+              <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=150&auto=format&fit=crop" alt="Profile" className="w-full h-full object-cover" />
+            </button>
+          </div>
+
         </div>
       </header>
 
       {/* ── Content ─────────────────────────────────────────────── */}
-      <main className="flex-1 overflow-y-auto pt-[54px] pb-[88px]">
-        <div style={{ display: activeTab === 'create' ? 'block' : 'none' }}>
-          <CreateView persona={activePersona} personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} />
-        </div>
+      <main className="flex-1 overflow-y-auto relative z-10">
         <AnimatePresence mode="wait" custom={getTabDirection(prevTabRef.current, activeTab)}>
-          {activeTab !== 'create' && (
             <motion.div
               key={activeTab}
               custom={getTabDirection(prevTabRef.current, activeTab)}
-              initial={(dir: number) => ({ opacity: 0, x: dir * 18, filter: 'blur(2px)' })}
-              animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
-              exit={(dir: number) => ({ opacity: 0, x: dir * -18, filter: 'blur(2px)' })}
+              variants={{
+                enter: (dir: number) => ({ opacity: 0, x: dir * 18, filter: 'blur(2px)' }),
+                center: { opacity: 1, x: 0, filter: 'blur(0px)' },
+                exit: (dir: number) => ({ opacity: 0, x: dir * -18, filter: 'blur(2px)' })
+              }}
+              initial="enter"
+              animate="center"
+              exit="exit"
               transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
             >
               {renderContent()}
             </motion.div>
-          )}
         </AnimatePresence>
       </main>
 
-      {/* ── Bottom tab bar ──────────────────────────────────────── */}
-      <nav className="fixed bottom-0 left-0 right-0 z-50">
+      <nav className="flex-none z-50">
         <div className="action-bar" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
           <div
-            className="flex items-center gap-0 px-1 pt-2 pb-3.5 overflow-x-auto scrollbar-hide"
+            className="flex items-center gap-0 px-1 pt-1 pb-1.5 overflow-x-auto scrollbar-hide"
           >
             {tabs.map((tab) => {
               const Icon = tab.icon;
@@ -314,8 +376,8 @@ function App() {
                         layoutId="nav-pill"
                         className="absolute inset-0 rounded-xl"
                         style={{
-                          background: 'linear-gradient(135deg, rgba(139,92,246,0.25) 0%, rgba(217,70,239,0.18) 100%)',
-                          boxShadow: '0 0 24px -4px rgba(139,92,246,0.35)',
+                          background: 'linear-gradient(135deg, rgba(0,212,255,0.15) 0%, rgba(0,245,194,0.1) 100%)',
+                          boxShadow: '0 0 24px -4px rgba(0,245,194,0.25)',
                         }}
                         transition={{ type: "spring", stiffness: 500, damping: 32 }}
                       />
@@ -325,13 +387,13 @@ function App() {
                       strokeWidth={isActive ? 2.2 : 1.6}
                       className={cn(
                         "relative z-10 transition-all duration-200",
-                        isActive ? "text-violet-300" : "text-[var(--text-muted)]"
+                        isActive ? "text-[#00F5C2]" : "text-[var(--text-muted)]"
                       )}
                     />
                   </div>
                   <span className={cn(
                     "text-[9.5px] font-bold tracking-wide transition-all duration-200 leading-none",
-                    isActive ? "text-violet-300" : "text-[var(--text-muted)]"
+                    isActive ? "text-[#00F5C2]" : "text-[var(--text-muted)]"
                   )}>
                     {tab.label}
                   </span>
@@ -339,7 +401,7 @@ function App() {
                     <motion.div
                       layoutId="nav-dot"
                       className="absolute -top-0.5 left-1/2 -translate-x-1/2 w-[18px] h-0.5 rounded-full"
-                      style={{ background: 'linear-gradient(90deg, #8b5cf6, #d946ef)', boxShadow: '0 0 8px rgba(139,92,246,0.6)' }}
+                      style={{ background: '#00F5C2', boxShadow: '0 0 8px rgba(0,245,194,0.6)' }}
                       transition={{ type: "spring", stiffness: 500, damping: 32 }}
                     />
                   )}
@@ -349,6 +411,7 @@ function App() {
           </div>
         </div>
       </nav>
+      <Toaster position="top-right" toastOptions={{ duration: 4000, style: { background: '#1a103c', color: '#fff', border: '1px solid rgba(139, 92, 246, 0.3)' } }} />
     </div>
   );
 }
@@ -367,9 +430,22 @@ function getLocalStoragePersonas(): Persona[] {
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.map((p: Partial<Persona> & { id?: string }) => ({
+          return parsed.map((p: any) => ({
+            name: '',
+            niche: '',
+            tone: 'Photorealistic',
+            platform: '',
+            status: 'Draft',
+            avatar: '',
+            visualStyle: 'Realistic, highly detailed',
+            audienceType: '',
+            contentBoundaries: '',
+            bio: '',
+            brandVoiceRules: '',
+            contentGoals: '',
+            personaNotes: '',
             ...p,
-            id: p.id && p.id.startsWith('user-') ? p.id : `user-${p.id || Date.now() + Math.random()}`,
+            id: p.id && typeof p.id === 'string' && p.id.startsWith('user-') ? p.id : `user-${p.id || Date.now() + Math.random()}`,
             personalityTraits: Array.isArray(p.personalityTraits) ? p.personalityTraits : [],
             visualLibrary: Array.isArray(p.visualLibrary) ? p.visualLibrary : []
           }));

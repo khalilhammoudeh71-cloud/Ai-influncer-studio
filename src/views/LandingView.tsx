@@ -200,7 +200,7 @@ export default function LandingView({ onGetStarted, isLoggedIn }: LandingViewPro
     return () => clearInterval(interval);
   }, []);
 
-  const containerVariants = {
+  const containerVariants: any = {
     hidden: { opacity: 0 },
     visible: {
       opacity: 1,
@@ -208,7 +208,7 @@ export default function LandingView({ onGetStarted, isLoggedIn }: LandingViewPro
     }
   };
 
-  const itemVariants = {
+  const itemVariants: any = {
     hidden: { opacity: 0, y: 24 },
     visible: {
       opacity: 1,

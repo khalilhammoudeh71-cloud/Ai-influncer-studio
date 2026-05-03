@@ -1,4 +1,4 @@
-import { Plus, Search, Edit2, Trash2, X, Check, Camera, Upload, Image as ImageIcon, AlertTriangle, Sparkles, ArrowLeft, Download, Heart, Trash, Eye, Loader2, ChevronDown, Cpu, Wand2, Pencil, ArrowUpCircle, Film, LayoutGrid } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, X, Check, Camera, Upload, Image as ImageIcon, AlertTriangle, Sparkles, ArrowLeft, Download, Heart, Trash, Eye, Loader2, ChevronDown, Cpu, Wand2, Pencil, ArrowUpCircle, Film, LayoutGrid, MessageSquare, Mic, Users, ChevronRight } from 'lucide-react';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
@@ -8,15 +8,18 @@ import { VisualGenerator } from '../components/VisualGenerator';
 import ReferenceSheetModal from '../components/ReferenceSheetModal';
 import { api } from '../services/apiService';
 import { fetchAvailableModels, fetchAllModelTypes, generateReferenceImage, editImage, upscaleImage, generateVideo, enhancePrompt, type ModelInfo } from '../services/imageService';
+import { dashboardFeatureCards, recentCreationPlaceholders } from '../data/demoAssets';
+import PersonaBuilderView from './PersonaBuilderView';
 
 interface PersonasViewProps {
   personas: Persona[];
   setPersonas: (p: Persona[]) => void;
   onSelectPersona: (id: string) => void;
   selectedId: string;
+  navigateToTab?: (tab: 'personas' | 'create' | 'gallery' | 'assistant' | 'settings') => void;
 }
 
-export default function PersonasView({ personas, setPersonas, onSelectPersona, selectedId }: PersonasViewProps) {
+export default function PersonasView({ personas, setPersonas, onSelectPersona, selectedId, navigateToTab }: PersonasViewProps) {
   const [mounted, setMounted] = useState(false);
   const [editingPersona, setEditingPersona] = useState<Persona | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -336,38 +339,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
   };
 
   const handleAddPersona = () => {
-    // Check if the placeholder persona already exists (user clicked twice without editing)
-    const existingNew = personas.find(p => p.name === 'New Persona' && p.status === 'Draft');
-    if (existingNew) {
-      onSelectPersona(existingNew.id);
-      setEditingPersona(existingNew);
-      return;
-    }
-
-    const newPersona: Persona = {
-      id: `user-${Date.now()}`,
-      name: 'New Persona',
-      niche: 'Lifestyle',
-      tone: 'Professional',
-      platform: 'Instagram',
-      status: 'Draft',
-      avatar: 'https://images.unsplash.com/photo-1511367461989-f85a21fda167?auto=format&fit=crop&w=150&h=150',
-      personalityTraits: ['Creative'],
-      visualStyle: 'Modern',
-      audienceType: 'General',
-      contentBoundaries: '',
-      bio: '',
-      brandVoiceRules: '',
-      contentGoals: '',
-      personaNotes: ''
-    };
-    
-    // Add new persona to the list
-    setPersonas([...personas, newPersona]);
-    // Set it as active
-    onSelectPersona(newPersona.id);
-    // Open the edit sheet immediately
-    setEditingPersona(newPersona);
+    window.location.pathname = '/persona/builder';
   };
 
   const handleUpdatePersona = () => {
@@ -422,840 +394,312 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
     setEditingPersona({ ...persona });
   };
 
+  if (editingPersona) {
+    return (
+      <PersonaBuilderView 
+        persona={editingPersona}
+        onChange={setEditingPersona}
+        onSave={handleUpdatePersona}
+        onCancel={() => setEditingPersona(null)}
+      />
+    );
+  }
+
+  const activePersona = personas.find(p => p.id === selectedId) || personas[0];
+
   return (
-    <div className="p-5">
-      {!viewingPersona && <>
-      <header className="premium-header mb-6 pt-6 pb-2">
-        <div className="flex justify-between items-start relative z-10">
-          <div>
-            <h1 className="text-3xl font-extrabold tracking-tight">
-              <span className="gradient-text">Personas</span>
-            </h1>
-            <p className="text-[var(--text-tertiary)] text-sm mt-1.5 font-medium">
-              Your AI identity studio
-            </p>
-          </div>
-          <motion.button 
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.92 }}
-            onClick={handleAddPersona}
-            className="premium-button p-3 rounded-xl"
-          >
-            <Plus size={22} />
-          </motion.button>
-        </div>
+    <div className="px-6 pt-6 max-w-[1400px] mx-auto pb-12">
+      {!activePersona ? (
+         <div className="flex flex-col items-center justify-center py-20 bg-[#0F172A]/50 border border-[#334155] rounded-3xl">
+           <div className="w-16 h-16 bg-[#00D4FF]/10 rounded-full flex items-center justify-center mb-4 text-[#00D4FF]">
+             <Plus size={32} />
+           </div>
+           <h3 className="text-xl font-bold mb-2">Welcome to AI Studio</h3>
+           <p className="text-[var(--text-tertiary)] text-sm mb-6">Create your first persona to get started.</p>
+           <button onClick={handleAddPersona} className="premium-button px-6 py-3">Create Persona</button>
+         </div>
+      ) : (
+        <div className="space-y-6 animate-in fade-in duration-300">
+          
+          {/* Hero Card */}
+          <div className="relative rounded-[24px] overflow-hidden border border-[#334155] p-6 shadow-2xl group bg-[#0F172A]">
+            <div className="absolute inset-0 bg-gradient-to-r from-[#00D4FF]/5 via-transparent to-[#00F5C2]/10 opacity-60" />
+            
+            {/* Aurora Wave Effect */}
+            <svg className="absolute inset-0 w-full h-full opacity-30 pointer-events-none" preserveAspectRatio="none" viewBox="0 0 1000 300">
+              <path d="M0 150 Q 250 50 500 150 T 1000 150 L 1000 300 L 0 300 Z" fill="url(#aurora-grad)" opacity="0.1"/>
+              <path d="M0 200 Q 300 100 600 200 T 1000 200 L 1000 300 L 0 300 Z" fill="url(#aurora-grad)" opacity="0.15"/>
+              <defs>
+                <linearGradient id="aurora-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%" stopColor="#00D4FF" />
+                  <stop offset="50%" stopColor="#00F5C2" />
+                  <stop offset="100%" stopColor="#6366F1" />
+                </linearGradient>
+              </defs>
+            </svg>
 
-        {personas.length > 0 && (
-          <div className="flex gap-3 mt-4 relative z-10">
-            <div className="stat-chip flex-1 text-center">
-              <div className="text-lg font-black text-[var(--text-primary)] tabular-nums">{personas.length}</div>
-              <div className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-[0.12em] mt-0.5">Total</div>
-            </div>
-            <div className="stat-chip flex-1 text-center">
-              <div className="text-lg font-black text-emerald-400 tabular-nums">{personas.filter(p => p.status === 'Active').length}</div>
-              <div className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-[0.12em] mt-0.5">Active</div>
-            </div>
-            <div className="stat-chip flex-1 text-center">
-              <div className="text-lg font-black text-violet-400 tabular-nums">{new Set(personas.map(p => p.platform)).size}</div>
-              <div className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-[0.12em] mt-0.5">Platforms</div>
-            </div>
-          </div>
-        )}
-      </header>
-
-      <div className="divider-gradient mb-5" />
-
-      <div className="relative mb-6">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" size={16} />
-        <input 
-          type="text" 
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search personas..." 
-          className="w-full premium-input py-3.5 pl-11 pr-4 text-sm outline-none text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
-        />
-      </div>
-
-      <div className="grid gap-4">
-        {filteredPersonas.map((persona, idx) => {
-          const isSelected = selectedId === persona.id;
-          return (
-            <motion.div 
-              key={persona.id}
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: idx * 0.06, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-              onClick={() => {
-                onSelectPersona(persona.id);
-                const fresh = personas.find(p => p.id === persona.id) || persona;
-                setViewingPersona(fresh);
-              }}
-              className={cn(
-                "group relative rounded-2xl p-5 cursor-pointer overflow-hidden",
-                isSelected ? "premium-card-selected" : "premium-card"
-              )}
-            >
-              {isSelected && (
-                <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-violet-500 via-fuchsia-500 to-violet-500 opacity-80" />
-              )}
+            <div className="absolute top-0 right-0 w-[600px] h-full bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-[#00F5C2]/15 via-transparent to-transparent pointer-events-none" />
+            
+            <div className="relative z-10 flex flex-col md:flex-row gap-8 items-start md:items-center">
+              <div className="relative shrink-0">
+                <div className="w-[140px] h-[140px] rounded-2xl overflow-hidden ring-1 ring-[#334155] shadow-lg">
+                  <img src={activePersona.referenceImage || activePersona.avatar} className="w-full h-full object-cover" alt={activePersona.name} />
+                </div>
+                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 px-2.5 py-1 bg-black/80 backdrop-blur-md rounded-full border border-white/10 flex items-center gap-1.5 shadow-sm">
+                  <div className="w-2 h-2 rounded-full bg-[#00F5C2] shadow-[0_0_8px_#00F5C2]" />
+                  <span className="text-[10px] font-bold text-white uppercase tracking-wider">Online</span>
+                </div>
+              </div>
               
-              <div className="flex gap-4 items-center">
-                <div className="relative shrink-0">
-                  {persona.referenceImage ? (
-                    <div className="w-[110px] h-[110px] rounded-2xl overflow-hidden ring-2 ring-violet-500/25 shadow-lg shadow-violet-500/10">
-                      <img 
-                        src={persona.referenceImage} 
-                        alt={persona.name} 
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                  ) : (
-                    <div className="w-[110px] h-[110px] rounded-2xl overflow-hidden ring-1 ring-[var(--border-default)]">
-                      <img 
-                        src={persona.avatar} 
-                        alt={persona.name} 
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                  )}
-                  <div className={cn(
-                    "absolute -bottom-0.5 -right-0.5 status-dot border-2 border-[var(--bg-surface)]",
-                    persona.status === 'Active' ? "bg-emerald-400 text-emerald-400" : "bg-[var(--text-muted)] text-[var(--text-muted)]"
-                  )}></div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-[10px] font-bold text-[#94A3B8] uppercase tracking-[0.2em]">Active Persona</span>
                 </div>
                 
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2.5 mb-1">
-                    <h3 className="font-bold text-[17px] truncate">{persona.name}</h3>
-                    {isSelected && (
-                      <span className="text-[9px] uppercase tracking-widest font-bold px-2.5 py-1 rounded-lg bg-gradient-to-r from-violet-500/15 to-fuchsia-500/15 text-violet-300 border border-violet-500/20 shrink-0">
-                        Active
-                      </span>
-                    )}
+                <div className="flex items-center gap-3 mb-2">
+                  <h2 className="text-[32px] font-semibold text-white tracking-tight">{activePersona.name}</h2>
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#00D4FF]/10 border border-[#00D4FF]/20 text-[#00D4FF]">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M5 16L3 5L8.5 10L12 4L15.5 10L21 5L19 16H5ZM19 19C19 19.5523 18.5523 20 18 20H6C5.44772 20 5 19.5523 5 19V18H19V19Z"/></svg>
+                    <span className="text-[11px] font-bold tracking-wide">Elite</span>
                   </div>
-                  <p className="text-[var(--text-secondary)] text-[13px]">{persona.niche}</p>
-                  
-                  {persona.visualLibrary && persona.visualLibrary.length > 0 && (
-                    <div className="flex gap-1.5 mt-3 overflow-hidden">
-                      {persona.visualLibrary.slice(-4).map((img) => (
-                        <div key={img.id} className="w-9 h-9 rounded-lg overflow-hidden border border-[var(--border-subtle)] shrink-0 opacity-80 group-hover:opacity-100 transition-opacity">
-                          <img src={img.url} alt="" className="w-full h-full object-cover" />
-                        </div>
-                      ))}
-                      {persona.visualLibrary.length > 4 && (
-                        <div className="w-9 h-9 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] flex items-center justify-center text-[10px] text-[var(--text-muted)] font-bold shrink-0">
-                          +{persona.visualLibrary.length - 4}
-                        </div>
-                      )}
-                    </div>
-                  )}
+                </div>
 
-                  <div className="flex flex-wrap items-center gap-1.5 mt-3">
-                    <span className="tag-pill">
-                      {persona.tone.split(',')[0].trim()}
+                <p className="text-[#CBD5E1] text-sm mb-5 max-w-2xl leading-relaxed">{activePersona.bio || 'Elite, sophisticated, and influential. Embodies success, refinement, and aspirational luxury lifestyle.'}</p>
+                
+                <div className="flex flex-wrap gap-2 items-center">
+                  {["Elite", "Arrogant", "Wealthy", "Sophisticated"].map((chip, i) => (
+                    <span key={i} className="px-3 py-1.5 rounded-full text-xs font-semibold bg-[#111827] border border-[#334155] text-[#CBD5E1] hover:border-[#00D4FF]/50 transition-colors cursor-default">
+                      {chip}
                     </span>
-                    <span className="tag-pill">
-                      {persona.platform}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Always-visible CTA column */}
-                <div className="flex flex-col items-center gap-2 shrink-0 pl-1" onClick={(e) => e.stopPropagation()}>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleOpenEdit(persona); }}
-                    className="w-9 h-9 flex items-center justify-center rounded-xl bg-[var(--bg-elevated)] hover:bg-violet-500/20 text-[var(--text-secondary)] hover:text-violet-400 transition-all active:scale-90 border border-[var(--border-subtle)]"
-                    title="Edit persona"
-                  >
-                    <Edit2 size={15} />
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setActivePersonaForGen(persona); setShowGenerator(true); }}
-                    className="w-9 h-9 flex items-center justify-center rounded-xl bg-violet-500/15 hover:bg-violet-500/30 text-violet-400 hover:text-violet-300 transition-all active:scale-90 border border-violet-500/20"
-                    title="Generate image / video"
-                  >
-                    <Sparkles size={15} />
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setRefSheetPersona(persona); }}
-                    className="w-9 h-9 flex items-center justify-center rounded-xl bg-[var(--bg-elevated)] hover:bg-fuchsia-500/20 text-[var(--text-muted)] hover:text-fuchsia-400 transition-all active:scale-90 border border-[var(--border-subtle)]"
-                    title="Generate reference sheet (9 angles)"
-                  >
-                    <LayoutGrid size={15} />
-                  </button>
-                  <button
-                    onClick={(e) => handleDeletePersona(e, persona.id)}
-                    className="w-9 h-9 flex items-center justify-center rounded-xl bg-[var(--bg-elevated)] hover:bg-rose-500/20 text-[var(--text-muted)] hover:text-rose-400 transition-all active:scale-90 border border-[var(--border-subtle)]"
-                    title="Delete persona"
-                  >
-                    <Trash2 size={15} />
+                  ))}
+                  <button className="w-7 h-7 rounded-full bg-[#111827] border border-[#334155] flex items-center justify-center text-[#94A3B8] hover:text-white hover:border-[#00D4FF] transition-all">
+                    <Plus size={14} />
                   </button>
                 </div>
               </div>
-            </motion.div>
-          );
-        })}
-
-        {mounted && deleteConfirmId && createPortal(<div className="fixed inset-0 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" style={{ zIndex: 10001 }}>
-            <div className="bg-[var(--bg-surface)] w-full max-w-sm rounded-2xl border border-[var(--border-default)] p-8 shadow-2xl animate-in fade-in zoom-in duration-200">
-              <div className="flex flex-col items-center text-center">
-                <div className="w-16 h-16 bg-rose-500/10 rounded-full flex items-center justify-center mb-6 text-red-500">
-                  <AlertTriangle size={32} />
-                </div>
-                <h3 className="text-xl font-bold mb-2">Delete Persona?</h3>
-                <p className="text-[var(--text-secondary)] text-sm mb-8 leading-relaxed">
-                  This action is permanent and will remove all content plans and settings associated with this persona.
-                </p>
-                <div className="grid grid-cols-2 gap-3 w-full">
-                  <button 
-                    onClick={() => setDeleteConfirmId(null)}
-                    className="py-3.5 px-4 bg-[var(--bg-elevated)] hover:bg-[var(--bg-overlay)] rounded-2xl font-bold transition-all active:scale-95"
-                  >
-                    Cancel
-                  </button>
-                  <button 
-                    onClick={confirmDelete}
-                    className="py-3.5 px-4 bg-red-600 hover:bg-rose-500 rounded-2xl font-bold shadow-lg shadow-red-600/20 transition-all active:scale-95"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        , document.body)}
-
-        {mounted && editingPersona && createPortal(<div className="fixed inset-0 flex items-end justify-center bg-black/80 backdrop-blur-sm p-4" style={{ zIndex: 10001 }}>
-            <div className="bg-[var(--bg-surface)] w-full max-w-xl rounded-t-[40px] border-t border-x border-[var(--border-default)] overflow-hidden animate-in slide-in-from-bottom duration-300 max-h-[90vh] flex flex-col">
-              <header className="px-6 pt-8 pb-4 flex justify-between items-center bg-[var(--bg-surface)] border-b border-[var(--border-subtle)]">
-                <div>
-                  <h2 className="text-xl font-bold">Edit Persona</h2>
-                  <p className="text-xs text-[var(--text-tertiary)]">Fine-tune your AI identity</p>
-                </div>
-                <div className="flex gap-2">
-                  <button 
-                    onClick={() => setEditingPersona(null)}
-                    className="p-2 hover:bg-[var(--bg-elevated)] rounded-full text-[var(--text-secondary)]"
-                  >
-                    <X size={20} />
-                  </button>
-                  <button 
-                    onClick={handleUpdatePersona}
-                    className="p-2 bg-violet-600 hover:bg-violet-500 rounded-full text-white shadow-lg shadow-violet-600/20"
-                  >
-                    <Check size={20} />
-                  </button>
-                </div>
-              </header>
-
-              <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                {/* Avatar Section */}
-                <div className="flex justify-center">
-                  <div className="relative group cursor-pointer">
-                    <img 
-                      src={editingPersona.avatar} 
-                      alt="Avatar" 
-                      className="w-24 h-24 rounded-2xl object-cover ring-4 ring-white/5"
-                    />
-                    <div className="absolute inset-0 bg-black/40 rounded-2xl flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Camera size={24} />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Reference Image Section */}
-                <section className="bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-2xl p-6 space-y-4">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="p-2 bg-violet-500/20 rounded-xl text-violet-400">
-                      <ImageIcon size={20} />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-bold">Reference Image</h3>
-                      <p className="text-[10px] text-[var(--text-tertiary)] uppercase tracking-wider font-semibold">Face / Style Reference</p>
-                    </div>
-                  </div>
-
-                  {editingPersona.referenceImage && (
-                    <div className="space-y-2 mb-3">
-                      <div className="relative aspect-video rounded-2xl overflow-hidden border border-[var(--border-default)] group">
-                        <img 
-                          src={editingPersona.referenceImage} 
-                          alt="Reference" 
-                          className="w-full h-full object-cover"
-                        />
-                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm">
-                          <button
-                            onClick={() => setEditingPersona({...editingPersona, referenceImage: undefined, faceDescriptor: undefined, additionalReferenceImages: undefined})}
-                            className="bg-rose-500 text-white px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5"
-                          >
-                            <X size={12} /> Remove All
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Additional reference images */}
-                      {(editingPersona.additionalReferenceImages?.length ?? 0) > 0 && (
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] ml-1">Additional Reference Images</label>
-                          <div className="flex flex-wrap gap-2">
-                            {editingPersona.additionalReferenceImages!.map((img, idx) => (
-                              <div key={idx} className="relative group w-14 h-14 rounded-xl overflow-hidden border border-[var(--border-default)]">
-                                <img src={img} alt={`Ref ${idx + 2}`} className="w-full h-full object-cover" />
-                                <button
-                                  onClick={() => {
-                                    const updated = editingPersona.additionalReferenceImages!.filter((_, i) => i !== idx);
-                                    setEditingPersona({ ...editingPersona, additionalReferenceImages: updated.length ? updated : undefined });
-                                  }}
-                                  className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                                >
-                                  <X size={14} className="text-white" />
-                                </button>
-                              </div>
-                            ))}
-                            <button
-                              onClick={() => fileInputRef.current?.click()}
-                              className="w-14 h-14 rounded-xl border-2 border-dashed border-[var(--border-default)] hover:border-violet-500/50 flex items-center justify-center text-[var(--text-muted)] hover:text-violet-400 transition-colors"
-                            >
-                              <Plus size={18} />
-                            </button>
-                          </div>
-                        </div>
-                      )}
-
-                      <button
-                        onClick={handleAnalyzeFace}
-                        disabled={analyzingFace}
-                        className="w-full py-2 rounded-xl bg-violet-600/20 hover:bg-violet-600/30 border border-violet-500/30 text-violet-300 text-xs font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-50"
-                      >
-                        {analyzingFace ? (
-                          <><Loader2 size={13} className="animate-spin" /> Analyzing face...</>
-                        ) : (
-                          <><Sparkles size={13} /> {editingPersona.faceDescriptor ? 'Re-analyze Face' : 'Analyze Face with AI'}</>
-                        )}
-                      </button>
-
-                      {faceAnalysisError && (
-                        <div className="flex items-center gap-2 p-2 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">
-                          <AlertTriangle size={12} className="shrink-0" />
-                          {faceAnalysisError}
-                        </div>
-                      )}
-
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] ml-1 flex items-center gap-1">
-                          <Sparkles size={10} /> Face Description (editable)
-                        </label>
-                        <textarea
-                          value={editingPersona.faceDescriptor || ''}
-                          onChange={e => setEditingPersona({ ...editingPersona, faceDescriptor: e.target.value || undefined })}
-                          rows={4}
-                          className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-xs text-white focus:ring-2 focus:ring-violet-500/50 outline-none resize-none leading-relaxed"
-                          placeholder="Click 'Analyze Face with AI' to auto-generate, or manually type an appearance description..."
-                        />
-                        <p className="text-[10px] text-[var(--text-muted)] ml-1">Injected into every generation prompt to anchor the persona's identity.</p>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex rounded-xl bg-[var(--bg-elevated)] p-0.5 gap-0.5">
-                    <button
-                      onClick={() => setRefMode('upload')}
-                      className={cn(
-                        "flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-all",
-                        refMode === 'upload' ? "bg-violet-600 text-white shadow" : "text-[var(--text-secondary)] hover:text-white"
-                      )}
-                    >
-                      <Upload size={13} /> {editingPersona.referenceImage ? 'Replace' : 'Upload'}
-                    </button>
-                    <button
-                      onClick={() => setRefMode('generate')}
-                      className={cn(
-                        "flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-all",
-                        refMode === 'generate' ? "bg-violet-600 text-white shadow" : "text-[var(--text-secondary)] hover:text-white"
-                      )}
-                    >
-                      <Wand2 size={13} /> Generate with AI
-                    </button>
-                  </div>
-
-                  {refMode === 'upload' ? (
-                        <div 
-                          onClick={() => fileInputRef.current?.click()}
-                          className="relative border-2 border-dashed border-[var(--border-default)] rounded-2xl py-10 text-center cursor-pointer hover:border-violet-500/50 hover:bg-white/[0.02] transition-all"
-                        >
-                          <input type="file" ref={fileInputRef} className="hidden" accept="image/*" multiple onChange={handleImageUpload} />
-                          <div className="flex flex-col items-center gap-3">
-                            <div className="p-3 bg-[var(--bg-elevated)] rounded-full text-[var(--text-secondary)]">
-                              <Upload size={24} />
-                            </div>
-                            <div>
-                              <p className="text-sm font-medium text-[var(--text-primary)]">Tap to upload reference(s)</p>
-                              <p className="text-xs text-[var(--text-tertiary)] mt-1">Select one or multiple images at once</p>
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="space-y-3">
-                          <div className="space-y-1.5">
-                            <label className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] ml-1 flex items-center gap-1">
-                              <Cpu size={10} /> Model
-                            </label>
-                            {refModelsLoading ? (
-                              <div className="flex items-center gap-2 px-3 py-2.5 bg-[var(--bg-elevated)] rounded-xl text-xs text-[var(--text-secondary)]">
-                                <Loader2 className="w-3 h-3 animate-spin" /> Loading models...
-                              </div>
-                            ) : (
-                              <div className="relative">
-                                <select
-                                  value={refSelectedModel}
-                                  onChange={(e) => setRefSelectedModel(e.target.value)}
-                                  className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white focus:ring-2 focus:ring-violet-500/50 outline-none appearance-none pr-8"
-                                >
-                                  {Object.entries(refGroupedModels).map(([provider, providerModels]) => (
-                                    <optgroup key={provider} label={provider}>
-                                      {providerModels.map((m) => (
-                                        <option key={m.id} value={m.id}>
-                                          {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}{m.nsfw ? ' 🔞' : ''}
-                                        </option>
-                                      ))}
-                                    </optgroup>
-                                  ))}
-                                </select>
-                                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-tertiary)] pointer-events-none" />
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="space-y-1.5">
-                            <label className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] ml-1">Describe your persona's look</label>
-                            <textarea
-                              value={refPrompt}
-                              onChange={(e) => setRefPrompt(e.target.value)}
-                              placeholder="e.g. A beautiful 25-year-old woman with long dark hair, green eyes, warm smile, professional headshot style..."
-                              className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white min-h-[80px] focus:ring-2 focus:ring-violet-500/50 outline-none resize-none"
-                            />
-                          </div>
-
-                          {refError && (
-                            <div className="flex items-center gap-2 p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">
-                              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                              {refError}
-                            </div>
-                          )}
-
-                          <button
-                            onClick={handleGenerateRef}
-                            disabled={refGenerating || !refPrompt.trim() || !refSelectedModel}
-                            className="w-full py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-50 shadow-lg shadow-violet-600/20"
-                          >
-                            {refGenerating ? (
-                              <><Loader2 size={14} className="animate-spin" /> Generating...</>
-                            ) : (
-                              <><Sparkles size={14} /> Generate Reference Image</>
-                            )}
-                          </button>
-                        </div>
-                      )}
-                </section>
-
-                {/* Form Fields */}
-                <div className="space-y-8 pb-10">
-                  {/* Core Identity Section */}
-                  <section className="space-y-4">
-                    <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-violet-400/80 mb-4 px-1">Core Identity</h3>
-                    <div className="space-y-4">
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] ml-1">Name</label>
-                        <input 
-                          value={editingPersona.name}
-                          onChange={e => setEditingPersona({...editingPersona, name: e.target.value})}
-                          className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-2xl py-3 px-4 focus:ring-2 focus:ring-violet-500/50 outline-none transition-all"
-                          placeholder="e.g. Aria Thorne"
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] ml-1">Niche</label>
-                          <input 
-                            value={editingPersona.niche}
-                            onChange={e => setEditingPersona({...editingPersona, niche: e.target.value})}
-                            className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-2xl py-3 px-4 focus:ring-2 focus:ring-violet-500/50 outline-none transition-all"
-                            placeholder="e.g. Luxury Travel"
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] ml-1">Tone</label>
-                          <input 
-                            value={editingPersona.tone}
-                            onChange={e => setEditingPersona({...editingPersona, tone: e.target.value})}
-                            className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-2xl py-3 px-4 focus:ring-2 focus:ring-violet-500/50 outline-none transition-all"
-                            placeholder="e.g. Elegant, Elite"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] ml-1">Platform Focus</label>
-                          <input 
-                            value={editingPersona.platform}
-                            onChange={e => setEditingPersona({...editingPersona, platform: e.target.value})}
-                            className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-2xl py-3 px-4 focus:ring-2 focus:ring-violet-500/50 outline-none transition-all"
-                            placeholder="e.g. Instagram"
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] ml-1">Status</label>
-                          <select 
-                            value={editingPersona.status}
-                            onChange={e => setEditingPersona({...editingPersona, status: e.target.value})}
-                            className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-2xl py-3 px-4 focus:ring-2 focus:ring-violet-500/50 outline-none transition-all appearance-none"
-                          >
-                            <option value="Active">Active</option>
-                            <option value="Draft">Draft</option>
-                            <option value="Archived">Archived</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] ml-1">Short Bio / Context</label>
-                        <textarea 
-                          value={editingPersona.bio}
-                          onChange={e => setEditingPersona({...editingPersona, bio: e.target.value})}
-                          rows={3}
-                          className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-2xl py-3 px-4 focus:ring-2 focus:ring-violet-500/50 outline-none transition-all resize-none"
-                          placeholder="What's the story behind this persona?"
-                        />
-                      </div>
-                    </div>
-                  </section>
-
-                  {/* Personality & Voice Section */}
-                  <section className="space-y-4">
-                    <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-violet-400/80 mb-4 px-1">Personality & Voice</h3>
-                    <div className="space-y-4">
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] ml-1">Personality Traits</label>
-                        <input 
-                          value={editingPersona.personalityTraits?.join(', ') || ''}
-                          onChange={e => setEditingPersona({...editingPersona, personalityTraits: e.target.value.split(',').map(s => s.trim())})}
-                          className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-2xl py-3 px-4 focus:ring-2 focus:ring-violet-500/50 outline-none transition-all"
-                          placeholder="e.g. Ambitious, Sophisticated, Witty (comma separated)"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] ml-1">Brand Voice Rules</label>
-                        <textarea 
-                          value={editingPersona.brandVoiceRules}
-                          onChange={e => setEditingPersona({...editingPersona, brandVoiceRules: e.target.value})}
-                          rows={3}
-                          className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-2xl py-3 px-4 focus:ring-2 focus:ring-violet-500/50 outline-none transition-all resize-none"
-                          placeholder="e.g. Always use emojis ✨, use short sentences..."
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] ml-1">Audience Type</label>
-                        <input 
-                          value={editingPersona.audienceType}
-                          onChange={e => setEditingPersona({...editingPersona, audienceType: e.target.value})}
-                          className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-2xl py-3 px-4 focus:ring-2 focus:ring-violet-500/50 outline-none transition-all"
-                          placeholder="e.g. Aspiring entrepreneurs, Gen Z fashionistas"
-                        />
-                      </div>
-                    </div>
-                  </section>
-
-                  {/* Content Rules Section */}
-                  <section className="space-y-4">
-                    <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-violet-400/80 mb-4 px-1">Content Rules</h3>
-                    <div className="space-y-4">
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] ml-1">Visual Style</label>
-                        <input 
-                          value={editingPersona.visualStyle}
-                          onChange={e => setEditingPersona({...editingPersona, visualStyle: e.target.value})}
-                          className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-2xl py-3 px-4 focus:ring-2 focus:ring-violet-500/50 outline-none transition-all"
-                          placeholder="e.g. High-contrast, minimalist, pastel colors"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] ml-1">Content Boundaries</label>
-                        <textarea 
-                          value={editingPersona.contentBoundaries}
-                          onChange={e => setEditingPersona({...editingPersona, contentBoundaries: e.target.value})}
-                          rows={2}
-                          className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-2xl py-3 px-4 focus:ring-2 focus:ring-violet-500/50 outline-none transition-all resize-none"
-                          placeholder="e.g. Never discuss politics, avoid profanity..."
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] ml-1">Content Goals</label>
-                        <input 
-                          value={editingPersona.contentGoals}
-                          onChange={e => setEditingPersona({...editingPersona, contentGoals: e.target.value})}
-                          className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-2xl py-3 px-4 focus:ring-2 focus:ring-violet-500/50 outline-none transition-all"
-                          placeholder="e.g. Build mystery, establish authority"
-                        />
-                      </div>
-                    </div>
-                  </section>
-
-                  {/* Advanced Section */}
-                  <section className="space-y-4">
-                    <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-violet-400/80 mb-4 px-1">Advanced</h3>
-                    <div className="space-y-4">
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] ml-1">Persona Notes</label>
-                        <textarea 
-                          value={editingPersona.personaNotes}
-                          onChange={e => setEditingPersona({...editingPersona, personaNotes: e.target.value})}
-                          rows={3}
-                          className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-2xl py-3 px-4 focus:ring-2 focus:ring-violet-500/50 outline-none transition-all resize-none"
-                          placeholder="Internal notes, research, or reminders..."
-                        />
-                      </div>
-                    </div>
-                  </section>
-                </div>
-              </div>
-
-              <div className="p-6 border-t border-[var(--border-subtle)] bg-white/[0.02]">
-                <button 
-                  onClick={handleUpdatePersona}
-                  className="w-full bg-violet-600 hover:bg-violet-500 py-4 rounded-2xl font-bold shadow-lg shadow-violet-600/20 transition-all active:scale-95"
-                >
-                  Save Changes
+              
+              <div className="flex flex-col sm:flex-row items-center gap-2 align-self-end mt-auto">
+                <button onClick={() => handleOpenEdit(activePersona)} className="px-5 py-2.5 rounded-full bg-[#111827] hover:bg-[#1F2937] border border-[#334155] text-sm font-semibold transition-all flex items-center gap-2 shadow-sm text-white">
+                  <Edit2 size={14} /> Edit Persona
+                </button>
+                <button className="w-10 h-10 rounded-full bg-[#111827] hover:bg-[#1F2937] border border-[#334155] flex items-center justify-center text-white transition-all">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
                 </button>
               </div>
             </div>
           </div>
-        , document.body)}
 
-        {personas.length === 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-            className="text-center py-14 px-6 relative overflow-hidden rounded-3xl"
-            style={{ background: 'linear-gradient(145deg, rgba(139,92,246,0.04) 0%, rgba(14,14,18,0.8) 60%, rgba(217,70,239,0.03) 100%)', border: '1px solid rgba(139,92,246,0.12)' }}
-          >
-            <div className="absolute inset-0 pointer-events-none overflow-hidden rounded-3xl">
-              <div className="absolute top-[-60px] left-1/2 -translate-x-1/2 w-[300px] h-[160px] rounded-full"
-                style={{ background: 'radial-gradient(ellipse, rgba(139,92,246,0.08) 0%, transparent 70%)' }} />
-            </div>
-            <div className="relative z-10">
-              <div className="w-20 h-20 mx-auto mb-5 relative">
-                <div className="absolute inset-0 rounded-2xl animate-pulse"
-                  style={{ background: 'linear-gradient(135deg, rgba(139,92,246,0.2), rgba(217,70,239,0.15))' }} />
-                <div className="relative w-full h-full rounded-2xl flex items-center justify-center"
-                  style={{ background: 'linear-gradient(135deg, rgba(139,92,246,0.15), rgba(217,70,239,0.1))', border: '1px solid rgba(139,92,246,0.2)' }}>
-                  <Sparkles className="text-violet-400" size={32} />
+          {/* Feature Cards Row */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            {[
+              { 
+                title: 'Create\nPersona', 
+                desc: 'Define looks, voice,\ntone & personality.', 
+                icon: Users, 
+                color: 'teal',
+                gradient: 'from-[#00D4FF]/40 to-[#00F5C2]/40',
+                img: dashboardFeatureCards[0].img,
+                action: handleAddPersona
+              },
+              { 
+                title: 'Generate\nImage', 
+                desc: 'High-end AI images\nin any style.', 
+                icon: ImageIcon, 
+                color: 'emerald',
+                gradient: 'from-[#00F5C2]/40 to-[#10B981]/40',
+                img: dashboardFeatureCards[1].img,
+                action: () => { setActivePersonaForGen(activePersona); setShowGenerator(true); } 
+              },
+              { 
+                title: 'Generate\nVideo', 
+                desc: 'Cinematic AI videos\nfrom text or images.', 
+                icon: Film, 
+                color: 'indigo',
+                gradient: 'from-[#6366F1]/40 to-[#8B5CF6]/40',
+                img: dashboardFeatureCards[2].img,
+                action: () => navigateToTab?.('create') 
+              },
+              { 
+                title: 'Talking\nAvatar', 
+                desc: 'Bring your persona\nto life with voice.', 
+                icon: Mic, 
+                color: 'cyan',
+                gradient: 'from-[#00D4FF]/40 to-[#38BDF8]/40',
+                img: dashboardFeatureCards[3].img,
+                action: () => navigateToTab?.('create') 
+              },
+              { 
+                title: 'AI\nAssistant', 
+                desc: 'Your creative copilot\nfor growth & content.', 
+                icon: Sparkles, 
+                color: 'fuchsia',
+                gradient: 'from-[#D946EF]/40 to-[#6366F1]/40',
+                img: dashboardFeatureCards[4].img,
+                action: () => navigateToTab?.('assistant') 
+              }
+            ].map((feature, idx) => (
+              <div 
+                key={idx}
+                onClick={feature.action}
+                className="relative h-[290px] rounded-[24px] overflow-hidden cursor-pointer group border transition-all duration-500 hover:-translate-y-1.5 hover:shadow-[0_20px_50px_rgba(0,0,0,0.6)]"
+                style={{
+                   boxShadow: feature.title.includes('Image') ? '0 0 24px rgba(0, 245, 194, 0.2)' : 
+                             feature.title.includes('Persona') ? '0 0 24px rgba(0, 212, 255, 0.2)' :
+                             feature.title.includes('Video') ? '0 0 24px rgba(99, 102, 241, 0.2)' : 
+                             feature.title.includes('Avatar') ? '0 0 24px rgba(14, 165, 233, 0.2)' : '0 0 24px rgba(217, 70, 239, 0.2)',
+                   borderColor: feature.title.includes('Image') ? 'rgba(0, 245, 194, 0.5)' : 
+                               feature.title.includes('Persona') ? 'rgba(0, 212, 255, 0.5)' :
+                               feature.title.includes('Video') ? 'rgba(99, 102, 241, 0.5)' : 
+                               feature.title.includes('Avatar') ? 'rgba(14, 165, 233, 0.5)' : 'rgba(217, 70, 239, 0.5)'
+                }}
+              >
+                <img src={feature.img} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 opacity-90 group-hover:opacity-100" alt="" />
+                
+                {/* Custom Gradient overlay based on the reference */}
+                <div className={`absolute inset-0 bg-gradient-to-br ${feature.gradient} opacity-20`} />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#0B0F17]/85 via-[#0B0F17]/25 to-transparent" />
+                
+                <div className="absolute inset-0 p-5 flex flex-col">
+                  <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-auto shadow-2xl bg-[#0F172A]/80 backdrop-blur-xl border border-white/20 group-hover:bg-white/20 transition-all duration-300">
+                    <feature.icon size={22} className="text-white drop-shadow-[0_0_12px_rgba(255,255,255,0.8)]" />
+                  </div>
+                  
+                  <h4 className="text-[22px] font-bold text-white mb-1 leading-tight whitespace-pre-line tracking-tight">{feature.title}</h4>
+                  <p className="text-[12px] text-[#CBD5E1] font-medium mb-3 whitespace-pre-line leading-relaxed">
+                    {feature.desc}
+                  </p>
+                  
+                  <div className="w-8 h-8 rounded-full border border-white/20 flex items-center justify-center text-white bg-white/5 backdrop-blur-sm group-hover:bg-[#00D4FF]/20 group-hover:border-[#00D4FF]/40 transition-all duration-300 mt-auto">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
+                  </div>
                 </div>
               </div>
-              <h3 className="text-xl font-bold mb-2 text-[var(--text-primary)]">Build your first AI identity</h3>
-              <p className="text-[var(--text-tertiary)] text-sm max-w-[240px] mx-auto mb-8 leading-relaxed">
-                Create a persona and start generating viral content, voices, and images.
-              </p>
-              <motion.button
-                whileHover={{ scale: 1.02, y: -1 }}
-                whileTap={{ scale: 0.97 }}
-                onClick={handleAddPersona}
-                className="premium-button px-8 py-3.5 mx-auto flex items-center gap-2 text-white"
-              >
-                <Plus size={18} />
-                Create First Persona
-              </motion.button>
-            </div>
-          </motion.div>
-        )}
+            ))}
+          </div>
 
-        {personas.length > 0 && (
-          <motion.button 
-            whileHover={{ scale: 1.01 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={handleAddPersona}
-            className="flex items-center justify-center gap-2 w-full py-5 rounded-2xl text-[var(--text-tertiary)] hover:text-violet-400 transition-all group"
-            style={{ border: '2px dashed rgba(139,92,246,0.15)', background: 'rgba(139,92,246,0.02)' }}
-          >
-            <Plus size={18} className="group-hover:scale-110 transition-transform" />
-            <span className="font-semibold text-sm">Add New Persona</span>
-          </motion.button>
-        )}
-      </div>
-
-      </>}
-
-      {viewingPersona && <div className="animate-in fade-in duration-200">
-          <header className="flex items-center justify-between px-0 pt-2 pb-4 border-b border-[var(--border-subtle)] mb-4">
-            <button 
-              onClick={() => { setViewingPersona(null); setPreviewImage(null); }}
-              className="flex items-center gap-2 px-4 py-2.5 bg-violet-600 hover:bg-violet-500 active:scale-95 rounded-xl text-white font-bold text-sm transition-all shadow-lg shadow-violet-600/30"
-            >
-              <ArrowLeft size={18} />
-              Back
-            </button>
-            <h2 className="text-lg font-bold truncate mx-4">{viewingPersona.name}</h2>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setRefSheetPersona(viewingPersona)}
-                className="p-2 bg-fuchsia-600/20 hover:bg-fuchsia-600/40 rounded-full text-fuchsia-400 hover:text-fuchsia-300 transition-colors"
-                title="Generate reference sheet (9 angles)"
-              >
-                <LayoutGrid size={18} />
-              </button>
-              <button 
-                onClick={() => {
-                  setActivePersonaForGen(viewingPersona);
-                  setShowGenerator(true);
-                }}
-                className="p-2 bg-violet-600 hover:bg-violet-500 rounded-full text-white transition-colors"
-              >
-                <Sparkles size={18} />
-              </button>
-              <button 
-                onClick={() => {
-                  const vp = viewingPersona;
-                  setViewingPersona(null);
-                  setPreviewImage(null);
-                  handleOpenEdit(vp);
-                }}
-                className="p-2 hover:bg-[var(--bg-elevated)] rounded-full text-[var(--text-secondary)] transition-colors"
-              >
-                <Edit2 size={18} />
-              </button>
-            </div>
-          </header>
-
-          <div className="p-5">
-            <div className="flex items-center gap-4 mb-6">
-              <div className="relative shrink-0">
-                {viewingPersona.referenceImage ? (
-                  <img 
-                    src={viewingPersona.referenceImage} 
-                    alt={viewingPersona.name} 
-                    className="w-20 h-20 rounded-2xl object-cover ring-2 ring-violet-500/20"
-                  />
-                ) : (
-                  <img 
-                    src={viewingPersona.avatar} 
-                    alt={viewingPersona.name} 
-                    className="w-20 h-20 rounded-2xl object-cover"
-                  />
-                )}
-                <div className={cn(
-                  "absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-[var(--border-subtle)]",
-                  viewingPersona.status === 'Active' ? "bg-emerald-500" : "bg-[var(--text-muted)]"
-                )} />
+          {/* Recent Creations */}
+          <div className="bg-[#0F172A] rounded-[24px] border border-[#334155] p-6 shadow-xl">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-2">
+                <Sparkles className="text-white/80" size={20} />
+                <h3 className="text-xl font-semibold text-white">Recent Creations</h3>
+                <span className="text-sm text-[#94A3B8] ml-2 font-normal hidden sm:inline">Your latest AI-powered content.</span>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[var(--text-secondary)] text-sm">{viewingPersona.niche}</p>
-                <div className="flex flex-wrap items-center gap-2 mt-2">
-                  <span className="text-[11px] bg-[var(--bg-elevated)] text-[var(--text-primary)] px-2 py-1 rounded-md border border-[var(--border-subtle)]">
-                    {viewingPersona.tone}
-                  </span>
-                  <span className="text-[11px] bg-[var(--bg-elevated)] text-[var(--text-primary)] px-2 py-1 rounded-md border border-[var(--border-subtle)]">
-                    {viewingPersona.platform}
-                  </span>
-                </div>
-                {viewingPersona.bio && (
-                  <p className="text-[var(--text-tertiary)] text-xs mt-2 line-clamp-2">{viewingPersona.bio}</p>
-                )}
-              </div>
+              <button onClick={() => navigateToTab?.('gallery')} className="text-sm font-medium text-white hover:text-[#00D4FF] transition-colors flex items-center gap-1 bg-[#111827] px-4 py-1.5 rounded-full border border-[#334155]">
+                View all <ChevronRight className="w-4 h-4" />
+              </button>
             </div>
-
-            <button
-              onClick={() => setRefSheetPersona(viewingPersona)}
-              className="w-full flex items-center justify-center gap-2 py-3 mb-5 bg-fuchsia-600/15 hover:bg-fuchsia-600/25 border border-fuchsia-500/25 hover:border-fuchsia-500/50 rounded-2xl text-fuchsia-300 font-semibold text-sm transition-all active:scale-95"
-            >
-              <LayoutGrid size={16} />
-              Generate Reference Sheet (9 Angles)
-            </button>
-
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-lg">Creations</h3>
-              <span className="text-xs text-[var(--text-tertiary)] font-medium">
-                {viewingPersona.visualLibrary?.length || 0} images
-              </span>
-            </div>
-
-            {viewingPersona.visualLibrary && viewingPersona.visualLibrary.length > 0 ? (
-              <div className="grid grid-cols-2 gap-3">
-                {viewingPersona.visualLibrary.map((img) => (
+            
+            {activePersona.visualLibrary && activePersona.visualLibrary.filter(img => !['lips', 'eyes', 'skin', 'closeup', 'beauty', 'mouth', 'sheet', 'close', 'pores', 'neck', 'eyebrow', 'chin', 'cheek'].some(word => (img.prompt || '').toLowerCase().includes(word) || (img.url || '').toLowerCase().includes(word))).length > 0 ? (
+              <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-4">
+                {activePersona.visualLibrary.filter(img => !['lips', 'eyes', 'skin', 'closeup', 'beauty', 'mouth', 'sheet', 'close', 'pores', 'neck', 'eyebrow', 'chin', 'cheek'].some(word => (img.prompt || '').toLowerCase().includes(word) || (img.url || '').toLowerCase().includes(word))).slice().reverse().slice(0, 10).map((img) => (
                   <div 
-                    key={img.id} 
-                    className="relative group rounded-2xl overflow-hidden border border-[var(--border-subtle)] bg-[var(--bg-surface)] cursor-pointer"
+                    key={img.id}
                     onClick={() => openPreviewImage(img)}
+                    className="relative w-[280px] h-[380px] shrink-0 rounded-2xl overflow-hidden group cursor-pointer border border-[#334155] hover:border-[#00D4FF]/40 transition-all shadow-lg"
                   >
-                    <div className="aspect-square">
-                      {img.mediaType === 'video' ? (
-                        <video src={img.url} muted className="w-full h-full object-cover" />
-                      ) : (
-                        <img src={img.url} alt={img.prompt || ''} className="w-full h-full object-cover" />
-                      )}
-                    </div>
-                    {img.mediaType === 'video' && (
-                      <div className="absolute top-2 left-2 p-1 bg-black/70 rounded-md z-10">
-                        <Film size={12} className="text-pink-400" />
-                      </div>
+                    {img.mediaType === 'video' ? (
+                      <video src={img.url} muted className="w-full h-full object-cover" />
+                    ) : (
+                      <img src={img.url} className="w-full h-full object-cover" alt="" />
                     )}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const updated = personas.map(p => {
-                          if (p.id === viewingPersona.id) {
-                            return { ...p, visualLibrary: (p.visualLibrary || []).filter(i => i.id !== img.id) };
-                          }
-                          return p;
-                        });
-                        setPersonas(updated);
-                        const fresh = updated.find(p => p.id === viewingPersona.id);
-                        if (fresh) setViewingPersona(fresh);
-                        api.images.delete(viewingPersona.id, img.id).catch(err => console.error('[API] Image delete error:', err));
-                      }}
-                      className="absolute top-2 right-2 p-1.5 bg-black/70 hover:bg-red-600 text-white/70 hover:text-white rounded-lg opacity-0 group-hover:opacity-100 transition-all z-10"
-                      title="Delete image"
-                    >
-                      <Trash size={14} />
-                    </button>
-                    <div className="absolute bottom-0 left-0 right-0 p-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <p className="text-[10px] text-white/70 truncate">{img.prompt || 'Generated image'}</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        {img.model && (
-                          <span className="text-[9px] bg-[var(--bg-overlay)] text-white/60 px-1.5 py-0.5 rounded">{img.model}</span>
-                        )}
-                        {img.environment && (
-                          <span className="text-[9px] text-white/40">{img.environment}</span>
-                        )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#0B0F17] via-transparent to-transparent opacity-60 group-hover:opacity-90 transition-opacity" />
+                    
+                    <div className="absolute top-3 left-3 flex gap-2 z-10">
+                      <span className="px-2 py-1 bg-black/60 backdrop-blur-md rounded-md text-[9px] font-black uppercase tracking-wider border border-white/10 text-white shadow-sm">
+                        {img.mediaType === 'video' ? 'VIDEO' : 'IMAGE'}
+                      </span>
+                    </div>
+
+                    <div className="absolute bottom-0 left-0 right-0 p-4 translate-y-4 group-hover:translate-y-0 transition-transform">
+                      <p className="text-sm font-bold text-white line-clamp-2 mb-2">{img.prompt || 'Generated content'}</p>
+                      <div className="flex items-center justify-between opacity-0 group-hover:opacity-100 transition-opacity delay-75">
+                        <span className="text-[10px] text-[var(--text-tertiary)]">{new Date(img.timestamp).toLocaleDateString()}</span>
+                        <button className="text-[#94A3B8] hover:text-white transition-colors">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+                        </button>
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="text-center py-16 bg-[var(--bg-surface)] rounded-2xl border border-[var(--border-subtle)]">
-                <div className="w-16 h-16 bg-[var(--bg-elevated)] rounded-2xl flex items-center justify-center mx-auto mb-4">
-                  <ImageIcon className="text-[var(--text-muted)]" size={32} />
-                </div>
-                <h3 className="text-base font-semibold mb-2 text-[var(--text-primary)]">No creations yet</h3>
-                <p className="text-[var(--text-tertiary)] text-sm max-w-[220px] mx-auto mb-6 leading-relaxed">
-                  Generate visuals for this persona to see them here.
-                </p>
-                <button 
-                  onClick={() => {
-                    setActivePersonaForGen(viewingPersona);
-                    setShowGenerator(true);
-                  }}
-                  className="bg-violet-600 hover:bg-violet-500 px-6 py-3 rounded-2xl font-bold text-sm transition-all active:scale-95 inline-flex items-center gap-2"
+             <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+              {recentCreationPlaceholders.map((item, idx) => (
+                <div 
+                  key={idx}
+                  className="relative h-[220px] rounded-xl overflow-hidden group cursor-pointer border border-[#334155] hover:border-[#00D4FF]/50 transition-all shadow-md bg-[#111827]"
                 >
-                  <Sparkles size={16} />
-                  Generate Visuals
-                </button>
-              </div>
+                  <img src={item.img} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 opacity-90 group-hover:opacity-100" alt="" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-[#0B0F17] via-[#0B0F17]/25 to-transparent" />
+                  
+                  <div className="absolute top-3 left-3 z-10">
+                    <span className="px-2 py-1 bg-[#111827]/80 backdrop-blur-md rounded-[4px] text-[9px] font-bold tracking-wider text-[#CBD5E1]">
+                      {item.badge}
+                    </span>
+                  </div>
+
+                  {item.duration && (
+                    <div className="absolute bottom-[60px] right-3 z-10">
+                      <span className="px-1.5 py-0.5 bg-black/80 backdrop-blur-md rounded text-[10px] font-bold text-white">
+                        {item.duration}
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-[#0B0F17] to-transparent">
+                    <p className="text-sm font-semibold text-white truncate mb-0.5">{item.title}</p>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-[#94A3B8]">{item.date}</span>
+                      <button className="text-[#94A3B8] hover:text-white transition-colors">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
             )}
           </div>
+
+          {/* Assistant Strip */}
+          <div className="bg-[#0F172A] rounded-[24px] border border-[#334155] p-4 flex flex-col md:flex-row items-start md:items-center justify-between shadow-xl">
+            <div className="flex items-center gap-4 mb-4 md:mb-0">
+              <div className="w-12 h-12 rounded-full bg-[#00D4FF]/10 flex items-center justify-center border border-[#00D4FF]/20 shadow-[0_0_15px_rgba(0,212,255,0.2)] shrink-0">
+                <Sparkles size={24} className="text-[#00D4FF]" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 mb-0.5">
+                  <h4 className="font-semibold text-white text-[15px]">AI Assistant</h4>
+                  <div className="flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#00F5C2]" />
+                    <span className="text-[10px] text-[#94A3B8]">Online</span>
+                  </div>
+                </div>
+                <p className="text-xs text-[#94A3B8]">Ask anything about your persona, content ideas, or growth strategies.</p>
+              </div>
+            </div>
+            
+            <div className="flex flex-col sm:flex-row gap-3 md:ml-4 w-full md:w-auto">
+              {[
+                { title: 'Content ideas', desc: 'for high-end audience' },
+                { title: 'Write a luxury', desc: 'Instagram caption' },
+                { title: 'Plan a 7-day content', desc: 'series' }
+              ].map((chip, i) => (
+                <button key={i} onClick={() => navigateToTab?.('assistant')} className="px-4 py-2 rounded-xl bg-[#111827] border border-[#334155] hover:border-[#00D4FF]/40 text-left transition-all group flex-1">
+                  <p className="text-[11px] font-semibold text-white group-hover:text-[#00D4FF] transition-colors">{chip.title}</p>
+                  <p className="text-[10px] text-[#94A3B8]">{chip.desc}</p>
+                </button>
+              ))}
+            </div>
+            
+            <button onClick={() => navigateToTab?.('assistant')} className="w-12 h-12 rounded-full bg-gradient-to-br from-[#00F5C2] to-[#00D4FF] flex items-center justify-center text-[#0B0F17] hover:shadow-[0_0_20px_rgba(0,212,255,0.4)] transition-all shrink-0 mt-4 md:mt-0 md:ml-4">
+               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+            </button>
+          </div>
+
+        </div>
+      )}
 
           {mounted && previewImage && createPortal(
             <div className="fixed inset-0 flex items-start justify-center bg-black/90 backdrop-blur-sm p-4 pb-24 overflow-y-auto" style={{ zIndex: 10002 }} onClick={() => { if (!previewProcessing) setPreviewImage(null); }}>
@@ -1508,13 +952,14 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                   <div className="flex gap-2 mt-3">
                     <a
                       href={previewImage.url}
-                      download={`${viewingPersona.name.replace(/\s+/g, '_')}_${previewImage.id}.png`}
+                      download={`${viewingPersona?.name?.replace(/\s+/g, '_') || 'persona'}_${previewImage.id}.png`}
                       className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-[var(--bg-elevated)] hover:bg-[var(--bg-overlay)] rounded-xl text-xs font-bold transition-colors"
                     >
                       <Download size={14} /> Download
                     </a>
                     <button
                       onClick={() => {
+                        if (!viewingPersona) return;
                         const updated = personas.map(p => {
                           if (p.id === viewingPersona.id) {
                             return {
@@ -1539,9 +984,6 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
               </div>
             </div>
           , document.body)}
-        </div>
-      }
-
       {showGenerator && activePersonaForGen && (
         <VisualGenerator 
           persona={activePersonaForGen} 

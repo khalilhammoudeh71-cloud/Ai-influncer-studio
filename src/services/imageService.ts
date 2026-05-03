@@ -174,6 +174,66 @@ export async function generateImage(params: GenerateImageParams): Promise<Genera
   };
 }
 
+async function padImageForExtend(sourceBase64: string, prompt: string): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return resolve(sourceBase64);
+
+      if (prompt.includes('Extend Downward')) {
+        const w = 1024;
+        const h = Math.floor(w * (img.height / img.width));
+        canvas.width = w;
+        canvas.height = Math.floor(h * 1.35);
+
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, w, h);
+      } else if (prompt.includes('Extend Upward')) {
+        const w = 1024;
+        const h = Math.floor(w * (img.height / img.width));
+        canvas.width = w;
+        canvas.height = Math.floor(h * 1.35);
+
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, Math.floor(h * 0.35), w, h);
+      } else if (prompt.includes('Widen')) {
+        const h = 1024;
+        const w = Math.floor(h * (img.width / img.height));
+        canvas.height = h;
+        canvas.width = Math.floor(w * 1.35);
+
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, Math.floor(w * 0.175), 0, w, h);
+      } else {
+        const scale = 0.75;
+        const w = 1024;
+        const h = Math.floor(w * (img.height / img.width));
+        canvas.width = w;
+        canvas.height = h;
+
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const targetW = Math.floor(w * scale);
+        const targetH = Math.floor(h * scale);
+        const x = Math.floor((w - targetW) / 2);
+        const y = Math.floor((h - targetH) / 2);
+        ctx.drawImage(img, x, y, targetW, targetH);
+      }
+
+      resolve(canvas.toDataURL('image/png'));
+    };
+    img.onerror = () => resolve(sourceBase64);
+    img.src = sourceBase64;
+  });
+}
+
 export async function editImage(sourceImage: string, prompt: string, modelId: string, additionalImage?: string): Promise<{ imageUrl: string; model: string }> {
   const body: Record<string, string> = { sourceImage, prompt, modelId };
   if (additionalImage) body.additionalImage = additionalImage;

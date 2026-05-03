@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -1545,12 +1546,13 @@ Output ONLY the ${n} numbered prompts. Format: "1. [prompt]\\n2. [prompt]\\n..."
 });
 
 app.post('/api/angle-image', async (req, res) => {
-  const { imageBase64, modelId, horizontalAngle, verticalAngle, distance } = req.body as {
+  const { imageBase64, modelId, horizontalAngle, verticalAngle, distance, prompt: customPrompt } = req.body as {
     imageBase64: string;
     modelId: string;
     horizontalAngle: string;
     verticalAngle: string;
     distance: string;
+    prompt?: string;
   };
 
   if (!imageBase64 || !modelId || !horizontalAngle || !verticalAngle || !distance) {
@@ -1566,12 +1568,15 @@ app.post('/api/angle-image', async (req, res) => {
     return res.status(400).json({ error: `Unknown angle model: ${modelId}` });
   }
 
-  const prompt = `Change the camera angle to ${horizontalAngle} perspective, ${verticalAngle} elevation, ${distance}. Adjust only the camera viewpoint and framing while preserving all subject details, appearance, clothing, and environment. Maintain consistent facial features, hair, and body proportions. Apply a photorealistic, high-quality rendering.`;
+  const prompt = customPrompt || `Change the camera angle to ${horizontalAngle} perspective, ${verticalAngle} elevation, ${distance}. Adjust only the camera viewpoint and framing while preserving all subject details, appearance, clothing, and environment. Maintain consistent facial features, hair, and body proportions. Apply a photorealistic, high-quality rendering.`;
 
   try {
     const b64Image = await resolveImageToDataUrl(imageBase64);
     const payload: Record<string, unknown> = {
       prompt,
+      horizontal_angle: horizontalAngle,
+      vertical_angle: verticalAngle,
+      distance,
       enable_sync_mode: true,
       enable_base64_output: true,
       [config.imageField]: config.imageField === 'images' ? [b64Image] : b64Image,
@@ -1968,6 +1973,40 @@ app.post('/api/edit-image', async (req, res) => {
       if (resolvedAdditional) images.push(resolvedAdditional);
       imageUrl = await generateWithDirectOpenAI(prompt, images);
       modelName = 'GPT Image 2';
+    } else if (modelId === 'google:nano-banana-2' || modelId === 'google:nano-banana-2/edit' || modelId === 'nano-banana-2') {
+      const resolvedSource = await resolveImageToDataUrl(sourceImage);
+      try {
+        imageUrl = await generateWithGoogleImagen('google:nano-banana-2', prompt, resolvedSource) as string;
+        modelName = 'Nano Banana 2';
+      } catch (geminiError) {
+        console.warn('[Gemini fallback] Direct Gemini failed, falling back to Seedream via Wavespeed:', geminiError instanceof Error ? geminiError.message : geminiError);
+        await fetchWavespeedModels();
+        const fallbackModel = (cachedEditModels || []).find(m => m.id.includes('seedream-v4.5/edit')) || 
+                               (cachedEditModels || []).find(m => m.id.startsWith('wavespeed-edit:'));
+        if (!fallbackModel) {
+          throw geminiError;
+        }
+        modelName = fallbackModel.name;
+        const b64Url = resolvedSource;
+        const payload: Record<string, unknown> = {
+          prompt,
+          enable_sync_mode: true,
+          enable_base64_output: true,
+          image: b64Url,
+          images: [b64Url],
+        };
+        const url = `https://api.wavespeed.ai${fallbackModel.apiPath}`;
+        const apiRes = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${WAVESPEED_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        });
+        const json = await apiRes.json();
+        imageUrl = await extractWavespeedOutput(json);
+      }
     } else if (modelId.startsWith('wavespeed-edit:')) {
       await fetchWavespeedModels();
       const editModel = (cachedEditModels || []).find(m => m.id === modelId);
@@ -1981,16 +2020,22 @@ app.post('/api/edit-image', async (req, res) => {
         prompt,
         enable_sync_mode: true,
         enable_base64_output: true,
+        image: b64Url,
+        images: [b64Url],
       };
-      if (editModel.editImageField === 'images') {
-        const imgs = [b64Url];
-        if (resolvedAdditional) imgs.push(resolvedAdditional);
-        payload.images = imgs;
-      } else {
-        payload.image = b64Url;
-        if (resolvedAdditional) {
-          payload.image_2 = resolvedAdditional;
+      if (modelId.includes('expand')) {
+        let ar = '1:1';
+        if (prompt.includes('Extend Downward') || prompt.includes('Extend Upward')) {
+          ar = '9:16';
+        } else if (prompt.includes('Widen')) {
+          ar = '16:9';
         }
+        payload.aspect_ratio = ar;
+        payload.enable_sync_mode = false;
+      }
+      if (resolvedAdditional) {
+        payload.image_2 = resolvedAdditional;
+        payload.images = [b64Url, resolvedAdditional];
       }
 
       const url = `https://api.wavespeed.ai${editModel.apiPath}`;
@@ -2002,6 +2047,10 @@ app.post('/api/edit-image', async (req, res) => {
         },
         body: JSON.stringify(payload),
       });
+      if (!apiRes.ok) {
+        const errJson = await apiRes.json().catch(() => ({}));
+        throw new Error(errJson.error || errJson.message || `Wavespeed error HTTP ${apiRes.status}`);
+      }
       const json = await apiRes.json();
       imageUrl = await extractWavespeedOutput(json);
     } else {
@@ -2504,7 +2553,13 @@ app.post('/api/face-swap', async (req, res) => {
     const r = await fetch(`${WAVESPEED_BASE}/wavespeed-ai/image-face-swap`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${WAVESPEED_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ target_image: tgt, swap_image: swp, face_enhance: faceEnhance }),
+      body: JSON.stringify({ 
+        image: tgt, 
+        target_image: tgt, 
+        face_image: swp,
+        swap_image: swp, 
+        face_enhance: faceEnhance 
+      }),
     });
     const json = await r.json() as Record<string, unknown>;
     const imageUrl = await extractWavespeedOutput(json);

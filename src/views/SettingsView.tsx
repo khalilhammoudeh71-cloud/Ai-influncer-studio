@@ -23,6 +23,15 @@ export default function SettingsView() {
       title: 'Support',
       items: [
         { icon: HelpCircle, label: 'Help Center', value: '' },
+        { 
+          icon: Sparkles, 
+          label: 'View Landing Page', 
+          value: '', 
+          onClick: () => {
+            localStorage.removeItem('ai_influencer_onboarding_complete');
+            window.location.reload();
+          }
+        },
         { icon: LogOut, label: 'Sign Out', value: '', color: 'text-rose-400' },
       ]
     }
@@ -79,6 +88,7 @@ export default function SettingsView() {
               {section.items.map((item, idx) => (
                 <div 
                   key={item.label} 
+                  onClick={'onClick' in item ? item.onClick as () => void : undefined}
                   className={`flex items-center justify-between p-4 hover:bg-[var(--bg-elevated)] transition-all duration-200 cursor-pointer ${idx !== section.items.length - 1 ? 'border-b border-[var(--border-subtle)]' : ''}`}
                 >
                   <div className="flex items-center gap-4">

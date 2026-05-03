@@ -125,9 +125,11 @@ export default function AIToolsView({ persona, personas, onSelectPersona }: AITo
   const [morphValue, setMorphValue] = useState<number>(0); // -100 to 100
   const [muscleLevel, setMuscleLevel] = useState<'lean' | 'athletic' | 'bodybuilder'>('lean');
   const [teleportLoc, setTeleportLoc] = useState('Paris, Eiffel Tower');
+  const [teleportPreset, setTeleportPreset] = useState('Paris, Eiffel Tower');
   const [inkDesc, setInkDesc] = useState('');
   const [inkPlacement, setInkPlacement] = useState('Left Arm');
   const [canvasDir, setCanvasDir] = useState('Extend Downward');
+  const [showInkSuggestions, setShowInkSuggestions] = useState(false);
 
   // Face Swap specific state
   const [faceSwapFaceImage, setFaceSwapFaceImage] = useState<string | null>(null);
@@ -168,48 +170,66 @@ export default function AIToolsView({ persona, personas, onSelectPersona }: AITo
 
   const getToolPrompt = () => {
     switch (activeTool) {
-      case 'beautify': return 'Refined micro-edit: thin nasal bridge, lift nasal tip gracefully, smooth under-eye dark circles, perfect skin texture. Retain absolute facial identity without adding theatrical makeup or contour highlights.';
-      case 'morph': 
-        if (morphValue < 0) return `Photorealistic edit, identical subject face, alter body composition to appear noticeably thinner (${Math.abs(morphValue)}% reduction in perceived weight), maintaining original outfits and background perfectly.`;
-        if (morphValue > 0) return `Photorealistic edit, identical subject face, alter body composition to appear fuller/thicker (${Math.abs(morphValue)}% increase in perceived weight), maintaining original outfits and background perfectly.`;
+      case 'beautify': return 'Stunning high-fidelity beautification. Flawlessly enhance the face: make the eyes more vibrant and captivating, lift the nasal tip gracefully, contour the chin and jawline for perfect symmetry, smooth under-eye dark circles, and create glowing, flawless skin texture. Give the person a premium, supermodel-level aesthetic while retaining their original facial structure and identity.';
+      case 'morph': {
+        const pct = Math.abs(morphValue);
+        let weightDesc = '';
+        if (morphValue < 0) {
+          if (pct >= 80) weightDesc = `extremely thin, ultra-slender, very slim, with curves such as breasts and buttocks shrinking proportionately to an ultra-thin frame (${pct}% weight reduction)`;
+          else if (pct >= 60) weightDesc = `significantly thinner, very slender, highly athletic frame (${pct}% weight reduction)`;
+          else if (pct >= 30) weightDesc = `noticeably thinner, leaner, and slimmer frame (${pct}% weight reduction)`;
+          else weightDesc = `slightly thinner and more slender frame (${pct}% weight reduction)`;
+          return `Photorealistic edit, identical subject face, alter body composition to appear ${weightDesc}, maintaining original outfits and background perfectly.`;
+        }
+        if (morphValue > 0) {
+          if (pct >= 80) weightDesc = `extremely fuller, exceptionally thicker, heavily curvy, with curves such as breasts and buttocks increasing proportionately to an ultra-thick frame (${pct}% weight increase)`;
+          else if (pct >= 60) weightDesc = `significantly fuller, much thicker, curvy, and heavier frame (${pct}% weight increase)`;
+          else if (pct >= 30) weightDesc = `noticeably fuller, thicker, and more voluptuous frame (${pct}% weight increase)`;
+          else weightDesc = `slightly fuller and thicker frame (${pct}% weight increase)`;
+          return `Photorealistic edit, identical subject face, alter body composition to appear ${weightDesc}, maintaining original outfits and background perfectly.`;
+        }
         return 'Slight upscale, minimal change.';
+      }
       case 'muscle':
         if (muscleLevel === 'lean') return 'Photorealistic edit, identical subject face, enhance baseline muscle definition slightly, lean athletic tone, light vascularity.';
         if (muscleLevel === 'athletic') return 'Photorealistic edit, identical subject face, strong athletic physique, high muscle definition, moderate vascularity, shredded appearance.';
         return 'Photorealistic edit, identical subject face, massive bodybuilder physique, extreme muscle mass and peak vascularity.';
       case 'ink': return `Photorealistic edit, identical subject face. Apply a highly detailed tattoo matching description: "${inkDesc}" to the subject's ${inkPlacement}. The tattoo should wrap naturally with the skin topology and lighting.`;
       case 'teleport': return `Photorealistic edit, identical subject face and outfit. Flawlessly replace the background to match exact location: "${teleportLoc}". Perfect composite lighting, shadows must match the new realistic environment.`;
-      case 'canvas': return `Outpaint and extend the image framing. Extend direction: ${canvasDir}. Fill in the missing body parts and background naturally matching the existing style.`;
+      case 'canvas': {
+        if (canvasDir === 'Expand All Sides (Zoom Out)') {
+          return 'Photorealistic edit, identical subject face and outfit. Zoom out and extend the scene in all directions by making the subject smaller in the center and drawing more of the surroundings.';
+        }
+        return `Photorealistic edit, identical subject face and outfit. Keep the original person completely intact. Outpaint and extend the image framing to match. Extend direction: ${canvasDir}. Make the original scene more distant and extend the background to match perfectly.`;
+      }
       default: return '';
     }
   };
 
-  const getAutoModel = () => {
+  const getAutoModel = (prompt: string) => {
     if (editModels.length === 0) return '';
-    const findModel = (keywords: string[]) => editModels.find(m => keywords.some(k => m.id.toLowerCase().includes(k) || m.name.toLowerCase().includes(k) || m.provider.toLowerCase().includes(k)));
-    
-    switch (activeTool) {
-      case 'beautify': 
-      case 'morph': 
-      case 'muscle': 
-        return findModel(['flux', 'sdxl', 'realistic'])?.id || editModels[0].id;
-      case 'ink': 
-      case 'teleport': 
-        return findModel(['dall-e', 'gpt', 'inpaint'])?.id || editModels[0].id;
-      case 'canvas': 
-        return findModel(['outpaint', 'dall-e', 'gpt'])?.id || editModels[0].id;
-      default: 
-        return editModels[0].id;
+    if (activeTool === 'canvas') {
+      const briaExpand = editModels.find(m => m.id.includes('bria/expand'));
+      return briaExpand?.id || 'wavespeed-edit:bria/expand';
     }
+    const seedream45 = editModels.find(m => m.id.includes('seedream-v4.5/edit'));
+    
+    const fallbackNano = 'google:nano-banana-2';
+    const fallbackSeedream = seedream45?.id || 'wavespeed-edit:bytedance/seedream-v4.5/edit';
+
+    const nsfwKeywords = ['nsfw', 'uncensored', 'sexy', 'naked', 'bikini', 'lingerie', 'underwear', 'lewd', 'adult', 'erotic'];
+    const isNsfw = nsfwKeywords.some(k => prompt.toLowerCase().includes(k));
+
+    return isNsfw ? fallbackSeedream : fallbackNano;
   };
 
   const handleExecute = async () => {
     if (!sourceImage || !activeTool || (!selectedModel && selectedModel !== 'auto')) return;
-    const modelToUse = selectedModel === 'auto' ? getAutoModel() : selectedModel;
+    const prompt = getToolPrompt();
+    const modelToUse = selectedModel === 'auto' ? getAutoModel(prompt) : selectedModel;
     if (!modelToUse) return;
 
     setIsProcessing(true);
-    const prompt = getToolPrompt();
     
     try {
       const data = await editImage(sourceImage, prompt, modelToUse);
@@ -622,16 +642,99 @@ export default function AIToolsView({ persona, personas, onSelectPersona }: AITo
                   </select>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)]">Design Description</label>
-                  <textarea value={inkDesc} onChange={(e) => setInkDesc(e.target.value)} placeholder="e.g. Neo-traditional rose with dagger..." className="w-full h-24 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-3 text-sm text-white outline-none resize-none" />
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)]">Design Description</label>
+                    <button 
+                      onClick={() => setShowInkSuggestions(!showInkSuggestions)}
+                      className="flex items-center gap-1 text-[10px] font-bold text-violet-400 hover:text-violet-300 transition-colors bg-violet-500/10 hover:bg-violet-500/20 px-2 py-0.5 rounded-full border border-violet-500/20"
+                    >
+                      <Sparkles size={11} /> 
+                      {showInkSuggestions ? 'Hide Ideas' : 'View Ideas'}
+                    </button>
+                  </div>
+                  <textarea 
+                    value={inkDesc} 
+                    onChange={(e) => setInkDesc(e.target.value)} 
+                    placeholder="e.g. Neo-traditional rose with dagger..." 
+                    className="w-full h-24 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-3 text-sm text-white outline-none resize-none" 
+                  />
+
+                  {showInkSuggestions && (
+                    <div className="mt-3 bg-[var(--bg-surface)] border border-[var(--border-default)] p-3 rounded-xl space-y-3 shadow-inner">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-white">Visual Tattoo Styles</span>
+                        <span className="text-[10px] text-[var(--text-muted)]">Click any style to apply</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {[
+                          { title: 'Neo-Traditional Rose', desc: 'Bold, dark linework with deep color saturation and dynamic shading of a blooming rose', icon: '🌹' },
+                          { title: 'Tribal Geometric', desc: 'Crisp black geometric and symmetrical tribal patterns with intricate sacred symbols', icon: '⚜️' },
+                          { title: 'Japanese Dragon', desc: 'Classic Irezumi wind bars, a coiling dragon with scales and delicate cherry blossoms', icon: '🐉' },
+                          { title: 'Fine Line Minimalist', desc: 'Delicate fine line minimalist black botanical stems and clean aesthetic script', icon: '🌿' },
+                          { title: 'Black & Grey Portrait', desc: 'Highly detailed, photorealistic black and grey portrait with cinematic contrast', icon: '🗿' },
+                          { title: 'Traditional Dagger', desc: 'Bold old-school American traditional dagger with vibrant reds and stark black shading', icon: '🗡️' }
+                        ].map((item, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => {
+                              setInkDesc(`${item.title}: ${item.desc}`);
+                              setShowInkSuggestions(false);
+                            }}
+                            className="flex flex-col text-left bg-[var(--bg-elevated)] hover:bg-violet-500/10 border border-[var(--border-default)] hover:border-violet-500/40 rounded-lg p-2.5 transition-all gap-1 h-full select-none"
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-sm bg-violet-500/20 w-6 h-6 rounded flex items-center justify-center">{item.icon}</span>
+                              <span className="text-xs font-bold text-white leading-tight">{item.title}</span>
+                            </div>
+                            <span className="text-[10px] text-[var(--text-muted)] leading-relaxed line-clamp-2 mt-0.5">{item.desc}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
 
             {activeTool === 'teleport' && (
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)]">Destination Background</label>
-                <input type="text" value={teleportLoc} onChange={(e) => setTeleportLoc(e.target.value)} placeholder="e.g. Times Square, New York" className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-3 text-sm text-white outline-none" />
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)]">Destination Preset</label>
+                  <select 
+                    value={teleportPreset} 
+                    onChange={(e) => {
+                      setTeleportPreset(e.target.value);
+                      if (e.target.value !== 'Custom') {
+                        setTeleportLoc(e.target.value);
+                      } else {
+                        setTeleportLoc('');
+                      }
+                    }} 
+                    className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-3 text-sm text-white outline-none"
+                  >
+                    <option>Paris, Eiffel Tower</option>
+                    <option>New York, Times Square</option>
+                    <option>Tokyo, Shibuya Crossing</option>
+                    <option>Rome, Colosseum</option>
+                    <option>London, Big Ben</option>
+                    <option>Bali, Tropical Beach</option>
+                    <option>Dubai, Burj Khalifa</option>
+                    <option>Custom</option>
+                  </select>
+                </div>
+
+                {teleportPreset === 'Custom' && (
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)]">Custom Destination</label>
+                    <input 
+                      type="text" 
+                      value={teleportLoc} 
+                      onChange={(e) => setTeleportLoc(e.target.value)} 
+                      placeholder="e.g. Santorini, Greece" 
+                      className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-3 text-sm text-white outline-none" 
+                    />
+                  </div>
+                )}
               </div>
             )}
 
