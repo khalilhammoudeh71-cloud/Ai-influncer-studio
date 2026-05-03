@@ -489,22 +489,22 @@ export default function PersonaBuilderView({ persona, onChange, onSave, onCancel
       </div>
 
       {/* Bottom Action Bar */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 bg-[#0B0F17]/95 backdrop-blur-2xl border-t border-[#334155]/40 py-2.5 px-6 shadow-2xl select-none">
-        <div className="max-w-[1360px] mx-auto flex items-center justify-between">
+      <div className="fixed bottom-0 left-0 right-0 z-50 bg-[#0B0F17]/75 backdrop-blur-3xl border-t border-[#334155]/30 py-2 px-6 shadow-2xl select-none transition-all duration-300">
+        <div className="max-w-[1360px] mx-auto flex items-center justify-between gap-4">
           <button onClick={onCancel} className="flex items-center gap-1.5 text-[#94A3B8] hover:text-white font-bold text-xs transition-colors uppercase tracking-wider">
-            <ChevronLeft size={16} /> Back
+            <ChevronLeft size={14} /> Back
           </button>
           
-          <div className="flex items-center gap-4">
-            <span className="hidden md:inline text-[10px] font-bold text-[#64748B] text-right max-w-[170px] leading-tight select-none">
-              Next: generate a consistent 9-angle identity sheet.
+          <div className="flex items-center gap-3.5">
+            <span className="hidden md:inline text-[9px] font-black tracking-wider uppercase text-[#94A3B8] text-right select-none opacity-90 leading-tight">
+              Next: generate a consistent<br/>9-angle identity sheet.
             </span>
-            <div className="flex items-center gap-3">
-              <button onClick={onSave} className="flex items-center gap-1.5 px-4 py-2 rounded-full border border-[#334155]/60 text-white hover:bg-[#1F2937] hover:border-[#94A3B8]/60 transition-all duration-300 text-xs font-bold uppercase tracking-wider shadow-lg bg-[#0B0F17]/40">
-                <Save size={14} /> Save Draft
+            <div className="flex items-center gap-2.5">
+              <button onClick={onSave} className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border border-[#334155]/50 text-white hover:bg-[#1F2937]/80 hover:border-[#94A3B8]/40 transition-all duration-300 text-[10px] font-black uppercase tracking-wider shadow bg-[#0B0F17]/20">
+                <Save size={13} /> Save Draft
               </button>
-              <button onClick={onSave} className="flex items-center gap-1.5 px-5 py-2.5 rounded-full bg-gradient-to-r from-[#00F5C2] via-[#00D4FF] to-[#6366F1] text-[#0B0F17] font-black uppercase tracking-wider text-xs shadow-[0_0_24px_rgba(0,212,255,0.4)] hover:shadow-[0_0_36px_rgba(0,245,194,0.6)] hover:scale-[1.02] transition-all duration-300 cursor-pointer">
-                Continue to Identity Sheet <ArrowRightIcon className="w-4 h-4 ml-1" />
+              <button onClick={onSave} className="flex items-center gap-1.5 px-4.5 py-2 rounded-full bg-gradient-to-r from-[#00F5C2] via-[#00D4FF] to-[#6366F1] text-[#0B0F17] font-black uppercase tracking-wider text-[11px] shadow-[0_0_16px_rgba(0,212,255,0.3)] hover:shadow-[0_0_24px_rgba(0,245,194,0.5)] hover:scale-[1.015] transition-all duration-300 cursor-pointer">
+                Continue to Identity Sheet <ArrowRightIcon className="w-3.5 h-3.5 ml-0.5" />
               </button>
             </div>
           </div>
