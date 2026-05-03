@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { ChevronLeft, Save, Sparkles, Upload, X, Info, Image as ImageIcon, Video, Mic, Volume2, MessageSquare, Plus, Check, Camera } from 'lucide-react';
+import { ChevronLeft, Save, Sparkles, Upload, X, Info, Image as ImageIcon, Video, Mic, Volume2, MessageSquare, Plus, Check, Camera, Diamond, Dumbbell, ShoppingBag, Briefcase, Activity, Sliders } from 'lucide-react';
 import { Persona } from '../types';
 import { identitySheetPlaceholders } from '../data/demoAssets';
 
@@ -11,13 +11,13 @@ interface PersonaBuilderViewProps {
 }
 
 const PERSONA_TYPES = [
-  { id: 'luxury', label: 'Luxury\nInfluencer', icon: Sparkles },
-  { id: 'fitness', label: 'Fitness\nCreator', icon: Sparkles },
-  { id: 'fashion', label: 'Fashion\nModel', icon: Sparkles },
-  { id: 'ugc', label: 'UGC\nCreator', icon: Sparkles },
-  { id: 'professional', label: 'Professional', icon: Sparkles },
-  { id: 'healthcare', label: 'Dental /\nHealthcare', icon: Sparkles },
-  { id: 'custom', label: 'Custom', icon: Sparkles }
+  { id: 'luxury', label: 'Luxury\nInfluencer', icon: Diamond },
+  { id: 'fitness', label: 'Fitness\nCreator', icon: Dumbbell },
+  { id: 'fashion', label: 'Fashion\nModel', icon: ShoppingBag },
+  { id: 'ugc', label: 'UGC\nCreator', icon: MessageSquare },
+  { id: 'professional', label: 'Professional', icon: Briefcase },
+  { id: 'healthcare', label: 'Dental /\nHealthcare', icon: Activity },
+  { id: 'custom', label: 'Custom', icon: Sliders }
 ];
 
 export default function PersonaBuilderView({ persona, onChange, onSave, onCancel }: PersonaBuilderViewProps) {
@@ -176,26 +176,28 @@ export default function PersonaBuilderView({ persona, onChange, onSave, onCancel
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
             <div>
               <p className="text-[10px] font-bold text-[#00D4FF] tracking-[0.2em] uppercase mb-0.5 drop-shadow-[0_0_8px_rgba(0,212,255,0.4)]">Persona Builder</p>
-              <h1 className="text-[34px] font-extrabold tracking-tight text-white mb-1 leading-none">Create Your Persona</h1>
+              <h1 className="text-[34px] font-extrabold tracking-tight text-white mb-1 leading-none flex items-center gap-2">
+                Create Your Persona <Sparkles size={28} className="text-[#00D4FF]" />
+              </h1>
               <p className="text-sm font-medium text-[#94A3B8]">Build a reusable AI identity for images, videos, talking avatars, and content.</p>
             </div>
           </div>
 
           {/* Progress Bar */}
-          <div className="flex items-center justify-between mt-2 mb-4 relative px-3 py-1.5 border border-[#334155]/60 bg-[#0F172A]/40 backdrop-blur-xl rounded-2xl">
-            <div className="absolute top-6 left-8 right-8 h-[1px] bg-[#334155] -z-10" />
+          <div className="flex items-center justify-between mt-2 mb-4 relative px-4 py-2 border border-[#334155]/60 bg-[#0F172A]/40 backdrop-blur-xl rounded-2xl">
+            <div className="absolute top-7 left-8 right-8 h-[1px] bg-[#334155] -z-10" />
             {[
-              { num: 1, label: 'Type', active: true },
-              { num: 2, label: 'References', active: true },
-              { num: 3, label: 'Identity', active: true },
-              { num: 4, label: 'Identity Sheet', active: true },
-              { num: 5, label: 'Save', active: true }
+              { num: 1, label: 'Type' },
+              { num: 2, label: 'References' },
+              { num: 3, label: 'Identity' },
+              { num: 4, label: 'Identity Sheet' },
+              { num: 5, label: 'Save' }
             ].map((step, i) => (
-              <div key={i} className="flex flex-col items-center gap-1">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border transition-all duration-300 ${step.active ? 'bg-[#00D4FF]/15 border-[#00D4FF] text-[#00D4FF] shadow-[0_0_16px_rgba(0,212,255,0.5)]' : 'bg-[#0B0F17] border-[#334155] text-[#94A3B8]'}`}>
+              <div key={i} className="flex flex-col items-center gap-1.5 relative z-10">
+                <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold border transition-all duration-300 ${step.num === 1 ? 'bg-[#00D4FF]/15 border-[#00D4FF] text-[#00D4FF] shadow-[0_0_16px_rgba(0,212,255,0.4)] ring-4 ring-[#00D4FF]/10' : 'bg-[#0B0F17] border-[#334155] text-[#94A3B8]'}`}>
                   {step.num}
                 </div>
-                <span className={`text-[10px] font-bold transition-all duration-300 ${step.active ? 'text-[#00D4FF]' : 'text-[#94A3B8]'}`}>{step.label}</span>
+                <span className={`text-[10px] font-bold transition-all duration-300 ${step.num === 1 ? 'text-[#00D4FF]' : 'text-[#94A3B8]'}`}>{step.label}</span>
               </div>
             ))}
           </div>
