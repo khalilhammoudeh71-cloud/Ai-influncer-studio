@@ -239,8 +239,8 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
   const [videoSourceImage, setVideoSourceImage] = useState<string | null>(null);
   const [videoSourceImageName, setVideoSourceImageName] = useState<string | null>(null);
   const [imageWeight, setImageWeight] = useState(0.35);
-  const [naturalLook, setNaturalLook] = useState(persona.naturalLook ?? true);
-  const [identityLock, setIdentityLock] = useState(persona.identityLock ?? true);
+  const [naturalLook, setNaturalLook] = useState(persona?.naturalLook ?? true);
+  const [identityLock, setIdentityLock] = useState(persona?.identityLock ?? true);
 
   const [overrideRefImages, setOverrideRefImages] = useState<{ id: string; url: string; name: string }[]>([]);
   const [promptCopied, setPromptCopied] = useState(false);
@@ -646,7 +646,7 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClo
                 >
                   <option value="none">No persona selected</option>
                   {allPersonas.map(p => (
-                    <option key={p.id} value={p.id}>{p.name} {p.id === persona.id ? '(Active)' : ''}</option>
+                    <option key={p.id} value={p.id}>{p.name} {p.id === persona?.id ? '(Active)' : ''}</option>
                   ))}
                 </select>
                 <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#94A3B8] pointer-events-none" />
