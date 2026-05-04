@@ -164,12 +164,55 @@ interface ImageVersion {
   imageUrl: string;
   model: string;
   promptUsed: string;
-  label: string;
 }
-
 type GenMode = 'image' | 'video';
 
-export const VisualGenerator: React.FC<VisualGeneratorProps> = ({ persona, onClose, onSaveImage }) => {
+class VisualGeneratorErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error: Error | null }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: any) {
+    console.error('[VisualGenerator Error Catch]', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="fixed inset-0 bg-[#0B0F17] flex flex-col items-center justify-center text-white z-[9999] p-6 text-center select-none">
+          <AlertCircle className="w-12 h-12 text-rose-500 mb-4 animate-bounce" />
+          <h2 className="text-xl font-bold mb-2">Something went wrong in the Studio</h2>
+          <p className="text-sm text-[#94A3B8] mb-6 max-w-md">The system encountered an error loading or rendering the workspace. Please copy this error for your support:</p>
+          <div className="p-4 bg-[#1E293B] border border-[#334155] rounded-xl text-left max-w-2xl overflow-auto max-h-[300px] mb-6 select-all font-mono text-xs text-rose-300 whitespace-pre-wrap">
+            {this.state.error?.stack || this.state.error?.message}
+          </div>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-5 py-2.5 bg-[#00D4FF] hover:bg-[#00F5C2] text-[#0B0F17] font-black rounded-xl text-xs uppercase tracking-wider transition-all shadow-lg hover:shadow-[#00F5C2]/20"
+          >
+            Reload AI Studio
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+export const VisualGenerator: React.FC<VisualGeneratorProps> = (props) => {
+  return (
+    <VisualGeneratorErrorBoundary>
+      <VisualGeneratorInner {...props} />
+    </VisualGeneratorErrorBoundary>
+  );
+};
+
+const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose, onSaveImage }) => {
   const [selectedPersonaId, setSelectedPersonaId] = useState<string | 'none'>('none');
   const [allPersonas, setAllPersonas] = useState<Persona[]>([]);
 
