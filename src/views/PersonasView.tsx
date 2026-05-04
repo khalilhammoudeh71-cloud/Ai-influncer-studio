@@ -408,7 +408,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
   const activePersona = personas.find(p => p.id === selectedId) || personas[0];
 
   return (
-    <div className="px-6 pt-6 max-w-[1400px] mx-auto pb-12">
+    <div className="px-6 pt-5 max-w-[1400px] mx-auto pb-32">
       {!activePersona ? (
          <div className="flex flex-col items-center justify-center py-20 bg-[#0F172A]/50 border border-[#334155] rounded-3xl">
            <div className="w-16 h-16 bg-[#00D4FF]/10 rounded-full flex items-center justify-center mb-4 text-[#00D4FF]">
@@ -467,7 +467,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                 <p className="text-[#CBD5E1] text-sm mb-5 max-w-2xl leading-relaxed">{activePersona.bio || 'Elite, sophisticated, and influential. Embodies success, refinement, and aspirational luxury lifestyle.'}</p>
                 
                 <div className="flex flex-wrap gap-2 items-center">
-                  {["Elite", "Arrogant", "Wealthy", "Sophisticated"].map((chip, i) => (
+                  {["Luxury", "Confident", "Exclusive", "Sophisticated"].map((chip, i) => (
                     <span key={i} className="px-3 py-1.5 rounded-full text-xs font-semibold bg-[#111827] border border-[#334155] text-[#CBD5E1] hover:border-[#00D4FF]/50 transition-colors cursor-default">
                       {chip}
                     </span>
@@ -658,6 +658,16 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                   </div>
                 </div>
               ))}
+              <div 
+                onClick={() => navigateToTab?.('create')}
+                className="relative h-[220px] rounded-xl overflow-hidden group cursor-pointer border border-dashed border-[#334155]/60 hover:border-[#00D4FF]/40 transition-all shadow-md bg-[#111827]/30 flex flex-col items-center justify-center text-center p-4 hover:bg-[#111827]/60"
+              >
+                <div className="w-10 h-10 rounded-full bg-[#1F2937] border border-[#334155] group-hover:border-[#00D4FF]/40 flex items-center justify-center mb-2.5 text-[#94A3B8] group-hover:text-[#00F5C2] transition-all">
+                  <Plus size={16} />
+                </div>
+                <p className="text-xs font-bold text-white mb-0.5 group-hover:text-[#00D4FF] transition-colors">Create New Campaign</p>
+                <p className="text-[10px] text-[#64748B] font-semibold">Generate more content like this</p>
+              </div>
             </div>
             )}
           </div>

@@ -32,7 +32,7 @@ const INTERNAL_FALLBACK_PERSONAS: Persona[] = [
     id: 'fallback-luxury',
     name: 'Luxury Persona',
     niche: 'Luxury Lifestyle',
-    tone: 'Elite, Arrogant, Wealthy',
+    tone: 'Luxury, Confident, Exclusive',
     platform: 'Instagram',
     status: 'Active',
     avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=150&h=150',
@@ -286,7 +286,7 @@ function App() {
 
       {/* ── Top app bar ─────────────────────────────────────────── */}
       <header className="flex-none bg-[#0B0F17]/90 backdrop-blur-xl border-b border-[var(--border-subtle)]">
-        <div className="flex items-center justify-between px-6 py-3">
+        <div className="flex items-center justify-between px-6 py-2">
           
           {/* Logo */}
           <div className="flex items-center gap-3">
@@ -307,7 +307,7 @@ function App() {
             <input 
               type="text" 
               placeholder="Search personas, tools or creations..." 
-              className="w-full bg-[#111827] border border-[#334155] rounded-full py-2.5 pl-11 pr-12 text-sm text-white placeholder-[var(--text-muted)] focus:outline-none focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] transition-all"
+              className="w-full bg-[#111827] border border-[#334155] rounded-full py-1.5 pl-11 pr-12 text-sm text-white placeholder-[var(--text-muted)] focus:outline-none focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] transition-all"
             />
             <div className="absolute inset-y-0 right-4 flex items-center pointer-events-none">
               <span className="text-xs font-semibold text-[var(--text-muted)]">⌘K</span>
@@ -318,7 +318,7 @@ function App() {
           <div className="flex items-center gap-5">
             <button 
               onClick={() => setActiveTab('create')}
-              className="hidden sm:flex items-center gap-2 bg-transparent border border-[#00D4FF]/40 px-5 py-2 rounded-full text-sm font-bold text-white hover:bg-[#00D4FF]/10 transition-all shadow-[0_0_16px_rgba(0,212,255,0.15)] hover:shadow-[0_0_24px_rgba(0,212,255,0.3)]"
+              className="hidden sm:flex items-center gap-2 bg-transparent border border-[#00D4FF]/40 px-5 py-1.5 rounded-full text-sm font-bold text-white hover:bg-[#00D4FF]/10 transition-all shadow-[0_0_16px_rgba(0,212,255,0.15)] hover:shadow-[0_0_24px_rgba(0,212,255,0.3)]"
             >
               <PlusCircle size={16} className="text-[#00F5C2]" /> Create
             </button>
@@ -358,7 +358,7 @@ function App() {
       <nav className="flex-none z-50">
         <div className="action-bar" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
           <div
-            className="flex items-center gap-0 px-1 pt-1 pb-1.5 overflow-x-auto scrollbar-hide"
+            className="flex items-center gap-0 px-1 pt-0.5 pb-1 overflow-x-auto scrollbar-hide"
           >
             {tabs.map((tab) => {
               const Icon = tab.icon;
@@ -368,9 +368,9 @@ function App() {
                   key={tab.id}
                   onClick={() => { prevTabRef.current = activeTab; setActiveTab(tab.id as Tab); }}
                   whileTap={{ scale: 0.9 }}
-                  className="flex flex-col items-center gap-0.5 min-w-[60px] flex-1 py-1 relative"
+                  className="flex flex-col items-center gap-0 min-w-[60px] flex-1 py-0.5 relative"
                 >
-                  <div className="relative p-2 rounded-xl">
+                  <div className="relative p-1.5 rounded-xl">
                     {isActive && (
                       <motion.div
                         layoutId="nav-pill"

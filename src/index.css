@@ -340,7 +340,7 @@ input, textarea, select {
 }
 
 .action-bar {
-  background: rgba(11, 15, 23, 0.85);
+  background: rgba(11, 15, 23, 0.7);
   backdrop-filter: blur(32px) saturate(160%);
   -webkit-backdrop-filter: blur(32px) saturate(160%);
   border-top: 1px solid rgba(56, 189, 248, 0.12);
