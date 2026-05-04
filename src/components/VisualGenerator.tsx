@@ -217,7 +217,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
   const [allPersonas, setAllPersonas] = useState<Persona[]>([]);
 
   useEffect(() => {
-    api.personas.getAll().then(setAllPersonas).catch(() => {});
+    api.personas.list().then(setAllPersonas).catch(() => {});
   }, []);
 
   const activePersonaObj = useMemo(() => {
