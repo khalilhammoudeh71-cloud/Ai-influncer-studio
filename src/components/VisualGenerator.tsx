@@ -233,7 +233,11 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
   const [selectedFraming, setSelectedFraming] = useState(FRAMING[0]);
   const [selectedMood, setSelectedMood] = useState(MOODS[0]);
   const [selectedAspectRatio, setSelectedAspectRatio] = useState(ASPECT_RATIOS[0].value);
-  const [result, setResult] = useState<GenerateImageResult | null>(null);
+  const [result, setResult] = useState<GenerateImageResult | null>({
+    imageUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=1024&q=80',
+    model: 'Premium Model',
+    promptUsed: 'Stock demo image'
+  });
   const [multiResults, setMultiResults] = useState<GenerateImageResult[]>([]);
   const [selectedVariation, setSelectedVariation] = useState(0);
   const [imageCount, setImageCount] = useState(1);
@@ -1119,6 +1123,49 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
               }}
             />
           </div>
+
+          {/* LEFT FIXED FOOTER: Always Visible without scrolling */}
+          <div className="flex-none p-3.5 border-t border-[#334155]/40 bg-[#0F172A]/40 backdrop-blur-md flex items-center gap-2 select-none">
+            {genMode === 'image' ? (
+              <button
+                onClick={handleGenerate}
+                disabled={isGenerating || isProcessing || !selectedModel}
+                className="flex-1 bg-gradient-to-r from-[#00F5C2] via-[#00D4FF] to-[#6366F1] text-[#0B0F17] font-black py-3 rounded-xl flex items-center justify-center gap-2 hover:shadow-[0_0_24px_rgba(0,245,194,0.4)] hover:scale-[1.01] transition-all duration-300 disabled:opacity-40 text-xs uppercase tracking-wider cursor-pointer select-none"
+              >
+                {isGenerating ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</>
+                ) : result ? (
+                  <><RefreshCw className="w-3.5 h-3.5" /> Regenerate</>
+                ) : (
+                  <><Sparkles className="w-3.5 h-3.5" /> Generate Image</>
+                )}
+              </button>
+            ) : (
+              <button
+                onClick={handleGenerateVideo}
+                disabled={isGenerating || !selectedVideoModel || !prompt.trim()}
+                className="flex-1 bg-gradient-to-r from-[#C084FC] to-[#8B5CF6] text-white font-black py-3 rounded-xl flex items-center justify-center gap-2 hover:shadow-[0_0_20px_rgba(139,92,246,0.3)] hover:scale-[1.01] transition-all duration-300 disabled:opacity-40 text-xs uppercase tracking-wider cursor-pointer select-none"
+              >
+                {isGenerating ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Processing Video...</>
+                ) : videoResult ? (
+                  <><RefreshCw className="w-3.5 h-3.5" /> Regenerate Video</>
+                ) : (
+                  <><Video className="w-3.5 h-3.5" /> Generate Video</>
+                )}
+              </button>
+            )}
+
+            {genMode === 'image' && (
+              <button
+                onClick={handleRandomize}
+                className="flex-none p-3.5 rounded-xl bg-[#111827] border border-[#334155]/60 hover:bg-[#0F172A] hover:border-[#334155] text-white transition-all cursor-pointer select-none"
+                title="Randomize environment, outfit & mood"
+              >
+                <RefreshCw className="w-3.5 h-3.5 text-[#94A3B8]" />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* RIGHT COLUMN: Output Preview Canvas */}
@@ -1182,64 +1229,25 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
 
           {/* Action Button Row */}
           <div className="flex-none mt-3 flex items-center gap-2 select-none">
-            {genMode === 'image' ? (
-              <button
-                onClick={handleGenerate}
-                disabled={isGenerating || isProcessing || !selectedModel}
-                className="flex-1 bg-gradient-to-r from-[#00F5C2] via-[#00D4FF] to-[#6366F1] text-[#0B0F17] font-black py-3 rounded-xl flex items-center justify-center gap-2 hover:shadow-[0_0_24px_rgba(0,245,194,0.4)] hover:scale-[1.01] transition-all duration-300 disabled:opacity-40 text-xs uppercase tracking-wider cursor-pointer select-none"
-              >
-                {isGenerating ? (
-                  <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</>
-                ) : result ? (
-                  <><RefreshCw className="w-3.5 h-3.5" /> Regenerate</>
-                ) : (
-                  <><Sparkles className="w-3.5 h-3.5" /> Generate Image</>
-                )}
-              </button>
-            ) : (
-              <button
-                onClick={handleGenerateVideo}
-                disabled={isGenerating || !selectedVideoModel || !prompt.trim()}
-                className="flex-1 bg-gradient-to-r from-[#C084FC] to-[#8B5CF6] text-white font-black py-3 rounded-xl flex items-center justify-center gap-2 hover:shadow-[0_0_20px_rgba(139,92,246,0.3)] hover:scale-[1.01] transition-all duration-300 disabled:opacity-40 text-xs uppercase tracking-wider cursor-pointer select-none"
-              >
-                {isGenerating ? (
-                  <><Loader2 className="w-4 h-4 animate-spin" /> Processing Video...</>
-                ) : videoResult ? (
-                  <><RefreshCw className="w-3.5 h-3.5" /> Regenerate Video</>
-                ) : (
-                  <><Video className="w-3.5 h-3.5" /> Generate Video</>
-                )}
-              </button>
-            )}
-
-            {genMode === 'image' && (
-              <button
-                onClick={handleRandomize}
-                className="flex-none p-3.5 rounded-xl bg-[#111827] border border-[#334155]/60 hover:bg-[#0F172A] hover:border-[#334155] text-white transition-all cursor-pointer select-none"
-                title="Randomize environment, outfit & mood"
-              >
-                <RefreshCw className="w-3.5 h-3.5 text-[#94A3B8]" />
-              </button>
-            )}
-
             {result?.imageUrl && genMode === 'image' && (
               <>
                 <button
                   onClick={handleSave}
                   disabled={isSaved}
-                  className={`flex-none px-4 py-3.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all duration-300 border shadow cursor-pointer select-none ${
+                  className={`flex-1 py-3 rounded-xl font-bold text-xs uppercase tracking-wider transition-all duration-300 border shadow cursor-pointer select-none text-center ${
                     isSaved
                       ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-                      : 'bg-[#111827] border-[#334155]/60 hover:bg-[#1F2937]/80 hover:border-[#94A3B8]/40 text-white'
+                      : 'bg-gradient-to-r from-[#00F5C2] to-[#00D4FF] hover:shadow-[0_0_24px_rgba(0,245,194,0.3)] text-[#0B0F17]'
                   }`}
                 >
-                  {isSaved ? 'Saved' : 'Save'}
+                  {isSaved ? 'Saved in Visual Library' : 'Save Image'}
                 </button>
                 <button
                   onClick={downloadImage}
                   className="flex-none p-3.5 rounded-xl bg-[#111827] border border-[#334155]/60 hover:bg-[#0F172A] hover:border-[#334155] text-white transition-all cursor-pointer select-none"
+                  title="Download full resolution image"
                 >
-                  <Download className="w-3.5 h-3.5" />
+                  <Download className="w-4 h-4 text-[#00D4FF]" />
                 </button>
               </>
             )}
@@ -1248,7 +1256,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
               <>
                 <button
                   onClick={handleSaveVideo}
-                  className="flex-none px-4 py-3.5 rounded-xl font-bold text-xs bg-[#111827] border border-[#334155]/60 hover:bg-[#0F172A] text-white hover:border-[#334155] transition-all cursor-pointer select-none"
+                  className="flex-1 py-3 rounded-xl font-bold text-xs uppercase bg-[#111827] border border-[#334155]/60 hover:bg-[#0F172A] text-white hover:border-[#334155] transition-all cursor-pointer select-none text-center"
                 >
                   Save Video
                 </button>
@@ -1256,7 +1264,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
                   onClick={downloadVideo}
                   className="flex-none p-3.5 rounded-xl bg-[#111827] border border-[#334155]/60 hover:bg-[#0F172A] text-white hover:border-[#334155] transition-all cursor-pointer select-none"
                 >
-                  <Download className="w-3.5 h-3.5" />
+                  <Download className="w-4 h-4 text-[#00D4FF]" />
                 </button>
               </>
             )}
