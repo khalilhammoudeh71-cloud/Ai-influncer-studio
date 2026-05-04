@@ -166,7 +166,7 @@ export default function PersonaBuilderView({ persona, onChange, onSave, onCancel
   ];
 
   return (
-    <div className="min-h-screen bg-[#0B0F17] text-white pt-6 md:pt-10 px-4 md:px-6 pb-[260px] font-sans selection:bg-[#00D4FF]/30 select-none animate-in fade-in duration-500 overflow-x-hidden">
+    <div className="min-h-screen bg-[#0B0F17] text-white pt-6 md:pt-10 px-4 md:px-6 pb-[280px] font-sans selection:bg-[#00D4FF]/30 select-none animate-in fade-in duration-500 overflow-x-hidden">
       <div className="max-w-[1360px] mx-auto flex flex-col lg:flex-row items-start gap-6 relative">
         
         {/* LEFT COLUMN */}
@@ -245,10 +245,10 @@ export default function PersonaBuilderView({ persona, onChange, onSave, onCancel
             
             <div 
               onClick={() => fileInputRef.current?.click()}
-              className="border-2 border-dashed border-[#334155]/60 hover:border-[#00D4FF]/40 bg-[#0B0F17]/40 rounded-xl p-3.5 flex flex-col items-center justify-center cursor-pointer transition-all duration-300 group mb-3 h-[96px] relative z-10 hover:bg-[#111827]/40"
+              className="border-2 border-dashed border-[#334155]/60 hover:border-[#00D4FF]/40 bg-[#0B0F17]/40 rounded-xl p-3 flex flex-col items-center justify-center cursor-pointer transition-all duration-300 group mb-2.5 h-[84px] relative z-10 hover:bg-[#111827]/40"
             >
-              <div className="w-8 h-8 rounded-xl bg-[#111827] border border-[#334155]/60 flex items-center justify-center mb-1 group-hover:scale-105 group-hover:border-[#00D4FF]/40 transition-all">
-                <Upload size={14} className="text-[#00D4FF]" />
+              <div className="w-7 h-7 rounded-xl bg-[#111827] border border-[#334155]/60 flex items-center justify-center mb-1 group-hover:scale-105 group-hover:border-[#00D4FF]/40 transition-all">
+                <Upload size={13} className="text-[#00D4FF]" />
               </div>
               <p className="text-xs text-white font-extrabold mb-0.5">Drag & drop images here or <span className="text-[#00D4FF] hover:underline">click to browse</span></p>
               <p className="text-[9px] text-[#64748B] font-bold">JPG, PNG, WebP up to 20MB each</p>
@@ -256,7 +256,7 @@ export default function PersonaBuilderView({ persona, onChange, onSave, onCancel
             </div>
 
             {/* Reference quality checklist chips */}
-            <div className="flex flex-wrap gap-1 mt-1 mb-3 select-none relative z-10">
+            <div className="flex flex-wrap gap-1 mt-1 mb-2.5 select-none relative z-10">
               <span className="text-[8px] font-black uppercase tracking-wider text-[#94A3B8] mr-1 flex items-center">Checklist:</span>
               <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-[#00D4FF]/10 text-[#00D4FF]/80 border border-[#00D4FF]/20 flex items-center gap-0.5"><Check size={8} /> Clear face</span>
               <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-[#00D4FF]/10 text-[#00D4FF]/80 border border-[#00D4FF]/20 flex items-center gap-0.5"><Check size={8} /> Good lighting</span>
@@ -265,17 +265,17 @@ export default function PersonaBuilderView({ persona, onChange, onSave, onCancel
               <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-[#00D4FF]/10 text-[#00D4FF]/80 border border-[#00D4FF]/20 flex items-center gap-0.5"><Check size={8} /> No filters</span>
             </div>
 
-            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide relative z-10">
+            <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide relative z-10">
               {allImages.map((img, i) => (
-                <div key={i} className="relative w-16 h-16 rounded-xl overflow-hidden shrink-0 border border-[#334155]/60 group shadow-md">
+                <div key={i} className="relative w-14 h-14 rounded-xl overflow-hidden shrink-0 border border-[#334155]/60 group shadow-md">
                   <img src={img} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" alt="" />
                   <button onClick={() => removeReferenceImage(i - (persona.referenceImage ? 1 : 0))} className="absolute top-1 right-1 w-4 h-4 rounded-full bg-black/70 backdrop-blur-md flex items-center justify-center text-white/70 hover:text-white hover:bg-rose-500/90 transition-all opacity-0 group-hover:opacity-100 border border-white/10">
                     <X size={10} />
                   </button>
                 </div>
               ))}
-              <button onClick={() => fileInputRef.current?.click()} className="w-16 h-16 rounded-xl border-2 border-dashed border-[#334155]/60 hover:border-[#00D4FF]/40 flex flex-col items-center justify-center text-[#64748B] hover:text-[#00D4FF] transition-all bg-[#0B0F17]/30 shrink-0 group">
-                <Plus size={16} className="group-hover:scale-105 transition-transform duration-300" />
+              <button onClick={() => fileInputRef.current?.click()} className="w-14 h-14 rounded-xl border-2 border-dashed border-[#334155]/60 hover:border-[#00D4FF]/40 flex flex-col items-center justify-center text-[#64748B] hover:text-[#00D4FF] transition-all bg-[#0B0F17]/30 shrink-0 group">
+                <Plus size={14} className="group-hover:scale-105 transition-transform duration-300" />
                 <span className="text-[8px] font-black tracking-wide mt-0.5">Add</span>
               </button>
             </div>
@@ -489,15 +489,15 @@ export default function PersonaBuilderView({ persona, onChange, onSave, onCancel
       </div>
 
       {/* Bottom Action Bar */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 bg-[#0B0F17]/75 backdrop-blur-3xl border-t border-[#334155]/30 py-2 px-6 shadow-2xl select-none transition-all duration-300">
+      <div className="fixed bottom-0 left-0 right-0 z-50 bg-[#0B0F17]/75 backdrop-blur-3xl border-t border-[#334155]/30 py-1.5 px-6 shadow-2xl select-none transition-all duration-300">
         <div className="max-w-[1360px] mx-auto flex items-center justify-between gap-4">
           <button onClick={onCancel} className="flex items-center gap-1.5 text-[#94A3B8] hover:text-white font-bold text-xs transition-colors uppercase tracking-wider">
             <ChevronLeft size={14} /> Back
           </button>
           
           <div className="flex items-center gap-3.5">
-            <span className="hidden md:inline text-[9px] font-black tracking-wider uppercase text-[#94A3B8] text-right select-none opacity-90 leading-tight">
-              Next: generate a consistent<br/>9-angle identity sheet.
+            <span className="hidden md:inline text-[9px] font-bold text-[#94A3B8] text-right select-none opacity-90 leading-tight">
+              Next step: create a consistent<br/>identity sheet from your references.
             </span>
             <div className="flex items-center gap-2.5">
               <button onClick={onSave} className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border border-[#334155]/50 text-white hover:bg-[#1F2937]/80 hover:border-[#94A3B8]/40 transition-all duration-300 text-[10px] font-black uppercase tracking-wider shadow bg-[#0B0F17]/20">
