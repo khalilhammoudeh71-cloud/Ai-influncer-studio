@@ -358,7 +358,7 @@ function App() {
       <nav className="flex-none z-50">
         <div className="action-bar" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
           <div
-            className="flex items-center gap-0 px-1 pt-0.5 pb-1 overflow-x-auto scrollbar-hide"
+            className="flex items-center gap-0 px-1 pt-0 pb-0.5 overflow-x-auto scrollbar-hide"
           >
             {tabs.map((tab) => {
               const Icon = tab.icon;
@@ -367,23 +367,23 @@ function App() {
                 <motion.button
                   key={tab.id}
                   onClick={() => { prevTabRef.current = activeTab; setActiveTab(tab.id as Tab); }}
-                  whileTap={{ scale: 0.9 }}
-                  className="flex flex-col items-center gap-0 min-w-[60px] flex-1 py-0.5 relative"
+                  whileTap={{ scale: 0.95 }}
+                  className="flex flex-col items-center gap-0 min-w-[56px] flex-1 py-0 relative"
                 >
-                  <div className="relative p-1.5 rounded-xl">
+                  <div className="relative p-1 rounded-xl">
                     {isActive && (
                       <motion.div
                         layoutId="nav-pill"
                         className="absolute inset-0 rounded-xl"
                         style={{
-                          background: 'linear-gradient(135deg, rgba(0,212,255,0.15) 0%, rgba(0,245,194,0.1) 100%)',
-                          boxShadow: '0 0 24px -4px rgba(0,245,194,0.25)',
+                          background: 'rgba(0, 212, 255, 0.08)',
+                          border: '1px solid rgba(0, 245, 194, 0.2)'
                         }}
                         transition={{ type: "spring", stiffness: 500, damping: 32 }}
                       />
                     )}
                     <Icon
-                      size={21}
+                      size={20}
                       strokeWidth={isActive ? 2.2 : 1.6}
                       className={cn(
                         "relative z-10 transition-all duration-200",
@@ -400,8 +400,8 @@ function App() {
                   {isActive && (
                     <motion.div
                       layoutId="nav-dot"
-                      className="absolute -top-0.5 left-1/2 -translate-x-1/2 w-[18px] h-0.5 rounded-full"
-                      style={{ background: '#00F5C2', boxShadow: '0 0 8px rgba(0,245,194,0.6)' }}
+                      className="absolute -top-0.5 left-1/2 -translate-x-1/2 w-[12px] h-0.5 rounded-full"
+                      style={{ background: '#00F5C2' }}
                       transition={{ type: "spring", stiffness: 500, damping: 32 }}
                     />
                   )}

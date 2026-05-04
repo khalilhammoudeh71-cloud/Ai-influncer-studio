@@ -408,7 +408,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
   const activePersona = personas.find(p => p.id === selectedId) || personas[0];
 
   return (
-    <div className="px-6 pt-5 max-w-[1400px] mx-auto pb-32">
+    <div className="px-6 pt-7 max-w-[1400px] mx-auto pb-32">
       {!activePersona ? (
          <div className="flex flex-col items-center justify-center py-20 bg-[#0F172A]/50 border border-[#334155] rounded-3xl">
            <div className="w-16 h-16 bg-[#00D4FF]/10 rounded-full flex items-center justify-center mb-4 text-[#00D4FF]">
@@ -419,7 +419,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
            <button onClick={handleAddPersona} className="premium-button px-6 py-3">Create Persona</button>
          </div>
       ) : (
-        <div className="space-y-6 animate-in fade-in duration-300">
+        <div className="space-y-10 animate-in fade-in duration-300">
           
           {/* Hero Card */}
           <div className="relative rounded-[24px] overflow-hidden border border-[#334155] p-6 shadow-2xl group bg-[#0F172A]">
@@ -673,7 +673,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
           </div>
 
           {/* Assistant Strip */}
-          <div className="bg-[#0F172A] rounded-[24px] border border-[#334155] p-4 flex flex-col md:flex-row items-start md:items-center justify-between shadow-xl">
+          <div className="bg-[#0F172A] rounded-[24px] border border-[#334155] p-5 flex flex-col md:flex-row items-start md:items-center justify-between shadow-xl mb-6">
             <div className="flex items-center gap-4 mb-4 md:mb-0">
               <div className="w-12 h-12 rounded-full bg-[#00D4FF]/10 flex items-center justify-center border border-[#00D4FF]/20 shadow-[0_0_15px_rgba(0,212,255,0.2)] shrink-0">
                 <Sparkles size={24} className="text-[#00D4FF]" />
