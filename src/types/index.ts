@@ -53,3 +53,18 @@ export type RevenueEntry = {
   personaId: string;
   notes: string;
 };
+
+export type Tab = 'personas' | 'create' | 'gallery' | 'assistant' | 'settings';
+
+export interface NavEntry {
+  view: Tab | 'persona-builder';
+  subView?: string;
+  params?: any;
+  label?: string;
+}
+
+export interface NavActions {
+  push: (entry: NavEntry) => void;
+  pop: () => void;
+  replace: (entry: NavEntry) => void;
+}

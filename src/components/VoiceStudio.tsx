@@ -22,6 +22,8 @@ export default function VoiceStudio({ isOpen, onClose, persona, initialScript, o
   const [isPlaying, setIsPlaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [scriptGenerating, setScriptGenerating] = useState(false);
+  const [previewingVoice, setPreviewingVoice] = useState<string | null>(null);
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -68,6 +70,51 @@ export default function VoiceStudio({ isOpen, onClose, persona, initialScript, o
       toast.error('Failed to generate script');
     } finally {
       setScriptGenerating(false);
+    }
+  };
+
+  const handleVoicePreview = async (voiceId: string) => {
+    if (previewingVoice === voiceId) {
+      if (previewAudioRef.current) {
+        previewAudioRef.current.pause();
+        previewAudioRef.current = null;
+      }
+      setPreviewingVoice(null);
+      return;
+    }
+
+    if (previewAudioRef.current) {
+      previewAudioRef.current.pause();
+    }
+
+    setPreviewingVoice(voiceId);
+    
+    try {
+      const voice = TTS_VOICES.find(v => v.id === voiceId);
+      if (!voice) return;
+
+      const res = await fetch('/api/generate-speech', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: `Hi! I am ${voice.name}. This is how I sound.`,
+          voice: voice.id,
+          engine: (voice as any).engine || 'openai'
+        })
+      });
+
+      const data = await res.json();
+      if (data.audioUrl) {
+        const audio = new Audio(data.audioUrl);
+        previewAudioRef.current = audio;
+        audio.onended = () => setPreviewingVoice(null);
+        audio.play().catch(() => setPreviewingVoice(null));
+      } else {
+        setPreviewingVoice(null);
+      }
+    } catch (err) {
+      console.error('[Preview] Voice preview failed:', err);
+      setPreviewingVoice(null);
     }
   };
 
@@ -148,19 +195,30 @@ export default function VoiceStudio({ isOpen, onClose, persona, initialScript, o
             <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)]">Voice</label>
             <div className="grid grid-cols-5 gap-2">
               {TTS_VOICES.map(voice => (
-                <button
-                  key={voice.id}
-                  onClick={() => setSelectedVoice(voice.id)}
-                  className={`p-3 rounded-xl border-2 text-center transition-all ${
-                    selectedVoice === voice.id
-                      ? 'border-cyan-500 bg-cyan-500/10 shadow-lg shadow-cyan-500/10'
-                      : 'border-[var(--border-default)] hover:border-[var(--border-strong)] bg-[var(--bg-elevated)]'
-                  }`}
-                >
-                  <p className="text-xs font-bold text-white">{voice.name}</p>
-                  <p className="text-[8px] text-[var(--text-muted)] mt-0.5">{voice.gender}</p>
-                  <p className="text-[7px] text-cyan-400/60 mt-0.5">{voice.desc}</p>
-                </button>
+                <div key={voice.id} className="relative group">
+                  <button
+                    onClick={() => setSelectedVoice(voice.id)}
+                    className={`w-full p-3 rounded-xl border-2 text-center transition-all h-full flex flex-col justify-center items-center ${
+                      selectedVoice === voice.id
+                        ? 'border-cyan-500 bg-cyan-500/10 shadow-lg shadow-cyan-500/10'
+                        : 'border-[var(--border-default)] hover:border-[var(--border-strong)] bg-[var(--bg-elevated)]'
+                    }`}
+                  >
+                    <p className="text-xs font-bold text-white">{voice.name}</p>
+                    <p className="text-[8px] text-[var(--text-muted)] mt-0.5 uppercase tracking-wider font-bold">{voice.gender}</p>
+                    <p className="text-[7px] text-cyan-400/60 mt-0.5 italic">{voice.desc}</p>
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleVoicePreview(voice.id); }}
+                    className={`absolute -top-2 -right-2 w-6 h-6 rounded-full flex items-center justify-center transition-all shadow-xl z-20 ${
+                      previewingVoice === voice.id
+                        ? 'bg-cyan-500 text-white scale-110'
+                        : 'bg-black/60 text-white/40 hover:text-white hover:bg-cyan-500 opacity-0 group-hover:opacity-100'
+                    }`}
+                  >
+                    {previewingVoice === voice.id ? <Loader2 size={10} className="animate-spin" /> : <Play size={10} className="fill-current ml-0.5" />}
+                  </button>
+                </div>
               ))}
             </div>
           </div>

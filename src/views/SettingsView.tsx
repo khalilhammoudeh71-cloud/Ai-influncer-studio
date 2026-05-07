@@ -1,7 +1,8 @@
 import { User, Bell, Shield, LogOut, ChevronRight, Globe, Moon, Sparkles, HelpCircle, Crown } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { Persona, NavActions } from '../types';
 
-export default function SettingsView() {
+export default function SettingsView({ nav }: { nav: NavActions }) {
   const sections = [
     {
       title: 'Account',

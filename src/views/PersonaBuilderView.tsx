@@ -1,12 +1,13 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { ChevronLeft, Save, Sparkles, Upload, X, Info, Image as ImageIcon, Video, Mic, Volume2, MessageSquare, Plus, Check, Camera, Diamond, Dumbbell, ShoppingBag, Briefcase, Activity, Sliders } from 'lucide-react';
 import { Persona } from '../types';
+import { generateImage } from '../services/imageService';
 import { identitySheetPlaceholders } from '../data/demoAssets';
 
 interface PersonaBuilderViewProps {
   persona: Persona;
   onChange: (p: Persona) => void;
-  onSave: () => void;
+  onSave: (p: Persona) => void;
   onCancel: () => void;
 }
 
@@ -20,64 +21,88 @@ const PERSONA_TYPES = [
   { id: 'custom', label: 'Custom', icon: Sliders }
 ];
 
-export default function PersonaBuilderView({ persona, onChange, onSave, onCancel }: PersonaBuilderViewProps) {
+export default function PersonaBuilderView({ persona: initialPersona, onChange, onSave, onCancel }: PersonaBuilderViewProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [selectedType, setSelectedType] = useState('luxury');
+  const [persona, setPersona] = useState<Persona>(initialPersona);
+  const [selectedType, setSelectedType] = useState(() => {
+    const type = PERSONA_TYPES.find(t => initialPersona.niche?.toLowerCase().includes(t.id));
+    return type ? type.id : 'luxury';
+  });
   const [isGeneratingAngles, setIsGeneratingAngles] = useState(false);
   const [realAngles, setRealAngles] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    if (!isGeneratingAngles && Object.keys(realAngles).length === 0) {
-      generateAngles();
-    }
-  }, [persona.referenceImage]);
+    setPersona(initialPersona);
+  }, [initialPersona.id]);
 
   const generateAngles = async () => {
     const baseImage = persona.referenceImage || "/isabella_laurent_reference.png";
     setIsGeneratingAngles(true);
 
     const targetAngles = [
-      { label: "High Angle", p: "As part of a 9 angle identity sheet: high angle shot. Using the reference photo for identity and style consistency, generate a new image of the exact same subject. High angle shot of the exact same woman looking slightly down. Maintain exact facial features, hair, and clothing perfectly." },
-      { label: "Eye Level", p: "As part of a 9 angle identity sheet: eye level shot. Using the reference photo for identity and style consistency, generate a direct eye level portrait looking at the camera of the exact same woman. Maintain exact facial features, hair, and clothing perfectly." },
-      { label: "Low Angle", p: "As part of a 9 angle identity sheet: low angle shot. Using the reference photo for identity and style consistency, generate a low angle shot from below looking up towards the camera of the exact same woman. Maintain exact facial features, hair, and clothing perfectly." },
-      { label: "Profile Left", p: "As part of a 9 angle identity sheet: left side profile view. Using the reference photo for identity and style consistency, generate a 90 degree left side profile view of the exact same woman. Maintain exact facial features, hair, and clothing perfectly." },
-      { label: "Front View", p: "As part of a 9 angle identity sheet: front view. Using the reference photo for identity and style consistency, generate a front view portrait of the exact same woman looking straight at camera. Maintain exact facial features, hair, and clothing perfectly." },
-      { label: "Profile Right", p: "As part of a 9 angle identity sheet: right side profile view. Using the reference photo for identity and style consistency, generate a 90 degree right side profile view of the exact same woman. Maintain exact facial features, hair, and clothing perfectly." },
-      { label: "Three-Quarter Left", p: "As part of a 9 angle identity sheet: three-quarter left view. Using the reference photo for identity and style consistency, generate a three quarter view to the left side of the exact same woman. Maintain exact facial features, hair, and clothing perfectly." },
-      { label: "Over-the-Shoulder", p: "As part of a 9 angle identity sheet: over-the-shoulder view. Using the reference photo for identity and style consistency, generate an over the shoulder shot looking back at the camera of the exact same woman. Maintain exact facial features, hair, and clothing perfectly." },
-      { label: "Three-Quarter Right", p: "As part of a 9 angle identity sheet: three-quarter right view. Using the reference photo for identity and style consistency, generate a three quarter view to the right side of the exact same woman. Maintain exact facial features, hair, and clothing perfectly." }
+      { label: "Front Portrait", p: "Direct frontal view. Maintain the exact same facial features, bone structure, and expression as the reference. Identical identity." },
+      { label: "Left 45°", p: "Three-quarter view turned 45 degrees left. Maintain the exact same facial features and identity as the reference." },
+      { label: "Right 45°", p: "Three-quarter view turned 45 degrees right. Maintain the exact same facial features and identity as the reference." },
+      { label: "Profile Left", p: "90-degree full side profile view looking left. Maintain the exact same identity." },
+      { label: "Smile", p: "Frontal view with a warm smile. Maintain the exact same facial features and identity." },
+      { label: "Neutral", p: "Frontal view with a professional neutral look. Maintain the exact same facial features and identity." },
+      { label: "Upper Body", p: "Medium shot from the waist up. Maintain the exact same identity and outfit." },
+      { label: "Full Body", p: "Full body standing shot. Maintain the exact same identity and outfit." },
+      { label: "Lifestyle Shot", p: "Natural standing pose in studio. Maintain the exact same identity." }
     ];
 
-    const promises = targetAngles.map(async (angle) => {
-      try {
-        const res = await fetch('/api/generate-image', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            referenceImage: baseImage,
-            modelId: 'google:nano-banana-pro',
-            isChatContext: true,
-            chatPrompt: angle.p
-          })
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.imageUrl) {
-            setRealAngles(prev => ({ ...prev, [angle.label]: data.imageUrl }));
-          }
-        }
-      } catch (e) {
-        console.error(e);
+    // PHASE 1: Generate Anchor (Front Portrait) using GPT Image 2.0 (OpenAI)
+    let anchorImage = baseImage;
+    try {
+      const anchorResult = await generateImage({
+        persona: { ...persona, referenceImage: baseImage },
+        modelId: 'openai:gpt-image-2',
+        chatPrompt: "A professional studio portrait of the woman in the attached photo. She is looking directly at the camera. PURE WHITE BACKGROUND. No seatbelt, no car. She is wearing a white top. Maintain her exact facial features and identity. High resolution.",
+        identityLock: true,
+        imageWeight: 1.0,
+        aspectRatio: '3:4',
+        isChatContext: true
+      });
+      const url = Array.isArray(anchorResult) ? anchorResult[0]?.imageUrl : anchorResult.imageUrl;
+      if (url) {
+        anchorImage = url;
+        setRealAngles(prev => ({ ...prev, "Front Portrait": url }));
       }
-    });
+    } catch (err) {
+      console.error('[IdentitySheet] OpenAI Anchor failed:', err);
+    }
 
-    await Promise.all(promises);
+    // PHASE 2: Generate all other angles using the new Anchor
+    const otherAngles = targetAngles.filter(a => a.label !== "Front Portrait");
+    for (const angle of otherAngles) {
+      try {
+        const result = await generateImage({
+          persona: { ...persona, referenceImage: anchorImage },
+          modelId: 'google:nano-banana-pro',
+          chatPrompt: `Using the attached anchor image as the 100% identity reference: ${angle.p}. Maintain identical face, white outfit, and pure white background.`,
+          identityLock: true,
+          imageWeight: 1.0,
+          aspectRatio: '3:4',
+          isChatContext: true
+        });
+        
+        const imageUrl = Array.isArray(result) ? result[0]?.imageUrl : result.imageUrl;
+        if (imageUrl) {
+          setRealAngles(prev => ({ ...prev, [angle.label]: imageUrl }));
+        }
+      } catch (err) {
+        console.error('[IdentitySheet] Error generating angle:', angle.label, err);
+      }
+    }
+
     setIsGeneratingAngles(false);
   };
   
   // Handlers for inputs
   const updateField = (field: keyof Persona, value: any) => {
-    onChange({ ...persona, [field]: value });
+    const updated = { ...persona, [field]: value };
+    setPersona(updated);
+    if (onChange) onChange(updated);
   };
 
   const handleToneRemove = (t: string) => {
@@ -136,28 +161,33 @@ export default function PersonaBuilderView({ persona, onChange, onSave, onCancel
     const compressed = await Promise.all(files.map(compressImage));
     const [primary, ...extras] = compressed;
     const existingExtras = persona.additionalReferenceImages || [];
-    onChange({
+    const updated = {
       ...persona,
       referenceImage: persona.referenceImage ? persona.referenceImage : primary,
       additionalReferenceImages: persona.referenceImage ? [...existingExtras, primary, ...extras] : [...existingExtras, ...extras],
-    });
+    };
+    setPersona(updated);
+    if (onChange) onChange(updated);
     e.target.value = '';
   };
 
   const removeReferenceImage = (index: number) => {
+    let updated: Persona;
     if (index === -1) {
       // Removing primary
       const extras = persona.additionalReferenceImages || [];
       if (extras.length > 0) {
-        onChange({ ...persona, referenceImage: extras[0], additionalReferenceImages: extras.slice(1) });
+        updated = { ...persona, referenceImage: extras[0], additionalReferenceImages: extras.slice(1) };
       } else {
-        onChange({ ...persona, referenceImage: undefined });
+        updated = { ...persona, referenceImage: undefined };
       }
     } else {
       const extras = [...(persona.additionalReferenceImages || [])];
       extras.splice(index, 1);
-      onChange({ ...persona, additionalReferenceImages: extras });
+      updated = { ...persona, additionalReferenceImages: extras };
     }
+    setPersona(updated);
+    if (onChange) onChange(updated);
   };
 
   const allImages = [
@@ -166,7 +196,7 @@ export default function PersonaBuilderView({ persona, onChange, onSave, onCancel
   ];
 
   return (
-    <div className="min-h-screen bg-[#0B0F17] text-white pt-6 md:pt-10 px-4 md:px-6 pb-[280px] font-sans selection:bg-[#00D4FF]/30 select-none animate-in fade-in duration-500 overflow-x-hidden">
+    <div className="flex-1 bg-[#0B0F17] text-white pt-6 md:pt-10 px-4 md:px-6 pb-20 font-sans selection:bg-[#00D4FF]/30 select-none animate-in fade-in duration-500 overflow-x-hidden">
       <div className="max-w-[1360px] mx-auto flex flex-col lg:flex-row items-start gap-6 relative">
         
         {/* LEFT COLUMN */}
@@ -200,6 +230,66 @@ export default function PersonaBuilderView({ persona, onChange, onSave, onCancel
                 <span className={`text-[9px] font-extrabold tracking-wider uppercase transition-all duration-300 ${step.num === 1 ? 'text-[#00D4FF]' : 'text-[#64748B]'}`}>{step.label}</span>
               </div>
             ))}
+          </div>
+
+          {/* Identity Details Form */}
+          <div className="bg-[#0F172A]/35 border border-[#334155]/40 backdrop-blur-xl rounded-2xl p-4 shadow-xl relative overflow-hidden group">
+            <div className="absolute inset-0 bg-gradient-to-br from-[#6366F1]/2 via-transparent to-transparent opacity-25" />
+            <h3 className="flex items-center gap-2 text-[13px] font-black text-white mb-3.5 relative z-10">
+              <UserIcon className="text-[#00D4FF]" size={16} /> Identity Details
+            </h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-5 gap-y-3.5 relative z-10">
+              <div>
+                <label className="block text-[10px] font-bold text-[#CBD5E1] uppercase tracking-[0.15em] mb-1.5">Persona Name</label>
+                <input type="text" value={persona.name} onChange={e => updateField('name', e.target.value)} className="w-full bg-[#111827]/80 border border-[#334155] focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-[#64748B] font-semibold outline-none transition-all shadow-md" placeholder="e.g. Isabella Laurent" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-[#CBD5E1] uppercase tracking-[0.15em] mb-1.5">Age Range</label>
+                <select className="w-full bg-[#111827]/80 border border-[#334155] focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] rounded-xl px-3.5 py-2.5 text-xs text-white font-semibold outline-none appearance-none transition-all cursor-pointer shadow-md">
+                  <option>18-24</option>
+                  <option selected>25-35</option>
+                  <option>36-45</option>
+                  <option>46+</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-[#CBD5E1] uppercase tracking-[0.15em] mb-1.5">Content Niche</label>
+                <input type="text" value={persona.niche} onChange={e => updateField('niche', e.target.value)} className="w-full bg-[#111827]/80 border border-[#334155] focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-[#64748B] font-semibold outline-none transition-all shadow-md" placeholder="e.g. Luxury Lifestyle" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-[#CBD5E1] uppercase tracking-[0.15em] mb-1.5">Style / Vibe</label>
+                <input type="text" value={persona.visualStyle} onChange={e => updateField('visualStyle', e.target.value)} className="w-full bg-[#111827]/80 border border-[#334155] focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-[#64748B] font-semibold outline-none transition-all shadow-md" placeholder="e.g. Sophisticated & Modern" />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-[10px] font-bold text-[#CBD5E1] uppercase tracking-[0.15em] mb-1.5">Persona Bio</label>
+                <textarea 
+                  value={persona.bio || ''} 
+                  onChange={e => updateField('bio', e.target.value)} 
+                  className="w-full bg-[#111827]/80 border border-[#334155] focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-[#64748B] font-semibold outline-none transition-all shadow-md resize-none h-20" 
+                  placeholder="Describe your persona's personality, backstory, and influence..."
+                />
+              </div>
+              <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-[#CBD5E1] uppercase tracking-[0.15em] mb-1.5">Brand Personality</label>
+                  <input type="text" value={(persona.personalityTraits || []).join(', ')} onChange={e => updateField('personalityTraits', e.target.value.split(',').map(s => s.trim()))} className="w-full bg-[#111827]/80 border border-[#334155] focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-[#64748B] font-semibold outline-none transition-all shadow-md" placeholder="e.g. Elite, Exclusive, High-status" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-[#CBD5E1] uppercase tracking-[0.15em] mb-1.5">Tone Traits</label>
+                  <div className="flex flex-wrap gap-1.5 bg-[#111827]/50 border border-[#334155]/60 rounded-xl p-2 min-h-[42px] items-center shadow-md">
+                    {(persona.tone || '').split(',').map(s => s.trim()).filter(Boolean).map((t, i) => (
+                      <span key={i} className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-[#00F5C2]/15 border border-[#00F5C2]/30 text-[#00F5C2] drop-shadow-[0_0_6px_rgba(0,245,194,0.15)] animate-in fade-in duration-300">
+                        {t} <button onClick={() => handleToneRemove(t)} className="hover:text-rose-400 transition-colors"><X size={10} /></button>
+                      </span>
+                    ))}
+                    <button onClick={handleToneAdd} className="w-6 h-6 rounded-full bg-[#111827] border border-[#334155] flex items-center justify-center text-[#94A3B8] hover:text-white hover:border-[#00D4FF] hover:bg-[#00D4FF]/10 transition-all duration-300">
+                      <Plus size={12} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Persona Type Card */}
@@ -281,56 +371,6 @@ export default function PersonaBuilderView({ persona, onChange, onSave, onCancel
             </div>
           </div>
 
-          {/* Identity Details Form */}
-          <div className="bg-[#0F172A]/35 border border-[#334155]/40 backdrop-blur-xl rounded-2xl p-4 shadow-xl relative overflow-hidden group">
-            <div className="absolute inset-0 bg-gradient-to-br from-[#6366F1]/2 via-transparent to-transparent opacity-25" />
-            <h3 className="flex items-center gap-2 text-[13px] font-black text-white mb-3.5 relative z-10">
-              <UserIcon className="text-[#00D4FF]" size={16} /> Identity Details
-            </h3>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-5 gap-y-3.5 relative z-10">
-              <div>
-                <label className="block text-[10px] font-bold text-[#CBD5E1] uppercase tracking-[0.15em] mb-1.5">Persona Name</label>
-                <input type="text" value={persona.name} onChange={e => updateField('name', e.target.value)} className="w-full bg-[#111827]/80 border border-[#334155] focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-[#64748B] font-semibold outline-none transition-all shadow-md" placeholder="e.g. Isabella Laurent" />
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-[#CBD5E1] uppercase tracking-[0.15em] mb-1.5">Age Range</label>
-                <select className="w-full bg-[#111827]/80 border border-[#334155] focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] rounded-xl px-3.5 py-2.5 text-xs text-white font-semibold outline-none appearance-none transition-all cursor-pointer shadow-md">
-                  <option>18-24</option>
-                  <option selected>25-35</option>
-                  <option>36-45</option>
-                  <option>46+</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-[#CBD5E1] uppercase tracking-[0.15em] mb-1.5">Content Niche</label>
-                <input type="text" value={persona.niche} onChange={e => updateField('niche', e.target.value)} className="w-full bg-[#111827]/80 border border-[#334155] focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-[#64748B] font-semibold outline-none transition-all shadow-md" placeholder="e.g. Luxury Lifestyle" />
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-[#CBD5E1] uppercase tracking-[0.15em] mb-1.5">Style / Vibe</label>
-                <input type="text" value={persona.visualStyle} onChange={e => updateField('visualStyle', e.target.value)} className="w-full bg-[#111827]/80 border border-[#334155] focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-[#64748B] font-semibold outline-none transition-all shadow-md" placeholder="e.g. Sophisticated & Modern" />
-              </div>
-              <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[10px] font-bold text-[#CBD5E1] uppercase tracking-[0.15em] mb-1.5">Brand Personality</label>
-                  <input type="text" value={(persona.personalityTraits || []).join(', ')} onChange={e => updateField('personalityTraits', e.target.value.split(',').map(s => s.trim()))} className="w-full bg-[#111827]/80 border border-[#334155] focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-[#64748B] font-semibold outline-none transition-all shadow-md" placeholder="e.g. Elite, Exclusive, High-status" />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-[#CBD5E1] uppercase tracking-[0.15em] mb-1.5">Tone Traits</label>
-                  <div className="flex flex-wrap gap-1.5 bg-[#111827]/50 border border-[#334155]/60 rounded-xl p-2 min-h-[42px] items-center shadow-md">
-                    {(persona.tone || '').split(',').map(s => s.trim()).filter(Boolean).map((t, i) => (
-                      <span key={i} className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-[#00F5C2]/15 border border-[#00F5C2]/30 text-[#00F5C2] drop-shadow-[0_0_6px_rgba(0,245,194,0.15)] animate-in fade-in duration-300">
-                        {t} <button onClick={() => handleToneRemove(t)} className="hover:text-rose-400 transition-colors"><X size={10} /></button>
-                      </span>
-                    ))}
-                    <button onClick={handleToneAdd} className="w-6 h-6 rounded-full bg-[#111827] border border-[#334155] flex items-center justify-center text-[#94A3B8] hover:text-white hover:border-[#00D4FF] hover:bg-[#00D4FF]/10 transition-all duration-300">
-                      <Plus size={12} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
 
         </div>
 
@@ -422,18 +462,7 @@ export default function PersonaBuilderView({ persona, onChange, onSave, onCancel
 
             <div className="grid grid-cols-3 gap-1.5 relative z-10">
               {identitySheetPlaceholders.map((angle, idx) => {
-                const labelsList = [
-                  "Front Portrait",
-                  "Left 45°",
-                  "Right 45°",
-                  "Profile Left",
-                  "Smile",
-                  "Neutral",
-                  "Upper Body",
-                  "Full Body",
-                  "Lifestyle Shot"
-                ];
-                const displayLabel = labelsList[idx] || angle.label;
+                const displayLabel = angle.label;
 
                 const getFallbackImage = (label: string) => {
                   const base = persona.referenceImage || "/isabella_laurent_reference.png";
@@ -453,7 +482,7 @@ export default function PersonaBuilderView({ persona, onChange, onSave, onCancel
 
                 return (
                   <div key={idx} className="relative rounded-lg overflow-hidden aspect-[4/5] border border-[#334155]/60 bg-[#111827] group cursor-pointer shadow hover:border-[#00D4FF]/40 transition-all duration-300">
-                    <img src={realAngles[angle.label] || angle.img || getFallbackImage(displayLabel)} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="" />
+                    <img src={realAngles[angle.label] || getFallbackImage(displayLabel)} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="" />
                     <div className="absolute bottom-1 left-1 bg-black/75 backdrop-blur-md border border-white/10 px-1.5 py-0.5 rounded text-[7px] font-black text-white tracking-wide z-10 uppercase shadow select-none max-w-[calc(100%-8px)] truncate">{displayLabel}</div>
                   </div>
                 );
@@ -500,10 +529,10 @@ export default function PersonaBuilderView({ persona, onChange, onSave, onCancel
               Next step: create a consistent<br/>identity sheet from your references.
             </span>
             <div className="flex items-center gap-2.5">
-              <button onClick={onSave} className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border border-[#334155]/50 text-white hover:bg-[#1F2937]/80 hover:border-[#94A3B8]/40 transition-all duration-300 text-[10px] font-black uppercase tracking-wider shadow bg-[#0B0F17]/20">
+              <button onClick={() => onSave(persona)} className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border border-[#334155]/50 text-white hover:bg-[#1F2937]/80 hover:border-[#94A3B8]/40 transition-all duration-300 text-[10px] font-black uppercase tracking-wider shadow bg-[#0B0F17]/20">
                 <Save size={13} /> Save Draft
               </button>
-              <button onClick={onSave} className="flex items-center gap-1.5 px-4.5 py-2 rounded-full bg-gradient-to-r from-[#00F5C2] via-[#00D4FF] to-[#6366F1] text-[#0B0F17] font-black uppercase tracking-wider text-[11px] shadow-[0_0_16px_rgba(0,212,255,0.3)] hover:shadow-[0_0_24px_rgba(0,245,194,0.5)] hover:scale-[1.015] transition-all duration-300 cursor-pointer">
+              <button onClick={() => onSave(persona)} className="flex items-center gap-1.5 px-4.5 py-2 rounded-full bg-gradient-to-r from-[#00F5C2] via-[#00D4FF] to-[#6366F1] text-[#0B0F17] font-black uppercase tracking-wider text-[11px] shadow-[0_0_16px_rgba(0,212,255,0.3)] hover:shadow-[0_0_24px_rgba(0,245,194,0.5)] hover:scale-[1.015] transition-all duration-300 cursor-pointer">
                 Continue to Identity Sheet <ArrowRightIcon className="w-3.5 h-3.5 ml-0.5" />
               </button>
             </div>

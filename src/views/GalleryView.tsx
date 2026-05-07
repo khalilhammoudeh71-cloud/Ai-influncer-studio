@@ -1,11 +1,12 @@
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Persona, GeneratedImage } from '../types';
+import { Persona, GeneratedImage, NavActions } from '../types';
 import { Download, Film, Image as ImageIcon, Search, X, Filter, AlertCircle } from 'lucide-react';
 
 interface GalleryViewProps {
   personas: Persona[];
   activePersona: Persona;
+  nav: NavActions;
 }
 
 interface GalleryItem extends GeneratedImage {
@@ -13,7 +14,7 @@ interface GalleryItem extends GeneratedImage {
   personaName: string;
 }
 
-export default function GalleryView({ personas, activePersona }: GalleryViewProps) {
+export default function GalleryView({ personas, activePersona, nav }: GalleryViewProps) {
   const [filterPersonaId, setFilterPersonaId] = useState<string>('all');
   const [filterType, setFilterType] = useState<'all' | 'image' | 'video'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -53,7 +54,7 @@ export default function GalleryView({ personas, activePersona }: GalleryViewProp
   };
 
   return (
-    <div className="p-6 max-w-[1400px] mx-auto w-full">
+    <div className="h-full overflow-y-auto pr-2 custom-scrollbar pb-20 p-6 max-w-[1400px] mx-auto w-full">
       <header className="premium-header mb-8 pt-4 pb-2 flex flex-col md:flex-row md:items-end justify-between gap-4 relative z-10">
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight">

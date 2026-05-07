@@ -1316,13 +1316,48 @@ async function generateWithGeminiVideo(geminiModelId: string, prompt: string, so
     throw new Error('Generated video has no URI. Please try again.');
   }
 
-  console.log('[Gemini Video] Got video URI:', videoUri.substring(0, 80));
+  console.log('[Gemini Video] Got video URI:', videoUri.substring(0, 120));
 
-  const downloadRes = await fetch(`${videoUri}?key=${apiKey}`);
-  if (!downloadRes.ok) {
-    throw new Error(`Failed to download generated video: ${downloadRes.status}`);
+  // Try multiple download strategies
+  let videoBuf: Buffer | null = null;
+
+  // Strategy 1: URI with key as query param (standard approach)
+  const separator = videoUri.includes('?') ? '&' : '?';
+  const downloadUrl1 = `${videoUri}${separator}key=${apiKey}`;
+  const downloadRes1 = await fetch(downloadUrl1);
+  if (downloadRes1.ok) {
+    videoBuf = Buffer.from(await downloadRes1.arrayBuffer());
+  } else {
+    console.log('[Gemini Video] Download strategy 1 failed:', downloadRes1.status, '- trying alt=media');
   }
-  const videoBuf = Buffer.from(await downloadRes.arrayBuffer());
+
+  // Strategy 2: Add alt=media parameter
+  if (!videoBuf || videoBuf.length === 0) {
+    const downloadUrl2 = `${videoUri}${separator}key=${apiKey}&alt=media`;
+    const downloadRes2 = await fetch(downloadUrl2);
+    if (downloadRes2.ok) {
+      videoBuf = Buffer.from(await downloadRes2.arrayBuffer());
+    } else {
+      console.log('[Gemini Video] Download strategy 2 failed:', downloadRes2.status, '- trying header auth');
+    }
+  }
+
+  // Strategy 3: Use Authorization header
+  if (!videoBuf || videoBuf.length === 0) {
+    const downloadRes3 = await fetch(videoUri, {
+      headers: { 'x-goog-api-key': apiKey },
+    });
+    if (downloadRes3.ok) {
+      videoBuf = Buffer.from(await downloadRes3.arrayBuffer());
+    } else {
+      throw new Error(`Failed to download generated video after 3 attempts. Last status: ${downloadRes3.status}`);
+    }
+  }
+
+  if (!videoBuf || videoBuf.length === 0) {
+    throw new Error('Downloaded video is empty');
+  }
+
   const videoBase64 = videoBuf.toString('base64');
   console.log('[Gemini Video] Downloaded video, size:', videoBuf.length, 'bytes');
   return `data:video/mp4;base64,${videoBase64}`;
@@ -1568,7 +1603,11 @@ app.post('/api/angle-image', async (req, res) => {
     return res.status(400).json({ error: `Unknown angle model: ${modelId}` });
   }
 
-  const prompt = customPrompt || `Change the camera angle to ${horizontalAngle} perspective, ${verticalAngle} elevation, ${distance}. Adjust only the camera viewpoint and framing while preserving all subject details, appearance, clothing, and environment. Maintain consistent facial features, hair, and body proportions. Apply a photorealistic, high-quality rendering.`;
+  const horizLabels: Record<string, string> = { '1': 'front', '2': 'front-right', '3': 'side right', '4': 'back-right', '5': 'back', '6': 'back-left', '7': 'side left', '8': 'front-left' };
+  const vertLabels: Record<string, string> = { '0': "bird's eye view", '1': 'high angle', '2': 'eye level', '3': 'low angle' };
+  const distLabels: Record<string, string> = { '0': 'close-up shot', '1': 'medium shot', '2': 'wide shot' };
+
+  const prompt = customPrompt || `Change the camera angle to ${horizLabels[String(horizontalAngle)] || 'front'} perspective, ${vertLabels[String(verticalAngle)] || 'eye level'} elevation, ${distLabels[String(distance)] || 'medium shot'}. Adjust only the camera viewpoint and framing while preserving all subject details, appearance, clothing, and environment. Maintain consistent facial features, hair, and body proportions. Apply a photorealistic, high-quality rendering.`;
 
   try {
     const b64Image = await resolveImageToDataUrl(imageBase64);
@@ -1643,10 +1682,17 @@ async function generateWithGoogleImagen(
   if (hasImages) {
     const imgCount = (referenceImage ? 1 : 0) + (additionalImages?.length ?? 0);
     if (imgCount > 1) {
-      const personLabels = Array.from({ length: imgCount }, (_, i) => `Image ${i + 1} shows a distinct person (Person ${i + 1})`).join('. ');
-      contentParts.push({ text: `${personLabels}. Generate a photorealistic image in ${ratio} aspect ratio that includes ALL ${imgCount} people together in the same scene. Every person from every reference image MUST appear in the output — do not omit any person. Scene: ${prompt}` });
+      const personLabels = Array.from({ length: imgCount }, (_, i) => `Image ${i + 1} shows Person ${i + 1}`).join('. ');
+      contentParts.push({ text: `${personLabels}. Generate a photorealistic image in ${ratio} aspect ratio that includes ALL ${imgCount} people. STRICT IDENTITY LOCK: You MUST keep face, hair, and clothing 100% identical to the reference images. NEW SCENE: ${prompt}` });
     } else {
-      contentParts.push({ text: `Using the reference photo for identity and style consistency, generate a new image in ${ratio} aspect ratio: ${prompt}` });
+      contentParts.push({ text: `REFERENCE IMAGE ATTACHED. You MUST generate a NEW, HIGH-FIDELITY photograph of this EXACT SAME INDIVIDUAL from a new angle. 
+CRITICAL IDENTITY LOCK (100% WEIGHT):
+1. Face must be PIXEL-PERFECT IDENTICAL to the reference image in terms of bone structure, eye shape, nose shape, and lips. Do not normalize or change the face.
+2. Hair color, texture, and style must be identical to the reference.
+3. Outfit must be identical to the reference.
+4. Background: PLAIN GREY NEUTRAL STUDIO.
+5. Aspect Ratio: ${ratio}.
+NEW ANGLE: ${prompt}` });
     }
   } else {
     contentParts.push({ text: `Generate an image in ${ratio} aspect ratio: ${prompt}` });
@@ -2501,7 +2547,7 @@ async function handleTTS(req: express.Request, res: express.Response) {
 
   try {
     const result = await geminiAi.models.generateContent({
-      model: 'gemini-2.5-flash-preview-tts',
+      model: 'gemini-2.0-flash',
       contents: [{ role: 'user', parts: [{ text }] }],
       config: {
         responseModalities: ['AUDIO'],

@@ -14,7 +14,8 @@ import {
   Sparkles
 } from 'lucide-react';
 import { cn } from './utils/cn';
-import { Persona, RevenueEntry, PlannedPost } from './types';
+import { Persona, RevenueEntry, PlannedPost, Tab, NavEntry } from './types';
+import BackButton from './components/BackButton';
 import { api } from './services/apiService';
 import PersonasView from './views/PersonasView';
 import PlannerView from './views/PlannerView';
@@ -25,7 +26,6 @@ import GalleryView from './views/GalleryView';
 import LandingView from './views/LandingView';
 import PersonaBuilderView from './views/PersonaBuilderView';
 
-type Tab = 'personas' | 'create' | 'gallery' | 'assistant' | 'settings';
 
 const INTERNAL_FALLBACK_PERSONAS: Persona[] = [
   {
@@ -53,10 +53,42 @@ function App() {
     return saved !== 'true';
   });
   
-  const [activeTab, setActiveTab] = useState<Tab>(() => {
-    const saved = localStorage.getItem('ai_influencer_active_tab');
-    return (saved as Tab) || 'personas';
+  const [navStack, setNavStack] = useState<NavEntry[]>(() => {
+    const saved = localStorage.getItem('ai_influencer_nav_stack');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) {}
+    }
+    const savedTab = localStorage.getItem('ai_influencer_active_tab') as Tab;
+    return [{ view: savedTab || 'personas' }];
   });
+
+  const currentNav = navStack[navStack.length - 1];
+  const activeTab = (currentNav.view === 'persona-builder' ? 'personas' : currentNav.view) as Tab;
+
+  const pushView = useCallback((entry: NavEntry) => {
+    setNavStack(prev => {
+      const next = [...prev, entry];
+      localStorage.setItem('ai_influencer_nav_stack', JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const popView = useCallback(() => {
+    setNavStack(prev => {
+      if (prev.length <= 1) return prev;
+      const next = prev.slice(0, -1);
+      localStorage.setItem('ai_influencer_nav_stack', JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const replaceView = useCallback((entry: NavEntry) => {
+    setNavStack([entry]);
+    localStorage.setItem('ai_influencer_nav_stack', JSON.stringify([entry]));
+  }, []);
 
   const [personas, setPersonasLocal] = useState<Persona[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -211,14 +243,36 @@ function App() {
     return toIdx > fromIdx ? 1 : -1;
   };
 
+  const navActions = { push: pushView, pop: popView, replace: replaceView };
+
   const renderContent = () => {
-    switch (activeTab) {
-      case 'personas': return <PersonasView personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} selectedId={selectedPersonaId} navigateToTab={setActiveTab} />;
-      case 'create': return <CreateView persona={activePersona} personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} />;
-      case 'gallery': return <GalleryView personas={personas} activePersona={activePersona} />;
-      case 'assistant': return <AssistantView persona={activePersona} personas={personas} />;
-      case 'settings': return <SettingsView />;
-      default: return <PersonasView personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} selectedId={selectedPersonaId} navigateToTab={setActiveTab} />;
+    const view = currentNav.view;
+    const subView = currentNav.subView;
+    const params = currentNav.params;
+
+    if (view === 'persona-builder') {
+      const personaId = params?.persona?.id;
+      const livePersona = personas.find(p => p.id === personaId) || params?.persona || {};
+      return (
+        <PersonaBuilderView 
+          persona={livePersona}
+          onChange={() => {}}
+          onSave={(finalPersona) => {
+            if (params?.onSave) params.onSave(finalPersona);
+            popView();
+          }}
+          onCancel={popView}
+        />
+      );
+    }
+
+    switch (view) {
+      case 'personas': return <PersonasView personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} selectedId={selectedPersonaId} navigateToTab={(t) => replaceView({ view: t })} nav={navActions} />;
+      case 'create': return <CreateView persona={activePersona} personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} subView={subView} nav={navActions} />;
+      case 'gallery': return <GalleryView personas={personas} activePersona={activePersona} nav={navActions} />;
+      case 'assistant': return <AssistantView persona={activePersona} personas={personas} nav={navActions} />;
+      case 'settings': return <SettingsView nav={navActions} />;
+      default: return <PersonasView personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} selectedId={selectedPersonaId} navigateToTab={(t) => replaceView({ view: t })} nav={navActions} />;
     }
   };
 
@@ -288,8 +342,13 @@ function App() {
       <header className="flex-none bg-[#0B0F17]/90 backdrop-blur-xl border-b border-[var(--border-subtle)]">
         <div className="flex items-center justify-between px-6 py-2">
           
-          {/* Logo */}
+          {/* Back Button & Logo */}
           <div className="flex items-center gap-3">
+            <AnimatePresence>
+              {navStack.length > 1 && (
+                <BackButton onClick={popView} className="mr-2" />
+              )}
+            </AnimatePresence>
             <div className="w-8 h-8 rounded-lg flex flex-col items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, #00F5C2 0%, #00D4FF 100%)', boxShadow: '0 0 16px rgba(0, 245, 194, 0.4)' }}>
               <div className="w-0 h-0 border-l-[6px] border-r-[6px] border-b-[10px] border-transparent border-b-[#0B0F17]" />
             </div>
@@ -317,7 +376,7 @@ function App() {
           {/* Right Actions */}
           <div className="flex items-center gap-5">
             <button 
-              onClick={() => setActiveTab('create')}
+              onClick={() => pushView({ view: 'create' })}
               className="hidden sm:flex items-center gap-2 bg-transparent border border-[#00D4FF]/40 px-5 py-1.5 rounded-full text-sm font-bold text-white hover:bg-[#00D4FF]/10 transition-all shadow-[0_0_16px_rgba(0,212,255,0.15)] hover:shadow-[0_0_24px_rgba(0,212,255,0.3)]"
             >
               <PlusCircle size={16} className="text-[#00F5C2]" /> Create
@@ -336,23 +395,9 @@ function App() {
 
       {/* ── Content ─────────────────────────────────────────────── */}
       <main className="flex-1 overflow-y-auto relative z-10">
-        <AnimatePresence mode="wait" custom={getTabDirection(prevTabRef.current, activeTab)}>
-            <motion.div
-              key={activeTab}
-              custom={getTabDirection(prevTabRef.current, activeTab)}
-              variants={{
-                enter: (dir: number) => ({ opacity: 0, x: dir * 18, filter: 'blur(2px)' }),
-                center: { opacity: 1, x: 0, filter: 'blur(0px)' },
-                exit: (dir: number) => ({ opacity: 0, x: dir * -18, filter: 'blur(2px)' })
-              }}
-              initial="enter"
-              animate="center"
-              exit="exit"
-              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-            >
-              {renderContent()}
-            </motion.div>
-        </AnimatePresence>
+        <div className="w-full h-full">
+          {renderContent()}
+        </div>
       </main>
 
       <nav className="flex-none z-50">
@@ -366,7 +411,7 @@ function App() {
               return (
                 <motion.button
                   key={tab.id}
-                  onClick={() => { prevTabRef.current = activeTab; setActiveTab(tab.id as Tab); }}
+                  onClick={() => { prevTabRef.current = activeTab; replaceView({ view: tab.id as Tab }); }}
                   whileTap={{ scale: 0.95 }}
                   className="flex flex-col items-center gap-0 min-w-[56px] flex-1 py-0 relative"
                 >

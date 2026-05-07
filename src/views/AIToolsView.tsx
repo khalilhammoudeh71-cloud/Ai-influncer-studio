@@ -24,7 +24,7 @@ import {
   Video,
   AlertTriangle
 } from 'lucide-react';
-import { Persona } from '../types';
+import { Persona, NavActions } from '../types';
 import { api } from '../services/apiService';
 import { editImage, faceSwap, removeBackground, virtualTryOn, fetchEditModels, type ModelInfo } from '../services/imageService';
 import { processImageFile } from '../utils/imageProcessing';
@@ -40,6 +40,7 @@ interface AIToolsViewProps {
   persona: Persona;
   personas: Persona[];
   onSelectPersona: (id: string) => void;
+  nav: NavActions;
 }
 
 type ToolType = 'beautify' | 'morph' | 'muscle' | 'ink' | 'teleport' | 'canvas' | 'face-swap' | 'bg-remover' | 'virtual-tryon' | null;
@@ -110,7 +111,7 @@ const TOOLS = [
   },
 ] as const;
 
-export default function AIToolsView({ persona, personas, onSelectPersona }: AIToolsViewProps) {
+export default function AIToolsView({ persona, personas, onSelectPersona, nav }: AIToolsViewProps) {
   const [activeTool, setActiveTool] = useState<ToolType>(null);
   
   // Shared Editor State
@@ -326,7 +327,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona }: AITo
   if (!activeTool) {
     return (
       <>
-      <div className="flex-1 overflow-y-auto px-6 lg:px-12 py-8 bg-[var(--bg-base)]">
+      <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar pb-20 px-6 lg:px-12 py-8 bg-[var(--bg-base)]">
         <div className="max-w-6xl mx-auto space-y-8">
           <div>
             <h1 className="text-3xl font-extrabold tracking-tight"><span className="gradient-text">AI Tools</span></h1>
@@ -541,7 +542,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona }: AITo
   const ToolIcon = currentToolDetails?.icon || (activeTool === 'face-swap' ? ArrowLeftRight : Sparkles);
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden bg-[var(--bg-base)]">
+    <div className="flex-1 flex flex-col h-full overflow-y-auto pr-2 custom-scrollbar pb-20 bg-[var(--bg-base)]">
       {/* Header */}
       <div className="shrink-0 px-6 py-4 border-b border-[var(--border-subtle)] flex items-center justify-between bg-[var(--bg-elevated)]/50 backdrop-blur-md z-10">
         <div className="flex items-center gap-4">

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Send, Bot, ChevronDown, ImageIcon, Video, Loader2, AlertCircle, Camera, MessageSquareQuote, Copy } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { Persona } from '../types';
+import { Persona, NavActions } from '../types';
 import { ModelInfo, fetchAllModelTypes, editImage, generateVideo } from '../services/imageService';
 import { generatePersonaContent } from '../utils/personaEngine';
 import { cn } from '../utils/cn';
@@ -9,6 +9,7 @@ import { cn } from '../utils/cn';
 interface Props {
   personas: Persona[];
   persona: Persona;
+  nav: NavActions;
 }
 
 type MessageType = 'text' | 'image' | 'video' | 'loading' | 'error';
@@ -44,7 +45,7 @@ function uid(): string {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 
-export default function AssistantView({ personas, persona: propActivePersona }: Props) {
+export default function AssistantView({ personas, persona: propActivePersona, nav }: Props) {
   const [selectedPersonaId, setSelectedPersonaId] = useState(propActivePersona.id);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Copy,
   Sparkles,
@@ -27,13 +27,25 @@ import {
   ChevronsRight,
   UserRound,
   ChevronRight,
+  MessageSquare,
   RefreshCw,
   X,
+  Type,
+  Mic,
+  Calendar,
+  Share2,
+  Plus,
+  Bell,
+  Search,
+  Play,
+  Pause,
+  Volume2,
 } from 'lucide-react';
-import { Persona, GeneratedImage } from '../types';
+import { Persona, GeneratedImage, NavActions, Tab, NavEntry } from '../types';
 import PlannerView from './PlannerView';
 import VoiceView from './VoiceView';
 import AIToolsView from './AIToolsView';
+import VideoSamplePreview from '../components/VideoSamplePreview';
 import {
   generateImage,
   generateVideo,
@@ -48,8 +60,14 @@ import {
   canUseReference,
   type ModelInfo,
   type GenerateImageResult,
+  TTS_VOICES,
+  type TTSVoice,
+  fetchElevenLabsVoices,
+  textToSpeech,
 } from '../services/imageService';
 import { api } from '../services/apiService';
+import toast from 'react-hot-toast';
+import { useRef } from 'react';
 
 type CreateMode = 'angle' | 'image' | 'video' | 'talking-avatar' | 'voice' | 'ai-tools' | 'planner' | 'prompt' | 'transcript' | 'multi-scene';
 
@@ -76,6 +94,8 @@ interface CreateViewProps {
   personas: Persona[];
   setPersonas: (personas: Persona[]) => void;
   onSelectPersona: (id: string) => void;
+  subView?: string;
+  nav: NavActions;
 }
 
 const CUSTOM = 'None';
@@ -84,14 +104,14 @@ const OUTFITS = [CUSTOM, 'Casual Chic', 'Luxury Evening', 'Business Professional
 const FRAMING = [CUSTOM, 'Portrait', 'Selfie Style', 'Full Body', 'Half Body', 'Candid', 'Cinematic'];
 const MOODS = [CUSTOM, 'Confident', 'Friendly', 'Thoughtful', 'Playful', 'Professional', 'Seductive'];
 
-const MODE_CONFIG: { id: CreateMode; label: string; icon: typeof ImageIcon; gradient: string; ringClass: string; desc: string }[] = [
-  { id: 'angle', label: 'Identity Sheet', icon: Camera, gradient: 'from-cyan-600 to-sky-500', ringClass: 'focus:ring-cyan-500', desc: 'Generate 9-angle identity sheets' },
+const MODE_CONFIG: { id: CreateMode; label: string; icon: any; gradient: string; ringClass: string; desc: string }[] = [
+  { id: 'angle', label: 'Camera Angles', icon: Camera, gradient: 'from-cyan-600 to-sky-500', ringClass: 'focus:ring-cyan-500', desc: 'Generate 9-angle identity sheets' },
   { id: 'image', label: 'Generate Images', icon: ImageIcon, gradient: 'from-purple-600 to-blue-600', ringClass: 'focus:ring-purple-500', desc: 'Create persona-consistent images' },
   { id: 'video', label: 'Generate Videos', icon: Video, gradient: 'from-pink-600 to-orange-500', ringClass: 'focus:ring-pink-500', desc: 'Turn images into video scenes' },
   { id: 'talking-avatar', label: 'Talking Avatar', icon: UserRound, gradient: 'from-emerald-600 to-teal-500', ringClass: 'focus:ring-emerald-500', desc: 'Speaking avatar with voice' },
-  { id: 'voice', label: 'Voice', icon: Wand2, gradient: 'from-amber-500 to-orange-500', ringClass: 'focus:ring-amber-500', desc: 'Generate audio and clone voice' },
-  { id: 'ai-tools', label: 'AI Tools', icon: Cpu, gradient: 'from-violet-600 to-purple-500', ringClass: 'focus:ring-violet-500', desc: 'Edit and enhance images' },
-  { id: 'planner', label: 'Content Plan', icon: FileText, gradient: 'from-fuchsia-600 to-pink-500', ringClass: 'focus:ring-fuchsia-500', desc: 'Schedule posts and campaigns' },
+  { id: 'voice', label: 'Voice', icon: Mic, gradient: 'from-amber-500 to-orange-500', ringClass: 'focus:ring-amber-500', desc: 'Generate audio and clone voice' },
+  { id: 'ai-tools', label: 'AI Tools', icon: Sparkles, gradient: 'from-violet-600 to-purple-500', ringClass: 'focus:ring-violet-500', desc: 'Edit and enhance images' },
+  { id: 'planner', label: 'Content Plan', icon: Calendar, gradient: 'from-fuchsia-600 to-pink-500', ringClass: 'focus:ring-fuchsia-500', desc: 'Schedule posts and campaigns' },
 ];
 
 const QUICK_STYLES = [
@@ -140,24 +160,28 @@ const RESOLUTION_OPTIONS: Record<string, { value: 'standard' | 'hd'; label: stri
   default:   [{ value: 'standard', label: 'Standard' }, { value: 'hd', label: 'HD' }],
 };
 
-export default function CreateView({ persona, personas, setPersonas, onSelectPersona }: CreateViewProps) {
-  const [localPersonaId, setLocalPersonaId] = useState<string>(persona.id);
-  const [naturalLook, setNaturalLook] = useState(persona.naturalLook ?? true);
-  const [identityLock, setIdentityLock] = useState(persona.identityLock ?? true);
+export default function CreateView({ persona, personas, setPersonas, onSelectPersona, subView, nav }: CreateViewProps) {
+  const initialPersona = persona || (personas && personas.length > 0 ? personas[0] : null);
+  const audioPreviewRef = useRef<HTMLAudioElement | null>(null);
+
+
+  const [localPersonaId, setLocalPersonaId] = useState<string>(initialPersona?.id || 'none');
+  const [naturalLook, setNaturalLook] = useState(initialPersona?.naturalLook ?? true);
+  const [identityLock, setIdentityLock] = useState(initialPersona?.identityLock ?? true);
 
   const activePersona = useMemo(() => {
     if (localPersonaId === 'none') return ANONYMOUS_PERSONA;
-    return personas.find(p => p.id === localPersonaId) || persona;
-  }, [localPersonaId, personas, persona]);
+    return personas.find(p => p.id === localPersonaId) || initialPersona;
+  }, [localPersonaId, personas, initialPersona]);
 
   useEffect(() => {
-    if (localPersonaId !== 'none') setLocalPersonaId(persona.id);
-  }, [persona.id]);
+    if (localPersonaId !== 'none' && initialPersona) setLocalPersonaId(initialPersona.id);
+  }, [initialPersona?.id]);
 
   useEffect(() => {
-    setNaturalLook(activePersona.naturalLook ?? true);
-    setIdentityLock(activePersona.identityLock ?? true);
-  }, [activePersona.id]);
+    setNaturalLook(activePersona?.naturalLook ?? true);
+    setIdentityLock(activePersona?.identityLock ?? true);
+  }, [activePersona?.id]);
 
   const handleNaturalLookToggle = () => {
     const next = !naturalLook;
@@ -179,7 +203,19 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     }
   };
 
-  const [mode, setMode] = useState<CreateMode>('image');
+  const [mode, setMode] = useState<CreateMode>((subView as CreateMode) || 'image');
+
+  useEffect(() => {
+    if (subView && subView !== mode) {
+      setMode(subView as CreateMode);
+    }
+  }, [subView]);
+
+  const updateMode = (newMode: CreateMode) => {
+    if (newMode === mode) return;
+    setMode(newMode);
+    nav.push({ view: 'create', subView: newMode });
+  };
 
   const [imagePrompt, setImagePrompt] = useState('');
   const [selectedEnv, setSelectedEnv] = useState(ENVIRONMENTS[0]);
@@ -240,9 +276,9 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
   const [angleSourceImage, setAngleSourceImage] = useState<string | null>(null);
   const [angleSourceImageName, setAngleSourceImageName] = useState<string | null>(null);
-  const [angleHorizontal, setAngleHorizontal] = useState('front-facing');
-  const [angleVertical, setAngleVertical] = useState('eye level');
-  const [angleDistance, setAngleDistance] = useState('medium shot');
+  const [angleHorizontal, setAngleHorizontal] = useState(1);
+  const [angleVertical, setAngleVertical] = useState(2);
+  const [angleDistance, setAngleDistance] = useState(1);
   const [angleModel, setAngleModel] = useState(ANGLE_MODELS[0].id);
   const [angleResult, setAngleResult] = useState<{ imageUrl: string; model: string } | null>(null);
 
@@ -251,10 +287,173 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
   const [selectedAspectRatio, setSelectedAspectRatio] = useState('1:1');
   const [selectedResolution, setSelectedResolution] = useState<'standard' | 'hd'>('standard');
+  const audioUploadRef = useRef<HTMLInputElement | null>(null);
+  const [uploadedAudio, setUploadedAudio] = useState<{ url: string; name: string } | null>(null);
   const [generatedFeed, setGeneratedFeed] = useState<GeneratedEntry[]>([]);
   const [focusedEntryId, setFocusedEntryId] = useState<string | null>(null);
   const [excludePersonaRef, setExcludePersonaRef] = useState(false);
   const [enhancingField, setEnhancingField] = useState<string | null>(null);
+
+  // Talking Avatar specific state
+  const [avatarScript, setAvatarScript] = useState('Hey everyone! Welcome back to my channel. In today\'s video, I\'m sharing my top 5 productivity tips that have completely transformed my daily routine. Let\'s dive in!');
+  const [selectedAvatarVoice, setSelectedAvatarVoice] = useState(TTS_VOICES[3].id); // Kore default
+  const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
+  const [allVoices, setAllVoices] = useState<TTSVoice[]>(TTS_VOICES);
+  const [playingPreviewId, setPlayingPreviewId] = useState<string | null>(null);
+
+  const handleAudioUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 10 * 1024 * 1024) {
+        toast.error('File too large (max 10MB)');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const url = event.target?.result as string;
+        setUploadedAudio({ url, name: file.name });
+        setSelectedAvatarVoice('custom-upload');
+        toast.success(`Uploaded: ${file.name}`);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  if (!initialPersona) {
+    return (
+      <div className="flex-1 flex flex-col h-full overflow-hidden bg-[var(--bg-base)]">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-8 h-8 text-emerald-500 animate-spin" />
+          <p className="text-emerald-500/60 font-bold uppercase tracking-widest text-xs">Initializing Persona...</p>
+        </div>
+      </div>
+    );
+  }
+
+  useEffect(() => {
+    fetchElevenLabsVoices().then(elVoices => {
+      if (elVoices.length > 0) {
+        setAllVoices([...TTS_VOICES, ...elVoices]);
+      }
+    });
+  }, []);
+
+  const handleVoicePreview = async (e: React.MouseEvent, voice: TTSVoice) => {
+    e.stopPropagation();
+    
+    // Stop existing
+    if (audioPreviewRef.current) {
+      audioPreviewRef.current.pause();
+      audioPreviewRef.current.onended = null;
+    }
+
+    if (playingPreviewId === voice.id) {
+      setPlayingPreviewId(null);
+      return;
+    }
+
+    const playAudio = (url: string) => {
+      try {
+        const audio = new Audio(url);
+        audio.onended = () => {
+          setPlayingPreviewId(null);
+          audioPreviewRef.current = null;
+        };
+        audioPreviewRef.current = audio;
+        const playPromise = audio.play();
+        if (playPromise !== undefined) {
+          playPromise.catch(error => {
+            console.error('Playback error:', error);
+            if (error.name !== 'AbortError') {
+              toast.error('Preview failed to play');
+            }
+            setPlayingPreviewId(null);
+          });
+        }
+        setPlayingPreviewId(voice.id);
+      } catch (err) {
+        console.error('Audio creation error:', err);
+        toast.error('Could not initialize audio');
+        setPlayingPreviewId(null);
+      }
+    };
+
+    if (voice.previewUrl) {
+      playAudio(voice.previewUrl);
+    } else {
+      // Generate short preview for Gemini/OpenAI
+      const t = toast.loading(`Generating preview for ${voice.name}...`);
+      try {
+        setPlayingPreviewId(voice.id);
+        const { audioUrl } = await textToSpeech({
+          text: `Hi, I'm ${voice.name}. This is my voice.`,
+          voiceName: voice.id,
+          engine: voice.engine,
+          voiceId: voice.id
+        });
+        toast.dismiss(t);
+        playAudio(audioUrl);
+      } catch (err) {
+        toast.dismiss(t);
+        toast.error('Failed to generate preview');
+        setPlayingPreviewId(null);
+      }
+    }
+  };
+
+  const handleGenerateTalkingAvatar = async () => {
+    if (isGenerating) return;
+    setIsGenerating(true);
+    setGlobalError(null);
+    
+    const t = toast.loading('Initializing Talking Avatar pipeline...');
+    try {
+      const portraitImage = activePersona.avatar || ''; 
+      
+      let audioUrl = '';
+      if (selectedAvatarVoice === 'custom-upload' && uploadedAudio) {
+        audioUrl = uploadedAudio.url;
+        toast.loading('Processing uploaded audio...', { id: t });
+      } else {
+        toast.loading('Generating voice from script...', { id: t });
+        const voiceObj = allVoices.find(v => v.id === selectedAvatarVoice);
+        const ttsRes = await textToSpeech({
+          text: avatarScript,
+          voiceName: selectedAvatarVoice,
+          engine: voiceObj?.engine || 'gemini',
+          voiceId: selectedAvatarVoice
+        });
+        audioUrl = ttsRes.audioUrl;
+      }
+
+      toast.loading('Animating avatar face (this may take a minute)...', { id: t });
+      const result = await generateTalkingHead({
+        portraitImage,
+        audioUrl,
+        script: avatarScript,
+        voiceName: selectedAvatarVoice
+      });
+
+      toast.success('Talking Avatar ready!', { id: t });
+      // In a real app, we would add this to history or show it in the preview
+      // For now, we update the video result if needed or just show success
+      if (result.videoUrl) {
+        setVideoResult({ videoUrl: result.videoUrl, model: result.model });
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error(err instanceof Error ? err.message : 'Generation failed', { id: t });
+      setGlobalError(err instanceof Error ? err.message : 'Generation failed');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+  const [selectedAvatarSource, setSelectedAvatarSource] = useState('persona-1');
+  const [selectedAvatarTone, setSelectedAvatarTone] = useState('Professional');
+  const [selectedAvatarFraming, setSelectedAvatarFraming] = useState('Medium Shot');
+  const [selectedAvatarDuration, setSelectedAvatarDuration] = useState('30s (approx)');
+  const [isGeneratingAvatar, setIsGeneratingAvatar] = useState(false);
+  const [avatarResult, setAvatarResult] = useState<{ url: string; thumbnail: string } | null>(null);
 
   const refPersonaImage = refPersonaId !== 'none' ? (personas.find(p => p.id === refPersonaId)?.referenceImage ?? null) : null;
   const allRefImages: string[] = [
@@ -887,58 +1086,61 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   );
 
   const renderImageMode = () => (
-    <div className="flex flex-col lg:flex-row gap-6 items-start">
-
+    <div className="grid grid-cols-1 lg:grid-cols-[440px_1fr] gap-4 items-start">
       {/* ══ LEFT COLUMN: Configuration (Studio Sidebar) ══ */}
-      <div className="w-full lg:w-[440px] space-y-4 shrink-0 bg-[var(--bg-elevated)]/25 p-5 rounded-2xl border border-[var(--border-default)] select-none">
+      <div className="space-y-4 h-full overflow-y-auto pr-2 custom-scrollbar pb-20">
         
-        {/* Creative Studio Prompt */}
+        {/* AI Model Select - MOVED TO TOP */}
+        <div className="space-y-4">
+          {renderModelSelect(selectedModel, setSelectedModel, groupedModels, true)}
+          {selectedModelInfo && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-300 border border-purple-500/20">{selectedModelInfo.provider}</span>
+              {selectedModelInfo.isIdentityModel && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-300 border border-violet-500/20 flex items-center gap-0.5">★ Face-consistent</span>}
+              {selectedModelInfo.price > 0 && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20">${selectedModelInfo.price.toFixed(3)} per image</span>}
+            </div>
+          )}
+        </div>
+
+        {/* Prompt Field - MOVED BELOW MODEL */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <label className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase tracking-wider flex items-center gap-1">
-              Creative Prompt <Sparkles size={12} className="text-[#00D4FF]" />
+            <label className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase tracking-wider flex items-center gap-1.5">
+              <Type className="w-3 h-3" /> Prompt
             </label>
-            {activeVersion?.promptUsed && (
+            <div className="flex items-center gap-2">
               <button
-                onClick={() => {
-                  navigator.clipboard.writeText(activeVersion.promptUsed);
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 2000);
-                }}
-                className="text-[10px] font-bold text-purple-400 hover:text-purple-300 transition-colors flex items-center gap-1"
+                type="button"
+                onClick={() => handleEnhanceField(imagePrompt, setImagePrompt, 'imagePrompt')}
+                disabled={!imagePrompt.trim() || !!enhancingField}
+                className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-400 hover:bg-purple-500/20 hover:text-purple-300 transition-all text-[9px] font-black tracking-tighter disabled:opacity-30"
               >
-                {copied ? <Check size={11} /> : <Copy size={11} />} {copied ? 'Copied' : 'Copy'}
+                {enhancingField === 'imagePrompt' ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Sparkles className="w-2.5 h-2.5" />}
+                ENHANCE
               </button>
-            )}
+              {activeVersion?.promptUsed && (
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(activeVersion.promptUsed);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                  }}
+                  className="text-[10px] font-bold text-purple-400 hover:text-purple-300 transition-colors flex items-center gap-1"
+                >
+                  {copied ? <Check size={11} /> : <Copy size={11} />} {copied ? 'Copied' : 'Copy'}
+                </button>
+              )}
+            </div>
           </div>
           <div className="relative">
             <textarea
               value={imagePrompt}
               onChange={e => setImagePrompt(e.target.value)}
               placeholder="Describe your AI vision in detail..."
-              className="w-full bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 pr-10 text-sm text-white placeholder-[var(--text-muted)] resize-none h-24 outline-none focus:ring-2 focus:ring-purple-500"
+              className="w-full bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white placeholder-[var(--text-muted)] resize-none h-24 outline-none focus:ring-2 focus:ring-purple-500"
             />
-            <button
-              type="button"
-              onClick={() => handleEnhanceField(imagePrompt, setImagePrompt, 'imagePrompt')}
-              disabled={!imagePrompt.trim() || !!enhancingField}
-              className="absolute top-2.5 right-2.5 p-1.5 rounded-lg bg-[var(--bg-overlay)] hover:bg-purple-500/30 text-purple-400 hover:text-purple-300 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-              title="Enhance prompt with AI"
-            >
-              {enhancingField === 'imagePrompt' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
-            </button>
           </div>
         </div>
-
-        {/* AI Model Select */}
-        {renderModelSelect(selectedModel, setSelectedModel, groupedModels, true)}
-        {selectedModelInfo && (
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-300 border border-purple-500/20">{selectedModelInfo.provider}</span>
-            {selectedModelInfo.isIdentityModel && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-300 border border-violet-500/20 flex items-center gap-0.5">★ Face-consistent</span>}
-            {selectedModelInfo.price > 0 && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20">${selectedModelInfo.price.toFixed(3)} per image</span>}
-          </div>
-        )}
 
         {/* Aspect Ratio Selector */}
         <div className="space-y-2">
@@ -1034,7 +1236,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       </div>
 
       {/* ══ RIGHT COLUMN: Preview Canvas & Workspace ══ */}
-      <div className="flex-1 w-full bg-[var(--bg-elevated)]/25 p-5 rounded-2xl border border-[var(--border-default)] flex flex-col gap-4 relative min-h-[500px]">
+      <div className="h-full overflow-y-auto pr-2 custom-scrollbar pb-20 space-y-4">
 
         {/* Canvas / Main focused Preview area */}
         <div className="flex-1 min-h-[360px] max-h-[540px] flex flex-col justify-center bg-[#0B0F17]/40 border border-[#334155]/60 rounded-xl overflow-hidden relative shadow-inner group">
@@ -1070,10 +1272,12 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               </div>
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-center gap-3 opacity-60">
-              <ImageIcon className="w-14 h-14 text-[var(--text-muted)] stroke-[1.5]" />
-              <p className="text-xs font-bold text-[var(--text-muted)] tracking-wider">Generated Image Preview</p>
-              <span className="text-[10px] text-[var(--text-tertiary)] max-w-[200px]">Prompt something and generate variations to start.</span>
+            <div className="relative w-full h-full flex items-center justify-center min-h-[300px]">
+              <img src="/studio_preview_default.jpg" alt="Sample Preview" className="max-w-full max-h-full rounded-2xl object-cover object-[35%_center] shadow-2xl select-none" />
+              <div className="absolute top-2 left-2 px-3 py-1 bg-black/75 backdrop-blur-md rounded-xl border border-white/10 flex items-center gap-1.5 shadow-xl select-none">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span className="text-[10px] text-emerald-400 font-extrabold tracking-wide uppercase select-none">Sample Preview</span>
+              </div>
             </div>
           )}
         </div>
@@ -1160,21 +1364,45 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   );
 
   const renderVideoMode = () => (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-
+    <div className="grid grid-cols-1 lg:grid-cols-[440px_1fr] gap-4 items-start">
       {/* ══ LEFT COLUMN — Controls ══ */}
-      <div className="space-y-4">
+      <div className="space-y-4 h-full overflow-y-auto pr-2 custom-scrollbar pb-20">
         {renderVideoModelSelect()}
 
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase tracking-wider flex items-center gap-1.5">
+              <Type className="w-3 h-3" /> Prompt
+            </label>
+            <button
+              type="button"
+              onClick={() => handleEnhanceField(videoPrompt, setVideoPrompt, 'videoPrompt')}
+              disabled={!videoPrompt.trim() || !!enhancingField}
+              className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-pink-500/10 border border-pink-500/20 text-pink-400 hover:bg-pink-500/20 hover:text-pink-300 transition-all text-[9px] font-black tracking-tighter disabled:opacity-30"
+            >
+              {enhancingField === 'videoPrompt' ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Sparkles className="w-2.5 h-2.5" />}
+              ENHANCE
+            </button>
+          </div>
+          <div className="relative">
+            <textarea
+              value={videoPrompt}
+              onChange={e => setVideoPrompt(e.target.value)}
+              placeholder="Describe the video you want to create..."
+              className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white placeholder-[var(--text-muted)] resize-none h-28 outline-none focus:ring-2 focus:ring-pink-500"
+            />
+          </div>
+        </div>
+
         <div className="space-y-1.5">
-          <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase flex items-center gap-1.5">
+          <label className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase flex items-center gap-1.5">
             <ImageIcon className="w-3 h-3" /> {isI2VModel ? 'Source Image' : 'Reference Image'}
-            {isI2VModel && <span className="text-rose-400 text-[10px] font-normal normal-case ml-0.5">required</span>}
-            {!isI2VModel && <span className="text-[var(--text-muted)] text-[10px] font-normal normal-case ml-0.5">optional</span>}
+            {isI2VModel && <span className="text-rose-400 text-[9px] font-normal normal-case ml-0.5">(required)</span>}
+            {!isI2VModel && <span className="text-[var(--text-muted)] text-[9px] font-normal normal-case ml-0.5">(optional)</span>}
           </label>
-          <div className="flex gap-2 items-start">
+          <div className="flex gap-3 items-start">
             {effectiveVideoSourceImage && (
-              <img src={effectiveVideoSourceImage} alt="" className="w-14 h-14 rounded-xl object-cover shrink-0 border border-[var(--border-default)]" />
+              <img src={effectiveVideoSourceImage} alt="" className="w-16 h-16 rounded-xl object-cover shrink-0 border border-[var(--border-default)] shadow-sm" />
             )}
             <div className="flex-1 space-y-1.5">
               <div className="relative">
@@ -1192,53 +1420,32 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               </div>
               <label className="flex items-center gap-2 px-3 py-1.5 bg-[var(--bg-elevated)] border border-dashed border-[var(--border-strong)] rounded-xl cursor-pointer hover:bg-[var(--bg-overlay)]/50 transition-colors">
                 <Upload className="w-3.5 h-3.5 text-[var(--text-secondary)] shrink-0" />
-                <span className="text-xs text-[var(--text-secondary)] truncate">{videoSourceImageName || 'Upload image'}</span>
+                <span className="text-[10px] text-[var(--text-secondary)] truncate">{videoSourceImageName || 'Upload custom image'}</span>
                 <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload(setVideoSourceImage, setVideoSourceImageName)} />
               </label>
             </div>
           </div>
           {effectiveVideoSourceImage && (
-            <button onClick={() => { setVideoSourcePersonaId('none'); setVideoSourceImage(null); setVideoSourceImageName(null); }} className="text-[10px] text-[var(--text-tertiary)] hover:text-rose-400 transition-colors">
-              Clear image
+            <button onClick={() => { setVideoSourcePersonaId('none'); setVideoSourceImage(null); setVideoSourceImageName(null); }} className="text-[9px] font-bold text-[var(--text-tertiary)] hover:text-rose-400 transition-colors flex items-center gap-1">
+              <X size={10} /> Clear image
             </button>
           )}
-        </div>
-
-        <div className="relative">
-          <textarea
-            value={videoPrompt}
-            onChange={e => setVideoPrompt(e.target.value)}
-            placeholder="Describe the video you want to create..."
-            className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 pr-10 text-sm text-white placeholder-[var(--text-muted)] resize-none h-28 outline-none focus:ring-2 focus:ring-pink-500"
-          />
-          <button
-            type="button"
-            onClick={() => handleEnhanceField(videoPrompt, setVideoPrompt, 'videoPrompt')}
-            disabled={!videoPrompt.trim() || !!enhancingField}
-            className="absolute top-2 right-2 p-1.5 rounded-lg bg-[var(--bg-overlay)] hover:bg-pink-500/30 text-pink-400 hover:text-pink-300 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-            title="Enhance prompt with AI"
-          >
-            {enhancingField === 'videoPrompt' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
-          </button>
         </div>
 
         <button
           onClick={handleVideoGenerate}
           disabled={isGenerating || !selectedVideoModel || !videoPrompt.trim()}
-          className="w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-pink-600 to-orange-500 hover:from-pink-500 hover:to-orange-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+          className="w-full py-3.5 rounded-xl font-black text-xs uppercase tracking-widest bg-gradient-to-r from-pink-600 to-orange-500 hover:from-pink-500 hover:to-orange-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-lg shadow-pink-500/20 active:scale-[0.98]"
         >
           {isGenerating ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating Video...</> : <><Video className="w-4 h-4" /> Generate Video</>}
         </button>
       </div>
 
       {/* ══ RIGHT COLUMN — Output ══ */}
-      <div className="space-y-3 lg:sticky lg:top-4">
+      <div className="h-full overflow-y-auto pr-2 custom-scrollbar pb-20 space-y-4">
         <div className="aspect-video rounded-2xl bg-[var(--bg-base)] border border-[var(--border-subtle)] overflow-hidden relative">
           {isGenerating ? (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-              <Loader2 className="w-10 h-10 animate-spin text-pink-500" />
-              <p className="text-xs text-[var(--text-tertiary)] animate-pulse">Generating video... this may take a minute</p>
-            </div>
+            <VideoSamplePreview isLoading={isGenerating} loadingText="Generating cinematic video…" />
           ) : videoResult?.videoUrl ? (
             <>
               <video src={videoResult.videoUrl} controls className="absolute inset-0 w-full h-full object-contain" />
@@ -1247,10 +1454,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               </div>
             </>
           ) : (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-              <Film className="w-10 h-10 text-[var(--text-muted)] opacity-25" />
-              <p className="text-xs text-[var(--text-muted)]">Your video will appear here</p>
-            </div>
+            <VideoSamplePreview />
           )}
         </div>
 
@@ -1470,7 +1674,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                         <button onClick={() => copyPrompt(p, i)} className="text-xs text-[var(--text-secondary)] hover:text-white font-semibold transition-colors flex items-center gap-1">
                           {copiedPromptIndex === i ? <><Check className="w-3 h-3 text-emerald-400" /> Copied!</> : <><Copy className="w-3 h-3" /> Copy</>}
                         </button>
-                        <button onClick={() => { setImagePrompt(p); setMode('image'); setGlobalError(null); }} className="text-xs text-emerald-400 hover:text-emerald-300 font-bold transition-colors flex items-center gap-1">
+                        <button onClick={() => { setImagePrompt(p); updateMode('image'); setGlobalError(null); }} className="text-xs text-emerald-400 hover:text-emerald-300 font-bold transition-colors flex items-center gap-1">
                           <ChevronsRight className="w-3 h-3" /> Use this prompt
                         </button>
                       </div>
@@ -1548,27 +1752,27 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   };
 
   const HORIZONTAL_POSITIONS = [
-    { id: 'front-facing',   label: 'Front',       row: 0, col: 1 },
-    { id: 'front-right',    label: 'FR',           row: 0, col: 2 },
-    { id: 'side right',     label: 'Right',        row: 1, col: 2 },
-    { id: 'back-right',     label: 'BR',           row: 2, col: 2 },
-    { id: 'back-facing',    label: 'Back',         row: 2, col: 1 },
-    { id: 'back-left',      label: 'BL',           row: 2, col: 0 },
-    { id: 'side left',      label: 'Left',         row: 1, col: 0 },
-    { id: 'front-left',     label: 'FL',           row: 0, col: 0 },
+    { id: 1,  label: 'Front',       row: 0, col: 1 },
+    { id: 2,  label: 'FR',           row: 0, col: 2 },
+    { id: 3,  label: 'Right',        row: 1, col: 2 },
+    { id: 4,  label: 'BR',           row: 2, col: 2 },
+    { id: 5,  label: 'Back',         row: 2, col: 1 },
+    { id: 6,  label: 'BL',           row: 2, col: 0 },
+    { id: 7,  label: 'Left',         row: 1, col: 0 },
+    { id: 8,  label: 'FL',           row: 0, col: 0 },
   ];
 
   const VERTICAL_POSITIONS = [
-    { id: 'bird\'s eye view', label: "Bird's Eye" },
-    { id: 'high angle',       label: 'High Angle'  },
-    { id: 'eye level',        label: 'Eye Level'   },
-    { id: 'low angle',        label: 'Low Angle'   },
+    { id: 0, label: "Bird's Eye" },
+    { id: 1, label: 'High Angle'  },
+    { id: 2, label: 'Eye Level'   },
+    { id: 3, label: 'Low Angle'   },
   ];
 
   const DISTANCE_OPTIONS = [
-    { id: 'close-up shot',  label: 'Close-Up'     },
-    { id: 'medium shot',    label: 'Medium Shot'  },
-    { id: 'wide shot',      label: 'Wide Shot'    },
+    { id: 0,  label: 'Close-Up'     },
+    { id: 1,  label: 'Medium Shot'  },
+    { id: 2,  label: 'Wide Shot'    },
   ];
 
   const renderAngleMode = () => {
@@ -1770,65 +1974,511 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     );
   };
 
+
+  const renderTalkingAvatarMode = () => {
+    return (
+      <div className="grid grid-cols-1 lg:grid-cols-[440px_1fr] gap-4 items-start">
+        {/* ══ LEFT COLUMN: Configuration ══ */}
+        <div className="space-y-4 h-full overflow-y-auto pr-2 custom-scrollbar pb-20">
+          
+          {/* 1. ACTIVE PERSONA */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center text-[10px] font-bold text-emerald-400 border border-emerald-500/30">1</div>
+              <label className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase tracking-widest">Active Persona</label>
+            </div>
+            <div className="glass-card p-4 flex items-center justify-between border-emerald-500/20">
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <img 
+                    src={activePersona.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150"} 
+                    className="w-12 h-12 rounded-xl object-cover ring-2 ring-emerald-500/20" 
+                    alt="Persona" 
+                  />
+                  <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-[#0B0F17] flex items-center justify-center">
+                    <Check className="w-2.5 h-2.5 text-white" />
+                  </div>
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">{activePersona.name || "New Persona"} — Lifestyle</h3>
+                  <p className="text-[10px] text-[var(--text-tertiary)] font-medium">Confident • Modern • Relatable</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <select
+                    value={localPersonaId}
+                    onChange={e => {
+                      const v = e.target.value;
+                      setLocalPersonaId(v);
+                      if (v !== 'none') onSelectPersona(v);
+                    }}
+                    className="opacity-0 absolute inset-0 cursor-pointer"
+                  >
+                    <option value="none">None — Custom</option>
+                    {personas.map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                  <button className="p-2 bg-white/5 border border-white/10 rounded-xl text-[var(--text-tertiary)] hover:text-white transition-colors">
+                    <ChevronDown className="w-5 h-5" />
+                  </button>
+                </div>
+                <button className="p-2 bg-white/5 border border-white/10 rounded-xl text-[var(--text-tertiary)] hover:text-white transition-colors">
+                  <RefreshCw className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* 2. AVATAR SOURCE / REFERENCE */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center text-[10px] font-bold text-emerald-400 border border-emerald-500/30">2</div>
+              <label className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase tracking-widest">Avatar Source / Reference</label>
+            </div>
+            <div className="grid grid-cols-5 gap-3">
+              <button className="aspect-square flex flex-col items-center justify-center gap-1.5 glass-card border-dashed border-white/20 bg-white/5 hover:bg-white/10 transition-colors">
+                <Upload className="w-5 h-5 text-emerald-400" />
+                <div className="text-center">
+                  <div className="text-[9px] font-bold text-white">Upload Image</div>
+                  <div className="text-[7px] text-[var(--text-muted)]">JPG, PNG, WEBP</div>
+                </div>
+              </button>
+              <button className="aspect-square flex flex-col items-center justify-center gap-1.5 glass-card bg-white/5 hover:bg-white/10 transition-colors">
+                <Sparkles className="w-5 h-5 text-purple-400" />
+                <div className="text-center">
+                  <div className="text-[9px] font-bold text-white">AI Generate</div>
+                  <div className="text-[7px] text-[var(--text-muted)]">Create from text</div>
+                </div>
+              </button>
+              {[1, 2].map((i) => (
+                <button 
+                  key={i}
+                  onClick={() => setSelectedAvatarSource(`persona-${i}`)}
+                  className={`aspect-square rounded-2xl overflow-hidden border-2 transition-all relative group ${selectedAvatarSource === `persona-${i}` ? 'border-emerald-500' : 'border-transparent'}`}
+                >
+                  <img src={activePersona.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150"} className="w-full h-full object-cover" alt={`Persona Source ${i}`} />
+                  {selectedAvatarSource === `persona-${i}` && (
+                    <div className="absolute inset-0 bg-emerald-500/10" />
+                  )}
+                </button>
+              ))}
+              <button className="aspect-square flex flex-col items-center justify-center glass-card bg-white/5 hover:bg-white/10 transition-colors">
+                <div className="text-[14px] text-[var(--text-muted)] font-bold">•••</div>
+                <div className="text-[9px] font-bold text-white">More</div>
+              </button>
+            </div>
+          </div>
+
+          {/* 3. SCRIPT */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center text-[10px] font-bold text-emerald-400 border border-emerald-500/30">3</div>
+              <label className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase tracking-widest">Script</label>
+            </div>
+            <div className="relative">
+              <textarea
+                value={avatarScript}
+                onChange={e => setAvatarScript(e.target.value)}
+                className="w-full h-32 glass-card p-4 text-xs text-white placeholder-white/20 resize-none outline-none focus:border-emerald-500/50"
+                placeholder="Type your script here..."
+              />
+              <div className="absolute bottom-3 right-3 flex items-center gap-3">
+                <span className="text-[9px] font-bold text-white/40 tabular-nums">{avatarScript.length} / 2000</span>
+                <button 
+                  onClick={() => handleEnhanceField(avatarScript, setAvatarScript, 'avatarScript')}
+                  className="p-1.5 bg-emerald-500/20 border border-emerald-500/40 rounded-lg text-emerald-400 hover:bg-emerald-500/30 transition-all"
+                >
+                  {enhancingField === 'avatarScript' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* 4. VOICE */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center text-[10px] font-bold text-emerald-400 border border-emerald-500/30">4</div>
+              <label className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase tracking-widest">Voice</label>
+            </div>
+            <div className="flex gap-2 items-center flex-wrap">
+              <input
+                type="file"
+                ref={audioUploadRef}
+                onChange={handleAudioUpload}
+                accept="audio/*"
+                className="hidden"
+              />
+              <button
+                onClick={() => audioUploadRef.current?.click()}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border flex items-center gap-2 ${
+                  selectedAvatarVoice === 'custom-upload'
+                    ? 'bg-emerald-500/20 border-emerald-500/50 text-white'
+                    : 'glass-card border-white/5 text-[var(--text-muted)] hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <Mic className={`w-3.5 h-3.5 ${selectedAvatarVoice === 'custom-upload' ? 'text-emerald-400' : ''}`} />
+                {uploadedAudio ? uploadedAudio.name : 'Upload Audio'}
+                {uploadedAudio && selectedAvatarVoice === 'custom-upload' && (
+                  <div 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (playingPreviewId === 'custom-upload') {
+                        audioPreviewRef.current?.pause();
+                        setPlayingPreviewId(null);
+                      } else {
+                        const audio = new Audio(uploadedAudio.url);
+                        audio.onended = () => {
+                          setPlayingPreviewId(null);
+                          audioPreviewRef.current = null;
+                        };
+                        audioPreviewRef.current = audio;
+                        audio.play();
+                        setPlayingPreviewId('custom-upload');
+                      }
+                    }}
+                    className={`ml-1 p-1 rounded-full bg-emerald-500 text-white ${playingPreviewId === 'custom-upload' ? 'animate-pulse' : ''}`}
+                  >
+                    {playingPreviewId === 'custom-upload' ? <Pause size={10} /> : <Play size={10} />}
+                  </div>
+                )}
+              </button>
+              
+              {allVoices.slice(0, 3).map(voice => (
+                <button
+                  key={voice.id}
+                  onClick={() => setSelectedAvatarVoice(voice.id)}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border flex items-center gap-2 group ${
+                    selectedAvatarVoice === voice.id
+                      ? 'bg-emerald-500/20 border-emerald-500/50 text-white'
+                      : 'glass-card border-white/5 text-[var(--text-muted)] hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${selectedAvatarVoice === voice.id ? 'border-emerald-400 bg-emerald-400' : 'border-white/20'}`}>
+                    {selectedAvatarVoice === voice.id && <div className="w-1.5 h-1.5 rounded-full bg-emerald-900" />}
+                  </div>
+                  {voice.name}
+                  <div 
+                    onClick={(e) => handleVoicePreview(e, voice)}
+                    className={`ml-1 p-1 rounded-full transition-all ${playingPreviewId === voice.id ? 'bg-emerald-500 text-white animate-pulse' : 'bg-white/10 text-white/40 hover:bg-white/20 hover:text-white opacity-0 group-hover:opacity-100'}`}
+                  >
+                    {playingPreviewId === voice.id ? <Pause size={10} /> : <Play size={10} />}
+                  </div>
+                </button>
+              ))}
+              <div className="relative">
+                <button 
+                  onClick={() => setIsVoiceModalOpen(!isVoiceModalOpen)}
+                  className={`px-4 py-2 rounded-xl glass-card text-xs font-bold transition-all flex items-center gap-2 border-white/5 ${
+                    allVoices.slice(3).some(v => v.id === selectedAvatarVoice)
+                      ? 'bg-emerald-500/20 border-emerald-500/50 text-white'
+                      : 'text-[var(--text-secondary)] hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  {allVoices.find(v => v.id === selectedAvatarVoice && allVoices.indexOf(v) >= 3)?.name || 'More'} <ChevronDown className={`w-4 h-4 transition-transform ${isVoiceModalOpen ? 'rotate-180' : ''}`} />
+                </button>
+                
+                <AnimatePresence>
+                  {isVoiceModalOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                      className="absolute bottom-full left-0 mb-2 w-64 glass-card border-white/10 p-2 z-50 shadow-2xl backdrop-blur-xl max-h-[400px] overflow-y-auto custom-scrollbar"
+                    >
+                      {/* Gemini Group */}
+                      <div className="text-[10px] font-black text-white/30 uppercase tracking-widest px-2 py-1 mt-1 mb-1 border-b border-white/5">Gemini TTS</div>
+                      {allVoices.filter(v => v.engine === 'gemini').slice(3).map(voice => (
+                        <button
+                          key={voice.id}
+                          onClick={() => {
+                            setSelectedAvatarVoice(voice.id);
+                            setIsVoiceModalOpen(false);
+                          }}
+                          className={`w-full text-left px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-between group ${
+                            selectedAvatarVoice === voice.id
+                              ? 'bg-emerald-500/20 text-white'
+                              : 'text-white/60 hover:bg-white/5 hover:text-white'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                             <span>{voice.name}</span>
+                             <span className="text-[8px] opacity-40 font-medium">{voice.gender}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div 
+                              onClick={(e) => handleVoicePreview(e, voice)}
+                              className={`p-1 rounded-full transition-all ${playingPreviewId === voice.id ? 'bg-emerald-500 text-white' : 'bg-white/10 text-white/40 hover:bg-white/20 hover:text-white opacity-0 group-hover:opacity-100'}`}
+                            >
+                              {playingPreviewId === voice.id ? <Pause size={10} /> : <Play size={10} />}
+                            </div>
+                            {selectedAvatarVoice === voice.id && <Check className="w-3 h-3 text-emerald-400" />}
+                          </div>
+                        </button>
+                      ))}
+
+                      {/* OpenAI Group */}
+                      <div className="text-[10px] font-black text-white/30 uppercase tracking-widest px-2 py-1 mt-3 mb-1 border-b border-white/5">OpenAI TTS</div>
+                      {allVoices.filter(v => v.engine === 'openai').map(voice => (
+                        <button
+                          key={voice.id}
+                          onClick={() => {
+                            setSelectedAvatarVoice(voice.id);
+                            setIsVoiceModalOpen(false);
+                          }}
+                          className={`w-full text-left px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-between group ${
+                            selectedAvatarVoice === voice.id
+                              ? 'bg-emerald-500/20 text-white'
+                              : 'text-white/60 hover:bg-white/5 hover:text-white'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                             <span>{voice.name}</span>
+                             <span className="text-[8px] opacity-40 font-medium">{voice.gender}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div 
+                              onClick={(e) => handleVoicePreview(e, voice)}
+                              className={`p-1 rounded-full transition-all ${playingPreviewId === voice.id ? 'bg-emerald-500 text-white' : 'bg-white/10 text-white/40 hover:bg-white/20 hover:text-white opacity-0 group-hover:opacity-100'}`}
+                            >
+                              {playingPreviewId === voice.id ? <Pause size={10} /> : <Play size={10} />}
+                            </div>
+                            {selectedAvatarVoice === voice.id && <Check className="w-3 h-3 text-emerald-400" />}
+                          </div>
+                        </button>
+                      ))}
+
+                      {/* ElevenLabs Group */}
+                      {allVoices.some(v => v.engine === 'elevenlabs') && (
+                        <>
+                          <div className="text-[10px] font-black text-white/30 uppercase tracking-widest px-2 py-1 mt-3 mb-1 border-b border-white/5">ElevenLabs</div>
+                          {allVoices.filter(v => v.engine === 'elevenlabs').map(voice => (
+                            <button
+                              key={voice.id}
+                              onClick={() => {
+                                setSelectedAvatarVoice(voice.id);
+                                setIsVoiceModalOpen(false);
+                              }}
+                              className={`w-full text-left px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-between group ${
+                                selectedAvatarVoice === voice.id
+                                  ? 'bg-emerald-500/20 text-white'
+                                  : 'text-white/60 hover:bg-white/5 hover:text-white'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                 <span className="truncate max-w-[100px]">{voice.name}</span>
+                                 <span className="text-[8px] opacity-40 font-medium truncate max-w-[40px]">{voice.gender}</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <div 
+                                  onClick={(e) => handleVoicePreview(e, voice)}
+                                  className={`p-1 rounded-full transition-all ${playingPreviewId === voice.id ? 'bg-emerald-500 text-white' : 'bg-white/10 text-white/40 hover:bg-white/20 hover:text-white opacity-0 group-hover:opacity-100'}`}
+                                >
+                                  {playingPreviewId === voice.id ? <Pause size={10} /> : <Play size={10} />}
+                                </div>
+                                {selectedAvatarVoice === voice.id && <Check className="w-3 h-3 text-emerald-400" />}
+                              </div>
+                            </button>
+                          ))}
+                        </>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
+          </div>
+
+          {/* 5. STYLE & DELIVERY */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center text-[10px] font-bold text-emerald-400 border border-emerald-500/30">5</div>
+              <label className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase tracking-widest">Style & Delivery</label>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="glass-card p-3 flex flex-col gap-1 border-white/5">
+                <label className="text-[8px] font-extrabold text-[var(--text-muted)] uppercase flex items-center gap-1"><Smile className="w-2.5 h-2.5" /> Tone</label>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-white">{selectedAvatarTone}</span>
+                  <ChevronDown className="w-4 h-4 text-white/30" />
+                </div>
+              </div>
+              <div className="glass-card p-3 flex flex-col gap-1 border-white/5">
+                <label className="text-[8px] font-extrabold text-[var(--text-muted)] uppercase flex items-center gap-1"><Camera className="w-2.5 h-2.5" /> Camera Framing</label>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-white">{selectedAvatarFraming}</span>
+                  <ChevronDown className="w-4 h-4 text-white/30" />
+                </div>
+              </div>
+              <div className="glass-card p-3 flex flex-col gap-1 border-white/5">
+                <label className="text-[8px] font-extrabold text-[var(--text-muted)] uppercase flex items-center gap-1"><RefreshCw className="w-2.5 h-2.5" /> Duration</label>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-white truncate">{selectedAvatarDuration.split(' (')[0]}</span>
+                  <ChevronDown className="w-4 h-4 text-white/30" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <button 
+            onClick={handleGenerateTalkingAvatar}
+            disabled={isGenerating}
+            className="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-400 text-white font-black text-sm uppercase tracking-widest shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 active:scale-[0.98] transition-all disabled:opacity-50"
+          >
+            {isGenerating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
+            {isGenerating ? 'Generating...' : 'Generate Talking Avatar'}
+          </button>
+
+        </div>
+
+        {/* ══ RIGHT COLUMN: Output & Preview ══ */}
+        <div className="h-full overflow-y-auto pr-2 custom-scrollbar pb-20 space-y-6">
+          
+          <div className="space-y-3">
+            <div className="flex items-center justify-between px-1">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
+                <span className="text-[10px] font-extrabold text-white uppercase tracking-widest">Live Preview</span>
+              </div>
+              <div className="flex gap-2">
+                <div className="px-2 py-0.5 rounded-lg border border-white/10 bg-white/5 text-[9px] font-bold text-white/60">Preview</div>
+                <div className="px-2 py-0.5 rounded-lg border border-white/10 bg-white/5 text-[9px] font-bold text-white/60">HD</div>
+              </div>
+            </div>
+            
+            <div className="aspect-[9/16] rounded-3xl overflow-hidden glass-card relative group bg-black shadow-2xl">
+              <video 
+                src="/demo-assets/generated-talking.mp4" 
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+                autoPlay
+                loop
+                muted
+                playsInline
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
+              
+              <div className="absolute top-4 left-4 flex items-center gap-2">
+                <div className="flex items-center gap-2 px-2.5 py-1.5 bg-black/40 backdrop-blur-md rounded-xl border border-white/10">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
+                  <span className="text-[10px] font-black text-white uppercase tracking-widest">Live</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4">
+            <div className="space-y-2">
+               <label className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase tracking-widest px-1">Output & Actions</label>
+               <div className="grid grid-cols-3 gap-3">
+                 <div className="glass-card p-4 flex flex-col items-center justify-center gap-2 hover:bg-white/5 transition-colors cursor-pointer border-white/5">
+                   <Download className="w-5 h-5 text-emerald-400" />
+                   <div className="text-center">
+                     <div className="text-[10px] font-bold text-white">Download</div>
+                     <div className="text-[8px] text-[var(--text-muted)]">MP4 • 1080p</div>
+                   </div>
+                 </div>
+                 <div className="glass-card p-4 flex flex-col items-center justify-center gap-2 hover:bg-white/5 transition-colors cursor-pointer border-white/5">
+                   <RefreshCw className="w-5 h-5 text-purple-400" />
+                   <div className="text-center">
+                     <div className="text-[10px] font-bold text-white">Regenerate</div>
+                     <div className="text-[8px] text-[var(--text-muted)]">New version</div>
+                   </div>
+                 </div>
+                 <div className="glass-card p-4 flex flex-col items-center justify-center gap-2 hover:bg-white/5 transition-colors cursor-pointer border-white/5">
+                   <Share2 className="w-5 h-5 text-blue-400" />
+                   <div className="text-center">
+                     <div className="text-[10px] font-bold text-white">Share</div>
+                     <div className="text-[8px] text-[var(--text-muted)]">Copy link</div>
+                   </div>
+                 </div>
+               </div>
+            </div>
+
+            <div className="space-y-2">
+               <label className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase tracking-widest px-1">Insights</label>
+               <div className="glass-card p-4 space-y-3 border-white/5">
+                 {[
+                   { label: 'Estimated Engagement', val: 'High', color: 'text-emerald-400' },
+                   { label: 'Clarity Score', val: '92%', color: 'text-emerald-400' },
+                   { label: 'Audience Fit', val: 'Excellent', color: 'text-emerald-400' }
+                 ].map(m => (
+                   <div key={m.label} className="flex items-center justify-between">
+                     <span className="text-[10px] font-bold text-white/60">{m.label}</span>
+                     <div className="flex items-center gap-1.5">
+                       <span className={`text-[10px] font-black ${m.color}`}>{m.val}</span>
+                       <ArrowUpCircle className={`w-3 h-3 ${m.color} rotate-45`} />
+                     </div>
+                   </div>
+                 ))}
+               </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    );
+  };
   return (
-    <div className="p-6 max-w-[1400px] mx-auto w-full">
-      <header className="premium-header mb-6 pt-6 pb-2">
-        <div className="relative z-10">
-          <h1 className="text-3xl font-extrabold tracking-tight">
-            <span className="gradient-text">Create Studio</span>
+    <div className="flex-1 bg-[var(--bg-base)] text-white p-4 max-w-[1600px] mx-auto w-full selection:bg-emerald-500/30 flex flex-col overflow-y-auto custom-scrollbar">
+      
+      {/* ── STUDIO HEADER ── */}
+      <header className="mb-4 flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div className="space-y-1">
+          <h1 className="text-4xl font-black tracking-tight flex items-center gap-3">
+            Create <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400">Studio</span>
           </h1>
-          <p className="text-[var(--text-tertiary)] text-sm mt-1.5 font-medium">
-            Generate content{localPersonaId !== 'none' ? <> as <span className="text-violet-400">{activePersona.name}</span></> : ''}
-          </p>
+          <div className="flex items-center gap-2 group cursor-pointer">
+            <p className="text-[var(--text-tertiary)] text-sm font-medium">
+              Generate content as <span className="text-emerald-400 font-bold">{activePersona.name || "New Persona"}</span>
+            </p>
+            <ChevronDown className="w-4 h-4 text-[var(--text-muted)] group-hover:text-emerald-400 transition-colors" />
+          </div>
+        </div>
+
+        {/* Top-right persona quick select (matches mockup) */}
+        <div className="hidden lg:flex items-center gap-3 glass-card px-4 py-2 border-white/5 bg-white/[0.02]">
+           <div className="relative">
+             <img src={activePersona.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150"} className="w-8 h-8 rounded-lg object-cover" alt="Active Persona Avatar" />
+             <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-[#0B0F17]" />
+           </div>
+           <div className="text-left pr-8">
+             <div className="text-[8px] font-black text-white/40 uppercase tracking-[0.2em] leading-none mb-1">Active Persona</div>
+             <div className="text-[11px] font-bold text-white leading-none">{activePersona.name || "New Persona"} — Lifestyle</div>
+           </div>
+           <ChevronDown className="w-4 h-4 text-white/30" />
         </div>
       </header>
 
-      {/* ── Mode Tabs ── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-6">
+      {/* ── MODE SELECTOR (Premium Tabs) ── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-10">
         {MODE_CONFIG.map(m => {
           const Icon = m.icon;
           const isActive = mode === m.id;
           return (
             <motion.button
               key={m.id}
-              onClick={() => { setMode(m.id); setGlobalError(null); }}
-              whileHover={{ scale: 1.02 }}
+              onClick={() => { updateMode(m.id); setGlobalError(null); }}
+              whileHover={{ scale: 1.02, y: -2 }}
               whileTap={{ scale: 0.98 }}
-              className={`relative flex flex-col items-center justify-center gap-2 p-4 rounded-2xl text-center border transition-all ${
+              className={`relative flex items-center gap-3 p-4 rounded-2xl border transition-all duration-300 ${
                 isActive
-                  ? `bg-gradient-to-br ${m.gradient} text-white border-transparent shadow-lg`
-                  : 'glass-panel text-[var(--text-secondary)] hover:text-white hover:border-white/20'
+                  ? `bg-emerald-500/10 border-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.1)]`
+                  : 'bg-white/[0.02] border-white/5 text-[var(--text-tertiary)] hover:bg-white/[0.05] hover:border-white/10 hover:text-white'
               }`}
             >
-              <Icon className={`w-6 h-6 shrink-0 ${isActive ? '' : 'opacity-70'}`} />
-              <div>
-                <div className="text-sm font-bold leading-tight">{m.label}</div>
+              <div className={`p-2 rounded-xl transition-all duration-300 ${isActive ? 'bg-emerald-500 text-white shadow-[0_0_15px_rgba(16,185,129,0.5)]' : 'bg-white/5 text-[var(--text-muted)]'}`}>
+                <Icon size={18} />
               </div>
+              <div className="text-left">
+                <div className={`text-[11px] font-black leading-tight tracking-wide ${isActive ? 'text-white' : ''}`}>{m.label}</div>
+              </div>
+              {isActive && (
+                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-8 h-1 bg-emerald-500 rounded-t-full shadow-[0_-2px_10px_rgba(16,185,129,0.8)]" />
+              )}
             </motion.button>
           );
         })}
-      </div>
-
-      {/* ── Active Persona Dropdown ── */}
-      <div className="mb-5">
-        <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase mb-1.5 block">Active Persona</label>
-        <div className="relative">
-          <select
-            value={localPersonaId}
-            onChange={e => {
-              const v = e.target.value;
-              setLocalPersonaId(v);
-              if (v !== 'none') onSelectPersona(v);
-            }}
-            className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white outline-none appearance-none pr-10"
-          >
-            <option value="none">None — Upload my own image</option>
-            {personas.map(p => (
-              <option key={p.id} value={p.id}>{p.name}{p.niche ? ` — ${p.niche}` : ''}</option>
-            ))}
-          </select>
-          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-tertiary)] pointer-events-none" />
-        </div>
       </div>
 
       {globalError && (
@@ -1838,13 +2488,30 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         </div>
       )}
 
-      {mode === 'image' && renderImageMode()}
-      {mode === 'video' && renderVideoMode()}
-      {mode === 'talking-avatar' && renderTextMode()}
-      {mode === 'angle' && renderAngleMode()}
-      {mode === 'voice' && <VoiceView persona={activePersona} personas={personas} onSelectPersona={onSelectPersona} />}
-      {mode === 'ai-tools' && <AIToolsView persona={activePersona} personas={personas} onSelectPersona={onSelectPersona} />}
-      {mode === 'planner' && <PlannerView persona={activePersona} personas={personas} onSelectPersona={onSelectPersona} />}
+      {/* ── MODE RENDERING ── */}
+      <div className="flex-1 relative flex flex-col">
+        {mode === 'image' && renderImageMode()}
+        {mode === 'video' && renderVideoMode()}
+        {mode === 'talking-avatar' && renderTalkingAvatarMode()}
+        {mode === 'angle' && renderAngleMode()}
+        {mode === 'voice' && <VoiceView persona={activePersona} personas={personas} onSelectPersona={onSelectPersona} nav={nav} />}
+        {mode === 'ai-tools' && <AIToolsView persona={activePersona} personas={personas} onSelectPersona={onSelectPersona} nav={nav} />}
+        {mode === 'planner' && <PlannerView persona={activePersona} personas={personas} onSelectPersona={onSelectPersona} nav={nav} />}
+      </div>
+
+      {/* ── FOOTER TIP ── */}
+      <footer className="mt-4 border-t border-white/5 pt-4 flex flex-col md:flex-row items-center justify-between gap-4">
+        <div className="flex items-center gap-3 bg-white/[0.02] border border-white/5 px-4 py-2 rounded-xl">
+           <Layout className="w-4 h-4 text-emerald-400" />
+           <p className="text-[10px] text-[var(--text-tertiary)] font-bold">
+             <span className="text-white">Tip:</span> Shorter scripts with a clear hook in the first 5 seconds get more engagement.
+           </p>
+        </div>
+        <button className="flex items-center gap-2 text-emerald-400 hover:text-emerald-300 transition-colors text-[10px] font-black uppercase tracking-widest">
+           View All Talking Avatar Creations <ChevronRight className="w-4 h-4" />
+        </button>
+      </footer>
+
     </div>
   );
 }

@@ -79,13 +79,13 @@ export const recentCreationPlaceholders = [
 ];
 
 export const identitySheetPlaceholders = [
-  { label: "High Angle", img: "/isabella_laurent_high_angle.png" },
-  { label: "Eye Level", img: "/isabella_laurent_eye_level.png" },
-  { label: "Low Angle", img: "/isabella_laurent_low_angle.png" },
+  { label: "Front Portrait", img: "/isabella_laurent_front_view.png" },
+  { label: "Left 45°", img: "/isabella_laurent_three_quarter_left.png" },
+  { label: "Right 45°", img: "/isabella_laurent_three_quarter_right.png" },
   { label: "Profile Left", img: "/isabella_laurent_profile_left.png" },
-  { label: "Front View", img: "/isabella_laurent_front_view.png" },
-  { label: "Profile Right", img: "/isabella_laurent_profile_right.png" },
-  { label: "Three-Quarter Left", img: "/isabella_laurent_three_quarter_left.png" },
-  { label: "Over-the-Shoulder", img: "/isabella_laurent_over_shoulder.png" },
-  { label: "Three-Quarter Right", img: "/isabella_laurent_three_quarter_right.png" }
+  { label: "Smile", p: "smiling" },
+  { label: "Neutral", p: "neutral" },
+  { label: "Upper Body", img: "/isabella_laurent_over_shoulder.png" },
+  { label: "Full Body", img: "/isabella_laurent_full_body.png" },
+  { label: "Lifestyle Shot", img: "/isabella_laurent_lifestyle.png" }
 ];

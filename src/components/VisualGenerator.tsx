@@ -30,8 +30,10 @@ import {
   Lock,
   LayoutGrid,
   SlidersHorizontal,
+  Type,
 } from 'lucide-react';
 import { Persona, GeneratedImage } from '../types';
+import VideoSamplePreview from './VideoSamplePreview';
 import {
   generateImage,
   generateVideo,
@@ -86,7 +88,7 @@ const ASPECT_RATIOS = [
 const PICKER_MODE_KEY = 'vg_picker_mode';
 
 type PickerMode = 'by-model' | 'by-goal';
-type GoalKey = 'portrait' | 'lifestyle' | 'artistic' | 'quick' | 'uncensored';
+type GoalKey = 'portrait' | 'lifestyle' | 'artistic' | 'quick' | 'uncensored' | 'custom';
 
 interface GoalCard {
   key: GoalKey;
@@ -164,6 +166,7 @@ interface ImageVersion {
   imageUrl: string;
   model: string;
   promptUsed: string;
+  label?: string;
 }
 type GenMode = 'image' | 'video';
 
@@ -234,7 +237,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
   const [selectedMood, setSelectedMood] = useState(MOODS[0]);
   const [selectedAspectRatio, setSelectedAspectRatio] = useState(ASPECT_RATIOS[0].value);
   const [result, setResult] = useState<GenerateImageResult | null>({
-    imageUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=1024&q=80',
+    imageUrl: '/studio_preview_default.jpg',
     model: 'Premium Model',
     promptUsed: 'Stock demo image'
   });
@@ -437,7 +440,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
         ? { ...activePersonaObj, referenceImage: primaryRef }
         : activePersonaObj;
       const genResult = await generateImage({
-        persona: personaForGen || persona,
+        persona: (personaForGen || persona) as any,
         modelId: selectedModel,
         environment: selectedEnv,
         outfitStyle: selectedOutfit,
@@ -503,7 +506,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
         imageUrl: data.imageUrl,
         model: data.model,
         promptUsed: editPrompt,
-        label: `Edit ${imageHistory.filter(v => v.label.startsWith('Edit')).length + 1}`,
+        label: `Edit ${imageHistory.filter(v => v.label && v.label.startsWith('Edit')).length + 1}`,
       };
       const newHistory = [...imageHistory, version];
       setImageHistory(newHistory);
@@ -533,7 +536,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
         imageUrl: data.imageUrl,
         model: data.model,
         promptUsed: activeVersion.promptUsed,
-        label: `Upscale ${imageHistory.filter(v => v.label.startsWith('Upscale')).length + 1}`,
+        label: `Upscale ${imageHistory.filter(v => v.label && v.label.startsWith('Upscale')).length + 1}`,
       };
       const newHistory = [...imageHistory, version];
       setImageHistory(newHistory);
@@ -629,40 +632,42 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
   };
 
   return (
-    <div className="fixed inset-0 z-[60] bg-[#0B0F17] flex flex-col font-sans select-none overflow-hidden text-white">
-      {/* HEADER */}
-      <div className="flex-none px-6 py-3.5 border-b border-[#334155]/60 bg-[#0B0F17] flex items-center justify-between z-10">
+    <div className="fixed inset-0 z-[60] bg-[#0B0F19] flex flex-col font-sans select-none overflow-hidden text-white h-screen">
+
+      {/* HEADER: Title & Subtitle */}
+      <div className="flex-none px-6 py-3 border-b border-[#1E293B]/60 bg-[#0B0F19]/80 backdrop-blur-md flex items-center justify-between z-10 select-none">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-[#00D4FF]/10 flex items-center justify-center border border-[#00D4FF]/20 shadow-[0_0_15px_rgba(0,212,255,0.2)]">
-            <Sparkles size={22} className="text-[#00D4FF]" />
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#00D4FF]/20 to-[#00F5C2]/20 flex items-center justify-center border border-[#00D4FF]/30 shadow-[0_0_15px_rgba(0,212,255,0.25)]">
+            <Sparkles size={22} className="text-[#00D4FF] animate-pulse" />
           </div>
           <div>
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              Visual Studio <span className="px-2 py-0.5 bg-[#00F5C2]/10 border border-[#00F5C2]/20 rounded text-[10px] font-extrabold text-[#00F5C2] tracking-wider uppercase select-none">Pro</span>
+            <h3 className="text-base font-black text-white flex items-center gap-2 tracking-tight">
+              Visual Studio <span className="px-2 py-0.5 bg-[#00F5C2]/10 border border-[#00F5C2]/20 rounded text-[9px] font-extrabold text-[#00F5C2] tracking-wider uppercase select-none shadow-[0_0_8px_rgba(0,245,194,0.15)]">Pro</span>
             </h3>
-            <p className="text-xs text-[#94A3B8]">
-              Create images or videos with or without a persona
+            <p className="text-xs text-[#94A3B8] font-medium">
+              Ultimate high-end generation with or without a persona
             </p>
           </div>
         </div>
         
-        <button onClick={onClose} className="p-2 hover:bg-[#111827] border border-[#334155]/60 hover:border-[#334155] rounded-xl transition-all flex items-center gap-2 text-white text-xs font-bold bg-[#0F172A]">
+        <button onClick={onClose} className="p-2 hover:bg-[#111827] border border-[#334155]/60 hover:border-[#334155] rounded-xl transition-all flex items-center gap-2 text-white text-xs font-bold bg-[#0F172A] shadow-sm">
           <X className="w-4 h-4 text-[#94A3B8]" /> Close
         </button>
       </div>
 
       {/* WORKSPACE AREA */}
-      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
-        {/* LEFT COLUMN: Controls */}
-        <div className="w-full lg:w-[40%] xl:w-[38%] border-r border-[#334155]/40 bg-[#0B0F17] flex flex-col h-full select-none">
-          <div className="flex-1 p-4 space-y-3.5 overflow-y-auto">
-            {/* Mode Switch */}
-            <div className="flex bg-[#0F172A] border border-[#334155]/60 rounded-xl p-1 gap-1">
+      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden relative bg-[#0B0F19] h-[calc(100vh-64px)]">
+        {/* LEFT COLUMN: Controls Panel */}
+        <div className="w-full lg:w-[45%] xl:w-[42%] border-r border-[#1E293B]/60 bg-[#0F172A]/30 backdrop-blur-md flex flex-col h-full select-none justify-between overflow-hidden">
+          {/* Scrollable Sidebar Content */}
+          <div className="flex-1 p-2.5 space-y-2 overflow-y-auto scrollbar-thin">
+            {/* Mode Selector */}
+            <div className="flex bg-[#0F172A]/60 border border-[#1E293B]/60 rounded-xl p-1 gap-1 shadow-inner select-none">
               <button
                 onClick={() => { setGenMode('image'); setGlobalError(null); }}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all duration-300 ${
+                className={`flex-1 flex items-center justify-center gap-2 py-1.5 rounded-lg text-xs font-black transition-all duration-300 uppercase tracking-wider select-none ${
                   genMode === 'image'
-                    ? 'bg-gradient-to-r from-[#00F5C2]/20 to-[#00D4FF]/20 text-[#00F5C2] border border-[#00F5C2]/30 shadow-sm'
+                    ? 'bg-gradient-to-r from-[#00D4FF]/25 to-[#00F5C2]/25 text-[#00D4FF] border border-[#00D4FF]/40 shadow-sm'
                     : 'text-[#94A3B8] hover:text-white hover:bg-[#111827]'
                 }`}
               >
@@ -670,9 +675,9 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
               </button>
               <button
                 onClick={() => { setGenMode('video'); setGlobalError(null); }}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all duration-300 ${
+                className={`flex-1 flex items-center justify-center gap-2 py-1.5 rounded-lg text-xs font-black transition-all duration-300 uppercase tracking-wider select-none ${
                   genMode === 'video'
-                    ? 'bg-gradient-to-r from-[#8B5CF6]/20 to-[#3B82F6]/20 text-[#C084FC] border border-[#8B5CF6]/30 shadow-sm'
+                    ? 'bg-gradient-to-r from-[#6366F1]/25 to-[#8B5CF6]/25 text-[#C084FC] border border-[#6366F1]/40 shadow-sm'
                     : 'text-[#94A3B8] hover:text-white hover:bg-[#111827]'
                 }`}
               >
@@ -680,205 +685,54 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
               </button>
             </div>
 
-            {/* Persona Source */}
-            <div className="space-y-1.5 bg-[#0F172A]/40 border border-[#334155]/40 rounded-xl p-3">
-              <label className="text-[10px] font-black uppercase tracking-wider text-[#CBD5E1] flex items-center gap-1.5">
-                <User size={12} className="text-[#00D4FF]" /> Persona Source <span className="text-[#64748B] lowercase font-normal italic">(optional)</span>
+            {/* Context: Persona or References */}
+            <div className="space-y-1.5 bg-[#0F172A]/40 border border-[#1E293B]/40 rounded-xl p-3 select-none">
+              <label className="text-[10px] font-black uppercase tracking-wider text-[#CBD5E1] flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <User size={12} className="text-[#00D4FF]" /> Persona Source
+                </span>
+                <span className="text-[#64748B] text-[8px] lowercase font-normal italic">optional</span>
               </label>
-              <div className="relative">
-                <select
-                  value={selectedPersonaId}
-                  onChange={(e) => setSelectedPersonaId(e.target.value)}
-                  className="w-full bg-[#111827] border border-[#334155] focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] rounded-xl px-3 py-2 text-xs text-white outline-none appearance-none pr-8 cursor-pointer shadow-sm transition-all"
-                >
-                  <option value="none">No persona selected</option>
-                  {allPersonas.map(p => (
-                    <option key={p.id} value={p.id}>{p.name} {p.id === persona?.id ? '(Active)' : ''}</option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#94A3B8] pointer-events-none" />
-              </div>
-              <p className="text-[9px] text-[#64748B] leading-normal mt-1">Choose a persona to influence the generation, or leave blank.</p>
-              
-              {activePersonaObj && (
-                <div className="flex items-center gap-2 mt-2 bg-[#0F172A] border border-[#334155]/60 rounded-xl p-2 select-none animate-in fade-in">
-                  <div className="w-8 h-8 rounded-lg border border-[#334155] overflow-hidden shrink-0">
+
+              {activePersonaObj ? (
+                <div className="flex items-center gap-2.5 bg-[#0F172A]/80 border border-[#00D4FF]/30 rounded-xl p-2 select-none animate-in fade-in">
+                  <div className="w-9 h-9 rounded-lg border border-[#334155]/60 overflow-hidden shrink-0 shadow-sm">
                     <img src={activePersonaObj.referenceImage || "/isabella_laurent_reference.png"} alt="" className="w-full h-full object-cover" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-white truncate leading-none mb-0.5">{activePersonaObj.name}</p>
-                    <p className="text-[8px] text-[#00D4FF] font-semibold truncate uppercase tracking-wider">{activePersonaObj.niche || 'Digital Persona'}</p>
+                    <p className="text-xs font-black text-white truncate leading-none mb-0.5 tracking-tight">{activePersonaObj.name}</p>
+                    <p className="text-[9px] text-[#00D4FF] font-black truncate uppercase tracking-wider">{activePersonaObj.niche || 'Digital Creator'}</p>
                   </div>
-                  <button onClick={() => setSelectedPersonaId('none')} className="text-[#64748B] hover:text-rose-400 transition-colors p-1">
-                    <X size={12} />
+                  <button onClick={() => setSelectedPersonaId('none')} className="text-[#64748B] hover:text-rose-400 transition-colors p-1.5">
+                    <X size={14} />
                   </button>
                 </div>
-              )}
-            </div>
-
-            {/* AI Model */}
-            {genMode === 'image' ? (
-              <div className="space-y-1.5 bg-[#0F172A]/40 border border-[#334155]/40 rounded-xl p-3">
-                <label className="text-[10px] font-black uppercase tracking-wider text-[#CBD5E1] flex items-center gap-1.5">
-                  <Cpu size={12} className="text-[#00D4FF]" /> AI Model
-                </label>
-                {modelsLoading ? (
-                  <div className="flex items-center gap-2 px-3 py-2 bg-[#111827] rounded-xl text-xs text-[#94A3B8] border border-[#334155]/60">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading models...
-                  </div>
-                ) : pickerMode === 'by-goal' ? (
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {GOAL_CARDS.map((card) => {
-                      const matched = pickModelForGoal(card.key, models);
-                      const isDisabled = !matched;
-                      const isActive = selectedGoal === card.key;
-                      return (
-                        <button
-                          key={card.key}
-                          onClick={() => !isDisabled && handleGoalSelect(card.key)}
-                          disabled={isDisabled}
-                          className={`relative flex flex-col items-start gap-1 p-2 rounded-xl border text-left transition-all ${
-                            isActive
-                              ? 'border-[#00D4FF] bg-[#00D4FF]/10 ring-1 ring-[#00D4FF]/40'
-                              : isDisabled
-                                ? 'border-[#334155]/40 bg-[#111827]/40 opacity-40 cursor-not-allowed'
-                                : 'border-[#334155] bg-[#111827] hover:border-[#00D4FF]/40 hover:bg-[#111827]/80'
-                          }`}
-                        >
-                          {isDisabled && <Lock className="absolute top-1.5 right-1.5 w-2.5 h-2.5 text-[#64748B]" />}
-                          <span className={`text-[#94A3B8] ${isActive ? 'text-[#00D4FF]' : ''}`}>{card.icon}</span>
-                          <div>
-                            <p className="text-[10px] font-bold text-white leading-tight">{card.label}</p>
-                            <p className="text-[8px] text-[#64748B] leading-tight mt-0.5">{card.description}</p>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="relative">
-                    <select
-                      value={selectedModel}
-                      onChange={(e) => setSelectedModel(e.target.value)}
-                      className="w-full bg-[#111827] border border-[#334155] focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] rounded-xl px-3 py-2 text-xs text-white outline-none appearance-none pr-8 cursor-pointer shadow-sm transition-all"
-                    >
-                      {Object.entries(groupedModels).map(([provider, providerModels]) => (
-                        <optgroup key={provider} label={provider}>
-                          {providerModels.map((m) => (
-                            <option key={m.id} value={m.id}>
-                              {m.isIdentityModel ? '★ ' : ''}{m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}{m.nsfw ? ' 🔞' : ''}
-                            </option>
-                          ))}
-                        </optgroup>
-                      ))}
-                    </select>
-                    <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#94A3B8] pointer-events-none" />
-                  </div>
-                )}
-
-                {selectedModelInfo && (
-                  <div className="flex items-center gap-1 flex-wrap mt-1 select-none opacity-90">
-                    <span className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-[#8B5CF6]/15 text-[#C084FC] border border-[#8B5CF6]/30">
-                      {selectedModelInfo.provider}
-                    </span>
-                    {selectedModelInfo.isIdentityModel && (
-                      <span className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-[#00D4FF]/15 text-[#00D4FF] border border-[#00D4FF]/30">
-                        ★ Face-consistent
-                      </span>
-                    )}
-                    {selectedModelInfo.price > 0 && (
-                      <span className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
-                        ${selectedModelInfo.price.toFixed(3)}
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-1.5 bg-[#0F172A]/40 border border-[#334155]/40 rounded-xl p-3">
-                <label className="text-[10px] font-black uppercase tracking-wider text-[#CBD5E1] flex items-center gap-1.5">
-                  <Film size={12} className="text-[#C084FC]" /> Video Model
-                </label>
-                {modelsLoading ? (
-                  <div className="flex items-center gap-2 px-3 py-2 bg-[#111827] rounded-xl text-xs text-[#94A3B8] border border-[#334155]/60">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading models...
-                  </div>
-                ) : (
-                  <div className="relative">
-                    <select
-                      value={selectedVideoModel}
-                      onChange={(e) => setSelectedVideoModel(e.target.value)}
-                      className="w-full bg-[#111827] border border-[#334155] focus:border-[#C084FC] focus:ring-1 focus:ring-[#C084FC] rounded-xl px-3 py-2 text-xs text-white outline-none appearance-none pr-8 cursor-pointer shadow-sm transition-all"
-                    >
-                      {Object.keys(groupedVideoModels.t2v).length > 0 && (
-                        <optgroup label="Text to Video">
-                          {Object.entries(groupedVideoModels.t2v).map(([provider, providerModels]) => (
-                            providerModels.map((m) => (
-                              <option key={m.id} value={m.id}>
-                                [{provider}] {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}
-                              </option>
-                            ))
-                          ))}
-                        </optgroup>
-                      )}
-                      {Object.keys(groupedVideoModels.i2v).length > 0 && (
-                        <optgroup label="Image to Video">
-                          {Object.entries(groupedVideoModels.i2v).map(([provider, providerModels]) => (
-                            providerModels.map((m) => (
-                              <option key={m.id} value={m.id}>
-                                [{provider}] {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}
-                              </option>
-                            ))
-                          ))}
-                        </optgroup>
-                      )}
-                    </select>
-                    <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#94A3B8] pointer-events-none" />
-                  </div>
-                )}
-                {selectedVideoModelInfo && (
-                  <div className="flex items-center gap-1 flex-wrap mt-1 opacity-90 select-none">
-                    <span className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-[#C084FC]/15 text-[#C084FC] border border-[#C084FC]/30">
-                      {selectedVideoModelInfo.provider}
-                    </span>
-                    <span className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-500/15 text-green-300 border border-green-500/30">
-                      {isI2VModel ? 'Image → Video' : 'Text → Video'}
-                    </span>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Reference Images */}
-            {genMode === 'image' && (
-              <div className="space-y-1.5 bg-[#0F172A]/40 border border-[#334155]/40 rounded-xl p-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-[10px] font-black uppercase tracking-wider text-[#CBD5E1] flex items-center gap-1.5 leading-none">
-                    <ImageIcon size={12} className="text-[#00D4FF]" /> Reference Images <span className="text-[#64748B] lowercase font-normal italic">(optional)</span>
-                  </label>
-                  {allRefImages.length < 6 && (
-                    <button
-                      onClick={() => overrideRefInputRef.current?.click()}
-                      className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-[#111827] border border-[#334155] text-white hover:border-[#00D4FF]/40 transition-all select-none"
-                    >
-                      + Add photo
-                    </button>
-                  )}
+              ) : (
+                <div className="relative">
+                  <select
+                    value={selectedPersonaId}
+                    onChange={(e) => setSelectedPersonaId(e.target.value)}
+                    className="w-full bg-[#111827]/80 border border-[#334155]/60 focus:border-[#00D4FF] rounded-xl px-3 py-1.5 text-xs text-white outline-none appearance-none pr-8 cursor-pointer shadow-sm transition-all"
+                  >
+                    <option value="none">No persona selected</option>
+                    {allPersonas.map(p => (
+                      <option key={p.id} value={p.id}>{p.name} {p.id === persona?.id ? '(Active)' : ''}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8] pointer-events-none" />
                 </div>
-                {allRefImages.length > 0 ? (
-                  <div className="flex gap-1.5 flex-wrap pt-1 select-none">
-                    {activePersonaObj?.referenceImage && (
-                      <div className="relative w-12 h-12 rounded-lg border-2 border-[#00D4FF] overflow-hidden group shadow select-none animate-in fade-in">
-                        <img src={activePersonaObj.referenceImage} alt="" className="w-full h-full object-cover" />
-                        <div className="absolute inset-x-0 bottom-0 bg-[#00D4FF] text-[#0B0F17] text-[6px] font-extrabold text-center uppercase py-0.5 select-none leading-none">Persona</div>
-                      </div>
-                    )}
+              )}
+
+              {/* Uploaded guide / Consistency images */}
+              <div className="pt-1 select-none">
+                {overrideRefImages.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5 animate-in fade-in select-none">
                     {overrideRefImages.map(img => (
-                      <div key={img.id} className="relative w-12 h-12 rounded-lg border border-[#334155] overflow-hidden group shadow select-none animate-in fade-in">
+                      <div key={img.id} className="relative w-10 h-10 rounded-lg border border-[#334155] overflow-hidden group shadow select-none animate-in fade-in">
                         <img src={img.url} alt="" className="w-full h-full object-cover" />
                         <button
                           onClick={() => setOverrideRefImages(prev => prev.filter(i => i.id !== img.id))}
-                          className="absolute top-0.5 right-0.5 w-3.5 h-3.5 bg-black/60 backdrop-blur-md rounded-full text-white/80 hover:text-white hover:bg-rose-500/90 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100 border border-white/10"
+                          className="absolute top-0.5 right-0.5 w-4 h-4 bg-black/60 backdrop-blur-md rounded-full text-white/80 hover:text-white hover:bg-rose-500/90 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100 border border-white/10"
                         >×</button>
                       </div>
                     ))}
@@ -886,31 +740,113 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
                 ) : (
                   <button
                     onClick={() => overrideRefInputRef.current?.click()}
-                    className="w-full flex items-center gap-2 px-3 py-2 bg-[#111827]/40 hover:bg-[#111827] rounded-xl cursor-pointer transition-all border border-dashed border-[#334155] text-[#94A3B8] hover:text-[#00D4FF] hover:border-[#00D4FF]/40 select-none"
+                    className="w-full flex items-center gap-2 px-3 py-1.5 bg-[#111827]/40 hover:bg-[#111827]/60 rounded-xl cursor-pointer transition-all border border-dashed border-[#334155]/60 text-[#94A3B8] hover:text-[#00D4FF] hover:border-[#00D4FF]/40 select-none shadow-sm"
                   >
                     <Upload className="w-3.5 h-3.5" />
-                    <span className="text-[11px] font-semibold">Add image to guide consistency</span>
+                    <span className="text-[10px] font-bold">Add image to guide consistency</span>
                   </button>
                 )}
               </div>
+            </div>
+
+            {/* Model Selector */}
+            {genMode === 'image' ? (
+              <div className="space-y-1.5 bg-[#0F172A]/40 border border-[#1E293B]/40 rounded-xl p-3 select-none">
+                <label className="text-[10px] font-black uppercase tracking-wider text-[#CBD5E1] flex items-center justify-between leading-none">
+                  <span className="flex items-center gap-1.5">
+                    <Cpu size={12} className="text-[#00D4FF]" /> AI Model
+                  </span>
+                  {selectedModelInfo && (
+                    <span className="px-2 py-0.5 bg-[#00D4FF]/10 border border-[#00D4FF]/20 text-[8px] rounded uppercase font-extrabold text-[#00D4FF] tracking-wider select-none">
+                      {selectedModelInfo.id.split(':')[0]}
+                    </span>
+                  )}
+                </label>
+                {modelsLoading ? (
+                  <div className="flex items-center gap-2 px-3 py-2 bg-[#111827] rounded-xl text-xs text-[#94A3B8] border border-[#334155]/60 animate-pulse">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading models...
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <select
+                      value={selectedModel}
+                      onChange={(e) => {
+                        setSelectedModel(e.target.value);
+                        setSelectedGoal('custom');
+                      }}
+                      className="w-full bg-[#111827]/80 border border-[#334155]/60 focus:border-[#00D4FF] rounded-xl px-3 py-1.5 text-xs text-white outline-none appearance-none pr-8 cursor-pointer shadow-sm transition-all font-semibold"
+                    >
+                      {models.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name} {m.hasEditVariant ? '(Pro)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8] pointer-events-none" />
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Video Model Selection */
+              <div className="space-y-1.5 bg-[#0F172A]/40 border border-[#1E293B]/40 rounded-xl p-3 select-none">
+                <label className="text-[10px] font-black uppercase tracking-wider text-[#CBD5E1] flex items-center gap-1.5 leading-none">
+                  <Video size={12} className="text-[#C084FC]" /> Video AI Model
+                </label>
+                <div className="relative">
+                  <select
+                    value={selectedVideoModel}
+                    onChange={(e) => setSelectedVideoModel(e.target.value)}
+                    className="w-full bg-[#111827]/80 border border-[#334155]/60 focus:border-[#00D4FF] rounded-xl px-3 py-1.5 text-xs text-white outline-none appearance-none pr-8 cursor-pointer shadow-sm transition-all font-semibold"
+                  >
+                    {videoModels.map((m) => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8] pointer-events-none" />
+                </div>
+              </div>
             )}
 
-            {/* Source Image for Image-To-Video */}
+            {/* Prompt Field */}
+            <div className="space-y-1.5 bg-[#0F172A]/40 border border-[#1E293B]/40 rounded-xl p-3 select-none">
+              <label className="text-[10px] font-black uppercase tracking-wider text-[#CBD5E1] flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <Type size={12} className="text-[#00D4FF]" /> Prompt
+                </span>
+                <button
+                  onClick={() => handleEnhance(prompt, setPrompt, setIsEnhancingPrompt)}
+                  disabled={isGenerating || isProcessing || !prompt.trim() || isEnhancingPrompt}
+                  className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-[#00D4FF]/10 border border-[#00D4FF]/20 text-[#00D4FF] hover:bg-[#00D4FF]/20 transition-all disabled:opacity-30 cursor-pointer select-none"
+                  title="Enhance prompt with AI"
+                >
+                  {isEnhancingPrompt ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                  <span className="text-[8px] font-extrabold uppercase tracking-wider">Enhance</span>
+                </button>
+              </label>
+              <textarea
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                placeholder="Luxury rooftop portrait, soft wind, cinematic light..."
+                className="w-full bg-[#111827]/60 border border-[#334155]/60 focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] rounded-xl px-3 py-1.5 text-xs text-white min-h-[36px] max-h-[48px] outline-none resize-none placeholder-[#64748B] font-semibold shadow-inner leading-relaxed"
+              />
+            </div>
+
+            {/* Source image for video */}
             {genMode === 'video' && isI2VModel && (
-              <div className="space-y-1.5 bg-[#0F172A]/40 border border-[#334155]/40 rounded-xl p-3">
+              <div className="space-y-1.5 bg-[#0F172A]/40 border border-[#1E293B]/40 rounded-xl p-3 select-none animate-in fade-in">
                 <label className="text-[10px] font-black uppercase tracking-wider text-[#CBD5E1] flex items-center gap-1.5 leading-none">
                   <ImageIcon size={12} className="text-[#C084FC]" /> Source Image
                 </label>
                 {videoSourceImage ? (
-                  <div className="flex items-center gap-2 bg-[#111827] rounded-xl p-2 animate-in fade-in select-none">
-                    <img src={videoSourceImage} alt="" className="w-10 h-10 rounded-lg object-cover" />
+                  <div className="flex items-center gap-2.5 bg-[#111827]/80 rounded-xl p-2 select-none">
+                    <img src={videoSourceImage} alt="" className="w-10 h-10 rounded-lg object-cover border border-[#334155]/60" />
                     <div className="flex-1 min-w-0">
-                      <span className="text-xs font-bold text-white truncate block">{videoSourceImageName || 'Uploaded image'}</span>
-                      <span className="text-[9px] text-[#64748B]">Will be animated</span>
+                      <span className="text-xs font-black text-white truncate block tracking-tight">{videoSourceImageName || 'Uploaded image'}</span>
+                      <span className="text-[9px] text-[#64748B] font-bold">Source for animation</span>
                     </div>
                     <button
                       onClick={() => { setVideoSourceImage(null); setVideoSourceImageName(null); }}
-                      className="text-[#64748B] hover:text-rose-400 p-1"
+                      className="text-[#64748B] hover:text-rose-400 p-1 transition-colors"
                     >
                       <X size={14} />
                     </button>
@@ -918,79 +854,79 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
                 ) : (
                   <button
                     onClick={() => overrideRefInputRef.current?.click()}
-                    className="w-full flex items-center gap-2 px-3 py-2 bg-[#111827]/40 hover:bg-[#111827] rounded-xl cursor-pointer transition-all border border-dashed border-[#334155] text-[#94A3B8] hover:text-[#C084FC]"
+                    className="w-full flex items-center gap-2 px-3 py-1.5 bg-[#111827]/40 hover:bg-[#111827]/60 rounded-xl cursor-pointer transition-all border border-dashed border-[#334155]/60 text-[#94A3B8] hover:text-[#C084FC] select-none"
                   >
                     <Upload className="w-3.5 h-3.5" />
-                    <span className="text-[11px] font-semibold">Upload source image</span>
+                    <span className="text-[10px] font-bold">Upload source image</span>
                   </button>
                 )}
               </div>
             )}
 
-            {/* Controls Grid */}
+            {/* Compact Context Settings Grid */}
             {genMode === 'image' && (
-              <div className="grid grid-cols-2 gap-2 select-none">
-                <div className="space-y-1 bg-[#0F172A]/40 border border-[#334155]/40 rounded-xl p-2.5">
-                  <label className="text-[9px] font-black uppercase tracking-wider text-[#CBD5E1] flex items-center gap-1 leading-none">
-                    <MapPin size={11} className="text-[#00D4FF]" /> Environment
+              <div className="grid grid-cols-2 gap-1.5 select-none">
+                <div className="space-y-0.5 bg-[#0F172A]/40 border border-[#1E293B]/40 rounded-xl p-2">
+                  <label className="text-[8px] font-black uppercase tracking-wider text-[#CBD5E1] flex items-center gap-1 leading-none">
+                    <MapPin size={10} className="text-[#00D4FF]" /> Environment
                   </label>
                   <div className="relative">
                     <select
                       value={selectedEnv}
                       onChange={(e) => setSelectedEnv(e.target.value)}
-                      className="w-full bg-[#111827] border border-[#334155] focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] rounded-xl px-2 py-1 text-xs text-white outline-none appearance-none pr-6 cursor-pointer select-none"
+                      className="w-full bg-[#111827]/60 border border-[#334155]/60 rounded-xl px-2.5 py-1 text-xs text-white outline-none appearance-none pr-6 cursor-pointer select-none font-semibold"
                     >
                       {ENVIRONMENTS.map(env => <option key={env} value={env}>{env}</option>)}
                     </select>
-                    <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-[#94A3B8] pointer-events-none" />
+                    <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#94A3B8] pointer-events-none" />
                   </div>
                 </div>
 
-                <div className="space-y-1 bg-[#0F172A]/40 border border-[#334155]/40 rounded-xl p-2.5">
-                  <label className="text-[9px] font-black uppercase tracking-wider text-[#CBD5E1] flex items-center gap-1 leading-none">
-                    <Shirt size={11} className="text-[#00D4FF]" /> Outfit
+                <div className="space-y-0.5 bg-[#0F172A]/40 border border-[#1E293B]/40 rounded-xl p-2">
+                  <label className="text-[8px] font-black uppercase tracking-wider text-[#CBD5E1] flex items-center gap-1 leading-none">
+                    <Shirt size={10} className="text-[#00D4FF]" /> Outfit
                   </label>
                   <div className="relative">
                     <select
                       value={selectedOutfit}
                       onChange={(e) => setSelectedOutfit(e.target.value)}
-                      className="w-full bg-[#111827] border border-[#334155] focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] rounded-xl px-2 py-1 text-xs text-white outline-none appearance-none pr-6 cursor-pointer select-none"
+                      className="w-full bg-[#111827]/60 border border-[#334155]/60 rounded-xl px-2.5 py-1 text-xs text-white outline-none appearance-none pr-6 cursor-pointer select-none font-semibold"
                     >
                       {OUTFITS.map(o => <option key={o} value={o}>{o}</option>)}
                     </select>
-                    <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-[#94A3B8] pointer-events-none" />
+                    <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#94A3B8] pointer-events-none" />
                   </div>
                 </div>
 
-                <div className="space-y-1 bg-[#0F172A]/40 border border-[#334155]/40 rounded-xl p-2.5">
-                  <label className="text-[9px] font-black uppercase tracking-wider text-[#CBD5E1] flex items-center gap-1 leading-none">
-                    <Layout size={11} className="text-[#00D4FF]" /> Framing
+                <div className="space-y-0.5 bg-[#0F172A]/40 border border-[#1E293B]/40 rounded-xl p-2">
+                  <label className="text-[8px] font-black uppercase tracking-wider text-[#CBD5E1] flex items-center gap-1 leading-none">
+                    <Layout size={10} className="text-[#00D4FF]" /> Framing
                   </label>
                   <div className="relative">
                     <select
                       value={selectedFraming}
                       onChange={(e) => setSelectedFraming(e.target.value)}
-                      className="w-full bg-[#111827] border border-[#334155] focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] rounded-xl px-2 py-1 text-xs text-white outline-none appearance-none pr-6 cursor-pointer select-none"
+                      className="w-full bg-[#111827]/60 border border-[#334155]/60 rounded-xl px-2.5 py-1 text-xs text-white outline-none appearance-none pr-6 cursor-pointer select-none font-semibold"
                     >
                       {FRAMING.map(f => <option key={f} value={f}>{f}</option>)}
                     </select>
-                    <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-[#94A3B8] pointer-events-none" />
+                    <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#94A3B8] pointer-events-none" />
                   </div>
                 </div>
 
-                <div className="space-y-1 bg-[#0F172A]/40 border border-[#334155]/40 rounded-xl p-2.5">
-                  <label className="text-[9px] font-black uppercase tracking-wider text-[#CBD5E1] flex items-center gap-1 leading-none">
-                    <Smile size={11} className="text-[#00D4FF]" /> Mood
+                <div className="space-y-0.5 bg-[#0F172A]/40 border border-[#1E293B]/40 rounded-xl p-2">
+                  <label className="text-[8px] font-black uppercase tracking-wider text-[#CBD5E1] flex items-center gap-1 leading-none">
+                    <Smile size={10} className="text-[#00D4FF]" /> Mood
                   </label>
                   <div className="relative">
                     <select
                       value={selectedMood}
                       onChange={(e) => setSelectedMood(e.target.value)}
-                      className="w-full bg-[#111827] border border-[#334155] focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] rounded-xl px-2 py-1 text-xs text-white outline-none appearance-none pr-6 cursor-pointer select-none"
+                      className="w-full bg-[#111827]/60 border border-[#334155]/60 rounded-xl px-2.5 py-1 text-xs text-white outline-none appearance-none pr-6 cursor-pointer select-none font-semibold"
                     >
                       {MOODS.map(m => <option key={m} value={m}>{m}</option>)}
                     </select>
-                    <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-[#94A3B8] pointer-events-none" />
+                    <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#94A3B8] pointer-events-none" />
                   </div>
                 </div>
               </div>
@@ -998,11 +934,11 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
 
             {/* Aspect Ratio */}
             {genMode === 'image' && (
-              <div className="space-y-1.5 bg-[#0F172A]/40 border border-[#334155]/40 rounded-xl p-3">
+              <div className="space-y-1.5 bg-[#0F172A]/40 border border-[#1E293B]/40 rounded-xl p-3 select-none">
                 <label className="text-[10px] font-black uppercase tracking-wider text-[#CBD5E1] flex items-center gap-1.5 leading-none">
                   <Maximize2 size={12} className="text-[#00D4FF]" /> Aspect Ratio
                 </label>
-                <div className="grid grid-cols-4 gap-1 select-none">
+                <div className="grid grid-cols-4 gap-1.5 select-none">
                   {[
                     { value: '1:1', label: '1:1' },
                     { value: '16:9', label: '16:9' },
@@ -1012,10 +948,10 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
                     <button
                       key={r.value}
                       onClick={() => setSelectedAspectRatio(r.value)}
-                      className={`py-1.5 rounded-xl text-xs font-bold border transition-all duration-300 select-none ${
+                      className={`py-1 rounded-xl text-xs font-black border transition-all duration-300 select-none tracking-tight ${
                         selectedAspectRatio === r.value
-                          ? 'bg-[#00D4FF]/15 text-[#00D4FF] border-[#00D4FF]/40 shadow-[0_0_8px_rgba(0,212,255,0.15)]'
-                          : 'bg-[#111827] border-[#334155] text-[#94A3B8] hover:border-[#334155]/80 hover:text-white'
+                          ? 'bg-[#00D4FF]/20 text-[#00D4FF] border-[#00D4FF]/40 shadow-[0_0_8px_rgba(0,212,255,0.15)]'
+                          : 'bg-[#111827]/60 border-[#334155]/60 text-[#94A3B8] hover:border-[#334155] hover:text-white'
                       }`}
                     >
                       {r.label}
@@ -1025,43 +961,43 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
               </div>
             )}
 
-            {/* Toggles */}
-            <div className="grid grid-cols-2 gap-2 select-none">
-              <div className="flex items-center justify-between bg-[#0F172A]/40 border border-[#334155]/40 rounded-xl p-2.5">
+            {/* Toggles & Variations Grid */}
+            <div className="grid grid-cols-2 gap-1.5 select-none">
+              <div className="flex items-center justify-between bg-[#0F172A]/40 border border-[#1E293B]/40 rounded-xl p-2 select-none">
                 <div>
-                  <p className="text-[10px] font-bold text-[#CBD5E1] uppercase tracking-wide">Natural</p>
-                  <p className="text-[8px] text-[#64748B] leading-tight">Film grain, candid</p>
+                  <p className="text-[9px] font-black text-[#CBD5E1] uppercase tracking-wide">Natural</p>
+                  <p className="text-[7px] font-semibold text-[#64748B] leading-tight">Candid look</p>
                 </div>
                 <button
                   onClick={handleNaturalLookToggle}
-                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${naturalLook ? 'bg-[#00F5C2]' : 'bg-[#111827] border border-[#334155]'}`}
+                  className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${naturalLook ? 'bg-[#00F5C2]' : 'bg-[#111827] border border-[#334155]/60'}`}
                 >
-                  <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform duration-300 ${naturalLook ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
+                  <span className={`inline-block h-2.5 w-2.5 transform rounded-full bg-white transition-transform duration-300 ${naturalLook ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
                 </button>
               </div>
 
-              <div className="flex items-center justify-between bg-[#0F172A]/40 border border-[#334155]/40 rounded-xl p-2.5">
+              <div className="flex items-center justify-between bg-[#0F172A]/40 border border-[#1E293B]/40 rounded-xl p-2 select-none">
                 <div>
-                  <p className="text-[10px] font-bold text-[#CBD5E1] uppercase tracking-wide">Identity Lock</p>
-                  <p className="text-[8px] text-[#64748B] leading-tight">Same facial structure</p>
+                  <p className="text-[9px] font-black text-[#CBD5E1] uppercase tracking-wide">Identity</p>
+                  <p className="text-[7px] font-semibold text-[#64748B] leading-tight">Same face</p>
                 </div>
                 <button
                   onClick={handleIdentityLockToggle}
-                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${identityLock ? 'bg-[#00D4FF]' : 'bg-[#111827] border border-[#334155]'}`}
+                  className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${identityLock ? 'bg-[#00D4FF]' : 'bg-[#111827] border border-[#334155]/60'}`}
                 >
-                  <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform duration-300 ${identityLock ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
+                  <span className={`inline-block h-2.5 w-2.5 transform rounded-full bg-white transition-transform duration-300 ${identityLock ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
                 </button>
               </div>
             </div>
 
             {/* Variations */}
             {genMode === 'image' && (
-              <div className="flex items-center justify-between bg-[#0F172A]/40 border border-[#334155]/40 rounded-xl p-2.5">
+              <div className="flex items-center justify-between bg-[#0F172A]/40 border border-[#1E293B]/40 rounded-xl p-2.5 select-none">
                 <div>
-                  <p className="text-[10px] font-bold text-[#CBD5E1] uppercase tracking-wide">Variations</p>
-                  <p className="text-[8px] text-[#64748B]">Batch multiple creations</p>
+                  <p className="text-[10px] font-black text-[#CBD5E1] uppercase tracking-wide">Variations</p>
+                  <p className="text-[8px] font-semibold text-[#64748B]">Batch multiple creations</p>
                 </div>
-                <div className="flex gap-1 select-none">
+                <div className="flex gap-1.5 select-none">
                   {[1, 2, 3, 4].map(n => (
                     <button
                       key={n}
@@ -1069,7 +1005,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
                       className={`w-7 h-7 rounded-lg text-xs font-black transition-all ${
                         imageCount === n
                           ? 'bg-[#00F5C2] text-[#0B0F17] shadow-sm'
-                          : 'bg-[#111827] text-[#64748B] hover:text-white hover:bg-[#111827]/80 border border-[#334155]'
+                          : 'bg-[#111827]/60 text-[#64748B] hover:text-white hover:bg-[#111827] border border-[#334155]/60'
                       }`}
                     >
                       {n}
@@ -1079,36 +1015,17 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
               </div>
             )}
 
-            {/* Additional Instructions */}
-            <div className="space-y-1.5 bg-[#0F172A]/40 border border-[#334155]/40 rounded-xl p-3">
-              <div className="flex items-center justify-between">
-                <label className="text-[10px] font-black uppercase tracking-wider text-[#CBD5E1]">Additional Details</label>
-                <button
-                  onClick={() => handleEnhance(prompt, setPrompt, genMode === 'image' ? setIsEnhancingPrompt : setIsEnhancingVideoPrompt)}
-                  disabled={(genMode === 'image' ? isEnhancingPrompt : isEnhancingVideoPrompt) || !prompt.trim()}
-                  className="flex items-center gap-1 px-1.5 py-0.5 rounded-lg text-[9px] font-extrabold bg-[#7C3AED]/20 hover:bg-[#7C3AED]/40 border border-[#8B5CF6]/30 text-[#C084FC] disabled:opacity-40 transition-all select-none"
-                >
-                  {(genMode === 'image' ? isEnhancingPrompt : isEnhancingVideoPrompt) ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Sparkles className="w-2.5 h-2.5" />} Enhance
-                </button>
-              </div>
-              <textarea
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                placeholder="e.g. Holding a coffee cup, direct eye contact, cinematic lighting..."
-                className="w-full bg-[#111827] border border-[#334155] focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] rounded-xl px-3 py-2 text-xs text-white min-h-[55px] focus:ring-2 focus:ring-purple-500 outline-none resize-none placeholder-[#64748B] font-semibold"
-              />
-            </div>
+
 
             <input
               ref={overrideRefInputRef}
               type="file"
               accept="image/*"
-              multiple
               className="hidden"
               onChange={(e) => {
                 const files = e.target.files;
-                if (!files) return;
-                Array.from(files).forEach(file => {
+                if (!files || files.length === 0) return;
+                Array.from(files).forEach((file) => {
                   const reader = new FileReader();
                   reader.onload = () => {
                     setOverrideRefImages(prev => [...prev, {
@@ -1124,27 +1041,37 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
             />
           </div>
 
-          {/* LEFT FIXED FOOTER: Always Visible without scrolling */}
-          <div className="flex-none p-3.5 border-t border-[#334155]/40 bg-[#0F172A]/40 backdrop-blur-md flex items-center gap-2 select-none">
+          {/* Action Footer: Enhancer + Generate Button */}
+          <div className="flex-none p-2 border-t border-[#1E293B]/60 bg-[#0F172A]/60 backdrop-blur-md flex items-center gap-2 select-none">
             {genMode === 'image' ? (
-              <button
-                onClick={handleGenerate}
-                disabled={isGenerating || isProcessing || !selectedModel}
-                className="flex-1 bg-gradient-to-r from-[#00F5C2] via-[#00D4FF] to-[#6366F1] text-[#0B0F17] font-black py-3 rounded-xl flex items-center justify-center gap-2 hover:shadow-[0_0_24px_rgba(0,245,194,0.4)] hover:scale-[1.01] transition-all duration-300 disabled:opacity-40 text-xs uppercase tracking-wider cursor-pointer select-none"
-              >
-                {isGenerating ? (
-                  <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</>
-                ) : result ? (
-                  <><RefreshCw className="w-3.5 h-3.5" /> Regenerate</>
-                ) : (
-                  <><Sparkles className="w-3.5 h-3.5" /> Generate Image</>
-                )}
-              </button>
+              <>
+                <button
+                  onClick={() => handleEnhance(prompt, setPrompt, setIsEnhancingPrompt)}
+                  disabled={isGenerating || isProcessing || !prompt.trim() || isEnhancingPrompt}
+                  className="flex-none p-3.5 rounded-xl bg-[#111827]/80 border border-[#334155]/60 hover:bg-[#0F172A] hover:border-[#334155] text-[#00D4FF] transition-all cursor-pointer select-none shadow-sm disabled:opacity-40"
+                  title="Enhance prompt with AI"
+                >
+                  {isEnhancingPrompt ? <Loader2 className="w-4 h-4 animate-spin text-[#00D4FF]" /> : <Sparkles className="w-4 h-4" />}
+                </button>
+                <button
+                  onClick={handleGenerate}
+                  disabled={isGenerating || isProcessing || !selectedModel}
+                  className="flex-1 bg-gradient-to-r from-[#00F5C2] via-[#00D4FF] to-[#6366F1] text-[#0B0F17] font-black py-3 rounded-xl flex items-center justify-center gap-2 hover:shadow-[0_0_24px_rgba(0,245,194,0.4)] hover:scale-[1.01] transition-all duration-300 disabled:opacity-40 text-xs uppercase tracking-wider cursor-pointer select-none shadow-lg"
+                >
+                  {isGenerating ? (
+                    <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</>
+                  ) : result ? (
+                    <><RefreshCw className="w-3.5 h-3.5" /> Regenerate</>
+                  ) : (
+                    <><Sparkles className="w-3.5 h-3.5" /> Generate Image</>
+                  )}
+                </button>
+              </>
             ) : (
               <button
                 onClick={handleGenerateVideo}
                 disabled={isGenerating || !selectedVideoModel || !prompt.trim()}
-                className="flex-1 bg-gradient-to-r from-[#C084FC] to-[#8B5CF6] text-white font-black py-3 rounded-xl flex items-center justify-center gap-2 hover:shadow-[0_0_20px_rgba(139,92,246,0.3)] hover:scale-[1.01] transition-all duration-300 disabled:opacity-40 text-xs uppercase tracking-wider cursor-pointer select-none"
+                className="flex-1 bg-gradient-to-r from-[#C084FC] to-[#8B5CF6] text-white font-black py-3 rounded-xl flex items-center justify-center gap-2 hover:shadow-[0_0_20px_rgba(139,92,246,0.3)] hover:scale-[1.01] transition-all duration-300 disabled:opacity-40 text-xs uppercase tracking-wider cursor-pointer select-none shadow-lg"
               >
                 {isGenerating ? (
                   <><Loader2 className="w-4 h-4 animate-spin" /> Processing Video...</>
@@ -1159,7 +1086,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
             {genMode === 'image' && (
               <button
                 onClick={handleRandomize}
-                className="flex-none p-3.5 rounded-xl bg-[#111827] border border-[#334155]/60 hover:bg-[#0F172A] hover:border-[#334155] text-white transition-all cursor-pointer select-none"
+                className="flex-none p-3.5 rounded-xl bg-[#111827]/80 border border-[#334155]/60 hover:bg-[#0F172A] hover:border-[#334155] text-white transition-all cursor-pointer select-none shadow-sm"
                 title="Randomize environment, outfit & mood"
               >
                 <RefreshCw className="w-3.5 h-3.5 text-[#94A3B8]" />
@@ -1168,33 +1095,35 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
           </div>
         </div>
 
-        {/* RIGHT COLUMN: Output Preview Canvas */}
-        <div className="w-full lg:w-[60%] xl:w-[62%] bg-[#0B0F17] flex flex-col h-full relative p-4 select-none overflow-y-auto">
-          {/* Output Top Summary */}
-          <div className="flex-none flex items-center justify-between bg-[#0F172A]/40 border border-[#334155]/40 rounded-xl px-3.5 py-2.5 mb-4 animate-in fade-in select-none">
+        {/* RIGHT COLUMN: Studio Canvas Preview */}
+        <div className="flex-1 bg-[#0B0F19] flex flex-col h-full relative p-4 select-none overflow-hidden justify-between">
+          {/* Status Tracker Summary */}
+          <div className="flex-none flex items-center justify-between bg-[#0F172A]/40 border border-[#1E293B]/40 rounded-xl px-3.5 py-2.5 mb-3.5 animate-in fade-in select-none">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[10px] font-black uppercase tracking-wider text-[#94A3B8]">Workspace Status:</span>
-              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-[#111827] text-[#CBD5E1] border border-[#334155]">
+              <span className="text-[10px] font-black uppercase tracking-wider text-[#94A3B8]">Studio Canvas</span>
+              <span className="text-[9px] font-extrabold px-2 py-0.5 rounded bg-[#111827]/80 text-[#CBD5E1] border border-[#334155]/60">
                 {activePersonaObj ? activePersonaObj.name : 'No Persona'}
               </span>
-              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-[#111827] text-[#00D4FF] border border-[#334155]">
-                {selectedModelInfo?.name || 'Standard Model'}
+              <span className="text-[9px] font-extrabold px-2 py-0.5 rounded bg-[#111827]/80 text-[#00D4FF] border border-[#334155]/60">
+                {selectedModelInfo?.name || 'Standard AI'}
               </span>
-              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-[#111827] text-[#C084FC] border border-[#334155]">
+              <span className="text-[9px] font-extrabold px-2 py-0.5 rounded bg-[#111827]/80 text-[#C084FC] border border-[#334155]/60">
                 {selectedAspectRatio}
               </span>
             </div>
-            {result?.imageUrl && (
-              <span className="text-[9px] font-black uppercase bg-[#00F5C2]/10 border border-[#00F5C2]/20 rounded px-1.5 py-0.5 text-[#00F5C2]">Live</span>
+            {result?.imageUrl && result.promptUsed !== 'Stock demo image' && (
+              <span className="text-[9px] font-black uppercase bg-[#00F5C2]/15 border border-[#00F5C2]/25 rounded px-2 py-0.5 text-[#00F5C2] shadow-[0_0_10px_rgba(0,245,194,0.15)] select-none">Live</span>
             )}
           </div>
 
-          {/* Canvas Wrapper */}
-          <div className="flex-1 min-h-[300px] lg:min-h-0 bg-[#0F172A]/20 border border-dashed border-[#334155] rounded-2xl p-3 flex flex-col items-center justify-center relative overflow-hidden group select-none shadow-[inset_0_2px_12px_rgba(0,0,0,0.5)]">
-            {isGenerating || isProcessing ? (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[#0B0F17]/40 backdrop-blur-sm z-10 animate-in fade-in duration-300">
+          {/* Premium Canvas Viewbox */}
+          <div className="aspect-video w-full bg-[#0F172A]/20 border border-dashed border-[#1E293B]/60 rounded-2xl p-2 flex items-center justify-center relative overflow-hidden group select-none shadow-[inset_0_2px_12px_rgba(0,0,0,0.6)]">
+            {(isGenerating || isProcessing) && genMode === 'video' ? (
+              <VideoSamplePreview isLoading loadingText={`Generating with ${selectedModelInfo?.name || 'AI Model'}...`} />
+            ) : (isGenerating || isProcessing) ? (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[#0B0F19]/60 backdrop-blur-md z-10 animate-in fade-in duration-300">
                 <Loader2 className="w-10 h-10 animate-spin text-[#00D4FF]" />
-                <p className="text-xs font-bold text-[#94A3B8] animate-pulse">
+                <p className="text-xs font-black text-[#94A3B8] animate-pulse tracking-wide select-none">
                   {isProcessing
                     ? (postAction === 'upscale' ? 'Upscaling image to ultra high-fidelity...' : 'Applying AI editing refinements...')
                     : `Generating with ${selectedModelInfo?.name || 'AI Model'}...`}
@@ -1202,52 +1131,81 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
               </div>
             ) : genMode === 'image' && result?.imageUrl ? (
               <div className="relative w-full h-full flex items-center justify-center select-none animate-in fade-in duration-300">
-                <img src={result.imageUrl} alt="Generated" className="max-h-[380px] lg:max-h-[460px] max-w-full rounded-xl object-contain border border-[#334155] shadow-2xl bg-black/40" />
-                <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/60 backdrop-blur-md rounded-lg border border-white/10 flex items-center gap-1">
-                  <span className="text-[9px] text-white font-bold">{selectedModelInfo?.name || 'AI'}{multiResults.length > 1 ? ` (#${selectedVariation + 1})` : ''}</span>
+                <img src={result.imageUrl} alt="Generated" className="max-w-full max-h-full rounded-2xl object-cover object-[35%_center] border border-[#1E293B]/60 shadow-2xl select-none transition-transform duration-300 hover:scale-[1.01]" />
+                <div className="absolute top-2 left-2 px-3 py-1 bg-black/75 backdrop-blur-md rounded-xl border border-white/10 flex items-center gap-1.5 shadow-xl select-none">
+                  {result.promptUsed === 'Stock demo image' ? (
+                    <>
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                      <span className="text-[10px] text-emerald-400 font-extrabold tracking-wide uppercase select-none">Sample Preview</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-3 h-3 text-[#00D4FF]" />
+                      <span className="text-[10px] text-white font-black tracking-wide select-none">{selectedModelInfo?.name || 'AI'}{multiResults.length > 1 ? ` (#${selectedVariation + 1})` : ''}</span>
+                    </>
+                  )}
                 </div>
               </div>
             ) : genMode === 'video' && videoResult?.videoUrl ? (
               <div className="relative w-full h-full flex items-center justify-center select-none animate-in fade-in duration-300">
-                <video src={videoResult.videoUrl} controls autoPlay loop className="max-h-[380px] lg:max-h-[460px] rounded-xl object-contain border border-[#334155] shadow-2xl bg-black/40" />
-                <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/60 backdrop-blur-md rounded-lg border border-white/10 flex items-center gap-1">
-                  <span className="text-[9px] text-white font-bold">{videoResult.model || 'Video Model'}</span>
+                <video src={videoResult.videoUrl} controls autoPlay loop className="max-h-[380px] lg:max-h-[440px] rounded-2xl object-contain border border-[#1E293B]/60 shadow-2xl bg-black/50 select-none" />
+                <div className="absolute top-2 left-2 px-3 py-1 bg-black/75 backdrop-blur-md rounded-xl border border-white/10 flex items-center gap-1.5 shadow-xl select-none">
+                  <span className="text-[10px] text-white font-black tracking-wide select-none">{videoResult.model || 'Video Model'}</span>
                 </div>
               </div>
+            ) : genMode === 'video' ? (
+              <VideoSamplePreview />
             ) : (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center px-6">
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center px-6 select-none animate-in fade-in">
                 <div className="w-16 h-16 rounded-full bg-[#111827] border border-[#334155]/60 flex items-center justify-center shadow-[0_0_20px_rgba(0,212,255,0.08)] mb-1">
                   <ImageIcon className="w-7 h-7 text-[#00D4FF] opacity-50" />
                 </div>
                 <h4 className="text-sm font-bold text-white">Your generated image will appear here</h4>
-                <p className="text-[11px] text-[#64748B] max-w-sm">
+                <p className="text-[11px] text-[#64748B] max-w-sm leading-relaxed">
                   Add details on the left and click <span className="text-[#00D4FF] font-black uppercase tracking-wider">Generate Image</span> to get started.
                 </p>
               </div>
             )}
           </div>
 
-          {/* Action Button Row */}
-          <div className="flex-none mt-3 flex items-center gap-2 select-none">
+          {/* Context Actions Row (Save, Download, Regenerate, Reference) */}
+          <div className="flex-none mt-3.5 flex items-center gap-2 select-none flex-wrap">
             {result?.imageUrl && genMode === 'image' && (
               <>
                 <button
                   onClick={handleSave}
                   disabled={isSaved}
-                  className={`flex-1 py-3 rounded-xl font-bold text-xs uppercase tracking-wider transition-all duration-300 border shadow cursor-pointer select-none text-center ${
+                  className={`flex-1 py-3 px-3 rounded-xl font-black text-xs uppercase tracking-wider transition-all duration-300 border shadow cursor-pointer select-none text-center flex items-center justify-center gap-2 min-w-[120px] ${
                     isSaved
                       ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
                       : 'bg-gradient-to-r from-[#00F5C2] to-[#00D4FF] hover:shadow-[0_0_24px_rgba(0,245,194,0.3)] text-[#0B0F17]'
                   }`}
                 >
-                  {isSaved ? 'Saved in Visual Library' : 'Save Image'}
+                  {isSaved ? 'Saved to Vault' : 'Save Image'}
                 </button>
                 <button
                   onClick={downloadImage}
-                  className="flex-none p-3.5 rounded-xl bg-[#111827] border border-[#334155]/60 hover:bg-[#0F172A] hover:border-[#334155] text-white transition-all cursor-pointer select-none"
-                  title="Download full resolution image"
+                  className="flex-none p-3.5 rounded-xl bg-[#111827]/80 border border-[#334155]/60 hover:bg-[#0F172A] hover:border-[#334155] text-white transition-all cursor-pointer select-none shadow-sm"
+                  title="Download Image"
                 >
                   <Download className="w-4 h-4 text-[#00D4FF]" />
+                </button>
+                <button
+                  onClick={handleGenerate}
+                  disabled={isGenerating || isProcessing || !selectedModel}
+                  className="flex-none p-3.5 rounded-xl bg-[#111827]/80 border border-[#334155]/60 hover:bg-[#0F172A] hover:border-[#334155] text-white transition-all cursor-pointer select-none shadow-sm"
+                  title="Regenerate"
+                >
+                  <RefreshCw className="w-4 h-4 text-[#00D4FF]" />
+                </button>
+                <button
+                  onClick={() => {
+                    setOverrideRefImages(prev => [...prev, { id: `or-${Date.now()}`, url: result.imageUrl, name: 'Generated Reference' }]);
+                  }}
+                  className="flex-none p-3.5 rounded-xl bg-[#111827]/80 border border-[#334155]/60 hover:bg-[#0F172A] hover:border-[#334155] text-white transition-all cursor-pointer select-none shadow-sm"
+                  title="Use as Reference"
+                >
+                  <ImageIcon className="w-4 h-4 text-[#00D4FF]" />
                 </button>
               </>
             )}
@@ -1256,37 +1214,45 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
               <>
                 <button
                   onClick={handleSaveVideo}
-                  className="flex-1 py-3 rounded-xl font-bold text-xs uppercase bg-[#111827] border border-[#334155]/60 hover:bg-[#0F172A] text-white hover:border-[#334155] transition-all cursor-pointer select-none text-center"
+                  className="flex-1 py-3 px-3 rounded-xl font-black text-xs uppercase tracking-wider bg-[#111827] border border-[#334155]/60 hover:bg-[#0F172A] text-white hover:border-[#334155] transition-all cursor-pointer select-none text-center flex items-center justify-center gap-2 min-w-[120px]"
                 >
                   Save Video
                 </button>
                 <button
                   onClick={downloadVideo}
-                  className="flex-none p-3.5 rounded-xl bg-[#111827] border border-[#334155]/60 hover:bg-[#0F172A] text-white hover:border-[#334155] transition-all cursor-pointer select-none"
+                  className="flex-none p-3.5 rounded-xl bg-[#111827]/80 border border-[#334155]/60 hover:bg-[#0F172A] text-white hover:border-[#334155] transition-all cursor-pointer select-none"
                 >
                   <Download className="w-4 h-4 text-[#00D4FF]" />
+                </button>
+                <button
+                  onClick={handleGenerateVideo}
+                  disabled={isGenerating || !selectedVideoModel || !prompt.trim()}
+                  className="flex-none p-3.5 rounded-xl bg-[#111827]/80 border border-[#334155]/60 hover:bg-[#0F172A] text-white hover:border-[#334155] transition-all cursor-pointer select-none"
+                  title="Regenerate"
+                >
+                  <RefreshCw className="w-4 h-4 text-[#00D4FF]" />
                 </button>
               </>
             )}
           </div>
 
-          {/* Recent Generations strip */}
-          <div className="flex-none mt-4 bg-[#0F172A]/20 border border-[#334155]/30 rounded-xl p-2.5 animate-in fade-in select-none">
-            <h5 className="text-[10px] font-black uppercase tracking-wider text-[#64748B] mb-2">Recent Session Generations</h5>
+          {/* Compact Variations Strip */}
+          <div className="flex-none mt-3.5 bg-[#0F172A]/30 border border-[#1E293B]/40 rounded-xl p-2.5 animate-in fade-in select-none">
+            <h5 className="text-[9px] font-black uppercase tracking-wider text-[#64748B] mb-2 leading-none">Session Image Reel</h5>
             {sessionHistory.length > 0 ? (
               <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
                 {sessionHistory.slice(0, 4).map((url, i) => (
                   <button
                     key={i}
-                    onClick={() => setResult({ imageUrl: url, model: selectedModelInfo?.name || 'AI' })}
-                    className="relative shrink-0 w-12 h-12 rounded-lg border border-[#334155] overflow-hidden hover:border-[#00D4FF] transition-all duration-300 group select-none shadow"
+                    onClick={() => setResult({ imageUrl: url, model: selectedModelInfo?.name || 'AI', promptUsed: '' })}
+                    className="relative shrink-0 w-11 h-11 rounded-lg border border-[#334155]/60 overflow-hidden hover:border-[#00D4FF] transition-all duration-300 group select-none shadow hover:scale-105"
                   >
                     <img src={url} alt="" className="w-full h-full object-cover" />
                   </button>
                 ))}
               </div>
             ) : (
-              <p className="text-[9px] text-[#64748B] italic">No images generated in this session yet.</p>
+              <p className="text-[9px] text-[#64748B] italic">Your session history reel is currently empty.</p>
             )}
           </div>
         </div>
@@ -1297,7 +1263,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
           <span className="flex items-center gap-2">
             <AlertCircle className="w-3.5 h-3.5 shrink-0" /> {globalError}
           </span>
-          <button onClick={() => setGlobalError(null)} className="p-1 hover:bg-rose-500/10 rounded">
+          <button onClick={() => setGlobalError(null)} className="p-1 hover:bg-rose-500/10 rounded transition-colors">
             <X size={14} />
           </button>
         </div>
@@ -1305,3 +1271,4 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
     </div>
   );
 };
+

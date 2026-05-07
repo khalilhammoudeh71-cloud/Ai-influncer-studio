@@ -480,17 +480,56 @@ export async function removeBackground(image: string): Promise<{ imageUrl: strin
   return { imageUrl: data.imageUrl, model: data.model };
 }
 
-export const TTS_VOICES = [
-  { id: 'Aoede', name: 'Aoede', gender: 'Female', desc: 'Warm, bright' },
-  { id: 'Charon', name: 'Charon', gender: 'Male', desc: 'Deep, authoritative' },
-  { id: 'Fenrir', name: 'Fenrir', gender: 'Male', desc: 'Smooth, modern' },
-  { id: 'Kore', name: 'Kore', gender: 'Female', desc: 'Clear, natural' },
-  { id: 'Puck', name: 'Puck', gender: 'Male', desc: 'Energetic, youthful' },
-] as const;
+export interface TTSVoice {
+  id: string;
+  name: string;
+  gender: string;
+  desc: string;
+  engine: 'gemini' | 'openai' | 'elevenlabs';
+  previewUrl?: string;
+}
+
+export const TTS_VOICES: TTSVoice[] = [
+  // Gemini Voices (Prebuilt)
+  { id: 'Aoede', name: 'Aoede', gender: 'Female', desc: 'Warm, bright', engine: 'gemini' },
+  { id: 'Charon', name: 'Charon', gender: 'Male', desc: 'Deep, authoritative', engine: 'gemini' },
+  { id: 'Fenrir', name: 'Fenrir', gender: 'Male', desc: 'Smooth, modern', engine: 'gemini' },
+  { id: 'Kore', name: 'Kore', gender: 'Female', desc: 'Clear, natural', engine: 'gemini' },
+  { id: 'Puck', name: 'Puck', gender: 'Male', desc: 'Energetic, youthful', engine: 'gemini' },
+  
+  // OpenAI Voices
+  { id: 'alloy', name: 'Alloy', gender: 'Neutral', desc: 'Balanced, versatile', engine: 'openai' },
+  { id: 'echo', name: 'Echo', gender: 'Male', desc: 'Warm, relaxed', engine: 'openai' },
+  { id: 'fable', name: 'Fable', gender: 'Neutral', desc: 'British, expressive', engine: 'openai' },
+  { id: 'onyx', name: 'Onyx', gender: 'Male', desc: 'Deep, confident', engine: 'openai' },
+  { id: 'nova', name: 'Nova', gender: 'Female', desc: 'Bright, energetic', engine: 'openai' },
+  { id: 'shimmer', name: 'Shimmer', gender: 'Female', desc: 'Clear, soulful', engine: 'openai' },
+];
+
+export async function fetchElevenLabsVoices(): Promise<TTSVoice[]> {
+  try {
+    const response = await authFetch('/api/elevenlabs-voices');
+    if (!response.ok) return [];
+    const data = await response.json();
+    return (data.voices || []).map((v: any) => ({
+      id: v.voice_id,
+      name: v.name,
+      gender: v.labels?.gender || 'Neutral',
+      desc: v.labels?.description || v.category || 'ElevenLabs Voice',
+      engine: 'elevenlabs',
+      previewUrl: v.preview_url,
+    }));
+  } catch (err) {
+    console.error('Failed to fetch ElevenLabs voices:', err);
+    return [];
+  }
+}
 
 export async function textToSpeech(params: {
   text: string;
   voiceName?: string;
+  engine?: 'gemini' | 'openai' | 'elevenlabs';
+  voiceId?: string;
   speed?: number;
 }): Promise<{ audioUrl: string; voice: string; model: string }> {
   const response = await authFetch('/api/text-to-speech', {

@@ -33,6 +33,8 @@ export default function TalkingHeadStudio({
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState('');
   const [scriptGenerating, setScriptGenerating] = useState(false);
+  const [previewingVoice, setPreviewingVoice] = useState<string | null>(null);
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const portraitInputRef = useRef<HTMLInputElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
@@ -98,6 +100,51 @@ export default function TalkingHeadStudio({
       toast.error('Failed to generate script');
     } finally {
       setScriptGenerating(false);
+    }
+  };
+
+  const handleVoicePreview = async (voiceId: string) => {
+    if (previewingVoice === voiceId) {
+      if (previewAudioRef.current) {
+        previewAudioRef.current.pause();
+        previewAudioRef.current = null;
+      }
+      setPreviewingVoice(null);
+      return;
+    }
+
+    if (previewAudioRef.current) {
+      previewAudioRef.current.pause();
+    }
+
+    setPreviewingVoice(voiceId);
+    
+    try {
+      const voice = TTS_VOICES.find(v => v.id === voiceId);
+      if (!voice) return;
+
+      const res = await fetch('/api/generate-speech', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: `Hi! I am ${voice.name}. This is how I sound.`,
+          voice: voice.id,
+          engine: (voice as any).engine || 'openai'
+        })
+      });
+
+      const data = await res.json();
+      if (data.audioUrl) {
+        const audio = new Audio(data.audioUrl);
+        previewAudioRef.current = audio;
+        audio.onended = () => setPreviewingVoice(null);
+        audio.play().catch(() => setPreviewingVoice(null));
+      } else {
+        setPreviewingVoice(null);
+      }
+    } catch (err) {
+      console.error('[Preview] Voice preview failed:', err);
+      setPreviewingVoice(null);
     }
   };
 
@@ -227,18 +274,29 @@ export default function TalkingHeadStudio({
                   <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)]">TTS Voice</label>
                   <div className="grid grid-cols-5 gap-1.5">
                     {TTS_VOICES.map(voice => (
-                      <button
-                        key={voice.id}
-                        onClick={() => setSelectedVoice(voice.id)}
-                        className={`p-2 rounded-lg border transition-all text-center ${
-                          selectedVoice === voice.id
-                            ? 'border-pink-500 bg-pink-500/10'
-                            : 'border-[var(--border-default)] bg-[var(--bg-elevated)] hover:border-[var(--border-strong)]'
-                        }`}
-                      >
-                        <p className="text-[10px] font-bold text-white">{voice.name}</p>
-                        <p className="text-[7px] text-[var(--text-muted)]">{voice.gender}</p>
-                      </button>
+                      <div key={voice.id} className="relative group">
+                        <button
+                          onClick={() => setSelectedVoice(voice.id)}
+                          className={`w-full p-2 rounded-lg border transition-all text-center h-full flex flex-col justify-center items-center gap-0.5 ${
+                            selectedVoice === voice.id
+                              ? 'border-pink-500 bg-pink-500/10'
+                              : 'border-[var(--border-default)] bg-[var(--bg-elevated)] hover:border-[var(--border-strong)]'
+                          }`}
+                        >
+                          <p className="text-[10px] font-bold text-white leading-tight">{voice.name}</p>
+                          <p className="text-[7px] text-[var(--text-muted)] uppercase tracking-wider">{voice.gender}</p>
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleVoicePreview(voice.id); }}
+                          className={`absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center transition-all shadow-lg z-10 ${
+                            previewingVoice === voice.id
+                              ? 'bg-pink-500 text-white scale-110'
+                              : 'bg-[var(--bg-overlay)] text-[var(--text-tertiary)] hover:text-white hover:bg-pink-500'
+                          }`}
+                        >
+                          {previewingVoice === voice.id ? <Loader2 size={8} className="animate-spin" /> : <Play size={8} className="fill-current ml-0.5" />}
+                        </button>
+                      </div>
                     ))}
                   </div>
                 </div>

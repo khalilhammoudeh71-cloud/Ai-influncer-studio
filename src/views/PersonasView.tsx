@@ -3,7 +3,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
 import { cn } from '../utils/cn';
-import { Persona, GeneratedImage } from '../types';
+import { Persona, GeneratedImage, NavActions, Tab, NavEntry } from '../types';
 import { VisualGenerator } from '../components/VisualGenerator';
 import ReferenceSheetModal from '../components/ReferenceSheetModal';
 import { api } from '../services/apiService';
@@ -16,10 +16,11 @@ interface PersonasViewProps {
   setPersonas: (p: Persona[]) => void;
   onSelectPersona: (id: string) => void;
   selectedId: string;
-  navigateToTab?: (tab: 'personas' | 'create' | 'gallery' | 'assistant' | 'settings') => void;
+  navigateToTab?: (tab: Tab) => void;
+  nav: NavActions;
 }
 
-export default function PersonasView({ personas, setPersonas, onSelectPersona, selectedId, navigateToTab }: PersonasViewProps) {
+export default function PersonasView({ personas, setPersonas, onSelectPersona, selectedId, navigateToTab, nav }: PersonasViewProps) {
   const [mounted, setMounted] = useState(false);
   const [editingPersona, setEditingPersona] = useState<Persona | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -54,6 +55,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
   const [refError, setRefError] = useState<string | null>(null);
   const [analyzingFace, setAnalyzingFace] = useState(false);
   const [faceAnalysisError, setFaceAnalysisError] = useState<string | null>(null);
+  const [showActivePersonaMenu, setShowActivePersonaMenu] = useState(false);
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -339,7 +341,31 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
   };
 
   const handleAddPersona = () => {
-    window.location.pathname = '/persona/builder';
+    nav.push({
+      view: 'persona-builder',
+      params: {
+        persona: {
+          id: `user-${Date.now()}`,
+          name: 'New Persona',
+          niche: 'Luxury Lifestyle',
+          tone: 'Luxury, Confident, Exclusive',
+          platform: 'Instagram',
+          status: 'Draft',
+          avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150',
+          personalityTraits: [],
+          visualStyle: 'Sophisticated & Modern',
+          audienceType: 'General',
+          contentBoundaries: '',
+          bio: '',
+          brandVoiceRules: '',
+          contentGoals: '',
+          personaNotes: ''
+        },
+        onSave: (updated: Persona) => {
+          setPersonas([...personas, updated]);
+        }
+      }
+    });
   };
 
   const handleUpdatePersona = () => {
@@ -391,19 +417,18 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
   };
 
   const handleOpenEdit = (persona: Persona) => {
-    setEditingPersona({ ...persona });
+    nav.push({
+      view: 'persona-builder',
+      params: {
+        persona: { ...persona },
+        onSave: (updated: Persona) => {
+          const newList = personas.map(p => p.id === updated.id ? updated : p);
+          setPersonas(newList);
+        }
+      }
+    });
   };
 
-  if (editingPersona) {
-    return (
-      <PersonaBuilderView 
-        persona={editingPersona}
-        onChange={setEditingPersona}
-        onSave={handleUpdatePersona}
-        onCancel={() => setEditingPersona(null)}
-      />
-    );
-  }
 
   const activePersona = personas.find(p => p.id === selectedId) || personas[0];
 
@@ -478,13 +503,56 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                 </div>
               </div>
               
-              <div className="flex flex-col sm:flex-row items-center gap-2 align-self-end mt-auto">
+              <div className="flex flex-col sm:flex-row items-center gap-2 align-self-end mt-auto relative">
                 <button onClick={() => handleOpenEdit(activePersona)} className="px-5 py-2.5 rounded-full bg-[#111827] hover:bg-[#1F2937] border border-[#334155] text-sm font-semibold transition-all flex items-center gap-2 shadow-sm text-white">
                   <Edit2 size={14} /> Edit Persona
                 </button>
-                <button className="w-10 h-10 rounded-full bg-[#111827] hover:bg-[#1F2937] border border-[#334155] flex items-center justify-center text-white transition-all">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
-                </button>
+                <div className="relative">
+                  <button 
+                    onClick={() => setShowActivePersonaMenu(!showActivePersonaMenu)}
+                    className={cn(
+                      "w-10 h-10 rounded-full bg-[#111827] hover:bg-[#1F2937] border border-[#334155] flex items-center justify-center text-white transition-all",
+                      showActivePersonaMenu && "border-[#00D4FF] bg-[#00D4FF]/10"
+                    )}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+                  </button>
+
+                  {showActivePersonaMenu && (
+                    <>
+                      <div className="fixed inset-0 z-30" onClick={() => setShowActivePersonaMenu(false)} />
+                      <div className="absolute right-0 bottom-full mb-2 w-48 bg-[#0F172A] border border-[#334155] rounded-2xl shadow-2xl overflow-hidden z-40 animate-in fade-in slide-in-from-bottom-2 duration-200">
+                        <div className="p-1.5 space-y-1">
+                          <button 
+                            onClick={() => { handleOpenEdit(activePersona); setShowActivePersonaMenu(false); }}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-[#CBD5E1] hover:text-white hover:bg-[#111827] rounded-xl transition-colors"
+                          >
+                            <Edit2 size={14} className="text-[#00D4FF]" /> Edit Persona
+                          </button>
+                          <button 
+                            onClick={() => { setActivePersonaForGen(activePersona); setShowGenerator(true); setShowActivePersonaMenu(false); }}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-[#CBD5E1] hover:text-white hover:bg-[#111827] rounded-xl transition-colors"
+                          >
+                            <ImageIcon size={14} className="text-[#00F5C2]" /> Generate Images
+                          </button>
+                          <button 
+                            onClick={() => { navigateToTab?.('create'); setShowActivePersonaMenu(false); }}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-[#CBD5E1] hover:text-white hover:bg-[#111827] rounded-xl transition-colors"
+                          >
+                            <Film size={14} className="text-[#6366F1]" /> Generate Video
+                          </button>
+                          <div className="h-px bg-[#334155]/50 my-1" />
+                          <button 
+                            onClick={() => { setDeleteConfirmId(activePersona.id); setShowActivePersonaMenu(false); }}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-xl transition-colors"
+                          >
+                            <Trash2 size={14} /> Delete Persona
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -707,9 +775,6 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
             </button>
           </div>
-
-        </div>
-      )}
 
           {mounted && previewImage && createPortal(
             <div className="fixed inset-0 flex items-start justify-center bg-black/90 backdrop-blur-sm p-4 pb-24 overflow-y-auto" style={{ zIndex: 10002 }} onClick={() => { if (!previewProcessing) setPreviewImage(null); }}>
@@ -994,21 +1059,56 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
               </div>
             </div>
           , document.body)}
-      {showGenerator && activePersonaForGen && (
-        <VisualGenerator 
-          persona={activePersonaForGen} 
-          onClose={() => {
-            setShowGenerator(false);
-          }} 
-          onSaveImage={handleSaveGeneratedImage}
-        />
-      )}
+          {mounted && deleteConfirmId && createPortal(
+            <div className="fixed inset-0 flex items-center justify-center bg-black/80 backdrop-blur-md z-[10005] p-4">
+              <motion.div 
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="max-w-md w-full bg-[#0F172A] border border-[#334155] rounded-3xl p-6 shadow-2xl"
+              >
+                <div className="w-14 h-14 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-500 mb-4">
+                  <AlertTriangle size={28} />
+                </div>
+                <h3 className="text-xl font-bold text-white mb-2">Delete Persona?</h3>
+                <p className="text-sm text-[#94A3B8] mb-6">This will permanently delete <span className="text-white font-bold">{personas.find(p => p.id === deleteConfirmId)?.name}</span> and all associated generations. This action cannot be undone.</p>
+                <div className="flex gap-3">
+                  <button 
+                    onClick={() => setDeleteConfirmId(null)}
+                    className="flex-1 py-2.5 rounded-xl border border-[#334155] text-sm font-bold text-[#CBD5E1] hover:bg-[#111827] transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={confirmDelete}
+                    className="flex-1 py-2.5 rounded-xl bg-rose-500 hover:bg-rose-600 text-sm font-bold text-white transition-all shadow-lg shadow-rose-500/20"
+                  >
+                    Delete Persona
+                  </button>
+                </div>
+              </motion.div>
+            </div>,
+            document.body
+          )}
 
-      {refSheetPersona && (
-        <ReferenceSheetModal
-          persona={refSheetPersona}
-          onClose={() => setRefSheetPersona(null)}
-        />
+          {mounted && showGenerator && activePersonaForGen && createPortal(
+            <div className="fixed inset-0 bg-[#0B0F17]/95 backdrop-blur-xl z-[10003] animate-in fade-in duration-300">
+               <VisualGenerator 
+                 persona={activePersonaForGen} 
+                 onClose={() => setShowGenerator(false)} 
+                 onSave={handleSaveGeneratedImage}
+               />
+            </div>,
+            document.body
+          )}
+
+          {mounted && refSheetPersona && createPortal(
+            <ReferenceSheetModal
+              persona={refSheetPersona}
+              onClose={() => setRefSheetPersona(null)}
+            />,
+            document.body
+          )}
+        </div>
       )}
     </div>
   );
