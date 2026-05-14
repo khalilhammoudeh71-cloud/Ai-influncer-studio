@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Persona, GeneratedImage, NavActions } from '../types';
-import { Download, Film, Image as ImageIcon, Search, X, Filter, AlertCircle } from 'lucide-react';
+import { Download, Film, Image as ImageIcon, Search, X, Filter, AlertCircle, FolderDown, Loader2 } from 'lucide-react';
 
 interface GalleryViewProps {
   personas: Persona[];
@@ -19,6 +19,7 @@ export default function GalleryView({ personas, activePersona, nav }: GalleryVie
   const [filterType, setFilterType] = useState<'all' | 'image' | 'video'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedItem, setSelectedItem] = useState<GalleryItem | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
 
   // Flatten all visual libraries
   const allMedia = useMemo(() => {
@@ -97,6 +98,30 @@ export default function GalleryView({ personas, activePersona, nav }: GalleryVie
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>
+
+          {filteredMedia.length > 0 && (
+            <button
+              onClick={async () => {
+                setIsExporting(true);
+                const images = filteredMedia.filter(item => !item.mediaType || item.mediaType === 'image');
+                for (const item of images) {
+                  try {
+                    const a = document.createElement('a');
+                    a.href = item.url;
+                    a.download = `${item.personaName.replace(/\s+/g, '_')}_${item.id}.png`;
+                    a.click();
+                    await new Promise(r => setTimeout(r, 300));
+                  } catch { /* skip failed downloads */ }
+                }
+                setIsExporting(false);
+              }}
+              disabled={isExporting}
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 rounded-xl text-sm font-bold text-white transition-all shadow-lg hover:scale-105 disabled:opacity-50"
+            >
+              {isExporting ? <Loader2 size={14} className="animate-spin" /> : <FolderDown size={14} />}
+              {isExporting ? 'Exporting...' : `Download All (${filteredMedia.filter(i => !i.mediaType || i.mediaType === 'image').length})`}
+            </button>
+          )}
         </div>
       </header>
 

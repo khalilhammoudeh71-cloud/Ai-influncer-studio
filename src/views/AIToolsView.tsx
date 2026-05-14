@@ -134,6 +134,14 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
   const [autoCaption, setAutoCaption] = useState<string | null>(null);
   const [captionCopied, setCaptionCopied] = useState(false);
   const [autoModelReason, setAutoModelReason] = useState('');
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [savedPrompts, setSavedPrompts] = useState<{ label: string; prompt: string; tool: string }[]>(() => {
+    try {
+      const saved = localStorage.getItem('ai_tools_saved_prompts');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+  const [customPromptOverride, setCustomPromptOverride] = useState('');
 
   // Tool Specific States
   const [morphValue, setMorphValue] = useState<number>(0); // -100 to 100
@@ -652,6 +660,76 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
                 Automated precision workflow active. This tool will strictly optimize facial structure without damaging identity.
               </div>
             )}
+
+            {/* Prompt Templates */}
+            <div className="space-y-2">
+              <button
+                onClick={() => setShowTemplates(!showTemplates)}
+                className="w-full flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)] hover:text-white transition-colors"
+              >
+                <span className="flex items-center gap-1.5"><FileText size={12} className="text-violet-400" /> Prompt Templates</span>
+                <span className="text-[8px]">{showTemplates ? '▲' : '▼'}</span>
+              </button>
+              {showTemplates && (
+                <div className="space-y-1.5">
+                  {[
+                    { label: '📸 Instagram Glow-Up', prompt: 'Enhance skin for an Instagram-ready glow. Soft studio lighting, flawless complexion, dewy finish. Keep the face exactly the same.' },
+                    { label: '🎬 TikTok Energy', prompt: 'Add vibrant, high-energy look. Bright colors, sharp contrast, youthful glow. Maintain all facial features identically.' },
+                    { label: '💼 Professional LinkedIn', prompt: 'Clean, corporate headshot refinement. Subtle skin smoothing, professional lighting. No feature changes.' },
+                    { label: '✨ Red Carpet Ready', prompt: 'Glamorous red carpet enhancement. Flawless skin, soft contouring highlights. Preserve exact bone structure and identity.' },
+                    { label: '🌿 Natural & Minimal', prompt: 'Minimal, barely-there enhancement. Just remove blemishes and even skin tone. Keep everything else 100% natural.' },
+                  ].map((tmpl, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setCustomPromptOverride(tmpl.prompt)}
+                      className="w-full text-left p-2.5 rounded-xl bg-[var(--bg-elevated)] hover:bg-violet-500/10 border border-transparent hover:border-violet-500/20 transition-all"
+                    >
+                      <span className="text-xs font-bold text-white block">{tmpl.label}</span>
+                      <span className="text-[10px] text-[var(--text-muted)] line-clamp-1 mt-0.5">{tmpl.prompt}</span>
+                    </button>
+                  ))}
+                  {savedPrompts.length > 0 && (
+                    <>
+                      <div className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-wider pt-2 border-t border-[var(--border-subtle)]">Your Saved Prompts</div>
+                      {savedPrompts.map((sp, i) => (
+                        <div key={i} className="flex items-center gap-1">
+                          <button
+                            onClick={() => setCustomPromptOverride(sp.prompt)}
+                            className="flex-1 text-left p-2.5 rounded-xl bg-[var(--bg-elevated)] hover:bg-cyan-500/10 border border-transparent hover:border-cyan-500/20 transition-all"
+                          >
+                            <span className="text-xs font-bold text-white block">💾 {sp.label}</span>
+                            <span className="text-[10px] text-[var(--text-muted)] line-clamp-1 mt-0.5">{sp.prompt}</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              const next = savedPrompts.filter((_, j) => j !== i);
+                              setSavedPrompts(next);
+                              localStorage.setItem('ai_tools_saved_prompts', JSON.stringify(next));
+                            }}
+                            className="p-1.5 rounded-lg text-rose-400/50 hover:text-rose-400 transition-colors shrink-0"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                  <button
+                    onClick={() => {
+                      const currentPrompt = customPromptOverride || getToolPrompt();
+                      const label = currentPrompt.slice(0, 30) + '...';
+                      const next = [...savedPrompts, { label, prompt: currentPrompt, tool: activeTool || '' }];
+                      setSavedPrompts(next);
+                      localStorage.setItem('ai_tools_saved_prompts', JSON.stringify(next));
+                      toast.success('Prompt saved!');
+                    }}
+                    className="w-full p-2 rounded-xl border border-dashed border-violet-500/30 text-[10px] font-bold text-violet-400 hover:bg-violet-500/10 transition-colors"
+                  >
+                    + Save Current Prompt
+                  </button>
+                </div>
+              )}
+            </div>
 
             {activeTool === 'morph' && (
               <div className="space-y-4">

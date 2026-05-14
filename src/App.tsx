@@ -52,6 +52,14 @@ function App() {
     const saved = localStorage.getItem('ai_influencer_onboarding_complete');
     return saved !== 'true';
   });
+
+  // Restore theme on mount
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('ai_studio_theme');
+    if (savedTheme === 'light') {
+      document.documentElement.setAttribute('data-theme', 'light');
+    }
+  }, []);
   
   const [navStack, setNavStack] = useState<NavEntry[]>(() => {
     const saved = localStorage.getItem('ai_influencer_nav_stack');

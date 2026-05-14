@@ -1,15 +1,31 @@
-import { User, Bell, Shield, LogOut, ChevronRight, Globe, Moon, Sparkles, HelpCircle, Crown } from 'lucide-react';
+import { useState } from 'react';
+import { User, Bell, Shield, LogOut, ChevronRight, Globe, Moon, Sun, Sparkles, HelpCircle, Crown } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Persona, NavActions } from '../types';
 
 export default function SettingsView({ nav }: { nav: NavActions }) {
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    return (localStorage.getItem('ai_studio_theme') as 'dark' | 'light') || 'dark';
+  });
+
+  const toggleTheme = () => {
+    const next = theme === 'dark' ? 'light' : 'dark';
+    setTheme(next);
+    localStorage.setItem('ai_studio_theme', next);
+    if (next === 'light') {
+      document.documentElement.setAttribute('data-theme', 'light');
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+    }
+  };
+
   const sections = [
     {
       title: 'Account',
       items: [
         { icon: User, label: 'Profile', value: 'Alex Creator' },
         { icon: Globe, label: 'Language', value: 'English' },
-        { icon: Moon, label: 'Theme', value: 'Dark mode' },
+        { icon: theme === 'dark' ? Moon : Sun, label: 'Theme', value: theme === 'dark' ? 'Dark mode' : 'Light mode', onClick: toggleTheme, hasToggle: true },
       ]
     },
     {
@@ -98,9 +114,20 @@ export default function SettingsView({ nav }: { nav: NavActions }) {
                     </div>
                     <span className={`font-medium text-sm ${item.color || 'text-[var(--text-primary)]'}`}>{item.label}</span>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-3">
                     {item.value && <span className="text-xs text-[var(--text-tertiary)]">{item.value}</span>}
-                    <ChevronRight size={14} className="text-[var(--text-muted)]" />
+                    {'hasToggle' in item && item.hasToggle ? (
+                      <div
+                        className={`w-11 h-6 rounded-full p-0.5 transition-colors duration-300 cursor-pointer ${theme === 'dark' ? 'bg-violet-600' : 'bg-amber-400'}`}
+                        onClick={(e) => { e.stopPropagation(); toggleTheme(); }}
+                      >
+                        <div className={`w-5 h-5 rounded-full bg-white shadow-md transition-transform duration-300 flex items-center justify-center ${theme === 'light' ? 'translate-x-5' : 'translate-x-0'}`}>
+                          {theme === 'dark' ? <Moon size={10} className="text-violet-600" /> : <Sun size={10} className="text-amber-500" />}
+                        </div>
+                      </div>
+                    ) : (
+                      <ChevronRight size={14} className="text-[var(--text-muted)]" />
+                    )}
                   </div>
                 </div>
               ))}
@@ -109,7 +136,7 @@ export default function SettingsView({ nav }: { nav: NavActions }) {
         ))}
         
         <div className="pt-4 text-center">
-           <p className="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-[0.2em]">AI Influencer Studio v1.0.4</p>
+           <p className="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-[0.2em]">AI Influencer Studio v1.0.5</p>
            <p className="text-[10px] text-[var(--text-muted)] mt-1 italic opacity-60">Made for the future of digital presence.</p>
         </div>
       </div>

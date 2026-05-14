@@ -38,6 +38,27 @@
   --shadow-elevated: 0 24px 80px rgba(0, 0, 0, 0.5);
 }
 
+[data-theme="light"] {
+  --bg-base: #F8FAFC;
+  --bg-surface: #FFFFFF;
+  --bg-elevated: #F1F5F9;
+  --bg-overlay: #E2E8F0;
+  --bg-input: #FFFFFF;
+
+  --border-subtle: rgba(148, 163, 184, 0.25);
+  --border-default: rgba(148, 163, 184, 0.4);
+  --border-strong: rgba(0, 212, 255, 0.4);
+
+  --text-primary: #0F172A;
+  --text-secondary: #334155;
+  --text-tertiary: #64748B;
+  --text-muted: #94A3B8;
+
+  --shadow-glow: 0 0 24px rgba(0, 212, 255, 0.1);
+  --shadow-card: 0 8px 30px rgba(0, 0, 0, 0.08);
+  --shadow-elevated: 0 12px 40px rgba(0, 0, 0, 0.12);
+}
+
 * {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
 }
