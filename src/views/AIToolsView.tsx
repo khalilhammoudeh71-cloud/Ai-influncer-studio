@@ -23,13 +23,18 @@ import {
   Mic,
   Video,
   AlertTriangle,
-  ArrowUpCircle
+  ArrowUpCircle,
+  Copy,
+  CheckCircle2,
+  Zap,
+  FileText
 } from 'lucide-react';
 import { Persona, NavActions } from '../types';
 import { api } from '../services/apiService';
 import { editImage, faceSwap, removeBackground, virtualTryOn, fetchEditModels, upscaleImage, fetchUpscaleModels, type ModelInfo } from '../services/imageService';
 import BeforeAfterSlider from '../components/BeforeAfterSlider';
 import { processImageFile } from '../utils/imageProcessing';
+import { generatePersonaContent } from '../utils/personaEngine';
 import VoiceStudio from '../components/VoiceStudio';
 import TalkingHeadStudio from '../components/TalkingHeadStudio';
 import StoryChainStudio from '../components/StoryChainStudio';
@@ -126,6 +131,9 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
   const [selectedModel, setSelectedModel] = useState<string>('auto');
   const [upscaleModels, setUpscaleModels] = useState<ModelInfo[]>([]);
   const [isUpscaling, setIsUpscaling] = useState(false);
+  const [autoCaption, setAutoCaption] = useState<string | null>(null);
+  const [captionCopied, setCaptionCopied] = useState(false);
+  const [autoModelReason, setAutoModelReason] = useState('');
 
   // Tool Specific States
   const [morphValue, setMorphValue] = useState<number>(0); // -100 to 100
@@ -219,6 +227,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
     if (editModels.length === 0) return '';
     if (activeTool === 'canvas') {
       const briaExpand = editModels.find(m => m.id.includes('bria/expand'));
+      setAutoModelReason('Bria Expand — specialized for outpainting & frame extension');
       return briaExpand?.id || 'wavespeed-edit:bria/expand';
     }
     const seedream45 = editModels.find(m => m.id.includes('seedream-v4.5/edit'));
@@ -229,7 +238,12 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
     const nsfwKeywords = ['nsfw', 'uncensored', 'sexy', 'naked', 'bikini', 'lingerie', 'underwear', 'lewd', 'adult', 'erotic'];
     const isNsfw = nsfwKeywords.some(k => prompt.toLowerCase().includes(k));
 
-    return isNsfw ? fallbackSeedream : fallbackNano;
+    if (isNsfw) {
+      setAutoModelReason('Seedream v4.5 — uncensored model for creative content');
+      return fallbackSeedream;
+    }
+    setAutoModelReason('Nano Banana Pro — best for identity-preserving edits');
+    return fallbackNano;
   };
 
   const handleExecute = async () => {
@@ -244,7 +258,15 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
       const data = await editImage(sourceImage, prompt, modelToUse);
       setResultImage(data.imageUrl);
       setResultHistory(prev => [...prev, { imageUrl: data.imageUrl, timestamp: Date.now(), tool: activeTool || '' }]);
-      toast.success(`${TOOLS.find(t => t.id === activeTool)?.title} complete!`);
+      // Generate auto-caption
+      const caption = generatePersonaContent(persona, { day: 1, type: activeTool || '', hook: `${TOOLS.find(t => t.id === activeTool)?.title} transformation`, angle: prompt.slice(0, 60), cta: '' }, persona.platform || 'Instagram', 'Short Caption');
+      setAutoCaption(caption);
+      toast(t => (
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg overflow-hidden shrink-0 border border-white/10"><img src={data.imageUrl} className="w-full h-full object-cover" alt="" /></div>
+          <div><p className="font-bold text-sm">{TOOLS.find(t2 => t2.id === activeTool)?.title} complete!</p><p className="text-xs text-gray-400">Caption generated • Ready to save</p></div>
+        </div>
+      ), { duration: 4000 });
     } catch (err: any) {
       const errorMsg = err.message || '';
       if (errorMsg.toLowerCase().includes('content filter') || errorMsg.toLowerCase().includes('nsfw')) {
@@ -587,6 +609,12 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
               <option value="auto">✨ Automatic (Best AI for Tool)</option>
               {editModels.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
+            {selectedModel === 'auto' && autoModelReason && (
+              <div className="flex items-center gap-1.5 mt-1">
+                <Zap size={10} className="text-amber-400" />
+                <span className="text-[9px] text-amber-400/80 font-medium">{autoModelReason}</span>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -973,6 +1001,39 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
                </div>
              )}
           </div>
+
+          {/* Auto-Caption Panel */}
+          {autoCaption && resultImage && (
+            <div className="shrink-0 border-t border-white/10 bg-[#0d1117]/95 backdrop-blur-xl px-4 py-3">
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center gap-2">
+                  <FileText size={12} className="text-violet-400" />
+                  <span className="text-[10px] font-black uppercase tracking-widest text-violet-400">Auto-Caption</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(autoCaption);
+                      setCaptionCopied(true);
+                      setTimeout(() => setCaptionCopied(false), 2000);
+                      toast.success('Caption copied!');
+                    }}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 text-[10px] font-bold transition-colors border border-violet-500/20"
+                  >
+                    {captionCopied ? <CheckCircle2 size={11} /> : <Copy size={11} />}
+                    {captionCopied ? 'Copied!' : 'Copy'}
+                  </button>
+                  <button
+                    onClick={() => setAutoCaption(null)}
+                    className="p-1 rounded-lg text-white/30 hover:text-white/60 transition-colors"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              </div>
+              <p className="text-xs text-white/70 leading-relaxed line-clamp-3">{autoCaption}</p>
+            </div>
+          )}
 
           {/* Generation History Filmstrip */}
           {resultHistory.length > 0 && (
