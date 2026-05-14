@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { ChevronLeft, Save, Sparkles, Upload, X, Info, Image as ImageIcon, Video, Mic, Volume2, MessageSquare, Plus, Check, Camera, Diamond, Dumbbell, ShoppingBag, Briefcase, Activity, Sliders } from 'lucide-react';
+import { ChevronLeft, Save, Sparkles, Upload, X, Info, Image as ImageIcon, Video, Mic, Volume2, MessageSquare, Plus, Check, Camera, Diamond, Dumbbell, ShoppingBag, Briefcase, Activity, Sliders, Loader2 } from 'lucide-react';
 import { Persona } from '../types';
 import { generateImage } from '../services/imageService';
 import { identitySheetPlaceholders } from '../data/demoAssets';
@@ -30,6 +30,8 @@ export default function PersonaBuilderView({ persona: initialPersona, onChange, 
   });
   const [isGeneratingAngles, setIsGeneratingAngles] = useState(false);
   const [realAngles, setRealAngles] = useState<Record<string, string>>({});
+  const [generatingLabels, setGeneratingLabels] = useState<Set<string>>(new Set());
+  const [generatedCount, setGeneratedCount] = useState(0);
 
   useEffect(() => {
     setPersona(initialPersona);
@@ -38,6 +40,11 @@ export default function PersonaBuilderView({ persona: initialPersona, onChange, 
   const generateAngles = async () => {
     const baseImage = persona.referenceImage || "/isabella_laurent_reference.png";
     setIsGeneratingAngles(true);
+    setGeneratedCount(0);
+    setGeneratingLabels(new Set([
+      "Front Portrait", "Left 45°", "Right 45°", "Profile Left",
+      "Smile", "Neutral", "Upper Body", "Full Body", "Lifestyle Shot"
+    ]));
 
     const targetAngles = [
       { label: "Front Portrait", p: "Direct frontal view. Maintain the exact same facial features, bone structure, and expression as the reference. Identical identity." },
@@ -67,9 +74,13 @@ export default function PersonaBuilderView({ persona: initialPersona, onChange, 
       if (url) {
         anchorImage = url;
         setRealAngles(prev => ({ ...prev, "Front Portrait": url }));
+        setGeneratingLabels(prev => { const next = new Set(prev); next.delete("Front Portrait"); return next; });
+        setGeneratedCount(prev => prev + 1);
       }
     } catch (err) {
       console.error('[IdentitySheet] OpenAI Anchor failed:', err);
+      setGeneratingLabels(prev => { const next = new Set(prev); next.delete("Front Portrait"); return next; });
+      setGeneratedCount(prev => prev + 1);
     }
 
     // PHASE 2: Generate all other angles using the new Anchor
@@ -90,12 +101,17 @@ export default function PersonaBuilderView({ persona: initialPersona, onChange, 
         if (imageUrl) {
           setRealAngles(prev => ({ ...prev, [angle.label]: imageUrl }));
         }
+        setGeneratingLabels(prev => { const next = new Set(prev); next.delete(angle.label); return next; });
+        setGeneratedCount(prev => prev + 1);
       } catch (err) {
         console.error('[IdentitySheet] Error generating angle:', angle.label, err);
+        setGeneratingLabels(prev => { const next = new Set(prev); next.delete(angle.label); return next; });
+        setGeneratedCount(prev => prev + 1);
       }
     }
 
     setIsGeneratingAngles(false);
+    setGeneratingLabels(new Set());
   };
   
   // Handlers for inputs
@@ -450,11 +466,11 @@ export default function PersonaBuilderView({ persona: initialPersona, onChange, 
                   disabled={isGeneratingAngles}
                   className="flex flex-col items-center px-2.5 py-1 bg-gradient-to-r from-[#00F5C2] to-[#00D4FF] rounded-xl text-[#0B0F17] transition-all duration-300 shadow hover:scale-[1.02] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed border border-transparent"
                 >
-                  <span className="text-[9px] font-black uppercase tracking-wider leading-tight">{isGeneratingAngles ? 'Generating...' : 'Generate Identity Sheet'}</span>
+                <span className="text-[9px] font-black uppercase tracking-wider leading-tight">{isGeneratingAngles ? `Generating ${generatedCount}/9...` : 'Generate Identity Sheet'}</span>
                   {!isGeneratingAngles && <span className="text-[7px] font-extrabold opacity-80 leading-none mt-0.5 tracking-tight">Model: Nano Banana</span>}
                 </button>
                 <div className="flex items-center gap-1 bg-[#0B0F17]/70 border border-[#334155]/60 px-2 py-0.5 rounded-full shadow">
-                  <span className="text-[9px] font-extrabold text-[#94A3B8]">9 / 9</span>
+                  <span className="text-[9px] font-extrabold text-[#94A3B8]">{Object.keys(realAngles).length} / 9</span>
                   <Check size={10} className="text-[#00F5C2]" />
                 </div>
               </div>
@@ -480,9 +496,22 @@ export default function PersonaBuilderView({ persona: initialPersona, onChange, 
                   return base;
                 };
 
+                const isCurrentlyGenerating = generatingLabels.has(angle.label);
+                const hasGenerated = !!realAngles[angle.label];
+
                 return (
                   <div key={idx} className="relative rounded-lg overflow-hidden aspect-[4/5] border border-[#334155]/60 bg-[#111827] group cursor-pointer shadow hover:border-[#00D4FF]/40 transition-all duration-300">
-                    <img src={realAngles[angle.label] || getFallbackImage(displayLabel)} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="" />
+                    {isCurrentlyGenerating && !hasGenerated ? (
+                      /* Skeleton loading tile */
+                      <div className="identity-skeleton w-full h-full relative flex flex-col items-center justify-center gap-2">
+                        <div className="w-10 h-10 rounded-full bg-[#00D4FF]/10 border border-[#00D4FF]/20 flex items-center justify-center">
+                          <Loader2 size={18} className="animate-spin text-[#00D4FF]/60" />
+                        </div>
+                        <span className="text-[8px] font-bold text-[#94A3B8]/60 uppercase tracking-wider">Generating...</span>
+                      </div>
+                    ) : (
+                      <img src={realAngles[angle.label] || getFallbackImage(displayLabel)} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="" />
+                    )}
                     <div className="absolute bottom-1 left-1 bg-black/75 backdrop-blur-md border border-white/10 px-1.5 py-0.5 rounded text-[7px] font-black text-white tracking-wide z-10 uppercase shadow select-none max-w-[calc(100%-8px)] truncate">{displayLabel}</div>
                   </div>
                 );

@@ -27,6 +27,7 @@ import {
 import { Persona, NavActions } from '../types';
 import { api } from '../services/apiService';
 import { editImage, faceSwap, removeBackground, virtualTryOn, fetchEditModels, type ModelInfo } from '../services/imageService';
+import BeforeAfterSlider from '../components/BeforeAfterSlider';
 import { processImageFile } from '../utils/imageProcessing';
 import VoiceStudio from '../components/VoiceStudio';
 import TalkingHeadStudio from '../components/TalkingHeadStudio';
@@ -119,6 +120,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [resultImage, setResultImage] = useState<string | null>(null);
+  const [resultHistory, setResultHistory] = useState<{ imageUrl: string; timestamp: number; tool: string }[]>([]);
   const [editModels, setEditModels] = useState<ModelInfo[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>('auto');
 
@@ -171,7 +173,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
 
   const getToolPrompt = () => {
     switch (activeTool) {
-      case 'beautify': return 'Stunning high-fidelity beautification. Flawlessly enhance the face: make the eyes more vibrant and captivating, lift the nasal tip gracefully, contour the chin and jawline for perfect symmetry, smooth under-eye dark circles, and create glowing, flawless skin texture. Give the person a premium, supermodel-level aesthetic while retaining their original facial structure and identity.';
+      case 'beautify': return 'Natural beauty refinement. Subtly soften the skin texture to remove blemishes and soften under-eye areas. Gently refine the nose contour for a polished look. CRITICAL: Maintain 100% of the original facial structure, bone structure, and identity. Do NOT change the shape of the eyes, lips, or overall face. Keep the person EXACTLY the same, just with a clean skin polish.';
       case 'morph': {
         const pct = Math.abs(morphValue);
         let weightDesc = '';
@@ -215,7 +217,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
     }
     const seedream45 = editModels.find(m => m.id.includes('seedream-v4.5/edit'));
     
-    const fallbackNano = 'google:nano-banana-2';
+    const fallbackNano = 'google:nano-banana-pro';
     const fallbackSeedream = seedream45?.id || 'wavespeed-edit:bytedance/seedream-v4.5/edit';
 
     const nsfwKeywords = ['nsfw', 'uncensored', 'sexy', 'naked', 'bikini', 'lingerie', 'underwear', 'lewd', 'adult', 'erotic'];
@@ -235,6 +237,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
     try {
       const data = await editImage(sourceImage, prompt, modelToUse);
       setResultImage(data.imageUrl);
+      setResultHistory(prev => [...prev, { imageUrl: data.imageUrl, timestamp: Date.now(), tool: activeTool || '' }]);
       toast.success(`${TOOLS.find(t => t.id === activeTool)?.title} complete!`);
     } catch (err: any) {
       const errorMsg = err.message || '';
@@ -245,6 +248,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
           try {
             const retryData = await editImage(sourceImage, prompt, uncensoredModel.id);
             setResultImage(retryData.imageUrl);
+            setResultHistory(prev => [...prev, { imageUrl: retryData.imageUrl, timestamp: Date.now(), tool: activeTool || '' }]);
             toast.success(`${TOOLS.find(t => t.id === activeTool)?.title} complete (Fallback)!`);
           } catch (retryErr: any) {
             toast.error(retryErr.message || 'Processing failed on fallback model');
@@ -266,6 +270,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
     try {
       const data = await faceSwap(sourceImage, faceSwapFaceImage);
       setResultImage(data.imageUrl);
+      setResultHistory(prev => [...prev, { imageUrl: data.imageUrl, timestamp: Date.now(), tool: 'face-swap' }]);
       toast.success('Face Swap complete!');
     } catch (err: any) {
       toast.error(err.message || 'Face swap failed');
@@ -280,6 +285,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
     try {
       const data = await removeBackground(sourceImage);
       setResultImage(data.imageUrl);
+      setResultHistory(prev => [...prev, { imageUrl: data.imageUrl, timestamp: Date.now(), tool: 'bg-remover' }]);
       toast.success('Background removed!');
     } catch (err: any) {
       toast.error(err.message || 'BG removal failed');
@@ -294,6 +300,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
     try {
       const data = await virtualTryOn(sourceImage, garmentImage, garmentDescription || undefined);
       setResultImage(data.imageUrl);
+      setResultHistory(prev => [...prev, { imageUrl: data.imageUrl, timestamp: Date.now(), tool: 'virtual-tryon' }]);
       toast.success('Virtual try-on complete!');
     } catch (err: any) {
       toast.error(err.message || 'Try-on failed');
@@ -869,8 +876,8 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
         </div>
 
         {/* Viewport */}
-        <div className="flex-1 bg-black overflow-hidden relative flex items-center justify-center p-8">
-          <div className="relative w-full h-full flex flex-col items-center justify-center">
+        <div className="flex-1 bg-black overflow-hidden relative flex flex-col">
+          <div className="relative flex-1 flex flex-col items-center justify-center p-6">
              {!sourceImage && !resultImage && (
                <div className="text-[var(--text-tertiary)] flex flex-col items-center gap-4 opacity-50">
                   <ImageIcon size={48} />
@@ -890,7 +897,19 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
                </div>
              )}
 
-             {resultImage && (
+             {resultImage && sourceImage && (
+               <div className="relative max-w-3xl w-full h-full flex flex-col items-center justify-center gap-4">
+                 <BeforeAfterSlider beforeImage={sourceImage} afterImage={resultImage} />
+                 <div className="absolute bottom-4 z-30 flex gap-3">
+                   <button onClick={() => setResultImage(null)} className="px-6 py-2.5 rounded-xl bg-black/80 hover:bg-black text-white font-bold backdrop-blur-xl border border-white/10 transition-colors">Discard</button>
+                   <button onClick={saveToLibrary} className={`px-6 py-2.5 rounded-xl bg-gradient-to-r ${currentToolDetails?.color} text-white font-bold backdrop-blur-xl border border-white/20 shadow-lg hover:scale-105 transition-transform flex items-center gap-2`}>
+                     <Camera size={16} /> Save to Library
+                   </button>
+                 </div>
+               </div>
+             )}
+
+             {resultImage && !sourceImage && (
                <div className="relative max-w-3xl w-full h-full flex flex-col items-center justify-center gap-4">
                  <div className="relative h-full w-full rounded-2xl overflow-hidden border border-white/20 shadow-2xl bg-[var(--bg-elevated)] flex items-center justify-center">
                    <img src={resultImage} alt="Result" className="max-w-full max-h-full object-contain" />
@@ -904,6 +923,36 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
                </div>
              )}
           </div>
+
+          {/* Generation History Filmstrip */}
+          {resultHistory.length > 0 && (
+            <div className="shrink-0 border-t border-white/10 bg-[#0a0e17]/90 backdrop-blur-xl px-4 py-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)]">History ({resultHistory.length})</span>
+                <button
+                  onClick={() => { setResultHistory([]); setResultImage(null); }}
+                  className="text-[10px] font-bold text-rose-400 hover:text-rose-300 transition-colors uppercase tracking-wider"
+                >
+                  Clear All
+                </button>
+              </div>
+              <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
+                {resultHistory.map((entry, idx) => (
+                  <button
+                    key={entry.timestamp}
+                    onClick={() => setResultImage(entry.imageUrl)}
+                    className={`shrink-0 w-16 h-16 rounded-xl overflow-hidden border-2 transition-all duration-200 hover:scale-105 ${
+                      resultImage === entry.imageUrl
+                        ? 'border-[#00D4FF] shadow-[0_0_12px_rgba(0,212,255,0.4)]'
+                        : 'border-white/10 hover:border-white/30'
+                    }`}
+                  >
+                    <img src={entry.imageUrl} alt={`Result ${idx + 1}`} className="w-full h-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

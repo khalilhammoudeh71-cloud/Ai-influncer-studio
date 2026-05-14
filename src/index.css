@@ -281,6 +281,25 @@ input, textarea, select {
   border-radius: 8px;
 }
 
+.identity-skeleton {
+  background: linear-gradient(
+    110deg,
+    #111827 30%,
+    rgba(0,212,255,0.06) 50%,
+    #111827 70%
+  );
+  background-size: 300% 100%;
+  animation: skeleton-wave 1.8s ease-in-out infinite;
+}
+
+.identity-skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 50%, rgba(0,212,255,0.04) 0%, transparent 70%);
+  animation: pulse-glow 2.5s ease-in-out infinite;
+}
+
 @keyframes border-flow {
   0%, 100% { opacity: 0.4; }
   50% { opacity: 0.9; }
