@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Wand2, 
@@ -22,11 +22,12 @@ import {
   Shirt,
   Mic,
   Video,
-  AlertTriangle
+  AlertTriangle,
+  ArrowUpCircle
 } from 'lucide-react';
 import { Persona, NavActions } from '../types';
 import { api } from '../services/apiService';
-import { editImage, faceSwap, removeBackground, virtualTryOn, fetchEditModels, type ModelInfo } from '../services/imageService';
+import { editImage, faceSwap, removeBackground, virtualTryOn, fetchEditModels, upscaleImage, fetchUpscaleModels, type ModelInfo } from '../services/imageService';
 import BeforeAfterSlider from '../components/BeforeAfterSlider';
 import { processImageFile } from '../utils/imageProcessing';
 import VoiceStudio from '../components/VoiceStudio';
@@ -123,6 +124,8 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
   const [resultHistory, setResultHistory] = useState<{ imageUrl: string; timestamp: number; tool: string }[]>([]);
   const [editModels, setEditModels] = useState<ModelInfo[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>('auto');
+  const [upscaleModels, setUpscaleModels] = useState<ModelInfo[]>([]);
+  const [isUpscaling, setIsUpscaling] = useState(false);
 
   // Tool Specific States
   const [morphValue, setMorphValue] = useState<number>(0); // -100 to 100
@@ -156,6 +159,9 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
   useEffect(() => {
     fetchEditModels().then(models => {
       setEditModels(models);
+    });
+    fetchUpscaleModels().then(models => {
+      setUpscaleModels(models);
     });
   }, []);
 
@@ -902,6 +908,28 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
                  <BeforeAfterSlider beforeImage={sourceImage} afterImage={resultImage} />
                  <div className="absolute bottom-4 z-30 flex gap-3">
                    <button onClick={() => setResultImage(null)} className="px-6 py-2.5 rounded-xl bg-black/80 hover:bg-black text-white font-bold backdrop-blur-xl border border-white/10 transition-colors">Discard</button>
+                   {upscaleModels.length > 0 && (
+                     <button
+                       onClick={async () => {
+                         if (!resultImage || isUpscaling) return;
+                         setIsUpscaling(true);
+                         try {
+                           const data = await upscaleImage(resultImage, upscaleModels[0].id);
+                           setResultImage(data.imageUrl);
+                           setResultHistory(prev => [...prev, { imageUrl: data.imageUrl, timestamp: Date.now(), tool: '4k-enhance' }]);
+                           toast.success('Image upscaled to 4K!');
+                         } catch (err: any) {
+                           toast.error(err.message || 'Upscale failed');
+                         } finally {
+                           setIsUpscaling(false);
+                         }
+                       }}
+                       disabled={isUpscaling}
+                       className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white font-bold backdrop-blur-xl border border-white/20 shadow-lg hover:scale-105 transition-transform flex items-center gap-2 disabled:opacity-50"
+                     >
+                       {isUpscaling ? <Loader2 size={16} className="animate-spin" /> : <ArrowUpCircle size={16} />} {isUpscaling ? 'Enhancing...' : '4K Enhance'}
+                     </button>
+                   )}
                    <button onClick={saveToLibrary} className={`px-6 py-2.5 rounded-xl bg-gradient-to-r ${currentToolDetails?.color} text-white font-bold backdrop-blur-xl border border-white/20 shadow-lg hover:scale-105 transition-transform flex items-center gap-2`}>
                      <Camera size={16} /> Save to Library
                    </button>
@@ -916,6 +944,28 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
                  </div>
                  <div className="absolute bottom-4 flex gap-3">
                    <button onClick={() => setResultImage(null)} className="px-6 py-2.5 rounded-xl bg-black/80 hover:bg-black text-white font-bold backdrop-blur-xl border border-white/10 transition-colors">Discard</button>
+                   {upscaleModels.length > 0 && (
+                     <button
+                       onClick={async () => {
+                         if (!resultImage || isUpscaling) return;
+                         setIsUpscaling(true);
+                         try {
+                           const data = await upscaleImage(resultImage, upscaleModels[0].id);
+                           setResultImage(data.imageUrl);
+                           setResultHistory(prev => [...prev, { imageUrl: data.imageUrl, timestamp: Date.now(), tool: '4k-enhance' }]);
+                           toast.success('Image upscaled to 4K!');
+                         } catch (err: any) {
+                           toast.error(err.message || 'Upscale failed');
+                         } finally {
+                           setIsUpscaling(false);
+                         }
+                       }}
+                       disabled={isUpscaling}
+                       className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white font-bold backdrop-blur-xl border border-white/20 shadow-lg hover:scale-105 transition-transform flex items-center gap-2 disabled:opacity-50"
+                     >
+                       {isUpscaling ? <Loader2 size={16} className="animate-spin" /> : <ArrowUpCircle size={16} />} {isUpscaling ? 'Enhancing...' : '4K Enhance'}
+                     </button>
+                   )}
                    <button onClick={saveToLibrary} className={`px-6 py-2.5 rounded-xl bg-gradient-to-r ${currentToolDetails?.color} text-white font-bold backdrop-blur-xl border border-white/20 shadow-lg hover:scale-105 transition-transform flex items-center gap-2`}>
                      <Camera size={16} /> Save to Library
                    </button>
