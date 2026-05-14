@@ -25,6 +25,7 @@ import SettingsView from './views/SettingsView';
 import GalleryView from './views/GalleryView';
 import LandingView from './views/LandingView';
 import PersonaBuilderView from './views/PersonaBuilderView';
+import OnboardingTour from './components/OnboardingTour';
 
 
 const INTERNAL_FALLBACK_PERSONAS: Persona[] = [
@@ -197,10 +198,24 @@ function App() {
   const handleOnboardingComplete = () => {
     localStorage.setItem('ai_influencer_onboarding_complete', 'true');
     setShowOnboarding(false);
+    // Show tour for first-time users
+    const tourSeen = localStorage.getItem('ai_influencer_tour_complete');
+    if (!tourSeen) setShowTour(true);
+  };
+
+  const [showTour, setShowTour] = useState(false);
+
+  const handleTourComplete = () => {
+    localStorage.setItem('ai_influencer_tour_complete', 'true');
+    setShowTour(false);
   };
 
   if (showOnboarding) {
     return <LandingView onGetStarted={handleOnboardingComplete} />;
+  }
+
+  if (showTour) {
+    return <OnboardingTour onComplete={handleTourComplete} />;
   }
 
   if (isLoading) {

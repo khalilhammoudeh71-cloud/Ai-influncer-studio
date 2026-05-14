@@ -23,11 +23,13 @@ import {
   Video,
   Image as ImageIcon,
   BookOpen,
-  Loader2
+  Loader2,
+  Copy,
+  ChevronUp
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Persona, PlannedPost, NavActions } from '../types';
-import { generatePersonaPlan } from '../utils/personaEngine';
+import { generatePersonaPlan, generatePersonaContent } from '../utils/personaEngine';
 import { api } from '../services/apiService';
 import toast from 'react-hot-toast';
 
@@ -52,6 +54,9 @@ export default function PlannerView({ persona, personas, onSelectPersona, nav }:
   const [platform, setPlatform] = useState(persona.platform);
   const [goal, setGoal] = useState<GoalType>('Grow followers');
   const [frequency, setFrequency] = useState<FrequencyType>('1 post/day');
+  const [batchContent, setBatchContent] = useState<Record<string, { caption: string; imagePrompt: string; videoScript: string }>>({});
+  const [batchLoading, setBatchLoading] = useState(false);
+  const [expandedCard, setExpandedCard] = useState<string | null>(null);
   
   useEffect(() => {
     setPlatform(persona.platform);
@@ -89,6 +94,50 @@ export default function PlannerView({ persona, personas, onSelectPersona, nav }:
     api.plannedPosts.save(persona.id, platform, [])
       .then(() => toast.success('Plan reset'))
       .catch(err => console.error('[Planner] Reset error:', err));
+  };
+
+  const handleBatchGenerate = () => {
+    if (plan.length === 0) return;
+    setBatchLoading(true);
+    setTimeout(() => {
+      const content: Record<string, { caption: string; imagePrompt: string; videoScript: string }> = {};
+      plan.forEach(post => {
+        content[post.id] = {
+          caption: generatePersonaContent(persona, post, platform, 'Short Caption'),
+          imagePrompt: generatePersonaContent(persona, post, platform, 'Image Prompt'),
+          videoScript: generatePersonaContent(persona, post, platform, 'Video Script'),
+        };
+      });
+      setBatchContent(content);
+      setBatchLoading(false);
+      toast.success(`Generated content for all ${plan.length} days!`);
+    }, 800);
+  };
+
+  const handleExportPlan = () => {
+    if (plan.length === 0) return;
+    let text = `# ${persona.name} — ${platform} Content Plan\n`;
+    text += `Goal: ${goal} | Frequency: ${frequency}\n\n`;
+    plan.forEach((post, i) => {
+      text += `## Day ${post.day} — ${DAYS[i]} — ${post.type}\n`;
+      text += `Hook: ${post.hook}\n`;
+      text += `Angle: ${post.angle}\n`;
+      text += `CTA: ${post.cta}\n`;
+      const bc = batchContent[post.id];
+      if (bc) {
+        text += `\nCaption:\n${bc.caption}\n`;
+        text += `\nImage Prompt:\n${bc.imagePrompt}\n`;
+        text += `\nVideo Script:\n${bc.videoScript}\n`;
+      }
+      text += '\n---\n\n';
+    });
+    const blob = new Blob([text], { type: 'text/plain' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${persona.name.replace(/\s+/g, '_')}_content_plan.txt`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast.success('Plan exported!');
   };
 
   const getContentTypeIcon = (type: string) => {
@@ -243,7 +292,7 @@ export default function PlannerView({ persona, personas, onSelectPersona, nav }:
                 <button onClick={handleReset} className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest text-rose-400 hover:bg-rose-500/10 transition-colors">
                   Reset Plan
                 </button>
-                <button className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest bg-[var(--bg-elevated)] text-white hover:bg-[var(--bg-overlay)] border border-white/5 transition-colors flex items-center gap-1.5">
+                <button onClick={handleExportPlan} className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest bg-[var(--bg-elevated)] text-white hover:bg-[var(--bg-overlay)] border border-white/5 transition-colors flex items-center gap-1.5">
                   <Download size={12} /> Export
                 </button>
               </div>
@@ -334,14 +383,43 @@ export default function PlannerView({ persona, personas, onSelectPersona, nav }:
 
                   <div className="mt-4 pt-4 border-t border-white/5 flex items-center justify-between relative z-10">
                     <div className="flex items-center gap-1.5">
-                      <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-                      <span className="text-[9px] font-bold text-emerald-400 uppercase tracking-widest">Ready</span>
+                      <div className={`w-2 h-2 rounded-full ${batchContent[post.id] ? 'bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.5)]' : 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]'}`} />
+                      <span className={`text-[9px] font-bold uppercase tracking-widest ${batchContent[post.id] ? 'text-cyan-400' : 'text-emerald-400'}`}>{batchContent[post.id] ? 'Content Ready' : 'Ready'}</span>
                     </div>
-                    <div className="flex items-center gap-1 text-[var(--text-muted)] group-hover:text-cyan-400 transition-colors">
-                      <span className="text-[10px] font-bold">Edit</span>
-                      <ChevronRight size={12} />
-                    </div>
+                    <button
+                      onClick={() => setExpandedCard(expandedCard === post.id ? null : post.id)}
+                      className="flex items-center gap-1 text-[var(--text-muted)] group-hover:text-cyan-400 transition-colors"
+                    >
+                      <span className="text-[10px] font-bold">{expandedCard === post.id ? 'Collapse' : 'View'}</span>
+                      {expandedCard === post.id ? <ChevronUp size={12} /> : <ChevronRight size={12} />}
+                    </button>
                   </div>
+
+                  {expandedCard === post.id && batchContent[post.id] && (
+                    <div className="mt-3 pt-3 border-t border-white/5 space-y-3 relative z-10">
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[8px] font-black text-cyan-500 uppercase tracking-widest">Caption</span>
+                          <button onClick={() => { navigator.clipboard.writeText(batchContent[post.id].caption); toast.success('Caption copied!'); }} className="p-1 rounded hover:bg-white/5 text-[var(--text-muted)] hover:text-white transition-colors"><Copy size={10} /></button>
+                        </div>
+                        <p className="text-[10px] text-[var(--text-secondary)] leading-relaxed">{batchContent[post.id].caption}</p>
+                      </div>
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[8px] font-black text-violet-500 uppercase tracking-widest">Image Prompt</span>
+                          <button onClick={() => { navigator.clipboard.writeText(batchContent[post.id].imagePrompt); toast.success('Prompt copied!'); }} className="p-1 rounded hover:bg-white/5 text-[var(--text-muted)] hover:text-white transition-colors"><Copy size={10} /></button>
+                        </div>
+                        <p className="text-[10px] text-[var(--text-secondary)] leading-relaxed">{batchContent[post.id].imagePrompt}</p>
+                      </div>
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[8px] font-black text-amber-500 uppercase tracking-widest">Video Script</span>
+                          <button onClick={() => { navigator.clipboard.writeText(batchContent[post.id].videoScript); toast.success('Script copied!'); }} className="p-1 rounded hover:bg-white/5 text-[var(--text-muted)] hover:text-white transition-colors"><Copy size={10} /></button>
+                        </div>
+                        <p className="text-[10px] text-[var(--text-secondary)] leading-relaxed whitespace-pre-line">{batchContent[post.id].videoScript}</p>
+                      </div>
+                    </div>
+                  )}
                 </motion.div>
               ))
             )}
@@ -366,7 +444,18 @@ export default function PlannerView({ persona, personas, onSelectPersona, nav }:
                 Generate Weekly Plan
               </button>
               
-              <button className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-white/5 border border-white/5 hover:bg-white/10 text-white font-bold text-sm transition-all flex items-center justify-center gap-2">
+              {plan.length > 0 && (
+                <button
+                  onClick={handleBatchGenerate}
+                  disabled={batchLoading}
+                  className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white font-black text-sm uppercase tracking-[0.1em] shadow-xl shadow-amber-500/20 active:scale-95 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+                >
+                  {batchLoading ? <Loader2 size={18} className="animate-spin" /> : <Layers size={18} />}
+                  {batchLoading ? 'Generating...' : 'Generate All Content'}
+                </button>
+              )}
+              
+              <button onClick={handleGenerate} className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-white/5 border border-white/5 hover:bg-white/10 text-white font-bold text-sm transition-all flex items-center justify-center gap-2">
                 <RotateCcw size={16} />
                 Regenerate Ideas
               </button>

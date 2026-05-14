@@ -49,6 +49,16 @@ export default function SettingsView({ nav }: { nav: NavActions }) {
             window.location.reload();
           }
         },
+        {
+          icon: HelpCircle,
+          label: 'Replay Feature Tour',
+          value: '',
+          onClick: () => {
+            localStorage.removeItem('ai_influencer_tour_complete');
+            localStorage.removeItem('ai_influencer_onboarding_complete');
+            window.location.reload();
+          }
+        },
         { icon: LogOut, label: 'Sign Out', value: '', color: 'text-rose-400' },
       ]
     }
