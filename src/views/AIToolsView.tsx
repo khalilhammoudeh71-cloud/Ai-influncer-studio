@@ -142,6 +142,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
     } catch { return []; }
   });
   const [customPromptOverride, setCustomPromptOverride] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
 
   // Tool Specific States
   const [morphValue, setMorphValue] = useState<number>(0); // -100 to 100
@@ -181,6 +182,27 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
     });
   }, []);
 
+  // Keyboard shortcuts: ⌘Enter to execute, Esc to close
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+      
+      if (e.key === 'Escape' && activeTool) {
+        setActiveTool(null);
+        setSourceImage(null);
+        setResultImage(null);
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && activeTool && sourceImage && !isProcessing) {
+        e.preventDefault();
+        handleExecute();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [activeTool, sourceImage, isProcessing]);
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -190,6 +212,21 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
       setResultImage(null);
     } catch (err) {
       toast.error('Failed to process image');
+    }
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (!file || !file.type.startsWith('image/')) return;
+    try {
+      const b64 = await processImageFile(file);
+      setSourceImage(b64);
+      setResultImage(null);
+    } catch {
+      toast.error('Failed to process dropped image');
     }
   };
 
@@ -643,13 +680,21 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
                   </div>
                 </div>
               ) : (
-                <button 
+                <div
+                  onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={handleDrop}
                   onClick={() => fileInputRef.current?.click()}
-                  className="w-full aspect-square rounded-2xl border-2 border-dashed border-[var(--border-strong)] flex flex-col items-center justify-center gap-3 text-[var(--text-secondary)] hover:text-white hover:border-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/5 transition-all"
+                  className={`w-full aspect-square rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-3 transition-all cursor-pointer ${
+                    isDragging
+                      ? 'border-[#00D4FF] bg-[#00D4FF]/10 text-[#00D4FF] scale-[1.02] shadow-[0_0_30px_rgba(0,212,255,0.15)]'
+                      : 'border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-white hover:border-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/5'
+                  }`}
                 >
-                  <Upload size={24} />
-                  <span className="text-xs font-bold">Upload Source Image</span>
-                </button>
+                  <Upload size={24} className={isDragging ? 'animate-bounce' : ''} />
+                  <span className="text-xs font-bold">{isDragging ? 'Drop Image Here' : 'Upload or Drop Image'}</span>
+                  <span className="text-[10px] text-[var(--text-muted)]">PNG, JPG, WEBP supported</span>
+                </div>
               )}
               <input type="file" ref={fileInputRef} hidden accept="image/*" onChange={handleFileUpload} />
             </div>
@@ -981,7 +1026,10 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
               {isProcessing ? (
                 <div className="flex items-center gap-2"><Loader2 size={18} className="animate-spin" /> Processing...</div>
               ) : (
-                <div className="flex items-center gap-2"><ToolIcon size={18} /> {activeTool === 'bg-remover' ? 'Remove Background' : activeTool === 'virtual-tryon' ? 'Try On ($0.12)' : 'Apply Effect'}</div>
+                <>
+                  <div className="flex items-center gap-2"><ToolIcon size={18} /> {activeTool === 'bg-remover' ? 'Remove Background' : activeTool === 'virtual-tryon' ? 'Try On ($0.12)' : 'Apply Effect'}</div>
+                  <span className="text-[9px] opacity-50 font-medium mt-0.5">⌘ Enter</span>
+                </>
               )}
             </button>
           </div>

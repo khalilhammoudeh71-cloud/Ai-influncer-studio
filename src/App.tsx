@@ -11,7 +11,8 @@ import {
   Settings,
   Mic,
   Wrench,
-  Sparkles
+  Sparkles,
+  ChevronDown
 } from 'lucide-react';
 import { cn } from './utils/cn';
 import { Persona, RevenueEntry, PlannedPost, Tab, NavEntry } from './types';
@@ -26,6 +27,7 @@ import GalleryView from './views/GalleryView';
 import LandingView from './views/LandingView';
 import PersonaBuilderView from './views/PersonaBuilderView';
 import OnboardingTour from './components/OnboardingTour';
+import CommandPalette from './components/CommandPalette';
 
 
 const INTERNAL_FALLBACK_PERSONAS: Persona[] = [
@@ -53,6 +55,20 @@ function App() {
     const saved = localStorage.getItem('ai_influencer_onboarding_complete');
     return saved !== 'true';
   });
+
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
+
+  // ⌘K keyboard shortcut
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setShowCommandPalette(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   // Restore theme on mount
   useEffect(() => {
@@ -381,40 +397,140 @@ function App() {
             </div>
           </div>
 
-          {/* Search Bar */}
+          {/* Search Bar — opens Command Palette */}
           <div className="hidden md:flex flex-1 max-w-xl mx-8 relative">
             <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
               <Search className="h-4 w-4 text-[var(--text-muted)]" />
             </div>
-            <input 
-              type="text" 
-              placeholder="Search personas, tools or creations..." 
-              className="w-full bg-[#111827] border border-[#334155] rounded-full py-1.5 pl-11 pr-12 text-sm text-white placeholder-[var(--text-muted)] focus:outline-none focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] transition-all"
-            />
+            <button 
+              onClick={() => setShowCommandPalette(true)}
+              className="w-full bg-[#111827] border border-[#334155] rounded-full py-1.5 pl-11 pr-12 text-sm text-left text-[var(--text-muted)] hover:border-[#00D4FF] focus:outline-none focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] transition-all cursor-pointer"
+            >
+              Search personas, tools or actions...
+            </button>
             <div className="absolute inset-y-0 right-4 flex items-center pointer-events-none">
-              <span className="text-xs font-semibold text-[var(--text-muted)]">⌘K</span>
+              <kbd className="text-[10px] font-bold text-[var(--text-muted)] bg-white/5 border border-white/10 rounded px-1.5 py-0.5">⌘K</kbd>
             </div>
           </div>
 
           {/* Right Actions */}
-          <div className="flex items-center gap-5">
+          {/* Right Actions */}
+          <div className="flex items-center gap-3">
             <button 
               onClick={() => pushView({ view: 'create' })}
               className="hidden sm:flex items-center gap-2 bg-transparent border border-[#00D4FF]/40 px-5 py-1.5 rounded-full text-sm font-bold text-white hover:bg-[#00D4FF]/10 transition-all shadow-[0_0_16px_rgba(0,212,255,0.15)] hover:shadow-[0_0_24px_rgba(0,212,255,0.3)]"
             >
               <PlusCircle size={16} className="text-[#00F5C2]" /> Create
             </button>
-            <button className="relative text-[var(--text-muted)] hover:text-white transition-colors">
-              <div className="absolute -top-1 -right-1 w-2 h-2 bg-rose-500 rounded-full" />
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
-            </button>
-            <button className="w-8 h-8 rounded-full overflow-hidden border border-[#334155] hover:border-[#00D4FF] transition-colors shrink-0">
-              <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=150&auto=format&fit=crop" alt="Profile" className="w-full h-full object-cover" />
-            </button>
+
+            {/* Persona Quick-Switcher */}
+            <div className="relative group">
+              <button
+                className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-[#111827]/60 border border-[#334155]/60 hover:border-[#00D4FF]/40 transition-all cursor-pointer"
+                onClick={() => {
+                  const el = document.getElementById('persona-switcher-dropdown');
+                  if (el) el.classList.toggle('hidden');
+                }}
+              >
+                <div className="w-6 h-6 rounded-lg overflow-hidden border border-[#334155] shrink-0">
+                  <img
+                    src={activePersona.avatar || activePersona.referenceImage || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=64&h=64'}
+                    alt=""
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <div className="hidden sm:block text-left max-w-[100px]">
+                  <p className="text-[10px] font-black text-[#00D4FF] uppercase tracking-widest leading-none">Active</p>
+                  <p className="text-[11px] font-bold text-white truncate leading-tight">{activePersona.name}</p>
+                </div>
+                <ChevronDown size={12} className="text-[#64748B] hidden sm:block" />
+              </button>
+              {/* Dropdown */}
+              <div id="persona-switcher-dropdown" className="hidden absolute right-0 top-full mt-2 w-64 bg-[#111827]/95 border border-white/10 rounded-2xl shadow-2xl shadow-black/40 backdrop-blur-xl overflow-hidden z-[100]">
+                <div className="p-2 border-b border-white/5">
+                  <p className="text-[9px] font-black text-[#475569] uppercase tracking-[0.15em] px-2 py-1">Switch Persona</p>
+                </div>
+                <div className="max-h-[240px] overflow-y-auto p-1.5">
+                  {personas.map(p => (
+                    <button
+                      key={p.id}
+                      onClick={() => {
+                        setSelectedPersonaId(p.id);
+                        document.getElementById('persona-switcher-dropdown')?.classList.add('hidden');
+                      }}
+                      className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl transition-all ${
+                        p.id === selectedPersonaId
+                          ? 'bg-[#00D4FF]/10 border border-[#00D4FF]/20'
+                          : 'hover:bg-white/5 border border-transparent'
+                      }`}
+                    >
+                      <div className="w-8 h-8 rounded-lg overflow-hidden border border-[#334155] shrink-0">
+                        <img
+                          src={p.avatar || p.referenceImage || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=64&h=64'}
+                          alt=""
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <div className="flex-1 min-w-0 text-left">
+                        <p className={`text-xs font-bold truncate ${p.id === selectedPersonaId ? 'text-white' : 'text-[#CBD5E1]'}`}>{p.name}</p>
+                        <p className="text-[9px] text-[#64748B] truncate">{p.niche || 'Digital Creator'}</p>
+                      </div>
+                      {p.id === selectedPersonaId && (
+                        <div className="w-2 h-2 rounded-full bg-[#00F5C2] shrink-0 shadow-[0_0_6px_rgba(0,245,194,0.5)]" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
 
         </div>
       </header>
+
+      {/* ── Breadcrumb (nested views only) ───────────────────── */}
+      {(navStack.length > 1 || currentNav.subView) && (
+        <div className="flex-none px-6 py-1.5 bg-[#0B0F17]/60 border-b border-[var(--border-subtle)] backdrop-blur-sm flex items-center gap-1.5 text-[10px] font-bold overflow-x-auto scrollbar-hide">
+          {navStack.map((entry, i) => {
+            const viewLabels: Record<string, string> = {
+              'personas': 'Personas', 'create': 'Create', 'gallery': 'Gallery',
+              'assistant': 'Assistant', 'settings': 'Settings', 'persona-builder': 'Persona Builder',
+            };
+            const subViewLabels: Record<string, string> = {
+              'ai-tools': 'AI Tools', 'planner': 'Content Planner', 'voice': 'Voice Studio',
+              'visual-generator': 'Visual Studio', 'content': 'Content Writer',
+            };
+            const isLast = i === navStack.length - 1;
+            return (
+              <span key={i} className="flex items-center gap-1.5 shrink-0">
+                {i > 0 && <span className="text-[#334155]">/</span>}
+                <button
+                  onClick={() => {
+                    if (!isLast) {
+                      const newStack = navStack.slice(0, i + 1);
+                      // Can't set navStack directly, use pop
+                      for (let j = 0; j < navStack.length - i - 1; j++) popView();
+                    }
+                  }}
+                  className={`uppercase tracking-[0.12em] transition-colors ${
+                    isLast ? 'text-[#00D4FF]' : 'text-[#64748B] hover:text-white cursor-pointer'
+                  }`}
+                >
+                  {viewLabels[entry.view] || entry.view}
+                </button>
+                {isLast && entry.subView && (
+                  <>
+                    <span className="text-[#334155]">/</span>
+                    <span className="text-[#00F5C2] uppercase tracking-[0.12em]">
+                      {subViewLabels[entry.subView] || entry.subView}
+                    </span>
+                  </>
+                )}
+              </span>
+            );
+          })}
+        </div>
+      )}
 
       {/* ── Content ─────────────────────────────────────────────── */}
       <main className="flex-1 overflow-y-auto relative z-10">
@@ -480,6 +596,14 @@ function App() {
         </div>
       </nav>
       <Toaster position="top-right" toastOptions={{ duration: 4000, style: { background: '#1a103c', color: '#fff', border: '1px solid rgba(139, 92, 246, 0.3)' } }} />
+      <CommandPalette
+        isOpen={showCommandPalette}
+        onClose={() => setShowCommandPalette(false)}
+        personas={personas}
+        onNavigate={(tab) => { replaceView({ view: tab }); }}
+        onSelectPersona={setSelectedPersonaId}
+        onOpenSubView={(tab, subView) => { replaceView({ view: tab, subView }); }}
+      />
     </div>
   );
 }
