@@ -1095,7 +1095,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                <VisualGenerator 
                  persona={activePersonaForGen} 
                  onClose={() => setShowGenerator(false)} 
-                 onSave={handleSaveGeneratedImage}
+                 onSaveImage={handleSaveGeneratedImage}
                />
             </div>,
             document.body

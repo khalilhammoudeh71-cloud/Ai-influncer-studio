@@ -489,9 +489,12 @@ function App() {
       </header>
 
       {/* ── Breadcrumb (nested views only) ───────────────────── */}
-      {(navStack.length > 1 || currentNav.subView) && (
+      {(navStack.length > 1 || currentNav.subView) && (() => {
+        // Deduplicate consecutive entries with the same view for cleaner breadcrumbs
+        const deduped = navStack.filter((entry, i, arr) => i === 0 || entry.view !== arr[i - 1].view);
+        return (
         <div className="flex-none px-6 py-1.5 bg-[#0B0F17]/60 border-b border-[var(--border-subtle)] backdrop-blur-sm flex items-center gap-1.5 text-[10px] font-bold overflow-x-auto scrollbar-hide">
-          {navStack.map((entry, i) => {
+          {deduped.map((entry, i) => {
             const viewLabels: Record<string, string> = {
               'personas': 'Personas', 'create': 'Create', 'gallery': 'Gallery',
               'assistant': 'Assistant', 'settings': 'Settings', 'persona-builder': 'Persona Builder',
@@ -500,16 +503,16 @@ function App() {
               'ai-tools': 'AI Tools', 'planner': 'Content Planner', 'voice': 'Voice Studio',
               'visual-generator': 'Visual Studio', 'content': 'Content Writer',
             };
-            const isLast = i === navStack.length - 1;
+            const isLast = i === deduped.length - 1;
             return (
               <span key={i} className="flex items-center gap-1.5 shrink-0">
                 {i > 0 && <span className="text-[#334155]">/</span>}
                 <button
                   onClick={() => {
                     if (!isLast) {
-                      const newStack = navStack.slice(0, i + 1);
-                      // Can't set navStack directly, use pop
-                      for (let j = 0; j < navStack.length - i - 1; j++) popView();
+                      // Find original index in navStack for this deduped entry
+                      const origIdx = navStack.indexOf(entry);
+                      for (let j = 0; j < navStack.length - origIdx - 1; j++) popView();
                     }
                   }}
                   className={`uppercase tracking-[0.12em] transition-colors ${
@@ -530,7 +533,8 @@ function App() {
             );
           })}
         </div>
-      )}
+        );
+      })()}
 
       {/* ── Content ─────────────────────────────────────────────── */}
       <main className="flex-1 overflow-y-auto relative z-10">

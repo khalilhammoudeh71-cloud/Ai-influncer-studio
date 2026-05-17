@@ -64,6 +64,7 @@ import {
   type TTSVoice,
   fetchElevenLabsVoices,
   textToSpeech,
+  generateTalkingHead,
 } from '../services/imageService';
 import { api } from '../services/apiService';
 import toast from 'react-hot-toast';
@@ -846,9 +847,9 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       const data = await generateAngleImage({
         imageBase64: sourceImg,
         modelId: angleModel,
-        horizontalAngle: angleHorizontal,
-        verticalAngle: angleVertical,
-        distance: angleDistance,
+        horizontalAngle: String(angleHorizontal),
+        verticalAngle: String(angleVertical),
+        distance: String(angleDistance),
       });
       setAngleResult(data);
     } catch (err: unknown) {

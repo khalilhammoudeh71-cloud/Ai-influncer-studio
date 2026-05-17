@@ -120,9 +120,9 @@ export default function SettingsView({ nav }: { nav: NavActions }) {
                 >
                   <div className="flex items-center gap-4">
                     <div className="w-10 h-10 bg-gradient-to-br from-violet-500/10 to-fuchsia-500/5 border border-[var(--border-subtle)] rounded-xl flex items-center justify-center">
-                       <item.icon size={18} className={item.color || 'text-[var(--text-secondary)]'} />
+                       <item.icon size={18} className={'color' in item ? (item as any).color : 'text-[var(--text-secondary)]'} />
                     </div>
-                    <span className={`font-medium text-sm ${item.color || 'text-[var(--text-primary)]'}`}>{item.label}</span>
+                    <span className={`font-medium text-sm ${'color' in item ? (item as any).color : 'text-[var(--text-primary)]'}`}>{item.label}</span>
                   </div>
                   <div className="flex items-center gap-3">
                     {item.value && <span className="text-xs text-[var(--text-tertiary)]">{item.value}</span>}
