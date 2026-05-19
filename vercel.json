@@ -6,8 +6,7 @@
   "functions": {
     "api/index.mjs": {
       "maxDuration": 60,
-      "memory": 1024,
-      "runtime": "@vercel/node@3"
+      "memory": 1024
     }
   },
   "rewrites": [
