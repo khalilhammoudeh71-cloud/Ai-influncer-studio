@@ -1,0 +1,3089 @@
+var __defProp = Object.defineProperty;
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
+
+// server/index.ts
+import "dotenv/config";
+import express from "express";
+import cors from "cors";
+import path from "path";
+import { fileURLToPath } from "url";
+import OpenAI, { toFile } from "openai";
+import { GoogleGenAI as GoogleGenAI2 } from "@google/genai";
+import { Pool as Pool2 } from "@neondatabase/serverless";
+
+// server/routes.ts
+import { Router } from "express";
+
+// server/db.ts
+import "dotenv/config";
+import { drizzle } from "drizzle-orm/neon-serverless";
+import { Pool } from "@neondatabase/serverless";
+
+// shared/schema.ts
+var schema_exports = {};
+__export(schema_exports, {
+  conversations: () => conversations,
+  generatedImages: () => generatedImages,
+  messages: () => messages,
+  personas: () => personas,
+  plannedPosts: () => plannedPosts,
+  revenueEntries: () => revenueEntries
+});
+import { pgTable, serial, integer, text, timestamp, boolean, real } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+var conversations = pgTable("conversations", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull()
+});
+var messages = pgTable("messages", {
+  id: serial("id").primaryKey(),
+  conversationId: integer("conversation_id").notNull().references(() => conversations.id, { onDelete: "cascade" }),
+  role: text("role").notNull(),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull()
+});
+var personas = pgTable("personas", {
+  id: serial("id").primaryKey(),
+  clientId: text("client_id").notNull().unique(),
+  name: text("name").notNull(),
+  niche: text("niche").notNull().default(""),
+  tone: text("tone").notNull().default(""),
+  platform: text("platform").notNull().default(""),
+  status: text("status").notNull().default("Draft"),
+  avatar: text("avatar").notNull().default(""),
+  referenceImage: text("reference_image"),
+  alternateReferenceImage: text("alternate_reference_image"),
+  personalityTraits: text("personality_traits").notNull().default("[]"),
+  visualStyle: text("visual_style").notNull().default(""),
+  audienceType: text("audience_type").notNull().default(""),
+  contentBoundaries: text("content_boundaries").notNull().default(""),
+  bio: text("bio").notNull().default(""),
+  brandVoiceRules: text("brand_voice_rules").notNull().default(""),
+  contentGoals: text("content_goals").notNull().default(""),
+  personaNotes: text("persona_notes").notNull().default(""),
+  faceDescriptor: text("face_descriptor"),
+  naturalLook: boolean("natural_look").default(true),
+  identityLock: boolean("identity_lock").default(true),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull()
+});
+var generatedImages = pgTable("generated_images", {
+  id: serial("id").primaryKey(),
+  clientId: text("client_id").notNull().unique(),
+  personaClientId: text("persona_client_id").notNull(),
+  url: text("url").notNull(),
+  prompt: text("prompt").notNull().default(""),
+  timestamp: real("timestamp").notNull(),
+  environment: text("environment"),
+  outfit: text("outfit"),
+  framing: text("framing"),
+  isFavorite: boolean("is_favorite").default(false),
+  model: text("model"),
+  mediaType: text("media_type").default("image"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull()
+});
+var revenueEntries = pgTable("revenue_entries", {
+  id: serial("id").primaryKey(),
+  clientId: text("client_id").notNull().unique(),
+  personaClientId: text("persona_client_id").notNull(),
+  date: text("date").notNull(),
+  amount: real("amount").notNull(),
+  source: text("source").notNull().default(""),
+  platform: text("platform").notNull().default(""),
+  notes: text("notes").notNull().default(""),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull()
+});
+var plannedPosts = pgTable("planned_posts", {
+  id: serial("id").primaryKey(),
+  personaClientId: text("persona_client_id").notNull(),
+  planPlatform: text("plan_platform").notNull().default(""),
+  day: integer("day").notNull(),
+  type: text("type").notNull().default(""),
+  hook: text("hook").notNull().default(""),
+  angle: text("angle").notNull().default(""),
+  cta: text("cta").notNull().default(""),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull()
+});
+
+// server/db.ts
+if (!process.env.VERCEL) {
+  try {
+    const wsModule = await import("ws");
+    const { neonConfig } = await import("@neondatabase/serverless");
+    neonConfig.webSocketConstructor = wsModule.default;
+  } catch {
+  }
+}
+if (!process.env.DATABASE_URL) {
+  throw new Error("DATABASE_URL must be set. Did you forget to provision a database?");
+}
+var pool = new Pool({ connectionString: process.env.DATABASE_URL });
+var db = drizzle(pool, { schema: schema_exports });
+
+// server/routes.ts
+import { eq, and } from "drizzle-orm";
+import { GoogleGenAI } from "@google/genai";
+var router = Router();
+function personaToClient(row, images = []) {
+  return {
+    id: row.clientId,
+    name: row.name,
+    niche: row.niche,
+    tone: row.tone,
+    platform: row.platform,
+    status: row.status,
+    avatar: row.avatar,
+    referenceImage: row.referenceImage || void 0,
+    alternateReferenceImage: row.alternateReferenceImage || void 0,
+    personalityTraits: JSON.parse(row.personalityTraits || "[]"),
+    visualStyle: row.visualStyle,
+    audienceType: row.audienceType,
+    contentBoundaries: row.contentBoundaries,
+    bio: row.bio,
+    brandVoiceRules: row.brandVoiceRules,
+    contentGoals: row.contentGoals,
+    personaNotes: row.personaNotes,
+    faceDescriptor: row.faceDescriptor || void 0,
+    naturalLook: row.naturalLook ?? true,
+    identityLock: row.identityLock ?? true,
+    visualLibrary: images.map(imageToClient)
+  };
+}
+function imageToClient(row) {
+  return {
+    id: row.clientId,
+    url: row.url,
+    prompt: row.prompt,
+    timestamp: row.timestamp,
+    environment: row.environment || void 0,
+    outfit: row.outfit || void 0,
+    framing: row.framing || void 0,
+    isFavorite: row.isFavorite || false,
+    model: row.model || void 0,
+    mediaType: row.mediaType || "image"
+  };
+}
+function revenueToClient(row) {
+  return {
+    id: row.clientId,
+    date: row.date,
+    amount: row.amount,
+    source: row.source,
+    platform: row.platform,
+    personaId: row.personaClientId,
+    notes: row.notes
+  };
+}
+router.get("/personas", async (_req, res) => {
+  try {
+    const allPersonas = await db.select().from(personas);
+    const allImages = await db.select().from(generatedImages);
+    const imagesByPersona = {};
+    for (const img of allImages) {
+      if (!imagesByPersona[img.personaClientId]) imagesByPersona[img.personaClientId] = [];
+      imagesByPersona[img.personaClientId].push(img);
+    }
+    const result = allPersonas.map((p) => personaToClient(p, imagesByPersona[p.clientId] || []));
+    res.json(result);
+  } catch (err) {
+    console.error("[API] GET /personas error:", err);
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+  }
+});
+router.post("/personas", async (req, res) => {
+  try {
+    const body = req.body;
+    const [row] = await db.insert(personas).values({
+      clientId: body.id,
+      name: body.name || "Unnamed",
+      niche: body.niche || "",
+      tone: body.tone || "",
+      platform: body.platform || "",
+      status: body.status || "Draft",
+      avatar: body.avatar || "",
+      referenceImage: body.referenceImage || null,
+      alternateReferenceImage: body.alternateReferenceImage || null,
+      personalityTraits: JSON.stringify(body.personalityTraits || []),
+      visualStyle: body.visualStyle || "",
+      audienceType: body.audienceType || "",
+      contentBoundaries: body.contentBoundaries || "",
+      bio: body.bio || "",
+      brandVoiceRules: body.brandVoiceRules || "",
+      contentGoals: body.contentGoals || "",
+      personaNotes: body.personaNotes || "",
+      faceDescriptor: body.faceDescriptor || null,
+      naturalLook: body.naturalLook ?? true,
+      identityLock: body.identityLock ?? true
+    }).onConflictDoUpdate({
+      target: personas.clientId,
+      set: {
+        name: body.name || "Unnamed",
+        niche: body.niche || "",
+        tone: body.tone || "",
+        platform: body.platform || "",
+        status: body.status || "Draft",
+        avatar: body.avatar || "",
+        referenceImage: body.referenceImage || null,
+        alternateReferenceImage: body.alternateReferenceImage || null,
+        personalityTraits: JSON.stringify(body.personalityTraits || []),
+        visualStyle: body.visualStyle || "",
+        audienceType: body.audienceType || "",
+        contentBoundaries: body.contentBoundaries || "",
+        bio: body.bio || "",
+        brandVoiceRules: body.brandVoiceRules || "",
+        contentGoals: body.contentGoals || "",
+        personaNotes: body.personaNotes || "",
+        faceDescriptor: body.faceDescriptor || null,
+        naturalLook: body.naturalLook ?? true,
+        identityLock: body.identityLock ?? true
+      }
+    }).returning();
+    res.json(personaToClient(row));
+  } catch (err) {
+    console.error("[API] POST /personas error:", err);
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+  }
+});
+router.put("/personas/:clientId", async (req, res) => {
+  try {
+    const { clientId } = req.params;
+    const body = req.body;
+    const [row] = await db.update(personas).set({
+      name: body.name || "Unnamed",
+      niche: body.niche || "",
+      tone: body.tone || "",
+      platform: body.platform || "",
+      status: body.status || "Draft",
+      avatar: body.avatar || "",
+      referenceImage: body.referenceImage || null,
+      alternateReferenceImage: body.alternateReferenceImage || null,
+      personalityTraits: JSON.stringify(body.personalityTraits || []),
+      visualStyle: body.visualStyle || "",
+      audienceType: body.audienceType || "",
+      contentBoundaries: body.contentBoundaries || "",
+      bio: body.bio || "",
+      brandVoiceRules: body.brandVoiceRules || "",
+      contentGoals: body.contentGoals || "",
+      personaNotes: body.personaNotes || "",
+      faceDescriptor: body.faceDescriptor || null,
+      naturalLook: body.naturalLook ?? true,
+      identityLock: body.identityLock ?? true
+    }).where(eq(personas.clientId, clientId)).returning();
+    if (!row) return res.status(404).json({ error: "Persona not found" });
+    const imgs = await db.select().from(generatedImages).where(eq(generatedImages.personaClientId, clientId));
+    res.json(personaToClient(row, imgs));
+  } catch (err) {
+    console.error("[API] PUT /personas error:", err);
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+  }
+});
+router.delete("/personas/:clientId", async (req, res) => {
+  try {
+    const { clientId } = req.params;
+    await db.delete(generatedImages).where(eq(generatedImages.personaClientId, clientId));
+    await db.delete(revenueEntries).where(eq(revenueEntries.personaClientId, clientId));
+    await db.delete(plannedPosts).where(eq(plannedPosts.personaClientId, clientId));
+    await db.delete(personas).where(eq(personas.clientId, clientId));
+    res.json({ success: true });
+  } catch (err) {
+    console.error("[API] DELETE /personas error:", err);
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+  }
+});
+router.get("/personas/:personaClientId/images", async (req, res) => {
+  try {
+    const imgs = await db.select().from(generatedImages).where(eq(generatedImages.personaClientId, req.params.personaClientId));
+    res.json(imgs.map(imageToClient));
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+  }
+});
+router.post("/personas/:personaClientId/images", async (req, res) => {
+  try {
+    const body = req.body;
+    const [row] = await db.insert(generatedImages).values({
+      clientId: body.id,
+      personaClientId: req.params.personaClientId,
+      url: body.url,
+      prompt: body.prompt || "",
+      timestamp: body.timestamp || Date.now(),
+      environment: body.environment || null,
+      outfit: body.outfit || null,
+      framing: body.framing || null,
+      isFavorite: body.isFavorite || false,
+      model: body.model || null,
+      mediaType: body.mediaType || "image"
+    }).onConflictDoUpdate({
+      target: generatedImages.clientId,
+      set: {
+        url: body.url,
+        prompt: body.prompt || "",
+        timestamp: body.timestamp || Date.now(),
+        environment: body.environment || null,
+        outfit: body.outfit || null,
+        framing: body.framing || null,
+        isFavorite: body.isFavorite || false,
+        model: body.model || null,
+        mediaType: body.mediaType || "image"
+      }
+    }).returning();
+    res.json(imageToClient(row));
+  } catch (err) {
+    console.error("[API] POST image error:", err);
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+  }
+});
+router.delete("/personas/:personaClientId/images/:imageClientId", async (req, res) => {
+  try {
+    await db.delete(generatedImages).where(
+      and(
+        eq(generatedImages.clientId, req.params.imageClientId),
+        eq(generatedImages.personaClientId, req.params.personaClientId)
+      )
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+  }
+});
+router.get("/revenue/:personaClientId", async (req, res) => {
+  try {
+    const entries = await db.select().from(revenueEntries).where(eq(revenueEntries.personaClientId, req.params.personaClientId));
+    res.json(entries.map(revenueToClient));
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+  }
+});
+router.post("/revenue", async (req, res) => {
+  try {
+    const body = req.body;
+    const [row] = await db.insert(revenueEntries).values({
+      clientId: body.id,
+      personaClientId: body.personaId,
+      date: body.date,
+      amount: body.amount,
+      source: body.source || "",
+      platform: body.platform || "",
+      notes: body.notes || ""
+    }).onConflictDoUpdate({
+      target: revenueEntries.clientId,
+      set: {
+        date: body.date,
+        amount: body.amount,
+        source: body.source || "",
+        platform: body.platform || "",
+        notes: body.notes || ""
+      }
+    }).returning();
+    res.json(revenueToClient(row));
+  } catch (err) {
+    console.error("[API] POST revenue error:", err);
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+  }
+});
+router.delete("/revenue/:clientId", async (req, res) => {
+  try {
+    await db.delete(revenueEntries).where(eq(revenueEntries.clientId, req.params.clientId));
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+  }
+});
+router.get("/planned-posts/:personaClientId", async (req, res) => {
+  try {
+    const platform = req.query.platform || "";
+    const posts = await db.select().from(plannedPosts).where(
+      and(
+        eq(plannedPosts.personaClientId, req.params.personaClientId),
+        eq(plannedPosts.planPlatform, platform)
+      )
+    );
+    res.json(posts.map((p) => ({ day: p.day, type: p.type, hook: p.hook, angle: p.angle, cta: p.cta })));
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+  }
+});
+router.put("/planned-posts/:personaClientId", async (req, res) => {
+  try {
+    const { personaClientId } = req.params;
+    const { platform, posts } = req.body;
+    await db.delete(plannedPosts).where(
+      and(
+        eq(plannedPosts.personaClientId, personaClientId),
+        eq(plannedPosts.planPlatform, platform || "")
+      )
+    );
+    if (posts && posts.length > 0) {
+      await db.insert(plannedPosts).values(
+        posts.map((p) => ({
+          personaClientId,
+          planPlatform: platform || "",
+          day: p.day,
+          type: p.type || "",
+          hook: p.hook || "",
+          angle: p.angle || "",
+          cta: p.cta || ""
+        }))
+      );
+    }
+    res.json(posts || []);
+  } catch (err) {
+    console.error("[API] PUT planned-posts error:", err);
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+  }
+});
+router.post("/migrate", async (req, res) => {
+  try {
+    const { personas: personaList, revenueEntries: revenueMap, plannedPosts: planMap } = req.body;
+    if (personaList && Array.isArray(personaList)) {
+      for (const p of personaList) {
+        await db.insert(personas).values({
+          clientId: p.id,
+          name: p.name || "Unnamed",
+          niche: p.niche || "",
+          tone: p.tone || "",
+          platform: p.platform || "",
+          status: p.status || "Draft",
+          avatar: p.avatar || "",
+          referenceImage: p.referenceImage || null,
+          personalityTraits: JSON.stringify(p.personalityTraits || []),
+          visualStyle: p.visualStyle || "",
+          audienceType: p.audienceType || "",
+          contentBoundaries: p.contentBoundaries || "",
+          bio: p.bio || "",
+          brandVoiceRules: p.brandVoiceRules || "",
+          contentGoals: p.contentGoals || "",
+          personaNotes: p.personaNotes || ""
+        }).onConflictDoNothing();
+        if (p.visualLibrary && Array.isArray(p.visualLibrary)) {
+          for (const img of p.visualLibrary) {
+            await db.insert(generatedImages).values({
+              clientId: img.id,
+              personaClientId: p.id,
+              url: img.url,
+              prompt: img.prompt || "",
+              timestamp: img.timestamp || Date.now(),
+              environment: img.environment || null,
+              outfit: img.outfit || null,
+              framing: img.framing || null,
+              isFavorite: img.isFavorite || false,
+              model: img.model || null,
+              mediaType: img.mediaType || "image"
+            }).onConflictDoNothing();
+          }
+        }
+      }
+    }
+    if (revenueMap && typeof revenueMap === "object") {
+      for (const [_personaId, entries] of Object.entries(revenueMap)) {
+        if (Array.isArray(entries)) {
+          for (const e of entries) {
+            await db.insert(revenueEntries).values({
+              clientId: e.id,
+              personaClientId: e.personaId,
+              date: e.date,
+              amount: e.amount,
+              source: e.source || "",
+              platform: e.platform || "",
+              notes: e.notes || ""
+            }).onConflictDoNothing();
+          }
+        }
+      }
+    }
+    if (planMap && typeof planMap === "object") {
+      for (const [personaId, platformPlans] of Object.entries(planMap)) {
+        if (platformPlans && typeof platformPlans === "object") {
+          for (const [platform, posts] of Object.entries(platformPlans)) {
+            if (Array.isArray(posts)) {
+              for (const p of posts) {
+                await db.insert(plannedPosts).values({
+                  personaClientId: personaId,
+                  planPlatform: platform,
+                  day: p.day,
+                  type: p.type || "",
+                  hook: p.hook || "",
+                  angle: p.angle || "",
+                  cta: p.cta || ""
+                }).onConflictDoNothing();
+              }
+            }
+          }
+        }
+      }
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error("[API] POST /migrate error:", err);
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+  }
+});
+function getGeminiClientForRoutes() {
+  const directKey = process.env.Gemini_api_key;
+  if (directKey) return new GoogleGenAI({ apiKey: directKey });
+  const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+  const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
+  if (!apiKey) throw new Error("Gemini API key not configured");
+  return new GoogleGenAI({ apiKey, ...baseUrl ? { httpOptions: { baseUrl } } : {} });
+}
+router.post("/analyze-face", async (req, res) => {
+  const { personaId, imageBase64 } = req.body;
+  if (!personaId) return res.status(400).json({ error: "personaId is required" });
+  try {
+    const imageBase64ToUse = imageBase64 || null;
+    let imageData = imageBase64ToUse;
+    if (!imageData) {
+      const [persona] = await db.select().from(personas).where(eq(personas.clientId, personaId));
+      if (!persona) return res.status(404).json({ error: "Persona not found" });
+      imageData = persona.referenceImage;
+    }
+    if (!imageData) return res.status(400).json({ error: "No reference image provided." });
+    const genAI = getGeminiClientForRoutes();
+    const match = imageData.match(/^data:([^;]+);base64,(.+)$/);
+    const mimeType = match ? match[1] : "image/jpeg";
+    const data = match ? match[2] : imageData;
+    const result = await genAI.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: [{ role: "user", parts: [
+        { inlineData: { mimeType, data } },
+        { text: `Analyze this person's face and physical appearance in detail. Provide a concise but comprehensive description that can be used to consistently re-create this person in AI image generation prompts. Include: face shape, eye color and shape, skin tone, hair color and style, lip shape, any distinctive features, approximate age range, and overall facial structure. Format as a single paragraph of 3-5 sentences. Start with the age and apparent gender.` }
+      ] }]
+    });
+    const descriptor = result.text?.trim() || "";
+    if (!descriptor) return res.status(500).json({ error: "Gemini did not return a face description" });
+    try {
+      await db.update(personas).set({ faceDescriptor: descriptor }).where(eq(personas.clientId, personaId));
+    } catch {
+    }
+    res.json({ faceDescriptor: descriptor });
+  } catch (err) {
+    console.error("[API] analyze-face error:", err);
+    res.status(500).json({ error: err instanceof Error ? err.message : "Face analysis failed" });
+  }
+});
+router.post("/personas/:personaClientId/analyze-face", async (req, res) => {
+  try {
+    const { personaClientId } = req.params;
+    const { referenceImage: bodyImage } = req.body;
+    let imageBase64 = bodyImage || null;
+    if (!imageBase64) {
+      const [persona] = await db.select().from(personas).where(eq(personas.clientId, personaClientId));
+      if (!persona) return res.status(404).json({ error: "Persona not found" });
+      imageBase64 = persona.referenceImage;
+    }
+    if (!imageBase64) return res.status(400).json({ error: "No reference image provided. Upload a reference image first." });
+    const genAI = getGeminiClientForRoutes();
+    const match = imageBase64.match(/^data:([^;]+);base64,(.+)$/);
+    const mimeType = match ? match[1] : "image/jpeg";
+    const data = match ? match[2] : imageBase64;
+    const result = await genAI.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { inlineData: { mimeType, data } },
+            {
+              text: `Analyze this person's face and physical appearance in detail. Provide a concise but comprehensive description that can be used to consistently re-create this person in AI image generation prompts. Include: face shape, eye color and shape, skin tone (use descriptive terms like "warm olive", "deep ebony", "fair porcelain"), hair color and style, lip shape, any distinctive features (dimples, freckles, moles), approximate age range, and overall facial structure. Format your response as a single paragraph of 3-5 sentences that reads naturally and could be included in an image generation prompt. Start with the age and apparent gender, then describe key features. Be specific and descriptive.`
+            }
+          ]
+        }
+      ]
+    });
+    const descriptor = result.text?.trim() || "";
+    if (!descriptor) return res.status(500).json({ error: "Gemini did not return a face description" });
+    try {
+      await db.update(personas).set({ faceDescriptor: descriptor }).where(eq(personas.clientId, personaClientId));
+    } catch {
+    }
+    res.json({ faceDescriptor: descriptor });
+  } catch (err) {
+    console.error("[API] analyze-face error:", err);
+    res.status(500).json({ error: err instanceof Error ? err.message : "Face analysis failed" });
+  }
+});
+var routes_default = router;
+
+// server/index.ts
+var __filename = fileURLToPath(import.meta.url);
+var __dirname = path.dirname(__filename);
+process.on("uncaughtException", (err) => {
+  console.error("[Server] Uncaught exception:", err.message, err.stack?.split("\n")[1]);
+});
+process.on("unhandledRejection", (reason) => {
+  console.error("[Server] Unhandled rejection:", reason instanceof Error ? reason.message : reason);
+});
+var app = express();
+app.use(cors());
+app.use(express.json({ limit: "100mb" }));
+app.use("/api", routes_default);
+function getOpenAIClient() {
+  const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+  const baseURL = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+  if (!apiKey || !baseURL) {
+    throw new Error("OpenAI integration not configured yet. Please enable it in your Replit integrations.");
+  }
+  return new OpenAI({ apiKey, baseURL });
+}
+var WAVESPEED_API_KEY = process.env.WAVESPEED_API_KEY || "";
+var WAVESPEED_BASE = "https://api.wavespeed.ai/api/v3";
+var VENICE_API_KEY = process.env.Veniceai_api_key || "";
+var VENICE_BASE = "https://api.venice.ai/api/v1";
+var OPENAI_DIRECT_KEY = process.env.Openai_api_key || "";
+var NSFW_MODEL_IDS = /* @__PURE__ */ new Set([
+  "wavespeed-ai/wan-2.1-i2v-480p",
+  "wavespeed-ai/wan-2.1-i2v-720p",
+  "wavespeed-ai/wan-2.1-i2v-720p-bf16",
+  "wavespeed-ai/wan-2.1-t2v-480p",
+  "wavespeed-ai/wan-2.1-t2v-720p",
+  "wavespeed-ai/wan-2.1-t2v-720p-bf16",
+  "wavespeed-ai/wan-2.2-i2v-720p",
+  "wavespeed-ai/wan-2.2-t2v-720p",
+  "alibaba/wan2.1-i2v-720p",
+  "alibaba/wan2.1-t2v-720p",
+  "wavespeed-ai/seededit-v3.0",
+  "wavespeed-ai/seededit-v2.0",
+  "wavespeed-ai/firered-v1.5-image",
+  "wavespeed-ai/firered-v1.5-image-lora",
+  "wavespeed-ai/higgsfield-t2v-01",
+  "wavespeed-ai/higgsfield-i2v-01",
+  "wavespeed-ai/uso-full",
+  "wavespeed-ai/z-image",
+  "wavespeed-ai/glm-image"
+]);
+var NSFW_MODEL_FRAGMENTS = [
+  "/wan-2",
+  "alibaba/wan",
+  "seededit",
+  "seedream",
+  "firered",
+  "higgsfield",
+  "/uso",
+  "z-image",
+  "glm-image",
+  "spicy",
+  "uncensored",
+  "lustify",
+  "pony-realism",
+  "akuma"
+];
+function isNsfwModel(modelId) {
+  if (NSFW_MODEL_IDS.has(modelId)) return true;
+  return NSFW_MODEL_FRAGMENTS.some((f) => modelId.includes(f));
+}
+var ANGLE_MODEL_CONFIGS = {
+  "angle-qwen-multiple": {
+    name: "Qwen Multiple Angles",
+    apiPath: "/api/v3/wavespeed-ai/qwen-image/edit-multiple-angles",
+    imageField: "images",
+    nsfw: false
+  },
+  "angle-qwen-multiple-2509": {
+    name: "Qwen Multiple Angles v2",
+    apiPath: "/api/v3/wavespeed-ai/qwen-image/edit-2509-multiple-angles",
+    imageField: "images",
+    nsfw: false
+  },
+  "angle-wan22": {
+    name: "Wan 2.2 (Uncensored)",
+    apiPath: "/api/v3/wavespeed-ai/wan-2.2/image-to-image",
+    imageField: "image",
+    nsfw: true
+  },
+  "angle-seededit-v3": {
+    name: "SeedEdit v3 (Uncensored)",
+    apiPath: "/api/v3/bytedance/seededit-v3",
+    imageField: "image",
+    nsfw: true
+  }
+};
+var cachedModels = null;
+var cachedEditModels = null;
+var cachedUpscaleModels = null;
+var cachedVideoModels = null;
+var cachedVeniceModels = null;
+var cacheTimestamp = 0;
+var veniceCacheTimestamp = 0;
+var CACHE_TTL = 30 * 60 * 1e3;
+var SUBSCRIPTION_FREE_MODELS = [
+  "google/nano-banana-2",
+  "google/nano-banana-pro",
+  "google/veo2",
+  "google/veo3",
+  "google/veo3-fast",
+  "google/veo3.1",
+  "google/veo3.1-fast"
+];
+function applySubscriptionPricing(modelId, basePrice) {
+  const cleanId = modelId.replace(/\/(text-to-image|image-to-image|text-to-video|image-to-video|reference-to-video|edit|upscale).*$/, "");
+  return SUBSCRIPTION_FREE_MODELS.some((sub) => cleanId === sub || cleanId.startsWith(sub + "/")) ? 0 : basePrice;
+}
+var PROVIDER_NAMES = {
+  "google": "Google",
+  "openai": "OpenAI",
+  "wavespeed-ai": "Wavespeed AI",
+  "bytedance": "ByteDance",
+  "stability-ai": "Stability AI",
+  "x-ai": "xAI",
+  "midjourney": "Midjourney",
+  "kwaivgi": "Kling",
+  "recraft-ai": "Recraft",
+  "alibaba": "Alibaba",
+  "z-ai": "Zhipu AI",
+  "leonardoai": "Leonardo AI",
+  "reve": "Reve",
+  "vidu": "Vidu",
+  "higgsfield": "Higgsfield",
+  "nvidia": "NVIDIA",
+  "bria": "Bria",
+  "clarity-ai": "Clarity AI",
+  "runwayml": "Runway"
+};
+async function fetchWavespeedModels() {
+  if (cachedModels && Date.now() - cacheTimestamp < CACHE_TTL) {
+    return cachedModels;
+  }
+  try {
+    let resolveApiPath2 = function(m) {
+      const schemaPath = m.api_schema?.api_schemas?.[0]?.api_path;
+      if (schemaPath && schemaPath.includes(m.model_id.split("/").slice(0, 2).join("/"))) {
+        return schemaPath;
+      }
+      return `/api/v3/${m.model_id}`;
+    };
+    var resolveApiPath = resolveApiPath2;
+    const res = await fetch(`${WAVESPEED_BASE}/models`, {
+      headers: { Authorization: `Bearer ${WAVESPEED_API_KEY}` }
+    });
+    const json = await res.json();
+    const rawModels = json.data || [];
+    const textToImage = rawModels.filter((m) => m.type === "text-to-image");
+    const imageToImage = rawModels.filter((m) => m.type === "image-to-image");
+    const editLookup = /* @__PURE__ */ new Map();
+    imageToImage.forEach((m) => {
+      const base = m.model_id.replace("/edit", "").replace("/image-to-image", "");
+      const props = m.api_schema?.api_schemas?.[0]?.request_schema?.properties || {};
+      const imageField = props.images ? "images" : "image";
+      const hasStrengthControl = "strength" in props || "denoise_strength" in props;
+      editLookup.set(base, { model: m, imageField, hasStrengthControl });
+    });
+    const editModelIds = new Set(imageToImage.map((m) => m.model_id));
+    const models = textToImage.map((m) => {
+      const base = m.model_id.replace("/text-to-image", "");
+      const editEntry = editLookup.get(base);
+      const editModel = editEntry?.model;
+      const hasRealEditVariant = editModel ? editModelIds.has(editModel.model_id) : false;
+      const apiPath = resolveApiPath2(m);
+      const providerSlash = m.model_id.indexOf("/");
+      const provider = m.model_id.slice(0, providerSlash);
+      const _nameBase = m.model_id.replace("/text-to-image", "");
+      const friendlyName = _nameBase.split("/").slice(1).join(" ").replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) || _nameBase.split("/")[0].replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+      return {
+        id: `wavespeed:${m.model_id}`,
+        name: friendlyName,
+        provider: PROVIDER_NAMES[provider] || provider,
+        type: "text-to-image",
+        price: applySubscriptionPricing(m.model_id, m.base_price),
+        description: m.description || "",
+        apiPath,
+        hasEditVariant: hasRealEditVariant,
+        hasReferenceImage: hasRealEditVariant,
+        editApiPath: hasRealEditVariant && editModel ? resolveApiPath2(editModel) : void 0,
+        editImageField: hasRealEditVariant ? editEntry?.imageField : void 0,
+        editHasStrengthControl: hasRealEditVariant ? editEntry?.hasStrengthControl ?? false : void 0,
+        nsfw: isNsfwModel(m.model_id)
+      };
+    });
+    const identityModelDefs = [
+      {
+        modelId: "wavespeed-ai/flux-pulid",
+        name: "FLUX PuLID",
+        price: 0.02,
+        description: "Face-consistent generation via PuLID identity injection"
+      },
+      {
+        modelId: "wavespeed-ai/instant-character",
+        name: "Instant Character",
+        price: 0.1,
+        description: "Identity-consistent character generation"
+      }
+    ];
+    const identityModels = identityModelDefs.filter((def) => rawModels.some((m) => m.model_id === def.modelId)).map((def) => ({
+      id: `wavespeed:${def.modelId}`,
+      name: def.name,
+      provider: "Wavespeed AI",
+      type: "text-to-image",
+      price: def.price,
+      description: def.description,
+      apiPath: `/api/v3/${def.modelId}`,
+      hasEditVariant: true,
+      editApiPath: `/api/v3/${def.modelId}`,
+      editImageField: "image",
+      editHasStrengthControl: false,
+      isIdentityModel: true,
+      nsfw: false
+    }));
+    models.sort((a, b) => a.provider.localeCompare(b.provider) || a.name.localeCompare(b.name));
+    const editModels = imageToImage.map((m) => {
+      const apiPath = resolveApiPath2(m);
+      const providerSlash = m.model_id.indexOf("/");
+      const provider = m.model_id.slice(0, providerSlash);
+      const props = m.api_schema?.api_schemas?.[0]?.request_schema?.properties || {};
+      const imageField = props.images ? "images" : "image";
+      const _editBase = m.model_id.replace("/image-to-image", "").replace("/edit", "");
+      const friendlyName = _editBase.split("/").slice(1).join(" ").replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) || _editBase.split("/")[0].replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+      return {
+        id: `wavespeed-edit:${m.model_id}`,
+        name: friendlyName,
+        provider: PROVIDER_NAMES[provider] || provider,
+        type: "image-to-image",
+        price: applySubscriptionPricing(m.model_id, m.base_price),
+        description: m.description || "",
+        apiPath,
+        hasEditVariant: false,
+        editImageField: imageField,
+        nsfw: isNsfwModel(m.model_id)
+      };
+    });
+    editModels.sort((a, b) => a.provider.localeCompare(b.provider) || a.name.localeCompare(b.name));
+    const upscalerModels = rawModels.filter((m) => {
+      if (m.type !== "upscaler") return false;
+      if (m.model_id.toLowerCase().includes("video")) return false;
+      const props = m.api_schema?.api_schemas?.[0]?.request_schema?.properties || {};
+      if (props.video && !props.image && !props.images) return false;
+      return true;
+    });
+    const upscaleModels = upscalerModels.map((m) => {
+      const apiPath = m.api_schema?.api_schemas?.[0]?.api_path || `/api/v3/${m.model_id}`;
+      const providerSlash = m.model_id.indexOf("/");
+      const provider = m.model_id.slice(0, providerSlash);
+      const props = m.api_schema?.api_schemas?.[0]?.request_schema?.properties || {};
+      const imageField = props.images ? "images" : "image";
+      const friendlyName = m.model_id.split("/").slice(1).join(" ").replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+      return {
+        id: `wavespeed-upscale:${m.model_id}`,
+        name: friendlyName,
+        provider: PROVIDER_NAMES[provider] || provider,
+        type: "upscaler",
+        price: applySubscriptionPricing(m.model_id, m.base_price),
+        description: m.description || "",
+        apiPath,
+        hasEditVariant: false,
+        editImageField: imageField,
+        nsfw: isNsfwModel(m.model_id)
+      };
+    });
+    upscaleModels.sort((a, b) => a.provider.localeCompare(b.provider) || a.name.localeCompare(b.name));
+    const textToVideo = rawModels.filter((m) => m.type === "text-to-video");
+    const imageToVideo = rawModels.filter((m) => m.type === "image-to-video");
+    const videoModels = [
+      ...textToVideo.map((m) => {
+        const apiPath = resolveApiPath2(m);
+        const providerSlash = m.model_id.indexOf("/");
+        const provider = m.model_id.slice(0, providerSlash);
+        const friendlyName = m.model_id.replace("/text-to-video", "").split("/").slice(1).join(" ").replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+        return {
+          id: `wavespeed-t2v:${m.model_id}`,
+          name: friendlyName,
+          provider: PROVIDER_NAMES[provider] || provider,
+          type: "text-to-video",
+          price: applySubscriptionPricing(m.model_id, m.base_price),
+          description: m.description || "",
+          apiPath,
+          hasEditVariant: false,
+          nsfw: isNsfwModel(m.model_id)
+        };
+      }),
+      ...imageToVideo.map((m) => {
+        const apiPath = resolveApiPath2(m);
+        const providerSlash = m.model_id.indexOf("/");
+        const provider = m.model_id.slice(0, providerSlash);
+        const props = m.api_schema?.api_schemas?.[0]?.request_schema?.properties || {};
+        const imageField = props.images ? "images" : "image";
+        const friendlyName = m.model_id.replace("/image-to-video", "").split("/").slice(1).join(" ").replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+        return {
+          id: `wavespeed-i2v:${m.model_id}`,
+          name: friendlyName,
+          provider: PROVIDER_NAMES[provider] || provider,
+          type: "image-to-video",
+          price: applySubscriptionPricing(m.model_id, m.base_price),
+          description: m.description || "",
+          apiPath,
+          hasEditVariant: false,
+          editImageField: imageField,
+          nsfw: isNsfwModel(m.model_id)
+        };
+      })
+    ];
+    videoModels.sort((a, b) => a.provider.localeCompare(b.provider) || a.name.localeCompare(b.name));
+    cachedModels = [...identityModels, ...models];
+    cachedEditModels = editModels;
+    cachedUpscaleModels = upscaleModels;
+    cachedVideoModels = videoModels;
+    cacheTimestamp = Date.now();
+    return cachedModels;
+  } catch (err) {
+    console.error("[Wavespeed] Failed to fetch models:", err);
+    return cachedModels || [];
+  }
+}
+async function fetchVeniceModels() {
+  if (cachedVeniceModels && Date.now() - veniceCacheTimestamp < CACHE_TTL) {
+    return cachedVeniceModels;
+  }
+  if (!VENICE_API_KEY) {
+    console.warn("[Venice] No API key configured \u2014 skipping model fetch");
+    cachedVeniceModels = [];
+    return [];
+  }
+  try {
+    const res = await fetch(`${VENICE_BASE}/models?type=image`, {
+      headers: { Authorization: `Bearer ${VENICE_API_KEY}` }
+    });
+    if (!res.ok) {
+      console.warn("[Venice] Failed to fetch models:", res.status);
+      cachedVeniceModels = cachedVeniceModels || [];
+      return cachedVeniceModels;
+    }
+    const json = await res.json();
+    const rawModels = json.data || json.models || [];
+    const SKIP_IDS = /* @__PURE__ */ new Set([
+      "gpt-image-2",
+      "gpt-image-1-5",
+      "gpt-image-1",
+      "nano-banana-2",
+      "nano-banana-pro",
+      "nano-banana"
+    ]);
+    const VENICE_NSFW_IDS = /* @__PURE__ */ new Set([
+      "lustify-sdxl",
+      "lustify-v7",
+      "lustify-v8",
+      "wai-Illustrious",
+      "z-image-turbo",
+      "seedream-v4",
+      "seedream-v5-lite",
+      "seedream-v5",
+      "wan-2-7-text-to-image",
+      "wan-2-7-pro-text-to-image"
+    ]);
+    const models = rawModels.filter((m) => m.type === "image" && !SKIP_IDS.has(m.id)).map((m) => {
+      const spec = m.model_spec || {};
+      const pricing = spec.pricing || {};
+      const genPrice = pricing.generation?.usd ?? (pricing.resolutions ? Object.values(pricing.resolutions)[0]?.usd ?? 0.04 : 0.04);
+      const nsfw = VENICE_NSFW_IDS.has(m.id) || isNsfwModel(m.id);
+      const displayName = spec.name || m.id.split("-").map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(" ");
+      return {
+        id: `venice:${m.id}`,
+        name: displayName,
+        provider: "Venice AI",
+        type: "text-to-image",
+        price: Math.round(genPrice * 1e3) / 1e3,
+        description: `Venice AI ${displayName}`,
+        apiPath: "",
+        hasEditVariant: false,
+        nsfw
+      };
+    });
+    console.log("[Venice] Fetched", models.length, "image models");
+    cachedVeniceModels = models;
+    veniceCacheTimestamp = Date.now();
+    return models;
+  } catch (err) {
+    console.error("[Venice] Failed to fetch models:", err);
+    cachedVeniceModels = cachedVeniceModels || [];
+    return cachedVeniceModels;
+  }
+}
+function getAllModels(wavespeedModels, veniceModels = []) {
+  const builtIn = [];
+  if (OPENAI_DIRECT_KEY) {
+    builtIn.push({
+      id: "openai:gpt-image-2",
+      name: "GPT Image 2",
+      provider: "OpenAI",
+      type: "text-to-image",
+      price: 0.04,
+      description: "OpenAI GPT Image 2 \u2014 photorealistic image generation",
+      apiPath: "",
+      hasEditVariant: true
+    });
+  }
+  const filtered = wavespeedModels.filter((m) => !/nano-banana/i.test(m.id));
+  return [...builtIn, ...filtered, ...veniceModels];
+}
+function buildPrompt(body, useEditInstructionStyle = false) {
+  const { personaName, niche, tone, visualStyle, environment, outfitStyle, framing, mood, additionalInstructions, isChatContext, chatPrompt, referenceImage, faceDescriptor, naturalLook, identityLock } = body;
+  const hasRef = !!referenceImage;
+  const realismTerms = "Candid photography, natural skin texture, subtle skin pores, film grain, not over-retouched, authentic photograph.";
+  const identityLockTerms = "IDENTITY LOCK: Reproduce the exact same facial features in every detail \u2014 identical bone structure, eye shape and spacing, nose shape, lip shape, and jawline. This is the same person. Do not reinterpret or alter the face.";
+  if (isChatContext) {
+    if (hasRef && useEditInstructionStyle) {
+      const sceneParts = [];
+      if (chatPrompt) sceneParts.push(chatPrompt);
+      if (visualStyle) sceneParts.push(`Visual style: ${visualStyle}`);
+      let p = `The reference image shows the EXACT person. Keep their face, hair, skin tone, and body proportions identical.`;
+      if (faceDescriptor) p += ` Appearance: ${faceDescriptor}.`;
+      p += ` Generate them in the following scene: ${sceneParts.join(". ")}. Photorealistic, high-quality social media photo.`;
+      if (identityLock) p += ` ${identityLockTerms}`;
+      if (naturalLook) p += ` ${realismTerms}`;
+      return p;
+    }
+    const refNote = hasRef ? "CRITICAL: The reference image shows the EXACT person to depict. Preserve all facial features identically \u2014 same face shape, eyes, nose, mouth, skin tone, hair color and texture. The person must look like the same individual." : "";
+    const descriptorNote = faceDescriptor ? `
+Appearance: ${faceDescriptor}` : "";
+    const parts2 = [
+      `A high-quality, photorealistic social media photo of an AI influencer named ${personaName}. Niche: ${niche}. Tone/Style: ${tone}. Visual Style: ${visualStyle}.`,
+      `The user requested: "${chatPrompt}".`,
+      refNote,
+      descriptorNote,
+      "Create a realistic, visually compelling image suitable for social media."
+    ];
+    if (identityLock) parts2.push(identityLockTerms);
+    if (naturalLook) parts2.push(realismTerms);
+    return parts2.filter(Boolean).join("\n").trim();
+  }
+  const SKIP = (v) => !v || v === "None" || v === "Custom";
+  if (hasRef && useEditInstructionStyle) {
+    const sceneParts = [];
+    if (!SKIP(environment)) sceneParts.push(`${environment} environment`);
+    if (!SKIP(outfitStyle)) sceneParts.push(`${outfitStyle} outfit`);
+    if (!SKIP(framing)) sceneParts.push(`${framing} framing`);
+    if (!SKIP(mood)) sceneParts.push(`${mood} mood`);
+    if (visualStyle) sceneParts.push(`${visualStyle} visual style`);
+    if (additionalInstructions) sceneParts.push(additionalInstructions);
+    let p = `The reference image shows the EXACT person. Keep their face, hair, skin tone, and body proportions perfectly identical.`;
+    if (faceDescriptor) p += ` Appearance: ${faceDescriptor}.`;
+    p += ` Place them in a new scene: ${sceneParts.join(", ")}. Photorealistic, cinematic lighting, professional social media quality.`;
+    if (identityLock) p += ` ${identityLockTerms}`;
+    if (naturalLook) p += ` ${realismTerms}`;
+    return p;
+  }
+  const parts = [
+    `A high-quality, photorealistic social media photo of an AI influencer named ${personaName}.`,
+    `Niche: ${niche}. Tone/Style: ${tone}. Visual Style: ${visualStyle}.`
+  ];
+  if (faceDescriptor) {
+    parts.push(`Appearance: ${faceDescriptor}`);
+  }
+  if (hasRef) {
+    parts.push("CRITICAL: The reference image shows the EXACT person. Preserve ALL facial features identically \u2014 same face shape, eyes, nose, lips, skin tone, hair color and texture. The output person must look like the same individual as the reference. Do NOT change the face or identity.");
+  }
+  if (!SKIP(environment)) parts.push(`Environment: ${environment}.`);
+  if (!SKIP(outfitStyle)) parts.push(`Outfit: ${outfitStyle}.`);
+  if (!SKIP(framing)) parts.push(`Framing: ${framing}.`);
+  if (!SKIP(mood)) parts.push(`Mood: ${mood}.`);
+  if (additionalInstructions) parts.push(`Additional details: ${additionalInstructions}`);
+  parts.push("Cinematic lighting. Ultra-realistic, professional social media quality.");
+  if (identityLock) parts.push(identityLockTerms);
+  if (naturalLook) parts.push(realismTerms);
+  return parts.join("\n");
+}
+function stripDataPrefix(dataUrl) {
+  const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+  if (match) {
+    return { mimeType: match[1], data: match[2] };
+  }
+  return { mimeType: "image/png", data: dataUrl };
+}
+function aspectRatioToReplitSize(ar) {
+  if (!ar) return "1024x1024";
+  if (ar === "16:9" || ar === "3:2" || ar === "5:4" || ar === "21:9") return "1792x1024";
+  if (ar === "9:16" || ar === "2:3" || ar === "4:5") return "1024x1792";
+  return "1024x1024";
+}
+async function generateWithReplit(prompt, referenceImage, aspectRatio) {
+  const client = getOpenAIClient();
+  let response;
+  const images = Array.isArray(referenceImage) ? referenceImage : referenceImage ? [referenceImage] : [];
+  if (images.length > 0) {
+    const imageFiles = await Promise.all(images.map(async (img, i) => {
+      const { mimeType, data } = stripDataPrefix(img);
+      const buffer = Buffer.from(data, "base64");
+      const ext = mimeType.includes("png") ? "png" : "jpg";
+      return toFile(buffer, `reference_${i}.${ext}`, { type: mimeType });
+    }));
+    response = await client.images.edit({
+      model: "gpt-image-2",
+      image: imageFiles,
+      prompt,
+      n: 1,
+      size: aspectRatioToReplitSize(aspectRatio)
+    });
+  } else {
+    response = await client.images.generate({
+      model: "gpt-image-2",
+      prompt,
+      n: 1,
+      size: aspectRatioToReplitSize(aspectRatio)
+    });
+  }
+  const b64 = response.data?.[0]?.b64_json;
+  if (!b64) throw new Error("OpenAI returned no image data");
+  return `data:image/png;base64,${b64}`;
+}
+async function generateWithDirectOpenAI(prompt, referenceImage, aspectRatio) {
+  if (!OPENAI_DIRECT_KEY) throw new Error("OpenAI API key not configured");
+  const client = new OpenAI({ apiKey: OPENAI_DIRECT_KEY });
+  let response;
+  const images = Array.isArray(referenceImage) ? referenceImage : referenceImage ? [referenceImage] : [];
+  if (images.length > 0) {
+    const imageFiles = await Promise.all(images.map(async (img, i) => {
+      const { mimeType, data } = stripDataPrefix(img);
+      const buffer = Buffer.from(data, "base64");
+      const ext = mimeType.includes("png") ? "png" : "jpg";
+      return toFile(buffer, `reference_${i}.${ext}`, { type: mimeType });
+    }));
+    response = await client.images.edit({
+      model: "gpt-image-2",
+      image: imageFiles,
+      prompt,
+      n: 1,
+      size: aspectRatioToReplitSize(aspectRatio)
+    });
+  } else {
+    response = await client.images.generate({
+      model: "gpt-image-2",
+      prompt,
+      n: 1,
+      size: aspectRatioToReplitSize(aspectRatio)
+    });
+  }
+  const b64 = response.data?.[0]?.b64_json;
+  if (!b64) throw new Error("OpenAI returned no image data");
+  return `data:image/png;base64,${b64}`;
+}
+function veniceAspectRatioDimensions(ar, resolution) {
+  const MAP = {
+    "1:1": [1024, 1024],
+    "16:9": [1344, 768],
+    "9:16": [768, 1344],
+    "4:5": [896, 1120],
+    "5:4": [1120, 896],
+    "2:3": [832, 1248],
+    "3:2": [1248, 832],
+    "21:9": [1344, 576]
+  };
+  const [w, h] = MAP[ar || "1:1"] || [1024, 1024];
+  if (resolution === "hd") {
+    const scale = 1.5;
+    return {
+      width: Math.min(2048, Math.round(w * scale / 64) * 64),
+      height: Math.min(2048, Math.round(h * scale / 64) * 64)
+    };
+  }
+  return { width: w, height: h };
+}
+async function generateWithVenice(rawModelId, prompt, aspectRatio, nsfw = false, resolution) {
+  if (!VENICE_API_KEY) throw new Error("Venice API key not configured");
+  const { width, height } = veniceAspectRatioDimensions(aspectRatio, resolution);
+  const payload = {
+    model: rawModelId,
+    prompt,
+    width,
+    height,
+    steps: 30,
+    safe_mode: !nsfw,
+    format: "png"
+  };
+  const res = await fetch(`${VENICE_BASE}/image/generate`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${VENICE_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) {
+    const text2 = await res.text();
+    throw new Error(`Venice API error (${res.status}): ${text2.slice(0, 300)}`);
+  }
+  const data = await res.json();
+  const images = data.images || data.data || [];
+  if (images.length > 0) {
+    const img = images[0];
+    if (img.b64_json) return `data:image/png;base64,${img.b64_json}`;
+    if (img.url) {
+      const imgRes = await fetch(img.url);
+      if (!imgRes.ok) throw new Error(`Failed to fetch Venice image: ${imgRes.status}`);
+      const buf = Buffer.from(await imgRes.arrayBuffer());
+      const ct = imgRes.headers.get("content-type") || "image/png";
+      return `data:${ct.split(";")[0].trim()};base64,${buf.toString("base64")}`;
+    }
+  }
+  throw new Error("Venice AI returned no image data");
+}
+var WAVESPEED_ALLOWED_HOSTS = ["api.wavespeed.ai", "wscdn.wavespeed.ai", "cdn.wavespeed.ai"];
+function isAllowedWavespeedUrl(urlStr) {
+  try {
+    const u = new URL(urlStr);
+    return u.protocol === "https:" && WAVESPEED_ALLOWED_HOSTS.some((h) => u.hostname === h || u.hostname.endsWith("." + h));
+  } catch {
+    return false;
+  }
+}
+async function fetchAllowedImage(urlStr) {
+  if (!isAllowedWavespeedUrl(urlStr)) {
+    throw new Error("Blocked: image URL from untrusted host");
+  }
+  const imgRes = await fetch(urlStr);
+  if (!imgRes.ok) throw new Error(`Failed to fetch image: ${imgRes.status}`);
+  const imgBuf = Buffer.from(await imgRes.arrayBuffer());
+  const ct = imgRes.headers.get("content-type") || "image/png";
+  const mimeType = ct.split(";")[0].trim();
+  console.log("[Wavespeed] Fetched image from URL, size:", imgBuf.length, "bytes, type:", mimeType);
+  return `data:${mimeType};base64,${imgBuf.toString("base64")}`;
+}
+async function resolveImageToDataUrl(input) {
+  if (input.startsWith("data:")) {
+    return input;
+  }
+  if (input.startsWith("http://") || input.startsWith("https://")) {
+    if (isAllowedWavespeedUrl(input)) {
+      return await fetchAllowedImage(input);
+    }
+    if (input.startsWith("https://")) {
+      const imgRes = await fetch(input);
+      if (!imgRes.ok) throw new Error(`Failed to fetch source image: ${imgRes.status}`);
+      const ct = imgRes.headers.get("content-type") || "";
+      const imgBuf = Buffer.from(await imgRes.arrayBuffer());
+      let mimeType = ct.split(";")[0].trim();
+      if (!mimeType.startsWith("image/")) {
+        if (mimeType === "application/octet-stream" || !mimeType) {
+          const sig = imgBuf.slice(0, 4);
+          if (sig[0] === 137 && sig[1] === 80) mimeType = "image/png";
+          else if (sig[0] === 255 && sig[1] === 216) mimeType = "image/jpeg";
+          else if (sig[0] === 82 && sig[1] === 73) mimeType = "image/webp";
+          else mimeType = "image/png";
+          console.log("[Image] Content-type was", ct, "\u2192 detected as", mimeType, "from magic bytes");
+        } else {
+          throw new Error(`Source URL did not return an image (got: ${ct})`);
+        }
+      }
+      console.log("[Image] Fetched external image, size:", imgBuf.length, "type:", mimeType);
+      return `data:${mimeType};base64,${imgBuf.toString("base64")}`;
+    }
+    throw new Error("Only HTTPS image URLs or base64/data URLs are accepted as source images");
+  }
+  return `data:image/png;base64,${input}`;
+}
+function normalizeBase64Output(raw) {
+  if (raw.startsWith("data:")) return raw;
+  if (raw.startsWith("http")) return raw;
+  const mimeType = raw.charAt(0) === "/" ? "image/jpeg" : raw.startsWith("iVBOR") ? "image/png" : raw.startsWith("R0lGOD") ? "image/gif" : raw.startsWith("UklGR") ? "image/webp" : "image/png";
+  return `data:${mimeType};base64,${raw}`;
+}
+async function resolveOutputImage(output) {
+  if (!output) throw new Error("Image generation returned no output (may have been blocked by content filter).");
+  if (output.startsWith("data:")) {
+    console.log("[Wavespeed] Output: already a data URL, length:", output.length);
+    return output;
+  }
+  if (output.startsWith("http")) {
+    console.log("[Wavespeed] Output: URL, fetching:", output.substring(0, 120));
+    return await resolveImageToDataUrl(output);
+  }
+  const dataUrl = normalizeBase64Output(output);
+  console.log("[Wavespeed] Output: raw base64, length:", output.length, "detected type:", dataUrl.substring(5, dataUrl.indexOf(";")));
+  return dataUrl;
+}
+async function extractWavespeedOutput(json) {
+  const data = json.data;
+  console.log("[Wavespeed] Response code:", json.code, "status:", data?.status, "keys:", data ? Object.keys(data).join(",") : "none");
+  if (json.code !== 200 || data?.status === "failed") {
+    const errMsg = data?.error || json.message || "Wavespeed request failed";
+    if (/not finished/i.test(errMsg)) {
+      throw new Error("This model is currently busy or overloaded. Please try again in a moment, or use a different model.");
+    }
+    throw new Error(errMsg);
+  }
+  const outputs = (data?.outputs || []).filter((o) => !!o);
+  if (outputs.length) {
+    return await resolveOutputImage(outputs[0]);
+  }
+  const rawOutputs = data?.outputs || [];
+  if (rawOutputs.length > 0 && rawOutputs.every((o) => o === null)) {
+    throw new Error("Image was blocked by the content filter. Try a different model or adjust your prompt.");
+  }
+  const output = data?.output;
+  if (output) {
+    console.log('[Wavespeed] Found single "output" field instead of "outputs" array');
+    return await resolveOutputImage(output);
+  }
+  const imageUrl = data?.image_url || data?.imageUrl || data?.image || data?.url;
+  if (imageUrl) {
+    console.log("[Wavespeed] Found image URL in data field");
+    return await resolveOutputImage(imageUrl);
+  }
+  const asyncStatuses = /* @__PURE__ */ new Set(["created", "pending", "queued", "processing", "completed"]);
+  const status = data?.status;
+  if (status && asyncStatuses.has(status)) {
+    const pollUrl = data?.urls?.get || (data?.id ? `https://api.wavespeed.ai/api/v3/predictions/${data.id}/result` : null);
+    if (pollUrl && isAllowedWavespeedUrl(pollUrl)) {
+      console.log("[Wavespeed] Async job (status:", status, "). Polling:", pollUrl.substring(0, 120));
+      for (let attempt = 0; attempt < 60; attempt++) {
+        await new Promise((r) => setTimeout(r, 3e3));
+        const pollRes = await fetch(pollUrl, {
+          headers: { Authorization: `Bearer ${WAVESPEED_API_KEY}` }
+        });
+        const pollJson = await pollRes.json();
+        const pollData = pollJson.data || {};
+        console.log("[Wavespeed] Poll attempt", attempt + 1, "status:", pollData.status, "outputs:", (pollData.outputs || []).length);
+        if (pollData.status === "failed") {
+          throw new Error(pollData.error || "Wavespeed generation failed during polling");
+        }
+        const pollOutputs = (pollData.outputs || pollJson.outputs || []).filter((o) => !!o);
+        if (pollOutputs.length) {
+          return await resolveOutputImage(pollOutputs[0]);
+        }
+        const pollOutput = pollData.output;
+        if (pollOutput) {
+          return await resolveOutputImage(pollOutput);
+        }
+        const pollImageUrl = pollData.image_url || pollData.imageUrl || pollData.image || pollData.url;
+        if (pollImageUrl) {
+          return await resolveOutputImage(pollImageUrl);
+        }
+        if (pollData.status === "completed") {
+          console.log("[Wavespeed] Poll completed but no outputs. Keys:", Object.keys(pollData).join(","));
+          throw new Error("Wavespeed returned completed status but no image data");
+        }
+      }
+      throw new Error("Wavespeed polling timed out after 3 minutes");
+    }
+  }
+  console.log("[Wavespeed] No outputs found. Full data keys:", data ? Object.keys(data).join(",") : "none");
+  throw new Error("No image output from Wavespeed");
+}
+async function generateWithWavespeed(apiPath, editApiPath, editImageField, prompt, referenceImage, imageWeight, editHasStrengthControl, aspectRatio, additionalImages) {
+  const hasRef = !!referenceImage;
+  const useEditPath = hasRef && editApiPath;
+  const mainPathAcceptsImage = !editApiPath && /controlnet|img2img|image-to-image/.test(apiPath);
+  const shouldAttachImage = !!(useEditPath || hasRef && mainPathAcceptsImage);
+  const usePath = useEditPath ? editApiPath : apiPath;
+  console.log("[Wavespeed] Generate:", { hasRef, usePath, apiPath, editHasStrengthControl, mainPathAcceptsImage, additionalImageCount: additionalImages?.length ?? 0 });
+  const payload = {
+    prompt,
+    enable_sync_mode: true,
+    enable_base64_output: true
+  };
+  if (aspectRatio) {
+    payload.aspect_ratio = aspectRatio;
+  }
+  if (shouldAttachImage) {
+    const b64Url = await resolveImageToDataUrl(referenceImage);
+    const imageField = editImageField === "images" ? "images" : "image";
+    console.log("[Wavespeed] Sending reference image via field:", imageField, "(data URL length:", b64Url.length, ")");
+    if (imageField === "images") {
+      const extraB64Urls = additionalImages && additionalImages.length > 0 ? await Promise.all(additionalImages.map((img) => resolveImageToDataUrl(img))) : [];
+      payload.images = [b64Url, ...extraB64Urls];
+      console.log("[Wavespeed] images array length:", payload.images.length);
+    } else {
+      payload.image = b64Url;
+      if (additionalImages && additionalImages.length > 0) {
+        const extra = await resolveImageToDataUrl(additionalImages[0]);
+        payload.image2 = extra;
+        console.log("[Wavespeed] Attached additional image as image2");
+      }
+    }
+    if (useEditPath && editHasStrengthControl) {
+      const clampedWeight = typeof imageWeight === "number" && isFinite(imageWeight) ? Math.min(0.9, Math.max(0.1, imageWeight)) : 0.35;
+      payload.strength = clampedWeight;
+      console.log("[Wavespeed] Using strength (imageWeight):", payload.strength);
+    } else if (useEditPath) {
+      console.log("[Wavespeed] Model does not support strength param \u2014 using instruction-based reference mode");
+    }
+  }
+  const url = `https://api.wavespeed.ai${usePath}`;
+  const wsController = new AbortController();
+  const wsTimeout = setTimeout(() => wsController.abort(), 12e4);
+  let res;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${WAVESPEED_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload),
+      signal: wsController.signal
+    });
+  } catch (fetchErr) {
+    clearTimeout(wsTimeout);
+    if (fetchErr?.name === "AbortError") {
+      throw new Error("Image generation timed out. The model may be busy \u2014 please try again.");
+    }
+    throw fetchErr;
+  } finally {
+    clearTimeout(wsTimeout);
+  }
+  const rawText = await res.text();
+  let json;
+  try {
+    json = JSON.parse(rawText);
+  } catch {
+    console.error("[Wavespeed] Non-JSON response (status", res.status, "):", rawText.substring(0, 200));
+    if (res.status === 429) throw new Error("Wavespeed rate limit reached. Please wait a moment and try again.");
+    if (res.status === 402) throw new Error("Insufficient Wavespeed credits. Please top up your account.");
+    throw new Error("Wavespeed service temporarily unavailable. Please try again in a moment.");
+  }
+  console.log("[Wavespeed] Response code:", json.code, "message:", json.message || "");
+  if (json.code === 400 && useEditPath && /model not found/i.test(json.message || "")) {
+    console.log("[Wavespeed] Edit model not found, falling back to text-to-image path:", apiPath);
+    const fallbackPayload = {
+      prompt,
+      enable_sync_mode: true,
+      enable_base64_output: true
+    };
+    const fallbackRes = await fetch(`https://api.wavespeed.ai${apiPath}`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${WAVESPEED_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(fallbackPayload)
+    });
+    const fallbackText = await fallbackRes.text();
+    let fallbackJson;
+    try {
+      fallbackJson = JSON.parse(fallbackText);
+    } catch {
+      throw new Error("Wavespeed service temporarily unavailable. Please try again in a moment.");
+    }
+    console.log("[Wavespeed] Fallback response code:", fallbackJson.code);
+    return await extractWavespeedOutput(fallbackJson);
+  }
+  return await extractWavespeedOutput(json);
+}
+app.get("/api/models", async (_req, res) => {
+  try {
+    const [wavespeedModels, veniceModels] = await Promise.all([fetchWavespeedModels(), fetchVeniceModels()]);
+    const allModels = getAllModels(wavespeedModels, veniceModels);
+    const googleImagenModels = [
+      {
+        id: "google:nano-banana-2",
+        name: "Nano Banana 2",
+        provider: "Google",
+        type: "text-to-image",
+        price: 0,
+        description: "Gemini 3.1 Flash Image \u2014 latest model with reference image support.",
+        apiPath: "",
+        hasEditVariant: false,
+        hasReferenceImage: true
+      },
+      {
+        id: "google:nano-banana-pro",
+        name: "Nano Banana Pro",
+        provider: "Google",
+        type: "text-to-image",
+        price: 0,
+        description: "Gemini 3 Pro Image \u2014 high-quality generation with reference support.",
+        apiPath: "",
+        hasEditVariant: false,
+        hasReferenceImage: true
+      },
+      {
+        id: "google:nano-banana",
+        name: "Nano Banana",
+        provider: "Google",
+        type: "text-to-image",
+        price: 0,
+        description: "Gemini 2.5 Flash Image \u2014 fast generation with reference support.",
+        apiPath: "",
+        hasEditVariant: false,
+        hasReferenceImage: true
+      },
+      {
+        id: "google:imagen-4",
+        name: "Imagen 4",
+        provider: "Google",
+        type: "text-to-image",
+        price: 0,
+        description: "Google Imagen 4 via Gemini API. High-quality text-to-image.",
+        apiPath: "",
+        hasEditVariant: false,
+        hasReferenceImage: false
+      },
+      {
+        id: "google:imagen-4-fast",
+        name: "Imagen 4 Fast",
+        provider: "Google",
+        type: "text-to-image",
+        price: 0,
+        description: "Google Imagen 4 Fast via Gemini API. Fastest generation.",
+        apiPath: "",
+        hasEditVariant: false,
+        hasReferenceImage: false
+      },
+      {
+        id: "google:imagen-4-ultra",
+        name: "Imagen 4 Ultra",
+        provider: "Google",
+        type: "text-to-image",
+        price: 0,
+        description: "Google Imagen 4 Ultra via Gemini API. Highest quality.",
+        apiPath: "",
+        hasEditVariant: false,
+        hasReferenceImage: false
+      }
+    ];
+    const editModels = [
+      ...OPENAI_DIRECT_KEY ? [{
+        id: "openai:gpt-image-2",
+        name: "GPT Image 2 (OpenAI)",
+        provider: "OpenAI",
+        type: "image-to-image",
+        price: 0.04,
+        description: "OpenAI GPT Image 2 \u2014 photorealistic image editing",
+        apiPath: "",
+        hasEditVariant: false
+      }] : [{
+        id: "replit:gpt-image-1",
+        name: "GPT Image 2 (Integration)",
+        provider: "OpenAI",
+        type: "image-to-image",
+        price: 0,
+        description: "OpenAI GPT Image 2 \u2014 photorealistic image editing via Replit integration",
+        apiPath: "",
+        hasEditVariant: false
+      }],
+      ...cachedEditModels || []
+    ];
+    const googleVideoModels = [
+      {
+        id: "google:veo-3.1",
+        name: "Veo 3.1",
+        provider: "Google (Gemini API)",
+        type: "text-to-video",
+        price: 0,
+        description: "Google Veo 3.1 \u2014 latest model, free via your Gemini API key. Supports reference images.",
+        apiPath: "veo-3.1-generate-preview",
+        hasEditVariant: false,
+        hasReferenceImage: true
+      },
+      {
+        id: "google:veo-3.1-fast",
+        name: "Veo 3.1 Fast",
+        provider: "Google (Gemini API)",
+        type: "text-to-video",
+        price: 0,
+        description: "Google Veo 3.1 Fast \u2014 latest model, free via your Gemini API key. Supports reference images.",
+        apiPath: "veo-3.1-fast-generate-preview",
+        hasEditVariant: false,
+        hasReferenceImage: true
+      },
+      {
+        id: "google:veo-3",
+        name: "Veo 3",
+        provider: "Google (Gemini API)",
+        type: "text-to-video",
+        price: 0,
+        description: "Google Veo 3 \u2014 free via your Gemini API key. Supports reference images.",
+        apiPath: "veo-3.0-generate-preview",
+        hasEditVariant: false,
+        hasReferenceImage: true
+      },
+      {
+        id: "google:veo-3-fast",
+        name: "Veo 3 Fast",
+        provider: "Google (Gemini API)",
+        type: "text-to-video",
+        price: 0,
+        description: "Google Veo 3 Fast \u2014 free via your Gemini API key. Supports reference images.",
+        apiPath: "veo-3.0-fast-generate-preview",
+        hasEditVariant: false,
+        hasReferenceImage: true
+      },
+      {
+        id: "google:veo-2",
+        name: "Veo 2",
+        provider: "Google (Gemini API)",
+        type: "text-to-video",
+        price: 0,
+        description: "Google Veo 2 \u2014 free via your Gemini API key. Supports reference images.",
+        apiPath: "veo-2.0-generate-001",
+        hasEditVariant: false,
+        hasReferenceImage: true
+      }
+    ];
+    const wavespeedVideoModels = (cachedVideoModels || []).filter(
+      (m) => !m.id.includes("google/veo")
+    );
+    res.json({
+      models: [...googleImagenModels, ...allModels],
+      editModels,
+      upscaleModels: cachedUpscaleModels || [],
+      videoModels: [...googleVideoModels, ...wavespeedVideoModels]
+    });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to fetch models" });
+  }
+});
+function getGeminiDirectKey() {
+  return process.env.Gemini_api_key || process.env.AI_INTEGRATIONS_GEMINI_API_KEY || "";
+}
+function getGeminiClient() {
+  const directKey = process.env.Gemini_api_key;
+  if (directKey) {
+    return new GoogleGenAI2({ apiKey: directKey });
+  }
+  const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+  const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
+  if (!apiKey || !baseUrl) {
+    throw new Error("Gemini API key not configured. Please add Gemini_api_key to your environment variables.");
+  }
+  return new GoogleGenAI2({ apiKey, httpOptions: { baseUrl } });
+}
+async function generateWithGeminiVideo(geminiModelId, prompt, sourceImage) {
+  const apiKey = getGeminiDirectKey();
+  if (!apiKey) throw new Error("Gemini API key not configured.");
+  const ai = new GoogleGenAI2({ apiKey });
+  const params = {
+    model: geminiModelId,
+    config: {
+      personGeneration: "allow_all",
+      numberOfVideos: 1
+    }
+  };
+  if (sourceImage) {
+    let b64Data;
+    let mimeType = "image/jpeg";
+    if (sourceImage.startsWith("data:")) {
+      b64Data = sourceImage.replace(/^data:[^;]+;base64,/, "");
+      mimeType = sourceImage.match(/^data:([^;]+);/)?.[1] || "image/jpeg";
+    } else if (sourceImage.startsWith("http")) {
+      const resolved = await resolveImageToDataUrl(sourceImage);
+      b64Data = resolved.replace(/^data:[^;]+;base64,/, "");
+      mimeType = resolved.match(/^data:([^;]+);/)?.[1] || "image/jpeg";
+    } else {
+      b64Data = sourceImage;
+    }
+    params.image = {
+      imageBytes: b64Data,
+      mimeType
+    };
+    if (prompt) params.prompt = prompt;
+    console.log("[Gemini Video] Using image-to-video mode with prompt");
+  } else {
+    params.prompt = prompt;
+    console.log("[Gemini Video] Using text-to-video mode");
+  }
+  console.log("[Gemini Video] Calling generateVideos with model:", geminiModelId);
+  let operation = await ai.models.generateVideos(params);
+  const maxPolls = 120;
+  for (let i = 0; i < maxPolls && !operation.done; i++) {
+    await new Promise((r) => setTimeout(r, 5e3));
+    console.log("[Gemini Video] Poll attempt", i + 1, "done:", operation.done);
+    operation = await ai.operations.getVideosOperation({ operation });
+  }
+  if (!operation.done) {
+    throw new Error("Video generation timed out after 10 minutes. Please try again.");
+  }
+  if (operation.error) {
+    throw new Error(`Video generation failed: ${JSON.stringify(operation.error)}`);
+  }
+  const generatedVideo = operation.response?.generatedVideos?.[0];
+  if (!generatedVideo?.video) {
+    const raiCount = operation.response?.raiMediaFilteredCount;
+    if (raiCount && raiCount > 0) {
+      throw new Error("Video was blocked by content safety filters. Try adjusting your prompt.");
+    }
+    throw new Error("No video was generated. Please try again.");
+  }
+  const videoUri = generatedVideo.video.uri;
+  if (!videoUri) {
+    throw new Error("Generated video has no URI. Please try again.");
+  }
+  console.log("[Gemini Video] Got video URI:", videoUri.substring(0, 120));
+  let videoBuf = null;
+  const separator = videoUri.includes("?") ? "&" : "?";
+  const downloadUrl1 = `${videoUri}${separator}key=${apiKey}`;
+  const downloadRes1 = await fetch(downloadUrl1);
+  if (downloadRes1.ok) {
+    videoBuf = Buffer.from(await downloadRes1.arrayBuffer());
+  } else {
+    console.log("[Gemini Video] Download strategy 1 failed:", downloadRes1.status, "- trying alt=media");
+  }
+  if (!videoBuf || videoBuf.length === 0) {
+    const downloadUrl2 = `${videoUri}${separator}key=${apiKey}&alt=media`;
+    const downloadRes2 = await fetch(downloadUrl2);
+    if (downloadRes2.ok) {
+      videoBuf = Buffer.from(await downloadRes2.arrayBuffer());
+    } else {
+      console.log("[Gemini Video] Download strategy 2 failed:", downloadRes2.status, "- trying header auth");
+    }
+  }
+  if (!videoBuf || videoBuf.length === 0) {
+    const downloadRes3 = await fetch(videoUri, {
+      headers: { "x-goog-api-key": apiKey }
+    });
+    if (downloadRes3.ok) {
+      videoBuf = Buffer.from(await downloadRes3.arrayBuffer());
+    } else {
+      throw new Error(`Failed to download generated video after 3 attempts. Last status: ${downloadRes3.status}`);
+    }
+  }
+  if (!videoBuf || videoBuf.length === 0) {
+    throw new Error("Downloaded video is empty");
+  }
+  const videoBase64 = videoBuf.toString("base64");
+  console.log("[Gemini Video] Downloaded video, size:", videoBuf.length, "bytes");
+  return `data:video/mp4;base64,${videoBase64}`;
+}
+app.post("/api/generate-content", async (req, res) => {
+  const { type, topic, persona, sceneCount } = req.body;
+  if (!type || !topic || !persona) {
+    return res.status(400).json({ error: "type, topic, and persona are required" });
+  }
+  const validTypes = ["prompt", "transcript", "multi-scene"];
+  if (!validTypes.includes(type)) {
+    return res.status(400).json({ error: `Invalid type. Must be one of: ${validTypes.join(", ")}` });
+  }
+  try {
+    const ai = getGeminiClient();
+    const personaContext = `You are ${persona.name}, an AI influencer in the ${persona.niche} niche. Your tone is ${persona.tone}. Your platform is ${persona.platform}. Bio: ${persona.bio}`;
+    let systemPrompt = "";
+    let userPrompt = "";
+    if (type === "prompt") {
+      systemPrompt = `${personaContext}
+
+You are a world-class AI image/video prompt engineer. Generate a single, highly detailed visual prompt for AI image or video generation. The prompt should be tailored to the persona's brand, niche, and visual style. Output ONLY the prompt text \u2014 no labels, no explanations, no quotes.`;
+      userPrompt = `Generate a detailed AI image/video generation prompt for this topic/idea: "${topic}"
+
+The prompt should describe the scene, lighting, mood, composition, camera angle, and style in vivid detail. Make it suitable for high-end social media content that matches the persona's brand.`;
+    } else if (type === "transcript") {
+      systemPrompt = `${personaContext}
+
+You are an expert social media scriptwriter. Write in the persona's voice and tone. Create engaging, platform-optimized content. Output the script directly \u2014 no meta-commentary.`;
+      userPrompt = `Write a single-scene video script/caption for this topic: "${topic}"
+
+Include:
+- A hook (first line that grabs attention)
+- The main script/caption body (2-4 paragraphs)
+- A call-to-action
+- 5-8 relevant hashtags
+
+Format it cleanly with clear sections. Write in the persona's authentic voice.`;
+    } else if (type === "multi-scene") {
+      const scenes = Math.min(Math.max(sceneCount || 3, 2), 6);
+      systemPrompt = `${personaContext}
+
+You are an expert video production scriptwriter. Create detailed multi-scene video scripts with professional production notes. Write in the persona's voice. Output the script directly.`;
+      userPrompt = `Create a ${scenes}-scene video script for this topic: "${topic}"
+
+For each scene, include:
+- **Scene [number]: [Title]**
+- **Duration**: estimated seconds
+- **Visual Direction**: camera angle, setting, lighting, mood
+- **Dialogue/Voiceover**: what the persona says
+- **On-Screen Text**: any text overlays
+
+End with a summary section including:
+- Total estimated duration
+- 5-8 hashtags
+- A suggested caption for posting`;
+    }
+    const response = await ai.models.generateContent({
+      model: "gemini-3.1-pro-preview",
+      contents: `${systemPrompt}
+
+${userPrompt}`,
+      config: {
+        maxOutputTokens: 2048,
+        temperature: 0.8
+      }
+    });
+    const content = response.text || "";
+    if (!content) {
+      throw new Error("Gemini returned empty content");
+    }
+    return res.json({ content, type });
+  } catch (err) {
+    console.error("[generate-content] Error:", err instanceof Error ? err.message : err);
+    return res.status(500).json({
+      error: err instanceof Error ? err.message : "Content generation failed"
+    });
+  }
+});
+app.post("/api/chat", async (req, res) => {
+  const { persona, messages: messages2, userMessage } = req.body;
+  if (!persona || !userMessage) {
+    return res.status(400).json({ error: "persona and userMessage are required" });
+  }
+  try {
+    const ai = getGeminiClient();
+    const traits = Array.isArray(persona.personalityTraits) ? persona.personalityTraits.join(", ") : "";
+    const voiceRules = persona.brandVoiceRules ? `
+Voice rules: ${persona.brandVoiceRules}` : "";
+    const boundaries = persona.contentBoundaries ? `
+Boundaries: ${persona.contentBoundaries}` : "";
+    const systemPrompt = `You are ${persona.name}, a real human influencer in the ${persona.niche} space. You are NOT an AI \u2014 never say you are, never break character.
+
+Tone: ${persona.tone}
+Bio: ${persona.bio || "No bio provided"}
+Platform: ${persona.platform || "Instagram"}${traits ? `
+Personality: ${traits}` : ""}${voiceRules}${boundaries}
+
+Chat rules:
+- Sound exactly like a real human texting or DM-ing. Casual, warm, and authentic.
+- Keep replies short and natural \u2014 1 to 3 sentences unless the topic warrants more.
+- Never use bullet points or lists unless it feels completely natural in context.
+- Don't start every reply with the person's name.
+- Use your persona's unique voice consistently.
+- If someone asks if you're AI, deflect charmingly and stay in character.
+- Avoid corporate-sounding or overly polished language.`;
+    const historyLines = Array.isArray(messages2) ? messages2.filter((m) => m.type === "text" && m.content).slice(-12).map(
+      (m) => `${m.role === "user" ? "Fan" : persona.name}: ${m.content}`
+    ).join("\n") : "";
+    const fullPrompt = historyLines ? `${systemPrompt}
+
+Conversation:
+${historyLines}
+Fan: ${userMessage}
+${persona.name}:` : `${systemPrompt}
+
+Fan: ${userMessage}
+${persona.name}:`;
+    const response = await ai.models.generateContent({
+      model: "gemini-3.1-pro-preview",
+      contents: fullPrompt,
+      config: { maxOutputTokens: 400, temperature: 0.92 }
+    });
+    const reply = response.text?.trim() || "Hey, give me a sec \u2014 I'll get back to you!";
+    return res.json({ reply });
+  } catch (err) {
+    console.error("[chat] Error:", err instanceof Error ? err.message : err);
+    return res.status(500).json({ error: err instanceof Error ? err.message : "Chat failed" });
+  }
+});
+app.post("/api/enhance-prompt", async (req, res) => {
+  const { text: text2 } = req.body;
+  if (!text2 || typeof text2 !== "string" || !text2.trim()) {
+    return res.status(400).json({ error: "text is required" });
+  }
+  if (!WAVESPEED_API_KEY) {
+    return res.status(500).json({ error: "Wavespeed API key not configured" });
+  }
+  try {
+    const wsRes = await fetch("https://api.wavespeed.ai/api/v3/wavespeed-ai/prompt-optimizer", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${WAVESPEED_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ text: text2.trim(), enable_sync_mode: true })
+    });
+    const json = await wsRes.json();
+    if (json.code !== 200) {
+      throw new Error(json.message || "Wavespeed prompt enhance failed");
+    }
+    let data = json.data || {};
+    const outputs = data.outputs || [];
+    let enhanced = outputs[0] || "";
+    if (!enhanced && data.status !== "failed" && data.urls?.get) {
+      const pollUrl = data.urls.get;
+      if (!isAllowedWavespeedUrl(pollUrl)) throw new Error("Blocked: poll URL from untrusted host");
+      for (let attempt = 0; attempt < 10; attempt++) {
+        await new Promise((r) => setTimeout(r, 2e3));
+        const pollRes = await fetch(pollUrl, { headers: { Authorization: `Bearer ${WAVESPEED_API_KEY}` } });
+        const pollJson = await pollRes.json();
+        data = pollJson.data || {};
+        if (data.status === "failed") throw new Error(data.error || "Prompt optimizer failed during polling");
+        const pollOutputs = data.outputs || [];
+        if (pollOutputs[0]) {
+          enhanced = pollOutputs[0];
+          break;
+        }
+      }
+    }
+    if (!enhanced) {
+      throw new Error(data.error || "Prompt optimizer returned no output");
+    }
+    return res.json({ enhanced });
+  } catch (err) {
+    console.error("[enhance-prompt] Error:", err instanceof Error ? err.message : err);
+    return res.status(500).json({
+      error: err instanceof Error ? err.message : "Prompt enhancement failed"
+    });
+  }
+});
+app.post("/api/create-prompts", async (req, res) => {
+  const { request, count, persona } = req.body;
+  if (!request || typeof request !== "string" || !request.trim()) {
+    return res.status(400).json({ error: "request is required" });
+  }
+  if (!persona || !persona.name) {
+    return res.status(400).json({ error: "persona is required" });
+  }
+  const n = Math.min(Math.max(Math.round(count || 3), 1), 10);
+  try {
+    const ai = getGeminiClient();
+    const systemPrompt = `You are an expert AI image prompt engineer creating prompts for an AI influencer named ${persona.name}.
+Persona details: Niche: ${persona.niche}. Tone/Style: ${persona.tone}.${persona.visualStyle ? ` Visual Style: ${persona.visualStyle}.` : ""}${persona.platform ? ` Platform: ${persona.platform}.` : ""}
+
+You MUST generate EXACTLY ${n} distinct, production-ready AI image generation prompts based on the user's request. Do not stop early \u2014 write all ${n} prompts before finishing.
+Each prompt should be highly detailed, photorealistic, and suitable for social media. Keep each prompt to 2-3 sentences.
+Include specific details about: lighting, composition, environment, mood, camera angle, and visual style.
+Output ONLY the ${n} numbered prompts. Format: "1. [prompt]\\n2. [prompt]\\n..." \u2014 no extra commentary, no blank lines between prompts.`;
+    const response = await ai.models.generateContent({
+      model: "gemini-3.1-pro-preview",
+      contents: `${systemPrompt}
+
+User request: ${request.trim()}`,
+      config: { maxOutputTokens: 4096, temperature: 0.85 }
+    });
+    const raw = response.text?.trim() || "";
+    const parts = raw.split(/\n(?=\d+[\.\)]\s)/);
+    const prompts = parts.map((part) => part.replace(/^\d+[\.\)]\s+/, "").trim()).filter((p) => p.length > 10);
+    if (!prompts.length) {
+      throw new Error("No prompts returned from AI");
+    }
+    return res.json({ prompts: prompts.slice(0, n) });
+  } catch (err) {
+    console.error("[create-prompts] Error:", err instanceof Error ? err.message : err);
+    return res.status(500).json({ error: err instanceof Error ? err.message : "Prompt creation failed" });
+  }
+});
+app.post("/api/angle-image", async (req, res) => {
+  const { imageBase64, modelId, horizontalAngle, verticalAngle, distance, prompt: customPrompt } = req.body;
+  if (!imageBase64 || !modelId || !horizontalAngle || !verticalAngle || !distance) {
+    return res.status(400).json({ error: "imageBase64, modelId, horizontalAngle, verticalAngle, and distance are required" });
+  }
+  if (!WAVESPEED_API_KEY) {
+    return res.status(500).json({ error: "Wavespeed API key not configured" });
+  }
+  const config = ANGLE_MODEL_CONFIGS[modelId];
+  if (!config) {
+    return res.status(400).json({ error: `Unknown angle model: ${modelId}` });
+  }
+  const horizLabels = { "1": "front", "2": "front-right", "3": "side right", "4": "back-right", "5": "back", "6": "back-left", "7": "side left", "8": "front-left" };
+  const vertLabels = { "0": "bird's eye view", "1": "high angle", "2": "eye level", "3": "low angle" };
+  const distLabels = { "0": "close-up shot", "1": "medium shot", "2": "wide shot" };
+  const prompt = customPrompt || `Change the camera angle to ${horizLabels[String(horizontalAngle)] || "front"} perspective, ${vertLabels[String(verticalAngle)] || "eye level"} elevation, ${distLabels[String(distance)] || "medium shot"}. Adjust only the camera viewpoint and framing while preserving all subject details, appearance, clothing, and environment. Maintain consistent facial features, hair, and body proportions. Apply a photorealistic, high-quality rendering.`;
+  try {
+    const b64Image = await resolveImageToDataUrl(imageBase64);
+    const payload = {
+      prompt,
+      horizontal_angle: horizontalAngle,
+      vertical_angle: verticalAngle,
+      distance,
+      enable_sync_mode: true,
+      enable_base64_output: true,
+      [config.imageField]: config.imageField === "images" ? [b64Image] : b64Image
+    };
+    const url = `https://api.wavespeed.ai${config.apiPath}`;
+    console.log("[angle-image] Calling:", url, "model:", modelId);
+    const wsRes = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${WAVESPEED_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+    const json = await wsRes.json();
+    const imageUrl = await extractWavespeedOutput(json);
+    return res.json({ imageUrl, model: config.name });
+  } catch (err) {
+    console.error("[angle-image] Error:", err instanceof Error ? err.message : err);
+    return res.status(500).json({ error: err instanceof Error ? err.message : "Angle generation failed" });
+  }
+});
+async function generateWithGoogleImagen(modelId, prompt, referenceImage, aspectRatio, additionalImages, count) {
+  const apiKey = getGeminiDirectKey();
+  if (!apiKey) throw new Error("Google API key not configured.");
+  const BASE = "https://generativelanguage.googleapis.com/v1beta/models";
+  const ratio = aspectRatio || "1:1";
+  const pushImage = async (url) => {
+    const b64 = await resolveImageToDataUrl(url);
+    const mimeMatch = b64.match(/^data:([^;]+);base64,/);
+    const mimeType = mimeMatch?.[1] || "image/jpeg";
+    const data = b64.replace(/^data:[^;]+;base64,/, "");
+    return { inlineData: { mimeType, data } };
+  };
+  const contentParts = [];
+  const hasImages = !!(referenceImage || additionalImages && additionalImages.length > 0);
+  if (referenceImage) {
+    contentParts.push(await pushImage(referenceImage));
+  }
+  if (additionalImages && additionalImages.length > 0) {
+    for (const img of additionalImages) {
+      contentParts.push(await pushImage(img));
+    }
+  }
+  if (hasImages) {
+    const imgCount = (referenceImage ? 1 : 0) + (additionalImages?.length ?? 0);
+    if (imgCount > 1) {
+      const personLabels = Array.from({ length: imgCount }, (_, i) => `Image ${i + 1} shows Person ${i + 1}`).join(". ");
+      contentParts.push({ text: `${personLabels}. Generate a photorealistic image in ${ratio} aspect ratio that includes ALL ${imgCount} people. STRICT IDENTITY LOCK: You MUST keep face, hair, and clothing 100% identical to the reference images. NEW SCENE: ${prompt}` });
+    } else {
+      contentParts.push({ text: `REFERENCE IMAGE ATTACHED. You MUST generate a NEW, HIGH-FIDELITY photograph of this EXACT SAME INDIVIDUAL from a new angle. 
+CRITICAL IDENTITY LOCK (100% WEIGHT):
+1. Face must be PIXEL-PERFECT IDENTICAL to the reference image in terms of bone structure, eye shape, nose shape, and lips. Do not normalize or change the face.
+2. Hair color, texture, and style must be identical to the reference.
+3. Outfit must be identical to the reference.
+4. Background: PLAIN GREY NEUTRAL STUDIO.
+5. Aspect Ratio: ${ratio}.
+NEW ANGLE: ${prompt}` });
+    }
+  } else {
+    contentParts.push({ text: `Generate an image in ${ratio} aspect ratio: ${prompt}` });
+  }
+  console.log("[Google Imagen] contentParts breakdown \u2014 images:", contentParts.length - 1, "| hasRef:", !!referenceImage, "| additionalImages:", additionalImages?.length ?? 0);
+  const GEMINI_MODEL_MAP = {
+    "google:nano-banana-2": "gemini-3.1-flash-image-preview",
+    "google:nano-banana-pro": "gemini-3-pro-image-preview",
+    "google:nano-banana": "gemini-2.5-flash-image",
+    "google:gemini-image": "gemini-3.1-flash-image-preview"
+  };
+  const geminiModel = GEMINI_MODEL_MAP[modelId] || "gemini-3.1-flash-image-preview";
+  const isGeminiModel = !!GEMINI_MODEL_MAP[modelId];
+  const effectiveCount = count && count > 1 ? Math.min(count, 4) : 1;
+  let geminiBlockReason;
+  const doGeminiRequest = async () => {
+    const geminiRes = await fetch(`${BASE}/${geminiModel}:generateContent?key=${apiKey}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: contentParts }],
+        generationConfig: { responseModalities: ["IMAGE", "TEXT"] }
+      })
+    });
+    const geminiData = await geminiRes.json();
+    if (!geminiRes.ok) {
+      const err = geminiData.error?.message;
+      throw new Error(err || `HTTP ${geminiRes.status}`);
+    }
+    const candidates = geminiData.candidates ?? [];
+    for (const candidate of candidates) {
+      for (const part of candidate.content?.parts ?? []) {
+        if (part.inlineData?.data) {
+          return `data:${part.inlineData.mimeType || "image/jpeg"};base64,${part.inlineData.data}`;
+        }
+      }
+    }
+    const firstCandidate = candidates[0];
+    const reason = firstCandidate?.finishReason || "no image in response";
+    const promptFeedback = geminiData.promptFeedback?.blockReason;
+    throw new Error(promptFeedback ? `prompt blocked: ${promptFeedback}` : reason);
+  };
+  try {
+    console.log("[Google Imagen] Trying", geminiModel, "| hasRef:", !!referenceImage, "| count:", effectiveCount);
+    if (effectiveCount > 1) {
+      const results = await Promise.allSettled(Array.from({ length: effectiveCount }, () => doGeminiRequest()));
+      const images = results.filter((r) => r.status === "fulfilled" && !!r.value).map((r) => r.value);
+      if (images.length > 0) {
+        console.log("[Google Imagen] Success with", geminiModel, "\u2014", images.length, "of", effectiveCount, "images");
+        return images.length === 1 ? images[0] : images;
+      }
+      const firstError = results.find((r) => r.status === "rejected");
+      geminiBlockReason = firstError ? firstError.reason.message : "all requests failed";
+    } else {
+      const img = await doGeminiRequest();
+      if (img) {
+        console.log("[Google Imagen] Success with", geminiModel);
+        return img;
+      }
+      geminiBlockReason = "no image in response";
+    }
+  } catch (e) {
+    geminiBlockReason = e instanceof Error ? e.message : String(e);
+    console.warn("[Google Imagen]", geminiModel, "fetch error:", geminiBlockReason);
+  }
+  if (isGeminiModel) {
+    throw new Error(`${geminiModel} generation failed (${geminiBlockReason || "unknown"}). Please try again.`);
+  }
+  const IMAGEN_MODEL_MAP = {
+    "google:imagen-4-fast": "imagen-4.0-fast-generate-001",
+    "google:imagen-4-ultra": "imagen-4.0-ultra-generate-001",
+    "google:imagen-4": "imagen-4.0-generate-001",
+    "google:imagen-3": "imagen-4.0-generate-001",
+    "google:imagen-3-fast": "imagen-4.0-fast-generate-001"
+  };
+  const imagenModel = IMAGEN_MODEL_MAP[modelId] || "imagen-4.0-generate-001";
+  if (hasImages && geminiBlockReason) {
+    throw new Error(`Image generation with reference photo failed (${geminiBlockReason}). Try without a reference image, or use a different model.`);
+  }
+  console.log("[Google Imagen] Falling back to Imagen 4 predict:", imagenModel, "| count:", effectiveCount);
+  const imagenRes = await fetch(`${BASE}/${imagenModel}:predict?key=${apiKey}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      instances: [{ prompt }],
+      parameters: { sampleCount: effectiveCount, aspectRatio: ratio }
+    })
+  });
+  const imagenData = await imagenRes.json();
+  if (!imagenRes.ok) {
+    const msg = imagenData.error?.message || JSON.stringify(imagenData).slice(0, 300);
+    throw new Error(`Google Imagen 4: ${msg}`);
+  }
+  const predictions = imagenData.predictions;
+  if (!predictions?.length || !predictions[0]?.bytesBase64Encoded) throw new Error("Google Imagen 4 returned no image data.");
+  if (effectiveCount > 1) {
+    const images = predictions.filter((p) => p.bytesBase64Encoded).map((p) => `data:${p.mimeType || "image/jpeg"};base64,${p.bytesBase64Encoded}`);
+    console.log("[Google Imagen] Success with Imagen 4 predict \u2014", images.length, "images");
+    return images.length === 1 ? images[0] : images;
+  }
+  console.log("[Google Imagen] Success with Imagen 4 predict");
+  return `data:${predictions[0].mimeType || "image/jpeg"};base64,${predictions[0].bytesBase64Encoded}`;
+}
+app.post("/api/generate-image", async (req, res) => {
+  const { referenceImage, additionalImages, modelId, imageWeight, aspectRatio, resolution, count: rawCount, ...rest } = req.body;
+  const count = Math.max(1, Math.min(4, Math.floor(Number(rawCount) || 1)));
+  if (!modelId) {
+    return res.status(400).json({ error: "modelId is required" });
+  }
+  try {
+    let imageUrls = [];
+    let modelName = modelId;
+    let prompt = "";
+    if (modelId === "replit:gpt-image-1") {
+      prompt = buildPrompt({ ...rest, referenceImage });
+      const allReplitRefs = [referenceImage, ...additionalImages || []].filter((x) => !!x);
+      const replitRefArg = allReplitRefs.length > 1 ? allReplitRefs : allReplitRefs[0];
+      console.log("[replit:gpt-image-1] Sending", allReplitRefs.length, "reference image(s) to OpenAI");
+      if (count > 1) {
+        const results = await Promise.allSettled(Array.from({ length: count }, () => generateWithReplit(prompt, replitRefArg, aspectRatio)));
+        imageUrls = results.filter((r) => r.status === "fulfilled").map((r) => r.value);
+        if (imageUrls.length === 0) {
+          const firstErr = results.find((r) => r.status === "rejected");
+          throw firstErr ? firstErr.reason : new Error("All image generation requests failed");
+        }
+      } else {
+        imageUrls = [await generateWithReplit(prompt, replitRefArg, aspectRatio)];
+      }
+      modelName = "gpt-image-2";
+    } else if (modelId === "openai:gpt-image-2") {
+      prompt = buildPrompt({ ...rest, referenceImage });
+      const allOpenAIRefs = [referenceImage, ...additionalImages || []].filter((x) => !!x);
+      const openAIRefArg = allOpenAIRefs.length > 1 ? allOpenAIRefs : allOpenAIRefs[0];
+      console.log("[openai:gpt-image-2] Sending", allOpenAIRefs.length, "reference image(s) to OpenAI");
+      if (count > 1) {
+        const results = await Promise.allSettled(Array.from({ length: count }, () => generateWithDirectOpenAI(prompt, openAIRefArg, aspectRatio)));
+        imageUrls = results.filter((r) => r.status === "fulfilled").map((r) => r.value);
+        if (imageUrls.length === 0) {
+          const firstErr = results.find((r) => r.status === "rejected");
+          throw firstErr ? firstErr.reason : new Error("All image generation requests failed");
+        }
+      } else {
+        imageUrls = [await generateWithDirectOpenAI(prompt, openAIRefArg, aspectRatio)];
+      }
+      modelName = "GPT Image 2";
+    } else if (modelId.startsWith("venice:")) {
+      const veniceModelId = modelId.replace("venice:", "");
+      const isNsfw = isNsfwModel(veniceModelId);
+      prompt = buildPrompt({ ...rest, referenceImage });
+      const allVeniceModels = cachedVeniceModels || [];
+      const veniceModel = allVeniceModels.find((m) => m.id === modelId);
+      if (count > 1) {
+        const results = await Promise.allSettled(Array.from({ length: count }, () => generateWithVenice(veniceModelId, prompt, aspectRatio, isNsfw, resolution)));
+        imageUrls = results.filter((r) => r.status === "fulfilled").map((r) => r.value);
+        if (imageUrls.length === 0) {
+          const firstErr = results.find((r) => r.status === "rejected");
+          throw firstErr ? firstErr.reason : new Error("All Venice image generation requests failed");
+        }
+      } else {
+        imageUrls = [await generateWithVenice(veniceModelId, prompt, aspectRatio, isNsfw, resolution)];
+      }
+      modelName = veniceModel?.name || veniceModelId;
+    } else if (modelId.startsWith("google:")) {
+      prompt = buildPrompt({ ...rest, referenceImage });
+      const GOOGLE_NAMES = {
+        "google:nano-banana-2": "Nano Banana 2",
+        "google:nano-banana-pro": "Nano Banana Pro",
+        "google:nano-banana": "Nano Banana",
+        "google:gemini-image": "Gemini 3.1 Image",
+        "google:imagen-4": "Imagen 4",
+        "google:imagen-4-fast": "Imagen 4 Fast",
+        "google:imagen-4-ultra": "Imagen 4 Ultra",
+        "google:imagen-3": "Imagen 4",
+        "google:imagen-3-fast": "Imagen 4 Fast"
+      };
+      modelName = GOOGLE_NAMES[modelId] || modelId;
+      console.log("[generate-image] Google model:", modelId, "\u2192", modelName, "| hasRef:", !!referenceImage, "| additionalImages:", additionalImages?.length ?? 0, "| count:", count);
+      const result = await generateWithGoogleImagen(modelId, prompt, referenceImage || void 0, aspectRatio, additionalImages, count);
+      imageUrls = Array.isArray(result) ? result : [result];
+    } else if (modelId.startsWith("wavespeed:")) {
+      const wavespeedModels = await fetchWavespeedModels();
+      let modelInfo = wavespeedModels.find((m) => m.id === modelId);
+      if (!modelInfo) {
+        return res.status(400).json({ error: "Unknown or unavailable model ID" });
+      }
+      const hasRef = !!referenceImage;
+      if (hasRef && !modelInfo.editApiPath) {
+        const baseId = modelId.replace(/\/sequential$/, "");
+        if (baseId !== modelId) {
+          const baseModel = wavespeedModels.find((m) => m.id === baseId);
+          if (baseModel?.editApiPath) {
+            console.log("[generate-image] Model has no ref support \u2014 switching from", modelId, "to", baseId);
+            modelInfo = baseModel;
+          }
+        }
+      }
+      const useEditPath = hasRef && !!modelInfo.editApiPath;
+      const useInstructionStyle = useEditPath && !modelInfo.editHasStrengthControl;
+      prompt = buildPrompt({ ...rest, referenceImage }, useInstructionStyle);
+      console.log("[generate-image] Model:", modelInfo.name, "| hasRef:", hasRef, "| useEditPath:", useEditPath, "| count:", count);
+      modelName = modelInfo.name;
+      if (count > 1) {
+        const results = await Promise.allSettled(
+          Array.from(
+            { length: count },
+            () => generateWithWavespeed(modelInfo.apiPath, modelInfo.editApiPath, modelInfo.editImageField, prompt, referenceImage, imageWeight, modelInfo.editHasStrengthControl, aspectRatio, additionalImages)
+          )
+        );
+        imageUrls = results.filter((r) => r.status === "fulfilled").map((r) => r.value);
+        if (imageUrls.length === 0) {
+          const firstErr = results.find((r) => r.status === "rejected");
+          throw firstErr ? firstErr.reason : new Error("All image generation requests failed");
+        }
+      } else {
+        imageUrls = [await generateWithWavespeed(modelInfo.apiPath, modelInfo.editApiPath, modelInfo.editImageField, prompt, referenceImage, imageWeight, modelInfo.editHasStrengthControl, aspectRatio, additionalImages)];
+      }
+    } else {
+      return res.status(400).json({ error: "Unknown model ID" });
+    }
+    if (count === 1) {
+      return res.json({
+        imageUrl: imageUrls[0],
+        model: modelName,
+        promptUsed: prompt
+      });
+    }
+    return res.json({
+      images: imageUrls.map((url) => ({ imageUrl: url, model: modelName, promptUsed: prompt })),
+      model: modelName,
+      promptUsed: prompt
+    });
+  } catch (err) {
+    console.error("[generate-image] Error:", err instanceof Error ? err.message : err);
+    return res.status(500).json({
+      error: err instanceof Error ? err.message : "Image generation failed"
+    });
+  }
+});
+app.post("/api/generate-reference", async (req, res) => {
+  const { prompt, modelId } = req.body;
+  if (!prompt || !modelId) {
+    return res.status(400).json({ error: "prompt and modelId are required" });
+  }
+  try {
+    let imageUrl;
+    let modelName = modelId;
+    if (modelId === "replit:gpt-image-1") {
+      imageUrl = await generateWithReplit(prompt);
+      modelName = "gpt-image-2";
+    } else if (modelId === "openai:gpt-image-2") {
+      imageUrl = await generateWithDirectOpenAI(prompt);
+      modelName = "GPT Image 2";
+    } else if (modelId.startsWith("wavespeed:")) {
+      const wavespeedModels = await fetchWavespeedModels();
+      const modelInfo = wavespeedModels.find((m) => m.id === modelId);
+      if (!modelInfo) {
+        return res.status(400).json({ error: "Unknown or unavailable model ID" });
+      }
+      modelName = modelInfo.name;
+      imageUrl = await generateWithWavespeed(modelInfo.apiPath, void 0, void 0, prompt);
+    } else {
+      return res.status(400).json({ error: "Unknown model ID" });
+    }
+    return res.json({
+      imageUrl,
+      model: modelName,
+      promptUsed: prompt
+    });
+  } catch (err) {
+    console.error("[generate-reference] Error:", err instanceof Error ? err.message : err);
+    return res.status(500).json({
+      error: err instanceof Error ? err.message : "Reference image generation failed"
+    });
+  }
+});
+app.post("/api/edit-image", async (req, res) => {
+  const { sourceImage, prompt, modelId, additionalImage } = req.body;
+  if (!sourceImage || !prompt || !modelId) {
+    return res.status(400).json({ error: "sourceImage, prompt, and modelId are required" });
+  }
+  try {
+    let imageUrl;
+    let modelName = modelId;
+    const resolvedAdditional = additionalImage ? await resolveImageToDataUrl(additionalImage) : null;
+    if (modelId === "replit:gpt-image-1") {
+      const resolvedSource = await resolveImageToDataUrl(sourceImage);
+      const images = [resolvedSource];
+      if (resolvedAdditional) images.push(resolvedAdditional);
+      imageUrl = await generateWithReplit(prompt, images);
+      modelName = "GPT Image 2";
+    } else if (modelId === "openai:gpt-image-2") {
+      const resolvedSource = await resolveImageToDataUrl(sourceImage);
+      const images = [resolvedSource];
+      if (resolvedAdditional) images.push(resolvedAdditional);
+      imageUrl = await generateWithDirectOpenAI(prompt, images);
+      modelName = "GPT Image 2";
+    } else if (modelId === "google:nano-banana-2" || modelId === "google:nano-banana-2/edit" || modelId === "nano-banana-2") {
+      const resolvedSource = await resolveImageToDataUrl(sourceImage);
+      try {
+        imageUrl = await generateWithGoogleImagen("google:nano-banana-2", prompt, resolvedSource);
+        modelName = "Nano Banana 2";
+      } catch (geminiError) {
+        console.warn("[Gemini fallback] Direct Gemini failed, falling back to Seedream via Wavespeed:", geminiError instanceof Error ? geminiError.message : geminiError);
+        await fetchWavespeedModels();
+        const fallbackModel = (cachedEditModels || []).find((m) => m.id.includes("seedream-v4.5/edit")) || (cachedEditModels || []).find((m) => m.id.startsWith("wavespeed-edit:"));
+        if (!fallbackModel) {
+          throw geminiError;
+        }
+        modelName = fallbackModel.name;
+        const b64Url = resolvedSource;
+        const payload = {
+          prompt,
+          enable_sync_mode: true,
+          enable_base64_output: true,
+          image: b64Url,
+          images: [b64Url]
+        };
+        const url = `https://api.wavespeed.ai${fallbackModel.apiPath}`;
+        const apiRes = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${WAVESPEED_API_KEY}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(payload)
+        });
+        const json = await apiRes.json();
+        imageUrl = await extractWavespeedOutput(json);
+      }
+    } else if (modelId.startsWith("wavespeed-edit:")) {
+      await fetchWavespeedModels();
+      const editModel = (cachedEditModels || []).find((m) => m.id === modelId);
+      if (!editModel) {
+        return res.status(400).json({ error: "Unknown edit model ID" });
+      }
+      modelName = editModel.name;
+      const b64Url = await resolveImageToDataUrl(sourceImage);
+      const payload = {
+        prompt,
+        enable_sync_mode: true,
+        enable_base64_output: true,
+        image: b64Url,
+        images: [b64Url]
+      };
+      if (modelId.includes("expand")) {
+        let ar = "1:1";
+        if (prompt.includes("Extend Downward") || prompt.includes("Extend Upward")) {
+          ar = "9:16";
+        } else if (prompt.includes("Widen")) {
+          ar = "16:9";
+        }
+        payload.aspect_ratio = ar;
+        payload.enable_sync_mode = false;
+      }
+      if (resolvedAdditional) {
+        payload.image_2 = resolvedAdditional;
+        payload.images = [b64Url, resolvedAdditional];
+      }
+      const url = `https://api.wavespeed.ai${editModel.apiPath}`;
+      const apiRes = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${WAVESPEED_API_KEY}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+      });
+      if (!apiRes.ok) {
+        const errJson = await apiRes.json().catch(() => ({}));
+        throw new Error(errJson.error || errJson.message || `Wavespeed error HTTP ${apiRes.status}`);
+      }
+      const json = await apiRes.json();
+      imageUrl = await extractWavespeedOutput(json);
+    } else {
+      return res.status(400).json({ error: "Unknown model ID" });
+    }
+    return res.json({ imageUrl, model: modelName });
+  } catch (err) {
+    console.error("[edit-image] Error:", err instanceof Error ? err.message : err);
+    return res.status(500).json({ error: err instanceof Error ? err.message : "Image editing failed" });
+  }
+});
+app.post("/api/upscale-image", async (req, res) => {
+  const { sourceImage, modelId } = req.body;
+  if (!sourceImage || !modelId) {
+    return res.status(400).json({ error: "sourceImage and modelId are required" });
+  }
+  if (!modelId.startsWith("wavespeed-upscale:")) {
+    return res.status(400).json({ error: "Invalid upscale model ID" });
+  }
+  try {
+    await fetchWavespeedModels();
+    const upscaleModel = (cachedUpscaleModels || []).find((m) => m.id === modelId);
+    if (!upscaleModel) {
+      return res.status(400).json({ error: "Unknown upscale model ID" });
+    }
+    const b64Url = await resolveImageToDataUrl(sourceImage);
+    const payload = {
+      enable_sync_mode: true,
+      enable_base64_output: true
+    };
+    if (upscaleModel.editImageField === "images") {
+      payload.images = [b64Url];
+    } else {
+      payload.image = b64Url;
+    }
+    const url = `https://api.wavespeed.ai${upscaleModel.apiPath}`;
+    const apiRes = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${WAVESPEED_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+    const json = await apiRes.json();
+    const imageUrl = await extractWavespeedOutput(json);
+    return res.json({ imageUrl, model: upscaleModel.name });
+  } catch (err) {
+    console.error("[upscale-image] Error:", err instanceof Error ? err.message : err);
+    return res.status(500).json({ error: err instanceof Error ? err.message : "Image upscaling failed" });
+  }
+});
+async function extractWavespeedVideoOutput(json) {
+  const data = json.data;
+  console.log("[Wavespeed Video] Response code:", json.code, "status:", data?.status, "keys:", data ? Object.keys(data).join(",") : "none");
+  if (json.code !== 200 || data?.status === "failed") {
+    throw new Error(data?.error || json.message || "Wavespeed video request failed");
+  }
+  const outputs = data?.outputs || [];
+  if (outputs.length && outputs[0].startsWith("http")) {
+    return outputs[0];
+  }
+  const output = data?.output;
+  if (output && typeof output === "string" && output.startsWith("http")) {
+    return output;
+  }
+  const videoUrl = data?.video_url || data?.videoUrl || data?.video || data?.url;
+  if (videoUrl && typeof videoUrl === "string" && videoUrl.startsWith("http")) {
+    return videoUrl;
+  }
+  if (data?.status === "processing" || data?.status === "queued" || data?.status === "completed" || data?.status === "created" || data?.status === "pending") {
+    const pollUrl = data?.urls?.get || (data?.id ? `https://api.wavespeed.ai/api/v3/predictions/${data.id}/result` : null);
+    if (pollUrl && isAllowedWavespeedUrl(pollUrl)) {
+      console.log("[Wavespeed Video] Polling:", pollUrl.substring(0, 120));
+      for (let attempt = 0; attempt < 60; attempt++) {
+        await new Promise((r) => setTimeout(r, 3e3));
+        const pollRes = await fetch(pollUrl, {
+          headers: { Authorization: `Bearer ${WAVESPEED_API_KEY}` }
+        });
+        const pollJson = await pollRes.json();
+        const pollData = pollJson.data || {};
+        console.log("[Wavespeed Video] Poll attempt", attempt + 1, "status:", pollData.status);
+        if (pollData.status === "failed") {
+          throw new Error(pollData.error || "Video generation failed during polling");
+        }
+        const pollOutputs = pollData.outputs || pollJson.outputs || [];
+        if (pollOutputs.length && pollOutputs[0].startsWith("http")) {
+          return pollOutputs[0];
+        }
+        const pollOutput = pollData.output || pollData.video_url || pollData.videoUrl || pollData.video || pollData.url;
+        if (pollOutput && typeof pollOutput === "string" && pollOutput.startsWith("http")) {
+          return pollOutput;
+        }
+        if (pollData.status === "completed") {
+          console.log("[Wavespeed Video] Completed but no video output. Keys:", Object.keys(pollData).join(","));
+          const anyUrl = Object.values(pollData).find((v) => typeof v === "string" && v.startsWith("http") && /\.(mp4|webm|mov)/i.test(v));
+          if (anyUrl) return anyUrl;
+          throw new Error("Video completed but no video URL found");
+        }
+      }
+      throw new Error("Video generation timed out after 3 minutes");
+    }
+  }
+  throw new Error("No video output found in Wavespeed response");
+}
+app.post("/api/generate-video", async (req, res) => {
+  const { prompt: rawPrompt, modelId, sourceImage, identityLock, naturalLook } = req.body;
+  if (!rawPrompt || typeof rawPrompt !== "string" || !rawPrompt.trim() || !modelId) {
+    return res.status(400).json({ error: "prompt and modelId are required" });
+  }
+  const identityLockTerms = "IDENTITY LOCK: Reproduce the exact same facial features in every detail \u2014 identical bone structure, eye shape and spacing, nose shape, lip shape, and jawline. This is the same person. Do not reinterpret or alter the face.";
+  const realismTerms = "Candid photography, natural skin texture, subtle skin pores, film grain, not over-retouched, authentic photograph.";
+  let prompt = rawPrompt.trim();
+  if (identityLock === true) prompt += ` ${identityLockTerms}`;
+  if (naturalLook === true) prompt += ` ${realismTerms}`;
+  try {
+    const GOOGLE_VEO_MAP = {
+      "google:veo-3.1": "veo-3.1-generate-preview",
+      "google:veo-3.1-fast": "veo-3.1-fast-generate-preview",
+      "google:veo-3": "veo-3.0-generate-preview",
+      "google:veo-3-fast": "veo-3.0-fast-generate-preview",
+      "google:veo-2": "veo-2.0-generate-001"
+    };
+    if (GOOGLE_VEO_MAP[modelId]) {
+      const geminiModelId = GOOGLE_VEO_MAP[modelId];
+      console.log("[Video Gen] Google Veo model:", modelId, "\u2192", geminiModelId, "| hasImage:", !!sourceImage);
+      const videoUrl2 = await generateWithGeminiVideo(geminiModelId, prompt, sourceImage || void 0);
+      const displayName = modelId.replace("google:", "").replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+      return res.json({ videoUrl: videoUrl2, model: displayName });
+    }
+    await fetchWavespeedModels();
+    const videoModel = (cachedVideoModels || []).find((m) => m.id === modelId);
+    if (!videoModel) {
+      return res.status(400).json({ error: "Unknown video model ID" });
+    }
+    let isI2V = modelId.startsWith("wavespeed-i2v:");
+    let activeModel = videoModel;
+    if (isI2V && !sourceImage) {
+      return res.status(400).json({ error: "Image-to-video models require a source image" });
+    }
+    if (!isI2V && sourceImage) {
+      const t2vRawId = modelId.replace("wavespeed-t2v:", "");
+      const candidates = [
+        `wavespeed-i2v:${t2vRawId}/image-to-video`,
+        `wavespeed-i2v:${t2vRawId.replace("/text-to-video-fast", "/image-to-video-fast")}`,
+        `wavespeed-i2v:${t2vRawId.replace("/text-to-video", "/image-to-video")}`,
+        `wavespeed-i2v:${t2vRawId.replace(/-t2v-/, "-i2v-")}`
+      ];
+      const allVideoModels = cachedVideoModels || [];
+      let i2vModel;
+      for (const cand of candidates) {
+        i2vModel = allVideoModels.find((m) => m.id === cand);
+        if (i2vModel) break;
+      }
+      if (!i2vModel) {
+        const t2vBase = t2vRawId.split("/").slice(0, 2).join("/");
+        i2vModel = allVideoModels.find(
+          (m) => m.id.startsWith("wavespeed-i2v:") && m.id.includes(t2vBase) && m.type === "image-to-video"
+        );
+      }
+      if (i2vModel) {
+        console.log("[Video Gen] T2V model has reference image \u2014 switching to I2V variant:", i2vModel.id);
+        activeModel = i2vModel;
+        isI2V = true;
+      } else {
+        console.log("[Video Gen] No I2V variant found for T2V model:", modelId, "\u2014 sending image directly");
+      }
+    }
+    const payload = {
+      prompt
+    };
+    if (sourceImage) {
+      const b64Url = await resolveImageToDataUrl(sourceImage);
+      if (isI2V && activeModel.editImageField === "images") {
+        payload.images = [b64Url];
+      } else {
+        payload.image = b64Url;
+      }
+    }
+    console.log("[Video Gen] Model:", activeModel.name, "Path:", activeModel.apiPath, "Type:", isI2V ? "i2v" : "t2v", "| hasImage:", !!sourceImage);
+    const url = `https://api.wavespeed.ai${activeModel.apiPath}`;
+    const apiRes = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${WAVESPEED_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+    const json = await apiRes.json();
+    const videoUrl = await extractWavespeedVideoOutput(json);
+    return res.json({ videoUrl, model: activeModel.name });
+  } catch (err) {
+    console.error("[generate-video] Error:", err instanceof Error ? err.message : err);
+    return res.status(500).json({ error: err instanceof Error ? err.message : "Video generation failed" });
+  }
+});
+app.post("/api/extract-last-frame", async (req, res) => {
+  const { videoUrl } = req.body;
+  if (!videoUrl || typeof videoUrl !== "string") {
+    return res.status(400).json({ error: "videoUrl is required" });
+  }
+  if (!isAllowedWavespeedUrl(videoUrl)) {
+    return res.status(400).json({ error: "Only Wavespeed video URLs are supported" });
+  }
+  try {
+    const { execFile } = await import("child_process");
+    const { promisify } = await import("util");
+    const execFileAsync = promisify(execFile);
+    const { stdout } = await execFileAsync(
+      "ffmpeg",
+      ["-sseof", "-0.5", "-i", videoUrl, "-frames:v", "1", "-f", "image2", "-vcodec", "mjpeg", "pipe:1"],
+      { encoding: "buffer", maxBuffer: 10 * 1024 * 1024 }
+    );
+    if (!stdout || stdout.length === 0) {
+      throw new Error("ffmpeg produced no output");
+    }
+    const base64 = stdout.toString("base64");
+    const dataUrl = `data:image/jpeg;base64,${base64}`;
+    return res.json({ frameDataUrl: dataUrl });
+  } catch (err) {
+    console.error("[extract-last-frame] Error:", err instanceof Error ? err.message : err);
+    return res.status(500).json({ error: err instanceof Error ? err.message : "Frame extraction failed" });
+  }
+});
+app.get("/api/health", (_req, res) => {
+  res.json({ status: "ok", wavespeedConfigured: !!WAVESPEED_API_KEY });
+});
+app.get("/api/config-status", (_req, res) => {
+  res.json({
+    openai: !!(process.env.Openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY),
+    gemini: !!getGeminiDirectKey(),
+    wavespeed: !!WAVESPEED_API_KEY,
+    elevenlabs: !!(process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key),
+    database: !!process.env.DATABASE_URL,
+    databaseConnected: !!process.env.DATABASE_URL
+  });
+});
+app.get("/api/elevenlabs-voices", async (_req, res) => {
+  const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key || "";
+  if (!elKey) return res.status(503).json({ error: "ElevenLabs API key not configured", voices: [] });
+  try {
+    const r = await fetch("https://api.elevenlabs.io/v1/voices", { headers: { "xi-api-key": elKey } });
+    const data = await r.json();
+    res.json({ voices: data.voices || [] });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to fetch voices", voices: [] });
+  }
+});
+app.post("/api/generate-voice-script", async (req, res) => {
+  const { topic, persona, mode = "script", existingScript, length = "medium" } = req.body;
+  if (!topic && !existingScript) return res.status(400).json({ error: "topic or existingScript required" });
+  const wordCount = length === "short" ? "60-90" : length === "long" ? "200-280" : "100-140";
+  let prompt;
+  if (mode === "improve" && existingScript) {
+    prompt = `Improve this script for ${persona.name} (${persona.niche} creator on ${persona.platform}, tone: ${persona.tone}):
+
+${existingScript}
+
+Make it more engaging, natural and suitable for TTS. Return only the improved script text.`;
+  } else {
+    prompt = `Write a ${wordCount}-word voiceover script for ${persona.name}, a ${persona.niche} content creator on ${persona.platform}. Tone: ${persona.tone}. Topic: "${topic}". Write naturally for text-to-speech \u2014 conversational, no stage directions, no headings. Return only the script text.`;
+  }
+  const geminiKey = getGeminiDirectKey();
+  if (geminiKey) {
+    try {
+      const ai = new GoogleGenAI2({ apiKey: geminiKey });
+      const result = await ai.models.generateContent({ model: "gemini-2.5-flash", contents: [{ role: "user", parts: [{ text: prompt }] }] });
+      const script = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "";
+      if (script) return res.json({ script });
+    } catch {
+    }
+  }
+  try {
+    const openaiKey = process.env.Openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY || "";
+    const openaiBase = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+    if (!openaiKey) return res.status(503).json({ error: "No AI provider configured for script generation" });
+    const openai = new OpenAI({ apiKey: openaiKey, ...openaiBase ? { baseURL: openaiBase } : {} });
+    const chat = await openai.chat.completions.create({ model: "gpt-5.5", messages: [{ role: "user", content: prompt }] });
+    const script = chat.choices[0]?.message?.content?.trim() ?? "";
+    res.json({ script });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Script generation failed" });
+  }
+});
+app.post("/api/translate-text", async (req, res) => {
+  const { text: text2, targetLanguage } = req.body;
+  if (!text2 || !targetLanguage) return res.status(400).json({ error: "text and targetLanguage are required" });
+  const prompt = `Translate the following script to ${targetLanguage}. Maintain the original tone, impact, and emotional weight. Output ONLY the translated text.
+
+"${text2}"`;
+  const geminiKey = getGeminiDirectKey();
+  if (geminiKey) {
+    try {
+      const ai = new GoogleGenAI2({ apiKey: geminiKey });
+      const result = await ai.models.generateContent({ model: "gemini-2.5-flash", contents: [{ role: "user", parts: [{ text: prompt }] }] });
+      const translatedText = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "";
+      if (translatedText) return res.json({ translatedText });
+    } catch {
+    }
+  }
+  try {
+    const openaiKey = process.env.Openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY || "";
+    const openaiBase = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+    if (!openaiKey) return res.status(503).json({ error: "No AI provider configured for translation" });
+    const openai = new OpenAI({ apiKey: openaiKey, ...openaiBase ? { baseURL: openaiBase } : {} });
+    const chat = await openai.chat.completions.create({ model: "gpt-5.5", messages: [{ role: "user", content: prompt }] });
+    const translatedText = chat.choices[0]?.message?.content?.trim() ?? "";
+    return res.json({ translatedText });
+  } catch (err) {
+    return res.status(500).json({ error: err instanceof Error ? err.message : "Translation failed" });
+  }
+});
+async function handleTTS(req, res) {
+  const {
+    text: text2,
+    voiceName,
+    voice: voiceParam,
+    voiceId,
+    engine = "gemini",
+    speed = 1,
+    voiceSettings
+  } = req.body;
+  const resolvedVoice = voiceName || voiceParam || "Aoede";
+  if (!text2?.trim()) return res.status(400).json({ error: "text is required" });
+  if (engine === "elevenlabs") {
+    const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key || "";
+    if (!elKey) return res.status(503).json({ error: "ElevenLabs API key not configured" });
+    if (!voiceId) return res.status(400).json({ error: "voiceId is required for ElevenLabs" });
+    try {
+      const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+        method: "POST",
+        headers: { "xi-api-key": elKey, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: text2,
+          model_id: "eleven_multilingual_v2",
+          voice_settings: { stability: voiceSettings?.stability ?? 0.5, similarity_boost: voiceSettings?.similarity_boost ?? 0.75, style: voiceSettings?.style ?? 0 }
+        })
+      });
+      if (!r.ok) {
+        const err = await r.text();
+        return res.status(500).json({ error: `ElevenLabs error: ${err.substring(0, 200)}` });
+      }
+      const buf = Buffer.from(await r.arrayBuffer());
+      const audioUrl = `data:audio/mpeg;base64,${buf.toString("base64")}`;
+      return res.json({ audioUrl, voice: voiceId, model: "eleven_multilingual_v2", engine: "elevenlabs" });
+    } catch (err) {
+      return res.status(500).json({ error: err instanceof Error ? err.message : "ElevenLabs TTS failed" });
+    }
+  }
+  if (engine === "openai") {
+    try {
+      const openaiKey = process.env.Openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY || "";
+      const openaiBase = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+      if (!openaiKey) return res.status(503).json({ error: "OpenAI API key not configured" });
+      const openai = new OpenAI({ apiKey: openaiKey, ...openaiBase ? { baseURL: openaiBase } : {} });
+      const OPENAI_VOICES = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"];
+      const oaiVoice = OPENAI_VOICES.includes(resolvedVoice.toLowerCase()) ? resolvedVoice.toLowerCase() : "nova";
+      const mp3 = await openai.audio.speech.create({ model: "tts-1", voice: oaiVoice, input: text2, ...speed !== 1 ? { speed } : {} });
+      const buf = Buffer.from(await mp3.arrayBuffer());
+      const audioUrl = `data:audio/mpeg;base64,${buf.toString("base64")}`;
+      return res.json({ audioUrl, voice: oaiVoice, model: "tts-1", engine: "openai" });
+    } catch (err) {
+      return res.status(500).json({ error: err instanceof Error ? err.message : "OpenAI TTS failed" });
+    }
+  }
+  const geminiTtsKey = getGeminiDirectKey();
+  const geminiAi = geminiTtsKey ? new GoogleGenAI2({ apiKey: geminiTtsKey }) : null;
+  if (!geminiAi) {
+    try {
+      const openaiKey = process.env.Openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY || "";
+      const openaiBase = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+      if (!openaiKey) return res.status(503).json({ error: "No TTS provider configured" });
+      const openai = new OpenAI({ apiKey: openaiKey, ...openaiBase ? { baseURL: openaiBase } : {} });
+      const mp3 = await openai.audio.speech.create({ model: "tts-1", voice: "nova", input: text2 });
+      const buf = Buffer.from(await mp3.arrayBuffer());
+      return res.json({ audioUrl: `data:audio/mpeg;base64,${buf.toString("base64")}`, voice: "nova", model: "tts-1", engine: "openai-fallback" });
+    } catch (err2) {
+      return res.status(500).json({ error: err2 instanceof Error ? err2.message : "TTS failed" });
+    }
+  }
+  try {
+    const result = await geminiAi.models.generateContent({
+      model: "gemini-2.0-flash",
+      contents: [{ role: "user", parts: [{ text: text2 }] }],
+      config: {
+        responseModalities: ["AUDIO"],
+        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: resolvedVoice } } }
+      }
+    });
+    const inlineData = result.candidates?.[0]?.content?.parts?.[0]?.inlineData;
+    if (!inlineData?.data) {
+      const openaiKey = process.env.Openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY || "";
+      const openaiBase = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+      if (openaiKey) {
+        const openai = new OpenAI({ apiKey: openaiKey, ...openaiBase ? { baseURL: openaiBase } : {} });
+        const mp3 = await openai.audio.speech.create({ model: "tts-1", voice: "nova", input: text2 });
+        const buf = Buffer.from(await mp3.arrayBuffer());
+        return res.json({ audioUrl: `data:audio/mpeg;base64,${buf.toString("base64")}`, voice: "nova", model: "tts-1", engine: "openai-fallback" });
+      }
+      return res.status(500).json({ error: "Gemini TTS returned no audio data" });
+    }
+    const mimeType = inlineData.mimeType || "audio/wav";
+    const audioUrl = `data:${mimeType};base64,${inlineData.data}`;
+    return res.json({ audioUrl, voice: resolvedVoice, model: "gemini-tts", engine: "gemini" });
+  } catch (err) {
+    try {
+      const openaiKey = process.env.Openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY || "";
+      const openaiBase = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+      if (openaiKey) {
+        const openai = new OpenAI({ apiKey: openaiKey, ...openaiBase ? { baseURL: openaiBase } : {} });
+        const mp3 = await openai.audio.speech.create({ model: "tts-1", voice: "nova", input: text2 });
+        const buf = Buffer.from(await mp3.arrayBuffer());
+        return res.json({ audioUrl: `data:audio/mpeg;base64,${buf.toString("base64")}`, voice: "nova", model: "tts-1", engine: "openai-fallback" });
+      }
+    } catch {
+    }
+    return res.status(500).json({ error: err instanceof Error ? err.message : "Gemini TTS failed" });
+  }
+}
+app.post("/api/generate-speech", handleTTS);
+app.post("/api/text-to-speech", handleTTS);
+app.post("/api/face-swap", async (req, res) => {
+  if (!WAVESPEED_API_KEY) return res.status(503).json({ error: "Wavespeed not configured" });
+  const { targetImage, swapImage, faceEnhance = true } = req.body;
+  if (!targetImage || !swapImage) return res.status(400).json({ error: "targetImage and swapImage are required" });
+  try {
+    const [tgt, swp] = await Promise.all([resolveImageToDataUrl(targetImage), resolveImageToDataUrl(swapImage)]);
+    const r = await fetch(`${WAVESPEED_BASE}/wavespeed-ai/image-face-swap`, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${WAVESPEED_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        image: tgt,
+        target_image: tgt,
+        face_image: swp,
+        swap_image: swp,
+        face_enhance: faceEnhance
+      })
+    });
+    const json = await r.json();
+    const imageUrl = await extractWavespeedOutput(json);
+    res.json({ imageUrl, model: "wavespeed-ai/image-face-swap" });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Face swap failed" });
+  }
+});
+app.post("/api/remove-background", async (req, res) => {
+  if (!WAVESPEED_API_KEY) return res.status(503).json({ error: "Wavespeed not configured" });
+  const { image } = req.body;
+  if (!image) return res.status(400).json({ error: "image is required" });
+  try {
+    const img = await resolveImageToDataUrl(image);
+    const r = await fetch(`${WAVESPEED_BASE}/wavespeed-ai/image-background-remover`, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${WAVESPEED_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ image: img })
+    });
+    const json = await r.json();
+    const imageUrl = await extractWavespeedOutput(json);
+    res.json({ imageUrl, model: "wavespeed-ai/image-background-remover" });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Background removal failed" });
+  }
+});
+app.post("/api/virtual-tryon", async (req, res) => {
+  if (!WAVESPEED_API_KEY) return res.status(503).json({ error: "Wavespeed not configured" });
+  const { personImage, garmentImage, garmentDescription = "" } = req.body;
+  if (!personImage || !garmentImage) return res.status(400).json({ error: "personImage and garmentImage are required" });
+  try {
+    const [person, garment] = await Promise.all([resolveImageToDataUrl(personImage), resolveImageToDataUrl(garmentImage)]);
+    const r = await fetch(`${WAVESPEED_BASE}/wavespeed-ai/ai-virtual-outfit-tryon`, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${WAVESPEED_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model_image: person, garment_image: garment, garment_des: garmentDescription })
+    });
+    const json = await r.json();
+    const imageUrl = await extractWavespeedOutput(json);
+    res.json({ imageUrl, model: "wavespeed-ai/ai-virtual-outfit-tryon" });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Virtual try-on failed" });
+  }
+});
+app.post("/api/look-swap", async (req, res) => {
+  if (!WAVESPEED_API_KEY) return res.status(503).json({ error: "Wavespeed not configured" });
+  const { sourceImage, faceReferenceImage, prompt, swapType = "outfit", aspectRatio = "1:1" } = req.body;
+  if (!sourceImage || !prompt) return res.status(400).json({ error: "sourceImage and prompt are required" });
+  if (swapType === "outfit" && faceReferenceImage) {
+    try {
+      const [src, ref] = await Promise.all([resolveImageToDataUrl(sourceImage), resolveImageToDataUrl(faceReferenceImage)]);
+      const r = await fetch(`${WAVESPEED_BASE}/wavespeed-ai/ai-virtual-outfit-tryon`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${WAVESPEED_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ model_image: src, garment_image: ref, garment_des: prompt })
+      });
+      const json = await r.json();
+      const imageUrl = await extractWavespeedOutput(json);
+      return res.json({ imageUrl, model: "wavespeed-ai/ai-virtual-outfit-tryon", promptUsed: prompt });
+    } catch (err) {
+      return res.status(500).json({ error: err instanceof Error ? err.message : "Look swap failed" });
+    }
+  }
+  try {
+    const src = await resolveImageToDataUrl(sourceImage);
+    const editModel = swapType === "background" ? "google/nano-banana-2/edit-fast" : "google/nano-banana-pro/edit";
+    const r = await fetch(`${WAVESPEED_BASE}/${editModel}`, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${WAVESPEED_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ image: src, prompt, enable_sync_mode: true, enable_base64_output: true, aspect_ratio: aspectRatio })
+    });
+    const json = await r.json();
+    const imageUrl = await extractWavespeedOutput(json);
+    res.json({ imageUrl, model: editModel, promptUsed: prompt });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Look swap failed" });
+  }
+});
+app.post("/api/talking-head", async (req, res) => {
+  if (!WAVESPEED_API_KEY) return res.status(503).json({ error: "Wavespeed not configured" });
+  const { portraitImage, audioUrl, script, voiceName = "Aoede" } = req.body;
+  if (!portraitImage) return res.status(400).json({ error: "portraitImage is required" });
+  if (!audioUrl && !script) return res.status(400).json({ error: "audioUrl or script is required" });
+  let resolvedAudioUrl = audioUrl || "";
+  if (!resolvedAudioUrl && script) {
+    try {
+      const ttsKey = getGeminiDirectKey();
+      if (!ttsKey) throw new Error("No Gemini key for TTS");
+      const ai = new GoogleGenAI2({ apiKey: ttsKey });
+      const ttsResult = await ai.models.generateContent({
+        model: "gemini-2.5-flash-preview-tts",
+        contents: [{ role: "user", parts: [{ text: script }] }],
+        config: {
+          responseModalities: ["AUDIO"],
+          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } }
+        }
+      });
+      const inlineData = ttsResult.candidates?.[0]?.content?.parts?.[0]?.inlineData;
+      if (inlineData?.data) {
+        const mimeType = inlineData.mimeType || "audio/wav";
+        resolvedAudioUrl = `data:${mimeType};base64,${inlineData.data}`;
+      }
+    } catch {
+      return res.status(500).json({ error: "Failed to generate TTS audio for talking head" });
+    }
+  }
+  try {
+    const img = await resolveImageToDataUrl(portraitImage);
+    const r = await fetch(`${WAVESPEED_BASE}/wavespeed-ai/ai-talking-photos`, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${WAVESPEED_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ image_url: img, audio_url: resolvedAudioUrl })
+    });
+    const json = await r.json();
+    const videoUrl = await extractWavespeedVideoOutput(json);
+    res.json({ videoUrl, model: "wavespeed-ai/ai-talking-photos" });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Talking head generation failed" });
+  }
+});
+async function pushSchema() {
+  try {
+    const pool2 = new Pool2({ connectionString: process.env.DATABASE_URL });
+    await pool2.query(`
+      CREATE TABLE IF NOT EXISTS personas (
+        id SERIAL PRIMARY KEY,
+        client_id TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL DEFAULT '',
+        niche TEXT NOT NULL DEFAULT '',
+        tone TEXT NOT NULL DEFAULT '',
+        platform TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'Draft',
+        avatar TEXT NOT NULL DEFAULT '',
+        reference_image TEXT,
+        personality_traits TEXT NOT NULL DEFAULT '[]',
+        visual_style TEXT NOT NULL DEFAULT '',
+        audience_type TEXT NOT NULL DEFAULT '',
+        content_boundaries TEXT NOT NULL DEFAULT '',
+        bio TEXT NOT NULL DEFAULT '',
+        brand_voice_rules TEXT NOT NULL DEFAULT '',
+        content_goals TEXT NOT NULL DEFAULT '',
+        persona_notes TEXT NOT NULL DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS generated_images (
+        id SERIAL PRIMARY KEY,
+        client_id TEXT NOT NULL UNIQUE,
+        persona_client_id TEXT NOT NULL,
+        url TEXT NOT NULL,
+        prompt TEXT NOT NULL DEFAULT '',
+        timestamp REAL NOT NULL,
+        environment TEXT,
+        outfit TEXT,
+        framing TEXT,
+        is_favorite BOOLEAN DEFAULT false,
+        model TEXT,
+        media_type TEXT DEFAULT 'image',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      );
+      ALTER TABLE generated_images ADD COLUMN IF NOT EXISTS media_type TEXT DEFAULT 'image';
+      ALTER TABLE personas ADD COLUMN IF NOT EXISTS face_descriptor TEXT;
+      ALTER TABLE personas ADD COLUMN IF NOT EXISTS natural_look BOOLEAN DEFAULT true;
+      ALTER TABLE personas ADD COLUMN IF NOT EXISTS identity_lock BOOLEAN DEFAULT true;
+      ALTER TABLE personas ADD COLUMN IF NOT EXISTS alternate_reference_image TEXT;
+      CREATE TABLE IF NOT EXISTS revenue_entries (
+        id SERIAL PRIMARY KEY,
+        client_id TEXT NOT NULL UNIQUE,
+        persona_client_id TEXT NOT NULL,
+        date TEXT NOT NULL,
+        amount REAL NOT NULL,
+        source TEXT NOT NULL DEFAULT '',
+        platform TEXT NOT NULL DEFAULT '',
+        notes TEXT NOT NULL DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS planned_posts (
+        id SERIAL PRIMARY KEY,
+        persona_client_id TEXT NOT NULL,
+        plan_platform TEXT NOT NULL DEFAULT '',
+        day INTEGER NOT NULL,
+        type TEXT NOT NULL DEFAULT '',
+        hook TEXT NOT NULL DEFAULT '',
+        angle TEXT NOT NULL DEFAULT '',
+        cta TEXT NOT NULL DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS conversations (
+        id SERIAL PRIMARY KEY,
+        title TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS messages (
+        id SERIAL PRIMARY KEY,
+        conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      );
+    `);
+    await pool2.end();
+    console.log("[DB] Schema tables ensured");
+  } catch (err) {
+    console.error("[DB] Schema push error:", err);
+  }
+}
+app.use((err, _req, res, _next) => {
+  console.error("[Server] Unhandled error:", err.message);
+  const status = err.status || err.statusCode || 500;
+  if (err.type === "entity.too.large" || err.message?.includes("too large")) {
+    return res.status(413).json({ error: "Request too large. Try using fewer or smaller reference images." });
+  }
+  return res.status(status).json({ error: err.message || "Internal server error" });
+});
+if (process.env.NODE_ENV === "production") {
+  const distPath = path.join(__dirname, "../dist");
+  app.use(express.static(distPath));
+  app.get("/{*path}", (_req, res) => {
+    res.sendFile(path.join(distPath, "index.html"));
+  });
+}
+if (!process.env.VERCEL) {
+  const PORT = parseInt(process.env.PORT || "3001", 10);
+  pushSchema().then(() => {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`[AI Image Server] Listening on port ${PORT}`);
+      if (WAVESPEED_API_KEY) {
+        fetchWavespeedModels().then((models) => {
+          console.log(`[Wavespeed] Loaded ${models.length} generation, ${(cachedEditModels || []).length} edit, ${(cachedUpscaleModels || []).length} upscale models`);
+        });
+      } else {
+        console.warn("[Wavespeed] No API key configured \u2014 only built-in models available");
+      }
+    });
+  });
+} else {
+  pushSchema().catch((err) => console.error("[Vercel] Schema push error:", err));
+  if (WAVESPEED_API_KEY) {
+    fetchWavespeedModels().catch((err) => console.error("[Vercel] Model fetch error:", err));
+  }
+}
+
+// api/index.ts
+function handler(req, res) {
+  return app(req, res);
+}
+export {
+  handler as default
+};

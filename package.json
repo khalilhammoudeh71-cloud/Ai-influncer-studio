@@ -7,6 +7,8 @@
     "dev": "vite",
     "server": "tsx watch server/index.ts",
     "build": "vite build",
+    "build:api": "esbuild api/index.ts --bundle --platform=node --format=esm --outfile=api/index.mjs --target=node20 --external:@neondatabase/serverless --external:ws --external:dotenv --external:express --external:cors --external:openai --external:@google/genai --external:drizzle-orm --external:drizzle-zod --external:zod --external:p-limit --external:p-retry",
+    "vercel-build": "npm run build && npm run build:api",
     "preview": "vite preview",
     "start": "NODE_ENV=production tsx server/index.ts"
   },
@@ -44,6 +46,7 @@
     "@types/react": "19.2.7",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "5.1.1",
+    "esbuild": "^0.28.0",
     "tailwindcss": "4.1.17",
     "typescript": "5.9.3",
     "vite": "7.2.4",

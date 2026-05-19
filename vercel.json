@@ -1,16 +1,17 @@
 {
   "version": 2,
   "framework": "vite",
-  "buildCommand": "npm run build",
+  "buildCommand": "npm run vercel-build",
   "outputDirectory": "dist",
   "functions": {
-    "api/**/*.ts": {
+    "api/index.mjs": {
       "maxDuration": 60,
-      "memory": 1024
+      "memory": 1024,
+      "runtime": "@vercel/node@3"
     }
   },
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api" },
+    { "source": "/api/(.*)", "destination": "/api/index.mjs" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
