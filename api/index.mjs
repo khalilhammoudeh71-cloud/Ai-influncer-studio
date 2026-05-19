@@ -118,11 +118,12 @@ if (!process.env.VERCEL) {
   } catch {
   }
 }
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL must be set. Did you forget to provision a database?");
+var dbUrl = process.env.DATABASE_URL;
+if (!dbUrl) {
+  console.error("[DB] DATABASE_URL is not set! Database operations will fail.");
 }
-var pool = new Pool({ connectionString: process.env.DATABASE_URL });
-var db = drizzle(pool, { schema: schema_exports });
+var pool = dbUrl ? new Pool({ connectionString: dbUrl }) : null;
+var db = pool ? drizzle(pool, { schema: schema_exports }) : null;
 
 // server/routes.ts
 import { eq, and } from "drizzle-orm";

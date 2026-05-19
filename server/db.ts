@@ -14,10 +14,10 @@ if (!process.env.VERCEL) {
   }
 }
 
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL must be set. Did you forget to provision a database?");
+const dbUrl = process.env.DATABASE_URL;
+if (!dbUrl) {
+  console.error("[DB] DATABASE_URL is not set! Database operations will fail.");
 }
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-
-export const db = drizzle(pool, { schema });
+const pool = dbUrl ? new Pool({ connectionString: dbUrl }) : null;
+export const db = pool ? drizzle(pool, { schema }) : null as any;
