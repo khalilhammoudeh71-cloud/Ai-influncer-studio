@@ -39,7 +39,7 @@ const WAVESPEED_BASE = 'https://api.wavespeed.ai/api/v3';
 const VENICE_API_KEY = process.env.Veniceai_api_key || '';
 const VENICE_BASE = 'https://api.venice.ai/api/v1';
 
-const OPENAI_DIRECT_KEY = process.env.Openai_api_key || '';
+const OPENAI_DIRECT_KEY = process.env.Openai_api_key || process.env.openai_api_key || process.env.OPENAI_API_KEY || '';
 
 interface ModelInfo {
   id: string;
@@ -2369,7 +2369,7 @@ app.get('/api/health', (_req, res) => {
 // ─── Config Status ────────────────────────────────────────────────────────────
 app.get('/api/config-status', (_req, res) => {
   res.json({
-    openai: !!(process.env.Openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY),
+    openai: !!(process.env.Openai_api_key || process.env.openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY),
     gemini: !!getGeminiDirectKey(),
     wavespeed: !!WAVESPEED_API_KEY,
     elevenlabs: !!(process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key),
@@ -2421,7 +2421,7 @@ app.post('/api/generate-voice-script', async (req, res) => {
 
   // OpenAI fallback
   try {
-    const openaiKey = process.env.Openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY || '';
+    const openaiKey = process.env.Openai_api_key || process.env.openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY || '';
     const openaiBase = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
     if (!openaiKey) return res.status(503).json({ error: 'No AI provider configured for script generation' });
     const openai = new OpenAI({ apiKey: openaiKey, ...(openaiBase ? { baseURL: openaiBase } : {}) });
@@ -2452,7 +2452,7 @@ app.post('/api/translate-text', async (req, res) => {
 
   // OpenAI fallback
   try {
-    const openaiKey = process.env.Openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY || '';
+    const openaiKey = process.env.Openai_api_key || process.env.openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY || '';
     const openaiBase = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
     if (!openaiKey) return res.status(503).json({ error: 'No AI provider configured for translation' });
     const openai = new OpenAI({ apiKey: openaiKey, ...(openaiBase ? { baseURL: openaiBase } : {}) });
@@ -2512,7 +2512,7 @@ async function handleTTS(req: express.Request, res: express.Response) {
   // OpenAI TTS
   if (engine === 'openai') {
     try {
-      const openaiKey = process.env.Openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY || '';
+      const openaiKey = process.env.Openai_api_key || process.env.openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY || '';
       const openaiBase = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
       if (!openaiKey) return res.status(503).json({ error: 'OpenAI API key not configured' });
       const openai = new OpenAI({ apiKey: openaiKey, ...(openaiBase ? { baseURL: openaiBase } : {}) });
@@ -2534,7 +2534,7 @@ async function handleTTS(req: express.Request, res: express.Response) {
   if (!geminiAi) {
     // No Gemini available — fall directly to OpenAI
     try {
-      const openaiKey = process.env.Openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY || '';
+      const openaiKey = process.env.Openai_api_key || process.env.openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY || '';
       const openaiBase = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
       if (!openaiKey) return res.status(503).json({ error: 'No TTS provider configured' });
       const openai = new OpenAI({ apiKey: openaiKey, ...(openaiBase ? { baseURL: openaiBase } : {}) });
@@ -2558,7 +2558,7 @@ async function handleTTS(req: express.Request, res: express.Response) {
     const inlineData = result.candidates?.[0]?.content?.parts?.[0]?.inlineData;
     if (!inlineData?.data) {
       // Fall back to OpenAI TTS if Gemini returns no audio
-      const openaiKey = process.env.Openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY || '';
+      const openaiKey = process.env.Openai_api_key || process.env.openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY || '';
       const openaiBase = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
       if (openaiKey) {
         const openai = new OpenAI({ apiKey: openaiKey, ...(openaiBase ? { baseURL: openaiBase } : {}) });
@@ -2574,7 +2574,7 @@ async function handleTTS(req: express.Request, res: express.Response) {
   } catch (err) {
     // Final fallback to OpenAI
     try {
-      const openaiKey = process.env.Openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY || '';
+      const openaiKey = process.env.Openai_api_key || process.env.openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY || '';
       const openaiBase = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
       if (openaiKey) {
         const openai = new OpenAI({ apiKey: openaiKey, ...(openaiBase ? { baseURL: openaiBase } : {}) });

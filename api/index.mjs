@@ -634,7 +634,7 @@ var WAVESPEED_API_KEY = process.env.WAVESPEED_API_KEY || "";
 var WAVESPEED_BASE = "https://api.wavespeed.ai/api/v3";
 var VENICE_API_KEY = process.env.Veniceai_api_key || "";
 var VENICE_BASE = "https://api.venice.ai/api/v1";
-var OPENAI_DIRECT_KEY = process.env.Openai_api_key || "";
+var OPENAI_DIRECT_KEY = process.env.Openai_api_key || process.env.openai_api_key || process.env.OPENAI_API_KEY || "";
 var NSFW_MODEL_IDS = /* @__PURE__ */ new Set([
   "wavespeed-ai/wan-2.1-i2v-480p",
   "wavespeed-ai/wan-2.1-i2v-720p",
@@ -2631,7 +2631,7 @@ app.get("/api/health", (_req, res) => {
 });
 app.get("/api/config-status", (_req, res) => {
   res.json({
-    openai: !!(process.env.Openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY),
+    openai: !!(process.env.Openai_api_key || process.env.openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY),
     gemini: !!getGeminiDirectKey(),
     wavespeed: !!WAVESPEED_API_KEY,
     elevenlabs: !!(process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key),
@@ -2675,7 +2675,7 @@ Make it more engaging, natural and suitable for TTS. Return only the improved sc
     }
   }
   try {
-    const openaiKey = process.env.Openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY || "";
+    const openaiKey = process.env.Openai_api_key || process.env.openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY || "";
     const openaiBase = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
     if (!openaiKey) return res.status(503).json({ error: "No AI provider configured for script generation" });
     const openai = new OpenAI({ apiKey: openaiKey, ...openaiBase ? { baseURL: openaiBase } : {} });
@@ -2703,7 +2703,7 @@ app.post("/api/translate-text", async (req, res) => {
     }
   }
   try {
-    const openaiKey = process.env.Openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY || "";
+    const openaiKey = process.env.Openai_api_key || process.env.openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY || "";
     const openaiBase = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
     if (!openaiKey) return res.status(503).json({ error: "No AI provider configured for translation" });
     const openai = new OpenAI({ apiKey: openaiKey, ...openaiBase ? { baseURL: openaiBase } : {} });
@@ -2753,7 +2753,7 @@ async function handleTTS(req, res) {
   }
   if (engine === "openai") {
     try {
-      const openaiKey = process.env.Openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY || "";
+      const openaiKey = process.env.Openai_api_key || process.env.openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY || "";
       const openaiBase = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
       if (!openaiKey) return res.status(503).json({ error: "OpenAI API key not configured" });
       const openai = new OpenAI({ apiKey: openaiKey, ...openaiBase ? { baseURL: openaiBase } : {} });
@@ -2771,7 +2771,7 @@ async function handleTTS(req, res) {
   const geminiAi = geminiTtsKey ? new GoogleGenAI2({ apiKey: geminiTtsKey }) : null;
   if (!geminiAi) {
     try {
-      const openaiKey = process.env.Openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY || "";
+      const openaiKey = process.env.Openai_api_key || process.env.openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY || "";
       const openaiBase = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
       if (!openaiKey) return res.status(503).json({ error: "No TTS provider configured" });
       const openai = new OpenAI({ apiKey: openaiKey, ...openaiBase ? { baseURL: openaiBase } : {} });
@@ -2793,7 +2793,7 @@ async function handleTTS(req, res) {
     });
     const inlineData = result.candidates?.[0]?.content?.parts?.[0]?.inlineData;
     if (!inlineData?.data) {
-      const openaiKey = process.env.Openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY || "";
+      const openaiKey = process.env.Openai_api_key || process.env.openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY || "";
       const openaiBase = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
       if (openaiKey) {
         const openai = new OpenAI({ apiKey: openaiKey, ...openaiBase ? { baseURL: openaiBase } : {} });
@@ -2808,7 +2808,7 @@ async function handleTTS(req, res) {
     return res.json({ audioUrl, voice: resolvedVoice, model: "gemini-tts", engine: "gemini" });
   } catch (err) {
     try {
-      const openaiKey = process.env.Openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY || "";
+      const openaiKey = process.env.Openai_api_key || process.env.openai_api_key || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY || "";
       const openaiBase = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
       if (openaiKey) {
         const openai = new OpenAI({ apiKey: openaiKey, ...openaiBase ? { baseURL: openaiBase } : {} });
