@@ -3080,7 +3080,7 @@ if (!process.env.VERCEL) {
   }
 }
 
-// api/index.ts
+// scripts/api-source.ts
 function handler(req, res) {
   return app(req, res);
 }

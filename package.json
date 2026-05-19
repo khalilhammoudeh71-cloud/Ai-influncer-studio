@@ -7,7 +7,7 @@
     "dev": "vite",
     "server": "tsx watch server/index.ts",
     "build": "vite build",
-    "build:api": "esbuild api/index.ts --bundle --platform=node --format=esm --outfile=api/index.mjs --target=node20 --external:@neondatabase/serverless --external:ws --external:dotenv --external:express --external:cors --external:openai --external:@google/genai --external:drizzle-orm --external:drizzle-zod --external:zod --external:p-limit --external:p-retry",
+    "build:api": "esbuild scripts/api-source.ts --bundle --platform=node --format=esm --outfile=api/index.mjs --target=node20 --external:@neondatabase/serverless --external:ws --external:dotenv --external:express --external:cors --external:openai --external:@google/genai --external:drizzle-orm --external:drizzle-zod --external:zod --external:p-limit --external:p-retry",
     "vercel-build": "npm run build && npm run build:api",
     "preview": "vite preview",
     "start": "NODE_ENV=production tsx server/index.ts"
