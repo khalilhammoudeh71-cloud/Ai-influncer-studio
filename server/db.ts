@@ -1,11 +1,18 @@
 import 'dotenv/config';
 import { drizzle } from "drizzle-orm/neon-serverless";
 import { Pool } from "@neondatabase/serverless";
-import ws from "ws";
 import * as schema from "../shared/schema";
 
-import { neonConfig } from "@neondatabase/serverless";
-neonConfig.webSocketConstructor = ws;
+// In serverless (Vercel), use HTTP mode. In local dev, use WebSocket.
+if (!process.env.VERCEL) {
+  try {
+    const wsModule = await import("ws");
+    const { neonConfig } = await import("@neondatabase/serverless");
+    neonConfig.webSocketConstructor = wsModule.default;
+  } catch {
+    // ws not available in serverless, that's fine — Neon uses HTTP fetch
+  }
+}
 
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL must be set. Did you forget to provision a database?");

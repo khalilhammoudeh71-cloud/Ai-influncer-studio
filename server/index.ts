@@ -19,6 +19,7 @@ process.on('unhandledRejection', (reason) => {
 });
 
 const app = express();
+export { app };
 app.use(cors());
 app.use(express.json({ limit: '100mb' }));
 app.use('/api', apiRoutes);
@@ -2855,16 +2856,25 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-const PORT = parseInt(process.env.PORT || '3001', 10);
-pushSchema().then(() => {
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[AI Image Server] Listening on port ${PORT}`);
-    if (WAVESPEED_API_KEY) {
-      fetchWavespeedModels().then(models => {
-        console.log(`[Wavespeed] Loaded ${models.length} generation, ${(cachedEditModels || []).length} edit, ${(cachedUpscaleModels || []).length} upscale models`);
-      });
-    } else {
-      console.warn('[Wavespeed] No API key configured — only built-in models available');
-    }
+// Only start the server in local development — on Vercel, the app is imported by the serverless function
+if (!process.env.VERCEL) {
+  const PORT = parseInt(process.env.PORT || '3001', 10);
+  pushSchema().then(() => {
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`[AI Image Server] Listening on port ${PORT}`);
+      if (WAVESPEED_API_KEY) {
+        fetchWavespeedModels().then(models => {
+          console.log(`[Wavespeed] Loaded ${models.length} generation, ${(cachedEditModels || []).length} edit, ${(cachedUpscaleModels || []).length} upscale models`);
+        });
+      } else {
+        console.warn('[Wavespeed] No API key configured — only built-in models available');
+      }
+    });
   });
-});
+} else {
+  // On Vercel: just ensure schema exists and fetch models
+  pushSchema().catch(err => console.error('[Vercel] Schema push error:', err));
+  if (WAVESPEED_API_KEY) {
+    fetchWavespeedModels().catch(err => console.error('[Vercel] Model fetch error:', err));
+  }
+}
