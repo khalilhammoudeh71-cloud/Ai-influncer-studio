@@ -1087,20 +1087,26 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   );
 
   const renderImageMode = () => (
-    <div className="grid grid-cols-1 lg:grid-cols-[440px_1fr] gap-4 items-start">
+    <div className="grid grid-cols-1 lg:grid-cols-[440px_1fr] gap-5 items-start">
       {/* ══ LEFT COLUMN: Configuration (Studio Sidebar) ══ */}
       <div className="space-y-4 h-full overflow-y-auto pr-2 custom-scrollbar pb-20">
         
-        {/* AI Model Select - MOVED TO TOP */}
-        <div className="space-y-4">
-          {renderModelSelect(selectedModel, setSelectedModel, groupedModels, true)}
-          {selectedModelInfo && (
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-300 border border-purple-500/20">{selectedModelInfo.provider}</span>
-              {selectedModelInfo.isIdentityModel && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-300 border border-violet-500/20 flex items-center gap-0.5">★ Face-consistent</span>}
-              {selectedModelInfo.price > 0 && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20">${selectedModelInfo.price.toFixed(3)} per image</span>}
-            </div>
-          )}
+        {/* AI Model Card */}
+        <div className="rounded-2xl border border-white/5 bg-white/[0.02] overflow-hidden">
+          <div className="px-4 py-2.5 bg-gradient-to-r from-violet-600/10 to-purple-600/5 border-b border-white/5 flex items-center gap-2">
+            <Cpu className="w-3.5 h-3.5 text-violet-400" />
+            <span className="text-[10px] font-black text-violet-300 uppercase tracking-wider">AI Model</span>
+          </div>
+          <div className="p-4 space-y-3">
+            {renderModelSelect(selectedModel, setSelectedModel, groupedModels, true)}
+            {selectedModelInfo && (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-300 border border-purple-500/20">{selectedModelInfo.provider}</span>
+                {selectedModelInfo.isIdentityModel && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-300 border border-violet-500/20 flex items-center gap-0.5">★ Face-consistent</span>}
+                {selectedModelInfo.price > 0 && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20">${selectedModelInfo.price.toFixed(3)} per image</span>}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Prompt Field - MOVED BELOW MODEL */}
@@ -1196,51 +1202,77 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           </div>
         </div>
 
-        {/* Style Parameters Dropdowns */}
-        <div className="grid grid-cols-2 gap-2 border-t border-[var(--border-subtle)] pt-3">
-          {[
-            { label: 'Environment', value: selectedEnv, onChange: (v: string) => { clearQuickStyle(); setSelectedEnv(v); }, options: ENVIRONMENTS },
-            { label: 'Outfit', value: selectedOutfit, onChange: (v: string) => { clearQuickStyle(); setSelectedOutfit(v); }, options: OUTFITS },
-            { label: 'Framing', value: selectedFraming, onChange: (v: string) => { clearQuickStyle(); setSelectedFraming(v); }, options: FRAMING },
-            { label: 'Mood', value: selectedMood, onChange: (v: string) => { clearQuickStyle(); setSelectedMood(v); }, options: MOODS },
-          ].map(({ label, value, onChange, options }) => (
-            <div key={label} className="space-y-1">
-              <label className="text-[9px] font-black text-[var(--text-tertiary)] uppercase tracking-wide block">{label}</label>
-              <div className="relative">
-                <select
-                  value={value}
-                  onChange={e => onChange(e.target.value)}
-                  className="w-full bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-xl px-2.5 py-1.5 text-xs text-white outline-none appearance-none pr-6"
-                >
-                  {options.map(o => <option key={o} value={o}>{o}</option>)}
-                </select>
-                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-[var(--text-tertiary)] pointer-events-none" />
-              </div>
+        {/* Style Director Card */}
+        <div className="rounded-2xl border border-white/5 bg-white/[0.02] overflow-hidden">
+          <div className="px-4 py-2.5 bg-gradient-to-r from-fuchsia-600/10 to-pink-600/5 border-b border-white/5 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Wand2 className="w-3.5 h-3.5 text-fuchsia-400" />
+              <span className="text-[10px] font-black text-fuchsia-300 uppercase tracking-wider">Style Director</span>
             </div>
-          ))}
-        </div>
-
-        {/* Variations count selector */}
-        <div className="flex items-center justify-between border-t border-[var(--border-subtle)] pt-3">
-          <span className="text-[10px] font-black text-[var(--text-tertiary)] uppercase tracking-wider">Variations</span>
-          <div className="flex gap-1">
-            {[1, 2, 3, 4].map(n => (
-              <button key={n} onClick={() => setImageCount(n)} className={`w-7 h-7 rounded-lg text-xs font-bold transition-all ${imageCount === n ? 'bg-purple-600 text-white shadow-md' : 'bg-[var(--bg-surface)] border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-white'}`}>{n}×</button>
-            ))}
+            <span className="text-[8px] text-[var(--text-muted)] font-bold uppercase">Optional</span>
+          </div>
+          <div className="p-4">
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { label: 'Environment', value: selectedEnv, onChange: (v: string) => { clearQuickStyle(); setSelectedEnv(v); }, options: ENVIRONMENTS },
+                { label: 'Outfit', value: selectedOutfit, onChange: (v: string) => { clearQuickStyle(); setSelectedOutfit(v); }, options: OUTFITS },
+                { label: 'Framing', value: selectedFraming, onChange: (v: string) => { clearQuickStyle(); setSelectedFraming(v); }, options: FRAMING },
+                { label: 'Mood', value: selectedMood, onChange: (v: string) => { clearQuickStyle(); setSelectedMood(v); }, options: MOODS },
+              ].map(({ label, value, onChange, options }) => (
+                <div key={label} className="space-y-1">
+                  <label className="text-[9px] font-black text-[var(--text-tertiary)] uppercase tracking-wide block">{label}</label>
+                  <div className="relative">
+                    <select
+                      value={value}
+                      onChange={e => onChange(e.target.value)}
+                      className="w-full bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-xl px-2.5 py-1.5 text-xs text-white outline-none appearance-none pr-6"
+                    >
+                      {options.map(o => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                    <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-[var(--text-tertiary)] pointer-events-none" />
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
-        {/* Generate Button */}
-        <button onClick={handleImageGenerate} disabled={isGenerating || !selectedModel || (localPersonaId === 'none' && allRefImages.length === 0)} className="w-full py-3.5 rounded-xl font-black text-sm bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-xl shadow-purple-500/20 text-white">
-          {isGenerating ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating {imageCount > 1 ? `${imageCount} images` : 'image'}...</> : <><Sparkles className="w-4 h-4 animate-pulse" /> Generate {imageCount > 1 ? `${imageCount} Variations` : 'Image'}</>}
-        </button>
+        {/* Variations + Generate */}
+        <div className="rounded-2xl border border-white/5 bg-white/[0.02] overflow-hidden">
+          <div className="p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black text-[var(--text-tertiary)] uppercase tracking-wider">Variations</span>
+              <div className="flex gap-1">
+                {[1, 2, 3, 4].map(n => (
+                  <button key={n} onClick={() => setImageCount(n)} className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${imageCount === n ? 'bg-gradient-to-br from-violet-600 to-purple-600 text-white shadow-md shadow-violet-500/20' : 'bg-[var(--bg-surface)] border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-white hover:border-white/20'}`}>{n}×</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Generate Button */}
+            <button 
+              onClick={handleImageGenerate} 
+              disabled={isGenerating || !selectedModel || (localPersonaId === 'none' && allRefImages.length === 0)} 
+              className="w-full py-4 rounded-xl font-black text-sm bg-gradient-to-r from-violet-600 via-purple-600 to-fuchsia-600 hover:from-violet-500 hover:via-purple-500 hover:to-fuchsia-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex flex-col items-center justify-center gap-1 shadow-xl shadow-violet-500/20 text-white group"
+            >
+              {isGenerating ? (
+                <div className="flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Generating {imageCount > 1 ? `${imageCount} images` : 'image'}...</div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2"><Sparkles className="w-4 h-4 group-hover:animate-pulse" /> Generate {imageCount > 1 ? `${imageCount} Variations` : 'Image'}</div>
+                  <span className="text-[9px] opacity-50 font-medium">⌘ Enter</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* ══ RIGHT COLUMN: Preview Canvas & Workspace ══ */}
       <div className="h-full overflow-y-auto pr-2 custom-scrollbar pb-20 space-y-4">
 
         {/* Canvas / Main focused Preview area */}
-        <div className="flex-1 min-h-[360px] max-h-[540px] flex flex-col justify-center bg-[#0B0F17]/40 border border-[#334155]/60 rounded-xl overflow-hidden relative shadow-inner group">
+        <div className="flex-1 min-h-[360px] max-h-[540px] flex flex-col justify-center bg-gradient-to-b from-[#0B0F17]/60 to-[#0B0F17]/30 border border-[#334155]/40 rounded-2xl overflow-hidden relative shadow-inner group">
           {isGenerating || isProcessing ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0B0F17]/70 backdrop-blur-md z-30 gap-4 select-none">
               <Loader2 className="w-12 h-12 animate-spin text-purple-500" />
@@ -1273,11 +1305,37 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               </div>
             </div>
           ) : (
-            <div className="relative w-full h-full flex items-center justify-center min-h-[300px]">
-              <img src="/studio_preview_default.jpg" alt="Sample Preview" className="max-w-full max-h-full rounded-2xl object-cover object-[35%_center] shadow-2xl select-none" />
-              <div className="absolute top-2 left-2 px-3 py-1 bg-black/75 backdrop-blur-md rounded-xl border border-white/10 flex items-center gap-1.5 shadow-xl select-none">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span className="text-[10px] text-emerald-400 font-extrabold tracking-wide uppercase select-none">Sample Preview</span>
+            <div className="relative w-full h-full flex flex-col items-center justify-center min-h-[340px] p-6 select-none">
+              {/* Decorative background */}
+              <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(139,92,246,0.06),transparent_70%)]" />
+              
+              {/* Icon */}
+              <div className="relative mb-5">
+                <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-violet-500/15 to-fuchsia-500/10 border border-violet-500/20 flex items-center justify-center">
+                  <ImageIcon size={32} className="text-violet-400/60" />
+                </div>
+                <div className="absolute -top-1 -right-1 w-6 h-6 bg-gradient-to-br from-violet-500 to-fuchsia-500 rounded-lg flex items-center justify-center shadow-lg shadow-violet-500/30">
+                  <Sparkles size={12} className="text-white" />
+                </div>
+              </div>
+              
+              <h3 className="text-base font-bold text-white/80 mb-1">Your Canvas Awaits</h3>
+              <p className="text-xs text-[var(--text-muted)] text-center max-w-[260px] mb-5 leading-relaxed">
+                Choose a model, write a prompt, and click <span className="text-violet-400 font-bold">Generate</span> to create your first image.
+              </p>
+              
+              {/* Quick tips */}
+              <div className="flex flex-col gap-2 w-full max-w-[280px]">
+                {[
+                  { icon: '1', text: 'Select an AI model from the sidebar' },
+                  { icon: '2', text: 'Describe your scene in the prompt' },
+                  { icon: '3', text: 'Pick a preset style or customize' },
+                ].map(tip => (
+                  <div key={tip.icon} className="flex items-center gap-3 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/5">
+                    <span className="w-5 h-5 rounded-md bg-violet-500/20 text-violet-300 text-[9px] font-black flex items-center justify-center shrink-0">{tip.icon}</span>
+                    <span className="text-[10px] text-[var(--text-secondary)] font-medium">{tip.text}</span>
+                  </div>
+                ))}
               </div>
             </div>
           )}
@@ -2424,35 +2482,79 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     <div className="flex-1 bg-[var(--bg-base)] text-white p-4 max-w-[1600px] mx-auto w-full selection:bg-emerald-500/30 flex flex-col overflow-y-auto custom-scrollbar">
       
       {/* ── STUDIO HEADER ── */}
-      <header className="mb-4 flex flex-col md:flex-row md:items-end justify-between gap-4">
-        <div className="space-y-1">
-          <h1 className="text-4xl font-black tracking-tight flex items-center gap-3">
-            Create <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400">Studio</span>
-          </h1>
-          <div className="flex items-center gap-2 group cursor-pointer">
-            <p className="text-[var(--text-tertiary)] text-sm font-medium">
-              Generate content as <span className="text-emerald-400 font-bold">{activePersona.name || "New Persona"}</span>
-            </p>
-            <ChevronDown className="w-4 h-4 text-[var(--text-muted)] group-hover:text-emerald-400 transition-colors" />
+      <header className="mb-6">
+        {/* Hero gradient bar */}
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#0F172A] via-[#1E1B4B]/80 to-[#0F172A] border border-white/5 p-5 mb-6">
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(139,92,246,0.12),transparent_60%)]" />
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_left,rgba(6,182,212,0.08),transparent_60%)]" />
+          
+          <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="space-y-1.5">
+              <h1 className="text-3xl font-black tracking-tight flex items-center gap-3">
+                Create <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 via-fuchsia-400 to-cyan-400">Studio</span>
+              </h1>
+              <p className="text-sm text-[var(--text-tertiary)] font-medium max-w-md">
+                Generate stunning images, videos, voices & content — all powered by AI.
+              </p>
+            </div>
+
+            {/* Active Persona Card */}
+            {activePersona.name ? (
+              <div className="flex items-center gap-3 bg-white/[0.04] border border-white/10 rounded-xl px-4 py-2.5 backdrop-blur-sm">
+                <div className="relative">
+                  <img 
+                    src={activePersona.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=80&h=80'} 
+                    className="w-10 h-10 rounded-xl object-cover border border-white/10" 
+                    alt="" 
+                  />
+                  <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 rounded-full border-2 border-[#0F172A]" />
+                </div>
+                <div className="text-left">
+                  <p className="text-[8px] font-black text-violet-400 uppercase tracking-[0.2em] leading-none mb-1">Creating as</p>
+                  <p className="text-sm font-bold text-white leading-none">{activePersona.name}</p>
+                  <p className="text-[10px] text-[var(--text-muted)] mt-0.5">{activePersona.niche || activePersona.platform || 'Digital Creator'}</p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3 bg-gradient-to-r from-violet-600/10 to-fuchsia-600/10 border border-violet-500/20 rounded-xl px-4 py-3 backdrop-blur-sm">
+                <div className="w-10 h-10 rounded-xl bg-violet-500/20 border border-violet-500/30 flex items-center justify-center">
+                  <UserRound size={20} className="text-violet-400" />
+                </div>
+                <div className="text-left">
+                  <p className="text-[10px] font-black text-violet-400 uppercase tracking-wider leading-none mb-1">No Persona Selected</p>
+                  <p className="text-xs text-[var(--text-secondary)]">Create a persona first for identity-consistent results</p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Top-right persona quick select (matches mockup) */}
-        <div className="hidden lg:flex items-center gap-3 glass-card px-4 py-2 border-white/5 bg-white/[0.02]">
-           <div className="relative">
-             <img src={activePersona.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150"} className="w-8 h-8 rounded-lg object-cover" alt="Active Persona Avatar" />
-             <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-[#0B0F17]" />
-           </div>
-           <div className="text-left pr-8">
-             <div className="text-[8px] font-black text-white/40 uppercase tracking-[0.2em] leading-none mb-1">Active Persona</div>
-             <div className="text-[11px] font-bold text-white leading-none">{activePersona.name || "New Persona"} — Lifestyle</div>
-           </div>
-           <ChevronDown className="w-4 h-4 text-white/30" />
+        {/* Step indicator */}
+        <div className="hidden md:flex items-center gap-2 mb-5 px-1">
+          {[
+            { step: 1, label: 'Choose Tool', done: true },
+            { step: 2, label: 'Configure', done: false },
+            { step: 3, label: 'Generate', done: false },
+          ].map((s, i) => (
+            <div key={s.step} className="flex items-center gap-2">
+              {i > 0 && <div className="w-8 h-px bg-[var(--border-subtle)]" />}
+              <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider ${
+                s.done 
+                  ? 'bg-violet-500/15 text-violet-300 border border-violet-500/20' 
+                  : 'bg-white/[0.03] text-[var(--text-muted)] border border-white/5'
+              }`}>
+                <span className={`w-4 h-4 rounded-full text-[8px] flex items-center justify-center font-black ${
+                  s.done ? 'bg-violet-500 text-white' : 'bg-white/5 text-[var(--text-tertiary)]'
+                }`}>{s.step}</span>
+                {s.label}
+              </div>
+            </div>
+          ))}
         </div>
       </header>
 
-      {/* ── MODE SELECTOR (Premium Tabs) ── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-10">
+      {/* ── MODE SELECTOR (Premium Cards) ── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2.5 mb-8">
         {MODE_CONFIG.map(m => {
           const Icon = m.icon;
           const isActive = mode === m.id;
@@ -2460,22 +2562,42 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             <motion.button
               key={m.id}
               onClick={() => { updateMode(m.id); setGlobalError(null); }}
-              whileHover={{ scale: 1.02, y: -2 }}
-              whileTap={{ scale: 0.98 }}
-              className={`relative flex items-center gap-3 p-4 rounded-2xl border transition-all duration-300 ${
+              whileHover={{ scale: 1.03, y: -3 }}
+              whileTap={{ scale: 0.97 }}
+              className={`relative flex flex-col items-center gap-2 p-4 rounded-2xl border transition-all duration-300 group overflow-hidden ${
                 isActive
-                  ? `bg-emerald-500/10 border-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.1)]`
-                  : 'bg-white/[0.02] border-white/5 text-[var(--text-tertiary)] hover:bg-white/[0.05] hover:border-white/10 hover:text-white'
+                  ? `bg-gradient-to-b from-white/[0.08] to-white/[0.02] border-violet-500/50 shadow-[0_0_25px_rgba(139,92,246,0.15)]`
+                  : 'bg-white/[0.02] border-white/5 hover:bg-white/[0.05] hover:border-white/15'
               }`}
             >
-              <div className={`p-2 rounded-xl transition-all duration-300 ${isActive ? 'bg-emerald-500 text-white shadow-[0_0_15px_rgba(16,185,129,0.5)]' : 'bg-white/5 text-[var(--text-muted)]'}`}>
-                <Icon size={18} />
-              </div>
-              <div className="text-left">
-                <div className={`text-[11px] font-black leading-tight tracking-wide ${isActive ? 'text-white' : ''}`}>{m.label}</div>
-              </div>
+              {/* Gradient glow for active */}
               {isActive && (
-                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-8 h-1 bg-emerald-500 rounded-t-full shadow-[0_-2px_10px_rgba(16,185,129,0.8)]" />
+                <div className="absolute inset-0 bg-gradient-to-b from-violet-500/10 via-transparent to-transparent pointer-events-none" />
+              )}
+              
+              <div className={`relative p-2.5 rounded-xl transition-all duration-300 ${
+                isActive 
+                  ? `bg-gradient-to-br ${m.gradient} text-white shadow-lg` 
+                  : 'bg-white/5 text-[var(--text-muted)] group-hover:bg-white/10 group-hover:text-white'
+              }`}>
+                <Icon size={20} />
+              </div>
+              <div className="text-center relative">
+                <p className={`text-[10px] font-black leading-tight tracking-wide ${isActive ? 'text-white' : 'text-[var(--text-secondary)] group-hover:text-white'}`}>
+                  {m.label}
+                </p>
+                <p className={`text-[8px] mt-0.5 leading-tight transition-all ${
+                  isActive ? 'text-violet-300/80 max-h-8 opacity-100' : 'text-transparent max-h-0 opacity-0 group-hover:text-[var(--text-muted)] group-hover:max-h-8 group-hover:opacity-100'
+                }`}>
+                  {m.desc}
+                </p>
+              </div>
+              {/* Active indicator bar */}
+              {isActive && (
+                <motion.div 
+                  layoutId="activeMode"
+                  className="absolute bottom-0 left-1/2 -translate-x-1/2 w-10 h-1 bg-gradient-to-r from-violet-500 to-fuchsia-500 rounded-t-full shadow-[0_-4px_12px_rgba(139,92,246,0.6)]" 
+                />
               )}
             </motion.button>
           );

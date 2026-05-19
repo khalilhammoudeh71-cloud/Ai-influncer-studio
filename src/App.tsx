@@ -30,25 +30,23 @@ import OnboardingTour from './components/OnboardingTour';
 import CommandPalette from './components/CommandPalette';
 
 
-const INTERNAL_FALLBACK_PERSONAS: Persona[] = [
-  {
-    id: 'fallback-luxury',
-    name: 'Luxury Persona',
-    niche: 'Luxury Lifestyle',
-    tone: 'Luxury, Confident, Exclusive',
-    platform: 'Instagram',
-    status: 'Active',
-    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=150&h=150',
-    personalityTraits: ['Ambitious', 'Cold', 'Sophisticated'],
-    visualStyle: 'High-contrast, gold accents, minimalism',
-    audienceType: 'Aspirational high-earners',
-    contentBoundaries: 'No low-budget topics',
-    bio: 'Living the life you only see in dreams.',
-    brandVoiceRules: 'Never use emojis except ✨ and 🥂. Use short, sharp sentences.',
-    contentGoals: 'Build mystery and desire',
-    personaNotes: 'Internal reference'
-  }
-];
+const EMPTY_PERSONA: Persona = {
+  id: 'empty',
+  name: '',
+  niche: '',
+  tone: '',
+  platform: '',
+  status: 'Draft',
+  avatar: '',
+  personalityTraits: [],
+  visualStyle: '',
+  audienceType: '',
+  contentBoundaries: '',
+  bio: '',
+  brandVoiceRules: '',
+  contentGoals: '',
+  personaNotes: '',
+};
 
 function App() {
   const [showOnboarding, setShowOnboarding] = useState(() => {
@@ -266,7 +264,8 @@ function App() {
     );
   }
 
-  const activePersona = personas.find(p => p.id === selectedPersonaId) || personas[0] || INTERNAL_FALLBACK_PERSONAS[0];
+  const activePersona = personas.find(p => p.id === selectedPersonaId) || personas[0] || EMPTY_PERSONA;
+  const hasPersonas = personas.length > 0 && personas[0].id !== 'empty';
 
   const tabs = [
     { id: 'personas', label: 'Personas', icon: Users },
@@ -425,63 +424,75 @@ function App() {
 
             {/* Persona Quick-Switcher */}
             <div className="relative group">
-              <button
-                className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-[#111827]/60 border border-[#334155]/60 hover:border-[#00D4FF]/40 transition-all cursor-pointer"
-                onClick={() => {
-                  const el = document.getElementById('persona-switcher-dropdown');
-                  if (el) el.classList.toggle('hidden');
-                }}
-              >
-                <div className="w-6 h-6 rounded-lg overflow-hidden border border-[#334155] shrink-0">
-                  <img
-                    src={activePersona.avatar || activePersona.referenceImage || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=64&h=64'}
-                    alt=""
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-                <div className="hidden sm:block text-left max-w-[100px]">
-                  <p className="text-[10px] font-black text-[#00D4FF] uppercase tracking-widest leading-none">Active</p>
-                  <p className="text-[11px] font-bold text-white truncate leading-tight">{activePersona.name}</p>
-                </div>
-                <ChevronDown size={12} className="text-[#64748B] hidden sm:block" />
-              </button>
-              {/* Dropdown */}
-              <div id="persona-switcher-dropdown" className="hidden absolute right-0 top-full mt-2 w-64 bg-[#111827]/95 border border-white/10 rounded-2xl shadow-2xl shadow-black/40 backdrop-blur-xl overflow-hidden z-[100]">
-                <div className="p-2 border-b border-white/5">
-                  <p className="text-[9px] font-black text-[#475569] uppercase tracking-[0.15em] px-2 py-1">Switch Persona</p>
-                </div>
-                <div className="max-h-[240px] overflow-y-auto p-1.5">
-                  {personas.map(p => (
-                    <button
-                      key={p.id}
-                      onClick={() => {
-                        setSelectedPersonaId(p.id);
-                        document.getElementById('persona-switcher-dropdown')?.classList.add('hidden');
-                      }}
-                      className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl transition-all ${
-                        p.id === selectedPersonaId
-                          ? 'bg-[#00D4FF]/10 border border-[#00D4FF]/20'
-                          : 'hover:bg-white/5 border border-transparent'
-                      }`}
-                    >
-                      <div className="w-8 h-8 rounded-lg overflow-hidden border border-[#334155] shrink-0">
-                        <img
-                          src={p.avatar || p.referenceImage || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=64&h=64'}
-                          alt=""
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                      <div className="flex-1 min-w-0 text-left">
-                        <p className={`text-xs font-bold truncate ${p.id === selectedPersonaId ? 'text-white' : 'text-[#CBD5E1]'}`}>{p.name}</p>
-                        <p className="text-[9px] text-[#64748B] truncate">{p.niche || 'Digital Creator'}</p>
-                      </div>
-                      {p.id === selectedPersonaId && (
-                        <div className="w-2 h-2 rounded-full bg-[#00F5C2] shrink-0 shadow-[0_0_6px_rgba(0,245,194,0.5)]" />
-                      )}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              {hasPersonas ? (
+                <>
+                  <button
+                    className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-[#111827]/60 border border-[#334155]/60 hover:border-[#00D4FF]/40 transition-all cursor-pointer"
+                    onClick={() => {
+                      const el = document.getElementById('persona-switcher-dropdown');
+                      if (el) el.classList.toggle('hidden');
+                    }}
+                  >
+                    <div className="w-6 h-6 rounded-lg overflow-hidden border border-[#334155] shrink-0">
+                      <img
+                        src={activePersona.avatar || activePersona.referenceImage || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=64&h=64'}
+                        alt=""
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <div className="hidden sm:block text-left max-w-[100px]">
+                      <p className="text-[10px] font-black text-[#00D4FF] uppercase tracking-widest leading-none">Active</p>
+                      <p className="text-[11px] font-bold text-white truncate leading-tight">{activePersona.name}</p>
+                    </div>
+                    <ChevronDown size={12} className="text-[#64748B] hidden sm:block" />
+                  </button>
+                  {/* Dropdown */}
+                  <div id="persona-switcher-dropdown" className="hidden absolute right-0 top-full mt-2 w-64 bg-[#111827]/95 border border-white/10 rounded-2xl shadow-2xl shadow-black/40 backdrop-blur-xl overflow-hidden z-[100]">
+                    <div className="p-2 border-b border-white/5">
+                      <p className="text-[9px] font-black text-[#475569] uppercase tracking-[0.15em] px-2 py-1">Switch Persona</p>
+                    </div>
+                    <div className="max-h-[240px] overflow-y-auto p-1.5">
+                      {personas.map(p => (
+                        <button
+                          key={p.id}
+                          onClick={() => {
+                            setSelectedPersonaId(p.id);
+                            document.getElementById('persona-switcher-dropdown')?.classList.add('hidden');
+                          }}
+                          className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl transition-all ${
+                            p.id === selectedPersonaId
+                              ? 'bg-[#00D4FF]/10 border border-[#00D4FF]/20'
+                              : 'hover:bg-white/5 border border-transparent'
+                          }`}
+                        >
+                          <div className="w-8 h-8 rounded-lg overflow-hidden border border-[#334155] shrink-0">
+                            <img
+                              src={p.avatar || p.referenceImage || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=64&h=64'}
+                              alt=""
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                          <div className="flex-1 min-w-0 text-left">
+                            <p className={`text-xs font-bold truncate ${p.id === selectedPersonaId ? 'text-white' : 'text-[#CBD5E1]'}`}>{p.name}</p>
+                            <p className="text-[9px] text-[#64748B] truncate">{p.niche || 'Digital Creator'}</p>
+                          </div>
+                          {p.id === selectedPersonaId && (
+                            <div className="w-2 h-2 rounded-full bg-[#00F5C2] shrink-0 shadow-[0_0_6px_rgba(0,245,194,0.5)]" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <button
+                  onClick={() => replaceView({ view: 'personas' })}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gradient-to-r from-violet-600/20 to-fuchsia-600/20 border border-violet-500/30 hover:border-violet-400/50 transition-all cursor-pointer"
+                >
+                  <PlusCircle size={14} className="text-violet-400" />
+                  <span className="text-[11px] font-bold text-violet-300 hidden sm:inline">Create Persona</span>
+                </button>
+              )}
             </div>
           </div>
 
