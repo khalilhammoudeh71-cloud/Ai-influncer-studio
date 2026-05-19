@@ -116,12 +116,12 @@ const MODE_CONFIG: { id: CreateMode; label: string; icon: any; gradient: string;
 ];
 
 const QUICK_STYLES = [
-  { id: 'beach-day',    label: 'Beach Day',     emoji: '🏖️', env: 'Beach Resort',      outfit: 'Fitness Wear',         framing: 'Full Body',   mood: 'Playful'      },
-  { id: 'night-out',   label: 'Night Out',      emoji: '🌙', env: 'Upscale Restaurant', outfit: 'Luxury Evening',       framing: 'Portrait',    mood: 'Seductive'    },
-  { id: 'power-look',  label: 'Power Look',     emoji: '💼', env: 'Modern Apartment',   outfit: 'Business Professional',framing: 'Half Body',   mood: 'Confident'    },
-  { id: 'gym-session', label: 'Gym Session',    emoji: '💪', env: 'Private Gym',        outfit: 'Fitness Wear',         framing: 'Full Body',   mood: 'Confident'    },
-  { id: 'luxury-vibes',label: 'Luxury Vibes',   emoji: '✨', env: 'Penthouse',           outfit: 'Glamorous Gown',       framing: 'Full Body',   mood: 'Professional' },
-  { id: 'street-style',label: 'Street Style',   emoji: '🛹', env: 'City Street',         outfit: 'Edgy Streetwear',      framing: 'Candid',      mood: 'Playful'      },
+  { id: 'beach-day',    label: 'Beach Day',     emoji: '🏖️', env: 'Beach Resort',      outfit: 'Fitness Wear',         framing: 'Full Body',   mood: 'Playful',      gradient: 'from-amber-500/20 to-orange-500/10', border: 'border-amber-500/20', glow: 'hover:shadow-amber-500/10' },
+  { id: 'night-out',   label: 'Night Out',      emoji: '🌙', env: 'Upscale Restaurant', outfit: 'Luxury Evening',       framing: 'Portrait',    mood: 'Seductive',    gradient: 'from-indigo-500/20 to-purple-500/10', border: 'border-indigo-500/20', glow: 'hover:shadow-indigo-500/10' },
+  { id: 'power-look',  label: 'Power Look',     emoji: '💼', env: 'Modern Apartment',   outfit: 'Business Professional',framing: 'Half Body',   mood: 'Confident',    gradient: 'from-slate-500/20 to-zinc-500/10', border: 'border-slate-400/20', glow: 'hover:shadow-slate-400/10' },
+  { id: 'gym-session', label: 'Gym Session',    emoji: '💪', env: 'Private Gym',        outfit: 'Fitness Wear',         framing: 'Full Body',   mood: 'Confident',    gradient: 'from-red-500/20 to-rose-500/10', border: 'border-red-500/20', glow: 'hover:shadow-red-500/10' },
+  { id: 'luxury-vibes',label: 'Luxury Vibes',   emoji: '✨', env: 'Penthouse',           outfit: 'Glamorous Gown',       framing: 'Full Body',   mood: 'Professional', gradient: 'from-yellow-500/20 to-amber-500/10', border: 'border-yellow-500/20', glow: 'hover:shadow-yellow-500/10' },
+  { id: 'street-style',label: 'Street Style',   emoji: '🛹', env: 'City Street',         outfit: 'Edgy Streetwear',      framing: 'Candid',      mood: 'Playful',      gradient: 'from-cyan-500/20 to-teal-500/10', border: 'border-cyan-500/20', glow: 'hover:shadow-cyan-500/10' },
 ];
 
 type PostGenAction = null | 'edit' | 'upscale';
@@ -1184,20 +1184,25 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               <button onClick={clearQuickStyle} className="text-[10px] text-purple-400 hover:text-purple-300 transition-colors">Clear</button>
             )}
           </div>
-          <div className="grid grid-cols-3 gap-1.5">
+          <div className="grid grid-cols-3 gap-2">
             {QUICK_STYLES.map(qs => (
-              <button
+              <motion.button
                 key={qs.id}
                 onClick={() => applyQuickStyle(qs)}
-                className={`flex items-center justify-center gap-1 p-2 rounded-xl text-[10px] font-bold transition-all border ${
+                whileHover={{ scale: 1.04, y: -2 }}
+                whileTap={{ scale: 0.96 }}
+                className={`relative flex flex-col items-center gap-1.5 p-3 rounded-xl text-[10px] font-bold transition-all border overflow-hidden shadow-lg ${
                   activeQuickStyle === qs.id
-                    ? 'bg-gradient-to-r from-purple-600 to-violet-600 text-white border-transparent shadow-md'
-                    : 'bg-[var(--bg-surface)] border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-white/5 hover:text-white'
+                    ? 'bg-gradient-to-br from-purple-600/40 to-violet-600/20 text-white border-purple-500/40 shadow-purple-500/20'
+                    : `bg-gradient-to-br ${qs.gradient} ${qs.border} text-[var(--text-secondary)] hover:text-white ${qs.glow}`
                 }`}
               >
-                <span>{qs.emoji}</span>
-                <span className="truncate">{qs.label}</span>
-              </button>
+                {/* Background shimmer effect */}
+                <div className="absolute inset-0 bg-gradient-to-tr from-white/[0.03] via-transparent to-white/[0.02] pointer-events-none" />
+                <span className="text-lg relative z-10">{qs.emoji}</span>
+                <span className="truncate relative z-10 font-extrabold">{qs.label}</span>
+                <span className="text-[7px] text-[var(--text-muted)] font-medium relative z-10 opacity-80">{qs.env}</span>
+              </motion.button>
             ))}
           </div>
         </div>
@@ -1305,36 +1310,79 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               </div>
             </div>
           ) : (
-            <div className="relative w-full h-full flex flex-col items-center justify-center min-h-[340px] p-6 select-none">
-              {/* Decorative background */}
-              <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(139,92,246,0.06),transparent_70%)]" />
-              
-              {/* Icon */}
-              <div className="relative mb-5">
-                <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-violet-500/15 to-fuchsia-500/10 border border-violet-500/20 flex items-center justify-center">
-                  <ImageIcon size={32} className="text-violet-400/60" />
-                </div>
-                <div className="absolute -top-1 -right-1 w-6 h-6 bg-gradient-to-br from-violet-500 to-fuchsia-500 rounded-lg flex items-center justify-center shadow-lg shadow-violet-500/30">
-                  <Sparkles size={12} className="text-white" />
-                </div>
+            <div className="relative w-full h-full flex flex-col items-center justify-center min-h-[340px] p-6 select-none overflow-hidden">
+              {/* Background artwork */}
+              <div className="absolute inset-0">
+                <img 
+                  src="/canvas_empty_state.png" 
+                  alt="" 
+                  className="w-full h-full object-cover opacity-20"
+                  style={{ filter: 'blur(1px)' }}
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-primary)] via-[var(--bg-primary)]/60 to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-b from-[var(--bg-primary)]/80 via-transparent to-[var(--bg-primary)]" />
               </div>
               
-              <h3 className="text-base font-bold text-white/80 mb-1">Your Canvas Awaits</h3>
-              <p className="text-xs text-[var(--text-muted)] text-center max-w-[260px] mb-5 leading-relaxed">
-                Choose a model, write a prompt, and click <span className="text-violet-400 font-bold">Generate</span> to create your first image.
+              {/* Animated floating orbs */}
+              <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                <motion.div 
+                  animate={{ y: [0, -15, 0], x: [0, 8, 0], opacity: [0.3, 0.6, 0.3] }}
+                  transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
+                  className="absolute top-[20%] left-[15%] w-24 h-24 bg-violet-500/10 rounded-full blur-2xl"
+                />
+                <motion.div 
+                  animate={{ y: [0, 12, 0], x: [0, -10, 0], opacity: [0.2, 0.5, 0.2] }}
+                  transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut', delay: 1 }}
+                  className="absolute top-[50%] right-[10%] w-32 h-32 bg-fuchsia-500/8 rounded-full blur-3xl"
+                />
+                <motion.div 
+                  animate={{ y: [0, -20, 0], opacity: [0.15, 0.4, 0.15] }}
+                  transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut', delay: 2 }}
+                  className="absolute bottom-[15%] left-[30%] w-20 h-20 bg-cyan-500/10 rounded-full blur-2xl"
+                />
+              </div>
+
+              {/* Central icon with animated ring */}
+              <div className="relative mb-6 z-10">
+                <motion.div 
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}
+                  className="absolute -inset-3 rounded-full border border-dashed border-violet-500/20"
+                />
+                <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-violet-600/30 to-fuchsia-600/20 border border-violet-500/30 flex items-center justify-center backdrop-blur-sm shadow-2xl shadow-violet-500/10">
+                  <ImageIcon size={32} className="text-violet-400" />
+                </div>
+                <motion.div 
+                  animate={{ scale: [1, 1.2, 1] }}
+                  transition={{ duration: 2, repeat: Infinity }}
+                  className="absolute -top-1 -right-1 w-6 h-6 bg-gradient-to-br from-violet-500 to-fuchsia-500 rounded-lg flex items-center justify-center shadow-lg shadow-violet-500/40"
+                >
+                  <Sparkles size={12} className="text-white" />
+                </motion.div>
+              </div>
+              
+              <h3 className="text-lg font-extrabold text-white mb-1 z-10 tracking-tight">Your Canvas Awaits</h3>
+              <p className="text-xs text-[var(--text-muted)] text-center max-w-[280px] mb-6 leading-relaxed z-10">
+                Choose a model, write a prompt, and click <span className="text-violet-400 font-bold">Generate</span> to bring your vision to life.
               </p>
               
-              {/* Quick tips */}
-              <div className="flex flex-col gap-2 w-full max-w-[280px]">
+              {/* Premium step cards */}
+              <div className="flex flex-col gap-2.5 w-full max-w-[300px] z-10">
                 {[
-                  { icon: '1', text: 'Select an AI model from the sidebar' },
-                  { icon: '2', text: 'Describe your scene in the prompt' },
-                  { icon: '3', text: 'Pick a preset style or customize' },
-                ].map(tip => (
-                  <div key={tip.icon} className="flex items-center gap-3 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/5">
-                    <span className="w-5 h-5 rounded-md bg-violet-500/20 text-violet-300 text-[9px] font-black flex items-center justify-center shrink-0">{tip.icon}</span>
-                    <span className="text-[10px] text-[var(--text-secondary)] font-medium">{tip.text}</span>
-                  </div>
+                  { step: '1', text: 'Select an AI model from the sidebar', color: 'from-violet-500/20 to-violet-600/5', iconColor: 'bg-violet-500 text-white' },
+                  { step: '2', text: 'Describe your scene in the prompt', color: 'from-fuchsia-500/20 to-fuchsia-600/5', iconColor: 'bg-fuchsia-500 text-white' },
+                  { step: '3', text: 'Pick a preset style or customize', color: 'from-cyan-500/20 to-cyan-600/5', iconColor: 'bg-cyan-500 text-white' },
+                ].map((tip, i) => (
+                  <motion.div 
+                    key={tip.step}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.2 + i * 0.15, duration: 0.5 }}
+                    className={`flex items-center gap-3 px-4 py-3 rounded-xl bg-gradient-to-r ${tip.color} border border-white/[0.06] backdrop-blur-sm shadow-lg`}
+                  >
+                    <span className={`w-6 h-6 rounded-lg ${tip.iconColor} text-[10px] font-black flex items-center justify-center shrink-0 shadow-md`}>{tip.step}</span>
+                    <span className="text-[11px] text-white/80 font-semibold">{tip.text}</span>
+                  </motion.div>
                 ))}
               </div>
             </div>
@@ -2562,23 +2610,30 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             <motion.button
               key={m.id}
               onClick={() => { updateMode(m.id); setGlobalError(null); }}
-              whileHover={{ scale: 1.03, y: -3 }}
-              whileTap={{ scale: 0.97 }}
+              whileHover={{ scale: 1.05, y: -4 }}
+              whileTap={{ scale: 0.96 }}
               className={`relative flex flex-col items-center gap-2 p-4 rounded-2xl border transition-all duration-300 group overflow-hidden ${
                 isActive
-                  ? `bg-gradient-to-b from-white/[0.08] to-white/[0.02] border-violet-500/50 shadow-[0_0_25px_rgba(139,92,246,0.15)]`
-                  : 'bg-white/[0.02] border-white/5 hover:bg-white/[0.05] hover:border-white/15'
+                  ? `bg-gradient-to-b from-white/[0.12] to-white/[0.03] border-violet-500/50 shadow-[0_0_30px_rgba(139,92,246,0.2)]`
+                  : `bg-gradient-to-b from-white/[0.04] to-white/[0.01] border-white/[0.08] hover:border-white/20 hover:shadow-lg`
               }`}
             >
+              {/* Subtle background gradient tint for inactive cards */}
+              <div className={`absolute inset-0 opacity-40 transition-opacity duration-300 pointer-events-none ${
+                isActive ? '' : 'group-hover:opacity-60'
+              }`}>
+                <div className={`w-full h-full bg-gradient-to-b ${m.gradient} opacity-20 ${isActive ? 'opacity-30' : ''}`} />
+              </div>
+              
               {/* Gradient glow for active */}
               {isActive && (
-                <div className="absolute inset-0 bg-gradient-to-b from-violet-500/10 via-transparent to-transparent pointer-events-none" />
+                <div className="absolute inset-0 bg-gradient-to-b from-violet-500/15 via-transparent to-transparent pointer-events-none" />
               )}
               
               <div className={`relative p-2.5 rounded-xl transition-all duration-300 ${
                 isActive 
                   ? `bg-gradient-to-br ${m.gradient} text-white shadow-lg` 
-                  : 'bg-white/5 text-[var(--text-muted)] group-hover:bg-white/10 group-hover:text-white'
+                  : `bg-gradient-to-br ${m.gradient} text-white/70 opacity-60 group-hover:opacity-100 group-hover:text-white`
               }`}>
                 <Icon size={20} />
               </div>
