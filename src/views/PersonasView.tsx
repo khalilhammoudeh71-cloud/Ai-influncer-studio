@@ -435,13 +435,226 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
   return (
     <div className="px-6 pt-7 max-w-[1400px] mx-auto pb-32">
       {!activePersona ? (
-         <div className="flex flex-col items-center justify-center py-20 bg-[#0F172A]/50 border border-[#334155] rounded-3xl">
-           <div className="w-16 h-16 bg-[#00D4FF]/10 rounded-full flex items-center justify-center mb-4 text-[#00D4FF]">
-             <Plus size={32} />
+         <div className="space-y-8 animate-in fade-in duration-500">
+           
+           {/* ── HERO SECTION ── */}
+           <div className="relative rounded-[28px] overflow-hidden border border-white/[0.08] shadow-2xl">
+             {/* Background layers */}
+             <div className="absolute inset-0 bg-gradient-to-br from-[#0c1222] via-[#111827] to-[#0c1222]" />
+             <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,rgba(139,92,246,0.15),transparent_50%)]" />
+             <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_right,rgba(0,212,255,0.1),transparent_50%)]" />
+             
+             {/* Floating grid pattern */}
+             <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)', backgroundSize: '60px 60px' }} />
+
+             <div className="relative z-10 flex flex-col lg:flex-row items-center gap-8 p-8 lg:p-12">
+               {/* Left: Text content */}
+               <div className="flex-1 text-center lg:text-left">
+                 <motion.div
+                   initial={{ opacity: 0, y: 20 }}
+                   animate={{ opacity: 1, y: 0 }}
+                   transition={{ duration: 0.6 }}
+                 >
+                   <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-violet-500/10 border border-violet-500/20 mb-4">
+                     <Sparkles size={12} className="text-violet-400" />
+                     <span className="text-[10px] font-bold text-violet-300 uppercase tracking-wider">AI-Powered Studio</span>
+                   </div>
+                   
+                   <h1 className="text-3xl lg:text-4xl font-black text-white mb-3 leading-tight">
+                     Create Your <span className="bg-gradient-to-r from-violet-400 via-fuchsia-400 to-cyan-400 bg-clip-text text-transparent">AI Persona</span>
+                   </h1>
+                   
+                   <p className="text-sm lg:text-base text-white/50 mb-6 max-w-md leading-relaxed">
+                     Design unique AI influencers with consistent identity. Generate photos, videos, voice & content — all from one persona.
+                   </p>
+                   
+                   <div className="flex flex-col sm:flex-row gap-3 justify-center lg:justify-start">
+                     <motion.button 
+                       onClick={handleAddPersona}
+                       whileHover={{ scale: 1.04, y: -2 }}
+                       whileTap={{ scale: 0.96 }}
+                       className="px-8 py-3.5 bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white font-bold rounded-2xl shadow-xl shadow-violet-500/25 hover:shadow-violet-500/40 transition-all flex items-center justify-center gap-2 text-sm"
+                     >
+                       <Plus size={18} />
+                       Create Your First Persona
+                     </motion.button>
+                   </div>
+                 </motion.div>
+               </div>
+               
+               {/* Right: Floating image showcase */}
+               <div className="relative w-full lg:w-[420px] h-[280px] shrink-0">
+                 {/* Card 1 - Fashion */}
+                 <motion.div
+                   initial={{ opacity: 0, x: 30, rotate: 5 }}
+                   animate={{ opacity: 1, x: 0, rotate: 3 }}
+                   transition={{ duration: 0.7, delay: 0.2 }}
+                   className="absolute top-2 right-0 w-[160px] h-[200px] rounded-2xl overflow-hidden border-2 border-white/10 shadow-2xl z-30"
+                 >
+                   <img src="/persona_showcase_1.png" alt="Fashion persona" className="w-full h-full object-cover" />
+                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                   <div className="absolute bottom-2 left-2 right-2">
+                     <p className="text-[9px] font-bold text-white/90">Fashion Blogger</p>
+                     <p className="text-[7px] text-white/50">Style • Lifestyle</p>
+                   </div>
+                 </motion.div>
+                 
+                 {/* Card 2 - Urban */}
+                 <motion.div
+                   initial={{ opacity: 0, x: -30, rotate: -5 }}
+                   animate={{ opacity: 1, x: 0, rotate: -4 }}
+                   transition={{ duration: 0.7, delay: 0.4 }}
+                   className="absolute top-8 left-4 w-[150px] h-[190px] rounded-2xl overflow-hidden border-2 border-white/10 shadow-2xl z-20"
+                 >
+                   <img src="/persona_showcase_2.png" alt="Urban persona" className="w-full h-full object-cover" />
+                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                   <div className="absolute bottom-2 left-2 right-2">
+                     <p className="text-[9px] font-bold text-white/90">Urban Creator</p>
+                     <p className="text-[7px] text-white/50">Fashion • Luxury</p>
+                   </div>
+                 </motion.div>
+                 
+                 {/* Card 3 - Travel */}
+                 <motion.div
+                   initial={{ opacity: 0, y: 30 }}
+                   animate={{ opacity: 1, y: 0 }}
+                   transition={{ duration: 0.7, delay: 0.6 }}
+                   className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[140px] h-[170px] rounded-2xl overflow-hidden border-2 border-white/10 shadow-2xl z-10"
+                 >
+                   <img src="/persona_showcase_3.png" alt="Travel persona" className="w-full h-full object-cover" />
+                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                   <div className="absolute bottom-2 left-2 right-2">
+                     <p className="text-[9px] font-bold text-white/90">Travel Blogger</p>
+                     <p className="text-[7px] text-white/50">Travel • Lifestyle</p>
+                   </div>
+                 </motion.div>
+
+                 {/* Floating glow orbs */}
+                 <motion.div 
+                   animate={{ y: [0, -10, 0], opacity: [0.3, 0.6, 0.3] }}
+                   transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
+                   className="absolute top-0 left-1/2 w-20 h-20 bg-violet-500/15 rounded-full blur-2xl"
+                 />
+                 <motion.div 
+                   animate={{ y: [0, 8, 0], opacity: [0.2, 0.5, 0.2] }}
+                   transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut', delay: 1 }}
+                   className="absolute bottom-4 right-8 w-16 h-16 bg-cyan-500/15 rounded-full blur-2xl"
+                 />
+               </div>
+             </div>
            </div>
-           <h3 className="text-xl font-bold mb-2">Welcome to AI Studio</h3>
-           <p className="text-[var(--text-tertiary)] text-sm mb-6">Create your first persona to get started.</p>
-           <button onClick={handleAddPersona} className="premium-button px-6 py-3">Create Persona</button>
+
+           {/* ── FEATURE CARDS ── */}
+           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+             {[
+               { 
+                 icon: Camera, 
+                 title: 'Photo Generation', 
+                 desc: 'Create stunning, identity-consistent photos in any setting, outfit, and style',
+                 gradient: 'from-violet-500/15 to-purple-600/5',
+                 iconBg: 'bg-violet-500',
+                 image: '/persona_showcase_1.png'
+               },
+               { 
+                 icon: Film, 
+                 title: 'Video & Avatar', 
+                 desc: 'Turn any photo into a talking video or animated clip with custom voice',
+                 gradient: 'from-pink-500/15 to-rose-600/5',
+                 iconBg: 'bg-pink-500',
+                 image: '/persona_showcase_2.png'
+               },
+               { 
+                 icon: Sparkles, 
+                 title: 'Content Studio', 
+                 desc: 'Generate scripts, plan posts, clone voices — a full content creation suite',
+                 gradient: 'from-cyan-500/15 to-teal-600/5',
+                 iconBg: 'bg-cyan-500',
+                 image: '/persona_showcase_3.png'
+               },
+             ].map((feature, i) => {
+               const FIcon = feature.icon;
+               return (
+                 <motion.div
+                   key={feature.title}
+                   initial={{ opacity: 0, y: 20 }}
+                   animate={{ opacity: 1, y: 0 }}
+                   transition={{ delay: 0.3 + i * 0.15, duration: 0.5 }}
+                   className={`relative group rounded-2xl border border-white/[0.06] overflow-hidden bg-gradient-to-b ${feature.gradient} hover:border-white/15 transition-all duration-300 cursor-pointer`}
+                   onClick={handleAddPersona}
+                 >
+                   {/* Preview image strip */}
+                   <div className="h-28 overflow-hidden relative">
+                     <img src={feature.image} alt="" className="w-full h-full object-cover opacity-50 group-hover:opacity-70 group-hover:scale-105 transition-all duration-500" />
+                     <div className="absolute inset-0 bg-gradient-to-t from-[#0c1222] via-[#0c1222]/60 to-transparent" />
+                   </div>
+                   
+                   <div className="p-4 relative">
+                     <div className={`w-8 h-8 ${feature.iconBg} rounded-xl flex items-center justify-center mb-3 shadow-lg -mt-8 relative z-10 ring-2 ring-[#0c1222]`}>
+                       <FIcon size={14} className="text-white" />
+                     </div>
+                     <h4 className="text-sm font-extrabold text-white mb-1">{feature.title}</h4>
+                     <p className="text-[11px] text-white/40 leading-relaxed">{feature.desc}</p>
+                   </div>
+                 </motion.div>
+               );
+             })}
+           </div>
+
+           {/* ── EXAMPLE SHOWCASE STRIP ── */}
+           <motion.div
+             initial={{ opacity: 0 }}
+             animate={{ opacity: 1 }}
+             transition={{ delay: 0.8 }}
+             className="relative rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5 overflow-hidden"
+           >
+             <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(139,92,246,0.04),transparent_70%)]" />
+             
+             <div className="relative z-10">
+               <div className="flex items-center justify-between mb-4">
+                 <div>
+                   <h4 className="text-sm font-extrabold text-white">What You Can Create</h4>
+                   <p className="text-[10px] text-white/40 mt-0.5">AI-generated influencer content examples</p>
+                 </div>
+                 <motion.button 
+                   onClick={handleAddPersona}
+                   whileHover={{ scale: 1.03 }}
+                   whileTap={{ scale: 0.97 }}
+                   className="px-4 py-2 bg-gradient-to-r from-violet-600/80 to-fuchsia-600/80 text-white text-xs font-bold rounded-xl hover:from-violet-600 hover:to-fuchsia-600 transition-all flex items-center gap-1.5"
+                 >
+                   <Plus size={14} /> Get Started
+                 </motion.button>
+               </div>
+               
+               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                 {[
+                   { src: '/persona_showcase_1.png', label: 'Fashion Editorial', category: 'Photo' },
+                   { src: '/persona_showcase_2.png', label: 'Night Cityscape', category: 'Photo' },
+                   { src: '/persona_showcase_3.png', label: 'Travel Content', category: 'Lifestyle' },
+                   { src: '/persona_showcase_4.png', label: 'Fitness Motivation', category: 'Photo' },
+                 ].map((item, i) => (
+                   <motion.div 
+                     key={i}
+                     initial={{ opacity: 0, scale: 0.9 }}
+                     animate={{ opacity: 1, scale: 1 }}
+                     transition={{ delay: 1 + i * 0.1 }}
+                     className="relative group rounded-xl overflow-hidden aspect-[3/4] cursor-pointer border border-white/5 hover:border-violet-500/30 transition-all"
+                     onClick={handleAddPersona}
+                   >
+                     <img src={item.src} alt={item.label} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+                     <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                     <div className="absolute bottom-0 left-0 right-0 p-2.5 translate-y-full group-hover:translate-y-0 transition-transform duration-300">
+                       <span className="text-[7px] font-bold text-violet-300 uppercase tracking-wider">{item.category}</span>
+                       <p className="text-[10px] font-bold text-white">{item.label}</p>
+                     </div>
+                     {/* AI badge */}
+                     <div className="absolute top-2 right-2 px-1.5 py-0.5 bg-black/50 backdrop-blur-sm rounded-md border border-white/10">
+                       <span className="text-[7px] font-bold text-violet-300">AI</span>
+                     </div>
+                   </motion.div>
+                 ))}
+               </div>
+             </div>
+           </motion.div>
          </div>
       ) : (
         <div className="space-y-10 animate-in fade-in duration-300">
