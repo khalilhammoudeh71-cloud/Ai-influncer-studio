@@ -67,7 +67,7 @@ export interface GenerateImageResult {
 }
 
 export async function fetchAvailableModels(): Promise<ModelInfo[]> {
-  const response = await fetch('/api/models');
+  const response = await authFetch('/api/models');
   if (!response.ok) {
     throw new Error('Failed to fetch available models');
   }
@@ -76,7 +76,7 @@ export async function fetchAvailableModels(): Promise<ModelInfo[]> {
 }
 
 export async function fetchEditModels(): Promise<ModelInfo[]> {
-  const response = await fetch('/api/models');
+  const response = await authFetch('/api/models');
   if (!response.ok) {
     throw new Error('Failed to fetch edit models');
   }
@@ -85,7 +85,7 @@ export async function fetchEditModels(): Promise<ModelInfo[]> {
 }
 
 export async function fetchUpscaleModels(): Promise<ModelInfo[]> {
-  const response = await fetch('/api/models');
+  const response = await authFetch('/api/models');
   if (!response.ok) {
     throw new Error('Failed to fetch upscale models');
   }
@@ -94,7 +94,7 @@ export async function fetchUpscaleModels(): Promise<ModelInfo[]> {
 }
 
 export async function fetchAllModelTypes(): Promise<{ models: ModelInfo[]; editModels: ModelInfo[]; upscaleModels: ModelInfo[]; videoModels: ModelInfo[] }> {
-  const response = await fetch('/api/models');
+  const response = await authFetch('/api/models');
   if (!response.ok) {
     throw new Error('Failed to fetch models');
   }
@@ -547,6 +547,9 @@ export async function generateTalkingHead(params: {
   audioUrl?: string;
   script?: string;
   voiceName?: string;
+  engine?: 'wavespeed' | 'heygen';
+  heygenEngine?: 'avatar_iv' | 'avatar_v';
+  heygenApiKey?: string;
 }): Promise<{ videoUrl: string; model: string }> {
   const compressed = await compressForUpload(params.portraitImage);
   const response = await authFetch('/api/talking-head', {
@@ -587,3 +590,27 @@ export async function virtualTryOn(
   if (!response.ok) throw new Error(data.error || 'Virtual try-on failed.');
   return { imageUrl: data.imageUrl, model: data.model };
 }
+
+export async function generateMotionControl(params: {
+  refImage: string;
+  motionVideoUrl?: string;
+  motionVideoBase64?: string;
+  danceId?: string;
+}): Promise<{ videoUrl: string; model: string }> {
+  const compressedRef = await compressForUpload(params.refImage);
+  const response = await authFetch('/api/motion-control', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...params, refImage: compressedRef }),
+  });
+  const contentType = response.headers.get('content-type');
+  if (!contentType || !contentType.includes('application/json')) {
+    const text = await response.text().catch(() => '');
+    if (response.status === 413) throw new Error('Request too large — try with smaller assets.');
+    throw new Error(text ? `Server error (${response.status}): ${text.substring(0, 150)}` : `Server error (${response.status}).`);
+  }
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Motion control generation failed.');
+  return { videoUrl: data.videoUrl, model: data.model };
+}
+

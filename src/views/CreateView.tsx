@@ -67,6 +67,7 @@ import {
   generateTalkingHead,
 } from '../services/imageService';
 import { api } from '../services/apiService';
+import { processImageFile } from '../utils/imageProcessing';
 import toast from 'react-hot-toast';
 import { useRef } from 'react';
 
@@ -97,6 +98,7 @@ interface CreateViewProps {
   onSelectPersona: (id: string) => void;
   subView?: string;
   nav: NavActions;
+  billingInfo?: any;
 }
 
 const CUSTOM = 'None';
@@ -105,14 +107,14 @@ const OUTFITS = [CUSTOM, 'Casual Chic', 'Luxury Evening', 'Business Professional
 const FRAMING = [CUSTOM, 'Portrait', 'Selfie Style', 'Full Body', 'Half Body', 'Candid', 'Cinematic'];
 const MOODS = [CUSTOM, 'Confident', 'Friendly', 'Thoughtful', 'Playful', 'Professional', 'Seductive'];
 
-const MODE_CONFIG: { id: CreateMode; label: string; icon: any; gradient: string; ringClass: string; desc: string }[] = [
-  { id: 'angle', label: 'Camera Angles', icon: Camera, gradient: 'from-cyan-600 to-sky-500', ringClass: 'focus:ring-cyan-500', desc: 'Generate 9-angle identity sheets' },
-  { id: 'image', label: 'Generate Images', icon: ImageIcon, gradient: 'from-purple-600 to-blue-600', ringClass: 'focus:ring-purple-500', desc: 'Create persona-consistent images' },
-  { id: 'video', label: 'Generate Videos', icon: Video, gradient: 'from-pink-600 to-orange-500', ringClass: 'focus:ring-pink-500', desc: 'Turn images into video scenes' },
-  { id: 'talking-avatar', label: 'Talking Avatar', icon: UserRound, gradient: 'from-emerald-600 to-teal-500', ringClass: 'focus:ring-emerald-500', desc: 'Speaking avatar with voice' },
-  { id: 'voice', label: 'Voice', icon: Mic, gradient: 'from-amber-500 to-orange-500', ringClass: 'focus:ring-amber-500', desc: 'Generate audio and clone voice' },
-  { id: 'ai-tools', label: 'AI Tools', icon: Sparkles, gradient: 'from-violet-600 to-purple-500', ringClass: 'focus:ring-violet-500', desc: 'Edit and enhance images' },
-  { id: 'planner', label: 'Content Plan', icon: Calendar, gradient: 'from-fuchsia-600 to-pink-500', ringClass: 'focus:ring-fuchsia-500', desc: 'Schedule posts and campaigns' },
+const MODE_CONFIG: { id: CreateMode; label: string; icon: any; gradient: string; ringClass: string; desc: string; bgImage: string }[] = [
+  { id: 'angle', label: 'Camera Angles', icon: Camera, gradient: 'from-cyan-600 to-sky-500', ringClass: 'focus:ring-cyan-500', desc: 'Generate 9-angle identity sheets', bgImage: 'https://images.unsplash.com/photo-1542038784456-1ea8e935640e?auto=format&fit=crop&w=300&q=80' },
+  { id: 'image', label: 'Generate Images', icon: ImageIcon, gradient: 'from-purple-600 to-blue-600', ringClass: 'focus:ring-purple-500', desc: 'Create persona-consistent images', bgImage: 'https://images.unsplash.com/photo-1509631179647-0177331693ae?auto=format&fit=crop&w=300&q=80' },
+  { id: 'video', label: 'Generate Videos', icon: Video, gradient: 'from-pink-600 to-orange-500', ringClass: 'focus:ring-pink-500', desc: 'Turn images into video scenes', bgImage: 'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?auto=format&fit=crop&w=300&q=80' },
+  { id: 'talking-avatar', label: 'Talking Avatar', icon: UserRound, gradient: 'from-emerald-600 to-teal-500', ringClass: 'focus:ring-emerald-500', desc: 'Speaking avatar with voice', bgImage: 'https://images.unsplash.com/photo-1478737270239-2f02b77fc618?auto=format&fit=crop&w=300&q=80' },
+  { id: 'voice', label: 'Voice', icon: Mic, gradient: 'from-amber-500 to-orange-500', ringClass: 'focus:ring-amber-500', desc: 'Generate audio and clone voice', bgImage: 'https://images.unsplash.com/photo-1478737270239-2f02b77fc618?auto=format&fit=crop&w=300&q=80' },
+  { id: 'ai-tools', label: 'AI Tools', icon: Sparkles, gradient: 'from-violet-600 to-purple-500', ringClass: 'focus:ring-violet-500', desc: 'Edit and enhance images', bgImage: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=300&q=80' },
+  { id: 'planner', label: 'Content Plan', icon: Calendar, gradient: 'from-fuchsia-600 to-pink-500', ringClass: 'focus:ring-fuchsia-500', desc: 'Schedule posts and campaigns', bgImage: 'https://images.unsplash.com/photo-1506784983877-45594efa4cbe?auto=format&fit=crop&w=300&q=80' },
 ];
 
 const QUICK_STYLES = [
@@ -161,7 +163,7 @@ const RESOLUTION_OPTIONS: Record<string, { value: 'standard' | 'hd'; label: stri
   default:   [{ value: 'standard', label: 'Standard' }, { value: 'hd', label: 'HD' }],
 };
 
-export default function CreateView({ persona, personas, setPersonas, onSelectPersona, subView, nav }: CreateViewProps) {
+export default function CreateView({ persona, personas, setPersonas, onSelectPersona, subView, nav, billingInfo }: CreateViewProps) {
   const initialPersona = persona || (personas && personas.length > 0 ? personas[0] : null);
   const audioPreviewRef = useRef<HTMLAudioElement | null>(null);
 
@@ -284,6 +286,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const [angleResult, setAngleResult] = useState<{ imageUrl: string; model: string } | null>(null);
 
   const [activeQuickStyle, setActiveQuickStyle] = useState<string | null>(null);
+  const [styleOptionsOpen, setStyleOptionsOpen] = useState(false);
   const [personaPickerOpen, setPersonaPickerOpen] = useState(false);
 
   const [selectedAspectRatio, setSelectedAspectRatio] = useState('1:1');
@@ -301,6 +304,25 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
   const [allVoices, setAllVoices] = useState<TTSVoice[]>(TTS_VOICES);
   const [playingPreviewId, setPlayingPreviewId] = useState<string | null>(null);
+
+  // Talking Avatar Engine/Quality states
+  const [talkingAvatarEngine, setTalkingAvatarEngine] = useState<'wavespeed' | 'heygen'>(() => {
+    try {
+      const prefs = JSON.parse(localStorage.getItem('ai_studio_prefs') || '{}');
+      return prefs.heygenApiKey ? 'heygen' : 'wavespeed';
+    } catch {
+      return 'wavespeed';
+    }
+  });
+  const [talkingHeygenEngine, setTalkingHeygenEngine] = useState<'avatar_iv' | 'avatar_v'>('avatar_v');
+
+  // Avatar reference image upload state
+  const [uploadedAvatarImage, setUploadedAvatarImage] = useState<string | null>(null);
+  const [uploadedAvatarImageName, setUploadedAvatarImageName] = useState<string | null>(null);
+  const avatarImageUploadRef = useRef<HTMLInputElement | null>(null);
+
+  // Separate result state for talking avatar to keep it independent of standard video tab
+  const [talkingAvatarResult, setTalkingAvatarResult] = useState<{ videoUrl: string; model: string } | null>(null);
 
   const handleAudioUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -404,13 +426,18 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
   const handleGenerateTalkingAvatar = async () => {
     if (isGenerating) return;
+    
+    const portraitImage = selectedAvatarSource || activePersona.avatar || '';
+    if (!portraitImage) {
+      toast.error('Please select or upload a portrait image first.');
+      return;
+    }
+
     setIsGenerating(true);
     setGlobalError(null);
     
     const t = toast.loading('Initializing Talking Avatar pipeline...');
     try {
-      const portraitImage = activePersona.avatar || ''; 
-      
       let audioUrl = '';
       if (selectedAvatarVoice === 'custom-upload' && uploadedAudio) {
         audioUrl = uploadedAudio.url;
@@ -427,19 +454,29 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         audioUrl = ttsRes.audioUrl;
       }
 
+      // Load client-stored HeyGen API key if applicable
+      let heygenApiKey: string | undefined = undefined;
+      try {
+        const prefs = JSON.parse(localStorage.getItem('ai_studio_prefs') || '{}');
+        heygenApiKey = prefs.heygenApiKey || undefined;
+      } catch (err) {
+        console.error('Failed to load HeyGen key from local storage:', err);
+      }
+
       toast.loading('Animating avatar face (this may take a minute)...', { id: t });
       const result = await generateTalkingHead({
         portraitImage,
         audioUrl,
         script: avatarScript,
-        voiceName: selectedAvatarVoice
+        voiceName: selectedAvatarVoice,
+        engine: talkingAvatarEngine,
+        heygenEngine: talkingHeygenEngine,
+        heygenApiKey
       });
 
       toast.success('Talking Avatar ready!', { id: t });
-      // In a real app, we would add this to history or show it in the preview
-      // For now, we update the video result if needed or just show success
       if (result.videoUrl) {
-        setVideoResult({ videoUrl: result.videoUrl, model: result.model });
+        setTalkingAvatarResult({ videoUrl: result.videoUrl, model: result.model });
       }
     } catch (err) {
       console.error(err);
@@ -449,12 +486,37 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       setIsGenerating(false);
     }
   };
-  const [selectedAvatarSource, setSelectedAvatarSource] = useState('persona-1');
+  const [selectedAvatarSource, setSelectedAvatarSource] = useState('');
   const [selectedAvatarTone, setSelectedAvatarTone] = useState('Professional');
   const [selectedAvatarFraming, setSelectedAvatarFraming] = useState('Medium Shot');
   const [selectedAvatarDuration, setSelectedAvatarDuration] = useState('30s (approx)');
   const [isGeneratingAvatar, setIsGeneratingAvatar] = useState(false);
   const [avatarResult, setAvatarResult] = useState<{ url: string; thumbnail: string } | null>(null);
+
+  const availableImages = useMemo(() => {
+    const images: string[] = [];
+    if (uploadedAvatarImage) images.push(uploadedAvatarImage);
+    if (activePersona.avatar) images.push(activePersona.avatar);
+    if (activePersona.referenceImage) images.push(activePersona.referenceImage);
+    
+    if (activePersona.visualLibrary && Array.isArray(activePersona.visualLibrary)) {
+      activePersona.visualLibrary.forEach(img => {
+        if (img && typeof img === 'string' && !images.includes(img)) {
+          images.push(img);
+        }
+      });
+    }
+    
+    return Array.from(new Set(images)).filter(Boolean);
+  }, [uploadedAvatarImage, activePersona.avatar, activePersona.referenceImage, activePersona.visualLibrary]);
+
+  useEffect(() => {
+    if (availableImages.length > 0) {
+      setSelectedAvatarSource(availableImages[0]);
+    } else {
+      setSelectedAvatarSource('');
+    }
+  }, [activePersona.id, availableImages]);
 
   const refPersonaImage = refPersonaId !== 'none' ? (personas.find(p => p.id === refPersonaId)?.referenceImage ?? null) : null;
   const allRefImages: string[] = [
@@ -956,15 +1018,18 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     value: string,
     onChange: (v: string) => void,
     grouped: Record<string, ModelInfo[]>,
-    showRefWarning = false
+    showRefWarning = false,
+    showLabel = true
   ) => {
     const allModels = Object.values(grouped).flat();
     const selectedInfo = allModels.find(m => m.id === value);
     return (
       <div className="space-y-1.5">
-        <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase flex items-center gap-1.5">
-          <Cpu className="w-3 h-3" /> AI Model
-        </label>
+        {showLabel && (
+          <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase flex items-center gap-1.5">
+            <Cpu className="w-3 h-3" /> AI Model
+          </label>
+        )}
         {modelsLoading ? (
           <div className="flex items-center gap-2 px-3 py-2.5 bg-[var(--bg-elevated)] rounded-xl text-sm text-[var(--text-secondary)]">
             <Loader2 className="w-4 h-4 animate-spin" /> Loading models...
@@ -980,7 +1045,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 <optgroup key={provider} label={provider}>
                   {providerModels.map(m => (
                     <option key={m.id} value={m.id}>
-                      {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}{m.nsfw ? ' 🔞' : ''}{showRefWarning && hasRefImage && !canUseReference(m, models) ? ' ⚠ No ref support' : ''}
+                      {m.name}{m.price > 0 ? (billingInfo?.isCreator ? ` ($${m.price.toFixed(3)})` : ` (${m.price} credits)`) : ' (Free)'}{m.nsfw ? ' 🔞' : ''}{showRefWarning && hasRefImage && !canUseReference(m, models) ? ' ⚠ No ref support' : ''}
                     </option>
                   ))}
                 </optgroup>
@@ -997,7 +1062,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       </div>
     );
   };
-
+ 
   const renderVideoModelSelect = () => {
     const { t2v, i2v } = groupedVideoModels;
     const selectedVideoInfo = videoModels.find(m => m.id === selectedVideoModel);
@@ -1022,7 +1087,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                   {Object.entries(t2v).map(([provider, ms]) =>
                     ms.map(m => (
                       <option key={m.id} value={m.id}>
-                        {m.name} ({provider}){m.price > 0 ? ` $${m.price.toFixed(3)}` : ' Free'}{m.nsfw ? ' 🔞' : ''}
+                        {m.name} ({provider}){m.price > 0 ? (billingInfo?.isCreator ? ` $${m.price.toFixed(3)}` : ` ${m.price} credits`) : ' Free'}{m.nsfw ? ' 🔞' : ''}
                       </option>
                     ))
                   )}
@@ -1033,7 +1098,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                   {Object.entries(i2v).map(([provider, ms]) =>
                     ms.map(m => (
                       <option key={m.id} value={m.id}>
-                        {m.name} ({provider}){m.price > 0 ? ` $${m.price.toFixed(3)}` : ' Free'}{m.nsfw ? ' 🔞' : ''}
+                        {m.name} ({provider}){m.price > 0 ? (billingInfo?.isCreator ? ` $${m.price.toFixed(3)}` : ` ${m.price} credits`) : ' Free'}{m.nsfw ? ' 🔞' : ''}
                       </option>
                     ))
                   )}
@@ -1098,12 +1163,12 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             <span className="text-[10px] font-black text-violet-300 uppercase tracking-wider">AI Model</span>
           </div>
           <div className="p-4 space-y-3">
-            {renderModelSelect(selectedModel, setSelectedModel, groupedModels, true)}
+            {renderModelSelect(selectedModel, setSelectedModel, groupedModels, true, false)}
             {selectedModelInfo && (
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-300 border border-purple-500/20">{selectedModelInfo.provider}</span>
                 {selectedModelInfo.isIdentityModel && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-300 border border-violet-500/20 flex items-center gap-0.5">★ Face-consistent</span>}
-                {selectedModelInfo.price > 0 && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20">${selectedModelInfo.price.toFixed(3)} per image</span>}
+                {selectedModelInfo.price > 0 && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20">{billingInfo?.isCreator ? `$${selectedModelInfo.price.toFixed(3)} per image` : `${selectedModelInfo.price} credits per image`}</span>}
               </div>
             )}
           </div>
@@ -1127,12 +1192,12 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               </button>
               {activeVersion?.promptUsed && (
                 <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(activeVersion.promptUsed);
-                    setCopied(true);
-                    setTimeout(() => setCopied(false), 2000);
-                  }}
-                  className="text-[10px] font-bold text-purple-400 hover:text-purple-300 transition-colors flex items-center gap-1"
+                   onClick={() => {
+                     navigator.clipboard.writeText(activeVersion.promptUsed);
+                     setCopied(true);
+                     setTimeout(() => setCopied(false), 2000);
+                   }}
+                   className="text-[10px] font-bold text-purple-400 hover:text-purple-300 transition-colors flex items-center gap-1"
                 >
                   {copied ? <Check size={11} /> : <Copy size={11} />} {copied ? 'Copied' : 'Copy'}
                 </button>
@@ -1176,70 +1241,84 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           </div>
         </div>
 
-        {/* Templates/Quick Styles */}
-        <div className="space-y-2 pt-2 border-t border-[var(--border-subtle)]">
-          <div className="flex items-center justify-between">
-            <p className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase tracking-wide">Preset Templates</p>
-            {activeQuickStyle && (
-              <button onClick={clearQuickStyle} className="text-[10px] text-purple-400 hover:text-purple-300 transition-colors">Clear</button>
-            )}
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            {QUICK_STYLES.map(qs => (
-              <motion.button
-                key={qs.id}
-                onClick={() => applyQuickStyle(qs)}
-                whileHover={{ scale: 1.04, y: -2 }}
-                whileTap={{ scale: 0.96 }}
-                className={`relative flex flex-col items-center gap-1.5 p-3 rounded-xl text-[10px] font-bold transition-all border overflow-hidden shadow-lg ${
-                  activeQuickStyle === qs.id
-                    ? 'bg-gradient-to-br from-purple-600/40 to-violet-600/20 text-white border-purple-500/40 shadow-purple-500/20'
-                    : `bg-gradient-to-br ${qs.gradient} ${qs.border} text-[var(--text-secondary)] hover:text-white ${qs.glow}`
-                }`}
-              >
-                {/* Background shimmer effect */}
-                <div className="absolute inset-0 bg-gradient-to-tr from-white/[0.03] via-transparent to-white/[0.02] pointer-events-none" />
-                <span className="text-lg relative z-10">{qs.emoji}</span>
-                <span className="truncate relative z-10 font-extrabold">{qs.label}</span>
-                <span className="text-[7px] text-[var(--text-muted)] font-medium relative z-10 opacity-80">{qs.env}</span>
-              </motion.button>
-            ))}
-          </div>
-        </div>
-
-        {/* Style Director Card */}
+        {/* Collapsible Style Options & Presets */}
         <div className="rounded-2xl border border-white/5 bg-white/[0.02] overflow-hidden">
-          <div className="px-4 py-2.5 bg-gradient-to-r from-fuchsia-600/10 to-pink-600/5 border-b border-white/5 flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => setStyleOptionsOpen(!styleOptionsOpen)}
+            className="w-full px-4 py-3 flex items-center justify-between hover:bg-white/[0.02] transition-colors"
+          >
             <div className="flex items-center gap-2">
               <Wand2 className="w-3.5 h-3.5 text-fuchsia-400" />
-              <span className="text-[10px] font-black text-fuchsia-300 uppercase tracking-wider">Style Director</span>
+              <span className="text-[10px] font-black text-fuchsia-300 uppercase tracking-wider">Style Options & Presets</span>
+              {!styleOptionsOpen && (activeQuickStyle || selectedEnv !== 'None' || selectedOutfit !== 'None' || selectedFraming !== 'None' || selectedMood !== 'None') && (
+                <span className="w-1.5 h-1.5 rounded-full bg-fuchsia-500 animate-pulse" />
+              )}
             </div>
-            <span className="text-[8px] text-[var(--text-muted)] font-bold uppercase">Optional</span>
-          </div>
-          <div className="p-4">
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { label: 'Environment', value: selectedEnv, onChange: (v: string) => { clearQuickStyle(); setSelectedEnv(v); }, options: ENVIRONMENTS },
-                { label: 'Outfit', value: selectedOutfit, onChange: (v: string) => { clearQuickStyle(); setSelectedOutfit(v); }, options: OUTFITS },
-                { label: 'Framing', value: selectedFraming, onChange: (v: string) => { clearQuickStyle(); setSelectedFraming(v); }, options: FRAMING },
-                { label: 'Mood', value: selectedMood, onChange: (v: string) => { clearQuickStyle(); setSelectedMood(v); }, options: MOODS },
-              ].map(({ label, value, onChange, options }) => (
-                <div key={label} className="space-y-1">
-                  <label className="text-[9px] font-black text-[var(--text-tertiary)] uppercase tracking-wide block">{label}</label>
-                  <div className="relative">
-                    <select
-                      value={value}
-                      onChange={e => onChange(e.target.value)}
-                      className="w-full bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-xl px-2.5 py-1.5 text-xs text-white outline-none appearance-none pr-6"
-                    >
-                      {options.map(o => <option key={o} value={o}>{o}</option>)}
-                    </select>
-                    <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-[var(--text-tertiary)] pointer-events-none" />
-                  </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[8px] text-[var(--text-muted)] font-bold uppercase">Optional</span>
+              <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-300 ${styleOptionsOpen ? 'rotate-180' : ''}`} />
+            </div>
+          </button>
+
+          {styleOptionsOpen && (
+            <div className="border-t border-white/5 p-4 space-y-4">
+              {/* Preset Templates */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase tracking-wide">Preset Templates</p>
+                  {activeQuickStyle && (
+                    <button onClick={clearQuickStyle} className="text-[10px] text-purple-400 hover:text-purple-300 transition-colors">Clear</button>
+                  )}
                 </div>
-              ))}
+                <div className="grid grid-cols-3 gap-1.5">
+                  {QUICK_STYLES.map(qs => (
+                    <button
+                      key={qs.id}
+                      type="button"
+                      onClick={() => applyQuickStyle(qs)}
+                      className={`relative flex flex-col items-center gap-1.5 p-2.5 rounded-xl text-[10px] font-bold transition-all border overflow-hidden ${
+                        activeQuickStyle === qs.id
+                          ? 'bg-gradient-to-br from-purple-600/40 to-violet-600/20 text-white border-purple-500/40 shadow-purple-500/20 shadow-lg'
+                          : `bg-gradient-to-br ${qs.gradient} ${qs.border} text-[var(--text-secondary)] hover:text-white ${qs.glow}`
+                      }`}
+                    >
+                      <span className="text-base">{qs.emoji}</span>
+                      <span className="truncate w-full text-center font-extrabold">{qs.label}</span>
+                      <span className="text-[7px] text-[var(--text-muted)] font-medium truncate w-full text-center opacity-85">{qs.env}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Style Director */}
+              <div className="space-y-2 pt-2 border-t border-white/5">
+                <p className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase tracking-wide">Style Director</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { label: 'Environment', value: selectedEnv, onChange: (v: string) => { clearQuickStyle(); setSelectedEnv(v); }, options: ENVIRONMENTS },
+                    { label: 'Outfit', value: selectedOutfit, onChange: (v: string) => { clearQuickStyle(); setSelectedOutfit(v); }, options: OUTFITS },
+                    { label: 'Framing', value: selectedFraming, onChange: (v: string) => { clearQuickStyle(); setSelectedFraming(v); }, options: FRAMING },
+                    { label: 'Mood', value: selectedMood, onChange: (v: string) => { clearQuickStyle(); setSelectedMood(v); }, options: MOODS },
+                  ].map(({ label, value, onChange, options }) => (
+                    <div key={label} className="space-y-1">
+                      <label className="text-[9px] font-black text-[var(--text-tertiary)] uppercase tracking-wide block">{label}</label>
+                      <div className="relative">
+                        <select
+                          value={value}
+                          onChange={e => onChange(e.target.value)}
+                          className="w-full bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-xl px-2.5 py-1.5 text-xs text-white outline-none appearance-none pr-6 font-medium"
+                        >
+                          {options.map(o => <option key={o} value={o}>{o}</option>)}
+                        </select>
+                        <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-[var(--text-tertiary)] pointer-events-none" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Variations + Generate */}
@@ -1310,78 +1389,65 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               </div>
             </div>
           ) : (
-            <div className="relative w-full h-full flex flex-col items-center justify-center min-h-[340px] p-6 select-none overflow-hidden">
-              {/* Background artwork */}
+            <div className="relative w-full h-full flex flex-col items-center justify-center min-h-[340px] p-6 select-none overflow-hidden bg-[#070b13]">
+              {/* Background grid line pattern */}
               <div className="absolute inset-0">
                 <img 
                   src="/canvas_empty_state.png" 
                   alt="" 
-                  className="w-full h-full object-cover opacity-20"
-                  style={{ filter: 'blur(1px)' }}
+                  className="w-full h-full object-cover opacity-[0.02] mix-blend-overlay"
+                  style={{ filter: 'blur(3px) grayscale(100%)' }}
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-primary)] via-[var(--bg-primary)]/60 to-transparent" />
-                <div className="absolute inset-0 bg-gradient-to-b from-[var(--bg-primary)]/80 via-transparent to-[var(--bg-primary)]" />
+                <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:32px_32px]" />
               </div>
               
-              {/* Animated floating orbs */}
-              <div className="absolute inset-0 pointer-events-none overflow-hidden">
+              {/* Subtle background glow */}
+              <div className="absolute inset-0 pointer-events-none overflow-hidden opacity-40">
                 <motion.div 
-                  animate={{ y: [0, -15, 0], x: [0, 8, 0], opacity: [0.3, 0.6, 0.3] }}
-                  transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
-                  className="absolute top-[20%] left-[15%] w-24 h-24 bg-violet-500/10 rounded-full blur-2xl"
-                />
-                <motion.div 
-                  animate={{ y: [0, 12, 0], x: [0, -10, 0], opacity: [0.2, 0.5, 0.2] }}
-                  transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut', delay: 1 }}
-                  className="absolute top-[50%] right-[10%] w-32 h-32 bg-fuchsia-500/8 rounded-full blur-3xl"
-                />
-                <motion.div 
-                  animate={{ y: [0, -20, 0], opacity: [0.15, 0.4, 0.15] }}
-                  transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut', delay: 2 }}
-                  className="absolute bottom-[15%] left-[30%] w-20 h-20 bg-cyan-500/10 rounded-full blur-2xl"
+                  animate={{ y: [0, -10, 0], opacity: [0.1, 0.15, 0.1] }}
+                  transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
+                  className="absolute top-[20%] left-[25%] w-36 h-36 bg-slate-500/10 rounded-full blur-3xl"
                 />
               </div>
 
-              {/* Central icon with animated ring */}
+              {/* Central icon with subtle ring */}
               <div className="relative mb-6 z-10">
                 <motion.div 
                   animate={{ rotate: 360 }}
-                  transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}
-                  className="absolute -inset-3 rounded-full border border-dashed border-violet-500/20"
+                  transition={{ duration: 30, repeat: Infinity, ease: 'linear' }}
+                  className="absolute -inset-2.5 rounded-full border border-dashed border-slate-700/30"
                 />
-                <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-violet-600/30 to-fuchsia-600/20 border border-violet-500/30 flex items-center justify-center backdrop-blur-sm shadow-2xl shadow-violet-500/10">
-                  <ImageIcon size={32} className="text-violet-400" />
+                <div className="w-16 h-16 rounded-2xl bg-slate-900/80 border border-white/10 flex items-center justify-center backdrop-blur-md shadow-2xl">
+                  <ImageIcon size={24} className="text-slate-400" />
                 </div>
                 <motion.div 
-                  animate={{ scale: [1, 1.2, 1] }}
-                  transition={{ duration: 2, repeat: Infinity }}
-                  className="absolute -top-1 -right-1 w-6 h-6 bg-gradient-to-br from-violet-500 to-fuchsia-500 rounded-lg flex items-center justify-center shadow-lg shadow-violet-500/40"
+                  className="absolute -top-1 -right-1 w-5 h-5 bg-slate-800 rounded-md flex items-center justify-center border border-white/10 shadow-lg"
                 >
-                  <Sparkles size={12} className="text-white" />
+                  <Sparkles size={10} className="text-slate-400" />
                 </motion.div>
               </div>
               
-              <h3 className="text-lg font-extrabold text-white mb-1 z-10 tracking-tight">Your Canvas Awaits</h3>
-              <p className="text-xs text-[var(--text-muted)] text-center max-w-[280px] mb-6 leading-relaxed z-10">
-                Choose a model, write a prompt, and click <span className="text-violet-400 font-bold">Generate</span> to bring your vision to life.
+              <h3 className="text-sm font-extrabold text-white mb-1 z-10 tracking-tight">Your Canvas Awaits</h3>
+              <p className="text-[11px] text-slate-500 text-center max-w-[260px] mb-5 leading-relaxed z-10">
+                Choose a model, write a prompt, and click <span className="text-violet-400 font-semibold">Generate</span> to bring your vision to life.
               </p>
               
               {/* Premium step cards */}
-              <div className="flex flex-col gap-2.5 w-full max-w-[300px] z-10">
+              <div className="flex flex-col gap-2 w-full max-w-[280px] z-10">
                 {[
-                  { step: '1', text: 'Select an AI model from the sidebar', color: 'from-violet-500/20 to-violet-600/5', iconColor: 'bg-violet-500 text-white' },
-                  { step: '2', text: 'Describe your scene in the prompt', color: 'from-fuchsia-500/20 to-fuchsia-600/5', iconColor: 'bg-fuchsia-500 text-white' },
-                  { step: '3', text: 'Pick a preset style or customize', color: 'from-cyan-500/20 to-cyan-600/5', iconColor: 'bg-cyan-500 text-white' },
+                  { step: '1', text: 'Select an AI model from the sidebar', iconColor: 'bg-slate-800 text-slate-300' },
+                  { step: '2', text: 'Describe your scene in the prompt', iconColor: 'bg-slate-800 text-slate-300' },
+                  { step: '3', text: 'Pick a preset style or customize', iconColor: 'bg-slate-800 text-slate-300' },
                 ].map((tip, i) => (
                   <motion.div 
                     key={tip.step}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.2 + i * 0.15, duration: 0.5 }}
-                    className={`flex items-center gap-3 px-4 py-3 rounded-xl bg-gradient-to-r ${tip.color} border border-white/[0.06] backdrop-blur-sm shadow-lg`}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.1 + i * 0.08, duration: 0.4 }}
+                    className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-slate-900/40 border border-white/[0.04] backdrop-blur-sm shadow-md"
                   >
-                    <span className={`w-6 h-6 rounded-lg ${tip.iconColor} text-[10px] font-black flex items-center justify-center shrink-0 shadow-md`}>{tip.step}</span>
-                    <span className="text-[11px] text-white/80 font-semibold">{tip.text}</span>
+                    <span className={`w-5 h-5 rounded-md ${tip.iconColor} text-[9px] font-black flex items-center justify-center shrink-0 shadow-inner`}>{tip.step}</span>
+                    <span className="text-[10px] text-slate-400 font-semibold">{tip.text}</span>
                   </motion.div>
                 ))}
               </div>
@@ -2013,11 +2079,16 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 onChange={e => setAngleModel(e.target.value)}
                 className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white focus:ring-2 focus:ring-cyan-500 outline-none appearance-none pr-10"
               >
-                {ANGLE_MODELS.map(m => (
-                  <option key={m.id} value={m.id}>
-                    {m.name} (${m.price.toFixed(3)}){m.nsfw ? ' 🔞' : ''}
-                  </option>
-                ))}
+                {ANGLE_MODELS.map(m => {
+                  const displayCost = billingInfo?.isCreator
+                    ? `$${m.price.toFixed(3)}`
+                    : `${Math.ceil(m.price * 100) * 2} credits`;
+                  return (
+                    <option key={m.id} value={m.id}>
+                      {m.name} ({displayCost}){m.nsfw ? ' 🔞' : ''}
+                    </option>
+                  );
+                })}
               </select>
               <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-tertiary)] pointer-events-none" />
             </div>
@@ -2097,11 +2168,17 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             <div className="glass-card p-4 flex items-center justify-between border-emerald-500/20">
               <div className="flex items-center gap-3">
                 <div className="relative">
-                  <img 
-                    src={activePersona.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150"} 
-                    className="w-12 h-12 rounded-xl object-cover ring-2 ring-emerald-500/20" 
-                    alt="Persona" 
-                  />
+                  {activePersona.avatar || activePersona.referenceImage ? (
+                    <img 
+                      src={activePersona.avatar || activePersona.referenceImage} 
+                      className="w-12 h-12 rounded-xl object-cover ring-2 ring-emerald-500/20" 
+                      alt="Persona" 
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-[var(--text-muted)] ring-2 ring-emerald-500/20">
+                      <UserRound className="w-6 h-6" />
+                    </div>
+                  )}
                   <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-[#0B0F17] flex items-center justify-center">
                     <Check className="w-2.5 h-2.5 text-white" />
                   </div>
@@ -2145,37 +2222,129 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               <label className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase tracking-widest">Avatar Source / Reference</label>
             </div>
             <div className="grid grid-cols-5 gap-3">
-              <button className="aspect-square flex flex-col items-center justify-center gap-1.5 glass-card border-dashed border-white/20 bg-white/5 hover:bg-white/10 transition-colors">
+              <input
+                type="file"
+                ref={avatarImageUploadRef}
+                className="hidden"
+                accept="image/*"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  try {
+                    const dataUrl = await processImageFile(file);
+                    setUploadedAvatarImage(dataUrl);
+                    setUploadedAvatarImageName(file.name);
+                    setSelectedAvatarSource(dataUrl);
+                    toast.success(`Uploaded: ${file.name}`);
+                  } catch (err) {
+                    toast.error('Failed to process image');
+                  }
+                  e.target.value = '';
+                }}
+              />
+              <button 
+                onClick={() => avatarImageUploadRef.current?.click()}
+                className="aspect-square flex flex-col items-center justify-center gap-1.5 glass-card border-dashed border-white/20 bg-white/5 hover:bg-white/10 transition-colors"
+              >
                 <Upload className="w-5 h-5 text-emerald-400" />
                 <div className="text-center">
                   <div className="text-[9px] font-bold text-white">Upload Image</div>
                   <div className="text-[7px] text-[var(--text-muted)]">JPG, PNG, WEBP</div>
                 </div>
               </button>
-              <button className="aspect-square flex flex-col items-center justify-center gap-1.5 glass-card bg-white/5 hover:bg-white/10 transition-colors">
+              <button 
+                onClick={() => updateMode('image')}
+                className="aspect-square flex flex-col items-center justify-center gap-1.5 glass-card bg-white/5 hover:bg-white/10 transition-colors"
+              >
                 <Sparkles className="w-5 h-5 text-purple-400" />
                 <div className="text-center">
                   <div className="text-[9px] font-bold text-white">AI Generate</div>
                   <div className="text-[7px] text-[var(--text-muted)]">Create from text</div>
                 </div>
               </button>
-              {[1, 2].map((i) => (
+              
+              {/* Show up to 2 available images */}
+              {availableImages.slice(0, 2).map((imgUrl, idx) => (
                 <button 
-                  key={i}
-                  onClick={() => setSelectedAvatarSource(`persona-${i}`)}
-                  className={`aspect-square rounded-2xl overflow-hidden border-2 transition-all relative group ${selectedAvatarSource === `persona-${i}` ? 'border-emerald-500' : 'border-transparent'}`}
+                  key={idx}
+                  onClick={() => setSelectedAvatarSource(imgUrl)}
+                  className={`aspect-square rounded-2xl overflow-hidden border-2 transition-all relative group ${selectedAvatarSource === imgUrl ? 'border-emerald-500' : 'border-transparent'}`}
                 >
-                  <img src={activePersona.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150"} className="w-full h-full object-cover" alt={`Persona Source ${i}`} />
-                  {selectedAvatarSource === `persona-${i}` && (
+                  <img src={imgUrl} className="w-full h-full object-cover" alt={`Avatar Source ${idx + 1}`} />
+                  {selectedAvatarSource === imgUrl && (
                     <div className="absolute inset-0 bg-emerald-500/10" />
                   )}
                 </button>
               ))}
-              <button className="aspect-square flex flex-col items-center justify-center glass-card bg-white/5 hover:bg-white/10 transition-colors">
+
+              {/* If fewer than 2 available images, show neutral placeholders */}
+              {Array.from({ length: Math.max(0, 2 - availableImages.length) }).map((_, idx) => (
+                <div 
+                  key={`placeholder-${idx}`}
+                  className="aspect-square rounded-2xl border border-white/5 bg-white/[0.02] flex items-center justify-center text-[var(--text-muted)]"
+                >
+                  <UserRound className="w-4 h-4 opacity-20" />
+                </div>
+              ))}
+
+              <button 
+                onClick={() => updateMode('image')}
+                className="aspect-square flex flex-col items-center justify-center glass-card bg-white/5 hover:bg-white/10 transition-colors"
+              >
                 <div className="text-[14px] text-[var(--text-muted)] font-bold">•••</div>
                 <div className="text-[9px] font-bold text-white">More</div>
               </button>
             </div>
+          </div>
+
+          {/* ENGINE SELECTION */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center text-[10px] font-bold text-emerald-400 border border-emerald-500/30">E</div>
+              <label className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase tracking-widest">Avatar Engine</label>
+            </div>
+            <div className="flex bg-white/5 border border-white/10 rounded-xl p-1 gap-1">
+              <button
+                onClick={() => setTalkingAvatarEngine('wavespeed')}
+                className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${
+                  talkingAvatarEngine === 'wavespeed' ? 'bg-gradient-to-r from-emerald-600 to-teal-500 text-white shadow-lg' : 'text-[var(--text-secondary)] hover:text-white'
+                }`}
+              >
+                Wavespeed LTX
+              </button>
+              <button
+                onClick={() => setTalkingAvatarEngine('heygen')}
+                className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${
+                  talkingAvatarEngine === 'heygen' ? 'bg-gradient-to-r from-emerald-600 to-teal-500 text-white shadow-lg' : 'text-[var(--text-secondary)] hover:text-white'
+                }`}
+              >
+                HeyGen AI
+              </button>
+            </div>
+            
+            {talkingAvatarEngine === 'heygen' && (
+              <div className="animate-in fade-in slide-in-from-top-2 duration-300 space-y-2 mt-2">
+                <label className="block text-[8px] font-extrabold text-[var(--text-muted)] uppercase tracking-wider">HeyGen Avatar Version</label>
+                <div className="flex bg-white/5 border border-white/10 rounded-xl p-1 gap-1">
+                  <button
+                    onClick={() => setTalkingHeygenEngine('avatar_iv')}
+                    className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all ${
+                      talkingHeygenEngine === 'avatar_iv' ? 'bg-emerald-600/30 border border-emerald-500/50 text-white shadow-lg' : 'text-[var(--text-secondary)] hover:text-white'
+                    }`}
+                  >
+                    Avatar IV (v4)
+                  </button>
+                  <button
+                    onClick={() => setTalkingHeygenEngine('avatar_v')}
+                    className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all ${
+                      talkingHeygenEngine === 'avatar_v' ? 'bg-emerald-600/30 border border-emerald-500/50 text-white shadow-lg' : 'text-[var(--text-secondary)] hover:text-white'
+                    }`}
+                  >
+                    Avatar V (v5 - Latest)
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* 3. SCRIPT */}
@@ -2454,23 +2623,52 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               </div>
             </div>
             
-            <div className="aspect-[9/16] rounded-3xl overflow-hidden glass-card relative group bg-black shadow-2xl">
-              <video 
-                src="/demo-assets/generated-talking.mp4" 
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
-                autoPlay
-                loop
-                muted
-                playsInline
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
-              
-              <div className="absolute top-4 left-4 flex items-center gap-2">
-                <div className="flex items-center gap-2 px-2.5 py-1.5 bg-black/40 backdrop-blur-md rounded-xl border border-white/10">
-                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
-                  <span className="text-[10px] font-black text-white uppercase tracking-widest">Live</span>
+            <div className="aspect-[9/16] rounded-3xl overflow-hidden glass-card relative group bg-[#0B0F19] shadow-2xl flex flex-col items-center justify-center">
+              {isGenerating ? (
+                <div className="flex flex-col items-center gap-4 text-white z-10 p-6 text-center select-none">
+                  <div className="relative">
+                    {portraitImage && (
+                      <img src={portraitImage} alt="" className="w-32 h-32 rounded-2xl object-cover opacity-40 blur-sm" />
+                    )}
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <Loader2 size={32} className="animate-spin text-emerald-400" />
+                    </div>
+                  </div>
+                  <p className="text-xs font-bold text-emerald-300">Generating talking avatar...</p>
+                  <p className="text-[9px] text-[var(--text-muted)]">This may take 1-3 minutes. Please keep this tab open.</p>
                 </div>
-              </div>
+              ) : talkingAvatarResult?.videoUrl ? (
+                <>
+                  <video 
+                    src={talkingAvatarResult.videoUrl} 
+                    className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-700"
+                    autoPlay
+                    controls
+                    loop
+                    playsInline
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
+                  
+                  <div className="absolute top-4 left-4 flex items-center gap-2">
+                    <div className="flex items-center gap-2 px-2.5 py-1.5 bg-black/40 backdrop-blur-md rounded-xl border border-white/10">
+                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
+                      <span className="text-[10px] font-black text-white uppercase tracking-widest">Live</span>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="text-[var(--text-tertiary)] flex flex-col items-center gap-4 p-8 text-center select-none">
+                  <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                    <Video size={32} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-white mb-1">Your talking avatar will appear here</p>
+                    <p className="text-[10px] text-[var(--text-muted)] max-w-[240px] leading-relaxed">
+                      Select or upload a portrait, choose an engine (Wavespeed LTX or HeyGen AI), type a script, and hit Generate.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -2478,21 +2676,35 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             <div className="space-y-2">
                <label className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase tracking-widest px-1">Output & Actions</label>
                <div className="grid grid-cols-3 gap-3">
-                 <div className="glass-card p-4 flex flex-col items-center justify-center gap-2 hover:bg-white/5 transition-colors cursor-pointer border-white/5">
+                 <div 
+                   onClick={() => talkingAvatarResult && downloadFile(talkingAvatarResult.videoUrl, 'mp4')} 
+                   className={`glass-card p-4 flex flex-col items-center justify-center gap-2 hover:bg-white/5 transition-colors cursor-pointer border-white/5 ${!talkingAvatarResult ? 'opacity-50 pointer-events-none' : ''}`}
+                 >
                    <Download className="w-5 h-5 text-emerald-400" />
                    <div className="text-center">
                      <div className="text-[10px] font-bold text-white">Download</div>
                      <div className="text-[8px] text-[var(--text-muted)]">MP4 • 1080p</div>
                    </div>
                  </div>
-                 <div className="glass-card p-4 flex flex-col items-center justify-center gap-2 hover:bg-white/5 transition-colors cursor-pointer border-white/5">
+                 <div 
+                   onClick={() => talkingAvatarResult && handleGenerateTalkingAvatar()} 
+                   className={`glass-card p-4 flex flex-col items-center justify-center gap-2 hover:bg-white/5 transition-colors cursor-pointer border-white/5 ${!talkingAvatarResult ? 'opacity-50 pointer-events-none' : ''}`}
+                 >
                    <RefreshCw className="w-5 h-5 text-purple-400" />
                    <div className="text-center">
                      <div className="text-[10px] font-bold text-white">Regenerate</div>
                      <div className="text-[8px] text-[var(--text-muted)]">New version</div>
                    </div>
                  </div>
-                 <div className="glass-card p-4 flex flex-col items-center justify-center gap-2 hover:bg-white/5 transition-colors cursor-pointer border-white/5">
+                 <div 
+                   onClick={() => {
+                     if (talkingAvatarResult) {
+                       navigator.clipboard.writeText(talkingAvatarResult.videoUrl);
+                       toast.success('Video link copied to clipboard!');
+                     }
+                   }} 
+                   className={`glass-card p-4 flex flex-col items-center justify-center gap-2 hover:bg-white/5 transition-colors cursor-pointer border-white/5 ${!talkingAvatarResult ? 'opacity-50 pointer-events-none' : ''}`}
+                 >
                    <Share2 className="w-5 h-5 text-blue-400" />
                    <div className="text-center">
                      <div className="text-[10px] font-bold text-white">Share</div>
@@ -2550,11 +2762,17 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             {activePersona.name ? (
               <div className="flex items-center gap-3 bg-white/[0.04] border border-white/10 rounded-xl px-4 py-2.5 backdrop-blur-sm">
                 <div className="relative">
-                  <img 
-                    src={activePersona.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=80&h=80'} 
-                    className="w-10 h-10 rounded-xl object-cover border border-white/10" 
-                    alt="" 
-                  />
+                  {activePersona.avatar ? (
+                    <img 
+                      src={activePersona.avatar} 
+                      className="w-10 h-10 rounded-xl object-cover border border-white/10" 
+                      alt="" 
+                    />
+                  ) : (
+                    <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-[var(--text-muted)]">
+                      <UserRound size={16} />
+                    </div>
+                  )}
                   <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 rounded-full border-2 border-[#0F172A]" />
                 </div>
                 <div className="text-left">
@@ -2610,48 +2828,52 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             <motion.button
               key={m.id}
               onClick={() => { updateMode(m.id); setGlobalError(null); }}
-              whileHover={{ scale: 1.05, y: -4 }}
+              whileHover={{ scale: 1.04, y: -2 }}
               whileTap={{ scale: 0.96 }}
-              className={`relative flex flex-col items-center gap-2 p-4 rounded-2xl border transition-all duration-300 group overflow-hidden ${
+              className={`relative flex flex-col items-center justify-end h-28 p-3.5 rounded-2xl border transition-all duration-300 group overflow-hidden ${
                 isActive
-                  ? `bg-gradient-to-b from-white/[0.12] to-white/[0.03] border-violet-500/50 shadow-[0_0_30px_rgba(139,92,246,0.2)]`
-                  : `bg-gradient-to-b from-white/[0.04] to-white/[0.01] border-white/[0.08] hover:border-white/20 hover:shadow-lg`
+                  ? `border-violet-500/80 shadow-[0_0_20px_rgba(139,92,246,0.15)] bg-[#0f172a]`
+                  : `border-white/[0.08] hover:border-white/30 bg-[#0f172a]/20`
               }`}
             >
-              {/* Subtle background gradient tint for inactive cards */}
-              <div className={`absolute inset-0 opacity-40 transition-opacity duration-300 pointer-events-none ${
-                isActive ? '' : 'group-hover:opacity-60'
-              }`}>
-                <div className={`w-full h-full bg-gradient-to-b ${m.gradient} opacity-20 ${isActive ? 'opacity-30' : ''}`} />
+              {/* Background Image */}
+              <div className="absolute inset-0 w-full h-full overflow-hidden pointer-events-none">
+                <img 
+                  src={m.bgImage} 
+                  alt="" 
+                  className={`w-full h-full object-cover transition-all duration-500 group-hover:scale-110 ${
+                    isActive ? 'opacity-[0.45] brightness-110 saturate-100' : 'opacity-[0.3] brightness-90 saturate-75 group-hover:opacity-[0.4] group-hover:brightness-100 group-hover:saturate-100'
+                  }`}
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#0c1222] via-[#0c1222]/80 to-[#0c1222]/10" />
               </div>
-              
-              {/* Gradient glow for active */}
-              {isActive && (
-                <div className="absolute inset-0 bg-gradient-to-b from-violet-500/15 via-transparent to-transparent pointer-events-none" />
-              )}
-              
-              <div className={`relative p-2.5 rounded-xl transition-all duration-300 ${
+
+              {/* Icon */}
+              <div className={`relative z-10 p-2 rounded-xl transition-all duration-300 mb-2 bg-gradient-to-br ${m.gradient} text-white shadow-md ${
                 isActive 
-                  ? `bg-gradient-to-br ${m.gradient} text-white shadow-lg` 
-                  : `bg-gradient-to-br ${m.gradient} text-white/70 opacity-60 group-hover:opacity-100 group-hover:text-white`
+                  ? `shadow-violet-500/20 scale-105 opacity-100` 
+                  : `opacity-70 group-hover:opacity-100 group-hover:scale-105`
               }`}>
-                <Icon size={20} />
+                <Icon size={16} />
               </div>
-              <div className="text-center relative">
-                <p className={`text-[10px] font-black leading-tight tracking-wide ${isActive ? 'text-white' : 'text-[var(--text-secondary)] group-hover:text-white'}`}>
-                  {m.label}
-                </p>
-                <p className={`text-[8px] mt-0.5 leading-tight transition-all ${
-                  isActive ? 'text-violet-300/80 max-h-8 opacity-100' : 'text-transparent max-h-0 opacity-0 group-hover:text-[var(--text-muted)] group-hover:max-h-8 group-hover:opacity-100'
+
+              {/* Label & Description */}
+              <div className="text-center relative z-10 w-full">
+                <span className={`block text-[11px] font-black tracking-wide leading-none transition-colors ${
+                  isActive ? 'text-white' : 'text-slate-300 group-hover:text-white'
                 }`}>
+                  {m.label}
+                </span>
+                <span className="block text-[8px] text-slate-400 group-hover:text-slate-300 leading-tight mt-1 truncate px-1 font-medium transition-colors">
                   {m.desc}
-                </p>
+                </span>
               </div>
+
               {/* Active indicator bar */}
               {isActive && (
                 <motion.div 
                   layoutId="activeMode"
-                  className="absolute bottom-0 left-1/2 -translate-x-1/2 w-10 h-1 bg-gradient-to-r from-violet-500 to-fuchsia-500 rounded-t-full shadow-[0_-4px_12px_rgba(139,92,246,0.6)]" 
+                  className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-violet-500 to-fuchsia-500" 
                 />
               )}
             </motion.button>
@@ -2672,7 +2894,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         {mode === 'video' && renderVideoMode()}
         {mode === 'talking-avatar' && renderTalkingAvatarMode()}
         {mode === 'angle' && renderAngleMode()}
-        {mode === 'voice' && <VoiceView persona={activePersona} personas={personas} onSelectPersona={onSelectPersona} nav={nav} />}
+        {mode === 'voice' && <VoiceView persona={activePersona} personas={personas} onSelectPersona={onSelectPersona} nav={nav} billingInfo={billingInfo} />}
         {mode === 'ai-tools' && <AIToolsView persona={activePersona} personas={personas} onSelectPersona={onSelectPersona} nav={nav} />}
         {mode === 'planner' && <PlannerView persona={activePersona} personas={personas} onSelectPersona={onSelectPersona} nav={nav} />}
       </div>

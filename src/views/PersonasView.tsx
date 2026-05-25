@@ -18,9 +18,10 @@ interface PersonasViewProps {
   selectedId: string;
   navigateToTab?: (tab: Tab) => void;
   nav: NavActions;
+  billingInfo?: any;
 }
 
-export default function PersonasView({ personas, setPersonas, onSelectPersona, selectedId, navigateToTab, nav }: PersonasViewProps) {
+export default function PersonasView({ personas, setPersonas, onSelectPersona, selectedId, navigateToTab, nav, billingInfo }: PersonasViewProps) {
   const [mounted, setMounted] = useState(false);
   const [editingPersona, setEditingPersona] = useState<Persona | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -351,7 +352,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
           tone: 'Luxury, Confident, Exclusive',
           platform: 'Instagram',
           status: 'Draft',
-          avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150',
+          avatar: '',
           personalityTraits: [],
           visualStyle: 'Sophisticated & Modern',
           audienceType: 'General',
@@ -553,7 +554,8 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                  desc: 'Create stunning, identity-consistent photos in any setting, outfit, and style',
                  gradient: 'from-violet-500/15 to-purple-600/5',
                  iconBg: 'bg-violet-500',
-                 image: '/persona_showcase_1.png'
+                 image: '/persona_showcase_1.png',
+                 action: () => nav.replace({ view: 'create', subView: 'image' })
                },
                { 
                  icon: Film, 
@@ -561,7 +563,8 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                  desc: 'Turn any photo into a talking video or animated clip with custom voice',
                  gradient: 'from-pink-500/15 to-rose-600/5',
                  iconBg: 'bg-pink-500',
-                 image: '/persona_showcase_2.png'
+                 image: '/persona_showcase_2.png',
+                 action: () => nav.replace({ view: 'create', subView: 'video' })
                },
                { 
                  icon: Sparkles, 
@@ -569,7 +572,8 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                  desc: 'Generate scripts, plan posts, clone voices — a full content creation suite',
                  gradient: 'from-cyan-500/15 to-teal-600/5',
                  iconBg: 'bg-cyan-500',
-                 image: '/persona_showcase_3.png'
+                 image: '/persona_showcase_3.png',
+                 action: () => nav.replace({ view: 'assistant' })
                },
              ].map((feature, i) => {
                const FIcon = feature.icon;
@@ -580,7 +584,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                    animate={{ opacity: 1, y: 0 }}
                    transition={{ delay: 0.3 + i * 0.15, duration: 0.5 }}
                    className={`relative group rounded-2xl border border-white/[0.06] overflow-hidden bg-gradient-to-b ${feature.gradient} hover:border-white/15 transition-all duration-300 cursor-pointer`}
-                   onClick={handleAddPersona}
+                   onClick={feature.action}
                  >
                    {/* Preview image strip */}
                    <div className="h-28 overflow-hidden relative">
@@ -625,26 +629,32 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                  </motion.button>
                </div>
                
-               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+               <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-2 pt-1 snap-x snap-mandatory">
                  {[
                    { src: '/persona_showcase_1.png', label: 'Fashion Editorial', category: 'Photo' },
                    { src: '/persona_showcase_2.png', label: 'Night Cityscape', category: 'Photo' },
                    { src: '/persona_showcase_3.png', label: 'Travel Content', category: 'Lifestyle' },
                    { src: '/persona_showcase_4.png', label: 'Fitness Motivation', category: 'Photo' },
+                   { src: '/examples/influencer1.png', label: 'Luxury Lounge', category: 'Lifestyle' },
+                   { src: '/examples/influencer2.png', label: 'Streetwear Style', category: 'Urban' },
+                   { src: '/examples/influencer3.png', label: 'Tropical Escape', category: 'Travel' },
+                   { src: '/examples/influencer4.png', label: 'Athletic Editorial', category: 'Fitness' },
+                   { src: '/demo/ai_sample_influencer.png', label: 'Retro Studio', category: 'Studio' },
+                   { src: '/demo/time_machine_hero.png', label: 'Cyberpunk Vibe', category: 'Sci-Fi' }
                  ].map((item, i) => (
                    <motion.div 
                      key={i}
                      initial={{ opacity: 0, scale: 0.9 }}
                      animate={{ opacity: 1, scale: 1 }}
-                     transition={{ delay: 1 + i * 0.1 }}
-                     className="relative group rounded-xl overflow-hidden aspect-[3/4] cursor-pointer border border-white/5 hover:border-violet-500/30 transition-all"
-                     onClick={handleAddPersona}
+                     transition={{ delay: 1 + i * 0.05 }}
+                     className="relative group rounded-xl overflow-hidden w-[180px] md:w-[220px] shrink-0 aspect-[3/4] cursor-pointer border border-white/5 hover:border-violet-500/30 transition-all snap-start shadow-md"
+                     onClick={() => nav.replace({ view: 'create', subView: 'image' })}
                    >
-                     <img src={item.src} alt={item.label} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
-                     <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                     <div className="absolute bottom-0 left-0 right-0 p-2.5 translate-y-full group-hover:translate-y-0 transition-transform duration-300">
-                       <span className="text-[7px] font-bold text-violet-300 uppercase tracking-wider">{item.category}</span>
-                       <p className="text-[10px] font-bold text-white">{item.label}</p>
+                     <img src={item.src} alt={item.label} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+                     <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent transition-opacity duration-300" />
+                     <div className="absolute bottom-0 left-0 right-0 p-3 transition-transform duration-300">
+                       <span className="text-[7.5px] font-bold text-violet-300 uppercase tracking-wider">{item.category}</span>
+                       <p className="text-[11px] font-bold text-white leading-tight mt-0.5">{item.label}</p>
                      </div>
                      {/* AI badge */}
                      <div className="absolute top-2 right-2 px-1.5 py-0.5 bg-black/50 backdrop-blur-sm rounded-md border border-white/10">
@@ -681,7 +691,13 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
             <div className="relative z-10 flex flex-col md:flex-row gap-8 items-start md:items-center">
               <div className="relative shrink-0">
                 <div className="w-[140px] h-[140px] rounded-2xl overflow-hidden ring-1 ring-[#334155] shadow-lg">
-                  <img src={activePersona.referenceImage || activePersona.avatar} className="w-full h-full object-cover" alt={activePersona.name} />
+                  {activePersona.referenceImage || activePersona.avatar ? (
+                    <img src={activePersona.referenceImage || activePersona.avatar} className="w-full h-full object-cover" alt={activePersona.name} />
+                  ) : (
+                    <div className="w-full h-full bg-[#1e293b] flex items-center justify-center text-[#64748b]">
+                      <Users size={48} className="opacity-40" />
+                    </div>
+                  )}
                 </div>
                 <div className="absolute bottom-2 left-1/2 -translate-x-1/2 px-2.5 py-1 bg-black/80 backdrop-blur-md rounded-full border border-white/10 flex items-center gap-1.5 shadow-sm">
                   <div className="w-2 h-2 rounded-full bg-[#00F5C2] shadow-[0_0_8px_#00F5C2]" />
@@ -854,6 +870,50 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
                   </div>
                 </div>
+              </div>
+            ))}
+          </div>
+
+          {/* ── Stats Strip ── */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              {
+                label: 'Images Generated',
+                value: activePersona.visualLibrary?.filter(i => !i.mediaType || i.mediaType === 'image').length || 0,
+                icon: '🖼️',
+                color: 'from-emerald-500/10',
+                border: 'border-emerald-500/20',
+                text: 'text-emerald-400',
+              },
+              {
+                label: 'Videos Generated',
+                value: activePersona.visualLibrary?.filter(i => i.mediaType === 'video').length || 0,
+                icon: '🎬',
+                color: 'from-cyan-500/10',
+                border: 'border-cyan-500/20',
+                text: 'text-cyan-400',
+              },
+              {
+                label: 'Vault Assets',
+                value: activePersona.visualLibrary?.length || 0,
+                icon: '🗂️',
+                color: 'from-violet-500/10',
+                border: 'border-violet-500/20',
+                text: 'text-violet-400',
+              },
+              {
+                label: 'Persona Platform',
+                value: activePersona.platform || '—',
+                icon: '📡',
+                color: 'from-amber-500/10',
+                border: 'border-amber-500/20',
+                text: 'text-amber-400',
+              },
+            ].map(stat => (
+              <div key={stat.label} className={`rounded-2xl border ${stat.border} bg-gradient-to-br ${stat.color} to-transparent p-4`}>
+                <p className="text-xl mb-1">{stat.icon}</p>
+                <p className={`text-2xl font-extrabold ${stat.text}`}>{stat.value}</p>
+                <p className="text-[10px] text-[#94A3B8] font-bold uppercase tracking-wider mt-0.5">{stat.label}</p>
               </div>
             ))}
           </div>
@@ -1099,7 +1159,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                             <optgroup key={provider} label={provider}>
                               {providerModels.map((m) => (
                                 <option key={m.id} value={m.id}>
-                                  {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}{m.nsfw ? ' 🔞' : ''}
+                                  {m.name}{m.price > 0 ? (billingInfo?.isCreator ? ` ($${m.price.toFixed(3)})` : ` (${m.price} credits)`) : ' (Free)'}{m.nsfw ? ' 🔞' : ''}
                                 </option>
                               ))}
                             </optgroup>
@@ -1172,7 +1232,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                             <optgroup key={provider} label={provider}>
                               {providerModels.map((m) => (
                                 <option key={m.id} value={m.id}>
-                                  {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}{m.nsfw ? ' 🔞' : ''}
+                                  {m.name}{m.price > 0 ? (billingInfo?.isCreator ? ` ($${m.price.toFixed(3)})` : ` (${m.price} credits)`) : ' (Free)'}{m.nsfw ? ' 🔞' : ''}
                                 </option>
                               ))}
                             </optgroup>
@@ -1206,7 +1266,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                             <optgroup key={provider} label={provider}>
                               {providerModels.map((m) => (
                                 <option key={m.id} value={m.id}>
-                                  {m.name}{m.price > 0 ? ` ($${m.price.toFixed(3)})` : ' (Free)'}{m.nsfw ? ' 🔞' : ''}
+                                  {m.name}{m.price > 0 ? (billingInfo?.isCreator ? ` ($${m.price.toFixed(3)})` : ` (${m.price} credits)`) : ' (Free)'}{m.nsfw ? ' 🔞' : ''}
                                 </option>
                               ))}
                             </optgroup>

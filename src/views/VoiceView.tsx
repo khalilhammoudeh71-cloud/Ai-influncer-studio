@@ -40,6 +40,7 @@ interface VoiceViewProps {
   personas: Persona[];
   onSelectPersona: (id: string) => void;
   nav: NavActions;
+  billingInfo?: any;
 }
 
 interface VoiceProduction {
@@ -109,7 +110,7 @@ const VIDEO_MODELS = [
 
 type VoiceEngine = 'elevenlabs' | 'openai' | 'gemini';
 
-export default function VoiceView({ persona, personas, onSelectPersona, nav }: VoiceViewProps) {
+export default function VoiceView({ persona, personas, onSelectPersona, nav, billingInfo }: VoiceViewProps) {
   const [topic, setTopic] = useState('');
   const [script, setScript] = useState('');
   const [isGeneratingScript, setIsGeneratingScript] = useState(false);
@@ -1232,7 +1233,19 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav }: V
                           </span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-mono text-emerald-400 font-bold">{model.price}</span>
+                          <span className="text-[10px] font-mono text-emerald-400 font-bold">
+                            {(() => {
+                              const isCreator = billingInfo?.isCreator;
+                              if (model.id.startsWith('google:')) {
+                                return isCreator ? 'Free' : '10 credits';
+                              } else if (model.id.includes('wan-2.1')) {
+                                return isCreator ? '$0.040' : '8 credits';
+                              } else if (model.id.includes('wan-2.2')) {
+                                return isCreator ? '$0.050' : '10 credits';
+                              }
+                              return isCreator ? model.price : '10 credits';
+                            })()}
+                          </span>
                           <span className="text-[9px] text-[var(--text-muted)]">•</span>
                           <span className="text-[9px] text-[var(--text-muted)] truncate">{model.desc}</span>
                         </div>

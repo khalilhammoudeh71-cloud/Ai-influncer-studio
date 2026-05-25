@@ -6,6 +6,11 @@ import { generateTalkingHead, TTS_VOICES } from '../services/imageService';
 import { processImageFile } from '../utils/imageProcessing';
 import toast from 'react-hot-toast';
 
+const PREF_KEY = 'ai_studio_prefs';
+function loadPrefs() {
+  try { return JSON.parse(localStorage.getItem(PREF_KEY) || '{}'); } catch { return {}; }
+}
+
 interface TalkingHeadStudioProps {
   isOpen: boolean;
   onClose: () => void;
@@ -34,6 +39,11 @@ export default function TalkingHeadStudio({
   const [progress, setProgress] = useState('');
   const [scriptGenerating, setScriptGenerating] = useState(false);
   const [previewingVoice, setPreviewingVoice] = useState<string | null>(null);
+  const [engine, setEngine] = useState<'wavespeed' | 'heygen'>(() => {
+    const prefs = loadPrefs();
+    return prefs.heygenApiKey ? 'heygen' : 'wavespeed';
+  });
+  const [heygenEngine, setHeygenEngine] = useState<'avatar_iv' | 'avatar_v'>('avatar_v');
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const portraitInputRef = useRef<HTMLInputElement>(null);
@@ -66,14 +76,19 @@ export default function TalkingHeadStudio({
 
       if (inputMode === 'audio' && audioUrl) {
         params.audioUrl = audioUrl;
-        setProgress('Sending to lipsync engine...');
+        setProgress(engine === 'heygen' ? 'Uploading assets to HeyGen...' : 'Sending to lipsync engine...');
       } else {
         params.script = script;
         params.voiceName = selectedVoice;
-        setProgress('Generating voice from script...');
+        setProgress(engine === 'heygen' ? 'Synthesizing voice & uploading to HeyGen...' : 'Generating voice from script...');
       }
 
-      const result = await generateTalkingHead(params);
+      const result = await generateTalkingHead({
+        ...params,
+        engine,
+        heygenEngine,
+        heygenApiKey: loadPrefs().heygenApiKey || undefined,
+      });
       setVideoUrl(result.videoUrl);
       setProgress('');
       toast.success('Talking head video generated!');
@@ -243,6 +258,54 @@ export default function TalkingHeadStudio({
                 <Mic size={13} /> Upload Audio
               </button>
             </div>
+
+            {/* Avatar Engine Selector */}
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)]">Avatar Engine</label>
+              <div className="flex bg-[var(--bg-elevated)] rounded-xl p-1 gap-1">
+                <button
+                  onClick={() => setEngine('wavespeed')}
+                  className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${
+                    engine === 'wavespeed' ? 'bg-gradient-to-r from-pink-600 to-violet-600 text-white shadow-lg' : 'text-[var(--text-secondary)] hover:text-white'
+                  }`}
+                >
+                  Wavespeed LTX
+                </button>
+                <button
+                  onClick={() => setEngine('heygen')}
+                  className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${
+                    engine === 'heygen' ? 'bg-gradient-to-r from-pink-600 to-violet-600 text-white shadow-lg' : 'text-[var(--text-secondary)] hover:text-white'
+                  }`}
+                >
+                  HeyGen AI
+                </button>
+              </div>
+            </div>
+
+            {/* HeyGen Engine Quality (Avatar 4 vs 5) */}
+            {engine === 'heygen' && (
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)]">HeyGen Avatar Engine</label>
+                <div className="flex bg-[var(--bg-elevated)] rounded-xl p-1 gap-1">
+                  <button
+                    onClick={() => setHeygenEngine('avatar_iv')}
+                    className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all ${
+                      heygenEngine === 'avatar_iv' ? 'bg-purple-600/30 border border-purple-500/50 text-white shadow-lg' : 'text-[var(--text-secondary)] hover:text-white'
+                    }`}
+                  >
+                    Avatar IV (v4)
+                  </button>
+                  <button
+                    onClick={() => setHeygenEngine('avatar_v')}
+                    className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all ${
+                      heygenEngine === 'avatar_v' ? 'bg-purple-600/30 border border-purple-500/50 text-white shadow-lg' : 'text-[var(--text-secondary)] hover:text-white'
+                    }`}
+                  >
+                    Avatar V (v5 - Latest)
+                  </button>
+                </div>
+              </div>
+            )}
 
             {inputMode === 'script' ? (
               <>

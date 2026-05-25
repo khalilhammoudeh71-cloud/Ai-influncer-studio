@@ -54,7 +54,7 @@ export type RevenueEntry = {
   notes: string;
 };
 
-export type Tab = 'personas' | 'create' | 'gallery' | 'assistant' | 'settings';
+export type Tab = 'personas' | 'create' | 'gallery' | 'assistant' | 'settings' | 'intelligence';
 
 export interface NavEntry {
   view: Tab | 'persona-builder';

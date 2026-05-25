@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, ChevronRight, Zap, Image as ImageIcon, Target, Mic, Brain, ArrowRight } from 'lucide-react';
+import { supabase } from '../lib/supabase';
+import toast from 'react-hot-toast';
 
 interface LandingViewProps {
   onGetStarted: () => void;
@@ -192,6 +194,45 @@ function HeroBackground() {
 
 export default function LandingView({ onGetStarted, isLoggedIn }: LandingViewProps) {
   const [activeShowcase, setActiveShowcase] = useState(0);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleAuthSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      if (authMode === 'signin') {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        toast.success('Signed in successfully!');
+        setShowAuthModal(false);
+      } else {
+        const { error } = await supabase.auth.signUp({ email, password });
+        if (error) throw error;
+        toast.success('Sign up complete! Check your email for verification link.');
+        setShowAuthModal(false);
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Authentication failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openAuth = (mode: 'signin' | 'signup') => {
+    setAuthMode(mode);
+    setEmail('');
+    setPassword('');
+    setShowAuthModal(true);
+  };
+
+  const scrollToFeatures = () => {
+    const el = document.getElementById('features-anchor');
+    if (el) el.scrollIntoView({ behavior: 'smooth' });
+  };
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -235,29 +276,18 @@ export default function LandingView({ onGetStarted, isLoggedIn }: LandingViewPro
           <span className="font-bold text-lg text-white tracking-tight hidden sm:block">AI Influencer Studio</span>
         </div>
         <div className="flex items-center gap-3">
-          {isLoggedIn ? (
-            <button
-              onClick={onGetStarted}
-              className="px-5 py-2.5 rounded-full text-sm font-bold bg-white text-[#0a0c12] hover:bg-white/90 transition-all hover:scale-[1.03] active:scale-95 shadow-xl shadow-white/10"
-            >
-              Go to Dashboard →
-            </button>
-          ) : (
-            <>
-              <button
-                onClick={onGetStarted}
-                className="px-5 py-2 rounded-full text-sm font-semibold text-white/70 hover:text-white transition-colors"
-              >
-                Sign In
-              </button>
-              <button
-                onClick={onGetStarted}
-                className="px-5 py-2.5 rounded-full text-sm font-bold bg-white text-[#0a0c12] hover:bg-white/90 transition-all hover:scale-[1.03] active:scale-95 shadow-xl shadow-white/10"
-              >
-                Get Started Free
-              </button>
-            </>
-          )}
+          <button
+            onClick={() => openAuth('signin')}
+            className="px-5 py-2 rounded-full text-sm font-semibold text-white/70 hover:text-white transition-colors cursor-pointer"
+          >
+            Sign In
+          </button>
+          <button
+            onClick={() => openAuth('signup')}
+            className="px-5 py-2.5 rounded-full text-sm font-bold bg-white text-[#0a0c12] hover:bg-white/90 transition-all hover:scale-[1.03] active:scale-95 shadow-xl shadow-white/10 cursor-pointer"
+          >
+            Sign Up
+          </button>
         </div>
       </nav>
 
@@ -293,17 +323,17 @@ export default function LandingView({ onGetStarted, isLoggedIn }: LandingViewPro
 
             <motion.div variants={itemVariants} className="flex flex-wrap items-center gap-4">
               <button
-                onClick={onGetStarted}
-                className="group flex items-center gap-3 px-7 py-3.5 bg-gradient-to-r from-[var(--accent-primary)] to-[var(--accent-secondary)] rounded-full text-white font-bold text-base hover:shadow-[0_0_50px_rgba(139,92,246,0.35)] transition-all hover:-translate-y-0.5 active:translate-y-0"
+                onClick={() => openAuth('signup')}
+                className="group flex items-center gap-3 px-7 py-3.5 bg-gradient-to-r from-[var(--accent-primary)] to-[var(--accent-secondary)] rounded-full text-white font-bold text-base hover:shadow-[0_0_50px_rgba(139,92,246,0.35)] transition-all hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
               >
                 Enter the Studio
                 <ChevronRight size={18} className="group-hover:translate-x-1 transition-transform" />
               </button>
               <button
-                onClick={onGetStarted}
-                className="flex items-center gap-2.5 px-7 py-3.5 rounded-full border border-white/10 bg-white/[0.04] text-white font-semibold text-base hover:bg-white/[0.08] transition-colors backdrop-blur-sm"
+                onClick={scrollToFeatures}
+                className="flex items-center gap-2.5 px-7 py-3.5 rounded-full border border-white/10 bg-white/[0.04] text-white font-semibold text-base hover:bg-white/[0.08] transition-colors backdrop-blur-sm cursor-pointer"
               >
-                Try for Free
+                View Features
               </button>
             </motion.div>
 
@@ -501,10 +531,10 @@ export default function LandingView({ onGetStarted, isLoggedIn }: LandingViewPro
           <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight mb-4 relative z-10">Ready to create your first persona?</h2>
           <p className="text-[var(--text-muted)] max-w-lg mx-auto mb-8 relative z-10">Join the studio and start generating photorealistic content in under 60 seconds.</p>
           <button
-            onClick={onGetStarted}
-            className="group inline-flex items-center gap-3 px-8 py-4 bg-white text-[#0a0c12] rounded-full font-bold text-lg hover:shadow-[0_0_50px_rgba(255,255,255,0.15)] transition-all hover:-translate-y-0.5 relative z-10"
+            onClick={() => openAuth('signup')}
+            className="group inline-flex items-center gap-3 px-8 py-4 bg-white text-[#0a0c12] rounded-full font-bold text-lg hover:shadow-[0_0_50px_rgba(255,255,255,0.15)] transition-all hover:-translate-y-0.5 relative z-10 cursor-pointer"
           >
-            Get Started — It's Free
+            Get Started Now
             <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
           </button>
         </motion.div>
@@ -518,6 +548,101 @@ export default function LandingView({ onGetStarted, isLoggedIn }: LandingViewPro
         </div>
         <p className="text-xs text-white/30">© {new Date().getFullYear()} All rights reserved.</p>
       </footer>
+
+      {/* Auth Modal overlay */}
+      <AnimatePresence>
+        {showAuthModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md"
+            onClick={() => setShowAuthModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={e => e.stopPropagation()}
+              className="w-full max-w-md bg-[#0B0F17]/90 border border-white/10 rounded-3xl p-8 shadow-2xl relative overflow-hidden backdrop-blur-xl"
+            >
+              {/* Glow Orbs inside Modal */}
+              <div className="absolute -top-10 -left-10 w-24 h-24 bg-violet-600/10 blur-xl rounded-full" />
+              <div className="absolute -bottom-10 -right-10 w-24 h-24 bg-cyan-600/10 blur-xl rounded-full" />
+              
+              <div className="flex items-center justify-between mb-6 relative z-10">
+                <h3 className="text-2xl font-black text-white">
+                  {authMode === 'signin' ? 'Welcome Back' : 'Create Account'}
+                </h3>
+                <button
+                  onClick={() => setShowAuthModal(false)}
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-white/50 hover:text-white bg-white/5 hover:bg-white/10 transition-all cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={handleAuthSubmit} className="space-y-4 relative z-10">
+                <div>
+                  <label className="text-[10px] font-bold text-violet-400 uppercase tracking-wider block mb-1.5">Email Address</label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="name@example.com"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    className="w-full bg-[#111827] border border-white/10 rounded-xl px-4 py-3.5 text-sm text-white outline-none focus:border-violet-500/50 transition-colors"
+                  />
+                </div>
+                
+                <div>
+                  <label className="text-[10px] font-bold text-violet-400 uppercase tracking-wider block mb-1.5">Password</label>
+                  <input
+                    type="password"
+                    required
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    className="w-full bg-[#111827] border border-white/10 rounded-xl px-4 py-3.5 text-sm text-white outline-none focus:border-violet-500/50 transition-colors"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-3.5 bg-gradient-to-r from-violet-600 to-fuchsia-600 rounded-full text-white font-bold text-sm hover:brightness-110 active:scale-98 transition-all shadow-lg shadow-violet-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 mt-2"
+                >
+                  {loading ? 'Processing...' : authMode === 'signin' ? 'Sign In' : 'Sign Up'}
+                </button>
+              </form>
+
+              <div className="mt-6 text-center text-xs text-white/60 relative z-10">
+                {authMode === 'signin' ? (
+                  <p>
+                    Don't have an account?{' '}
+                    <button
+                      onClick={() => setAuthMode('signup')}
+                      className="text-[#00D4FF] font-bold hover:underline cursor-pointer bg-transparent border-0"
+                    >
+                      Sign Up
+                    </button>
+                  </p>
+                ) : (
+                  <p>
+                    Already have an account?{' '}
+                    <button
+                      onClick={() => setAuthMode('signin')}
+                      className="text-[#00D4FF] font-bold hover:underline cursor-pointer bg-transparent border-0"
+                    >
+                      Sign In
+                    </button>
+                  </p>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

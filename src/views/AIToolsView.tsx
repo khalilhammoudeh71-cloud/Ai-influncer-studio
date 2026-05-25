@@ -41,6 +41,7 @@ import StoryChainStudio from '../components/StoryChainStudio';
 import HeadshotStudio from '../components/HeadshotStudio';
 import TimeMachine from '../components/TimeMachine';
 import HairstyleTryOn from '../components/HairstyleTryOn';
+import MotionControlStudio from '../components/MotionControlStudio';
 import toast from 'react-hot-toast';
 
 interface AIToolsViewProps {
@@ -170,6 +171,8 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
   const [showHeadshot, setShowHeadshot] = useState(false);
   const [showTimeMachine, setShowTimeMachine] = useState(false);
   const [showHairstyle, setShowHairstyle] = useState(false);
+  const [showMotionControl, setShowMotionControl] = useState(false);
+  const [showVirtualTryOn, setShowVirtualTryOn] = useState(false);
   const [talkingHeadAudio, setTalkingHeadAudio] = useState<string | undefined>(undefined);
   const [talkingHeadScript, setTalkingHeadScript] = useState<string | undefined>(undefined);
 
@@ -577,6 +580,46 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
                 <p className="text-sm text-[var(--text-secondary)] font-medium">Preview 144 haircut & color combos before visiting the salon.</p>
               </div>
             </button>
+
+            {/* Motion Control */}
+            <button
+              onClick={() => setShowMotionControl(true)}
+              className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-violet-500/20 hover:border-violet-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
+            >
+              <div className="relative h-48 w-full bg-black overflow-hidden">
+                <img src="https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?auto=format&fit=crop&w=800&q=80" alt="Motion Control" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
+              </div>
+              <div className="p-6 flex-1 flex flex-col justify-center">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-600 to-fuchsia-600 flex items-center justify-center text-white shadow-lg shadow-violet-500/20">
+                    <Video size={20} />
+                  </div>
+                  <h3 className="text-lg font-black text-[var(--text-primary)] tracking-tight">Motion Control</h3>
+                  <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-300 border border-violet-500/30 uppercase tracking-widest">AI Video</span>
+                </div>
+                <p className="text-sm text-[var(--text-secondary)] font-medium">Replicate any movement or dance. Upload a reference photo + a motion video, or select from viral dances.</p>
+              </div>
+            </button>
+
+            {/* Virtual Try-On */}
+            <button
+              onClick={() => setShowVirtualTryOn(true)}
+              className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-rose-500/20 hover:border-rose-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
+            >
+              <div className="relative h-48 w-full bg-black overflow-hidden">
+                <img src="https://images.unsplash.com/photo-1558618666-fcd25c85cd64?auto=format&fit=crop&w=800&q=80" alt="Virtual Try-On" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
+              </div>
+              <div className="p-6 flex-1 flex flex-col justify-center">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-600 to-pink-600 flex items-center justify-center text-white shadow-lg shadow-rose-500/20">
+                    <Shirt size={20} />
+                  </div>
+                  <h3 className="text-lg font-black text-[var(--text-primary)] tracking-tight">Virtual Try-On</h3>
+                  <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 uppercase tracking-widest">Fashion AI</span>
+                </div>
+                <p className="text-sm text-[var(--text-secondary)] font-medium">Dress your persona in any outfit. Upload a reference image + garment photo to preview the look instantly.</p>
+              </div>
+            </button>
           </div>
         </div>
       </div>
@@ -613,6 +656,12 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
       )}
       {showHairstyle && (
         <HairstyleTryOn persona={persona} onClose={() => setShowHairstyle(false)} />
+      )}
+      {showMotionControl && (
+        <MotionControlStudio persona={persona} isOpen={showMotionControl} onClose={() => setShowMotionControl(false)} />
+      )}
+      {showVirtualTryOn && (
+        <VirtualTryOnModal persona={persona} onClose={() => setShowVirtualTryOn(false)} />
       )}
     </>
     );
@@ -1193,5 +1242,100 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
         </div>
       </div>
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────
+// Virtual Try-On Modal
+// ─────────────────────────────────────────────────────
+function VirtualTryOnModal({ persona, onClose }: { persona: Persona; onClose: () => void }) {
+  const [personImage, setPersonImage] = useState<string | null>(persona.referenceImage || null);
+  const [garmentImage, setGarmentImage] = useState<string | null>(null);
+  const [resultImage, setResultImage] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const personRef = React.useRef<HTMLInputElement>(null);
+  const garmentRef = React.useRef<HTMLInputElement>(null);
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, setter: (v: string) => void) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => setter(ev.target?.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const handleGenerate = async () => {
+    if (!personImage || !garmentImage) { toast.error('Upload both a person photo and a garment photo'); return; }
+    setIsGenerating(true);
+    setResultImage(null);
+    try {
+      const result = await virtualTryOn(personImage, garmentImage);
+      setResultImage(result.imageUrl);
+      toast.success('Try-On complete!');
+    } catch (err: any) {
+      toast.error(err.message || 'Try-On failed. Check your API configuration.');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  return (
+    <AnimatePresence>
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={onClose}>
+        <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+          onClick={e => e.stopPropagation()}
+          className="bg-[var(--bg-base)] border border-rose-500/20 rounded-3xl overflow-hidden w-full max-w-2xl shadow-2xl shadow-rose-900/20">
+          <div className="flex items-center justify-between p-6 border-b border-[var(--border-subtle)]">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-600 to-pink-600 flex items-center justify-center text-white"><Shirt size={20} /></div>
+              <div>
+                <h2 className="text-xl font-bold text-white">Virtual Try-On</h2>
+                <p className="text-xs text-[var(--text-tertiary)]">Upload person + garment to preview the look</p>
+              </div>
+            </div>
+            <button onClick={onClose} className="p-2 bg-white/5 hover:bg-white/10 rounded-xl text-white transition-colors"><X size={18} /></button>
+          </div>
+          <div className="p-6 space-y-6">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-[10px] font-bold text-rose-300 uppercase tracking-wider block mb-2">Person / Reference Photo</label>
+                <div onClick={() => personRef.current?.click()}
+                  className="relative aspect-[3/4] rounded-2xl border-2 border-dashed border-rose-500/30 hover:border-rose-500/60 transition-colors cursor-pointer overflow-hidden bg-[var(--bg-elevated)] flex items-center justify-center">
+                  {personImage ? <img src={personImage} className="w-full h-full object-cover" alt="Person" /> : (
+                    <div className="text-center p-4"><Upload size={24} className="text-rose-400 mx-auto mb-2" /><p className="text-xs text-[var(--text-tertiary)]">Upload person photo</p></div>
+                  )}
+                  <input ref={personRef} type="file" accept="image/*" className="hidden" onChange={e => handleImageUpload(e, setPersonImage)} />
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-pink-300 uppercase tracking-wider block mb-2">Garment / Outfit</label>
+                <div onClick={() => garmentRef.current?.click()}
+                  className="relative aspect-[3/4] rounded-2xl border-2 border-dashed border-pink-500/30 hover:border-pink-500/60 transition-colors cursor-pointer overflow-hidden bg-[var(--bg-elevated)] flex items-center justify-center">
+                  {garmentImage ? <img src={garmentImage} className="w-full h-full object-cover" alt="Garment" /> : (
+                    <div className="text-center p-4"><Shirt size={24} className="text-pink-400 mx-auto mb-2" /><p className="text-xs text-[var(--text-tertiary)]">Upload garment</p></div>
+                  )}
+                  <input ref={garmentRef} type="file" accept="image/*" className="hidden" onChange={e => handleImageUpload(e, setGarmentImage)} />
+                </div>
+              </div>
+            </div>
+            {resultImage && (
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl overflow-hidden border border-rose-500/20">
+                <img src={resultImage} className="w-full max-h-[280px] object-contain bg-black" alt="Try-On Result" />
+                <div className="bg-[var(--bg-elevated)] p-3 flex items-center justify-between">
+                  <span className="text-xs text-emerald-400 font-bold">✓ Try-On Complete</span>
+                  <button onClick={() => { const a = document.createElement('a'); a.href = resultImage!; a.download = 'tryon_result.png'; a.click(); }}
+                    className="text-xs font-bold text-white bg-rose-600/30 hover:bg-rose-600/50 border border-rose-500/30 px-3 py-1 rounded-lg transition-colors">Download</button>
+                </div>
+              </motion.div>
+            )}
+            <button onClick={handleGenerate} disabled={isGenerating || !personImage || !garmentImage}
+              className="w-full py-4 rounded-2xl font-black text-sm uppercase tracking-wider text-white bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-lg shadow-rose-500/20">
+              {isGenerating ? <><Loader2 size={16} className="animate-spin" /> Generating…</> : <><Shirt size={16} /> Generate Try-On</>}
+            </button>
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
   );
 }

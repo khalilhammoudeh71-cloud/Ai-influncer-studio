@@ -42,20 +42,20 @@ export default function PersonaBuilderView({ persona: initialPersona, onChange, 
     setIsGeneratingAngles(true);
     setGeneratedCount(0);
     setGeneratingLabels(new Set([
-      "Front Portrait", "Left 45°", "Right 45°", "Profile Left",
-      "Smile", "Neutral", "Upper Body", "Full Body", "Lifestyle Shot"
+      "Front Portrait", "Three-Quarter Left", "Three-Quarter Right", "Profile Left",
+      "Profile Right", "Eye Level", "Over-the-Shoulder", "High Angle", "Low Angle"
     ]));
 
     const targetAngles = [
       { label: "Front Portrait", p: "Direct frontal view. Maintain the exact same facial features, bone structure, and expression as the reference. Identical identity." },
-      { label: "Left 45°", p: "Three-quarter view turned 45 degrees left. Maintain the exact same facial features and identity as the reference." },
-      { label: "Right 45°", p: "Three-quarter view turned 45 degrees right. Maintain the exact same facial features and identity as the reference." },
+      { label: "Three-Quarter Left", p: "Three-quarter view turned 45 degrees left. Maintain the exact same facial features and identity as the reference." },
+      { label: "Three-Quarter Right", p: "Three-quarter view turned 45 degrees right. Maintain the exact same facial features and identity as the reference." },
       { label: "Profile Left", p: "90-degree full side profile view looking left. Maintain the exact same identity." },
-      { label: "Smile", p: "Frontal view with a warm smile. Maintain the exact same facial features and identity." },
-      { label: "Neutral", p: "Frontal view with a professional neutral look. Maintain the exact same facial features and identity." },
-      { label: "Upper Body", p: "Medium shot from the waist up. Maintain the exact same identity and outfit." },
-      { label: "Full Body", p: "Full body standing shot. Maintain the exact same identity and outfit." },
-      { label: "Lifestyle Shot", p: "Natural standing pose in studio. Maintain the exact same identity." }
+      { label: "Profile Right", p: "90-degree full side profile view looking right. Maintain the exact same identity." },
+      { label: "Eye Level", p: "Direct eye level portrait looking at the camera. Maintain the exact same identity." },
+      { label: "Over-the-Shoulder", p: "Over the shoulder shot looking back at the camera. Maintain the exact same identity." },
+      { label: "High Angle", p: "High angle shot looking slightly down at the subject. Maintain the exact same identity." },
+      { label: "Low Angle", p: "Low angle shot from below looking up at the subject. Maintain the exact same identity." }
     ];
 
     // PHASE 1: Generate Anchor (Front Portrait) using GPT Image 2.0 (OpenAI)
@@ -482,17 +482,25 @@ export default function PersonaBuilderView({ persona: initialPersona, onChange, 
 
                 const getFallbackImage = (label: string) => {
                   const base = persona.referenceImage || "/isabella_laurent_reference.png";
+                  
+                  // If default Isabella Laurent, use the high-quality pre-rendered demo assets directly
+                  const isDefaultIsabella = base === "/isabella_laurent_reference.png" || base.includes("isabella_laurent");
+                  if (isDefaultIsabella) {
+                    const placeholder = identitySheetPlaceholders.find(p => p.label === label);
+                    if (placeholder?.img) return placeholder.img;
+                  }
+
                   if (!base.includes('images.unsplash.com')) return base;
                   const baseNoParams = base.split('?')[0];
                   if (label === "Front Portrait") return `${baseNoParams}?auto=format&fit=crop&w=800&q=80`;
-                  if (label === "Left 45°") return `${baseNoParams}?auto=format&fit=crop&w=800&q=80&crop=focalpoint&fp-x=0.48&fp-y=0.38&fp-z=1.3`;
-                  if (label === "Right 45°") return `${baseNoParams}?auto=format&fit=crop&w=800&q=80&crop=focalpoint&fp-x=0.52&fp-y=0.38&fp-z=1.3`;
+                  if (label === "Three-Quarter Left") return `${baseNoParams}?auto=format&fit=crop&w=800&q=80&crop=focalpoint&fp-x=0.48&fp-y=0.38&fp-z=1.3`;
+                  if (label === "Three-Quarter Right") return `${baseNoParams}?auto=format&fit=crop&w=800&q=80&crop=focalpoint&fp-x=0.52&fp-y=0.38&fp-z=1.3`;
                   if (label === "Profile Left") return `${baseNoParams}?auto=format&fit=crop&w=800&q=80&crop=focalpoint&fp-x=0.45&fp-y=0.38&fp-z=1.4`;
-                  if (label === "Smile") return `${baseNoParams}?auto=format&fit=crop&w=800&q=80&crop=focalpoint&fp-x=0.5&fp-y=0.35&fp-z=1.5`;
-                  if (label === "Neutral") return `${baseNoParams}?auto=format&fit=crop&w=800&q=80&crop=focalpoint&fp-x=0.5&fp-y=0.4&fp-z=1.2`;
-                  if (label === "Upper Body") return `${baseNoParams}?auto=format&fit=crop&w=800&q=80&crop=focalpoint&fp-x=0.5&fp-y=0.48&fp-z=1`;
-                  if (label === "Full Body") return `${baseNoParams}?auto=format&fit=crop&w=800&q=80&crop=focalpoint&fp-x=0.5&fp-y=0.65&fp-z=1`;
-                  if (label === "Lifestyle Shot") return `${baseNoParams}?auto=format&fit=crop&w=800&q=80&crop=entropy`;
+                  if (label === "Profile Right") return `${baseNoParams}?auto=format&fit=crop&w=800&q=80&crop=focalpoint&fp-x=0.55&fp-y=0.38&fp-z=1.4`;
+                  if (label === "Eye Level") return `${baseNoParams}?auto=format&fit=crop&w=800&q=80&crop=focalpoint&fp-x=0.5&fp-y=0.4&fp-z=1.2`;
+                  if (label === "Over-the-Shoulder") return `${baseNoParams}?auto=format&fit=crop&w=800&q=80&crop=focalpoint&fp-x=0.5&fp-y=0.48&fp-z=1`;
+                  if (label === "High Angle") return `${baseNoParams}?auto=format&fit=crop&w=800&q=80&crop=focalpoint&fp-x=0.5&fp-y=0.35&fp-z=1.3`;
+                  if (label === "Low Angle") return `${baseNoParams}?auto=format&fit=crop&w=800&q=80&crop=focalpoint&fp-x=0.5&fp-y=0.45&fp-z=1.3`;
                   return base;
                 };
 

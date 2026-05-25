@@ -1,9 +1,25 @@
 import type { Persona, GeneratedImage, RevenueEntry, PlannedPost } from '../types';
+import { supabase } from '../lib/supabase';
+
+async function getAuthHeaders(): Promise<HeadersInit> {
+  try {
+    const sessionRes = await supabase.auth.getSession();
+    const token = sessionRes?.data?.session?.access_token;
+    return token ? { 'Authorization': `Bearer ${token}` } : {};
+  } catch (e) {
+    console.error('Error fetching Supabase auth session:', e);
+    return {};
+  }
+}
 
 async function requestWithBody<T>(url: string, body: unknown): Promise<T> {
+  const authHeaders = await getAuthHeaders();
   const res = await fetch(`/api${url}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 
+      'Content-Type': 'application/json',
+      ...authHeaders
+    },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
@@ -16,10 +32,12 @@ async function requestWithBody<T>(url: string, body: unknown): Promise<T> {
 const API_BASE = '/api';
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
+  const authHeaders = await getAuthHeaders();
   const res = await fetch(`${API_BASE}${url}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
+      ...authHeaders,
       ...options?.headers,
     },
   });
@@ -118,5 +136,11 @@ export const api = {
       requestWithBody<{ audioUrl: string; engine?: string }>('/generate-speech', params),
     translateText: (params: { text: string; targetLanguage: string }) =>
       requestWithBody<{ translatedText: string }>('/translate-text', params),
+  },
+
+  billing: {
+    get: () => request<{ email: string; subscriptionStatus: string; credits: number; stripeCustomerId?: string; subscriptionPriceId?: string }>('/billing'),
+    createCheckout: (priceId: string, type: 'subscription' | 'credits') => requestWithBody<{ url: string }>('/stripe/create-checkout', { priceId, type }),
+    portal: () => request<{ url: string }>('/stripe/portal', { method: 'POST' }),
   },
 };

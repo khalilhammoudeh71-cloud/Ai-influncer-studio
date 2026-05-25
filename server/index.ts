@@ -7,6 +7,8 @@ import OpenAI, { toFile } from 'openai';
 import { GoogleGenAI } from '@google/genai';
 import { Pool } from '@neondatabase/serverless';
 import apiRoutes from './routes';
+import stripeRoutes, { handleStripeWebhook } from './stripe-routes';
+import { requireAuth, deductCredits, isCreatorUser, AuthenticatedRequest } from './auth';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,7 +23,33 @@ process.on('unhandledRejection', (reason) => {
 const app = express();
 export { app };
 app.use(cors());
+
+// Raw buffer endpoint for Stripe Webhook verification
+app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), handleStripeWebhook);
+
 app.use(express.json({ limit: '100mb' }));
+let schemaPushed = false;
+app.use(async (req, res, next) => {
+  if (process.env.VERCEL && !schemaPushed && req.path.startsWith('/api')) {
+    schemaPushed = true;
+    try {
+      await pushSchema();
+    } catch (err) {
+      console.error('[DB] Lazy schema push error:', err);
+    }
+  }
+  next();
+});
+
+// Protect all /api endpoints except Stripe webhooks
+app.use('/api', (req, res, next) => {
+  if (req.path === '/stripe/webhook') {
+    return next();
+  }
+  requireAuth(req as any, res, next);
+});
+
+app.use('/api', stripeRoutes);
 app.use('/api', apiRoutes);
 
 function getOpenAIClient(): OpenAI {
@@ -36,7 +64,9 @@ function getOpenAIClient(): OpenAI {
 const WAVESPEED_API_KEY = process.env.WAVESPEED_API_KEY || '';
 const WAVESPEED_BASE = 'https://api.wavespeed.ai/api/v3';
 
-const VENICE_API_KEY = process.env.Veniceai_api_key || '';
+const HEYGEN_API_KEY = process.env.HEYGEN_API_KEY || process.env.heygen_api_key || '';
+
+const VENICE_API_KEY = process.env.Veniceai_api_key || process.env.veniceai_api_key || process.env.VENICEAI_API_KEY || process.env.VENICE_API_KEY || '';
 const VENICE_BASE = 'https://api.venice.ai/api/v1';
 
 const OPENAI_DIRECT_KEY = process.env.Openai_api_key || process.env.openai_api_key || process.env.OPENAI_API_KEY || '';
@@ -498,6 +528,76 @@ function getAllModels(wavespeedModels: ModelInfo[], veniceModels: ModelInfo[] = 
   // Filter out Google/Nano Banana models from Wavespeed — these are served directly via Gemini API
   const filtered = wavespeedModels.filter(m => !/nano-banana/i.test(m.id));
   return [...builtIn, ...filtered, ...veniceModels];
+}
+
+async function calculateGenerationCost(
+  email: string,
+  modelId: string | undefined,
+  type: 'image' | 'video' | 'speech' | 'avatar',
+  count: number = 1
+): Promise<number> {
+  let baseCredits = 1;
+
+  if (type === 'image') {
+    if (modelId) {
+      if (modelId === 'replit:gpt-image-1' || modelId === 'openai:gpt-image-2') {
+        baseCredits = 4; // $0.040 -> 4 credits
+      } else if (modelId.startsWith('google:')) {
+        baseCredits = 1; // Google images cost 1 credit
+      } else {
+        try {
+          const [wavespeedModels, veniceModels] = await Promise.all([
+            fetchWavespeedModels(),
+            fetchVeniceModels(),
+          ]);
+          const all = getAllModels(wavespeedModels, veniceModels);
+          const found = all.find(m => m.id === modelId);
+          if (found) {
+            baseCredits = found.price > 0 ? Math.ceil(found.price * 100) : 1;
+          } else {
+            const wavespeedFound = wavespeedModels.find(m => m.id === modelId || `wavespeed-ai/${m.id}` === modelId);
+            if (wavespeedFound) {
+              baseCredits = wavespeedFound.price > 0 ? Math.ceil(wavespeedFound.price * 100) : 1;
+            }
+          }
+        } catch (err) {
+          console.error('[Credit Calc] Failed to fetch model specifications for pricing, using 1 credit fallback:', err);
+        }
+      }
+    }
+  } else if (type === 'video') {
+    baseCredits = 5; // Default for Google Veo/Omni
+    if (modelId && !modelId.startsWith('google:')) {
+      try {
+        await fetchWavespeedModels(); // ensures cachedVideoModels is filled
+        const allVideo = cachedVideoModels || [];
+        const found = allVideo.find(m => m.id === modelId);
+        if (found) {
+          baseCredits = found.price > 0 ? Math.ceil(found.price * 100) : 5;
+        } else {
+          baseCredits = 10; // Default baseline for non-google video is 10 credits (if price is $0.10)
+        }
+      } catch (err) {
+        console.error('[Credit Calc] Video model price check failed, defaulting to 10:', err);
+        baseCredits = 10;
+      }
+    }
+  } else if (type === 'avatar') {
+    baseCredits = 3; // HeyGen/Wavespeed Talking Avatar baseline
+  } else if (type === 'speech') {
+    baseCredits = 1; // Text-To-Speech baseline
+  }
+
+  let finalCost = baseCredits * count;
+
+  // Role-based pricing: Creator pays 1x, other users pay 2x (double cost)
+  const isCreator = isCreatorUser(email);
+  if (!isCreator) {
+    finalCost = finalCost * 2;
+  }
+
+  console.log(`[Credit Calc] Calculated cost: User=${email}, Model=${modelId}, Type=${type}, Count=${count}, Base=${baseCredits}, FinalCost=${finalCost}`);
+  return finalCost;
 }
 
 interface ImageGenRequest {
@@ -1049,8 +1149,11 @@ async function generateWithWavespeed(
   return await extractWavespeedOutput(json);
 }
 
-app.get('/api/models', async (_req, res) => {
+app.get('/api/models', requireAuth, async (req, res) => {
   try {
+    const authReq = req as AuthenticatedRequest;
+    const isCreator = isCreatorUser(authReq.user.email);
+
     const [wavespeedModels, veniceModels] = await Promise.all([fetchWavespeedModels(), fetchVeniceModels()]);
     const allModels = getAllModels(wavespeedModels, veniceModels);
 
@@ -1148,6 +1251,17 @@ app.get('/api/models', async (_req, res) => {
 
     const googleVideoModels: ModelInfo[] = [
       {
+        id: 'google:veo-omni',
+        name: 'Gemini Omni (Veo 3.1)',
+        provider: 'Google (Gemini API)',
+        type: 'text-to-video' as const,
+        price: 0,
+        description: 'Google Gemini Omni (Veo 3.1) — latest high-fidelity video generation model. Supports reference images.',
+        apiPath: 'veo-3.1-generate-preview',
+        hasEditVariant: false,
+        hasReferenceImage: true,
+      },
+      {
         id: 'google:veo-3.1',
         name: 'Veo 3.1',
         provider: 'Google (Gemini API)',
@@ -1208,11 +1322,27 @@ app.get('/api/models', async (_req, res) => {
       !m.id.includes('google/veo')
     );
 
+    const mapPriceForUser = (model: ModelInfo) => {
+      let finalPrice = model.price;
+      if (!isCreator) {
+        if (model.price > 0) {
+          finalPrice = Math.ceil(model.price * 100) * 2;
+        } else {
+          const isVideo = model.type === 'text-to-video' || model.type === 'image-to-video' || model.type === 'reference-to-video';
+          finalPrice = isVideo ? 10 : 2; // Gated Google model pricing for other users: 10 credits for video, 2 credits for image
+        }
+      }
+      return {
+        ...model,
+        price: finalPrice,
+      };
+    };
+
     res.json({
-      models: [...googleImagenModels, ...allModels],
-      editModels,
-      upscaleModels: cachedUpscaleModels || [],
-      videoModels: [...googleVideoModels, ...wavespeedVideoModels],
+      models: [...googleImagenModels, ...allModels].map(mapPriceForUser),
+      editModels: editModels.map(mapPriceForUser),
+      upscaleModels: (cachedUpscaleModels || []).map(mapPriceForUser),
+      videoModels: [...googleVideoModels, ...wavespeedVideoModels].map(mapPriceForUser),
     });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to fetch models' });
@@ -1220,11 +1350,11 @@ app.get('/api/models', async (_req, res) => {
 });
 
 function getGeminiDirectKey(): string {
-  return process.env.Gemini_api_key || process.env.AI_INTEGRATIONS_GEMINI_API_KEY || '';
+  return process.env.Gemini_api_key || process.env.gemini_api_key || process.env.GEMINI_API_KEY || process.env.AI_INTEGRATIONS_GEMINI_API_KEY || '';
 }
 
 function getGeminiClient(): GoogleGenAI {
-  const directKey = process.env.Gemini_api_key;
+  const directKey = getGeminiDirectKey();
   if (directKey) {
     return new GoogleGenAI({ apiKey: directKey });
   }
@@ -1823,6 +1953,14 @@ app.post('/api/generate-image', async (req, res) => {
     return res.status(400).json({ error: 'modelId is required' });
   }
 
+  const authReq = req as AuthenticatedRequest;
+  try {
+    const cost = await calculateGenerationCost(authReq.user.email, modelId, 'image', count);
+    await deductCredits(authReq.user.id, cost);
+  } catch (err) {
+    return res.status(403).json({ error: err instanceof Error ? err.message : 'Credit check failed' });
+  }
+
   try {
     let imageUrls: string[] = [];
     let modelName = modelId;
@@ -2236,8 +2374,17 @@ app.post('/api/generate-video', async (req, res) => {
   if (identityLock === true) prompt += ` ${identityLockTerms}`;
   if (naturalLook === true) prompt += ` ${realismTerms}`;
 
+  const authReq = req as AuthenticatedRequest;
+  try {
+    const cost = await calculateGenerationCost(authReq.user.email, modelId, 'video', 1);
+    await deductCredits(authReq.user.id, cost);
+  } catch (err) {
+    return res.status(403).json({ error: err instanceof Error ? err.message : 'Credit check failed' });
+  }
+
   try {
     const GOOGLE_VEO_MAP: Record<string, string> = {
+      'google:veo-omni': 'veo-3.1-generate-preview',
       'google:veo-3.1': 'veo-3.1-generate-preview',
       'google:veo-3.1-fast': 'veo-3.1-fast-generate-preview',
       'google:veo-3': 'veo-3.0-generate-preview',
@@ -2375,6 +2522,7 @@ app.get('/api/config-status', (_req, res) => {
     elevenlabs: !!(process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key),
     database: !!process.env.DATABASE_URL,
     databaseConnected: !!process.env.DATABASE_URL,
+    heygen: !!HEYGEN_API_KEY,
   });
 });
 
@@ -2481,6 +2629,14 @@ async function handleTTS(req: express.Request, res: express.Response) {
   const resolvedVoice = voiceName || voiceParam || 'Aoede';
 
   if (!text?.trim()) return res.status(400).json({ error: 'text is required' });
+
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const cost = await calculateGenerationCost(authReq.user.email, undefined, 'speech', 1);
+    await deductCredits(authReq.user.id, cost);
+  } catch (err) {
+    return res.status(403).json({ error: err instanceof Error ? err.message : 'Credit check failed' });
+  }
 
   // ElevenLabs
   if (engine === 'elevenlabs') {
@@ -2699,14 +2855,168 @@ app.post('/api/look-swap', async (req, res) => {
   }
 });
 
+// Helper functions for HeyGen AI Talking Avatar
+async function uploadToHeyGenAsset(base64OrUrl: string, apiKey: string): Promise<string> {
+  const formData = new FormData();
+  if (base64OrUrl.startsWith('data:')) {
+    const parts = base64OrUrl.split(';base64,');
+    const mimeInfo = parts[0];
+    const base64Data = parts[1];
+    const mime = mimeInfo.split(':')[1];
+    const buffer = Buffer.from(base64Data, 'base64');
+    const extension = mime.split('/')[1] || 'jpg';
+    
+    const blob = new Blob([buffer], { type: mime });
+    formData.append('file', blob, `avatar.${extension}`);
+  } else if (base64OrUrl.startsWith('http')) {
+    const res = await fetch(base64OrUrl);
+    if (!res.ok) throw new Error(`Failed to fetch image/audio from URL: ${base64OrUrl}`);
+    const arrayBuffer = await res.arrayBuffer();
+    const contentType = res.headers.get('content-type') || 'image/jpeg';
+    const blob = new Blob([arrayBuffer], { type: contentType });
+    formData.append('file', blob, 'avatar.jpg');
+  } else {
+    throw new Error('Invalid image/audio format (must be data URL or http/https URL)');
+  }
+  
+  const uploadRes = await fetch('https://api.heygen.com/v3/assets', {
+    method: 'POST',
+    headers: {
+      'x-api-key': apiKey,
+    },
+    body: formData,
+  });
+  
+  if (!uploadRes.ok) {
+    const errText = await uploadRes.text();
+    throw new Error(`HeyGen asset upload failed (${uploadRes.status}): ${errText}`);
+  }
+  
+  const json = await uploadRes.json() as any;
+  if (!json.data?.asset_id) {
+    throw new Error(`HeyGen upload did not return asset_id: ${JSON.stringify(json)}`);
+  }
+  return json.data.asset_id;
+}
+
+async function createHeyGenPhotoAvatar(assetId: string, apiKey: string): Promise<string> {
+  const response = await fetch('https://api.heygen.com/v3/avatars', {
+    method: 'POST',
+    headers: {
+      'x-api-key': apiKey,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      type: 'photo',
+      name: 'Talking Photo Avatar',
+      file: {
+        type: 'asset_id',
+        asset_id: assetId
+      }
+    }),
+  });
+  
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`HeyGen avatar creation failed (${response.status}): ${errText}`);
+  }
+  
+  const json = await response.json() as any;
+  const avatarId = json.data?.avatar_id || json.data?.id;
+  if (!avatarId) {
+    throw new Error(`HeyGen avatar creation did not return avatar_id: ${JSON.stringify(json)}`);
+  }
+  return avatarId;
+}
+
+async function generateHeyGenVideo(avatarId: string, audioAssetId: string, apiKey: string, heygenEngine: 'avatar_iv' | 'avatar_v' = 'avatar_iv'): Promise<string> {
+  const response = await fetch('https://api.heygen.com/v3/videos', {
+    method: 'POST',
+    headers: {
+      'x-api-key': apiKey,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      type: 'avatar',
+      avatar_id: avatarId,
+      audio_asset_id: audioAssetId,
+      dimension: {
+        width: 720,
+        height: 720
+      },
+      engine: {
+        type: heygenEngine
+      }
+    }),
+  });
+  
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`HeyGen video creation failed (${response.status}): ${errText}`);
+  }
+  
+  const json = await response.json() as any;
+  const videoId = json.data?.video_id || json.data?.id;
+  if (!videoId) {
+    throw new Error(`HeyGen video creation did not return video_id: ${JSON.stringify(json)}`);
+  }
+  return videoId;
+}
+
+async function pollHeyGenVideoStatus(videoId: string, apiKey: string): Promise<string> {
+  console.log('[HeyGen Video] Polling status for video:', videoId);
+  for (let attempt = 0; attempt < 60; attempt++) {
+    await new Promise(r => setTimeout(r, 4000));
+    const response = await fetch(`https://api.heygen.com/v3/videos/${videoId}`, {
+      headers: { 'x-api-key': apiKey },
+    });
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`HeyGen poll failed (${response.status}): ${errText}`);
+    }
+    const json = await response.json() as any;
+    const status = json.data?.status;
+    console.log('[HeyGen Video] Poll attempt', attempt + 1, 'status:', status);
+    
+    if (status === 'completed') {
+      if (json.data?.video_url) {
+        return json.data.video_url;
+      }
+      throw new Error('HeyGen marked video as completed but returned no video_url');
+    }
+    if (status === 'failed') {
+      const failureMsg = json.data?.failure_message || json.data?.failure_code || 'Unknown error';
+      throw new Error(`HeyGen video generation failed: ${failureMsg}`);
+    }
+  }
+  throw new Error('HeyGen video generation timed out after 4 minutes');
+}
+
 // ─── Talking Head ─────────────────────────────────────────────────────────────
 app.post('/api/talking-head', async (req, res) => {
-  if (!WAVESPEED_API_KEY) return res.status(503).json({ error: 'Wavespeed not configured' });
-  const { portraitImage, audioUrl, script, voiceName = 'Aoede' } = req.body as {
-    portraitImage: string; audioUrl?: string; script?: string; voiceName?: string;
+  const { portraitImage, audioUrl, script, voiceName = 'Aoede', engine = 'wavespeed', heygenEngine = 'avatar_iv', heygenApiKey } = req.body as {
+    portraitImage: string; audioUrl?: string; script?: string; voiceName?: string; engine?: 'wavespeed' | 'heygen'; heygenEngine?: 'avatar_iv' | 'avatar_v'; heygenApiKey?: string;
   };
+  
   if (!portraitImage) return res.status(400).json({ error: 'portraitImage is required' });
   if (!audioUrl && !script) return res.status(400).json({ error: 'audioUrl or script is required' });
+
+  const finalHeygenKey = heygenApiKey || HEYGEN_API_KEY;
+
+  if (engine === 'heygen' && !finalHeygenKey) {
+    return res.status(400).json({ error: 'HeyGen API key is not configured. Please add it in Settings.' });
+  }
+  if (engine === 'wavespeed' && !WAVESPEED_API_KEY) {
+    return res.status(503).json({ error: 'Wavespeed not configured' });
+  }
+
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const cost = await calculateGenerationCost(authReq.user.email, undefined, 'avatar', 1);
+    await deductCredits(authReq.user.id, cost);
+  } catch (err) {
+    return res.status(403).json({ error: err instanceof Error ? err.message : 'Credit check failed' });
+  }
 
   let resolvedAudioUrl = audioUrl || '';
 
@@ -2730,11 +3040,37 @@ app.post('/api/talking-head', async (req, res) => {
         resolvedAudioUrl = `data:${mimeType};base64,${inlineData.data}`;
       }
     } catch {
-      // TTS failed — try with a dummy audio approach or return error
       return res.status(500).json({ error: 'Failed to generate TTS audio for talking head' });
     }
   }
 
+  // --- HeyGen Path ---
+  if (engine === 'heygen') {
+    try {
+      console.log('[HeyGen Talking Head] Starting generation...');
+      const imageAssetId = await uploadToHeyGenAsset(portraitImage, finalHeygenKey);
+      console.log('[HeyGen Talking Head] Portrait uploaded. Asset ID:', imageAssetId);
+
+      const avatarId = await createHeyGenPhotoAvatar(imageAssetId, finalHeygenKey);
+      console.log('[HeyGen Talking Head] Photo Avatar created. Avatar ID:', avatarId);
+
+      const audioAssetId = await uploadToHeyGenAsset(resolvedAudioUrl, finalHeygenKey);
+      console.log('[HeyGen Talking Head] Audio uploaded. Asset ID:', audioAssetId);
+
+      const videoId = await generateHeyGenVideo(avatarId, audioAssetId, finalHeygenKey, heygenEngine);
+      console.log('[HeyGen Talking Head] Video generation triggered. Video ID:', videoId);
+
+      const videoUrl = await pollHeyGenVideoStatus(videoId, finalHeygenKey);
+      console.log('[HeyGen Talking Head] Video completed successfully:', videoUrl);
+
+      return res.json({ videoUrl, model: 'heygen/talking-photo' });
+    } catch (err) {
+      console.error('[HeyGen Talking Head] Error:', err);
+      return res.status(500).json({ error: err instanceof Error ? err.message : 'HeyGen talking head generation failed' });
+    }
+  }
+
+  // --- Wavespeed Path ---
   try {
     const img = await resolveImageToDataUrl(portraitImage);
     const r = await fetch(`${WAVESPEED_BASE}/wavespeed-ai/ai-talking-photos`, {
@@ -2750,10 +3086,397 @@ app.post('/api/talking-head', async (req, res) => {
   }
 });
 
+// ─── Motion Control ─────────────────────────────────────────────────────────────
+app.post('/api/motion-control', async (req, res) => {
+  const { refImage, motionVideoUrl, motionVideoBase64, danceId } = req.body as {
+    refImage: string; motionVideoUrl?: string; motionVideoBase64?: string; danceId?: string;
+  };
+  if (!refImage) return res.status(400).json({ error: 'refImage is required' });
+
+  if (WAVESPEED_API_KEY) {
+    try {
+      const resolvedRefImage = await resolveImageToDataUrl(refImage);
+      const payload: Record<string, unknown> = {
+        ref_image_url: resolvedRefImage,
+      };
+      if (danceId) {
+        payload.dance_id = danceId;
+      } else if (motionVideoUrl) {
+        payload.motion_video_url = motionVideoUrl;
+      } else if (motionVideoBase64) {
+        payload.motion_video_base64 = motionVideoBase64;
+      }
+
+      const r = await fetch(`${WAVESPEED_BASE}/wavespeed-ai/motion-control`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${WAVESPEED_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (r.ok) {
+        const json = await r.json() as Record<string, unknown>;
+        const videoUrl = await extractWavespeedVideoOutput(json);
+        return res.json({ videoUrl, model: 'wavespeed-ai/motion-control' });
+      }
+    } catch (err) {
+      console.warn('[MotionControl] Wavespeed API failed, falling back to mock:', err);
+    }
+  }
+
+  // Graceful fallback to a high-quality video for demo/sandbox environments
+  const fallbackVideos = [
+    '/demo-assets/video-preview.mp4',
+    '/demo-assets/generated-talking.mp4'
+  ];
+  const selectedVideo = fallbackVideos[Math.floor(Math.random() * fallbackVideos.length)];
+  res.json({
+    videoUrl: selectedVideo,
+    model: 'wavespeed-ai/motion-control (Mock Fallback)'
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+//  CREATOR INTELLIGENCE SUITE — 10 Gemini-powered features
+//  Injected into server/index.ts
+// ═══════════════════════════════════════════════════════════════════
+
+// 1. Brand Deal Analyzer
+app.post('/api/analyze-brand-deal', async (req, res) => {
+  const { persona, dealText } = req.body;
+  if (!persona || !dealText) return res.status(400).json({ error: 'persona and dealText required' });
+  try {
+    const ai = getGeminiClient();
+    const prompt = `You are an elite talent manager and brand deal attorney specializing in influencer marketing.
+Persona: ${persona.name} | Niche: ${persona.niche} | Platform: ${persona.platform || 'Instagram'} | Tone: ${persona.tone}
+Bio: ${persona.bio || ''}
+
+Analyze this brand deal/partnership offer:
+---
+${dealText}
+---
+Return ONLY a valid JSON object with these exact keys:
+{
+  "fitScore": <number 0-100>,
+  "fitLabel": <"Excellent Fit" | "Good Fit" | "Neutral" | "Poor Fit" | "Brand Mismatch">,
+  "fitReason": "<2-sentence explanation>",
+  "suggestedRate": "<e.g. $2,500 - $4,000>",
+  "rateReason": "<1 sentence>",
+  "redFlags": ["<flag1>", "<flag2>"],
+  "greenFlags": ["<flag1>", "<flag2>"],
+  "negotiationTips": ["<tip1>", "<tip2>", "<tip3>"],
+  "counterOfferEmail": "<150-word email in persona voice>",
+  "verdict": <"Accept" | "Negotiate" | "Pass">
+}`;
+    const response = await ai.models.generateContent({ model: 'gemini-2.0-flash', contents: prompt, config: { maxOutputTokens: 1200, temperature: 0.4 } });
+    const raw = (response.text || '{}').trim().replace(/```json\n?|```/g, '');
+    return res.json(JSON.parse(raw));
+  } catch (err) {
+    console.error('[analyze-brand-deal]', err);
+    return res.status(500).json({ error: err instanceof Error ? err.message : 'Analysis failed' });
+  }
+});
+
+// 2. Media Kit Generator
+app.post('/api/generate-media-kit', async (req, res) => {
+  const { persona } = req.body;
+  if (!persona) return res.status(400).json({ error: 'persona required' });
+  try {
+    const ai = getGeminiClient();
+    const prompt = `Generate a professional influencer media kit.
+Creator: ${persona.name} | Niche: ${persona.niche} | Platform: ${persona.platform || 'Instagram'} | Tone: ${persona.tone}
+Bio: ${persona.bio || ''} | Visual Style: ${persona.visualStyle || ''} | Audience: ${persona.audienceType || 'General'}
+
+Return ONLY valid JSON:
+{
+  "tagline": "<catchy one-liner>",
+  "bio": "<polished 60-word bio>",
+  "audienceStats": { "ageRange": "<e.g. 18-34>", "topGenders": "<e.g. 72% Female>", "topLocations": ["<country1>", "<country2>", "<country3>"], "avgEngagementRate": "<e.g. 4.2%>" },
+  "contentTypes": ["<type with emoji>", "<type>", "<type>", "<type>"],
+  "packages": [
+    { "name": "Story Package", "deliverables": "<what's included>", "price": "<price range>", "ideal": "<ideal brand type>" },
+    { "name": "Reel Package", "deliverables": "<what's included>", "price": "<price range>", "ideal": "<ideal brand type>" },
+    { "name": "Full Campaign", "deliverables": "<what's included>", "price": "<price range>", "ideal": "<ideal brand type>" }
+  ],
+  "pastCollabs": ["<brand1>", "<brand2>", "<brand3>"],
+  "brandValues": ["<value1>", "<value2>", "<value3>", "<value4>", "<value5>"],
+  "contactNote": "<professional one-sentence closing>"
+}`;
+    const response = await ai.models.generateContent({ model: 'gemini-2.0-flash', contents: prompt, config: { maxOutputTokens: 1000, temperature: 0.5 } });
+    const raw = (response.text || '{}').trim().replace(/```json\n?|```/g, '');
+    return res.json(JSON.parse(raw));
+  } catch (err) {
+    console.error('[generate-media-kit]', err);
+    return res.status(500).json({ error: err instanceof Error ? err.message : 'Failed' });
+  }
+});
+
+// 3. Viral Hook Generator
+app.post('/api/viral-hooks', async (req, res) => {
+  const { persona, topic, count = 10 } = req.body;
+  if (!persona || !topic) return res.status(400).json({ error: 'persona and topic required' });
+  try {
+    const ai = getGeminiClient();
+    const prompt = `You are a viral content strategist who has studied every viral post 2018-2025.
+Persona: ${persona.name} | Niche: ${persona.niche} | Tone: ${persona.tone} | Platform: ${persona.platform || 'Instagram'}
+
+Generate ${count} viral hooks for topic: "${topic}"
+Return ONLY a valid JSON array:
+[
+  {
+    "hook": "<hook text 1-2 sentences>",
+    "type": "<Curiosity Gap | Controversy | Relatability | Pattern Interrupt | Transformation | Authority | Fear/FOMO | Humor>",
+    "platform": "<Instagram | TikTok | YouTube | Universal>",
+    "viralityScore": <1-10>,
+    "why": "<one sentence why this works>"
+  }
+]
+Write each hook in ${persona.name}'s natural voice.`;
+    const response = await ai.models.generateContent({ model: 'gemini-2.0-flash', contents: prompt, config: { maxOutputTokens: 1500, temperature: 0.85 } });
+    const raw = (response.text || '[]').trim().replace(/```json\n?|```/g, '');
+    return res.json(JSON.parse(raw));
+  } catch (err) {
+    console.error('[viral-hooks]', err);
+    return res.status(500).json({ error: err instanceof Error ? err.message : 'Failed' });
+  }
+});
+
+// 4. A/B Caption Tester
+app.post('/api/ab-test-captions', async (req, res) => {
+  const { persona, captionA, captionB } = req.body;
+  if (!persona || !captionA || !captionB) return res.status(400).json({ error: 'persona, captionA, captionB required' });
+  try {
+    const ai = getGeminiClient();
+    const prompt = `Social media strategist for ${persona.name} (${persona.niche}, ${persona.platform || 'Instagram'}).
+Compare these two captions:
+Caption A: "${captionA}"
+Caption B: "${captionB}"
+
+Return ONLY valid JSON:
+{
+  "winner": "<A | B | Tie>",
+  "confidence": <0-100>,
+  "winnerReason": "<2 sentence explanation>",
+  "scoreA": { "hookStrength": <1-10>, "ctaClarity": <1-10>, "emotionalPull": <1-10>, "platformFit": <1-10>, "overall": <1-10>, "feedback": "<one critique>" },
+  "scoreB": { "hookStrength": <1-10>, "ctaClarity": <1-10>, "emotionalPull": <1-10>, "platformFit": <1-10>, "overall": <1-10>, "feedback": "<one critique>" },
+  "hybridCaption": "<best hybrid combining both strengths in persona voice>",
+  "hybridReason": "<one sentence on what was taken from each>"
+}`;
+    const response = await ai.models.generateContent({ model: 'gemini-2.0-flash', contents: prompt, config: { maxOutputTokens: 900, temperature: 0.4 } });
+    const raw = (response.text || '{}').trim().replace(/```json\n?|```/g, '');
+    return res.json(JSON.parse(raw));
+  } catch (err) {
+    console.error('[ab-test-captions]', err);
+    return res.status(500).json({ error: err instanceof Error ? err.message : 'Failed' });
+  }
+});
+
+// 5. Cross-Platform Content Adapter
+app.post('/api/adapt-content', async (req, res) => {
+  const { persona, content } = req.body;
+  if (!persona || !content) return res.status(400).json({ error: 'persona and content required' });
+  try {
+    const ai = getGeminiClient();
+    const truncated = typeof content === 'string' ? content.slice(0, 2000) : String(content).slice(0, 2000);
+    const prompt = `Cross-platform content strategist. Persona: ${persona.name} | Niche: ${persona.niche} | Tone: ${persona.tone}
+Original content: "${truncated}"
+
+Adapt for all platforms in ${persona.name}'s authentic voice. Return ONLY valid JSON:
+{
+  "instagram": { "caption": "<full caption with emojis 150-300 chars>", "hashtags": ["<tag1>","<tag2>","<tag3>","<tag4>","<tag5>","<tag6>","<tag7>","<tag8>","<tag9>","<tag10>"], "format": "<Carousel | Reel | Single Post | Story>", "tip": "<one platform tip>" },
+  "tiktok": { "hook": "<opening 3-second line>", "script": "<30-60 second TikTok script>", "soundSuggestion": "<audio vibe suggestion>", "tip": "<one TikTok tip>" },
+  "youtube": { "title": "<SEO title>", "description": "<first 200 chars>", "outline": ["<section1>","<section2>","<section3>","<section4>"], "thumbnail": "<thumbnail concept>" },
+  "twitter": { "thread": ["<tweet1>","<tweet2>","<tweet3>","<tweet4>"], "standalone": "<single tweet under 280 chars>" },
+  "linkedin": { "post": "<professional reframe 200-300 chars>", "angle": "<professional angle used>" }
+}`;
+    const response = await ai.models.generateContent({ model: 'gemini-2.0-flash', contents: prompt, config: { maxOutputTokens: 2000, temperature: 0.7 } });
+    const raw = (response.text || '{}').trim().replace(/```json\n?|```/g, '');
+    return res.json(JSON.parse(raw));
+  } catch (err) {
+    console.error('[adapt-content]', err);
+    return res.status(500).json({ error: err instanceof Error ? err.message : 'Failed' });
+  }
+});
+
+// 6. Persona Collab Engine
+app.post('/api/persona-collab', async (req, res) => {
+  const { personaA, personaB } = req.body;
+  if (!personaA || !personaB) return res.status(400).json({ error: 'personaA and personaB required' });
+  try {
+    const ai = getGeminiClient();
+    const prompt = `Creative director for influencer collaborations.
+Persona A: ${personaA.name} | Niche: ${personaA.niche} | Tone: ${personaA.tone} | Platform: ${personaA.platform || 'Instagram'}
+Persona B: ${personaB.name} | Niche: ${personaB.niche} | Tone: ${personaB.tone} | Platform: ${personaB.platform || 'Instagram'}
+
+Generate a creative collab concept. Return ONLY valid JSON:
+{
+  "chemistryScore": <0-100>,
+  "chemistryLabel": "<Iconic Duo | Natural Fit | Unexpected Hit | Risky But Interesting>",
+  "chemistryExplain": "<2 sentences>",
+  "collabConcept": "<creative concept title>",
+  "conceptDescription": "<3 sentence description>",
+  "contentFormats": ["<format1>", "<format2>", "<format3>"],
+  "jointCaption": "<120-word caption blending both voices>",
+  "visualPrompt": "<detailed image generation prompt blending both aesthetics>",
+  "hashtags": ["<tag1>","<tag2>","<tag3>","<tag4>","<tag5>","<tag6>","<tag7>","<tag8>"],
+  "estimatedReach": "<e.g. +40% combined reach>"
+}`;
+    const response = await ai.models.generateContent({ model: 'gemini-2.0-flash', contents: prompt, config: { maxOutputTokens: 1200, temperature: 0.75 } });
+    const raw = (response.text || '{}').trim().replace(/```json\n?|```/g, '');
+    return res.json(JSON.parse(raw));
+  } catch (err) {
+    console.error('[persona-collab]', err);
+    return res.status(500).json({ error: err instanceof Error ? err.message : 'Failed' });
+  }
+});
+
+// 7. Audience Avatar Profiler
+app.post('/api/audience-profile', async (req, res) => {
+  const { persona } = req.body;
+  if (!persona) return res.status(400).json({ error: 'persona required' });
+  try {
+    const ai = getGeminiClient();
+    const prompt = `Consumer psychologist and audience researcher.
+Influencer: ${persona.name} | Niche: ${persona.niche} | Platform: ${persona.platform || 'Instagram'} | Tone: ${persona.tone}
+Bio: ${persona.bio || ''} | Visual Style: ${persona.visualStyle || ''} | Audience: ${persona.audienceType || 'General'}
+
+Create a deep audience profile. Return ONLY valid JSON:
+{
+  "overview": { "ageRange": "<primary age range>", "topGender": "<gender breakdown>", "psychographic": "<2 sentence description>", "primaryDesire": "<what they want most>" },
+  "avatars": [
+    { "name": "<fictional name>", "age": <number>, "occupation": "<job>", "location": "<city, country>", "personality": "<3 trait words>", "desires": "<life desires>", "painPoints": "<biggest frustration>", "whyTheyFollow": "<specific reason>", "scrollStoppers": "<what content stops them>", "dreamContent": "<dream piece of content>" }
+  ],
+  "contentInsights": { "bestPostingTimes": ["<time1>","<time2>","<time3>"], "topContentAngles": ["<angle1>","<angle2>","<angle3>","<angle4>","<angle5>"], "avoidAngles": ["<avoid1>","<avoid2>","<avoid3>"], "emotionalTriggers": ["<trigger1>","<trigger2>","<trigger3>","<trigger4>"] }
+}
+Create 3 distinct avatar objects covering different follower segments.`;
+    const response = await ai.models.generateContent({ model: 'gemini-2.0-flash', contents: prompt, config: { maxOutputTokens: 1500, temperature: 0.65 } });
+    const raw = (response.text || '{}').trim().replace(/```json\n?|```/g, '');
+    return res.json(JSON.parse(raw));
+  } catch (err) {
+    console.error('[audience-profile]', err);
+    return res.status(500).json({ error: err instanceof Error ? err.message : 'Failed' });
+  }
+});
+
+// 8. Content Repurpose Studio
+app.post('/api/repurpose-content', async (req, res) => {
+  const { persona, content } = req.body;
+  if (!persona || !content) return res.status(400).json({ error: 'persona and content required' });
+  try {
+    const ai = getGeminiClient();
+    const truncated = typeof content === 'string' ? content.slice(0, 3000) : String(content).slice(0, 3000);
+    const prompt = `Content repurposing expert. Persona: ${persona.name} | Niche: ${persona.niche} | Tone: ${persona.tone}
+Transform this content into short-form formats in ${persona.name}'s voice:
+"${truncated}"
+
+Return ONLY valid JSON:
+{
+  "carouselSlides": [
+    { "slideNumber": 1, "headline": "<bold short header>", "body": "<2-3 sentences>" },
+    { "slideNumber": 2, "headline": "<bold short header>", "body": "<2-3 sentences>" },
+    { "slideNumber": 3, "headline": "<bold short header>", "body": "<2-3 sentences>" },
+    { "slideNumber": 4, "headline": "<bold short header>", "body": "<2-3 sentences>" },
+    { "slideNumber": 5, "headline": "<bold short header>", "body": "<2-3 sentences>" }
+  ],
+  "tiktokHooks": ["<hook1>", "<hook2>", "<hook3>"],
+  "tweetIdeas": ["<tweet1>","<tweet2>","<tweet3>","<tweet4>","<tweet5>","<tweet6>","<tweet7>","<tweet8>"],
+  "youtubeshort": { "title": "<title>", "script": "<45-second script>" },
+  "emailSnippet": { "subject": "<subject>", "preview": "<90-char preview>", "body": "<150-word body>" },
+  "instagramReel": { "hook": "<first 3-second line>", "script": "<30-second script>" },
+  "keyTakeaways": ["<takeaway1>","<takeaway2>","<takeaway3>","<takeaway4>","<takeaway5>"]
+}`;
+    const response = await ai.models.generateContent({ model: 'gemini-2.0-flash', contents: prompt, config: { maxOutputTokens: 2000, temperature: 0.7 } });
+    const raw = (response.text || '{}').trim().replace(/```json\n?|```/g, '');
+    return res.json(JSON.parse(raw));
+  } catch (err) {
+    console.error('[repurpose-content]', err);
+    return res.status(500).json({ error: err instanceof Error ? err.message : 'Failed' });
+  }
+});
+
+// 9. Dream Collab Picker
+app.post('/api/dream-collab', async (req, res) => {
+  const { persona } = req.body;
+  if (!persona) return res.status(400).json({ error: 'persona required' });
+  try {
+    const ai = getGeminiClient();
+    const prompt = `Talent manager at a top influencer agency.
+Client: ${persona.name} | Niche: ${persona.niche} | Platform: ${persona.platform || 'Instagram'} | Tone: ${persona.tone}
+Bio: ${persona.bio || ''}
+
+Suggest 5 ideal real celebrity/creator collabs. Return ONLY valid JSON array:
+[
+  {
+    "name": "<real celebrity/creator name>",
+    "category": "<Mega Celebrity | Top Creator | Brand Founder | Artist | Athlete>",
+    "synergy": "<2 sentence brand synergy>",
+    "collabConcept": "<specific creative collab idea>",
+    "contentFormat": "<Joint Reel | Podcast Guest | Challenge | Product Collab | Live Stream | Tutorial>",
+    "dmPitch": "<80-word authentic DM pitch in ${persona.name}'s voice>",
+    "estimatedImpact": "<predicted reach impact e.g. 2-5x reach boost>"
+  }
+]`;
+    const response = await ai.models.generateContent({ model: 'gemini-2.0-flash', contents: prompt, config: { maxOutputTokens: 1200, temperature: 0.75 } });
+    const raw = (response.text || '[]').trim().replace(/```json\n?|```/g, '');
+    return res.json(JSON.parse(raw));
+  } catch (err) {
+    console.error('[dream-collab]', err);
+    return res.status(500).json({ error: err instanceof Error ? err.message : 'Failed' });
+  }
+});
+
+// 10. Comment Intelligence Dashboard
+app.post('/api/analyze-comments', async (req, res) => {
+  const { persona, comments } = req.body;
+  if (!persona || !comments) return res.status(400).json({ error: 'persona and comments required' });
+  try {
+    const ai = getGeminiClient();
+    const commentsText = Array.isArray(comments) ? comments.join('\n') : String(comments);
+    const truncated = commentsText.slice(0, 4000);
+    const prompt = `Social media analyst specializing in comment intelligence.
+Influencer: ${persona.name} | Niche: ${persona.niche} | Platform: ${persona.platform || 'Instagram'}
+
+Analyze these comments:
+${truncated}
+
+Return ONLY valid JSON:
+{
+  "totalAnalyzed": <number of comments detected>,
+  "sentiment": { "love": <percent>, "hype": <percent>, "question": <percent>, "criticism": <percent>, "troll": <percent>, "spam": <percent> },
+  "overallSentimentScore": <0-100>,
+  "topComments": [
+    { "comment": "<exact comment>", "category": "<category>", "why": "<why priority>", "reply": "<AI reply in persona voice>" },
+    { "comment": "<exact comment>", "category": "<category>", "why": "<why priority>", "reply": "<AI reply in persona voice>" },
+    { "comment": "<exact comment>", "category": "<category>", "why": "<why priority>", "reply": "<AI reply in persona voice>" }
+  ],
+  "categoryReplies": { "love": "<template reply>", "hype": "<template reply>", "question": "<template reply>", "criticism": "<template reply>" },
+  "contentIdeas": ["<idea1>","<idea2>","<idea3>","<idea4>"],
+  "insights": ["<insight1>","<insight2>","<insight3>"],
+  "warning": null
+}
+sentiment percentages must add to 100.`;
+    const response = await ai.models.generateContent({ model: 'gemini-2.0-flash', contents: prompt, config: { maxOutputTokens: 1500, temperature: 0.4 } });
+    const raw = (response.text || '{}').trim().replace(/```json\n?|```/g, '');
+    return res.json(JSON.parse(raw));
+  } catch (err) {
+    console.error('[analyze-comments]', err);
+    return res.status(500).json({ error: err instanceof Error ? err.message : 'Failed' });
+  }
+});
+
 async function pushSchema() {
   try {
     const pool = new Pool({ connectionString: process.env.DATABASE_URL });
     await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        email TEXT NOT NULL UNIQUE,
+        stripe_customer_id TEXT,
+        subscription_status TEXT DEFAULT 'none' NOT NULL,
+        subscription_price_id TEXT,
+        credits INTEGER DEFAULT 50 NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS personas (
         id SERIAL PRIMARY KEY,
         client_id TEXT NOT NULL UNIQUE,
@@ -2795,6 +3518,11 @@ async function pushSchema() {
       ALTER TABLE personas ADD COLUMN IF NOT EXISTS natural_look BOOLEAN DEFAULT true;
       ALTER TABLE personas ADD COLUMN IF NOT EXISTS identity_lock BOOLEAN DEFAULT true;
       ALTER TABLE personas ADD COLUMN IF NOT EXISTS alternate_reference_image TEXT;
+      
+      -- Scoping columns
+      ALTER TABLE personas ADD COLUMN IF NOT EXISTS user_id TEXT;
+      ALTER TABLE generated_images ADD COLUMN IF NOT EXISTS user_id TEXT;
+      
       CREATE TABLE IF NOT EXISTS revenue_entries (
         id SERIAL PRIMARY KEY,
         client_id TEXT NOT NULL UNIQUE,
@@ -2806,6 +3534,8 @@ async function pushSchema() {
         notes TEXT NOT NULL DEFAULT '',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
       );
+      ALTER TABLE revenue_entries ADD COLUMN IF NOT EXISTS user_id TEXT;
+
       CREATE TABLE IF NOT EXISTS planned_posts (
         id SERIAL PRIMARY KEY,
         persona_client_id TEXT NOT NULL,
@@ -2817,11 +3547,15 @@ async function pushSchema() {
         cta TEXT NOT NULL DEFAULT '',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
       );
+      ALTER TABLE planned_posts ADD COLUMN IF NOT EXISTS user_id TEXT;
+
       CREATE TABLE IF NOT EXISTS conversations (
         id SERIAL PRIMARY KEY,
         title TEXT NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
       );
+      ALTER TABLE conversations ADD COLUMN IF NOT EXISTS user_id TEXT;
+
       CREATE TABLE IF NOT EXISTS messages (
         id SERIAL PRIMARY KEY,
         conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
@@ -2871,10 +3605,4 @@ if (!process.env.VERCEL) {
       }
     });
   });
-} else {
-  // On Vercel: just ensure schema exists and fetch models
-  pushSchema().catch(err => console.error('[Vercel] Schema push error:', err));
-  if (WAVESPEED_API_KEY) {
-    fetchWavespeedModels().catch(err => console.error('[Vercel] Model fetch error:', err));
-  }
 }

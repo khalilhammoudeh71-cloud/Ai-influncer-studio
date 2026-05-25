@@ -1,10 +1,49 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Send, Bot, ChevronDown, ImageIcon, Video, Loader2, AlertCircle, Camera, MessageSquareQuote, Copy } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { Send, Bot, ChevronDown, ImageIcon, Video, Loader2, AlertCircle, Camera, MessageSquareQuote, Copy, Bookmark, Check } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Persona, NavActions } from '../types';
 import { ModelInfo, fetchAllModelTypes, editImage, generateVideo } from '../services/imageService';
-import { generatePersonaContent } from '../utils/personaEngine';
 import { cn } from '../utils/cn';
+import { api } from '../services/apiService';
+import toast from 'react-hot-toast';
+
+// ── Typewriter hook ──────────────────────────────────────
+function useTypewriter(text: string, speed = 18) {
+  const [displayed, setDisplayed] = useState('');
+  const [done, setDone] = useState(false);
+  useEffect(() => {
+    setDisplayed('');
+    setDone(false);
+    let i = 0;
+    const interval = setInterval(() => {
+      if (i >= text.length) { clearInterval(interval); setDone(true); return; }
+      setDisplayed(text.slice(0, i + 1));
+      i++;
+    }, speed);
+    return () => clearInterval(interval);
+  }, [text]);
+  return { displayed, done };
+}
+
+// ── localStorage helpers ──────────────────────────────────
+const HISTORY_KEY = (personaId: string) => `chat_history_${personaId}`;
+const MAX_STORED = 60; // messages cap per persona
+
+function loadHistory(personaId: string): ChatMessage[] {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY(personaId));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return parsed.map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) }));
+  } catch { return []; }
+}
+
+function saveHistory(personaId: string, msgs: ChatMessage[]) {
+  try {
+    const toStore = msgs.slice(-MAX_STORED);
+    localStorage.setItem(HISTORY_KEY(personaId), JSON.stringify(toStore));
+  } catch { /* quota */ }
+}
 
 interface Props {
   personas: Persona[];
@@ -47,10 +86,12 @@ function uid(): string {
 
 export default function AssistantView({ personas, persona: propActivePersona, nav }: Props) {
   const [selectedPersonaId, setSelectedPersonaId] = useState(propActivePersona.id);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => loadHistory(propActivePersona.id));
   const [input, setInput] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
-  
+  const [savingMsgId, setSavingMsgId] = useState<string | null>(null);
+  const [savedMsgIds, setSavedMsgIds] = useState<Set<string>>(new Set());
+
   const [activeSegment, setActiveSegment] = useState<'chat' | 'replies'>('chat');
   const [replyInput, setReplyInput] = useState('');
   const [generatedReplies, setGeneratedReplies] = useState<string[]>([]);
@@ -103,8 +144,20 @@ export default function AssistantView({ personas, persona: propActivePersona, na
     setReplyInput('');
   }, []);
 
+  // Persist messages whenever they change
   useEffect(() => {
-    resetConversation(activePersona);
+    if (messages.length > 1) saveHistory(selectedPersonaId, messages);
+  }, [messages, selectedPersonaId]);
+
+  useEffect(() => {
+    // Load persisted history or reset when persona changes
+    const history = loadHistory(selectedPersonaId);
+    if (history.length > 0) {
+      setMessages(history);
+    } else {
+      resetConversation(personas.find(p => p.id === selectedPersonaId) || propActivePersona);
+    }
+    setSavedMsgIds(new Set());
   }, [selectedPersonaId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -122,6 +175,37 @@ export default function AssistantView({ personas, persona: propActivePersona, na
   const replaceMessage = useCallback((id: string, update: Partial<ChatMessage>) => {
     setMessages(prev => prev.map(m => m.id === id ? { ...m, ...update } : m));
   }, []);
+
+  // Save to Vault from chat
+  const handleSaveToVault = async (msg: ChatMessage) => {
+    if (savingMsgId === msg.id) return;
+    setSavingMsgId(msg.id);
+    try {
+      const media = {
+        id: `chat-${msg.id}`,
+        url: msg.content,
+        prompt: `Chat: ${activePersona.name}`,
+        timestamp: msg.timestamp.getTime(),
+        model: msg.type === 'video' ? selectedVideoModelId : selectedEditModelId,
+        mediaType: msg.type as 'image' | 'video',
+      };
+      const updated = { ...activePersona, visualLibrary: [...(activePersona.visualLibrary || []), media] };
+      await api.updatePersonaInVault(updated);
+      await api.images.create(activePersona.id, media);
+      setSavedMsgIds(prev => new Set(prev).add(msg.id));
+      toast.success('Saved to Visual Library!');
+    } catch {
+      toast.error('Failed to save');
+    } finally {
+      setSavingMsgId(null);
+    }
+  };
+
+  const clearHistory = () => {
+    localStorage.removeItem(HISTORY_KEY(selectedPersonaId));
+    resetConversation(activePersona);
+    toast.success('Conversation cleared');
+  };
 
   const getPersonaImageAck = (): string => {
     const tone = activePersona.tone.toLowerCase();
@@ -234,12 +318,56 @@ export default function AssistantView({ personas, persona: propActivePersona, na
     }
   }
   
-  const handleGenerateReplies = () => {
+  const handleGenerateReplies = async () => {
     if (!replyInput.trim()) return;
-    const mockPost = { day: 0, type: 'Comment', hook: replyInput, angle: '', cta: '' };
-    const r1 = generatePersonaContent(activePersona, mockPost, activePersona.platform, 'Short Caption');
-    const r2 = generatePersonaContent(activePersona, mockPost, activePersona.platform, 'Video Script');
-    setGeneratedReplies([r1, r2]);
+    setIsGenerating(true);
+    setGeneratedReplies([]);
+    try {
+      const prompt = `You are ${activePersona.name}, an AI influencer with this personality: ${activePersona.tone}. Your niche is: ${activePersona.niche}.
+
+Someone left this comment/DM on your post:
+"${replyInput}"
+
+Write 3 different reply options in your authentic voice. Each should:
+- Sound natural, not robotic
+- Match your personality perfectly
+- Be appropriately short (1-3 sentences for comments, up to 4 for DMs)
+- Include 1-2 relevant emojis
+- Be ready to post as-is
+
+Return ONLY a JSON array of 3 strings (no markdown, no keys, just the array).`;
+
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          persona: activePersona,
+          messages: [],
+          userMessage: prompt,
+          systemOverride: `You are ${activePersona.name}. Respond ONLY with a valid JSON array of 3 reply strings.`,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to generate replies');
+
+      const raw: string = data.reply || '';
+      const match = raw.match(/\[[\s\S]*\]/);
+      if (match) {
+        try {
+          const parsed: string[] = JSON.parse(match[0]);
+          setGeneratedReplies(parsed.slice(0, 3));
+        } catch {
+          // Fallback: split by newline
+          setGeneratedReplies(raw.split('\n').filter(l => l.trim()).slice(0, 3));
+        }
+      } else {
+        setGeneratedReplies([raw]);
+      }
+    } catch (err: any) {
+      toast.error('Could not generate replies');
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const NSFW_MODEL_IDS = new Set([
@@ -390,8 +518,16 @@ export default function AssistantView({ personas, persona: propActivePersona, na
       {activeSegment === 'chat' ? (
         <>
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-            {messages.map(msg => (
-              <MessageBubble key={msg.id} msg={msg} persona={activePersona} />
+            {messages.map((msg, i) => (
+              <MessageBubble
+                key={msg.id}
+                msg={msg}
+                persona={activePersona}
+                isLatest={i === messages.length - 1}
+                onSaveToVault={handleSaveToVault}
+                isSaving={savingMsgId === msg.id}
+                isSaved={savedMsgIds.has(msg.id)}
+              />
             ))}
             <div ref={messagesEndRef} />
           </div>
@@ -410,6 +546,16 @@ export default function AssistantView({ personas, persona: propActivePersona, na
                   style={{ maxHeight: '120px' }}
                 />
               </div>
+              {/* Clear history button */}
+              {messages.length > 1 && (
+                <button
+                  onClick={clearHistory}
+                  title="Clear chat history"
+                  className="w-9 h-9 rounded-xl flex items-center justify-center bg-white/5 border border-white/10 text-[var(--text-muted)] hover:text-rose-400 hover:border-rose-500/30 transition-colors flex-shrink-0 text-xs font-bold"
+                >
+                  ✕
+                </button>
+              )}
               <motion.button
                 whileTap={{ scale: 0.88 }}
                 onClick={handleSend}
@@ -449,7 +595,8 @@ export default function AssistantView({ personas, persona: propActivePersona, na
             whileHover={{ scale: 1.02, y: -1 }}
             whileTap={{ scale: 0.97 }}
             onClick={handleGenerateReplies}
-            className="w-full premium-button py-4 flex items-center justify-center gap-2 text-white font-bold rounded-xl"
+            disabled={isGenerating}
+            className="w-full premium-button py-4 flex items-center justify-center gap-2 text-white font-bold rounded-xl disabled:opacity-50"
           >
              <MessageSquareQuote size={18} />
              Generate Replies
@@ -457,7 +604,7 @@ export default function AssistantView({ personas, persona: propActivePersona, na
 
           {generatedReplies.length > 0 && (
             <div className="space-y-4">
-              <label className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-[0.15em] block mb-2">Suggestions</label>
+              <label className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-[0.15em] block mb-2">AI-Generated Replies</label>
               {generatedReplies.map((reply, idx) => (
                 <motion.div
                   key={idx}
@@ -466,14 +613,16 @@ export default function AssistantView({ personas, persona: propActivePersona, na
                   transition={{ delay: idx * 0.1 }}
                   className="bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-xl p-4 relative group"
                 >
-                  <button 
-                    onClick={() => navigator.clipboard.writeText(reply)}
-                    className="absolute top-4 right-4 text-[var(--text-muted)] hover:text-emerald-400 transition-colors opacity-0 group-hover:opacity-100"
-                    title="Copy Reply"
-                  >
-                    <Copy size={16} />
-                  </button>
-                  <p className="text-sm text-[var(--text-primary)] leading-relaxed pr-8 whitespace-pre-wrap">{reply}</p>
+                  <div className="absolute top-3 right-3 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={() => { navigator.clipboard.writeText(reply); toast.success('Copied!'); }}
+                      className="p-1.5 rounded-lg bg-white/5 hover:bg-emerald-500/20 text-[var(--text-muted)] hover:text-emerald-400 transition-colors"
+                      title="Copy"
+                    >
+                      <Copy size={13} />
+                    </button>
+                  </div>
+                  <p className="text-sm text-[var(--text-primary)] leading-relaxed pr-16 whitespace-pre-wrap">{reply}</p>
                 </motion.div>
               ))}
             </div>
@@ -484,8 +633,21 @@ export default function AssistantView({ personas, persona: propActivePersona, na
   );
 }
 
-function MessageBubble({ msg, persona }: { msg: ChatMessage; persona: Persona }) {
+interface BubbleProps {
+  msg: ChatMessage;
+  persona: Persona;
+  isLatest: boolean;
+  onSaveToVault: (msg: ChatMessage) => void;
+  isSaving: boolean;
+  isSaved: boolean;
+}
+
+function MessageBubble({ msg, persona, isLatest, onSaveToVault, isSaving, isSaved }: BubbleProps) {
   const isUser = msg.role === 'user';
+  // Only animate the very latest text message from persona
+  const shouldType = !isUser && msg.type === 'text' && isLatest;
+  const { displayed, done } = useTypewriter(shouldType ? msg.content : '', 14);
+  const textToShow = shouldType ? displayed : msg.content;
 
   if (isUser) {
     return (
@@ -517,10 +679,13 @@ function MessageBubble({ msg, persona }: { msg: ChatMessage; persona: Persona })
         )}
       </div>
 
-      <div className="max-w-[80%]">
+      <div className="max-w-[80%] space-y-1">
         {msg.type === 'text' && (
           <div className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-primary)] rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm leading-relaxed">
-            {msg.content}
+            {textToShow}
+            {shouldType && !done && (
+              <span className="inline-block w-0.5 h-3.5 bg-violet-400 ml-0.5 animate-pulse rounded-sm" />
+            )}
           </div>
         )}
 
@@ -540,27 +705,45 @@ function MessageBubble({ msg, persona }: { msg: ChatMessage; persona: Persona })
               className="w-full object-cover"
               onError={e => { (e.target as HTMLImageElement).alt = 'Failed to load image'; }}
             />
-            <div className="bg-[var(--bg-surface)] px-3 py-1.5 flex items-center gap-1.5">
-              <ImageIcon size={11} className="text-violet-400" />
-              <span className="text-[10px] text-[var(--text-tertiary)]">Generated image</span>
+            <div className="bg-[var(--bg-surface)] px-3 py-1.5 flex items-center justify-between gap-1.5">
+              <div className="flex items-center gap-1.5">
+                <ImageIcon size={11} className="text-violet-400" />
+                <span className="text-[10px] text-[var(--text-tertiary)]">Generated image</span>
+              </div>
+              <button
+                onClick={() => onSaveToVault(msg)}
+                disabled={isSaving || isSaved}
+                className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-bold transition-all ${
+                  isSaved ? 'bg-emerald-500/20 text-emerald-400' :
+                  'bg-violet-500/20 hover:bg-violet-500/30 text-violet-400'
+                }`}
+              >
+                {isSaving ? <Loader2 size={9} className="animate-spin" /> : isSaved ? <Check size={9} /> : <Bookmark size={9} />}
+                {isSaved ? 'Saved' : 'Save to Vault'}
+              </button>
             </div>
           </div>
         )}
 
         {msg.type === 'video' && (
           <div className="rounded-2xl rounded-bl-sm overflow-hidden border border-[var(--border-default)] max-w-xs">
-            <video
-              src={msg.content}
-              controls
-              autoPlay
-              loop
-              muted
-              playsInline
-              className="w-full"
-            />
-            <div className="bg-[var(--bg-surface)] px-3 py-1.5 flex items-center gap-1.5">
-              <Video size={11} className="text-violet-400" />
-              <span className="text-[10px] text-[var(--text-tertiary)]">Generated video</span>
+            <video src={msg.content} controls autoPlay loop muted playsInline className="w-full" />
+            <div className="bg-[var(--bg-surface)] px-3 py-1.5 flex items-center justify-between gap-1.5">
+              <div className="flex items-center gap-1.5">
+                <Video size={11} className="text-violet-400" />
+                <span className="text-[10px] text-[var(--text-tertiary)]">Generated video</span>
+              </div>
+              <button
+                onClick={() => onSaveToVault(msg)}
+                disabled={isSaving || isSaved}
+                className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-bold transition-all ${
+                  isSaved ? 'bg-emerald-500/20 text-emerald-400' :
+                  'bg-violet-500/20 hover:bg-violet-500/30 text-violet-400'
+                }`}
+              >
+                {isSaving ? <Loader2 size={9} className="animate-spin" /> : isSaved ? <Check size={9} /> : <Bookmark size={9} />}
+                {isSaved ? 'Saved' : 'Save to Vault'}
+              </button>
             </div>
           </div>
         )}

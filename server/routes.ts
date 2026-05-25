@@ -1,8 +1,9 @@
-import { Router } from 'express';
+import { Router, Response } from 'express';
 import { db } from './db';
 import { personas, generatedImages, revenueEntries, plannedPosts } from '../shared/schema';
 import { eq, and } from 'drizzle-orm';
 import { GoogleGenAI } from '@google/genai';
+import { requireAuth, AuthenticatedRequest } from './auth';
 
 interface PlannedPostInput {
   day: number;
@@ -77,10 +78,13 @@ function revenueToClient(row: typeof revenueEntries.$inferSelect) {
   };
 }
 
-router.get('/personas', async (_req, res) => {
+// All router endpoints are authenticated
+router.use(requireAuth);
+
+router.get('/personas', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const allPersonas = await db.select().from(personas);
-    const allImages = await db.select().from(generatedImages);
+    const allPersonas = await db.select().from(personas).where(eq(personas.userId, req.user.id));
+    const allImages = await db.select().from(generatedImages).where(eq(generatedImages.userId, req.user.id));
     const imagesByPersona: Record<string, typeof generatedImages.$inferSelect[]> = {};
     for (const img of allImages) {
       if (!imagesByPersona[img.personaClientId]) imagesByPersona[img.personaClientId] = [];
@@ -94,7 +98,7 @@ router.get('/personas', async (_req, res) => {
   }
 });
 
-router.post('/personas', async (req, res) => {
+router.post('/personas', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const body = req.body;
     const [row] = await db.insert(personas).values({
@@ -118,6 +122,7 @@ router.post('/personas', async (req, res) => {
       faceDescriptor: body.faceDescriptor || null,
       naturalLook: body.naturalLook ?? true,
       identityLock: body.identityLock ?? true,
+      userId: req.user.id,
     }).onConflictDoUpdate({
       target: personas.clientId,
       set: {
@@ -140,6 +145,7 @@ router.post('/personas', async (req, res) => {
         faceDescriptor: body.faceDescriptor || null,
         naturalLook: body.naturalLook ?? true,
         identityLock: body.identityLock ?? true,
+        userId: req.user.id,
       },
     }).returning();
     res.json(personaToClient(row));
@@ -149,7 +155,7 @@ router.post('/personas', async (req, res) => {
   }
 });
 
-router.put('/personas/:clientId', async (req, res) => {
+router.put('/personas/:clientId', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { clientId } = req.params;
     const body = req.body;
@@ -173,9 +179,20 @@ router.put('/personas/:clientId', async (req, res) => {
       faceDescriptor: body.faceDescriptor || null,
       naturalLook: body.naturalLook ?? true,
       identityLock: body.identityLock ?? true,
-    }).where(eq(personas.clientId, clientId)).returning();
+    }).where(
+      and(
+        eq(personas.clientId, clientId),
+        eq(personas.userId, req.user.id)
+      )
+    ).returning();
+    
     if (!row) return res.status(404).json({ error: 'Persona not found' });
-    const imgs = await db.select().from(generatedImages).where(eq(generatedImages.personaClientId, clientId));
+    const imgs = await db.select().from(generatedImages).where(
+      and(
+        eq(generatedImages.personaClientId, clientId),
+        eq(generatedImages.userId, req.user.id)
+      )
+    );
     res.json(personaToClient(row, imgs));
   } catch (err) {
     console.error('[API] PUT /personas error:', err);
@@ -183,13 +200,13 @@ router.put('/personas/:clientId', async (req, res) => {
   }
 });
 
-router.delete('/personas/:clientId', async (req, res) => {
+router.delete('/personas/:clientId', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { clientId } = req.params;
-    await db.delete(generatedImages).where(eq(generatedImages.personaClientId, clientId));
-    await db.delete(revenueEntries).where(eq(revenueEntries.personaClientId, clientId));
-    await db.delete(plannedPosts).where(eq(plannedPosts.personaClientId, clientId));
-    await db.delete(personas).where(eq(personas.clientId, clientId));
+    await db.delete(generatedImages).where(and(eq(generatedImages.personaClientId, clientId), eq(generatedImages.userId, req.user.id)));
+    await db.delete(revenueEntries).where(and(eq(revenueEntries.personaClientId, clientId), eq(revenueEntries.userId, req.user.id)));
+    await db.delete(plannedPosts).where(and(eq(plannedPosts.personaClientId, clientId), eq(plannedPosts.userId, req.user.id)));
+    await db.delete(personas).where(and(eq(personas.clientId, clientId), eq(personas.userId, req.user.id)));
     res.json({ success: true });
   } catch (err) {
     console.error('[API] DELETE /personas error:', err);
@@ -197,16 +214,21 @@ router.delete('/personas/:clientId', async (req, res) => {
   }
 });
 
-router.get('/personas/:personaClientId/images', async (req, res) => {
+router.get('/personas/:personaClientId/images', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const imgs = await db.select().from(generatedImages).where(eq(generatedImages.personaClientId, req.params.personaClientId));
+    const imgs = await db.select().from(generatedImages).where(
+      and(
+        eq(generatedImages.personaClientId, req.params.personaClientId),
+        eq(generatedImages.userId, req.user.id)
+      )
+    );
     res.json(imgs.map(imageToClient));
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Unknown error' });
   }
 });
 
-router.post('/personas/:personaClientId/images', async (req, res) => {
+router.post('/personas/:personaClientId/images', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const body = req.body;
     const [row] = await db.insert(generatedImages).values({
@@ -221,6 +243,7 @@ router.post('/personas/:personaClientId/images', async (req, res) => {
       isFavorite: body.isFavorite || false,
       model: body.model || null,
       mediaType: body.mediaType || 'image',
+      userId: req.user.id,
     }).onConflictDoUpdate({
       target: generatedImages.clientId,
       set: {
@@ -233,6 +256,7 @@ router.post('/personas/:personaClientId/images', async (req, res) => {
         isFavorite: body.isFavorite || false,
         model: body.model || null,
         mediaType: body.mediaType || 'image',
+        userId: req.user.id,
       },
     }).returning();
     res.json(imageToClient(row));
@@ -242,12 +266,13 @@ router.post('/personas/:personaClientId/images', async (req, res) => {
   }
 });
 
-router.delete('/personas/:personaClientId/images/:imageClientId', async (req, res) => {
+router.delete('/personas/:personaClientId/images/:imageClientId', async (req: AuthenticatedRequest, res: Response) => {
   try {
     await db.delete(generatedImages).where(
       and(
         eq(generatedImages.clientId, req.params.imageClientId),
         eq(generatedImages.personaClientId, req.params.personaClientId),
+        eq(generatedImages.userId, req.user.id),
       )
     );
     res.json({ success: true });
@@ -256,16 +281,21 @@ router.delete('/personas/:personaClientId/images/:imageClientId', async (req, re
   }
 });
 
-router.get('/revenue/:personaClientId', async (req, res) => {
+router.get('/revenue/:personaClientId', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const entries = await db.select().from(revenueEntries).where(eq(revenueEntries.personaClientId, req.params.personaClientId));
+    const entries = await db.select().from(revenueEntries).where(
+      and(
+        eq(revenueEntries.personaClientId, req.params.personaClientId),
+        eq(revenueEntries.userId, req.user.id)
+      )
+    );
     res.json(entries.map(revenueToClient));
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Unknown error' });
   }
 });
 
-router.post('/revenue', async (req, res) => {
+router.post('/revenue', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const body = req.body;
     const [row] = await db.insert(revenueEntries).values({
@@ -276,6 +306,7 @@ router.post('/revenue', async (req, res) => {
       source: body.source || '',
       platform: body.platform || '',
       notes: body.notes || '',
+      userId: req.user.id,
     }).onConflictDoUpdate({
       target: revenueEntries.clientId,
       set: {
@@ -284,6 +315,7 @@ router.post('/revenue', async (req, res) => {
         source: body.source || '',
         platform: body.platform || '',
         notes: body.notes || '',
+        userId: req.user.id,
       },
     }).returning();
     res.json(revenueToClient(row));
@@ -293,22 +325,28 @@ router.post('/revenue', async (req, res) => {
   }
 });
 
-router.delete('/revenue/:clientId', async (req, res) => {
+router.delete('/revenue/:clientId', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    await db.delete(revenueEntries).where(eq(revenueEntries.clientId, req.params.clientId));
+    await db.delete(revenueEntries).where(
+      and(
+        eq(revenueEntries.clientId, req.params.clientId),
+        eq(revenueEntries.userId, req.user.id)
+      )
+    );
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Unknown error' });
   }
 });
 
-router.get('/planned-posts/:personaClientId', async (req, res) => {
+router.get('/planned-posts/:personaClientId', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const platform = (req.query.platform as string) || '';
     const posts = await db.select().from(plannedPosts).where(
       and(
         eq(plannedPosts.personaClientId, req.params.personaClientId),
         eq(plannedPosts.planPlatform, platform),
+        eq(plannedPosts.userId, req.user.id)
       )
     );
     res.json(posts.map(p => ({ day: p.day, type: p.type, hook: p.hook, angle: p.angle, cta: p.cta })));
@@ -317,7 +355,7 @@ router.get('/planned-posts/:personaClientId', async (req, res) => {
   }
 });
 
-router.put('/planned-posts/:personaClientId', async (req, res) => {
+router.put('/planned-posts/:personaClientId', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { personaClientId } = req.params;
     const { platform, posts } = req.body;
@@ -325,6 +363,7 @@ router.put('/planned-posts/:personaClientId', async (req, res) => {
       and(
         eq(plannedPosts.personaClientId, personaClientId),
         eq(plannedPosts.planPlatform, platform || ''),
+        eq(plannedPosts.userId, req.user.id)
       )
     );
     if (posts && posts.length > 0) {
@@ -337,6 +376,7 @@ router.put('/planned-posts/:personaClientId', async (req, res) => {
           hook: p.hook || '',
           angle: p.angle || '',
           cta: p.cta || '',
+          userId: req.user.id,
         }))
       );
     }
@@ -347,7 +387,7 @@ router.put('/planned-posts/:personaClientId', async (req, res) => {
   }
 });
 
-router.post('/migrate', async (req, res) => {
+router.post('/migrate', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { personas: personaList, revenueEntries: revenueMap, plannedPosts: planMap } = req.body;
 
@@ -370,6 +410,7 @@ router.post('/migrate', async (req, res) => {
           brandVoiceRules: p.brandVoiceRules || '',
           contentGoals: p.contentGoals || '',
           personaNotes: p.personaNotes || '',
+          userId: req.user.id,
         }).onConflictDoNothing();
 
         if (p.visualLibrary && Array.isArray(p.visualLibrary)) {
@@ -386,6 +427,7 @@ router.post('/migrate', async (req, res) => {
               isFavorite: img.isFavorite || false,
               model: img.model || null,
               mediaType: img.mediaType || 'image',
+              userId: req.user.id,
             }).onConflictDoNothing();
           }
         }
@@ -404,6 +446,7 @@ router.post('/migrate', async (req, res) => {
               source: e.source || '',
               platform: e.platform || '',
               notes: e.notes || '',
+              userId: req.user.id,
             }).onConflictDoNothing();
           }
         }
@@ -424,6 +467,7 @@ router.post('/migrate', async (req, res) => {
                   hook: p.hook || '',
                   angle: p.angle || '',
                   cta: p.cta || '',
+                  userId: req.user.id,
                 }).onConflictDoNothing();
               }
             }
@@ -440,7 +484,7 @@ router.post('/migrate', async (req, res) => {
 });
 
 function getGeminiClientForRoutes(): GoogleGenAI {
-  const directKey = process.env.Gemini_api_key;
+  const directKey = process.env.Gemini_api_key || process.env.gemini_api_key || process.env.GEMINI_API_KEY;
   if (directKey) return new GoogleGenAI({ apiKey: directKey });
   const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
   const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
@@ -448,14 +492,14 @@ function getGeminiClientForRoutes(): GoogleGenAI {
   return new GoogleGenAI({ apiKey, ...(baseUrl ? { httpOptions: { baseUrl } } : {}) });
 }
 
-router.post('/analyze-face', async (req, res) => {
+router.post('/analyze-face', async (req: AuthenticatedRequest, res: Response) => {
   const { personaId, imageBase64 } = req.body as { personaId?: string; imageBase64?: string };
   if (!personaId) return res.status(400).json({ error: 'personaId is required' });
   try {
     const imageBase64ToUse = imageBase64 || null;
     let imageData: string | null = imageBase64ToUse;
     if (!imageData) {
-      const [persona] = await db.select().from(personas).where(eq(personas.clientId, personaId));
+      const [persona] = await db.select().from(personas).where(and(eq(personas.clientId, personaId), eq(personas.userId, req.user.id)));
       if (!persona) return res.status(404).json({ error: 'Persona not found' });
       imageData = persona.referenceImage;
     }
@@ -473,7 +517,7 @@ router.post('/analyze-face', async (req, res) => {
     });
     const descriptor = result.text?.trim() || '';
     if (!descriptor) return res.status(500).json({ error: 'Gemini did not return a face description' });
-    try { await db.update(personas).set({ faceDescriptor: descriptor }).where(eq(personas.clientId, personaId)); } catch {}
+    try { await db.update(personas).set({ faceDescriptor: descriptor }).where(and(eq(personas.clientId, personaId), eq(personas.userId, req.user.id))); } catch {}
     res.json({ faceDescriptor: descriptor });
   } catch (err) {
     console.error('[API] analyze-face error:', err);
@@ -481,7 +525,7 @@ router.post('/analyze-face', async (req, res) => {
   }
 });
 
-router.post('/personas/:personaClientId/analyze-face', async (req, res) => {
+router.post('/personas/:personaClientId/analyze-face', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { personaClientId } = req.params;
     const { referenceImage: bodyImage } = req.body as { referenceImage?: string };
@@ -489,7 +533,7 @@ router.post('/personas/:personaClientId/analyze-face', async (req, res) => {
     let imageBase64 = bodyImage || null;
 
     if (!imageBase64) {
-      const [persona] = await db.select().from(personas).where(eq(personas.clientId, personaClientId));
+      const [persona] = await db.select().from(personas).where(and(eq(personas.clientId, personaClientId), eq(personas.userId, req.user.id)));
       if (!persona) return res.status(404).json({ error: 'Persona not found' });
       imageBase64 = persona.referenceImage;
     }
@@ -521,7 +565,7 @@ router.post('/personas/:personaClientId/analyze-face', async (req, res) => {
     if (!descriptor) return res.status(500).json({ error: 'Gemini did not return a face description' });
 
     try {
-      await db.update(personas).set({ faceDescriptor: descriptor }).where(eq(personas.clientId, personaClientId));
+      await db.update(personas).set({ faceDescriptor: descriptor }).where(and(eq(personas.clientId, personaClientId), eq(personas.userId, req.user.id)));
     } catch {
       // Persona may not be saved to DB yet; descriptor is still returned to the frontend
     }

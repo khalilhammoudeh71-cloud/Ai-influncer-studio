@@ -25,11 +25,11 @@ import {
   BookOpen,
   Loader2,
   Copy,
-  ChevronUp
+  ChevronUp,
+  UserRound
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Persona, PlannedPost, NavActions } from '../types';
-import { generatePersonaPlan, generatePersonaContent } from '../utils/personaEngine';
 import { api } from '../services/apiService';
 import toast from 'react-hot-toast';
 
@@ -48,12 +48,33 @@ const FREQUENCIES: FrequencyType[] = ['1 post/day', '2 posts/day', '3 posts/week
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
+// Posting window suggestions per platform
+const POSTING_WINDOWS: Record<string, string> = {
+  Instagram: '6:00 PM — 9:00 PM',
+  TikTok: '7:00 PM — 11:00 PM',
+  YouTube: '2:00 PM — 4:00 PM',
+  'Twitter/X': '8:00 AM — 10:00 AM',
+  Threads: '9:00 AM — 11:00 AM',
+  OnlyFans: '8:00 PM — 11:00 PM',
+};
+
+// Content mix by platform
+const CONTENT_MIX: Record<string, { reels: number; stories: number }> = {
+  Instagram: { reels: 4, stories: 3 },
+  TikTok: { reels: 6, stories: 1 },
+  YouTube: { reels: 2, stories: 0 },
+  'Twitter/X': { reels: 2, stories: 5 },
+  Threads: { reels: 1, stories: 6 },
+  OnlyFans: { reels: 5, stories: 2 },
+};
+
 export default function PlannerView({ persona, personas, onSelectPersona, nav }: PlannerViewProps) {
   const [plan, setPlan] = useState<(PlannedPost & { id: string })[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [platform, setPlatform] = useState(persona.platform);
   const [goal, setGoal] = useState<GoalType>('Grow followers');
   const [frequency, setFrequency] = useState<FrequencyType>('1 post/day');
+  const [activeStrategyTweaks, setActiveStrategyTweaks] = useState<string[]>([]);
   const [batchContent, setBatchContent] = useState<Record<string, { caption: string; imagePrompt: string; videoScript: string }>>({});
   const [batchLoading, setBatchLoading] = useState(false);
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
@@ -76,42 +97,133 @@ export default function PlannerView({ persona, personas, onSelectPersona, nav }:
       .finally(() => setIsLoading(false));
   }, [persona.id, platform]);
 
-  const handleGenerate = () => {
+  const handleGenerate = async (tweaks: string[] = activeStrategyTweaks) => {
     setIsLoading(true);
-    // Simulate complex AI thinking
-    setTimeout(() => {
-      const generated = generatePersonaPlan(persona, platform, goal);
+    setBatchContent({});
+    try {
+      const tweakNote = tweaks.length > 0 ? ` Strategy tweaks to apply: ${tweaks.join(', ')}.` : '';
+      const prompt = `You are a social media strategist. Create a 7-day content plan for an AI influencer persona.
+
+Persona: ${persona.name}
+Niche: ${persona.niche}
+Tone: ${persona.tone}
+Platform: ${platform}
+Goal: ${goal}
+Posting Frequency: ${frequency}${tweakNote}
+
+Return ONLY a JSON array of exactly 7 objects (no markdown, no explanation), each with:
+- day: number (1-7)
+- type: string (e.g. "Reel", "Carousel", "Story", "Static Post", "Live")
+- hook: string (attention-grabbing opening line, max 15 words)
+- angle: string (content theme/angle, 1 sentence)
+- cta: string (call to action, max 10 words)
+
+Make hooks punchy, specific to the persona's voice and niche. Vary content types across the 7 days.`;
+
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          persona,
+          messages: [],
+          userMessage: prompt,
+          systemOverride: 'You are a professional social media content strategist. Respond ONLY with valid JSON arrays.',
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Plan generation failed');
+
+      // Parse the JSON from the AI response
+      let raw = data.reply || '';
+      const match = raw.match(/\[\s*[\s\S]*?\s*\]/);
+      if (!match) throw new Error('Could not parse plan from AI response');
+      const parsed: PlannedPost[] = JSON.parse(match[0]);
+
+      const generated = parsed.slice(0, 7).map((p, i) => ({ ...p, day: i + 1, id: `plan-${i}-${Date.now()}` }));
       setPlan(generated);
-      api.plannedPosts.save(persona.id, platform, generated.map(({ day, type, hook, angle, cta }) => ({ day, type, hook, angle, cta })))
-        .then(() => toast.success('7-Day Strategy Generated!'))
-        .catch(err => console.error('[Planner] Save error:', err))
-        .finally(() => setIsLoading(false));
-    }, 1500);
+      await api.plannedPosts.save(persona.id, platform, generated.map(({ day, type, hook, angle, cta }) => ({ day, type, hook, angle, cta })));
+      toast.success('✨ AI 7-Day Strategy Generated!');
+    } catch (err: any) {
+      console.error('[Planner] Generate error:', err);
+      toast.error('Generation failed — check your connection');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleReset = () => {
     setPlan([]);
+    setBatchContent({});
+    setActiveStrategyTweaks([]);
     api.plannedPosts.save(persona.id, platform, [])
       .then(() => toast.success('Plan reset'))
       .catch(err => console.error('[Planner] Reset error:', err));
   };
 
-  const handleBatchGenerate = () => {
+  const handleStrategyTweak = (label: string) => {
+    setActiveStrategyTweaks(prev => {
+      const next = prev.includes(label) ? prev.filter(t => t !== label) : [...prev, label];
+      // Auto-regenerate if we already have a plan
+      if (plan.length > 0) {
+        setTimeout(() => handleGenerate(next), 50);
+      }
+      return next;
+    });
+  };
+
+  const handleBatchGenerate = async () => {
     if (plan.length === 0) return;
     setBatchLoading(true);
-    setTimeout(() => {
+    try {
       const content: Record<string, { caption: string; imagePrompt: string; videoScript: string }> = {};
-      plan.forEach(post => {
-        content[post.id] = {
-          caption: generatePersonaContent(persona, post, platform, 'Short Caption'),
-          imagePrompt: generatePersonaContent(persona, post, platform, 'Image Prompt'),
-          videoScript: generatePersonaContent(persona, post, platform, 'Video Script'),
-        };
-      });
+
+      await Promise.all(plan.map(async (post) => {
+        const prompt = `You are writing content for an AI influencer persona named ${persona.name} (${persona.niche}, tone: ${persona.tone}).
+
+Create content for this ${platform} post:
+- Type: ${post.type}
+- Hook: "${post.hook}"
+- Theme: ${post.angle}
+- CTA: ${post.cta}
+
+Return ONLY valid JSON (no markdown) with exactly these keys:
+{
+  "caption": "<150-word ${platform} caption in ${persona.name}'s voice, with relevant hashtags>",
+  "imagePrompt": "<detailed Stable Diffusion image generation prompt for a photo to accompany this post>",
+  "videoScript": "<30-second video script with [SCENE] markers and spoken text>"
+}`;
+
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            persona,
+            messages: [],
+            userMessage: prompt,
+            systemOverride: 'You are a professional content creator. Respond ONLY with valid JSON.',
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        const raw = data.reply || '';
+        const match = raw.match(/\{[\s\S]*\}/);
+        if (match) {
+          try {
+            content[post.id] = JSON.parse(match[0]);
+          } catch {
+            content[post.id] = { caption: raw, imagePrompt: post.angle, videoScript: post.hook };
+          }
+        }
+      }));
+
       setBatchContent(content);
+      toast.success(`🎯 Generated real AI content for all ${plan.length} days!`);
+    } catch (err: any) {
+      toast.error('Batch generation failed');
+    } finally {
       setBatchLoading(false);
-      toast.success(`Generated content for all ${plan.length} days!`);
-    }, 800);
+    }
   };
 
   const handleExportPlan = () => {
@@ -181,11 +293,17 @@ export default function PlannerView({ persona, personas, onSelectPersona, nav }:
         <div className="flex items-center gap-3 bg-[var(--bg-elevated)]/40 p-2 rounded-2xl border border-[var(--border-subtle)] backdrop-blur-md">
           <div className="flex items-center gap-3 px-3">
             <div className="relative">
-              <img 
-                src={persona.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150"} 
-                className="w-10 h-10 rounded-xl object-cover ring-2 ring-cyan-500/20" 
-                alt="Persona" 
-              />
+              {persona.avatar ? (
+                <img 
+                  src={persona.avatar} 
+                  className="w-10 h-10 rounded-xl object-cover ring-2 ring-cyan-500/20" 
+                  alt="Persona" 
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-[var(--text-muted)] ring-2 ring-cyan-500/20">
+                  <UserRound className="w-5 h-5" />
+                </div>
+              )}
               <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-cyan-500 rounded-full border-2 border-[#0B0F17] flex items-center justify-center">
                 <CheckCircle2 className="w-2.5 h-2.5 text-white" />
               </div>
@@ -491,11 +609,11 @@ export default function PlannerView({ persona, personas, onSelectPersona, nav }:
                 <div className="grid grid-cols-2 gap-2">
                   <div className="bg-white/5 p-2 rounded-xl border border-white/5">
                     <p className="text-[10px] text-[var(--text-muted)] font-bold mb-1">Reels</p>
-                    <p className="text-sm font-bold text-white">3</p>
+                    <p className="text-sm font-bold text-white">{CONTENT_MIX[platform]?.reels ?? 3}</p>
                   </div>
                   <div className="bg-white/5 p-2 rounded-xl border border-white/5">
                     <p className="text-[10px] text-[var(--text-muted)] font-bold mb-1">Stories</p>
-                    <p className="text-sm font-bold text-white">4</p>
+                    <p className="text-sm font-bold text-white">{CONTENT_MIX[platform]?.stories ?? 4}</p>
                   </div>
                 </div>
               </div>
@@ -504,7 +622,7 @@ export default function PlannerView({ persona, personas, onSelectPersona, nav }:
                 <label className="text-[9px] font-black text-[var(--text-tertiary)] uppercase tracking-widest">Best Posting Window</label>
                 <div className="flex items-center gap-2 text-cyan-400">
                   <Clock size={14} />
-                  <span className="text-sm font-bold">7:00 PM — 9:00 PM</span>
+                  <span className="text-sm font-bold">{POSTING_WINDOWS[platform] || '7:00 PM — 9:00 PM'}</span>
                 </div>
               </div>
 
@@ -523,18 +641,33 @@ export default function PlannerView({ persona, personas, onSelectPersona, nav }:
 
             <div className="mt-8 pt-6 border-t border-white/5 space-y-3">
               <p className="text-[10px] font-black text-[var(--text-tertiary)] uppercase tracking-widest">Strategy Tweaks</p>
+              <p className="text-[9px] text-[var(--text-muted)] -mt-1">Click to toggle — auto-regenerates plan</p>
               <div className="flex flex-wrap gap-2">
                 {[
                   { label: 'More Reels', icon: <Video size={10} /> },
                   { label: 'Educational', icon: <BookOpen size={10} /> },
                   { label: 'Controversial', icon: <TrendingUp size={10} /> },
-                  { label: 'Sales Focused', icon: <ShoppingBag size={10} /> }
-                ].map(chip => (
-                  <button key={chip.label} className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/5 text-[9px] font-bold text-[var(--text-tertiary)] hover:text-white hover:border-cyan-500/30 transition-all flex items-center gap-1.5">
-                    {chip.icon}
-                    {chip.label}
-                  </button>
-                ))}
+                  { label: 'Sales Focused', icon: <ShoppingBag size={10} /> },
+                  { label: 'More Engagement', icon: <MessageSquare size={10} /> },
+                  { label: 'Trend Riding', icon: <Zap size={10} /> },
+                ].map(chip => {
+                  const active = activeStrategyTweaks.includes(chip.label);
+                  return (
+                    <button
+                      key={chip.label}
+                      onClick={() => handleStrategyTweak(chip.label)}
+                      className={`px-2.5 py-1 rounded-lg text-[9px] font-bold transition-all flex items-center gap-1.5 border ${
+                        active
+                          ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-300'
+                          : 'bg-white/5 border-white/5 text-[var(--text-tertiary)] hover:text-white hover:border-cyan-500/30'
+                      }`}
+                    >
+                      {chip.icon}
+                      {chip.label}
+                      {active && <span className="text-cyan-400">✓</span>}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>

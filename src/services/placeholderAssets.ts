@@ -2,8 +2,8 @@ export const IsabellaLaurent = {
   name: 'Isabella Laurent',
   niche: 'Luxury Lifestyle Influencer',
   bio: 'Elite, sophisticated, and influential. Embodies success, refinement, and aspirational luxury living.',
-  avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=600&q=80',
-  referenceImage: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=600&q=80'
+  avatar: '',
+  referenceImage: ''
 };
 
 export const demoAssets = {
@@ -12,7 +12,7 @@ export const demoAssets = {
     {
       title: 'Create\nPersona',
       desc: 'Define looks, voice,\ntone & personality.',
-      img: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=600&q=80'
+      img: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=600&q=80'
     },
     {
       title: 'Generate\nImage',
@@ -39,7 +39,7 @@ export const demoAssets = {
   // Recent Creations
   recentCreations: [
     {
-      img: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=600&q=80',
+      img: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=600&q=80',
       badge: 'IMAGE',
       title: 'Luxury Portrait',
       date: 'May 2, 2026 • 2:34 PM'
@@ -100,14 +100,14 @@ export const demoAssets = {
 
   // Identity Sheet (Consistent persona, varied crops/angles)
   identitySheet: [
-    { label: 'Front Portrait', img: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80' },
-    { label: 'Left 45°', img: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80&crop=focalpoint&fp-x=0.48&fp-y=0.38&fp-z=1.3' },
-    { label: 'Right 45°', img: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80&crop=focalpoint&fp-x=0.52&fp-y=0.38&fp-z=1.3' },
-    { label: 'Profile Left', img: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80&crop=focalpoint&fp-x=0.45&fp-y=0.38&fp-z=1.4' },
-    { label: 'Smiling Portrait', img: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80&crop=focalpoint&fp-x=0.5&fp-y=0.35&fp-z=1.5' },
-    { label: 'Neutral Portrait', img: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80&crop=focalpoint&fp-x=0.5&fp-y=0.4&fp-z=1.2' },
-    { label: 'Upper Body', img: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80&crop=focalpoint&fp-x=0.5&fp-y=0.48&fp-z=1' },
-    { label: 'Full Body', img: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80&crop=focalpoint&fp-x=0.5&fp-y=0.65&fp-z=1' },
-    { label: 'Lifestyle Shot', img: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80&crop=entropy' }
+    { label: 'Front Portrait', img: '' },
+    { label: 'Left 45°', img: '' },
+    { label: 'Right 45°', img: '' },
+    { label: 'Profile Left', img: '' },
+    { label: 'Smiling Portrait', img: '' },
+    { label: 'Neutral Portrait', img: '' },
+    { label: 'Upper Body', img: '' },
+    { label: 'Full Body', img: '' },
+    { label: 'Lifestyle Shot', img: '' }
   ]
 };

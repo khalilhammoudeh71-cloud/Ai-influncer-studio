@@ -26,6 +26,7 @@ import SettingsView from './views/SettingsView';
 import GalleryView from './views/GalleryView';
 import LandingView from './views/LandingView';
 import PersonaBuilderView from './views/PersonaBuilderView';
+import CreatorHubView from './views/CreatorHubView';
 import OnboardingTour from './components/OnboardingTour';
 import CommandPalette from './components/CommandPalette';
 
@@ -48,13 +49,58 @@ const EMPTY_PERSONA: Persona = {
   personaNotes: '',
 };
 
+import { supabase } from './lib/supabase';
+import toast from 'react-hot-toast';
+
 function App() {
-  const [showOnboarding, setShowOnboarding] = useState(() => {
-    const saved = localStorage.getItem('ai_influencer_onboarding_complete');
-    return saved !== 'true';
-  });
+  const [user, setUser] = useState<any>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [billingInfo, setBillingInfo] = useState<any>(null);
 
   const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [showShortcutsModal, setShowShortcutsModal] = useState(false);
+  const [newAssetsCount, setNewAssetsCount] = useState(0); // #6 gallery badge
+
+  // Listen to Supabase authentication state
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      setAuthLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      setAuthLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Fetch billing & credits when user changes
+  useEffect(() => {
+    if (user && (user.email_confirmed_at || user.confirmed_at)) {
+      api.billing.get()
+        .then(setBillingInfo)
+        .catch(err => console.error('Failed to load billing info:', err));
+    } else {
+      setBillingInfo(null);
+    }
+  }, [user]);
+
+  // Check Stripe Checkout parameters
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('stripe_checkout') === 'success') {
+      toast.success('Payment successful! Your account is updated.', { id: 'stripe-success' });
+      window.history.replaceState({}, document.title, window.location.pathname);
+      if (user) {
+        api.billing.get().then(setBillingInfo).catch(() => {});
+      }
+    } else if (params.get('stripe_checkout') === 'cancel') {
+      toast.error('Payment cancelled.', { id: 'stripe-cancel' });
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, [user]);
 
   // ⌘K keyboard shortcut
   useEffect(() => {
@@ -62,6 +108,9 @@ function App() {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
         setShowCommandPalette(prev => !prev);
+      }
+      if (e.key === '?' && !['INPUT','TEXTAREA','SELECT'].includes((e.target as HTMLElement).tagName)) {
+        setShowShortcutsModal(prev => !prev);
       }
     };
     window.addEventListener('keydown', handler);
@@ -125,6 +174,18 @@ function App() {
 
   const hasMigrated = useRef(false);
   const prevTabRef = useRef<Tab>('personas');
+  const tabDirectionRef = useRef<'right' | 'left'>('right');
+  const recentPersonaIds = useRef<string[]>(
+    (() => { try { return JSON.parse(localStorage.getItem('recent_persona_ids') || '[]') as string[]; } catch { return []; } })()
+  );
+
+
+  // Track recently used persona
+  const trackPersonaUse = (id: string) => {
+    const list = [id, ...recentPersonaIds.current.filter((x: string) => x !== id)].slice(0, 10);
+    recentPersonaIds.current = list;
+    localStorage.setItem('recent_persona_ids', JSON.stringify(list));
+  };
 
   const loadPersonas = useCallback(async () => {
     try {
@@ -139,6 +200,7 @@ function App() {
 
   useEffect(() => {
     async function init() {
+      if (!user) return;
       setIsLoading(true);
       let serverPersonas = await loadPersonas();
 
@@ -167,7 +229,7 @@ function App() {
       setIsLoading(false);
     }
     init();
-  }, [loadPersonas]);
+  }, [loadPersonas, user]);
 
   const setPersonas = useCallback(async (newPersonas: Persona[]) => {
     const oldPersonas = personas;
@@ -209,14 +271,6 @@ function App() {
     localStorage.setItem('ai_influencer_active_tab', activeTab);
   }, [activeTab]);
 
-  const handleOnboardingComplete = () => {
-    localStorage.setItem('ai_influencer_onboarding_complete', 'true');
-    setShowOnboarding(false);
-    // Show tour for first-time users
-    const tourSeen = localStorage.getItem('ai_influencer_tour_complete');
-    if (!tourSeen) setShowTour(true);
-  };
-
   const [showTour, setShowTour] = useState(false);
 
   const handleTourComplete = () => {
@@ -224,8 +278,93 @@ function App() {
     setShowTour(false);
   };
 
-  if (showOnboarding) {
-    return <LandingView onGetStarted={handleOnboardingComplete} />;
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-[var(--bg-base)]">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+          className="flex flex-col items-center gap-5"
+        >
+          <div className="relative">
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center"
+              style={{ background: 'linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%)', boxShadow: '0 8px 40px -8px rgba(139,92,246,0.6)' }}
+            >
+              <Sparkles size={28} className="text-white" />
+            </div>
+            <div className="absolute -inset-1 rounded-2xl border border-violet-500/20 animate-pulse" />
+          </div>
+          <div className="flex flex-col items-center gap-2">
+            <p className="text-[var(--text-primary)] text-sm font-semibold">Loading your studio</p>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <LandingView onGetStarted={() => {}} />;
+  }
+
+  // Email verification gate
+  const isConfirmed = !!user.email_confirmed_at || !!user.confirmed_at;
+  if (!isConfirmed) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-[#06080d] text-white p-6 relative">
+        <div className="absolute inset-0 pointer-events-none z-0">
+          <div className="absolute top-[20%] left-[20%] w-[50%] h-[50%] rounded-full bg-violet-600/[0.08] blur-[150px]" />
+        </div>
+        <div className="premium-card max-w-md w-full rounded-3xl p-8 border border-white/10 bg-[#0B0F17]/80 backdrop-blur-xl relative z-10 text-center shadow-2xl">
+          <div className="w-16 h-16 rounded-2xl mx-auto flex items-center justify-center bg-violet-500/10 border border-violet-500/20 text-violet-400 mb-6 animate-pulse">
+            <Bell size={28} />
+          </div>
+          <h2 className="text-2xl font-black text-white mb-2">Verify your email</h2>
+          <p className="text-sm text-[var(--text-muted)] leading-relaxed mb-6">
+            We sent a verification link to <span className="text-white font-bold">{user.email}</span>. Please verify your email address to unlock the studio.
+          </p>
+          <div className="flex flex-col gap-3">
+            <button
+              onClick={() => {
+                supabase.auth.refreshSession().then(({ data: { session } }) => {
+                  if (session?.user?.email_confirmed_at) {
+                    setUser(session.user);
+                    toast.success('Email verified successfully!');
+                  } else {
+                    toast.error('Email not verified yet. Please check your inbox.');
+                  }
+                });
+              }}
+              className="w-full py-3 bg-gradient-to-r from-violet-600 to-fuchsia-600 rounded-full text-white font-bold text-sm hover:brightness-110 active:scale-98 transition-all shadow-lg shadow-violet-500/20 cursor-pointer"
+            >
+              I Have Verified My Email
+            </button>
+            <button
+              onClick={async () => {
+                const { error } = await supabase.auth.resend({
+                  type: 'signup',
+                  email: user.email,
+                });
+                if (error) {
+                  toast.error(error.message);
+                } else {
+                  toast.success('Verification email resent!');
+                }
+              }}
+              className="w-full py-3 bg-white/5 border border-white/10 rounded-full text-white font-semibold text-sm hover:bg-white/10 transition-all cursor-pointer"
+            >
+              Resend Verification Link
+            </button>
+            <button
+              onClick={() => supabase.auth.signOut()}
+              className="w-full py-3 bg-transparent text-white/50 text-xs font-semibold hover:text-white transition-colors mt-2 cursor-pointer"
+            >
+              Sign Out
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (showTour) {
@@ -271,6 +410,7 @@ function App() {
     { id: 'personas', label: 'Personas', icon: Users },
     { id: 'create', label: 'Create', icon: PlusCircle },
     { id: 'gallery', label: 'Gallery', icon: Sparkles },
+    { id: 'intelligence', label: 'Creator Hub', icon: Wrench },
     { id: 'assistant', label: 'Assistant', icon: MessageSquare },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
@@ -278,13 +418,17 @@ function App() {
   const getTabDirection = (from: Tab, to: Tab) => {
     const fromIdx = tabs.findIndex(t => t.id === from);
     const toIdx = tabs.findIndex(t => t.id === to);
-    return toIdx > fromIdx ? 1 : -1;
+    const dir = toIdx > fromIdx ? 'right' : 'left';
+    tabDirectionRef.current = dir;
+    return dir;
   };
 
   const navActions = { push: pushView, pop: popView, replace: replaceView };
 
+  // Clear gallery badge when visiting gallery
   const renderContent = () => {
     const view = currentNav.view;
+    if (view === 'gallery') setNewAssetsCount(0);
     const subView = currentNav.subView;
     const params = currentNav.params;
 
@@ -305,11 +449,22 @@ function App() {
     }
 
     switch (view) {
-      case 'personas': return <PersonasView personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} selectedId={selectedPersonaId} navigateToTab={(t) => replaceView({ view: t })} nav={navActions} />;
-      case 'create': return <CreateView persona={activePersona} personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} subView={subView} nav={navActions} />;
-      case 'gallery': return <GalleryView personas={personas} activePersona={activePersona} nav={navActions} />;
+      case 'personas': return <PersonasView personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} selectedId={selectedPersonaId} navigateToTab={(t) => replaceView({ view: t })} nav={navActions} billingInfo={billingInfo} />;
+      case 'create': return <CreateView persona={activePersona} personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} subView={subView} nav={navActions} billingInfo={billingInfo} />;
+      case 'gallery': return <GalleryView personas={personas} activePersona={activePersona} nav={navActions} onPersonasChange={setPersonas} />;
+      case 'intelligence': return <CreatorHubView persona={activePersona} personas={personas} nav={navActions} />;
       case 'assistant': return <AssistantView persona={activePersona} personas={personas} nav={navActions} />;
-      case 'settings': return <SettingsView nav={navActions} />;
+      case 'settings': return (
+        <SettingsView 
+          nav={navActions} 
+          personas={personas} 
+          user={user} 
+          billingInfo={billingInfo} 
+          onBillingUpdate={() => {
+            api.billing.get().then(setBillingInfo).catch(() => {});
+          }} 
+        />
+      );
       default: return <PersonasView personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} selectedId={selectedPersonaId} navigateToTab={(t) => replaceView({ view: t })} nav={navActions} />;
     }
   };
@@ -323,7 +478,7 @@ function App() {
         tone: 'Luxury, Confident, Exclusive, Aspirational, High-status, Sophisticated',
         platform: 'Instagram',
         status: 'Draft',
-        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150',
+        avatar: '',
         personalityTraits: ['Elite', 'Exclusive', 'High-status'],
         visualStyle: 'Sophisticated & Modern',
         audienceType: 'General',
@@ -383,8 +538,17 @@ function App() {
           {/* Back Button & Logo */}
           <div className="flex items-center gap-3">
             <AnimatePresence>
-              {navStack.length > 1 && (
-                <BackButton onClick={popView} className="mr-2" />
+              {(navStack.length > 1 || activeTab !== 'personas') && (
+                <BackButton 
+                  onClick={() => {
+                    if (navStack.length > 1) {
+                      popView();
+                    } else {
+                      replaceView({ view: prevTabRef.current || 'personas' });
+                    }
+                  }} 
+                  className="mr-2" 
+                />
               )}
             </AnimatePresence>
             <div className="w-8 h-8 rounded-lg flex flex-col items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, #00F5C2 0%, #00D4FF 100%)', boxShadow: '0 0 16px rgba(0, 245, 194, 0.4)' }}>
@@ -433,12 +597,18 @@ function App() {
                       if (el) el.classList.toggle('hidden');
                     }}
                   >
-                    <div className="w-6 h-6 rounded-lg overflow-hidden border border-[#334155] shrink-0">
-                      <img
-                        src={activePersona.avatar || activePersona.referenceImage || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=64&h=64'}
-                        alt=""
-                        className="w-full h-full object-cover"
-                      />
+                    <div className={`w-6 h-6 rounded-lg overflow-hidden border border-[#334155] shrink-0 avatar-ring-active`}>
+                      {activePersona.avatar || activePersona.referenceImage ? (
+                        <img
+                          src={activePersona.avatar || activePersona.referenceImage}
+                          alt=""
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-[#1e293b] flex items-center justify-center text-[#64748b]">
+                          <Users size={12} />
+                        </div>
+                      )}
                     </div>
                     <div className="hidden sm:block text-left max-w-[100px]">
                       <p className="text-[10px] font-black text-[#00D4FF] uppercase tracking-widest leading-none">Active</p>
@@ -452,11 +622,20 @@ function App() {
                       <p className="text-[9px] font-black text-[#475569] uppercase tracking-[0.15em] px-2 py-1">Switch Persona</p>
                     </div>
                     <div className="max-h-[240px] overflow-y-auto p-1.5">
-                      {personas.map(p => (
+                      {/* #19 recently-used sort */}
+                      {[...personas].sort((a, b) => {
+                        const ri = recentPersonaIds.current;
+                        const ai = ri.indexOf(a.id), bi = ri.indexOf(b.id);
+                        if (ai === -1 && bi === -1) return 0;
+                        if (ai === -1) return 1;
+                        if (bi === -1) return -1;
+                        return ai - bi;
+                      }).map(p => (
                         <button
                           key={p.id}
                           onClick={() => {
                             setSelectedPersonaId(p.id);
+                            trackPersonaUse(p.id);
                             document.getElementById('persona-switcher-dropdown')?.classList.add('hidden');
                           }}
                           className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl transition-all ${
@@ -466,11 +645,17 @@ function App() {
                           }`}
                         >
                           <div className="w-8 h-8 rounded-lg overflow-hidden border border-[#334155] shrink-0">
-                            <img
-                              src={p.avatar || p.referenceImage || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=64&h=64'}
-                              alt=""
-                              className="w-full h-full object-cover"
-                            />
+                            {p.avatar || p.referenceImage ? (
+                              <img
+                                src={p.avatar || p.referenceImage}
+                                alt=""
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <div className="w-full h-full bg-[#1e293b] flex items-center justify-center text-[#64748b]">
+                                <Users size={16} />
+                              </div>
+                            )}
                           </div>
                           <div className="flex-1 min-w-0 text-left">
                             <p className={`text-xs font-bold truncate ${p.id === selectedPersonaId ? 'text-white' : 'text-[#CBD5E1]'}`}>{p.name}</p>
@@ -549,7 +734,7 @@ function App() {
 
       {/* ── Content ─────────────────────────────────────────────── */}
       <main className="flex-1 overflow-y-auto relative z-10">
-        <div className="w-full h-full">
+        <div className={`w-full h-full ${tabDirectionRef.current === 'right' ? 'tab-enter-right' : 'tab-enter-left'}`} key={activeTab}>
           {renderContent()}
         </div>
       </main>
@@ -562,10 +747,15 @@ function App() {
             {tabs.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
+              const isGallery = tab.id === 'gallery';
               return (
                 <motion.button
                   key={tab.id}
-                  onClick={() => { prevTabRef.current = activeTab; replaceView({ view: tab.id as Tab }); }}
+                  onClick={() => {
+                    getTabDirection(activeTab, tab.id as Tab);
+                    prevTabRef.current = activeTab;
+                    replaceView({ view: tab.id as Tab });
+                  }}
                   whileTap={{ scale: 0.95 }}
                   className="flex flex-col items-center gap-0 min-w-[56px] flex-1 py-0 relative"
                 >
@@ -574,21 +764,21 @@ function App() {
                       <motion.div
                         layoutId="nav-pill"
                         className="absolute inset-0 rounded-xl"
-                        style={{
-                          background: 'rgba(0, 212, 255, 0.08)',
-                          border: '1px solid rgba(0, 245, 194, 0.2)'
-                        }}
+                        style={{ background: 'rgba(0, 212, 255, 0.08)', border: '1px solid rgba(0, 245, 194, 0.2)' }}
                         transition={{ type: "spring", stiffness: 500, damping: 32 }}
                       />
                     )}
                     <Icon
                       size={20}
                       strokeWidth={isActive ? 2.2 : 1.6}
-                      className={cn(
-                        "relative z-10 transition-all duration-200",
-                        isActive ? "text-[#00F5C2]" : "text-[var(--text-muted)]"
-                      )}
+                      className={cn("relative z-10 transition-all duration-200", isActive ? "text-[#00F5C2]" : "text-[var(--text-muted)]")}
                     />
+                    {/* #6 Gallery badge */}
+                    {isGallery && newAssetsCount > 0 && (
+                      <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#00F5C2] flex items-center justify-center badge-bounce">
+                        <span className="text-[8px] font-black text-[#0B0F17]">{newAssetsCount > 9 ? '9+' : newAssetsCount}</span>
+                      </div>
+                    )}
                   </div>
                   <span className={cn(
                     "text-[9.5px] font-bold tracking-wide transition-all duration-200 leading-none",
@@ -619,7 +809,56 @@ function App() {
         onSelectPersona={setSelectedPersonaId}
         onOpenSubView={(tab, subView) => { replaceView({ view: tab, subView }); }}
       />
+      {/* #10 Keyboard shortcuts modal */}
+      <AnimatePresence>
+        {showShortcutsModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+            onClick={() => setShowShortcutsModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={e => e.stopPropagation()}
+              className="bg-[#0B0F17] border border-[rgba(56,189,248,0.15)] rounded-3xl p-6 w-full max-w-md shadow-2xl"
+            >
+              <div className="flex items-center justify-between mb-5">
+                <div>
+                  <h2 className="text-lg font-bold text-white">Keyboard Shortcuts</h2>
+                  <p className="text-xs text-[#64748B]">Press <span className="kbd-key">?</span> to toggle</p>
+                </div>
+                <button onClick={() => setShowShortcutsModal(false)} className="p-1.5 rounded-lg text-[#64748B] hover:text-white hover:bg-white/5 transition-colors">
+                  <span className="text-lg leading-none">×</span>
+                </button>
+              </div>
+              <div className="space-y-1">
+                {[
+                  { keys: ['⌘', 'K'], label: 'Open Command Palette' },
+                  { keys: ['?'], label: 'Show Keyboard Shortcuts' },
+                  { keys: ['Esc'], label: 'Close modal / Go back' },
+                  { keys: ['↑', '↓'], label: 'Navigate list items' },
+                  { keys: ['Enter'], label: 'Confirm / Submit' },
+                  { keys: ['⌘', 'Enter'], label: 'Send message in chat' },
+                ].map(({ keys, label }) => (
+                  <div key={label} className="flex items-center justify-between py-2.5 border-b border-white/5 last:border-0">
+                    <span className="text-sm text-[#CBD5E1]">{label}</span>
+                    <div className="flex items-center gap-1">
+                      {keys.map((k, i) => <span key={i} className="kbd-key">{k}</span>)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[10px] text-[#475569] text-center mt-4">More shortcuts coming soon ✦</p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
+
   );
 }
 

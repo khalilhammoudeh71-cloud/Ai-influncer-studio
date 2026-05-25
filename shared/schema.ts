@@ -1,9 +1,21 @@
 import { pgTable, serial, integer, text, timestamp, boolean, real } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
+export const users = pgTable("users", {
+  id: text("id").primaryKey(),
+  email: text("email").notNull().unique(),
+  stripeCustomerId: text("stripe_customer_id"),
+  subscriptionStatus: text("subscription_status").default("none").notNull(),
+  subscriptionPriceId: text("subscription_price_id"),
+  credits: integer("credits").default(50).notNull(),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
 export const conversations = pgTable("conversations", {
   id: serial("id").primaryKey(),
   title: text("title").notNull(),
+  userId: text("user_id"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
@@ -37,6 +49,7 @@ export const personas = pgTable("personas", {
   faceDescriptor: text("face_descriptor"),
   naturalLook: boolean("natural_look").default(true),
   identityLock: boolean("identity_lock").default(true),
+  userId: text("user_id"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
@@ -54,6 +67,7 @@ export const generatedImages = pgTable("generated_images", {
   isFavorite: boolean("is_favorite").default(false),
   model: text("model"),
   mediaType: text("media_type").default("image"),
+  userId: text("user_id"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
@@ -66,6 +80,7 @@ export const revenueEntries = pgTable("revenue_entries", {
   source: text("source").notNull().default(""),
   platform: text("platform").notNull().default(""),
   notes: text("notes").notNull().default(""),
+  userId: text("user_id"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
@@ -78,5 +93,6 @@ export const plannedPosts = pgTable("planned_posts", {
   hook: text("hook").notNull().default(""),
   angle: text("angle").notNull().default(""),
   cta: text("cta").notNull().default(""),
+  userId: text("user_id"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
