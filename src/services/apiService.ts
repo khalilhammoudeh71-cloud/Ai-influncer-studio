@@ -122,6 +122,8 @@ export const api = {
         labels: Record<string, string>;
         settings: { stability: number; similarity_boost: number; style: number };
       }> }>('/elevenlabs-voices'),
+    cloneVoice: (name: string, description: string, sampleBase64: string) =>
+      requestWithBody<{ voiceId: string; name: string }>('/elevenlabs-clone-voice', { name, description, sampleBase64 }),
     generateScript: (params: { topic: string; persona: Persona; mode?: string; existingScript?: string; length?: string }) =>
       requestWithBody<{ script: string }>('/generate-voice-script', params),
     generateSpeech: (params: {

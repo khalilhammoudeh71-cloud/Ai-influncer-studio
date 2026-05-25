@@ -34,6 +34,7 @@ import { Persona, NavActions } from '../types';
 import { api } from '../services/apiService';
 import { cn } from '../utils/cn';
 import { processImageFile } from '../utils/imageProcessing';
+import toast from 'react-hot-toast';
 
 interface VoiceViewProps {
   persona: Persona | null;
@@ -150,6 +151,157 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+
+  // Voice Cloning & Sync States
+  const [showClonePanel, setShowClonePanel] = useState(false);
+  const [cloneName, setCloneName] = useState('');
+  const [cloneDesc, setCloneDesc] = useState('');
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [cloningAudioBase64, setCloningAudioBase64] = useState<string | null>(null);
+  const [cloningAudioUrl, setCloningAudioUrl] = useState<string | null>(null);
+  const [isCloning, setIsCloning] = useState(false);
+  const [attachOnClone, setAttachOnClone] = useState(true);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const recordingChunksRef = useRef<Blob[]>([]);
+
+  // Sync voice selection with active persona's voice settings
+  useEffect(() => {
+    if (persona) {
+      if (persona.voiceEngine === 'elevenlabs' && persona.voiceId) {
+        setVoiceEngine('elevenlabs');
+        setSelectedELVoiceId(persona.voiceId);
+      } else if (persona.voiceEngine === 'openai' && persona.voiceId) {
+        setVoiceEngine('openai');
+        setSelectedVoice(persona.voiceId);
+      } else if (persona.voiceEngine === 'gemini' && persona.voiceId) {
+        setVoiceEngine('gemini');
+        setSelectedVoice(persona.voiceId);
+      }
+    }
+  }, [persona?.id, persona?.voiceEngine, persona?.voiceId]);
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recordingChunksRef.current = [];
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          recordingChunksRef.current.push(e.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(recordingChunksRef.current, { type: 'audio/wav' });
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setCloningAudioBase64(reader.result as string);
+        };
+        reader.readAsDataURL(audioBlob);
+        setCloningAudioUrl(URL.createObjectURL(audioBlob));
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+      setRecordingSeconds(0);
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingSeconds(prev => prev + 1);
+      }, 1000);
+    } catch (err) {
+      console.error('[Voice Recording] Error:', err);
+      toast.error('Could not access microphone');
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+      }
+    }
+  };
+
+  const handleCloningAudioUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setCloningAudioBase64(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+    setCloningAudioUrl(URL.createObjectURL(file));
+  };
+
+  const handleSaveDefaultVoice = async () => {
+    if (!persona) return;
+    try {
+      const activeVoiceId = voiceEngine === 'elevenlabs' ? selectedELVoiceId : selectedVoice;
+      if (!activeVoiceId) {
+        toast.error('Please select a voice first');
+        return;
+      }
+      const updatedPersona = {
+        ...persona,
+        voiceEngine,
+        voiceId: activeVoiceId,
+      };
+      await api.updatePersonaInVault(updatedPersona);
+      toast.success(`Voice attached as default for ${persona.name}!`);
+    } catch (err) {
+      toast.error('Failed to attach voice to persona');
+    }
+  };
+
+  const handleCloneVoiceSubmit = async () => {
+    if (!cloneName) {
+      toast.error('Please enter a voice name');
+      return;
+    }
+    if (!cloningAudioBase64) {
+      toast.error('Please record or upload an audio sample');
+      return;
+    }
+
+    setIsCloning(true);
+    try {
+      const result = await api.voice.cloneVoice(cloneName, cloneDesc, cloningAudioBase64);
+      toast.success(`Voice "${result.name}" cloned successfully!`);
+      
+      setIsLoadingVoices(true);
+      const data = await api.voice.getVoices();
+      setElevenLabsVoices(data.voices);
+      setSelectedELVoiceId(result.voiceId);
+      
+      if (attachOnClone && persona) {
+        const updatedPersona = {
+          ...persona,
+          voiceEngine: 'elevenlabs',
+          voiceId: result.voiceId,
+        };
+        await api.updatePersonaInVault(updatedPersona);
+        toast.success(`Voice attached as default for ${persona.name}!`);
+      }
+
+      setCloneName('');
+      setCloneDesc('');
+      setCloningAudioBase64(null);
+      setCloningAudioUrl(null);
+      setShowClonePanel(false);
+    } catch (err) {
+      console.error('[Voice Cloning] Error:', err);
+      toast.error(err instanceof Error ? err.message : 'Voice cloning failed');
+    } finally {
+      setIsCloning(false);
+    }
+  };
 
   // Check if ElevenLabs is available
   useEffect(() => {
@@ -916,6 +1068,136 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
 
               {voiceEngine === 'elevenlabs' ? (
                 <>
+                  {/* Voice Cloning Studio Toggle & Save Default */}
+                  <div className="flex items-center gap-2 mb-2">
+                    <button
+                      onClick={() => setShowClonePanel(!showClonePanel)}
+                      className="flex-1 py-2 px-3 bg-[#A855F7]/10 hover:bg-[#A855F7]/20 text-[#A855F7] border border-[#A855F7]/30 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5"
+                    >
+                      <Crown size={12} />
+                      {showClonePanel ? 'Close Cloning Panel' : 'Voice Cloning Studio'}
+                    </button>
+                    {selectedELVoiceId && (
+                      <button
+                        onClick={handleSaveDefaultVoice}
+                        className="py-2 px-3 bg-white/5 hover:bg-white/10 text-white border border-white/10 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5"
+                      >
+                        <Check size={12} className="text-emerald-400" />
+                        Set Default
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Voice Cloning Studio Panel */}
+                  {showClonePanel && (
+                    <div className="p-4 rounded-2xl bg-gradient-to-b from-[#A855F7]/5 to-black/20 border border-[#A855F7]/20 space-y-4 shadow-xl mb-4">
+                      <div className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                        <Mic size={14} className="text-[#A855F7]" /> Clone Custom Voice
+                      </div>
+                      
+                      <div className="space-y-3">
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-wider block">Voice Name</label>
+                          <input
+                            type="text"
+                            value={cloneName}
+                            onChange={(e) => setCloneName(e.target.value)}
+                            placeholder="e.g. My Cloned Voice"
+                            className="w-full bg-[var(--bg-input)] border border-[var(--border-default)] rounded-xl py-2 px-3 text-xs text-white outline-none focus:border-[#A855F7] transition-all"
+                          />
+                        </div>
+                        
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-wider block">Description (Optional)</label>
+                          <input
+                            type="text"
+                            value={cloneDesc}
+                            onChange={(e) => setCloneDesc(e.target.value)}
+                            placeholder="e.g. Energetic podcast style"
+                            className="w-full bg-[var(--bg-input)] border border-[var(--border-default)] rounded-xl py-2 px-3 text-xs text-white outline-none focus:border-[#A855F7] transition-all"
+                          />
+                        </div>
+
+                        {/* Recording / Uploading Controls */}
+                        <div className="p-3 bg-[var(--bg-elevated)] rounded-xl border border-[var(--border-default)] space-y-3">
+                          <div className="flex justify-between items-center">
+                            <span className="text-[10px] font-bold text-white">Voice Sample Audio</span>
+                            {cloningAudioUrl && (
+                              <button
+                                onClick={() => {
+                                  const audio = new Audio(cloningAudioUrl);
+                                  audio.play();
+                                }}
+                                className="text-[9px] font-bold text-cyan-400 hover:text-cyan-300 transition-colors uppercase tracking-wider"
+                              >
+                                Play Sample
+                              </button>
+                            )}
+                          </div>
+                          
+                          <div className="flex gap-2">
+                            {isRecording ? (
+                              <button
+                                onClick={stopRecording}
+                                className="flex-1 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 animate-pulse"
+                              >
+                                <span className="w-2 h-2 rounded-full bg-white block" />
+                                Stop ({recordingSeconds}s)
+                              </button>
+                            ) : (
+                              <button
+                                onClick={startRecording}
+                                className="flex-1 py-2 rounded-lg bg-[#A855F7]/25 hover:bg-[#A855F7]/30 text-white font-bold text-xs border border-[#A855F7]/35 flex items-center justify-center gap-1.5"
+                              >
+                                <Mic size={12} />
+                                Record Live
+                              </button>
+                            )}
+                            
+                            <label className="flex-1 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-white border border-white/10 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer text-center">
+                              <Download size={12} className="rotate-180" />
+                              Upload File
+                              <input
+                                type="file"
+                                accept="audio/*"
+                                className="hidden"
+                                onChange={handleCloningAudioUpload}
+                              />
+                            </label>
+                          </div>
+
+                          {cloningAudioUrl && (
+                            <div className="text-[9px] text-emerald-400 font-bold flex items-center gap-1">
+                              <Check size={10} /> Sample ready to clone
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            id="attachOnClone"
+                            checked={attachOnClone}
+                            onChange={(e) => setAttachOnClone(e.target.checked)}
+                            className="rounded bg-[var(--bg-input)] border-[var(--border-default)] text-[#A855F7] focus:ring-0"
+                          />
+                          <label htmlFor="attachOnClone" className="text-[10px] font-medium text-[var(--text-secondary)] cursor-pointer">
+                            Attach to {persona.name} on creation
+                          </label>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={handleCloneVoiceSubmit}
+                        disabled={isCloning || !cloneName || !cloningAudioBase64}
+                        className="w-full py-2.5 bg-gradient-to-r from-[#6C63FF] to-[#A855F7] hover:brightness-110 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-40 flex items-center justify-center gap-1.5"
+                      >
+                        {isCloning ? <Loader2 size={12} className="animate-spin" /> : <Crown size={12} />}
+                        {isCloning ? 'Cloning Voice...' : 'Start Voice Cloning'}
+                      </button>
+                    </div>
+                  )}
+
                   {/* Search & Filters */}
                   <div className="space-y-2">
                     <div className="relative">

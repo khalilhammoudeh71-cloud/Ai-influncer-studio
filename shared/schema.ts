@@ -50,6 +50,8 @@ export const personas = pgTable("personas", {
   naturalLook: boolean("natural_look").default(true),
   identityLock: boolean("identity_lock").default(true),
   userId: text("user_id"),
+  voiceId: text("voice_id"),
+  voiceEngine: text("voice_engine"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });

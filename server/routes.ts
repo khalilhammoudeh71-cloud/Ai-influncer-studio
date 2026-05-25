@@ -47,6 +47,8 @@ function personaToClient(row: typeof personas.$inferSelect, images: typeof gener
     faceDescriptor: row.faceDescriptor || undefined,
     naturalLook: row.naturalLook ?? true,
     identityLock: row.identityLock ?? true,
+    voiceId: row.voiceId || undefined,
+    voiceEngine: row.voiceEngine || undefined,
     visualLibrary: images.map(imageToClient),
   };
 }
@@ -123,6 +125,8 @@ router.post('/personas', async (req: AuthenticatedRequest, res: Response) => {
       naturalLook: body.naturalLook ?? true,
       identityLock: body.identityLock ?? true,
       userId: req.user.id,
+      voiceId: body.voiceId || null,
+      voiceEngine: body.voiceEngine || null,
     }).onConflictDoUpdate({
       target: personas.clientId,
       set: {
@@ -146,6 +150,8 @@ router.post('/personas', async (req: AuthenticatedRequest, res: Response) => {
         naturalLook: body.naturalLook ?? true,
         identityLock: body.identityLock ?? true,
         userId: req.user.id,
+        voiceId: body.voiceId || null,
+        voiceEngine: body.voiceEngine || null,
       },
     }).returning();
     res.json(personaToClient(row));
@@ -179,6 +185,8 @@ router.put('/personas/:clientId', async (req: AuthenticatedRequest, res: Respons
       faceDescriptor: body.faceDescriptor || null,
       naturalLook: body.naturalLook ?? true,
       identityLock: body.identityLock ?? true,
+      voiceId: body.voiceId || null,
+      voiceEngine: body.voiceEngine || null,
     }).where(
       and(
         eq(personas.clientId, clientId),
@@ -410,6 +418,8 @@ router.post('/migrate', async (req: AuthenticatedRequest, res: Response) => {
           brandVoiceRules: p.brandVoiceRules || '',
           contentGoals: p.contentGoals || '',
           personaNotes: p.personaNotes || '',
+          voiceId: p.voiceId || null,
+          voiceEngine: p.voiceEngine || null,
           userId: req.user.id,
         }).onConflictDoNothing();
 

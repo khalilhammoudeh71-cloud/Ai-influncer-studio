@@ -234,9 +234,10 @@ async function padImageForExtend(sourceBase64: string, prompt: string): Promise<
   });
 }
 
-export async function editImage(sourceImage: string, prompt: string, modelId: string, additionalImage?: string): Promise<{ imageUrl: string; model: string }> {
+export async function editImage(sourceImage: string, prompt: string, modelId: string, additionalImage?: string, maskImage?: string): Promise<{ imageUrl: string; model: string }> {
   const body: Record<string, string> = { sourceImage, prompt, modelId };
   if (additionalImage) body.additionalImage = additionalImage;
+  if (maskImage) body.maskImage = maskImage;
   const response = await fetch('/api/edit-image', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

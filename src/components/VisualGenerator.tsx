@@ -46,6 +46,8 @@ import {
   type GenerateImageResult,
 } from '../services/imageService';
 import { api } from '../services/apiService';
+import toast from 'react-hot-toast';
+import { cn } from '../utils/cn';
 
 interface VisualGeneratorProps {
   persona: Persona;
@@ -251,6 +253,15 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
   const [activeHistoryIndex, setActiveHistoryIndex] = useState(0);
   const [sessionHistory, setSessionHistory] = useState<string[]>([]);
 
+  // Battle Mode States
+  const [battleMode, setBattleMode] = useState(false);
+  const [modelA, setModelA] = useState('');
+  const [modelB, setModelB] = useState('');
+  const [resultA, setResultA] = useState<GenerateImageResult | null>(null);
+  const [resultB, setResultB] = useState<GenerateImageResult | null>(null);
+  const [isSavedA, setIsSavedA] = useState(false);
+  const [isSavedB, setIsSavedB] = useState(false);
+
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [editModels, setEditModels] = useState<ModelInfo[]>([]);
   const [upscaleModels, setUpscaleModels] = useState<ModelInfo[]>([]);
@@ -356,7 +367,15 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
         const preferred = hasRefImage
           ? m.find(x => x.isIdentityModel) || m.find(x => x.hasEditVariant) || m[0]
           : m[0];
-        if (preferred) setSelectedModel(preferred.id);
+        if (preferred) {
+          setSelectedModel(preferred.id);
+          setModelA(preferred.id);
+        }
+        if (m.length > 1) {
+          setModelB(m[1].id);
+        } else if (m.length > 0) {
+          setModelB(m[0].id);
+        }
         if (em.length > 0) setSelectedEditModel(em[0].id);
         if (um.length > 0) setSelectedUpscaleModel(um[0].id);
         if (vm.length > 0) setSelectedVideoModel(vm[0].id);
@@ -421,7 +440,97 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
   const selectedModelInfo = useMemo(() => models.find(m => m.id === selectedModel), [models, selectedModel]);
   const activeVersion = imageHistory[activeHistoryIndex] || null;
 
+  const handleSaveBattle = (resultToSave: GenerateImageResult, setSavedState: (v: boolean) => void) => {
+    const image: GeneratedImage = {
+      id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      url: resultToSave.imageUrl,
+      prompt: resultToSave.promptUsed || prompt || '',
+      timestamp: Date.now(),
+      environment: selectedEnv,
+      outfit: selectedOutfit,
+      framing: selectedFraming,
+      model: resultToSave.model,
+    };
+    onSaveImage(image);
+    setSavedState(true);
+    toast.success('Saved to vault!');
+  };
+
+  const downloadBattleImage = (resultToDownload: GenerateImageResult) => {
+    const a = document.createElement('a');
+    a.href = resultToDownload.imageUrl;
+    a.download = `${activePersonaObj?.name.replace(/\s+/g, '_') || 'generated'}_${resultToDownload.model.replace(/\s+/g, '_')}_${Date.now()}.png`;
+    a.click();
+  };
+
   const handleGenerate = async () => {
+    if (battleMode) {
+      if (!modelA || !modelB) return;
+      setIsGenerating(true);
+      setGlobalError(null);
+      setResult(null);
+      setResultA(null);
+      setResultB(null);
+      setIsSavedA(false);
+      setIsSavedB(false);
+      setPostAction(null);
+      setActionError(null);
+
+      const primaryRef = allRefImages[0] || undefined;
+      const extraRefs = allRefImages.slice(1);
+      const personaForGen = primaryRef
+        ? { ...activePersonaObj, referenceImage: primaryRef }
+        : activePersonaObj;
+
+      const params = {
+        persona: (personaForGen || persona) as any,
+        environment: selectedEnv,
+        outfitStyle: selectedOutfit,
+        framing: selectedFraming,
+        mood: selectedMood,
+        additionalInstructions: prompt,
+        aspectRatio: selectedAspectRatio,
+        additionalImages: extraRefs.length > 0 ? extraRefs : undefined,
+        naturalLook,
+        identityLock,
+        count: 1,
+      };
+
+      try {
+        const [resA, resB] = await Promise.all([
+          generateImage({ ...params, modelId: modelA }).catch(err => {
+            console.error('Error generating model A:', err);
+            return { error: err.message || 'Model A failed' } as any;
+          }),
+          generateImage({ ...params, modelId: modelB }).catch(err => {
+            console.error('Error generating model B:', err);
+            return { error: err.message || 'Model B failed' } as any;
+          })
+        ]);
+
+        if (resA.error && resB.error) {
+          throw new Error(`Both models failed. A: ${resA.error}, B: ${resB.error}`);
+        }
+
+        if (resA.error) {
+          toast.error(`Model A failed: ${resA.error}`);
+        } else {
+          setResultA(Array.isArray(resA) ? resA[0] : resA);
+        }
+
+        if (resB.error) {
+          toast.error(`Model B failed: ${resB.error}`);
+        } else {
+          setResultB(Array.isArray(resB) ? resB[0] : resB);
+        }
+      } catch (err: any) {
+        setGlobalError(err.message || 'Battle generation failed.');
+      } finally {
+        setIsGenerating(false);
+      }
+      return;
+    }
+
     if (!selectedModel) return;
     setIsGenerating(true);
     setGlobalError(null);
@@ -750,42 +859,104 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
             </div>
 
             {/* Model Selector */}
-            {genMode === 'image' ? (
-              <div className="space-y-1.5 bg-[#0F172A]/40 border border-[#1E293B]/40 rounded-xl p-3 select-none">
-                <label className="text-[10px] font-black uppercase tracking-wider text-[#CBD5E1] flex items-center justify-between leading-none">
-                  <span className="flex items-center gap-1.5">
-                    <Cpu size={12} className="text-[#00D4FF]" /> AI Model
-                  </span>
-                  {selectedModelInfo && (
-                    <span className="px-2 py-0.5 bg-[#00D4FF]/10 border border-[#00D4FF]/20 text-[8px] rounded uppercase font-extrabold text-[#00D4FF] tracking-wider select-none">
-                      {selectedModelInfo.id.split(':')[0]}
-                    </span>
-                  )}
-                </label>
-                {modelsLoading ? (
-                  <div className="flex items-center gap-2 px-3 py-2 bg-[#111827] rounded-xl text-xs text-[#94A3B8] border border-[#334155]/60 animate-pulse">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading models...
-                  </div>
-                ) : (
-                  <div className="relative">
-                    <select
-                      value={selectedModel}
-                      onChange={(e) => {
-                        setSelectedModel(e.target.value);
-                        setSelectedGoal('custom');
-                      }}
-                      className="w-full bg-[#111827]/80 border border-[#334155]/60 focus:border-[#00D4FF] rounded-xl px-3 py-1.5 text-xs text-white outline-none appearance-none pr-8 cursor-pointer shadow-sm transition-all font-semibold"
-                    >
-                      {models.map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.name} {m.hasEditVariant ? '(Pro)' : ''}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8] pointer-events-none" />
-                  </div>
-                )}
+            {genMode === 'image' && (
+              <div className="p-3 bg-gradient-to-r from-purple-500/10 to-blue-500/10 border border-purple-500/20 rounded-xl flex items-center justify-between select-none">
+                <div className="space-y-0.5">
+                  <span className="text-xs font-black text-white flex items-center gap-1.5">⚔️ Model Battle Mode</span>
+                  <span className="text-[9px] text-[var(--text-muted)] block">Generate side-by-side comparison</span>
+                </div>
+                <button
+                  onClick={() => {
+                    setBattleMode(!battleMode);
+                    setResult(null);
+                    setResultA(null);
+                    setResultB(null);
+                  }}
+                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${battleMode ? 'bg-purple-500' : 'bg-white/10'}`}
+                >
+                  <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${battleMode ? 'translate-x-4' : 'translate-x-0'}`} />
+                </button>
               </div>
+            )}
+
+            {genMode === 'image' ? (
+              battleMode ? (
+                <div className="space-y-3 bg-[#0F172A]/40 border border-[#1E293B]/40 rounded-xl p-3 select-none">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-[#CBD5E1] flex items-center gap-1.5 leading-none">
+                    <Cpu size={12} className="text-[#00D4FF]" /> Model Battle Options
+                  </span>
+                  
+                  <div className="space-y-2">
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-wider block">Model A</label>
+                      <div className="relative">
+                        <select
+                          value={modelA}
+                          onChange={(e) => setModelA(e.target.value)}
+                          className="w-full bg-[#111827]/80 border border-[#334155]/60 focus:border-[#00D4FF] rounded-xl px-3 py-1.5 text-xs text-white outline-none appearance-none pr-8 cursor-pointer shadow-sm font-semibold animate-in fade-in"
+                        >
+                          {models.map((m) => (
+                            <option key={m.id} value={m.id}>{m.name}</option>
+                          ))}
+                        </select>
+                        <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8] pointer-events-none" />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-wider block">Model B (Comparison)</label>
+                      <div className="relative">
+                        <select
+                          value={modelB}
+                          onChange={(e) => setModelB(e.target.value)}
+                          className="w-full bg-[#111827]/80 border border-[#334155]/60 focus:border-[#00D4FF] rounded-xl px-3 py-1.5 text-xs text-white outline-none appearance-none pr-8 cursor-pointer shadow-sm font-semibold animate-in fade-in"
+                        >
+                          {models.map((m) => (
+                            <option key={m.id} value={m.id}>{m.name}</option>
+                          ))}
+                        </select>
+                        <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8] pointer-events-none" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-1.5 bg-[#0F172A]/40 border border-[#1E293B]/40 rounded-xl p-3 select-none">
+                  <label className="text-[10px] font-black uppercase tracking-wider text-[#CBD5E1] flex items-center justify-between leading-none">
+                    <span className="flex items-center gap-1.5">
+                      <Cpu size={12} className="text-[#00D4FF]" /> AI Model
+                    </span>
+                    {selectedModelInfo && (
+                      <span className="px-2 py-0.5 bg-[#00D4FF]/10 border border-[#00D4FF]/20 text-[8px] rounded uppercase font-extrabold text-[#00D4FF] tracking-wider select-none">
+                        {selectedModelInfo.id.split(':')[0]}
+                      </span>
+                    )}
+                  </label>
+                  {modelsLoading ? (
+                    <div className="flex items-center gap-2 px-3 py-2 bg-[#111827] rounded-xl text-xs text-[#94A3B8] border border-[#334155]/60 animate-pulse">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading models...
+                    </div>
+                  ) : (
+                    <div className="relative">
+                      <select
+                        value={selectedModel}
+                        onChange={(e) => {
+                          setSelectedModel(e.target.value);
+                          setSelectedGoal('custom');
+                        }}
+                        className="w-full bg-[#111827]/80 border border-[#334155]/60 focus:border-[#00D4FF] rounded-xl px-3 py-1.5 text-xs text-white outline-none appearance-none pr-8 cursor-pointer shadow-sm transition-all font-semibold"
+                      >
+                        {models.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name} {m.hasEditVariant ? '(Pro)' : ''}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8] pointer-events-none" />
+                    </div>
+                  )}
+                </div>
+              )
             ) : (
               /* Video Model Selection */
               <div className="space-y-1.5 bg-[#0F172A]/40 border border-[#1E293B]/40 rounded-xl p-3 select-none">
@@ -1118,7 +1289,105 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
 
           {/* Premium Canvas Viewbox */}
           <div className="aspect-video w-full bg-[#0F172A]/20 border border-dashed border-[#1E293B]/60 rounded-2xl p-2 flex items-center justify-center relative overflow-hidden group select-none shadow-[inset_0_2px_12px_rgba(0,0,0,0.6)]">
-            {(isGenerating || isProcessing) && genMode === 'video' ? (
+            {battleMode && genMode === 'image' ? (
+              <div className="w-full h-full grid grid-cols-2 gap-4">
+                {/* Model A Column */}
+                <div className="relative rounded-xl bg-[#0F172A]/40 border border-[#1E293B]/60 flex flex-col overflow-hidden group">
+                  <div className="p-2 border-b border-[#1E293B]/60 bg-black/30 flex justify-between items-center select-none">
+                    <span className="text-[9px] font-black uppercase text-[#00D4FF] truncate max-w-[130px]">A: {models.find(m => m.id === modelA)?.name || 'AI Model'}</span>
+                    <span className="text-[8px] font-bold text-emerald-400 font-mono">
+                      {(() => {
+                        const m = models.find(m => m.id === modelA);
+                        return m ? (m.price === 0 ? 'Free' : `${m.price} cr`) : 'Free';
+                      })()}
+                    </span>
+                  </div>
+                  
+                  <div className="flex-1 flex items-center justify-center p-2 relative overflow-hidden">
+                    {isGenerating && !resultA && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[#0B0F19]/60 backdrop-blur-sm z-10">
+                        <Loader2 className="w-5 h-5 animate-spin text-[#00D4FF]" />
+                        <span className="text-[9px] text-gray-400">Generating A...</span>
+                      </div>
+                    )}
+                    {resultA ? (
+                      <img src={resultA.imageUrl} alt="Model A" className="max-w-full max-h-full rounded-lg object-contain" />
+                    ) : (
+                      <div className="text-[10px] text-[#64748B] italic">Waiting for battle...</div>
+                    )}
+                  </div>
+                  
+                  {resultA && (
+                    <div className="p-2 border-t border-[#1E293B]/60 bg-black/30 flex gap-2">
+                      <button
+                        onClick={() => handleSaveBattle(resultA, setIsSavedA)}
+                        disabled={isSavedA}
+                        className={cn(
+                          "flex-1 py-1 px-2 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all border text-center",
+                          isSavedA ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" : "bg-[#00D4FF]/25 hover:bg-[#00D4FF]/40 text-[#00D4FF] border-[#00D4FF]/40"
+                        )}
+                      >
+                        {isSavedA ? 'Saved' : 'Save A'}
+                      </button>
+                      <button
+                        onClick={() => downloadBattleImage(resultA)}
+                        className="px-2 py-1 bg-[#111827] border border-[#334155]/60 hover:bg-[#0F172A] rounded-lg text-white transition-all flex items-center justify-center"
+                      >
+                        <Download className="w-3.5 h-3.5 text-[#00D4FF]" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Model B Column */}
+                <div className="relative rounded-xl bg-[#0F172A]/40 border border-[#1E293B]/60 flex flex-col overflow-hidden group">
+                  <div className="p-2 border-b border-[#1E293B]/60 bg-black/30 flex justify-between items-center select-none">
+                    <span className="text-[9px] font-black uppercase text-[#C084FC] truncate max-w-[130px]">B: {models.find(m => m.id === modelB)?.name || 'AI Model'}</span>
+                    <span className="text-[8px] font-bold text-emerald-400 font-mono">
+                      {(() => {
+                        const m = models.find(m => m.id === modelB);
+                        return m ? (m.price === 0 ? 'Free' : `${m.price} cr`) : 'Free';
+                      })()}
+                    </span>
+                  </div>
+                  
+                  <div className="flex-1 flex items-center justify-center p-2 relative overflow-hidden">
+                    {isGenerating && !resultB && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[#0B0F19]/60 backdrop-blur-sm z-10">
+                        <Loader2 className="w-5 h-5 animate-spin text-[#C084FC]" />
+                        <span className="text-[9px] text-gray-400">Generating B...</span>
+                      </div>
+                    )}
+                    {resultB ? (
+                      <img src={resultB.imageUrl} alt="Model B" className="max-w-full max-h-full rounded-lg object-contain" />
+                    ) : (
+                      <div className="text-[10px] text-[#64748B] italic">Waiting for battle...</div>
+                    )}
+                  </div>
+                  
+                  {resultB && (
+                    <div className="p-2 border-t border-[#1E293B]/60 bg-black/30 flex gap-2">
+                      <button
+                        onClick={() => handleSaveBattle(resultB, setIsSavedB)}
+                        disabled={isSavedB}
+                        className={cn(
+                          "flex-1 py-1 px-2 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all border text-center",
+                          isSavedB ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" : "bg-[#C084FC]/25 hover:bg-[#C084FC]/40 text-[#C084FC] border-[#C084FC]/40"
+                        )}
+                      >
+                        {isSavedB ? 'Saved' : 'Save B'}
+                      </button>
+                      <button
+                        onClick={() => downloadBattleImage(resultB)}
+                        className="px-2 py-1 bg-[#111827] border border-[#334155]/60 hover:bg-[#0F172A] rounded-lg text-white transition-all flex items-center justify-center"
+                      >
+                        <Download className="w-3.5 h-3.5 text-[#C084FC]" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (isGenerating || isProcessing) && genMode === 'video' ? (
               <VideoSamplePreview isLoading loadingText={`Generating with ${selectedModelInfo?.name || 'AI Model'}...`} />
             ) : (isGenerating || isProcessing) ? (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[#0B0F19]/60 backdrop-blur-md z-10 animate-in fade-in duration-300">
@@ -1170,7 +1439,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
 
           {/* Context Actions Row (Save, Download, Regenerate, Reference) */}
           <div className="flex-none mt-3.5 flex items-center gap-2 select-none flex-wrap">
-            {result?.imageUrl && genMode === 'image' && (
+            {!battleMode && result?.imageUrl && genMode === 'image' && (
               <>
                 <button
                   onClick={handleSave}

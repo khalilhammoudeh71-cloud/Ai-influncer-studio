@@ -176,6 +176,168 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
   const [talkingHeadAudio, setTalkingHeadAudio] = useState<string | undefined>(undefined);
   const [talkingHeadScript, setTalkingHeadScript] = useState<string | undefined>(undefined);
 
+  // Paint Masking States
+  const [paintMaskEnabled, setPaintMaskEnabled] = useState(false);
+  const [brushSize, setBrushSize] = useState(25);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [canvasHistory, setCanvasHistory] = useState<string[]>([]);
+  const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
+  const [mousePos, setMousePos] = useState({ x: -100, y: -100 });
+  const [showBrushCursor, setShowBrushCursor] = useState(false);
+  const maskCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const imageRef = useRef<HTMLImageElement | null>(null);
+  const lastX = useRef(0);
+  const lastY = useRef(0);
+
+  const updateCanvasSize = useCallback(() => {
+    if (imageRef.current) {
+      const rect = imageRef.current.getBoundingClientRect();
+      setCanvasSize({ width: rect.width, height: rect.height });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (sourceImage && paintMaskEnabled) {
+      const timer = setTimeout(() => {
+        updateCanvasSize();
+      }, 100);
+      window.addEventListener('resize', updateCanvasSize);
+      return () => {
+        clearTimeout(timer);
+        window.removeEventListener('resize', updateCanvasSize);
+      };
+    } else {
+      setPaintMaskEnabled(false);
+    }
+  }, [sourceImage, paintMaskEnabled, updateCanvasSize]);
+
+  useEffect(() => {
+    const canvas = maskCanvasRef.current;
+    if (canvas && canvasSize.width && canvasSize.height) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.clearRect(0, 0, canvasSize.width, canvasSize.height);
+        setCanvasHistory([canvas.toDataURL()]);
+      }
+    }
+  }, [canvasSize]);
+
+  const getEventCoords = (
+    e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>,
+    canvas: HTMLCanvasElement
+  ) => {
+    const rect = canvas.getBoundingClientRect();
+    if ('touches' in e) {
+      if (e.touches.length === 0) return { x: 0, y: 0 };
+      return {
+        x: e.touches[0].clientX - rect.left,
+        y: e.touches[0].clientY - rect.top,
+      };
+    }
+    return {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    };
+  };
+
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    const canvas = maskCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    setIsDrawing(true);
+    const coords = getEventCoords(e, canvas);
+    lastX.current = coords.x;
+    lastY.current = coords.y;
+
+    ctx.beginPath();
+    ctx.arc(coords.x, coords.y, brushSize / 2, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(6, 182, 212, 0.6)';
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fill();
+  };
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if (!isDrawing) return;
+    const canvas = maskCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const coords = getEventCoords(e, canvas);
+
+    ctx.beginPath();
+    ctx.moveTo(lastX.current, lastY.current);
+    ctx.lineTo(coords.x, coords.y);
+    ctx.lineWidth = brushSize;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = 'rgba(6, 182, 212, 0.6)';
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.stroke();
+
+    lastX.current = coords.x;
+    lastY.current = coords.y;
+  };
+
+  const stopDrawing = () => {
+    if (!isDrawing) return;
+    setIsDrawing(false);
+    const canvas = maskCanvasRef.current;
+    if (canvas) {
+      setCanvasHistory(prev => [...prev.slice(-19), canvas.toDataURL()]);
+    }
+  };
+
+  const handleUndo = () => {
+    if (canvasHistory.length <= 1) return;
+    const prevHistory = canvasHistory.slice(0, -1);
+    setCanvasHistory(prevHistory);
+    const lastState = prevHistory[prevHistory.length - 1];
+
+    const canvas = maskCanvasRef.current;
+    if (canvas && lastState) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        const img = new Image();
+        img.onload = () => {
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0);
+        };
+        img.src = lastState;
+      }
+    }
+  };
+
+  const handleClearMask = () => {
+    const canvas = maskCanvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        setCanvasHistory([canvas.toDataURL()]);
+      }
+    }
+  };
+
+  const generateOpenAIMask = (): string | null => {
+    const visibleCanvas = maskCanvasRef.current;
+    if (!visibleCanvas) return null;
+    const offscreen = document.createElement('canvas');
+    offscreen.width = visibleCanvas.width;
+    offscreen.height = visibleCanvas.height;
+    const octx = offscreen.getContext('2d');
+    if (!octx) return null;
+    octx.fillStyle = '#000000';
+    octx.fillRect(0, 0, offscreen.width, offscreen.height);
+    octx.globalCompositeOperation = 'destination-out';
+    octx.drawImage(visibleCanvas, 0, 0);
+    return offscreen.toDataURL('image/png');
+  };
+
   useEffect(() => {
     fetchEditModels().then(models => {
       setEditModels(models);
@@ -303,7 +465,8 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
     setIsProcessing(true);
     
     try {
-      const data = await editImage(sourceImage, prompt, modelToUse);
+      const maskImage = paintMaskEnabled ? (generateOpenAIMask() || undefined) : undefined;
+      const data = await editImage(sourceImage, prompt, modelToUse, undefined, maskImage);
       setResultImage(data.imageUrl);
       setResultHistory(prev => [...prev, { imageUrl: data.imageUrl, timestamp: Date.now(), tool: activeTool || '' }]);
       // Generate auto-caption
@@ -748,6 +911,62 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
               <input type="file" ref={fileInputRef} hidden accept="image/*" onChange={handleFileUpload} />
             </div>
 
+            {/* Masking Canvas Toggle */}
+            {sourceImage && (activeTool === 'beautify' || activeTool === 'morph' || activeTool === 'muscle' || activeTool === 'ink' || activeTool === 'teleport') && (
+              <div className="p-4 rounded-2xl bg-[var(--bg-elevated)] border border-[var(--border-default)] space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <span className="text-xs font-bold text-white flex items-center gap-1.5"><PenTool size={14} className="text-cyan-400" /> Paint Mask</span>
+                    <span className="text-[10px] text-[var(--text-muted)] block">Edit only selected areas</span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setPaintMaskEnabled(!paintMaskEnabled);
+                      if (!paintMaskEnabled) {
+                        setResultImage(null);
+                      }
+                    }}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${paintMaskEnabled ? 'bg-cyan-500' : 'bg-white/10'}`}
+                  >
+                    <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${paintMaskEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+                  </button>
+                </div>
+
+                {paintMaskEnabled && (
+                  <div className="space-y-4 pt-2 border-t border-white/5">
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between text-[10px] font-bold text-[var(--text-muted)]">
+                        <span>Brush Size: {brushSize}px</span>
+                      </div>
+                      <input 
+                        type="range" 
+                        min="5" 
+                        max="100" 
+                        value={brushSize} 
+                        onChange={(e) => setBrushSize(parseInt(e.target.value))} 
+                        className="w-full accent-cyan-400" 
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={handleUndo} 
+                        disabled={canvasHistory.length <= 1}
+                        className="flex-1 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white font-bold text-[10px] border border-white/10 transition-colors disabled:opacity-30"
+                      >
+                        Undo
+                      </button>
+                      <button 
+                        onClick={handleClearMask}
+                        className="flex-1 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 font-bold text-[10px] border border-rose-500/20 transition-colors"
+                      >
+                        Clear Mask
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Tool specific controls */}
             {activeTool === 'beautify' && (
               <div className="p-4 rounded-2xl bg-pink-500/10 border border-pink-500/20 text-pink-300 text-sm">
@@ -1105,6 +1324,78 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
                  </div>
                </div>
              )}
+
+             {sourceImage && !resultImage && !isProcessing && (
+                <div className="relative max-w-3xl w-full h-full flex flex-col items-center justify-center gap-4">
+                  <div 
+                    className="relative rounded-2xl overflow-hidden border border-white/10 shadow-2xl bg-[var(--bg-elevated)] flex items-center justify-center select-none"
+                    style={{ 
+                      width: canvasSize.width || 'auto', 
+                      height: canvasSize.height || 'auto',
+                      maxHeight: '65vh',
+                      maxWidth: '100%'
+                    }}
+                  >
+                    <img 
+                      ref={imageRef}
+                      src={sourceImage} 
+                      alt="Source image to edit" 
+                      className="max-h-[65vh] max-w-full object-contain pointer-events-none"
+                      onLoad={updateCanvasSize}
+                    />
+                    
+                    {paintMaskEnabled && canvasSize.width > 0 && (
+                      <div 
+                        className="absolute inset-0 z-40 overflow-hidden cursor-none"
+                        onMouseMove={(e) => {
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+                        }}
+                        onMouseEnter={() => setShowBrushCursor(true)}
+                        onMouseLeave={() => {
+                          setShowBrushCursor(false);
+                          stopDrawing();
+                        }}
+                      >
+                        <canvas
+                          ref={maskCanvasRef}
+                          width={canvasSize.width}
+                          height={canvasSize.height}
+                          className="absolute inset-0 opacity-80"
+                          onMouseDown={startDrawing}
+                          onMouseMove={(e) => {
+                            draw(e);
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+                          }}
+                          onMouseUp={stopDrawing}
+                          onTouchStart={startDrawing}
+                          onTouchMove={draw}
+                          onTouchEnd={stopDrawing}
+                        />
+                        
+                        {showBrushCursor && (
+                          <div
+                            className="absolute border border-cyan-400 rounded-full pointer-events-none mix-blend-difference bg-cyan-400/20 z-50 animate-pulse"
+                            style={{
+                              width: brushSize,
+                              height: brushSize,
+                              left: mousePos.x - brushSize / 2,
+                              top: mousePos.y - brushSize / 2,
+                            }}
+                          />
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  
+                  {paintMaskEnabled && (
+                    <p className="text-[10px] text-cyan-400 font-bold uppercase tracking-wider bg-cyan-500/10 border border-cyan-500/20 px-3 py-1.5 rounded-full flex items-center gap-1.5">
+                      <PenTool size={12} /> Paint mode active. Drag to paint regions to modify.
+                    </p>
+                  )}
+                </div>
+              )}
 
              {resultImage && sourceImage && (
                <div className="relative max-w-3xl w-full h-full flex flex-col items-center justify-center gap-4">

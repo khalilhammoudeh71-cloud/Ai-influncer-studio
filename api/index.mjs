@@ -13038,6 +13038,8 @@ var personas = pgTable("personas", {
   naturalLook: boolean("natural_look").default(true),
   identityLock: boolean("identity_lock").default(true),
   userId: text("user_id"),
+  voiceId: text("voice_id"),
+  voiceEngine: text("voice_engine"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull()
 });
@@ -21791,6 +21793,8 @@ function personaToClient(row, images = []) {
     faceDescriptor: row.faceDescriptor || void 0,
     naturalLook: row.naturalLook ?? true,
     identityLock: row.identityLock ?? true,
+    voiceId: row.voiceId || void 0,
+    voiceEngine: row.voiceEngine || void 0,
     visualLibrary: images.map(imageToClient)
   };
 }
@@ -21860,7 +21864,9 @@ router.post("/personas", async (req, res) => {
       faceDescriptor: body.faceDescriptor || null,
       naturalLook: body.naturalLook ?? true,
       identityLock: body.identityLock ?? true,
-      userId: req.user.id
+      userId: req.user.id,
+      voiceId: body.voiceId || null,
+      voiceEngine: body.voiceEngine || null
     }).onConflictDoUpdate({
       target: personas.clientId,
       set: {
@@ -21883,7 +21889,9 @@ router.post("/personas", async (req, res) => {
         faceDescriptor: body.faceDescriptor || null,
         naturalLook: body.naturalLook ?? true,
         identityLock: body.identityLock ?? true,
-        userId: req.user.id
+        userId: req.user.id,
+        voiceId: body.voiceId || null,
+        voiceEngine: body.voiceEngine || null
       }
     }).returning();
     res.json(personaToClient(row));
@@ -21915,7 +21923,9 @@ router.put("/personas/:clientId", async (req, res) => {
       personaNotes: body.personaNotes || "",
       faceDescriptor: body.faceDescriptor || null,
       naturalLook: body.naturalLook ?? true,
-      identityLock: body.identityLock ?? true
+      identityLock: body.identityLock ?? true,
+      voiceId: body.voiceId || null,
+      voiceEngine: body.voiceEngine || null
     }).where(
       and(
         eq2(personas.clientId, clientId),
@@ -22135,6 +22145,8 @@ router.post("/migrate", async (req, res) => {
           brandVoiceRules: p.brandVoiceRules || "",
           contentGoals: p.contentGoals || "",
           personaNotes: p.personaNotes || "",
+          voiceId: p.voiceId || null,
+          voiceEngine: p.voiceEngine || null,
           userId: req.user.id
         }).onConflictDoNothing();
         if (p.visualLibrary && Array.isArray(p.visualLibrary)) {
@@ -40204,7 +40216,7 @@ function aspectRatioToReplitSize(ar) {
   if (ar === "9:16" || ar === "2:3" || ar === "4:5") return "1024x1792";
   return "1024x1024";
 }
-async function generateWithReplit(prompt, referenceImage, aspectRatio) {
+async function generateWithReplit(prompt, referenceImage, aspectRatio, maskImage) {
   const client = getOpenAIClient();
   let response;
   const images = Array.isArray(referenceImage) ? referenceImage : referenceImage ? [referenceImage] : [];
@@ -40215,13 +40227,19 @@ async function generateWithReplit(prompt, referenceImage, aspectRatio) {
       const ext = mimeType.includes("png") ? "png" : "jpg";
       return toFile(buffer, `reference_${i}.${ext}`, { type: mimeType });
     }));
-    response = await client.images.edit({
+    const editParams = {
       model: "gpt-image-2",
       image: imageFiles,
       prompt,
       n: 1,
       size: aspectRatioToReplitSize(aspectRatio)
-    });
+    };
+    if (maskImage) {
+      const { mimeType, data } = stripDataPrefix(maskImage);
+      const buffer = Buffer.from(data, "base64");
+      editParams.mask = await toFile(buffer, "mask.png", { type: mimeType });
+    }
+    response = await client.images.edit(editParams);
   } else {
     response = await client.images.generate({
       model: "gpt-image-2",
@@ -40234,7 +40252,7 @@ async function generateWithReplit(prompt, referenceImage, aspectRatio) {
   if (!b64) throw new Error("OpenAI returned no image data");
   return `data:image/png;base64,${b64}`;
 }
-async function generateWithDirectOpenAI(prompt, referenceImage, aspectRatio) {
+async function generateWithDirectOpenAI(prompt, referenceImage, aspectRatio, maskImage) {
   if (!OPENAI_DIRECT_KEY) throw new Error("OpenAI API key not configured");
   const client = new OpenAI({ apiKey: OPENAI_DIRECT_KEY });
   let response;
@@ -40246,13 +40264,19 @@ async function generateWithDirectOpenAI(prompt, referenceImage, aspectRatio) {
       const ext = mimeType.includes("png") ? "png" : "jpg";
       return toFile(buffer, `reference_${i}.${ext}`, { type: mimeType });
     }));
-    response = await client.images.edit({
+    const editParams = {
       model: "gpt-image-2",
       image: imageFiles,
       prompt,
       n: 1,
       size: aspectRatioToReplitSize(aspectRatio)
-    });
+    };
+    if (maskImage) {
+      const { mimeType, data } = stripDataPrefix(maskImage);
+      const buffer = Buffer.from(data, "base64");
+      editParams.mask = await toFile(buffer, "mask.png", { type: mimeType });
+    }
+    response = await client.images.edit(editParams);
   } else {
     response = await client.images.generate({
       model: "gpt-image-2",
@@ -41448,7 +41472,7 @@ app.post("/api/generate-reference", async (req, res) => {
   }
 });
 app.post("/api/edit-image", async (req, res) => {
-  const { sourceImage, prompt, modelId, additionalImage } = req.body;
+  const { sourceImage, prompt, modelId, additionalImage, maskImage } = req.body;
   if (!sourceImage || !prompt || !modelId) {
     return res.status(400).json({ error: "sourceImage, prompt, and modelId are required" });
   }
@@ -41460,13 +41484,13 @@ app.post("/api/edit-image", async (req, res) => {
       const resolvedSource = await resolveImageToDataUrl(sourceImage);
       const images = [resolvedSource];
       if (resolvedAdditional) images.push(resolvedAdditional);
-      imageUrl = await generateWithReplit(prompt, images);
+      imageUrl = await generateWithReplit(prompt, images, void 0, maskImage);
       modelName = "GPT Image 2";
     } else if (modelId === "openai:gpt-image-2") {
       const resolvedSource = await resolveImageToDataUrl(sourceImage);
       const images = [resolvedSource];
       if (resolvedAdditional) images.push(resolvedAdditional);
-      imageUrl = await generateWithDirectOpenAI(prompt, images);
+      imageUrl = await generateWithDirectOpenAI(prompt, images, void 0, maskImage);
       modelName = "GPT Image 2";
     } else if (modelId === "google:nano-banana-2" || modelId === "google:nano-banana-2/edit" || modelId === "nano-banana-2") {
       const resolvedSource = await resolveImageToDataUrl(sourceImage);
@@ -41489,6 +41513,10 @@ app.post("/api/edit-image", async (req, res) => {
           image: b64Url,
           images: [b64Url]
         };
+        if (maskImage) {
+          payload.mask = maskImage;
+          payload.mask_image = maskImage;
+        }
         const url = `https://api.wavespeed.ai${fallbackModel.apiPath}`;
         const apiRes = await fetch(url, {
           method: "POST",
@@ -41529,6 +41557,10 @@ app.post("/api/edit-image", async (req, res) => {
       if (resolvedAdditional) {
         payload.image_2 = resolvedAdditional;
         payload.images = [b64Url, resolvedAdditional];
+      }
+      if (maskImage) {
+        payload.mask = maskImage;
+        payload.mask_image = maskImage;
       }
       const url = `https://api.wavespeed.ai${editModel.apiPath}`;
       const apiRes = await fetch(url, {
@@ -41799,6 +41831,42 @@ app.get("/api/elevenlabs-voices", async (_req, res) => {
     res.json({ voices: data.voices || [] });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Failed to fetch voices", voices: [] });
+  }
+});
+app.post("/api/elevenlabs-clone-voice", async (req, res) => {
+  const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key || "";
+  if (!elKey) return res.status(503).json({ error: "ElevenLabs API key not configured" });
+  const { name, description, sampleBase64 } = req.body;
+  if (!name || !sampleBase64) {
+    return res.status(400).json({ error: "name and sampleBase64 are required" });
+  }
+  try {
+    const { mimeType, data } = stripDataPrefix(sampleBase64);
+    const buffer = Buffer.from(data, "base64");
+    const blob = new Blob([buffer], { type: mimeType });
+    const formData = new FormData();
+    formData.append("name", name);
+    if (description) {
+      formData.append("description", description);
+    }
+    formData.append("files", blob, "sample.wav");
+    const apiRes = await fetch("https://api.elevenlabs.io/v1/voices/add", {
+      method: "POST",
+      headers: {
+        "xi-api-key": elKey
+      },
+      body: formData
+    });
+    if (!apiRes.ok) {
+      const errText = await apiRes.text();
+      console.error("[ElevenLabs Clone Voice] Error response:", errText);
+      return res.status(apiRes.status).json({ error: `ElevenLabs error: ${errText}` });
+    }
+    const dataJson = await apiRes.json();
+    return res.json({ voiceId: dataJson.voice_id, name });
+  } catch (err) {
+    console.error("[ElevenLabs Clone Voice] Exception:", err);
+    return res.status(500).json({ error: err instanceof Error ? err.message : "Voice cloning failed" });
   }
 });
 app.post("/api/generate-voice-script", async (req, res) => {
@@ -42647,6 +42715,8 @@ async function pushSchema() {
         brand_voice_rules TEXT NOT NULL DEFAULT '',
         content_goals TEXT NOT NULL DEFAULT '',
         persona_notes TEXT NOT NULL DEFAULT '',
+        voice_id TEXT,
+        voice_engine TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
       );
@@ -42670,6 +42740,8 @@ async function pushSchema() {
       ALTER TABLE personas ADD COLUMN IF NOT EXISTS natural_look BOOLEAN DEFAULT true;
       ALTER TABLE personas ADD COLUMN IF NOT EXISTS identity_lock BOOLEAN DEFAULT true;
       ALTER TABLE personas ADD COLUMN IF NOT EXISTS alternate_reference_image TEXT;
+      ALTER TABLE personas ADD COLUMN IF NOT EXISTS voice_id TEXT;
+      ALTER TABLE personas ADD COLUMN IF NOT EXISTS voice_engine TEXT;
       
       -- Scoping columns
       ALTER TABLE personas ADD COLUMN IF NOT EXISTS user_id TEXT;
