@@ -2585,7 +2585,8 @@ app.post('/api/elevenlabs-clone-voice', async (req, res) => {
     if (description) {
       formData.append('description', description);
     }
-    formData.append('files', blob, 'sample.wav');
+    const extension = mimeType.split('/')[1]?.split(';')[0] || 'wav';
+    formData.append('files', blob, `sample.${extension}`);
 
     const apiRes = await fetch('https://api.elevenlabs.io/v1/voices/add', {
       method: 'POST',
@@ -3057,18 +3058,42 @@ async function pollHeyGenVideoStatus(videoId: string, apiKey: string): Promise<s
     if (status === 'failed') {
       const failureMsg = json.data?.failure_message || json.data?.failure_code || 'Unknown error';
       throw new Error(`HeyGen video generation failed: ${failureMsg}`);
-    }
-  }
-  throw new Error('HeyGen video generation timed out after 4 minutes');
 }
+
+app.post('/api/heygen-create-avatar', async (req, res) => {
+  const { name, imageBase64, heygenApiKey } = req.body as {
+    name?: string; imageBase64: string; heygenApiKey?: string;
+  };
+  if (!imageBase64) {
+    return res.status(400).json({ error: 'imageBase64 is required' });
+  }
+  const finalHeygenKey = heygenApiKey || HEYGEN_API_KEY;
+  if (!finalHeygenKey) {
+    return res.status(400).json({ error: 'HeyGen API key is not configured. Please add it in Settings.' });
+  }
+  try {
+    console.log('[HeyGen Create Avatar] Uploading image asset...');
+    const assetId = await uploadToHeyGenAsset(imageBase64, finalHeygenKey);
+    console.log('[HeyGen Create Avatar] Image asset uploaded. Asset ID:', assetId);
+    
+    console.log('[HeyGen Create Avatar] Creating avatar...');
+    const avatarId = await createHeyGenPhotoAvatar(assetId, finalHeygenKey);
+    console.log('[HeyGen Create Avatar] Avatar created. Avatar ID:', avatarId);
+    
+    return res.json({ avatarId });
+  } catch (err) {
+    console.error('[HeyGen Create Avatar] Error:', err);
+    return res.status(500).json({ error: err instanceof Error ? err.message : 'HeyGen avatar creation failed' });
+  }
+});
 
 // ─── Talking Head ─────────────────────────────────────────────────────────────
 app.post('/api/talking-head', async (req, res) => {
-  const { portraitImage, audioUrl, script, voiceName = 'Aoede', engine = 'wavespeed', heygenEngine = 'avatar_iv', heygenApiKey } = req.body as {
-    portraitImage: string; audioUrl?: string; script?: string; voiceName?: string; engine?: 'wavespeed' | 'heygen'; heygenEngine?: 'avatar_iv' | 'avatar_v'; heygenApiKey?: string;
+  const { portraitImage, audioUrl, script, voiceName = 'Aoede', engine = 'wavespeed', heygenEngine = 'avatar_iv', heygenApiKey, heygenAvatarId } = req.body as {
+    portraitImage?: string; audioUrl?: string; script?: string; voiceName?: string; engine?: 'wavespeed' | 'heygen'; heygenEngine?: 'avatar_iv' | 'avatar_v'; heygenApiKey?: string; heygenAvatarId?: string;
   };
   
-  if (!portraitImage) return res.status(400).json({ error: 'portraitImage is required' });
+  if (!portraitImage && !heygenAvatarId) return res.status(400).json({ error: 'portraitImage or heygenAvatarId is required' });
   if (!audioUrl && !script) return res.status(400).json({ error: 'audioUrl or script is required' });
 
   const finalHeygenKey = heygenApiKey || HEYGEN_API_KEY;
@@ -3117,12 +3142,20 @@ app.post('/api/talking-head', async (req, res) => {
   // --- HeyGen Path ---
   if (engine === 'heygen') {
     try {
-      console.log('[HeyGen Talking Head] Starting generation...');
-      const imageAssetId = await uploadToHeyGenAsset(portraitImage, finalHeygenKey);
-      console.log('[HeyGen Talking Head] Portrait uploaded. Asset ID:', imageAssetId);
+      let avatarId = heygenAvatarId;
+      if (!avatarId) {
+        if (!portraitImage) {
+          return res.status(400).json({ error: 'portraitImage is required to create a new photo avatar' });
+        }
+        console.log('[HeyGen Talking Head] Starting generation from portrait...');
+        const imageAssetId = await uploadToHeyGenAsset(portraitImage, finalHeygenKey);
+        console.log('[HeyGen Talking Head] Portrait uploaded. Asset ID:', imageAssetId);
 
-      const avatarId = await createHeyGenPhotoAvatar(imageAssetId, finalHeygenKey);
-      console.log('[HeyGen Talking Head] Photo Avatar created. Avatar ID:', avatarId);
+        avatarId = await createHeyGenPhotoAvatar(imageAssetId, finalHeygenKey);
+        console.log('[HeyGen Talking Head] Photo Avatar created. Avatar ID:', avatarId);
+      } else {
+        console.log('[HeyGen Talking Head] Using existing custom video avatar:', avatarId);
+      }
 
       const audioAssetId = await uploadToHeyGenAsset(resolvedAudioUrl, finalHeygenKey);
       console.log('[HeyGen Talking Head] Audio uploaded. Asset ID:', audioAssetId);
@@ -3142,6 +3175,9 @@ app.post('/api/talking-head', async (req, res) => {
 
   // --- Wavespeed Path ---
   try {
+    if (!portraitImage) {
+      return res.status(400).json({ error: 'portraitImage is required for Wavespeed engine' });
+    }
     const img = await resolveImageToDataUrl(portraitImage);
     const r = await fetch(`${WAVESPEED_BASE}/wavespeed-ai/ai-talking-photos`, {
       method: 'POST',
@@ -3592,6 +3628,7 @@ async function pushSchema() {
       ALTER TABLE personas ADD COLUMN IF NOT EXISTS alternate_reference_image TEXT;
       ALTER TABLE personas ADD COLUMN IF NOT EXISTS voice_id TEXT;
       ALTER TABLE personas ADD COLUMN IF NOT EXISTS voice_engine TEXT;
+      ALTER TABLE personas ADD COLUMN IF NOT EXISTS heygen_avatar_id TEXT;
       
       -- Scoping columns
       ALTER TABLE personas ADD COLUMN IF NOT EXISTS user_id TEXT;

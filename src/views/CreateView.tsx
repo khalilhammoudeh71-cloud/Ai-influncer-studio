@@ -45,6 +45,7 @@ import { Persona, GeneratedImage, NavActions, Tab, NavEntry } from '../types';
 import PlannerView from './PlannerView';
 import VoiceView from './VoiceView';
 import AIToolsView from './AIToolsView';
+import WebcamAvatarCreator from '../components/WebcamAvatarCreator';
 import VideoSamplePreview from '../components/VideoSamplePreview';
 import {
   generateImage,
@@ -323,6 +324,29 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
   // Separate result state for talking avatar to keep it independent of standard video tab
   const [talkingAvatarResult, setTalkingAvatarResult] = useState<{ videoUrl: string; model: string } | null>(null);
+  const [isWebcamCreatorOpen, setIsWebcamCreatorOpen] = useState(false);
+  const handleWebcamCreatorComplete = async (avatarId: string, voiceId?: string, portraitBase64?: string) => {
+    if (portraitBase64) {
+      setUploadedAvatarImage(portraitBase64);
+      setUploadedAvatarImageName('webcam_capture.jpg');
+      setSelectedAvatarSource(portraitBase64);
+    }
+    const updated = {
+      ...activePersona,
+      heygenAvatarId: avatarId,
+      avatar: portraitBase64 || activePersona.avatar,
+      referenceImage: portraitBase64 || activePersona.referenceImage,
+      ...(voiceId ? { voiceId, voiceEngine: 'elevenlabs' } : {}),
+    };
+    try {
+      await api.updatePersonaInVault(updated as any);
+      onSelectPersona(activePersona.id);
+      toast.success('Webcam avatar linked to persona!');
+    } catch (err) {
+      console.error('Failed to link avatar:', err);
+      toast.error('Failed to save avatar to database.');
+    }
+  };
 
   const handleAudioUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -428,8 +452,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     if (isGenerating) return;
     
     const portraitImage = selectedAvatarSource || activePersona.avatar || '';
-    if (!portraitImage) {
-      toast.error('Please select or upload a portrait image first.');
+    if (!portraitImage && !(activePersona as any).heygenAvatarId) {
+      toast.error('Please select a portrait or record a webcam avatar first.');
       return;
     }
 
@@ -465,13 +489,14 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
       toast.loading('Animating avatar face (this may take a minute)...', { id: t });
       const result = await generateTalkingHead({
-        portraitImage,
+        portraitImage: (activePersona as any).heygenAvatarId ? undefined : portraitImage,
         audioUrl,
         script: avatarScript,
         voiceName: selectedAvatarVoice,
         engine: talkingAvatarEngine,
         heygenEngine: talkingHeygenEngine,
-        heygenApiKey
+        heygenApiKey,
+        heygenAvatarId: (activePersona as any).heygenAvatarId || undefined,
       });
 
       toast.success('Talking Avatar ready!', { id: t });
@@ -2253,6 +2278,17 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 </div>
               </button>
               <button 
+                type="button"
+                onClick={() => setIsWebcamCreatorOpen(true)}
+                className="aspect-square flex flex-col items-center justify-center gap-1.5 glass-card bg-emerald-500/10 border border-emerald-500/30 hover:bg-emerald-500/20 transition-all"
+              >
+                <Video className="w-5 h-5 text-emerald-400" />
+                <div className="text-center">
+                  <div className="text-[9px] font-bold text-white">Record Video</div>
+                  <div className="text-[7px] text-[var(--text-muted)]">10s clip + voice</div>
+                </div>
+              </button>
+              <button 
                 onClick={() => updateMode('image')}
                 className="aspect-square flex flex-col items-center justify-center gap-1.5 glass-card bg-white/5 hover:bg-white/10 transition-colors"
               >
@@ -2627,8 +2663,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               {isGenerating ? (
                 <div className="flex flex-col items-center gap-4 text-white z-10 p-6 text-center select-none">
                   <div className="relative">
-                    {portraitImage && (
-                      <img src={portraitImage} alt="" className="w-32 h-32 rounded-2xl object-cover opacity-40 blur-sm" />
+                    {(portraitImage || activePersona.avatar) && (
+                      <img src={portraitImage || activePersona.avatar} alt="" className="w-32 h-32 rounded-2xl object-cover opacity-40 blur-sm" />
                     )}
                     <div className="absolute inset-0 flex items-center justify-center">
                       <Loader2 size={32} className="animate-spin text-emerald-400" />
@@ -2912,6 +2948,14 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         </button>
       </footer>
 
+      {isWebcamCreatorOpen && (
+        <WebcamAvatarCreator
+          isOpen={isWebcamCreatorOpen}
+          onClose={() => setIsWebcamCreatorOpen(false)}
+          personaName={activePersona.name || 'My Persona'}
+          onComplete={handleWebcamCreatorComplete}
+        />
+      )}
     </div>
   );
 }

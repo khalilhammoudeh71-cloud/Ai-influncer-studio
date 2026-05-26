@@ -35,6 +35,7 @@ import { api } from '../services/apiService';
 import { cn } from '../utils/cn';
 import { processImageFile } from '../utils/imageProcessing';
 import toast from 'react-hot-toast';
+import WebcamAvatarCreator from '../components/WebcamAvatarCreator';
 
 interface VoiceViewProps {
   persona: Persona | null;
@@ -162,7 +163,37 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
   const [cloningAudioUrl, setCloningAudioUrl] = useState<string | null>(null);
   const [isCloning, setIsCloning] = useState(false);
   const [attachOnClone, setAttachOnClone] = useState(true);
+  const [isWebcamCreatorOpen, setIsWebcamCreatorOpen] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+
+  const handleWebcamCreatorComplete = async (avatarId: string, voiceId?: string, portraitBase64?: string) => {
+    // Refresh voice list
+    await fetchVoices();
+    if (voiceId) {
+      setSelectedELVoiceId(voiceId);
+      setVoiceEngine('elevenlabs');
+    }
+    if (persona) {
+      const updated = {
+        ...persona,
+        heygenAvatarId: avatarId,
+        avatar: portraitBase64 || persona.avatar,
+        referenceImage: portraitBase64 || persona.referenceImage,
+        ...(voiceId ? { voiceId, voiceEngine: 'elevenlabs' } : {}),
+      };
+      try {
+        await api.updatePersonaInVault(updated as any);
+        onSelectPersona(persona.id);
+        toast.success('Persona updated with custom HeyGen avatar!');
+      } catch (err) {
+        console.error('Failed to update persona:', err);
+        toast.error('Failed to link avatar to persona database.');
+      }
+    }
+    setCloneName('');
+    setCloneDesc('');
+    setShowClonePanel(false);
+  };
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const recordingChunksRef = useRef<Blob[]>([]);
 
@@ -1118,6 +1149,24 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                           />
                         </div>
 
+                        {/* Custom webcam avatar creation alternative */}
+                        <div className="p-3 bg-[var(--bg-elevated)] rounded-xl border border-emerald-500/20 space-y-2">
+                          <span className="text-[10px] font-bold text-white block">Create Avatar & Voice (HeyGen/ElevenLabs)</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!cloneName) {
+                                toast.error('Please enter a Voice Name first');
+                                return;
+                              }
+                              setIsWebcamCreatorOpen(true);
+                            }}
+                            className="w-full py-2 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5"
+                          >
+                            <Video size={12} /> Record Webcam Avatar & Voice
+                          </button>
+                        </div>
+
                         {/* Recording / Uploading Controls */}
                         <div className="p-3 bg-[var(--bg-elevated)] rounded-xl border border-[var(--border-default)] space-y-3">
                           <div className="flex justify-between items-center">
@@ -1675,6 +1724,15 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
         </div>
       </div>
         </>
+      )}
+
+      {persona && (
+        <WebcamAvatarCreator
+          isOpen={isWebcamCreatorOpen}
+          onClose={() => setIsWebcamCreatorOpen(false)}
+          personaName={cloneName || persona.name}
+          onComplete={handleWebcamCreatorComplete}
+        />
       )}
     </div>
   );

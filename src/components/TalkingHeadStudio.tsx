@@ -44,6 +44,7 @@ export default function TalkingHeadStudio({
     return prefs.heygenApiKey ? 'heygen' : 'wavespeed';
   });
   const [heygenEngine, setHeygenEngine] = useState<'avatar_iv' | 'avatar_v'>('avatar_v');
+  const [useCustomAvatar, setUseCustomAvatar] = useState(!!persona?.heygenAvatarId);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const portraitInputRef = useRef<HTMLInputElement>(null);
@@ -59,10 +60,16 @@ export default function TalkingHeadStudio({
     if (persona?.referenceImage && !portraitImage) {
       setPortraitImage(persona.referenceImage);
     }
+    if (persona?.heygenAvatarId) {
+      setUseCustomAvatar(true);
+      setEngine('heygen');
+    } else {
+      setUseCustomAvatar(false);
+    }
   }, [persona]);
 
   const handleGenerate = async () => {
-    if (!portraitImage) return toast.error('Upload a portrait image first');
+    if (!useCustomAvatar && !portraitImage) return toast.error('Upload a portrait image first');
     if (inputMode === 'script' && !script.trim()) return toast.error('Enter a script');
     if (inputMode === 'audio' && !audioUrl) return toast.error('Upload an audio file');
 
@@ -72,7 +79,12 @@ export default function TalkingHeadStudio({
     setProgress('Preparing inputs...');
 
     try {
-      const params: any = { portraitImage };
+      const params: any = {};
+      if (useCustomAvatar && persona?.heygenAvatarId) {
+        params.heygenAvatarId = persona.heygenAvatarId;
+      } else {
+        params.portraitImage = portraitImage;
+      }
 
       if (inputMode === 'audio' && audioUrl) {
         params.audioUrl = audioUrl;
@@ -204,10 +216,59 @@ export default function TalkingHeadStudio({
           {/* Left: Controls */}
           <div className="w-full lg:w-[420px] shrink-0 border-b lg:border-b-0 lg:border-r border-[var(--border-subtle)] overflow-y-auto p-5 space-y-5 bg-[var(--bg-base)]">
 
-            {/* Portrait Upload */}
+            {/* Avatar Source Selector */}
+            {persona?.heygenAvatarId && (
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)]">Avatar Source</label>
+                <div className="flex bg-[var(--bg-elevated)] rounded-xl p-1 gap-1">
+                  <button
+                    onClick={() => setUseCustomAvatar(false)}
+                    className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all ${
+                      !useCustomAvatar ? 'bg-gradient-to-r from-pink-600 to-violet-600 text-white shadow-lg' : 'text-[var(--text-secondary)] hover:text-white'
+                    }`}
+                  >
+                    Talking Photo
+                  </button>
+                  <button
+                    onClick={() => {
+                      setUseCustomAvatar(true);
+                      setEngine('heygen');
+                    }}
+                    className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all ${
+                      useCustomAvatar ? 'bg-gradient-to-r from-pink-600 to-violet-600 text-white shadow-lg' : 'text-[var(--text-secondary)] hover:text-white'
+                    }`}
+                  >
+                    Custom Video Twin
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Portrait Upload / Custom Avatar Info */}
             <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)]">Portrait Image</label>
-              {portraitImage ? (
+              <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)]">
+                {useCustomAvatar ? 'Custom Video Avatar Active' : 'Portrait Image'}
+              </label>
+              {useCustomAvatar ? (
+                <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-center space-y-3">
+                  <div className="relative aspect-square w-24 mx-auto rounded-xl overflow-hidden border border-emerald-500/30">
+                    {persona?.avatar || persona?.referenceImage ? (
+                      <img src={persona.avatar || persona.referenceImage} alt="Avatar" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full bg-white/5 flex items-center justify-center text-[var(--text-muted)]">
+                        <UserRound className="w-8 h-8" />
+                      </div>
+                    )}
+                    <div className="absolute bottom-1 right-1 w-4 h-4 bg-emerald-500 rounded-full border border-[#0B0F17] flex items-center justify-center">
+                      <Check className="w-2.5 text-white" />
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-white">Using Custom HeyGen Avatar</p>
+                    <p className="text-[9px] text-emerald-400 font-mono truncate max-w-full">ID: {persona?.heygenAvatarId}</p>
+                  </div>
+                </div>
+              ) : portraitImage ? (
                 <div className="relative aspect-square w-full max-w-[200px] mx-auto rounded-2xl overflow-hidden border-2 border-pink-500/30 group">
                   <img src={portraitImage} alt="Portrait" className="w-full h-full object-cover" />
                   <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 transition-opacity">
@@ -264,10 +325,12 @@ export default function TalkingHeadStudio({
               <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)]">Avatar Engine</label>
               <div className="flex bg-[var(--bg-elevated)] rounded-xl p-1 gap-1">
                 <button
+                  disabled={useCustomAvatar}
                   onClick={() => setEngine('wavespeed')}
                   className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${
                     engine === 'wavespeed' ? 'bg-gradient-to-r from-pink-600 to-violet-600 text-white shadow-lg' : 'text-[var(--text-secondary)] hover:text-white'
-                  }`}
+                  } ${useCustomAvatar ? 'opacity-30 cursor-not-allowed' : ''}`}
+                  title={useCustomAvatar ? "Custom video avatars require HeyGen AI engine" : ""}
                 >
                   Wavespeed LTX
                 </button>

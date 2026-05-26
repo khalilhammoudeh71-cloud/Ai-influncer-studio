@@ -544,15 +544,16 @@ export async function textToSpeech(params: {
 }
 
 export async function generateTalkingHead(params: {
-  portraitImage: string;
+  portraitImage?: string;
   audioUrl?: string;
   script?: string;
   voiceName?: string;
   engine?: 'wavespeed' | 'heygen';
   heygenEngine?: 'avatar_iv' | 'avatar_v';
   heygenApiKey?: string;
+  heygenAvatarId?: string;
 }): Promise<{ videoUrl: string; model: string }> {
-  const compressed = await compressForUpload(params.portraitImage);
+  const compressed = params.portraitImage ? await compressForUpload(params.portraitImage) : undefined;
   const response = await authFetch('/api/talking-head', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

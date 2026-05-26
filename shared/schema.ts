@@ -52,6 +52,7 @@ export const personas = pgTable("personas", {
   userId: text("user_id"),
   voiceId: text("voice_id"),
   voiceEngine: text("voice_engine"),
+  heygenAvatarId: text("heygen_avatar_id"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
