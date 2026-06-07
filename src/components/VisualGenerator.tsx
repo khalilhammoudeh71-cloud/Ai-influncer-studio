@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useProMode, ProModeToggle } from '../utils/useProMode';
 import {
   Camera,
   Copy,
@@ -218,6 +219,7 @@ export const VisualGenerator: React.FC<VisualGeneratorProps> = (props) => {
 };
 
 const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose, onSaveImage }) => {
+  const [isPro, togglePro] = useProMode();
   const [selectedPersonaId, setSelectedPersonaId] = useState<string | 'none'>('none');
   const [allPersonas, setAllPersonas] = useState<Persona[]>([]);
 
@@ -758,10 +760,12 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
             </p>
           </div>
         </div>
-        
-        <button onClick={onClose} className="p-2 hover:bg-[#111827] border border-[#334155]/60 hover:border-[#334155] rounded-xl transition-all flex items-center gap-2 text-white text-xs font-bold bg-[#0F172A] shadow-sm">
-          <X className="w-4 h-4 text-[#94A3B8]" /> Close
-        </button>
+        <div className="flex items-center gap-3">
+          <ProModeToggle isPro={isPro} onToggle={togglePro} />
+          <button onClick={onClose} className="p-2 hover:bg-[#111827] border border-[#334155]/60 hover:border-[#334155] rounded-xl transition-all flex items-center gap-2 text-white text-xs font-bold bg-[#0F172A] shadow-sm">
+            <X className="w-4 h-4 text-[#94A3B8]" /> Close
+          </button>
+        </div>
       </div>
 
       {/* WORKSPACE AREA */}
@@ -859,7 +863,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
             </div>
 
             {/* Model Selector */}
-            {genMode === 'image' && (
+            {isPro && genMode === 'image' && (
               <div className="p-3 bg-gradient-to-r from-purple-500/10 to-blue-500/10 border border-purple-500/20 rounded-xl flex items-center justify-between select-none">
                 <div className="space-y-0.5">
                   <span className="text-xs font-black text-white flex items-center gap-1.5">⚔️ Model Battle Mode</span>
@@ -879,103 +883,105 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
               </div>
             )}
 
-            {genMode === 'image' ? (
-              battleMode ? (
-                <div className="space-y-3 bg-[#0F172A]/40 border border-[#1E293B]/40 rounded-xl p-3 select-none">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-[#CBD5E1] flex items-center gap-1.5 leading-none">
-                    <Cpu size={12} className="text-[#00D4FF]" /> Model Battle Options
-                  </span>
-                  
-                  <div className="space-y-2">
-                    <div className="space-y-1">
-                      <label className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-wider block">Model A</label>
-                      <div className="relative">
-                        <select
-                          value={modelA}
-                          onChange={(e) => setModelA(e.target.value)}
-                          className="w-full bg-[#111827]/80 border border-[#334155]/60 focus:border-[#00D4FF] rounded-xl px-3 py-1.5 text-xs text-white outline-none appearance-none pr-8 cursor-pointer shadow-sm font-semibold animate-in fade-in"
-                        >
-                          {models.map((m) => (
-                            <option key={m.id} value={m.id}>{m.name}</option>
-                          ))}
-                        </select>
-                        <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8] pointer-events-none" />
+            {isPro && (
+              genMode === 'image' ? (
+                battleMode ? (
+                  <div className="space-y-3 bg-[#0F172A]/40 border border-[#1E293B]/40 rounded-xl p-3 select-none">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-[#CBD5E1] flex items-center gap-1.5 leading-none">
+                      <Cpu size={12} className="text-[#00D4FF]" /> Model Battle Options
+                    </span>
+                    
+                    <div className="space-y-2">
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-wider block">Model A</label>
+                        <div className="relative">
+                          <select
+                            value={modelA}
+                            onChange={(e) => setModelA(e.target.value)}
+                            className="w-full bg-[#111827]/80 border border-[#334155]/60 focus:border-[#00D4FF] rounded-xl px-3 py-1.5 text-xs text-white outline-none appearance-none pr-8 cursor-pointer shadow-sm font-semibold animate-in fade-in"
+                          >
+                            {models.map((m) => (
+                              <option key={m.id} value={m.id}>{m.name}</option>
+                            ))}
+                          </select>
+                          <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8] pointer-events-none" />
+                        </div>
                       </div>
-                    </div>
 
-                    <div className="space-y-1">
-                      <label className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-wider block">Model B (Comparison)</label>
-                      <div className="relative">
-                        <select
-                          value={modelB}
-                          onChange={(e) => setModelB(e.target.value)}
-                          className="w-full bg-[#111827]/80 border border-[#334155]/60 focus:border-[#00D4FF] rounded-xl px-3 py-1.5 text-xs text-white outline-none appearance-none pr-8 cursor-pointer shadow-sm font-semibold animate-in fade-in"
-                        >
-                          {models.map((m) => (
-                            <option key={m.id} value={m.id}>{m.name}</option>
-                          ))}
-                        </select>
-                        <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8] pointer-events-none" />
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-wider block">Model B (Comparison)</label>
+                        <div className="relative">
+                          <select
+                            value={modelB}
+                            onChange={(e) => setModelB(e.target.value)}
+                            className="w-full bg-[#111827]/80 border border-[#334155]/60 focus:border-[#00D4FF] rounded-xl px-3 py-1.5 text-xs text-white outline-none appearance-none pr-8 cursor-pointer shadow-sm font-semibold animate-in fade-in"
+                          >
+                            {models.map((m) => (
+                              <option key={m.id} value={m.id}>{m.name}</option>
+                            ))}
+                          </select>
+                          <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8] pointer-events-none" />
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              ) : (
-                <div className="space-y-1.5 bg-[#0F172A]/40 border border-[#1E293B]/40 rounded-xl p-3 select-none">
-                  <label className="text-[10px] font-black uppercase tracking-wider text-[#CBD5E1] flex items-center justify-between leading-none">
-                    <span className="flex items-center gap-1.5">
-                      <Cpu size={12} className="text-[#00D4FF]" /> AI Model
-                    </span>
-                    {selectedModelInfo && (
-                      <span className="px-2 py-0.5 bg-[#00D4FF]/10 border border-[#00D4FF]/20 text-[8px] rounded uppercase font-extrabold text-[#00D4FF] tracking-wider select-none">
-                        {selectedModelInfo.id.split(':')[0]}
+                ) : (
+                  <div className="space-y-1.5 bg-[#0F172A]/40 border border-[#1E293B]/40 rounded-xl p-3 select-none">
+                    <label className="text-[10px] font-black uppercase tracking-wider text-[#CBD5E1] flex items-center justify-between leading-none">
+                      <span className="flex items-center gap-1.5">
+                        <Cpu size={12} className="text-[#00D4FF]" /> AI Model
                       </span>
+                      {selectedModelInfo && (
+                        <span className="px-2 py-0.5 bg-[#00D4FF]/10 border border-[#00D4FF]/20 text-[8px] rounded uppercase font-extrabold text-[#00D4FF] tracking-wider select-none">
+                          {selectedModelInfo.id.split(':')[0]}
+                        </span>
+                      )}
+                    </label>
+                    {modelsLoading ? (
+                      <div className="flex items-center gap-2 px-3 py-2 bg-[#111827] rounded-xl text-xs text-[#94A3B8] border border-[#334155]/60 animate-pulse">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading models...
+                      </div>
+                    ) : (
+                      <div className="relative">
+                        <select
+                          value={selectedModel}
+                          onChange={(e) => {
+                            setSelectedModel(e.target.value);
+                            setSelectedGoal('custom');
+                          }}
+                          className="w-full bg-[#111827]/80 border border-[#334155]/60 focus:border-[#00D4FF] rounded-xl px-3 py-1.5 text-xs text-white outline-none appearance-none pr-8 cursor-pointer shadow-sm transition-all font-semibold"
+                        >
+                          {models.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.name} {m.hasEditVariant ? '(Pro)' : ''}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8] pointer-events-none" />
+                      </div>
                     )}
+                  </div>
+                )
+              ) : (
+                /* Video Model Selection */
+                <div className="space-y-1.5 bg-[#0F172A]/40 border border-[#1E293B]/40 rounded-xl p-3 select-none">
+                  <label className="text-[10px] font-black uppercase tracking-wider text-[#CBD5E1] flex items-center gap-1.5 leading-none">
+                    <Video size={12} className="text-[#C084FC]" /> Video AI Model
                   </label>
-                  {modelsLoading ? (
-                    <div className="flex items-center gap-2 px-3 py-2 bg-[#111827] rounded-xl text-xs text-[#94A3B8] border border-[#334155]/60 animate-pulse">
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading models...
-                    </div>
-                  ) : (
-                    <div className="relative">
-                      <select
-                        value={selectedModel}
-                        onChange={(e) => {
-                          setSelectedModel(e.target.value);
-                          setSelectedGoal('custom');
-                        }}
-                        className="w-full bg-[#111827]/80 border border-[#334155]/60 focus:border-[#00D4FF] rounded-xl px-3 py-1.5 text-xs text-white outline-none appearance-none pr-8 cursor-pointer shadow-sm transition-all font-semibold"
-                      >
-                        {models.map((m) => (
-                          <option key={m.id} value={m.id}>
-                            {m.name} {m.hasEditVariant ? '(Pro)' : ''}
-                          </option>
-                        ))}
-                      </select>
-                      <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8] pointer-events-none" />
-                    </div>
-                  )}
+                  <div className="relative">
+                    <select
+                      value={selectedVideoModel}
+                      onChange={(e) => setSelectedVideoModel(e.target.value)}
+                      className="w-full bg-[#111827]/80 border border-[#334155]/60 focus:border-[#00D4FF] rounded-xl px-3 py-1.5 text-xs text-white outline-none appearance-none pr-8 cursor-pointer shadow-sm transition-all font-semibold"
+                    >
+                      {videoModels.map((m) => (
+                        <option key={m.id} value={m.id}>{m.name}</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8] pointer-events-none" />
+                  </div>
                 </div>
               )
-            ) : (
-              /* Video Model Selection */
-              <div className="space-y-1.5 bg-[#0F172A]/40 border border-[#1E293B]/40 rounded-xl p-3 select-none">
-                <label className="text-[10px] font-black uppercase tracking-wider text-[#CBD5E1] flex items-center gap-1.5 leading-none">
-                  <Video size={12} className="text-[#C084FC]" /> Video AI Model
-                </label>
-                <div className="relative">
-                  <select
-                    value={selectedVideoModel}
-                    onChange={(e) => setSelectedVideoModel(e.target.value)}
-                    className="w-full bg-[#111827]/80 border border-[#334155]/60 focus:border-[#00D4FF] rounded-xl px-3 py-1.5 text-xs text-white outline-none appearance-none pr-8 cursor-pointer shadow-sm transition-all font-semibold"
-                  >
-                    {videoModels.map((m) => (
-                      <option key={m.id} value={m.id}>{m.name}</option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8] pointer-events-none" />
-                </div>
-              </div>
             )}
 
             {/* Prompt Field */}

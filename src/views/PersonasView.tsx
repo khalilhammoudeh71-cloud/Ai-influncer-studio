@@ -1,4 +1,4 @@
-import { Plus, Search, Edit2, Trash2, X, Check, Camera, Upload, Image as ImageIcon, AlertTriangle, Sparkles, ArrowLeft, Download, Heart, Trash, Eye, Loader2, ChevronDown, Cpu, Wand2, Pencil, ArrowUpCircle, Film, LayoutGrid, MessageSquare, Mic, Users, ChevronRight } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, X, Check, Camera, Upload, Image as ImageIcon, AlertTriangle, Sparkles, ArrowLeft, Download, Heart, Trash, Eye, Loader2, ChevronDown, Cpu, Wand2, Pencil, ArrowUpCircle, Film, LayoutGrid, MessageSquare, Mic, Users, ChevronRight, DollarSign } from 'lucide-react';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
@@ -787,7 +787,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
           </div>
 
           {/* Feature Cards Row */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
             {[
               { 
                 title: 'Create\nPersona', 
@@ -833,6 +833,15 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                 gradient: 'from-[#D946EF]/40 to-[#6366F1]/40',
                 img: dashboardFeatureCards[4].img,
                 action: () => navigateToTab?.('assistant') 
+              },
+              { 
+                title: 'Revenue\n& ROI', 
+                desc: 'Track earnings, deals\n& performance metrics.', 
+                icon: DollarSign, 
+                color: 'amber',
+                gradient: 'from-[#F59E0B]/40 to-[#EF4444]/40',
+                img: dashboardFeatureCards[1].img,
+                action: () => navigateToTab?.('revenue') 
               }
             ].map((feature, idx) => (
               <div 
@@ -843,11 +852,13 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                    boxShadow: feature.title.includes('Image') ? '0 0 24px rgba(0, 245, 194, 0.2)' : 
                              feature.title.includes('Persona') ? '0 0 24px rgba(0, 212, 255, 0.2)' :
                              feature.title.includes('Video') ? '0 0 24px rgba(99, 102, 241, 0.2)' : 
-                             feature.title.includes('Avatar') ? '0 0 24px rgba(14, 165, 233, 0.2)' : '0 0 24px rgba(217, 70, 239, 0.2)',
+                             feature.title.includes('Avatar') ? '0 0 24px rgba(14, 165, 233, 0.2)' : 
+                             feature.title.includes('Revenue') ? '0 0 24px rgba(245, 158, 11, 0.2)' : '0 0 24px rgba(217, 70, 239, 0.2)',
                    borderColor: feature.title.includes('Image') ? 'rgba(0, 245, 194, 0.5)' : 
                                feature.title.includes('Persona') ? 'rgba(0, 212, 255, 0.5)' :
                                feature.title.includes('Video') ? 'rgba(99, 102, 241, 0.5)' : 
-                               feature.title.includes('Avatar') ? 'rgba(14, 165, 233, 0.5)' : 'rgba(217, 70, 239, 0.5)'
+                               feature.title.includes('Avatar') ? 'rgba(14, 165, 233, 0.5)' : 
+                               feature.title.includes('Revenue') ? 'rgba(245, 158, 11, 0.5)' : 'rgba(217, 70, 239, 0.5)'
                 }}
               >
                 <img src={feature.img} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 opacity-90 group-hover:opacity-100" alt="" />

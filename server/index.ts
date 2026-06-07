@@ -75,7 +75,7 @@ interface ModelInfo {
   id: string;
   name: string;
   provider: string;
-  type: 'text-to-image' | 'image-to-image' | 'upscaler';
+  type: 'text-to-image' | 'image-to-image' | 'upscaler' | 'text-to-video' | 'image-to-video' | 'reference-to-video';
   price: number;
   description: string;
   apiPath: string;
@@ -1137,7 +1137,7 @@ async function generateWithWavespeed(
   }
   console.log('[Wavespeed] Response code:', json.code, 'message:', json.message || '');
 
-  if (json.code === 400 && useEditPath && /model not found/i.test(json.message || '')) {
+  if (json.code === 400 && useEditPath && /model not found/i.test(String(json.message || ''))) {
     console.log('[Wavespeed] Edit model not found, falling back to text-to-image path:', apiPath);
     const fallbackPayload: Record<string, unknown> = {
       prompt,
@@ -1597,9 +1597,9 @@ Chat rules:
 
     const historyLines = Array.isArray(messages)
       ? messages
-          .filter((m: { role: string; content: string }) => m.type === 'text' && m.content)
+          .filter((m: any) => m.type === 'text' && m.content)
           .slice(-12)
-          .map((m: { role: string; content: string }) =>
+          .map((m: any) =>
             `${m.role === 'user' ? 'Fan' : persona.name}: ${m.content}`
           )
           .join('\n')
@@ -2421,7 +2421,7 @@ app.post('/api/generate-video', async (req, res) => {
       const geminiModelId = GOOGLE_VEO_MAP[modelId];
       console.log('[Video Gen] Google Veo model:', modelId, '→', geminiModelId, '| hasImage:', !!sourceImage);
       const videoUrl = await generateWithGeminiVideo(geminiModelId, prompt, sourceImage || undefined);
-      const displayName = modelId.replace('google:', '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      const displayName = modelId.replace('google:', '').replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
       return res.json({ videoUrl, model: displayName });
     }
 
@@ -3058,6 +3058,9 @@ async function pollHeyGenVideoStatus(videoId: string, apiKey: string): Promise<s
     if (status === 'failed') {
       const failureMsg = json.data?.failure_message || json.data?.failure_code || 'Unknown error';
       throw new Error(`HeyGen video generation failed: ${failureMsg}`);
+    }
+  }
+  throw new Error('HeyGen video generation timed out after 4 minutes');
 }
 
 app.post('/api/heygen-create-avatar', async (req, res) => {
@@ -3413,7 +3416,7 @@ app.post('/api/persona-collab', async (req, res) => {
 Persona A: ${personaA.name} | Niche: ${personaA.niche} | Tone: ${personaA.tone} | Platform: ${personaA.platform || 'Instagram'}
 Persona B: ${personaB.name} | Niche: ${personaB.niche} | Tone: ${personaB.tone} | Platform: ${personaB.platform || 'Instagram'}
 
-Generate a creative collab concept. Return ONLY valid JSON:
+Generate a creative collab concept and a 4-6 line script/dialogue between them. Return ONLY valid JSON:
 {
   "chemistryScore": <0-100>,
   "chemistryLabel": "<Iconic Duo | Natural Fit | Unexpected Hit | Risky But Interesting>",
@@ -3422,11 +3425,17 @@ Generate a creative collab concept. Return ONLY valid JSON:
   "conceptDescription": "<3 sentence description>",
   "contentFormats": ["<format1>", "<format2>", "<format3>"],
   "jointCaption": "<120-word caption blending both voices>",
+  "collabDialogue": [
+    { "speaker": "${personaA.name}", "line": "<authentic opening line matching style>" },
+    { "speaker": "${personaB.name}", "line": "<reply matching style>" },
+    { "speaker": "${personaA.name}", "line": "<follow up dialogue line>" },
+    { "speaker": "${personaB.name}", "line": "<reply or closing collab line>" }
+  ],
   "visualPrompt": "<detailed image generation prompt blending both aesthetics>",
   "hashtags": ["<tag1>","<tag2>","<tag3>","<tag4>","<tag5>","<tag6>","<tag7>","<tag8>"],
   "estimatedReach": "<e.g. +40% combined reach>"
 }`;
-    const response = await ai.models.generateContent({ model: 'gemini-2.0-flash', contents: prompt, config: { maxOutputTokens: 1200, temperature: 0.75 } });
+    const response = await ai.models.generateContent({ model: 'gemini-2.0-flash', contents: prompt, config: { maxOutputTokens: 1500, temperature: 0.75 } });
     const raw = (response.text || '{}').trim().replace(/```json\n?|```/g, '');
     return res.json(JSON.parse(raw));
   } catch (err) {

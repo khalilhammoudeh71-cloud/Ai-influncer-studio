@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Send, Bot, ChevronDown, ImageIcon, Video, Loader2, AlertCircle, Camera, MessageSquareQuote, Copy, Bookmark, Check } from 'lucide-react';
+import { Send, Bot, ChevronDown, ImageIcon, Video, Loader2, AlertCircle, Camera, MessageSquareQuote, Copy, Bookmark, Check, Phone, PhoneOff, Volume2, VolumeX, Mic, MicOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Persona, NavActions } from '../types';
-import { ModelInfo, fetchAllModelTypes, editImage, generateVideo } from '../services/imageService';
+import { ModelInfo, fetchAllModelTypes, editImage, generateVideo, textToSpeech } from '../services/imageService';
 import { cn } from '../utils/cn';
 import { api } from '../services/apiService';
 import toast from 'react-hot-toast';
@@ -95,6 +95,176 @@ export default function AssistantView({ personas, persona: propActivePersona, na
   const [activeSegment, setActiveSegment] = useState<'chat' | 'replies'>('chat');
   const [replyInput, setReplyInput] = useState('');
   const [generatedReplies, setGeneratedReplies] = useState<string[]>([]);
+
+  // ── Voice Call States & Refs ──────────────────────────────
+  const [isCallActive, setIsCallActive] = useState(false);
+  const [callStatus, setCallStatus] = useState<'connecting' | 'connected' | 'speaking' | 'listening' | 'disconnected'>('disconnected');
+  const [callDuration, setCallDuration] = useState(0);
+  const [isMuted, setIsMuted] = useState(false);
+  const [speakerOn, setSpeakerOn] = useState(true);
+  const [callTranscript, setCallTranscript] = useState<Array<{ id: string; role: 'user' | 'persona'; content: string }>>([]);
+  const [callInput, setCallInput] = useState('');
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const callTimerRef = useRef<any>(null);
+
+  // Format timer duration (e.g. 00:05)
+  const formatDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Play TTS helper
+  const playTTS = async (text: string) => {
+    if (!speakerOn) {
+      setCallStatus('listening');
+      return;
+    }
+    setCallStatus('speaking');
+    try {
+      const voiceParams: any = {
+        text,
+        voiceName: activePersona.name,
+      };
+      if ((activePersona as any).voiceEngine) {
+        voiceParams.engine = (activePersona as any).voiceEngine;
+        voiceParams.voiceId = (activePersona as any).voiceId;
+      }
+      
+      const { audioUrl } = await textToSpeech(voiceParams);
+      
+      // Stop current audio if any
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      
+      const audio = new Audio(audioUrl);
+      audioRef.current = audio;
+      
+      audio.onended = () => {
+        setCallStatus('listening');
+      };
+      
+      audio.onerror = () => {
+        setCallStatus('listening');
+      };
+      
+      // Only play if call is still active
+      if (callTimerRef.current) {
+        await audio.play();
+      } else {
+        audio.pause();
+      }
+    } catch (err: any) {
+      console.error("TTS call failed", err);
+      setCallStatus('listening');
+    }
+  };
+
+  // Start Call
+  const handleStartCall = () => {
+    setIsCallActive(true);
+    setCallStatus('connecting');
+    setCallDuration(0);
+    setCallTranscript([
+      { id: uid(), role: 'persona', content: `Calling ${activePersona.name}...` }
+    ]);
+    
+    // Simulate connection delay
+    setTimeout(() => {
+      setCallStatus('connected');
+      // Set initial greeting
+      const greetings: Record<string, string> = {
+        luxury: `Hey. Glad you found your way here. What's on your mind?`,
+        playful: `Omg hiii! I was literally just thinking about you 😄 What's up?`,
+        edgy: `Yo. What do you want.`,
+        default: `Hey! Good to hear from you. What's going on?`,
+      };
+      const tone = activePersona.tone.toLowerCase();
+      let greeting = greetings.default;
+      if (tone.includes('luxury') || tone.includes('elite')) greeting = greetings.luxury;
+      else if (tone.includes('playful') || tone.includes('flirty') || tone.includes('seductive')) greeting = greetings.playful;
+      else if (tone.includes('edgy') || tone.includes('bold')) greeting = greetings.edgy;
+
+      setCallTranscript([
+        { id: uid(), role: 'persona', content: greeting }
+      ]);
+      
+      // Start the clock timer
+      callTimerRef.current = setInterval(() => {
+        setCallDuration(prev => prev + 1);
+      }, 1000);
+
+      // Play the greeting using text-to-speech
+      playTTS(greeting);
+    }, 1800);
+  };
+
+  // End Call
+  const handleEndCall = useCallback(() => {
+    setCallStatus('disconnected');
+    setIsCallActive(false);
+    
+    if (callTimerRef.current) {
+      clearInterval(callTimerRef.current);
+      callTimerRef.current = null;
+    }
+    
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+  }, []);
+
+  // Cleanup on unmount or persona change
+  useEffect(() => {
+    return () => {
+      if (callTimerRef.current) clearInterval(callTimerRef.current);
+      if (audioRef.current) audioRef.current.pause();
+    };
+  }, [selectedPersonaId]);
+
+  // Send message inside Live Call
+  const handleSendCallMessage = async () => {
+    const text = callInput.trim();
+    if (!text || callStatus === 'speaking' || callStatus === 'connecting') return;
+    
+    setCallInput('');
+    
+    const userMsg = { id: uid(), role: 'user' as const, content: text };
+    setCallTranscript(prev => [...prev, userMsg]);
+    
+    setCallStatus('speaking');
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          persona: activePersona,
+          messages: callTranscript.filter(t => t.content.indexOf('Calling') !== 0).map(m => ({ role: m.role, type: 'text', content: m.content })),
+          userMessage: text,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed call dialogue response');
+      
+      const reply = data.reply;
+      
+      setCallTranscript(prev => [...prev, { id: uid(), role: 'persona', content: reply }]);
+      
+      // Sync into command center chat history
+      setMessages(prev => [...prev, 
+        { id: uid(), role: 'user', type: 'text', content: text, timestamp: new Date() },
+        { id: uid(), role: 'persona', type: 'text', content: reply, timestamp: new Date() }
+      ]);
+      
+      playTTS(reply);
+    } catch (err) {
+      console.error(err);
+      setCallStatus('listening');
+      toast.error("Call connection interrupted. Try again.");
+    }
+  };
 
   const [editModels, setEditModels] = useState<ModelInfo[]>([]);
   const [videoModels, setVideoModels] = useState<ModelInfo[]>([]);
@@ -397,12 +567,23 @@ Return ONLY a JSON array of 3 strings (no markdown, no keys, just the array).`;
             <h1 className="text-2xl font-extrabold tracking-tight">
               <span className="gradient-text">Command Center</span>
             </h1>
-            {activePersona.referenceImage && (
-              <div className="flex items-center gap-2 bg-violet-500/10 rounded-full px-3 py-1.5 border border-violet-500/20">
-                <Camera size={12} className="text-violet-400" />
-                <span className="text-[10px] text-violet-300">Ref image ready</span>
-              </div>
-            )}
+            <div className="flex items-center gap-2">
+              {activePersona.referenceImage && (
+                <div className="flex items-center gap-2 bg-violet-500/10 rounded-full px-3 py-1.5 border border-violet-500/20">
+                  <Camera size={12} className="text-violet-400" />
+                  <span className="text-[10px] text-violet-300">Ref image ready</span>
+                </div>
+              )}
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={handleStartCall}
+                className="flex items-center gap-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded-full px-4 py-1.5 border border-emerald-500/20 transition-all font-bold text-[10px] uppercase tracking-wider"
+              >
+                <Phone size={12} className="animate-pulse" />
+                <span>Call</span>
+              </motion.button>
+            </div>
           </div>
           
           <div className="flex segment-control relative">
@@ -629,6 +810,227 @@ Return ONLY a JSON array of 3 strings (no markdown, no keys, just the array).`;
           )}
         </div>
       )}
+
+      {/* Voice Call Simulator Overlay */}
+      <AnimatePresence>
+        {isCallActive && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-50 bg-[#0B0F19]/90 backdrop-blur-2xl flex flex-col justify-between p-6 overflow-hidden rounded-2xl"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                {activePersona.avatar ? (
+                  <img src={activePersona.avatar} alt={activePersona.name} className="w-10 h-10 rounded-full border border-violet-500/30 object-cover" />
+                ) : (
+                  <div className="w-10 h-10 rounded-full bg-violet-600/20 border border-violet-500/30 flex items-center justify-center">
+                    <Bot size={18} className="text-violet-400" />
+                  </div>
+                )}
+                <div>
+                  <h3 className="font-extrabold text-white text-base leading-tight">{activePersona.name}</h3>
+                  <span className="text-[10px] text-teal-400 font-bold uppercase tracking-wider">{activePersona.niche}</span>
+                </div>
+              </div>
+              
+              {/* Call Timer / Duration */}
+              {callStatus !== 'connecting' && (
+                <div className="bg-white/5 border border-white/10 rounded-full px-3 py-1 text-xs font-mono text-gray-300">
+                  {formatDuration(callDuration)}
+                </div>
+              )}
+            </div>
+
+            {/* Visualizer Area */}
+            <div className="flex-1 flex flex-col items-center justify-center gap-6 my-4 relative">
+              {/* Status Indicator */}
+              <div className="text-center z-10">
+                <span className="text-[10px] text-violet-400 font-bold uppercase tracking-widest block mb-1">
+                  {callStatus === 'connecting' ? 'Calling...' : 
+                   callStatus === 'speaking' ? 'Speaking...' :
+                   callStatus === 'listening' ? 'Listening' : 'Connected'}
+                </span>
+                <p className="text-xs text-gray-400 font-medium">
+                  {callStatus === 'connecting' ? 'Establishing secure connection...' : 
+                   callStatus === 'speaking' ? `${activePersona.name} is responding` :
+                   callStatus === 'listening' ? 'Speak now or type below...' : 'Call in progress'}
+                </p>
+              </div>
+
+              {/* Pulsing Glowing Avatar */}
+              <div className="relative w-36 h-36 flex items-center justify-center">
+                {/* Outer Glow Pulse Rings */}
+                <motion.div
+                  animate={{
+                    scale: callStatus === 'speaking' ? [1, 1.2, 1] : [1, 1.08, 1],
+                    opacity: callStatus === 'speaking' ? [0.4, 0.8, 0.4] : [0.2, 0.4, 0.2]
+                  }}
+                  transition={{
+                    repeat: Infinity,
+                    duration: callStatus === 'speaking' ? 1.5 : 3,
+                    ease: "easeInOut"
+                  }}
+                  className="absolute inset-0 rounded-full bg-violet-600/20 blur-xl"
+                />
+                <motion.div
+                  animate={{
+                    scale: callStatus === 'speaking' ? [1, 1.35, 1] : [1, 1.15, 1],
+                    opacity: callStatus === 'speaking' ? [0.25, 0.5, 0.25] : [0.1, 0.2, 0.1]
+                  }}
+                  transition={{
+                    repeat: Infinity,
+                    duration: callStatus === 'speaking' ? 2 : 4,
+                    ease: "easeInOut"
+                  }}
+                  className="absolute inset-[-10px] rounded-full bg-teal-500/10 blur-2xl"
+                />
+
+                {/* Main Avatar Wrapper */}
+                <div className="w-32 h-32 rounded-full overflow-hidden border-2 border-violet-500/40 shadow-2xl relative z-10">
+                  {activePersona.referenceImage ? (
+                    <img src={activePersona.referenceImage} alt={activePersona.name} className="w-full h-full object-cover" />
+                  ) : activePersona.avatar ? (
+                    <img src={activePersona.avatar} alt={activePersona.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full bg-violet-950 flex items-center justify-center">
+                      <Bot size={48} className="text-violet-400" />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Waveform Visualizer */}
+              <div className="h-10 flex items-end justify-center gap-1 w-full max-w-[240px] px-4 z-10">
+                {[...Array(16)].map((_, i) => {
+                  const animationDuration = 0.5 + Math.random() * 0.8;
+                  return (
+                    <motion.div
+                      key={i}
+                      animate={callStatus === 'speaking' ? {
+                        height: [8, 16 + Math.random() * 24, 8]
+                      } : callStatus === 'listening' ? {
+                        height: [8, 12, 8]
+                      } : {
+                        height: [8, 8, 8]
+                      }}
+                      transition={{
+                        repeat: Infinity,
+                        duration: animationDuration,
+                        ease: "easeInOut",
+                        delay: i * 0.03
+                      }}
+                      className={cn(
+                        "w-1.5 rounded-full",
+                        callStatus === 'speaking' ? "bg-gradient-to-t from-violet-600 to-fuchsia-400" :
+                        callStatus === 'listening' ? "bg-teal-500/40" : "bg-gray-700"
+                      )}
+                      style={{ height: '8px' }}
+                    />
+                  );
+                })}
+              </div>
+
+              {/* Scrolling Call Transcript Display */}
+              <div className="w-full max-w-[400px] h-20 bg-white/5 rounded-xl border border-white/5 p-3 overflow-y-auto text-xs space-y-2 flex flex-col justify-end custom-scrollbar">
+                {callTranscript.length === 0 ? (
+                  <p className="text-[10px] text-gray-500 text-center italic">Start of Call</p>
+                ) : (
+                  callTranscript.slice(-3).map((item, idx) => (
+                    <div key={item.id || idx} className="leading-relaxed">
+                      <span className={cn("font-bold uppercase text-[9px] mr-1.5 tracking-wider", item.role === 'user' ? 'text-teal-400' : 'text-violet-400')}>
+                        {item.role === 'user' ? 'You' : activePersona.name}:
+                      </span>
+                      <span className="text-gray-300">{item.content}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Bottom Actions & Call Input */}
+            <div className="space-y-4">
+              {callStatus !== 'connecting' && (
+                <div className="flex gap-2">
+                  <div className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 flex items-center gap-2 focus-within:border-violet-500/50 transition-all">
+                    <input
+                      type="text"
+                      value={callInput}
+                      onChange={e => setCallInput(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') handleSendCallMessage();
+                      }}
+                      placeholder={`Say something to ${activePersona.name}...`}
+                      disabled={callStatus === 'speaking'}
+                      className="w-full bg-transparent outline-none text-xs text-white placeholder-gray-500 disabled:opacity-50"
+                    />
+                  </div>
+                  <motion.button
+                    whileTap={{ scale: 0.92 }}
+                    onClick={handleSendCallMessage}
+                    disabled={!callInput.trim() || callStatus === 'speaking'}
+                    className="premium-button text-white text-xs px-4 py-2.5 rounded-xl font-bold flex-shrink-0 disabled:opacity-50 flex items-center justify-center"
+                  >
+                    Send
+                  </motion.button>
+                </div>
+              )}
+
+              {/* Control Buttons */}
+              <div className="flex items-center justify-center gap-6">
+                {/* Mute Toggle */}
+                <motion.button
+                  whileTap={{ scale: 0.9 }}
+                  onClick={() => setIsMuted(!isMuted)}
+                  className={cn(
+                    "w-12 h-12 rounded-full flex items-center justify-center border transition-all duration-200",
+                    isMuted 
+                      ? "bg-rose-500/20 border-rose-500/30 text-rose-400" 
+                      : "bg-white/5 border-white/10 text-gray-300 hover:bg-white/10"
+                  )}
+                  title={isMuted ? "Unmute Mic" : "Mute Mic"}
+                >
+                  {isMuted ? <MicOff size={18} /> : <Mic size={18} />}
+                </motion.button>
+
+                {/* Red End Call Button */}
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={handleEndCall}
+                  className="w-14 h-14 rounded-full flex items-center justify-center bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-600/30 border border-rose-500/30 transition-all animate-pulse"
+                  title="End Call"
+                >
+                  <PhoneOff size={22} />
+                </motion.button>
+
+                {/* Speaker Toggle */}
+                <motion.button
+                  whileTap={{ scale: 0.9 }}
+                  onClick={() => {
+                    const nextVal = !speakerOn;
+                    setSpeakerOn(nextVal);
+                    if (!nextVal && audioRef.current) {
+                      audioRef.current.pause();
+                    }
+                  }}
+                  className={cn(
+                    "w-12 h-12 rounded-full flex items-center justify-center border transition-all duration-200",
+                    !speakerOn
+                      ? "bg-rose-500/20 border-rose-500/30 text-rose-400"
+                      : "bg-white/5 border-white/10 text-gray-300 hover:bg-white/10"
+                  )}
+                  title={speakerOn ? "Mute Speaker" : "Unmute Speaker"}
+                >
+                  {speakerOn ? <Volume2 size={18} /> : <VolumeX size={18} />}
+                </motion.button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

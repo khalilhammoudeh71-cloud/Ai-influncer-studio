@@ -108,6 +108,40 @@ const OUTFITS = [CUSTOM, 'Casual Chic', 'Luxury Evening', 'Business Professional
 const FRAMING = [CUSTOM, 'Portrait', 'Selfie Style', 'Full Body', 'Half Body', 'Candid', 'Cinematic'];
 const MOODS = [CUSTOM, 'Confident', 'Friendly', 'Thoughtful', 'Playful', 'Professional', 'Seductive'];
 
+const PRESET_EXPANSIONS: Record<string, string> = {
+  'Golden Hour': 'warm backlit sunset lighting, soft golden highlights, long shadows',
+  'Cyberpunk Neon': 'cyberpunk style, vibrant pink and cyan neon contrast glow, reflections in wet streets, nighttime vibe',
+  'Studio Softbox': 'crisp professional keylight, softbox diffuse lighting, clean minimalist studio background',
+  'Dramatic Chiaroscuro': 'high-contrast dramatic chiaroscuro lighting, deep shadows, strong side light highlights',
+  'Sunset Silhouette': 'low-key sunset silhouette, strong orange rim lighting, dark warm ambient backlight',
+  'Moody Overcast': 'moody overcast lighting, diffuse flat ambient light, cool tones, realistic shadows',
+  'Vogue Cover': 'high fashion editorial vogue magazine cover style, high-end commercial fashion crop, razor-sharp focus',
+  'Retro Polaroid': 'vintage Polaroid style, retro color balance, slightly faded matte shadows, raw flash photography look',
+  'Cinematic Anamorphic': 'cinematic anamorphic lens flare, shallow depth of field, high-end widescreen bokeh details, 8k resolution',
+  'Film Grain 35mm': 'authentic 35mm film grain texture, analog style color grading, kodak portra 400 aesthetic, realistic film look',
+  'GoPro Action': 'GoPro action camera style, ultra wide-angle field of view, dynamic fish-eye perspective, immersive perspective',
+  'Aerial Drone': 'high-altitude aerial drone shot, dramatic bird-eye perspective, sweeping composition',
+  'Luxury Glamour': 'luxury glamour style, premium high-status details, upscale fashion elements, wealth aesthetic',
+  'Athletic Dynamic': 'dynamic action sports photography, high-speed shutter, sweat skin highlights, athletic energy, motion freeze',
+  'Cozy Casual': 'relaxed cozy casual style, soft morning bedroom light, warm coffee cup details, comfortable lounge aesthetic',
+  'Cybernetic/Sci-Fi': 'futuristic cybernetic details, subtle holographic overlays, advanced tech implants, high-tech glow'
+};
+
+const PRESET_CATEGORIES = [
+  {
+    name: 'Lighting & Vibe',
+    presets: ['Golden Hour', 'Cyberpunk Neon', 'Studio Softbox', 'Dramatic Chiaroscuro', 'Sunset Silhouette', 'Moody Overcast']
+  },
+  {
+    name: 'Photography & Camera',
+    presets: ['Vogue Cover', 'Retro Polaroid', 'Cinematic Anamorphic', 'Film Grain 35mm', 'GoPro Action', 'Aerial Drone']
+  },
+  {
+    name: 'Aesthetic Niche',
+    presets: ['Luxury Glamour', 'Athletic Dynamic', 'Cozy Casual', 'Cybernetic/Sci-Fi']
+  }
+];
+
 const MODE_CONFIG: { id: CreateMode; label: string; icon: any; gradient: string; ringClass: string; desc: string; bgImage: string }[] = [
   { id: 'angle', label: 'Camera Angles', icon: Camera, gradient: 'from-cyan-600 to-sky-500', ringClass: 'focus:ring-cyan-500', desc: 'Generate 9-angle identity sheets', bgImage: 'https://images.unsplash.com/photo-1542038784456-1ea8e935640e?auto=format&fit=crop&w=300&q=80' },
   { id: 'image', label: 'Generate Images', icon: ImageIcon, gradient: 'from-purple-600 to-blue-600', ringClass: 'focus:ring-purple-500', desc: 'Create persona-consistent images', bgImage: 'https://images.unsplash.com/photo-1509631179647-0177331693ae?auto=format&fit=crop&w=300&q=80' },
@@ -222,6 +256,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   };
 
   const [imagePrompt, setImagePrompt] = useState('');
+  const [activePresetChips, setActivePresetChips] = useState<string[]>([]);
   const [selectedEnv, setSelectedEnv] = useState(ENVIRONMENTS[0]);
   const [selectedOutfit, setSelectedOutfit] = useState(OUTFITS[0]);
   const [selectedFraming, setSelectedFraming] = useState(FRAMING[0]);
@@ -692,7 +727,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         outfitStyle: selectedOutfit,
         framing: selectedFraming,
         mood: selectedMood,
-        additionalInstructions: imagePrompt,
+        additionalInstructions: [imagePrompt.trim(), activePresetChips.map(c => PRESET_EXPANSIONS[c]).filter(Boolean).join(', ')].filter(Boolean).join(', '),
         additionalImages: extraRefs.length > 0 ? extraRefs : undefined,
         naturalLook,
         identityLock,
@@ -1237,6 +1272,30 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               className="w-full bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white placeholder-[var(--text-muted)] resize-none h-24 outline-none focus:ring-2 focus:ring-purple-500"
             />
           </div>
+
+          {/* Live Compiled Prompt Preview */}
+          <div className="bg-[#111827]/40 border border-white/5 rounded-xl p-3 space-y-1.5 mt-2">
+            <div className="flex items-center gap-1.5">
+              <Sparkles className="w-3 h-3 text-cyan-400" />
+              <span className="text-[9px] font-black text-cyan-300 uppercase tracking-widest">Compiled Prompt Preview</span>
+            </div>
+            <p className="text-[10px] text-[#94A3B8] leading-relaxed select-all italic bg-black/20 p-2 rounded-lg border border-white/[0.02]">
+              A photorealistic photo of <span className="text-white font-bold">{activePersona.name || 'Anonymous Persona'}</span>
+              {selectedEnv && selectedEnv !== 'None' && selectedEnv !== 'Custom' && <>, in a <span className="text-purple-300 font-medium">{selectedEnv}</span> environment</>}
+              {selectedOutfit && selectedOutfit !== 'None' && selectedOutfit !== 'Custom' && <>, wearing a <span className="text-purple-300 font-medium">{selectedOutfit}</span></>}
+              {selectedFraming && selectedFraming !== 'None' && selectedFraming !== 'Custom' && <>, in a <span className="text-purple-300 font-medium">{selectedFraming}</span> shot</>}
+              {selectedMood && selectedMood !== 'None' && selectedMood !== 'Custom' && <>, showing a <span className="text-purple-300 font-medium">{selectedMood}</span> expression</>}
+              {activePresetChips.length > 0 && (
+                <>, styled with <span className="text-cyan-300 font-medium">{activePresetChips.map(c => PRESET_EXPANSIONS[c]).join(', ')}</span></>
+              )}
+              {imagePrompt.trim() && (
+                <>, and following instructions: <span className="text-emerald-300">"{imagePrompt.trim()}"</span></>
+              )}
+              {naturalLook && <>, capturing authentic details with candid photography and natural skin texture</>}
+              {identityLock && <>, keeping facial features perfectly consistent</>}
+              .
+            </p>
+          </div>
         </div>
 
         {/* Aspect Ratio Selector */}
@@ -1312,6 +1371,52 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                       <span className="truncate w-full text-center font-extrabold">{qs.label}</span>
                       <span className="text-[7px] text-[var(--text-muted)] font-medium truncate w-full text-center opacity-85">{qs.env}</span>
                     </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Style Preset Builder */}
+              <div className="space-y-3 pt-3 border-t border-white/5">
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase tracking-wide">Style Preset Builder</p>
+                  {activePresetChips.length > 0 && (
+                    <button 
+                      onClick={() => setActivePresetChips([])} 
+                      className="text-[10px] text-purple-400 hover:text-purple-300 transition-colors"
+                    >
+                      Reset Chips
+                    </button>
+                  )}
+                </div>
+                
+                <div className="space-y-3 max-h-[220px] overflow-y-auto pr-1 custom-scrollbar">
+                  {PRESET_CATEGORIES.map(category => (
+                    <div key={category.name} className="space-y-1.5">
+                      <label className="text-[8px] font-black text-[var(--text-muted)] uppercase tracking-wider block">{category.name}</label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {category.presets.map(preset => {
+                          const isActive = activePresetChips.includes(preset);
+                          return (
+                            <button
+                              key={preset}
+                              type="button"
+                              onClick={() => {
+                                setActivePresetChips(prev => 
+                                  prev.includes(preset) ? prev.filter(x => x !== preset) : [...prev, preset]
+                                );
+                              }}
+                              className={`px-2 py-1 rounded-lg text-[9px] font-bold transition-all border ${
+                                isActive 
+                                  ? 'bg-purple-600/20 border-purple-500/50 text-white shadow-sm'
+                                  : 'bg-white/5 border-white/5 text-[var(--text-tertiary)] hover:border-white/15 hover:text-white'
+                              }`}
+                            >
+                              {preset}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -2663,8 +2768,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               {isGenerating ? (
                 <div className="flex flex-col items-center gap-4 text-white z-10 p-6 text-center select-none">
                   <div className="relative">
-                    {(portraitImage || activePersona.avatar) && (
-                      <img src={portraitImage || activePersona.avatar} alt="" className="w-32 h-32 rounded-2xl object-cover opacity-40 blur-sm" />
+                    {(selectedAvatarSource || activePersona.avatar) && (
+                      <img src={selectedAvatarSource || activePersona.avatar} alt="" className="w-32 h-32 rounded-2xl object-cover opacity-40 blur-sm" />
                     )}
                     <div className="absolute inset-0 flex items-center justify-center">
                       <Loader2 size={32} className="animate-spin text-emerald-400" />

@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { X, Play, Pause, Download, Loader2, Upload, Mic, Camera, Video, AlertTriangle, Sparkles } from 'lucide-react';
+import { X, Play, Pause, Download, Loader2, Upload, Mic, Camera, Video, AlertTriangle, Sparkles, UserRound, Check } from 'lucide-react';
 import { Persona } from '../types';
 import { generateTalkingHead, TTS_VOICES } from '../services/imageService';
 import { processImageFile } from '../utils/imageProcessing';
 import toast from 'react-hot-toast';
+import { useProMode, ProModeToggle } from '../utils/useProMode';
 
 const PREF_KEY = 'ai_studio_prefs';
 function loadPrefs() {
@@ -28,6 +29,7 @@ export default function TalkingHeadStudio({
   initialScript,
   onSaveVideo,
 }: TalkingHeadStudioProps) {
+  const [isPro, togglePro] = useProMode();
   const [portraitImage, setPortraitImage] = useState<string | null>(persona?.referenceImage || null);
   const [script, setScript] = useState(initialScript || '');
   const [audioUrl, setAudioUrl] = useState<string | null>(initialAudioUrl || null);
@@ -206,9 +208,12 @@ export default function TalkingHeadStudio({
               <p className="text-[10px] text-pink-300/80">AI Lip-Sync Video • LTX Lipsync</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition-colors">
-            <X size={18} className="text-[var(--text-secondary)]" />
-          </button>
+          <div className="flex items-center gap-3">
+            <ProModeToggle isPro={isPro} onToggle={togglePro} />
+            <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+              <X size={18} className="text-[var(--text-secondary)]" />
+            </button>
+          </div>
         </div>
 
         {/* Content */}
@@ -332,7 +337,7 @@ export default function TalkingHeadStudio({
                   } ${useCustomAvatar ? 'opacity-30 cursor-not-allowed' : ''}`}
                   title={useCustomAvatar ? "Custom video avatars require HeyGen AI engine" : ""}
                 >
-                  Wavespeed LTX
+                  {isPro ? 'Wavespeed LTX' : 'Fast Lipsync'}
                 </button>
                 <button
                   onClick={() => setEngine('heygen')}
@@ -340,13 +345,13 @@ export default function TalkingHeadStudio({
                     engine === 'heygen' ? 'bg-gradient-to-r from-pink-600 to-violet-600 text-white shadow-lg' : 'text-[var(--text-secondary)] hover:text-white'
                   }`}
                 >
-                  HeyGen AI
+                  {isPro ? 'HeyGen AI' : 'Ultra-Realistic'}
                 </button>
               </div>
             </div>
 
             {/* HeyGen Engine Quality (Avatar 4 vs 5) */}
-            {engine === 'heygen' && (
+            {isPro && engine === 'heygen' && (
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)]">HeyGen Avatar Engine</label>
                 <div className="flex bg-[var(--bg-elevated)] rounded-xl p-1 gap-1">

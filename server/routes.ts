@@ -86,14 +86,77 @@ router.use(requireAuth);
 
 router.get('/personas', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const allPersonas = await db.select().from(personas).where(eq(personas.userId, req.user.id));
+    let allPersonas = await db.select().from(personas).where(eq(personas.userId, req.user.id));
+    if (allPersonas.length === 0) {
+      // Seed default sandbox persona: Luna TechVibe
+      const personaClientId = `user-luna-${req.user.id}`;
+      const defaultLunaAvatar = 'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=800&q=80';
+      
+      await db.insert(personas).values({
+        clientId: personaClientId,
+        name: 'Luna TechVibe',
+        niche: 'Tech & Future Lifestyle',
+        tone: 'Energetic, Insightful, Tech-savvy, Visionary',
+        platform: 'YouTube & Twitter',
+        status: 'Active',
+        avatar: defaultLunaAvatar,
+        referenceImage: defaultLunaAvatar,
+        personalityTraits: JSON.stringify(['Futurist', 'Authentic', 'Vibrant']),
+        visualStyle: 'Cyberpunk neon accents, modern workspace, sharp portrait lighting',
+        audienceType: 'Developers, tech enthusiasts, digital creators',
+        contentBoundaries: 'No politics, focus on positive AI/tech developments',
+        bio: 'Luna TechVibe is a futurist and digital creator sharing the cutting edge of tech, AI tools, and creative workspaces. Bringing a vibrant aesthetic and optimistic perspective to technology.',
+        brandVoiceRules: 'Use tech terms naturally, be inspiring but grounded, engage with audience questions in comments.',
+        contentGoals: 'Build an active community of creators, showcase new tools, review cool gadgets.',
+        personaNotes: 'Loves neon lighting and cyberpunk aesthetics.',
+        userId: req.user.id,
+      });
+
+      // Seed 2 mock library images for Luna
+      const seedImage1 = {
+        clientId: `img-luna-seed-1-${req.user.id}`,
+        personaClientId: personaClientId,
+        url: defaultLunaAvatar,
+        prompt: 'A futuristic cyberpunk digital creator studio setup with neon purple lighting, multi-monitor desk, high-end gadgets',
+        timestamp: Date.now() - 86400000,
+        environment: 'Modern Apartment',
+        outfit: 'Casual Chic',
+        framing: 'Cinematic',
+        isFavorite: true,
+        model: 'venice:flux-lora-cyberpunk',
+        mediaType: 'image',
+        userId: req.user.id,
+      };
+
+      const seedImage2 = {
+        clientId: `img-luna-seed-2-${req.user.id}`,
+        personaClientId: personaClientId,
+        url: 'https://images.unsplash.com/photo-1542038784456-1ea8e935640e?auto=format&fit=crop&w=800&q=80',
+        prompt: 'Professional portrait photo of a tech influencer in a modern glass studio, warm sunset lighting, highly detailed',
+        timestamp: Date.now() - 3600000 * 2,
+        environment: 'Rooftop Lounge',
+        outfit: 'Business Professional',
+        framing: 'Portrait',
+        isFavorite: false,
+        model: 'google:nano-banana-pro',
+        mediaType: 'image',
+        userId: req.user.id,
+      };
+
+      await db.insert(generatedImages).values(seedImage1);
+      await db.insert(generatedImages).values(seedImage2);
+
+      // Re-fetch to ensure the seeded persona is returned
+      allPersonas = await db.select().from(personas).where(eq(personas.userId, req.user.id));
+    }
+
     const allImages = await db.select().from(generatedImages).where(eq(generatedImages.userId, req.user.id));
     const imagesByPersona: Record<string, typeof generatedImages.$inferSelect[]> = {};
     for (const img of allImages) {
       if (!imagesByPersona[img.personaClientId]) imagesByPersona[img.personaClientId] = [];
       imagesByPersona[img.personaClientId].push(img);
     }
-    const result = allPersonas.map(p => personaToClient(p, imagesByPersona[p.clientId] || []));
+    const result = allPersonas.map((p: any) => personaToClient(p, imagesByPersona[p.clientId] || []));
     res.json(result);
   } catch (err) {
     console.error('[API] GET /personas error:', err);
@@ -166,7 +229,7 @@ router.post('/personas', async (req: AuthenticatedRequest, res: Response) => {
 
 router.put('/personas/:clientId', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { clientId } = req.params;
+    const clientId = req.params.clientId as string;
     const body = req.body;
     const [row] = await db.update(personas).set({
       name: body.name || 'Unnamed',
@@ -214,7 +277,7 @@ router.put('/personas/:clientId', async (req: AuthenticatedRequest, res: Respons
 
 router.delete('/personas/:clientId', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { clientId } = req.params;
+    const clientId = req.params.clientId as string;
     await db.delete(generatedImages).where(and(eq(generatedImages.personaClientId, clientId), eq(generatedImages.userId, req.user.id)));
     await db.delete(revenueEntries).where(and(eq(revenueEntries.personaClientId, clientId), eq(revenueEntries.userId, req.user.id)));
     await db.delete(plannedPosts).where(and(eq(plannedPosts.personaClientId, clientId), eq(plannedPosts.userId, req.user.id)));
@@ -230,7 +293,7 @@ router.get('/personas/:personaClientId/images', async (req: AuthenticatedRequest
   try {
     const imgs = await db.select().from(generatedImages).where(
       and(
-        eq(generatedImages.personaClientId, req.params.personaClientId),
+        eq(generatedImages.personaClientId, req.params.personaClientId as string),
         eq(generatedImages.userId, req.user.id)
       )
     );
@@ -282,8 +345,8 @@ router.delete('/personas/:personaClientId/images/:imageClientId', async (req: Au
   try {
     await db.delete(generatedImages).where(
       and(
-        eq(generatedImages.clientId, req.params.imageClientId),
-        eq(generatedImages.personaClientId, req.params.personaClientId),
+        eq(generatedImages.clientId, req.params.imageClientId as string),
+        eq(generatedImages.personaClientId, req.params.personaClientId as string),
         eq(generatedImages.userId, req.user.id),
       )
     );
@@ -297,7 +360,7 @@ router.get('/revenue/:personaClientId', async (req: AuthenticatedRequest, res: R
   try {
     const entries = await db.select().from(revenueEntries).where(
       and(
-        eq(revenueEntries.personaClientId, req.params.personaClientId),
+        eq(revenueEntries.personaClientId, req.params.personaClientId as string),
         eq(revenueEntries.userId, req.user.id)
       )
     );
@@ -341,7 +404,7 @@ router.delete('/revenue/:clientId', async (req: AuthenticatedRequest, res: Respo
   try {
     await db.delete(revenueEntries).where(
       and(
-        eq(revenueEntries.clientId, req.params.clientId),
+        eq(revenueEntries.clientId, req.params.clientId as string),
         eq(revenueEntries.userId, req.user.id)
       )
     );
@@ -356,12 +419,12 @@ router.get('/planned-posts/:personaClientId', async (req: AuthenticatedRequest, 
     const platform = (req.query.platform as string) || '';
     const posts = await db.select().from(plannedPosts).where(
       and(
-        eq(plannedPosts.personaClientId, req.params.personaClientId),
+        eq(plannedPosts.personaClientId, req.params.personaClientId as string),
         eq(plannedPosts.planPlatform, platform),
         eq(plannedPosts.userId, req.user.id)
       )
     );
-    res.json(posts.map(p => ({ day: p.day, type: p.type, hook: p.hook, angle: p.angle, cta: p.cta })));
+    res.json(posts.map((p: any) => ({ day: p.day, type: p.type, hook: p.hook, angle: p.angle, cta: p.cta })));
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Unknown error' });
   }
@@ -369,7 +432,7 @@ router.get('/planned-posts/:personaClientId', async (req: AuthenticatedRequest, 
 
 router.put('/planned-posts/:personaClientId', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { personaClientId } = req.params;
+    const personaClientId = req.params.personaClientId as string;
     const { platform, posts } = req.body;
     await db.delete(plannedPosts).where(
       and(
@@ -542,7 +605,7 @@ router.post('/analyze-face', async (req: AuthenticatedRequest, res: Response) =>
 
 router.post('/personas/:personaClientId/analyze-face', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { personaClientId } = req.params;
+    const personaClientId = req.params.personaClientId as string;
     const { referenceImage: bodyImage } = req.body as { referenceImage?: string };
 
     let imageBase64 = bodyImage || null;

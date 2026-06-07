@@ -21,6 +21,7 @@ interface Props {
     credits: number;
     stripeCustomerId?: string;
     subscriptionPriceId?: string;
+    isCreator?: boolean;
   } | null;
   onBillingUpdate: () => void;
 }
@@ -120,10 +121,11 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
     setLoadingStatus(true);
     const status = await api.getConfigStatus();
     const clientKey = loadPrefs().heygenApiKey;
-    if (clientKey) {
-      status.heygen = true;
-    }
-    setApiStatus(status);
+    const fullStatus: ApiStatus = {
+      ...status,
+      heygen: !!clientKey
+    };
+    setApiStatus(fullStatus);
     setLoadingStatus(false);
   };
 

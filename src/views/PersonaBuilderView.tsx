@@ -3,6 +3,7 @@ import { ChevronLeft, Save, Sparkles, Upload, X, Info, Image as ImageIcon, Video
 import { Persona } from '../types';
 import { generateImage } from '../services/imageService';
 import { identitySheetPlaceholders } from '../data/demoAssets';
+import { useProMode, ProModeToggle } from '../utils/useProMode';
 
 interface PersonaBuilderViewProps {
   persona: Persona;
@@ -22,6 +23,7 @@ const PERSONA_TYPES = [
 ];
 
 export default function PersonaBuilderView({ persona: initialPersona, onChange, onSave, onCancel }: PersonaBuilderViewProps) {
+  const [isPro, togglePro] = useProMode();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [persona, setPersona] = useState<Persona>(initialPersona);
   const [selectedType, setSelectedType] = useState(() => {
@@ -227,6 +229,9 @@ export default function PersonaBuilderView({ persona: initialPersona, onChange, 
               </h1>
               <p className="text-sm font-medium text-[#94A3B8]">Build a reusable AI identity for images, videos, talking avatars, and content.</p>
             </div>
+            <div className="flex justify-end mt-2 md:mt-0">
+              <ProModeToggle isPro={isPro} onToggle={togglePro} />
+            </div>
           </div>
 
           {/* Progress Bar */}
@@ -307,6 +312,45 @@ export default function PersonaBuilderView({ persona: initialPersona, onChange, 
               </div>
             </div>
           </div>
+
+          {/* Advanced Brand Settings (Pro Mode Only) */}
+          {isPro && (
+            <div className="bg-[#0F172A]/35 border border-[#334155]/40 backdrop-blur-xl rounded-2xl p-4 shadow-xl relative overflow-hidden group animate-in fade-in duration-300">
+              <div className="absolute inset-0 bg-gradient-to-br from-[#8B5CF6]/2 via-transparent to-transparent opacity-25" />
+              <h3 className="flex items-center gap-2 text-[13px] font-black text-white mb-3.5 relative z-10">
+                <Sliders className="text-purple-400" size={16} /> Advanced Brand Settings
+              </h3>
+              <div className="space-y-3.5 relative z-10">
+                <div>
+                  <label className="block text-[10px] font-bold text-[#CBD5E1] uppercase tracking-[0.15em] mb-1.5">Brand Voice Rules</label>
+                  <textarea 
+                    value={persona.brandVoiceRules || ''} 
+                    onChange={e => updateField('brandVoiceRules', e.target.value)} 
+                    className="w-full bg-[#111827]/80 border border-[#334155] focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-[#64748B] font-semibold outline-none transition-all shadow-md resize-none h-16" 
+                    placeholder="e.g. Always use a friendly greeting, never talk about competition, write short sentences..."
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-[#CBD5E1] uppercase tracking-[0.15em] mb-1.5">Content Goals</label>
+                  <textarea 
+                    value={persona.contentGoals || ''} 
+                    onChange={e => updateField('contentGoals', e.target.value)} 
+                    className="w-full bg-[#111827]/80 border border-[#334155] focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-[#64748B] font-semibold outline-none transition-all shadow-md resize-none h-16" 
+                    placeholder="e.g. Inform developers about new tool launches, convert readers to newsletter subscribers..."
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-[#CBD5E1] uppercase tracking-[0.15em] mb-1.5">Persona Notes</label>
+                  <textarea 
+                    value={persona.personaNotes || ''} 
+                    onChange={e => updateField('personaNotes', e.target.value)} 
+                    className="w-full bg-[#111827]/80 border border-[#334155] focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-[#64748B] font-semibold outline-none transition-all shadow-md resize-none h-16" 
+                    placeholder="Any private details or instructions for this persona..."
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Persona Type Card */}
           <div className="bg-[#0F172A]/50 border border-[#334155]/50 backdrop-blur-xl rounded-2xl p-5 shadow-xl relative overflow-hidden group">

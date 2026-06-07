@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { RotatingHeroImages } from '../components/RotatingHeroImages';
+import { useProMode, ProModeToggle } from '../utils/useProMode';
 import { 
   Mic, 
   Sparkles, 
@@ -113,6 +114,7 @@ const VIDEO_MODELS = [
 type VoiceEngine = 'elevenlabs' | 'openai' | 'gemini';
 
 export default function VoiceView({ persona, personas, onSelectPersona, nav, billingInfo }: VoiceViewProps) {
+  const [isPro, togglePro] = useProMode();
   const [topic, setTopic] = useState('');
   const [script, setScript] = useState('');
   const [isGeneratingScript, setIsGeneratingScript] = useState(false);
@@ -165,6 +167,23 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
   const [attachOnClone, setAttachOnClone] = useState(true);
   const [isWebcamCreatorOpen, setIsWebcamCreatorOpen] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+
+  const fetchVoices = async () => {
+    setIsLoadingVoices(true);
+    setVoicesError(null);
+    try {
+      const data = await api.voice.getVoices();
+      setElevenLabsVoices(data.voices);
+      if (!selectedELVoiceId && data.voices.length > 0) {
+        setSelectedELVoiceId(data.voices[0].voice_id);
+      }
+    } catch (err: any) {
+      console.error('[Voice] Failed to fetch ElevenLabs voices:', err);
+      setVoicesError(err.message || 'Failed to load voices');
+    } finally {
+      setIsLoadingVoices(false);
+    }
+  };
 
   const handleWebcamCreatorComplete = async (avatarId: string, voiceId?: string, portraitBase64?: string) => {
     // Refresh voice list
@@ -349,22 +368,8 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
     if (voiceEngine !== 'elevenlabs' || !hasElevenLabsKey) return;
     if (elevenLabsVoices.length > 0) return; // already loaded
 
-    setIsLoadingVoices(true);
-    setVoicesError(null);
-    api.voice.getVoices()
-      .then(data => {
-        setElevenLabsVoices(data.voices);
-        // Auto-select first voice if none selected
-        if (!selectedELVoiceId && data.voices.length > 0) {
-          setSelectedELVoiceId(data.voices[0].voice_id);
-        }
-      })
-      .catch(err => {
-        console.error('[Voice] Failed to fetch ElevenLabs voices:', err);
-        setVoicesError(err.message || 'Failed to load voices');
-      })
-      .finally(() => setIsLoadingVoices(false));
-  }, [voiceEngine, hasElevenLabsKey]);
+    fetchVoices();
+  }, [voiceEngine, hasElevenLabsKey, elevenLabsVoices.length]);
 
   // Reset selected voice when switching native engines
   useEffect(() => {
@@ -925,6 +930,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
           <p className="text-[var(--text-tertiary)] text-sm mt-1.5 font-medium">Scripts, synthesis & talking video</p>
         </div>
         <div className="flex items-center gap-4">
+          <ProModeToggle isPro={isPro} onToggle={togglePro} />
           <EngineToggle />
           <div className="flex items-center gap-3">
             {persona.referenceImage && (
@@ -1316,7 +1322,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                   )}
 
                   {/* Voice Settings */}
-                  <VoiceSettingsPanel />
+                  {isPro && <VoiceSettingsPanel />}
                 </>
               ) : (
                 /* OpenAI/Gemini Voice Grid (original) */

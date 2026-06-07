@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { Persona, NavActions } from '../types';
 import toast from 'react-hot-toast';
+import { cn } from '../utils/cn';
 
 interface CreatorHubViewProps {
   persona: Persona;
@@ -1101,6 +1102,33 @@ export default function CreatorHubView({ persona: activePersona, personas, nav }
                               </div>
                             </div>
                           </div>
+
+                          {/* Collab Script / Dialogue */}
+                          {collabResult.collabDialogue && collabResult.collabDialogue.length > 0 && (
+                            <div className="premium-card p-5">
+                              <span className="text-[10px] font-black text-[#8B5CF6] uppercase tracking-wider block mb-3">Collaboration Script Dialogue</span>
+                              <div className="space-y-4 bg-white/5 p-4 rounded-xl border border-white/5 max-h-[300px] overflow-y-auto custom-scrollbar">
+                                {collabResult.collabDialogue.map((diag: any, idx: number) => {
+                                  const isPersonaA = diag.speaker === activePersona.name;
+                                  return (
+                                    <div key={idx} className={cn("flex flex-col gap-1.5", isPersonaA ? "items-start" : "items-end")}>
+                                      <span className={cn("text-[9px] font-black uppercase tracking-wider", isPersonaA ? "text-violet-400" : "text-[#00D4FF]")}>
+                                        {diag.speaker}
+                                      </span>
+                                      <div className={cn(
+                                        "px-3 py-2 rounded-xl text-xs max-w-[85%] leading-relaxed",
+                                        isPersonaA 
+                                          ? "bg-violet-500/10 text-violet-100 rounded-tl-none border border-violet-500/10" 
+                                          : "bg-[#00D4FF]/10 text-[#00D4FF] rounded-tr-none border border-[#00D4FF]/10"
+                                      )}>
+                                        {diag.line}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
 
                           {/* Combined Voice Caption */}
                           <div className="premium-card p-5 relative">

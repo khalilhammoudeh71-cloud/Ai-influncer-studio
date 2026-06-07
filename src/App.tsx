@@ -12,7 +12,8 @@ import {
   Mic,
   Wrench,
   Sparkles,
-  ChevronDown
+  ChevronDown,
+  Bell
 } from 'lucide-react';
 import { cn } from './utils/cn';
 import { Persona, RevenueEntry, PlannedPost, Tab, NavEntry } from './types';
@@ -27,6 +28,7 @@ import GalleryView from './views/GalleryView';
 import LandingView from './views/LandingView';
 import PersonaBuilderView from './views/PersonaBuilderView';
 import CreatorHubView from './views/CreatorHubView';
+import RevenueView from './views/RevenueView';
 import OnboardingTour from './components/OnboardingTour';
 import CommandPalette from './components/CommandPalette';
 
@@ -201,32 +203,36 @@ function App() {
   useEffect(() => {
     async function init() {
       if (!user) return;
-      setIsLoading(true);
-      let serverPersonas = await loadPersonas();
+      try {
+        setIsLoading(true);
+        let serverPersonas = await loadPersonas();
 
-      if (!hasMigrated.current && !localStorage.getItem('ai_influencer_db_migrated')) {
-        hasMigrated.current = true;
+        if (!hasMigrated.current && !localStorage.getItem('ai_influencer_db_migrated')) {
+          hasMigrated.current = true;
 
-        const localPersonas = getLocalStoragePersonas();
-        const localRevenue = getLocalStorageRevenue(localPersonas);
-        const localPlans = getLocalStoragePlans(localPersonas);
+          const localPersonas = getLocalStoragePersonas();
+          const localRevenue = getLocalStorageRevenue(localPersonas);
+          const localPlans = getLocalStoragePlans(localPersonas);
 
-        if (localPersonas.length > 0) {
-          console.log(`[Migration] Migrating ${localPersonas.length} personas to server...`);
-          try {
-            await api.migrate({ personas: localPersonas, revenueEntries: localRevenue, plannedPosts: localPlans });
-            serverPersonas = await loadPersonas();
+          if (localPersonas.length > 0) {
+            console.log(`[Migration] Migrating ${localPersonas.length} personas to server...`);
+            try {
+              await api.migrate({ personas: localPersonas, revenueEntries: localRevenue, plannedPosts: localPlans });
+              serverPersonas = await loadPersonas();
+              localStorage.setItem('ai_influencer_db_migrated', 'true');
+              console.log('[Migration] Complete');
+            } catch (err) {
+              console.error('[Migration] Failed, will retry on next load:', err);
+            }
+          } else {
             localStorage.setItem('ai_influencer_db_migrated', 'true');
-            console.log('[Migration] Complete');
-          } catch (err) {
-            console.error('[Migration] Failed, will retry on next load:', err);
           }
-        } else {
-          localStorage.setItem('ai_influencer_db_migrated', 'true');
         }
+      } catch (err) {
+        console.error('[App Init] Initialization error:', err);
+      } finally {
+        setIsLoading(false);
       }
-
-      setIsLoading(false);
     }
     init();
   }, [loadPersonas, user]);
@@ -454,6 +460,7 @@ function App() {
       case 'gallery': return <GalleryView personas={personas} activePersona={activePersona} nav={navActions} onPersonasChange={setPersonas} />;
       case 'intelligence': return <CreatorHubView persona={activePersona} personas={personas} nav={navActions} />;
       case 'assistant': return <AssistantView persona={activePersona} personas={personas} nav={navActions} />;
+      case 'revenue': return <RevenueView persona={activePersona} />;
       case 'settings': return (
         <SettingsView 
           nav={navActions} 

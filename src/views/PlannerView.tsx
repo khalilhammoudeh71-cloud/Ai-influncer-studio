@@ -26,9 +26,19 @@ import {
   Loader2,
   Copy,
   ChevronUp,
-  UserRound
+  UserRound,
+  Link as LinkIcon,
+  Globe,
+  Settings,
+  Eye,
+  EyeOff,
+  Check,
+  ExternalLink,
+  CalendarDays,
+  Trash2,
+  X
 } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Persona, PlannedPost, NavActions } from '../types';
 import { api } from '../services/apiService';
 import toast from 'react-hot-toast';
@@ -68,6 +78,16 @@ const CONTENT_MIX: Record<string, { reels: number; stories: number }> = {
   OnlyFans: { reels: 5, stories: 2 },
 };
 
+const PREVIEW_IMAGES = [
+  'https://images.unsplash.com/photo-1511512578047-dfb367046420',
+  'https://images.unsplash.com/photo-1542751371-adc38448a05e',
+  'https://images.unsplash.com/photo-1550745165-9bc0b252726f',
+  'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe',
+  'https://images.unsplash.com/photo-1601987177651-8edfe6c20009',
+  'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5',
+  'https://images.unsplash.com/photo-1563089145-599997674d42',
+];
+
 export default function PlannerView({ persona, personas, onSelectPersona, nav }: PlannerViewProps) {
   const [plan, setPlan] = useState<(PlannedPost & { id: string })[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -78,6 +98,54 @@ export default function PlannerView({ persona, personas, onSelectPersona, nav }:
   const [batchContent, setBatchContent] = useState<Record<string, { caption: string; imagePrompt: string; videoScript: string }>>({});
   const [batchLoading, setBatchLoading] = useState(false);
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
+
+  // ── Tab State ──
+  const [activeTab, setActiveTab] = useState<'roadmap' | 'feed'>('roadmap');
+
+  // ── Connected Accounts State ──
+  const [connectedAccounts, setConnectedAccounts] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem(`connected_accounts_${persona.id}`);
+      return saved ? JSON.parse(saved) : {
+        Instagram: true,
+        TikTok: false,
+        YouTube: false,
+        'Twitter/X': true,
+        Threads: false,
+        OnlyFans: false
+      };
+    } catch {
+      return { Instagram: true, TikTok: false, YouTube: false, 'Twitter/X': true, Threads: false, OnlyFans: false };
+    }
+  });
+
+  // Save connected accounts when they change
+  useEffect(() => {
+    localStorage.setItem(`connected_accounts_${persona.id}`, JSON.stringify(connectedAccounts));
+  }, [connectedAccounts, persona.id]);
+
+  // ── Post Scheduling State ──
+  // Key format: `${platform}_day_${post.day}`
+  const [schedules, setSchedules] = useState<Record<string, { status: 'Draft' | 'Scheduled' | 'Published'; date?: string; time?: string; caption?: string }>>(() => {
+    try {
+      const saved = localStorage.getItem(`planner_schedules_${persona.id}`);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  // Save schedules when they change
+  useEffect(() => {
+    localStorage.setItem(`planner_schedules_${persona.id}`, JSON.stringify(schedules));
+  }, [schedules, persona.id]);
+
+  // ── Scheduling Modal State ──
+  const [schedulingPost, setSchedulingPost] = useState<(PlannedPost & { id: string }) | null>(null);
+  const [scheduleDate, setScheduleDate] = useState('');
+  const [scheduleTime, setScheduleTime] = useState('');
+  const [scheduleCaption, setScheduleCaption] = useState('');
+  const [isSchedulingAction, setIsSchedulingAction] = useState(false);
   
   useEffect(() => {
     setPlatform(persona.platform);
@@ -252,6 +320,50 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
     toast.success('Plan exported!');
   };
 
+  const handleConfirmSchedule = () => {
+    if (!schedulingPost) return;
+    setIsSchedulingAction(true);
+    const scheduleKey = `${platform}_day_${schedulingPost.day}`;
+    
+    // Simulate API delay
+    setTimeout(() => {
+      setSchedules(prev => ({
+        ...prev,
+        [scheduleKey]: {
+          status: 'Scheduled',
+          date: scheduleDate,
+          time: scheduleTime,
+          caption: scheduleCaption
+        }
+      }));
+      setIsSchedulingAction(false);
+      setSchedulingPost(null);
+      toast.success('📅 Post successfully scheduled!');
+    }, 800);
+  };
+
+  const handlePublishNow = () => {
+    if (!schedulingPost) return;
+    setIsSchedulingAction(true);
+    const scheduleKey = `${platform}_day_${schedulingPost.day}`;
+
+    // Simulate API delay
+    setTimeout(() => {
+      setSchedules(prev => ({
+        ...prev,
+        [scheduleKey]: {
+          status: 'Published',
+          date: new Date().toISOString().split('T')[0],
+          time: new Date().toTimeString().split(' ')[0].slice(0, 5),
+          caption: scheduleCaption
+        }
+      }));
+      setIsSchedulingAction(false);
+      setSchedulingPost(null);
+      toast.success('🚀 Post published live successfully!');
+    }, 1000);
+  };
+
   const getContentTypeIcon = (type: string) => {
     const t = type.toLowerCase();
     if (t.includes('reel') || t.includes('video') || t.includes('short')) return <Video size={12} />;
@@ -319,6 +431,38 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
           </button>
         </div>
       </header>
+
+      {/* ── CONNECTED CHANNELS BAR ── */}
+      <section className="premium-card p-4 rounded-2xl mb-6 relative overflow-hidden">
+        <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse at top right, rgba(139,92,246,0.06) 0%, transparent 60%)' }} />
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-10">
+          <div>
+            <h3 className="text-[10px] font-black text-violet-400 uppercase tracking-widest leading-none mb-1 flex items-center gap-1.5">
+              <LinkIcon size={12} /> Connected Accounts
+            </h3>
+            <p className="text-[9px] text-[var(--text-muted)] mt-0.5">Toggle connections to enable direct publishing mockup</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {['Instagram', 'TikTok', 'YouTube', 'Twitter/X', 'Threads', 'OnlyFans'].map(p => {
+              const connected = connectedAccounts[p];
+              return (
+                <button
+                  key={p}
+                  onClick={() => setConnectedAccounts(prev => ({ ...prev, [p]: !prev[p] }))}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
+                    connected
+                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.15)]'
+                      : 'bg-white/5 border-white/5 text-[var(--text-muted)] hover:bg-white/10 hover:text-[var(--text-secondary)]'
+                  }`}
+                >
+                  <div className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-emerald-400 animate-pulse' : 'bg-white/20'}`} />
+                  {p}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </section>
 
       {/* ── SETUP ROW ── */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
@@ -394,7 +538,7 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-8 items-start">
         {/* ── MAIN CALENDAR ── */}
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-cyan-500/10 flex items-center justify-center text-cyan-400 border border-cyan-500/20">
                 <Calendar size={20} />
@@ -405,143 +549,442 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
               </div>
             </div>
             
-            {plan.length > 0 && (
-              <div className="flex gap-2">
-                <button onClick={handleReset} className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest text-rose-400 hover:bg-rose-500/10 transition-colors">
-                  Reset Plan
-                </button>
-                <button onClick={handleExportPlan} className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest bg-[var(--bg-elevated)] text-white hover:bg-[var(--bg-overlay)] border border-white/5 transition-colors flex items-center gap-1.5">
-                  <Download size={12} /> Export
-                </button>
+            <div className="flex items-center gap-3 flex-wrap sm:flex-nowrap">
+              {/* Tab Toggles */}
+              <div className="flex bg-[var(--bg-surface)] p-1 rounded-xl border border-[var(--border-subtle)] relative">
+                {(['roadmap', 'feed'] as const).map(tabKey => (
+                  <button
+                    key={tabKey}
+                    onClick={() => setActiveTab(tabKey)}
+                    className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all relative z-10 cursor-pointer ${
+                      activeTab === tabKey ? 'text-white bg-gradient-to-r from-cyan-600 to-violet-600 shadow-md shadow-cyan-600/25' : 'text-[var(--text-muted)] hover:text-white'
+                    }`}
+                  >
+                    {tabKey === 'roadmap' ? 'Roadmap View' : 'Feed Preview'}
+                  </button>
+                ))}
               </div>
-            )}
+
+              {plan.length > 0 && (
+                <div className="flex gap-2">
+                  <button onClick={handleReset} className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer">
+                    Reset
+                  </button>
+                  <button onClick={handleExportPlan} className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest bg-[var(--bg-elevated)] text-white hover:bg-[var(--bg-overlay)] border border-white/5 transition-colors flex items-center gap-1.5 cursor-pointer">
+                    <Download size={12} /> Export
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
-            {isLoading ? (
-              Array.from({ length: 7 }).map((_, i) => (
-                <div key={i} className="premium-card rounded-3xl p-5 h-[240px] flex flex-col justify-center items-center gap-4 animate-pulse bg-white/[0.02]">
-                  <div className="w-12 h-12 rounded-2xl bg-white/5" />
-                  <div className="space-y-2 w-full">
-                    <div className="h-3 bg-white/5 rounded w-2/3 mx-auto" />
-                    <div className="h-2 bg-white/5 rounded w-1/2 mx-auto" />
-                  </div>
-                </div>
-              ))
-            ) : plan.length === 0 ? (
-              // PLACEHOLDERS
-              DAYS.map((day, i) => (
-                <div key={day} className="premium-card rounded-3xl p-5 min-h-[240px] flex flex-col border-dashed border-[var(--border-default)] group relative overflow-hidden">
-                  <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                  
-                  <div className="flex justify-between items-start mb-4 relative z-10">
-                    <div>
-                      <span className="text-[9px] font-black text-cyan-500/50 uppercase tracking-[0.2em]">{day}</span>
-                      <div className="h-4 w-16 bg-white/5 rounded mt-1" />
-                    </div>
-                    <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-white/10">
-                      <ImageIcon size={14} />
+          {activeTab === 'roadmap' ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
+              {isLoading ? (
+                Array.from({ length: 7 }).map((_, i) => (
+                  <div key={i} className="premium-card rounded-3xl p-5 h-[240px] flex flex-col justify-center items-center gap-4 animate-pulse bg-white/[0.02]">
+                    <div className="w-12 h-12 rounded-2xl bg-white/5" />
+                    <div className="space-y-2 w-full">
+                      <div className="h-3 bg-white/5 rounded w-2/3 mx-auto" />
+                      <div className="h-2 bg-white/5 rounded w-1/2 mx-auto" />
                     </div>
                   </div>
-
-                  <div className="space-y-2 flex-1 relative z-10">
-                    <div className="h-3 bg-white/5 rounded w-full" />
-                    <div className="h-3 bg-white/5 rounded w-4/5" />
-                    <div className="h-2 bg-white/5 rounded w-1/2 mt-4" />
-                  </div>
-
-                  <div className="mt-4 pt-4 border-t border-white/5 flex items-center justify-between relative z-10">
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-2 h-2 rounded-full bg-white/10" />
-                      <span className="text-[9px] font-bold text-white/20 uppercase">Pending</span>
-                    </div>
-                    <div className="w-6 h-6 rounded-full bg-white/5 flex items-center justify-center text-white/10">
-                      <Plus size={12} />
-                    </div>
-                  </div>
-                </div>
-              ))
-            ) : (
-              // GENERATED PLAN
-              plan.map((post, i) => (
-                <motion.div
-                  key={post.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.05 }}
-                  className="premium-card rounded-3xl p-5 min-h-[240px] flex flex-col group hover:border-cyan-500/50 hover:shadow-2xl hover:shadow-cyan-500/5 transition-all relative overflow-hidden cursor-pointer"
-                >
-                  {/* Thumbnail / Gradient Background */}
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-cyan-500/10 to-transparent opacity-40 group-hover:opacity-70 transition-opacity pointer-events-none" />
-                  
-                  <div className="flex justify-between items-start mb-4 relative z-10">
-                    <div>
-                      <span className="text-[9px] font-black text-cyan-500 uppercase tracking-[0.2em]">{DAYS[i]}</span>
-                      <div className="flex items-center gap-2 mt-1">
-                        <div className="px-2 py-0.5 rounded-md bg-white/10 border border-white/10 flex items-center gap-1">
-                          {getContentTypeIcon(post.type)}
-                          <span className="text-[9px] font-black text-white uppercase">{post.type}</span>
-                        </div>
+                ))
+              ) : plan.length === 0 ? (
+                // PLACEHOLDERS
+                DAYS.map((day, i) => (
+                  <div key={day} className="premium-card rounded-3xl p-5 min-h-[240px] flex flex-col border-dashed border-[var(--border-default)] group relative overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                    
+                    <div className="flex justify-between items-start mb-4 relative z-10">
+                      <div>
+                        <span className="text-[9px] font-black text-cyan-500/50 uppercase tracking-[0.2em]">{day}</span>
+                        <div className="h-4 w-16 bg-white/5 rounded mt-1" />
+                      </div>
+                      <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-white/10">
+                        <ImageIcon size={14} />
                       </div>
                     </div>
-                    <button className="p-1.5 rounded-lg hover:bg-white/5 text-[var(--text-tertiary)] hover:text-white transition-colors">
-                      <MoreHorizontal size={14} />
-                    </button>
-                  </div>
 
-                  <div className="flex-1 relative z-10">
-                    <h4 className="text-sm font-bold text-white leading-snug group-hover:text-cyan-100 transition-colors">
-                      “{post.hook}”
-                    </h4>
-                    <p className="text-[10px] text-[var(--text-tertiary)] mt-3 leading-relaxed line-clamp-2">
-                      <span className="text-cyan-500/80 font-bold uppercase tracking-widest text-[8px] mr-1">Theme:</span>
-                      {post.angle}
+                    <div className="space-y-2 flex-1 relative z-10">
+                      <div className="h-3 bg-white/5 rounded w-full" />
+                      <div className="h-3 bg-white/5 rounded w-4/5" />
+                      <div className="h-2 bg-white/5 rounded w-1/2 mt-4" />
+                    </div>
+
+                    <div className="mt-4 pt-4 border-t border-white/5 flex items-center justify-between relative z-10">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-2 h-2 rounded-full bg-white/10" />
+                        <span className="text-[9px] font-bold text-white/20 uppercase">Pending</span>
+                      </div>
+                      <div className="w-6 h-6 rounded-full bg-white/5 flex items-center justify-center text-white/10">
+                        <Plus size={12} />
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                // GENERATED PLAN
+                plan.map((post, i) => {
+                  const scheduleKey = `${platform}_day_${post.day}`;
+                  const sched = schedules[scheduleKey];
+                  return (
+                    <motion.div
+                      key={post.id}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.05 }}
+                      className="premium-card rounded-3xl p-5 min-h-[240px] flex flex-col group hover:border-cyan-500/50 hover:shadow-2xl hover:shadow-cyan-500/5 transition-all relative overflow-hidden cursor-pointer"
+                    >
+                      {/* Thumbnail / Gradient Background */}
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-cyan-500/10 to-transparent opacity-40 group-hover:opacity-70 transition-opacity pointer-events-none" />
+                      
+                      <div className="flex justify-between items-start mb-4 relative z-10">
+                        <div>
+                          <span className="text-[9px] font-black text-cyan-500 uppercase tracking-[0.2em]">{DAYS[i]}</span>
+                          <div className="flex items-center gap-2 mt-1">
+                            <div className="px-2 py-0.5 rounded-md bg-white/10 border border-white/10 flex items-center gap-1">
+                              {getContentTypeIcon(post.type)}
+                              <span className="text-[9px] font-black text-white uppercase">{post.type}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <button className="p-1.5 rounded-lg hover:bg-white/5 text-[var(--text-tertiary)] hover:text-white transition-colors">
+                          <MoreHorizontal size={14} />
+                        </button>
+                      </div>
+
+                      <div className="flex-1 relative z-10">
+                        <h4 className="text-sm font-bold text-white leading-snug group-hover:text-cyan-100 transition-colors">
+                          “{post.hook}”
+                        </h4>
+                        <p className="text-[10px] text-[var(--text-tertiary)] mt-3 leading-relaxed line-clamp-2">
+                          <span className="text-cyan-500/80 font-bold uppercase tracking-widest text-[8px] mr-1">Theme:</span>
+                          {post.angle}
+                        </p>
+                      </div>
+
+                      <div className="mt-4 pt-4 border-t border-white/5 flex items-center justify-between relative z-10">
+                        <div className="flex items-center gap-1.5">
+                          {sched?.status === 'Published' ? (
+                            <>
+                              <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] animate-pulse" />
+                              <span className="text-[9px] font-black uppercase tracking-widest text-emerald-400">Published</span>
+                            </>
+                          ) : sched?.status === 'Scheduled' ? (
+                            <>
+                              <div className="w-2 h-2 rounded-full bg-violet-500 shadow-[0_0_8px_rgba(139,92,246,0.5)] animate-pulse" />
+                              <span className="text-[9px] font-black uppercase tracking-widest text-violet-400">Scheduled ({sched.time})</span>
+                            </>
+                          ) : (
+                            <>
+                              <div className={`w-2 h-2 rounded-full ${batchContent[post.id] ? 'bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.5)]' : 'bg-white/20'}`} />
+                              <span className={`text-[9px] font-bold uppercase tracking-widest ${batchContent[post.id] ? 'text-cyan-400' : 'text-[var(--text-muted)]'}`}>
+                                {batchContent[post.id] ? 'Content Ready' : 'Pending'}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => setExpandedCard(expandedCard === post.id ? null : post.id)}
+                          className="flex items-center gap-1 text-[var(--text-muted)] group-hover:text-cyan-400 transition-colors"
+                        >
+                          <span className="text-[10px] font-bold">{expandedCard === post.id ? 'Collapse' : 'View'}</span>
+                          {expandedCard === post.id ? <ChevronUp size={12} /> : <ChevronRight size={12} />}
+                        </button>
+                      </div>
+
+                      {expandedCard === post.id && batchContent[post.id] && (
+                        <div className="mt-3 pt-3 border-t border-white/5 space-y-3 relative z-10">
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-[8px] font-black text-cyan-500 uppercase tracking-widest">Caption</span>
+                              <button onClick={() => { navigator.clipboard.writeText(batchContent[post.id].caption); toast.success('Caption copied!'); }} className="p-1 rounded hover:bg-white/5 text-[var(--text-muted)] hover:text-white transition-colors"><Copy size={10} /></button>
+                            </div>
+                            <p className="text-[10px] text-[var(--text-secondary)] leading-relaxed">{batchContent[post.id].caption}</p>
+                          </div>
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-[8px] font-black text-violet-500 uppercase tracking-widest">Image Prompt</span>
+                              <button onClick={() => { navigator.clipboard.writeText(batchContent[post.id].imagePrompt); toast.success('Prompt copied!'); }} className="p-1 rounded hover:bg-white/5 text-[var(--text-muted)] hover:text-white transition-colors"><Copy size={10} /></button>
+                            </div>
+                            <p className="text-[10px] text-[var(--text-secondary)] leading-relaxed">{batchContent[post.id].imagePrompt}</p>
+                          </div>
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-[8px] font-black text-amber-500 uppercase tracking-widest">Video Script</span>
+                              <button onClick={() => { navigator.clipboard.writeText(batchContent[post.id].videoScript); toast.success('Script copied!'); }} className="p-1 rounded hover:bg-white/5 text-[var(--text-muted)] hover:text-white transition-colors"><Copy size={10} /></button>
+                            </div>
+                            <p className="text-[10px] text-[var(--text-secondary)] leading-relaxed whitespace-pre-line">{batchContent[post.id].videoScript}</p>
+                          </div>
+
+                          {/* ── SCHEDULE TRIGGER BUTTON ── */}
+                          <div className="mt-4 pt-3 border-t border-white/5 flex gap-2">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setScheduleCaption(batchContent[post.id].caption);
+                                setScheduleTime(POSTING_WINDOWS[platform]?.split(' ')[0] || '18:00');
+                                setScheduleDate(new Date(Date.now() + 86400000 * (post.day - 1)).toISOString().split('T')[0]);
+                                setSchedulingPost(post);
+                              }}
+                              className="flex-1 py-2 bg-gradient-to-r from-cyan-600 to-violet-600 hover:brightness-110 text-white rounded-xl text-[10px] font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-cyan-600/10"
+                            >
+                              <CalendarDays size={12} />
+                              {sched?.status ? 'Reschedule Post' : 'Schedule Post'}
+                            </button>
+
+                            {sched?.status && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSchedules(prev => {
+                                    const next = { ...prev };
+                                    delete next[scheduleKey];
+                                    return next;
+                                  });
+                                  toast.success('Scheduling cancelled');
+                                }}
+                                title="Cancel schedule / reset status"
+                                className="px-2 py-2 bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500/20 rounded-xl transition-colors cursor-pointer flex items-center justify-center"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </motion.div>
+                  );
+                })
+              )}
+            </div>
+          ) : (
+            // ─── VISUAL FEED PREVIEW ───
+            <div className="w-full">
+              {isLoading ? (
+                <div className="flex items-center justify-center py-20">
+                  <Loader2 className="animate-spin text-cyan-500 w-8 h-8" />
+                </div>
+              ) : plan.length === 0 ? (
+                <div className="premium-card rounded-3xl p-8 text-center space-y-4 max-w-md mx-auto relative overflow-hidden">
+                  <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse at bottom left, rgba(6,182,212,0.06) 0%, transparent 60%)' }} />
+                  <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 flex items-center justify-center text-cyan-400 mx-auto border border-cyan-500/20 relative z-10">
+                    <EyeOff size={20} />
+                  </div>
+                  <div className="relative z-10">
+                    <h3 className="text-base font-bold text-white">No Feed Preview Available</h3>
+                    <p className="text-xs text-[var(--text-muted)] mt-1.5 leading-relaxed">
+                      Generate a Content Plan and create visual/textual assets to preview your feed aesthetics!
                     </p>
                   </div>
-
-                  <div className="mt-4 pt-4 border-t border-white/5 flex items-center justify-between relative z-10">
-                    <div className="flex items-center gap-1.5">
-                      <div className={`w-2 h-2 rounded-full ${batchContent[post.id] ? 'bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.5)]' : 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]'}`} />
-                      <span className={`text-[9px] font-bold uppercase tracking-widest ${batchContent[post.id] ? 'text-cyan-400' : 'text-emerald-400'}`}>{batchContent[post.id] ? 'Content Ready' : 'Ready'}</span>
-                    </div>
-                    <button
-                      onClick={() => setExpandedCard(expandedCard === post.id ? null : post.id)}
-                      className="flex items-center gap-1 text-[var(--text-muted)] group-hover:text-cyan-400 transition-colors"
-                    >
-                      <span className="text-[10px] font-bold">{expandedCard === post.id ? 'Collapse' : 'View'}</span>
-                      {expandedCard === post.id ? <ChevronUp size={12} /> : <ChevronRight size={12} />}
-                    </button>
-                  </div>
-
-                  {expandedCard === post.id && batchContent[post.id] && (
-                    <div className="mt-3 pt-3 border-t border-white/5 space-y-3 relative z-10">
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-[8px] font-black text-cyan-500 uppercase tracking-widest">Caption</span>
-                          <button onClick={() => { navigator.clipboard.writeText(batchContent[post.id].caption); toast.success('Caption copied!'); }} className="p-1 rounded hover:bg-white/5 text-[var(--text-muted)] hover:text-white transition-colors"><Copy size={10} /></button>
+                </div>
+              ) : (
+                <>
+                  {/* Platform-Specific Mock Feed Grids */}
+                  {(platform === 'Instagram' || platform === 'OnlyFans') && (
+                    <div className="max-w-md mx-auto bg-[#06080d]/80 rounded-3xl border border-white/5 overflow-hidden shadow-2xl p-4">
+                      {/* Instagram Header Mock */}
+                      <div className="flex items-center justify-between pb-3 border-b border-white/5 mb-4">
+                        <div className="flex items-center gap-2">
+                          {persona.avatar ? (
+                            <img src={persona.avatar} alt="" className="w-8 h-8 rounded-full object-cover" />
+                          ) : (
+                            <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center"><UserRound size={12} /></div>
+                          )}
+                          <div>
+                            <span className="text-xs font-bold text-white">{persona.name.replace(/\s+/g, '').toLowerCase()}</span>
+                            <span className="text-[9px] text-[var(--text-muted)] block leading-none">AI Influencer</span>
+                          </div>
                         </div>
-                        <p className="text-[10px] text-[var(--text-secondary)] leading-relaxed">{batchContent[post.id].caption}</p>
+                        <span className="text-[10px] font-black text-cyan-500 bg-cyan-500/10 border border-cyan-500/20 px-2.5 py-0.5 rounded-full uppercase tracking-wider">Feed Preview</span>
                       </div>
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-[8px] font-black text-violet-500 uppercase tracking-widest">Image Prompt</span>
-                          <button onClick={() => { navigator.clipboard.writeText(batchContent[post.id].imagePrompt); toast.success('Prompt copied!'); }} className="p-1 rounded hover:bg-white/5 text-[var(--text-muted)] hover:text-white transition-colors"><Copy size={10} /></button>
-                        </div>
-                        <p className="text-[10px] text-[var(--text-secondary)] leading-relaxed">{batchContent[post.id].imagePrompt}</p>
-                      </div>
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-[8px] font-black text-amber-500 uppercase tracking-widest">Video Script</span>
-                          <button onClick={() => { navigator.clipboard.writeText(batchContent[post.id].videoScript); toast.success('Script copied!'); }} className="p-1 rounded hover:bg-white/5 text-[var(--text-muted)] hover:text-white transition-colors"><Copy size={10} /></button>
-                        </div>
-                        <p className="text-[10px] text-[var(--text-secondary)] leading-relaxed whitespace-pre-line">{batchContent[post.id].videoScript}</p>
+
+                      {/* 3-Column Image Grid */}
+                      <div className="grid grid-cols-3 gap-1 bg-[#06080d] rounded-2xl overflow-hidden">
+                        {plan.map((post, index) => {
+                          const scheduleKey = `${platform}_day_${post.day}`;
+                          const sched = schedules[scheduleKey];
+                          const hasContent = !!batchContent[post.id];
+                          const imageUrl = PREVIEW_IMAGES[index % PREVIEW_IMAGES.length] + '?auto=format&fit=crop&w=400&h=400&q=80';
+                          
+                          const mockLikes = Math.floor(125 + (post.day * 15.5) + (index * 8));
+                          const mockComments = Math.floor(22 + (post.day * 3.4) + (index * 2));
+
+                          return (
+                            <div key={post.id} className="aspect-square relative group overflow-hidden bg-white/5 border border-white/5">
+                              <img src={imageUrl} alt="" className={`w-full h-full object-cover transition-transform duration-300 group-hover:scale-105 ${hasContent ? 'opacity-100' : 'opacity-20 blur-[2px]'}`} />
+                              
+                              {/* Hover Overlay */}
+                              <div className="absolute inset-0 bg-[#0B0F17]/85 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-between p-2 text-left">
+                                <div className="text-[8px] font-bold text-white/50 uppercase leading-none">Day {post.day} · {post.type}</div>
+                                
+                                <div className="my-1.5">
+                                  <p className="text-[9px] text-white font-medium line-clamp-3 leading-snug">“{post.hook}”</p>
+                                </div>
+                                
+                                <div className="space-y-1.5">
+                                  <div className="flex gap-2 text-[9px] text-[var(--text-secondary)] font-bold">
+                                    <span>❤️ {mockLikes}</span>
+                                    <span>💬 {mockComments}</span>
+                                  </div>
+                                  
+                                  {sched?.status === 'Published' ? (
+                                    <span className="text-[8px] font-black uppercase text-emerald-400 block">Published</span>
+                                  ) : sched?.status === 'Scheduled' ? (
+                                    <span className="text-[8px] font-black uppercase text-violet-400 block">Sched: {sched.time}</span>
+                                  ) : (
+                                    <span className="text-[8px] font-black uppercase text-[var(--text-muted)] block">{hasContent ? 'Draft' : 'Pending Content'}</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
-                </motion.div>
-              ))
-            )}
-          </div>
+
+                  {(platform === 'TikTok' || platform === 'YouTube') && (
+                    <div className="max-w-xl mx-auto bg-[#06080d]/80 rounded-3xl border border-white/5 overflow-hidden shadow-2xl p-4">
+                      {/* Mock Vertical Video Feed Header */}
+                      <div className="flex items-center justify-between pb-3 border-b border-white/5 mb-4">
+                        <div className="flex items-center gap-2">
+                          {persona.avatar ? (
+                            <img src={persona.avatar} alt="" className="w-8 h-8 rounded-full object-cover" />
+                          ) : (
+                            <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center"><UserRound size={12} /></div>
+                          )}
+                          <div>
+                            <span className="text-xs font-bold text-white">@{persona.name.replace(/\s+/g, '_').toLowerCase()}</span>
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-black text-violet-400 bg-violet-500/10 border border-violet-500/20 px-2.5 py-0.5 rounded-full uppercase tracking-wider">Shorts Grid</span>
+                      </div>
+
+                      {/* 2-Column Vertical Aspect Grid (9:16) */}
+                      <div className="grid grid-cols-2 gap-3 bg-[#06080d]">
+                        {plan.map((post, index) => {
+                          const scheduleKey = `${platform}_day_${post.day}`;
+                          const sched = schedules[scheduleKey];
+                          const hasContent = !!batchContent[post.id];
+                          const imageUrl = PREVIEW_IMAGES[(index + 3) % PREVIEW_IMAGES.length] + '?auto=format&fit=crop&w=400&h=711&q=80';
+                          
+                          const mockViews = ((1.2 + (post.day * 0.4) + (index * 0.2))).toFixed(1);
+                          const mockLikes = Math.floor(82 + (post.day * 11) + (index * 5));
+
+                          return (
+                            <div key={post.id} className="aspect-[9/16] relative group overflow-hidden bg-white/5 border border-white/5 rounded-2xl">
+                              <img src={imageUrl} alt="" className={`w-full h-full object-cover transition-transform duration-300 group-hover:scale-105 ${hasContent ? 'opacity-100' : 'opacity-20 blur-[2px]'}`} />
+                              
+                              {/* Bottom visual overlay (views always visible) */}
+                              <div className="absolute bottom-2 left-2 px-1.5 py-0.5 rounded bg-black/60 text-[9px] font-bold text-white flex items-center gap-1 pointer-events-none group-hover:opacity-0 transition-opacity">
+                                <Eye size={10} /> {mockViews}K views
+                              </div>
+
+                              {/* Hover Details overlay */}
+                              <div className="absolute inset-0 bg-[#0B0F17]/85 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-between p-3 text-left">
+                                <div>
+                                  <span className="text-[8px] font-black text-violet-400 bg-violet-500/10 border border-violet-500/20 px-1.5 py-0.5 rounded uppercase tracking-wider">Day {post.day}</span>
+                                  <p className="text-[10px] text-white font-bold mt-2 line-clamp-4 leading-normal">“{post.hook}”</p>
+                                </div>
+                                
+                                <div className="space-y-2">
+                                  <div className="space-y-0.5 text-[10px] text-[var(--text-secondary)] font-bold">
+                                    <p>👁️ {mockViews}K views</p>
+                                    <p>❤️ {mockLikes} likes</p>
+                                  </div>
+                                  
+                                  {sched?.status === 'Published' ? (
+                                    <span className="text-[9px] font-black uppercase text-emerald-400 block">Published</span>
+                                  ) : sched?.status === 'Scheduled' ? (
+                                    <span className="text-[9px] font-black uppercase text-violet-400 block">Sched: {sched.time}</span>
+                                  ) : (
+                                    <span className="text-[9px] font-black uppercase text-[var(--text-muted)] block">{hasContent ? 'Draft' : 'Pending Content'}</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {(platform === 'Twitter/X' || platform === 'Threads') && (
+                    <div className="max-w-xl mx-auto bg-[#06080d]/80 rounded-3xl border border-white/5 overflow-hidden shadow-2xl p-4 space-y-4">
+                      {/* Mock Feed Header */}
+                      <div className="flex items-center justify-between pb-3 border-b border-white/5">
+                        <span className="text-xs font-bold text-white">Latest Thread Posts</span>
+                        <span className="text-[10px] font-black text-cyan-500 bg-cyan-500/10 border border-cyan-500/20 px-2.5 py-0.5 rounded-full uppercase tracking-wider">Twitter Mix</span>
+                      </div>
+
+                      <div className="space-y-3">
+                        {plan.map((post, index) => {
+                          const scheduleKey = `${platform}_day_${post.day}`;
+                          const sched = schedules[scheduleKey];
+                          const hasContent = !!batchContent[post.id];
+                          const imageUrl = PREVIEW_IMAGES[(index + 5) % PREVIEW_IMAGES.length] + '?auto=format&fit=crop&w=800&h=450&q=80';
+                          
+                          const mockLikes = Math.floor(45 + (post.day * 8) + (index * 2));
+                          const mockReposts = Math.floor(8 + (post.day * 1.5) + (index * 0.5));
+
+                          return (
+                            <div key={post.id} className="p-4 rounded-2xl bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] transition-colors relative group">
+                              {/* Schedule indicator badge */}
+                              <div className="absolute top-4 right-4">
+                                {sched?.status === 'Published' ? (
+                                  <span className="text-[8px] font-black uppercase text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded-full">Published</span>
+                                ) : sched?.status === 'Scheduled' ? (
+                                  <span className="text-[8px] font-black uppercase text-violet-400 bg-violet-500/10 border border-violet-500/20 px-1.5 py-0.5 rounded-full">Scheduled ({sched.time})</span>
+                                ) : (
+                                  <span className="text-[8px] font-black uppercase text-[var(--text-muted)] bg-white/5 border border-white/5 px-1.5 py-0.5 rounded-full">Draft</span>
+                                )}
+                              </div>
+
+                              <div className="flex gap-3">
+                                {/* User Avatar */}
+                                {persona.avatar ? (
+                                  <img src={persona.avatar} alt="" className="w-9 h-9 rounded-full object-cover" />
+                                ) : (
+                                  <div className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center"><UserRound size={14} /></div>
+                                )}
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-xs font-bold text-white">{persona.name}</span>
+                                    <span className="text-[10px] text-[var(--text-muted)]">@{persona.name.replace(/\s+/g, '').toLowerCase()}</span>
+                                    <span className="text-[10px] text-[var(--text-muted)]">· Day {post.day}</span>
+                                  </div>
+                                  
+                                  <p className="text-xs text-[var(--text-secondary)] mt-2 leading-relaxed whitespace-pre-wrap">
+                                    {hasContent ? batchContent[post.id].caption : `“${post.hook}”\n\n${post.angle}`}
+                                  </p>
+                                  
+                                  {/* Image attachment if it's an image/carousel type */}
+                                  {hasContent && (post.type.toLowerCase().includes('image') || post.type.toLowerCase().includes('post') || post.type.toLowerCase().includes('carousel')) && (
+                                    <div className="mt-3 rounded-xl overflow-hidden border border-white/5 aspect-video">
+                                      <img src={imageUrl} alt="Attachment" className="w-full h-full object-cover" />
+                                    </div>
+                                  )}
+
+                                  {/* Mock actions bar */}
+                                  <div className="flex gap-6 mt-4 text-[10px] text-[var(--text-muted)] font-bold">
+                                    <span>💬 {mockReposts + 4} Comments</span>
+                                    <span>🔁 {mockReposts} Reposts</span>
+                                    <span>❤️ {mockLikes} Likes</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
 
           {/* ── CTA AREA ── */}
           <div className="bg-gradient-to-r from-cyan-600/10 to-violet-600/10 rounded-3xl p-8 border border-white/5 text-center space-y-6">
@@ -554,7 +997,7 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
             
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <button
-                onClick={handleGenerate}
+                onClick={() => handleGenerate()}
                 disabled={isLoading}
                 className="w-full sm:w-auto px-10 py-4 rounded-2xl bg-gradient-to-r from-cyan-500 to-violet-500 hover:from-cyan-400 hover:to-violet-400 text-white font-black text-sm uppercase tracking-[0.1em] shadow-xl shadow-cyan-500/20 active:scale-95 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
               >
@@ -573,7 +1016,7 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
                 </button>
               )}
               
-              <button onClick={handleGenerate} className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-white/5 border border-white/5 hover:bg-white/10 text-white font-bold text-sm transition-all flex items-center justify-center gap-2">
+              <button onClick={() => handleGenerate()} className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-white/5 border border-white/5 hover:bg-white/10 text-white font-bold text-sm transition-all flex items-center justify-center gap-2">
                 <RotateCcw size={16} />
                 Regenerate Ideas
               </button>
@@ -680,6 +1123,151 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
           </div>
         </aside>
       </div>
+
+      {/* ── Scheduling Modal Overlay ── */}
+      <AnimatePresence>
+        {schedulingPost && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
+            {/* Modal Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => {
+                if (!isSchedulingAction) setSchedulingPost(null);
+              }}
+              className="absolute inset-0"
+            />
+
+            {/* Modal Container */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              transition={{ type: 'spring', duration: 0.4 }}
+              className="relative w-full max-w-xl bg-[#0b0f17]/95 border border-[#334155] rounded-[28px] overflow-hidden shadow-2xl p-6 md:p-8 z-10"
+            >
+              {/* Top ambient glow */}
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-24 bg-cyan-500/10 blur-2xl rounded-full" />
+
+              {/* Close Button */}
+              <button
+                onClick={() => setSchedulingPost(null)}
+                disabled={isSchedulingAction}
+                className="absolute top-6 right-6 p-2 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 text-[var(--text-secondary)] hover:text-white transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <X size={18} />
+              </button>
+
+              {/* Header */}
+              <div className="flex items-center gap-3.5 mb-6">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-cyan-500/15 to-violet-500/15 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+                  <CalendarDays size={20} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-white">Schedule Content</h3>
+                  <p className="text-xs text-[var(--text-tertiary)] mt-0.5">
+                    Prepare Day {schedulingPost.day} post for publication on {platform}
+                  </p>
+                </div>
+              </div>
+
+              {/* Form Fields */}
+              <div className="space-y-5">
+                {/* Connected Platforms indicator */}
+                <div>
+                  <label className="text-[9px] font-black text-[var(--text-tertiary)] uppercase tracking-widest block mb-2">
+                    Publishing Target
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs font-bold text-white">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]" />
+                      {platform} Account Connected
+                    </span>
+                  </div>
+                </div>
+
+                {/* Edit Caption */}
+                <div className="space-y-1.5">
+                  <label className="text-[9px] font-black text-[var(--text-tertiary)] uppercase tracking-widest block">
+                    Caption
+                  </label>
+                  <textarea
+                    value={scheduleCaption}
+                    onChange={(e) => setScheduleCaption(e.target.value)}
+                    disabled={isSchedulingAction}
+                    rows={4}
+                    placeholder="Enter the post caption..."
+                    className="w-full bg-[#06080d]/80 border border-[#334155] rounded-2xl p-4 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all resize-none disabled:opacity-50 leading-relaxed"
+                  />
+                </div>
+
+                {/* Date & Time Pickers */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] font-black text-[var(--text-tertiary)] uppercase tracking-widest block">
+                      Date
+                    </label>
+                    <input
+                      type="date"
+                      value={scheduleDate}
+                      onChange={(e) => setScheduleDate(e.target.value)}
+                      disabled={isSchedulingAction}
+                      className="w-full bg-[#06080d]/80 border border-[#334155] rounded-2xl px-4 py-3 text-xs text-white focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all disabled:opacity-50"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] font-black text-[var(--text-tertiary)] uppercase tracking-widest block">
+                      Time
+                    </label>
+                    <input
+                      type="time"
+                      value={scheduleTime}
+                      onChange={(e) => setScheduleTime(e.target.value)}
+                      disabled={isSchedulingAction}
+                      className="w-full bg-[#06080d]/80 border border-[#334155] rounded-2xl px-4 py-3 text-xs text-white focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all disabled:opacity-50"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="mt-8 pt-6 border-t border-white/5 flex flex-col sm:flex-row gap-3">
+                <button
+                  type="button"
+                  onClick={() => setSchedulingPost(null)}
+                  disabled={isSchedulingAction}
+                  className="order-3 sm:order-1 w-full sm:w-auto px-5 py-3 bg-white/5 border border-white/5 hover:bg-white/10 text-white font-bold rounded-2xl text-xs transition-all cursor-pointer disabled:opacity-50 text-center"
+                >
+                  Cancel
+                </button>
+
+                <div className="order-2 flex-1 flex flex-col sm:flex-row gap-3">
+                  <button
+                    type="button"
+                    onClick={handlePublishNow}
+                    disabled={isSchedulingAction}
+                    className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:brightness-110 text-white font-bold rounded-2xl text-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 shadow-lg shadow-emerald-600/10"
+                  >
+                    {isSchedulingAction ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                    Publish Now
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleConfirmSchedule}
+                    disabled={isSchedulingAction}
+                    className="w-full py-3 bg-gradient-to-r from-cyan-500 to-violet-500 hover:brightness-110 text-white font-bold rounded-2xl text-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 shadow-lg shadow-cyan-500/10"
+                  >
+                    {isSchedulingAction ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                    Schedule Post
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

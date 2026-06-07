@@ -34,6 +34,9 @@ export type Persona = {
   naturalLook?: boolean;
   identityLock?: boolean;
   visualLibrary?: GeneratedImage[];
+  voiceId?: string;
+  voiceEngine?: string;
+  heygenAvatarId?: string;
 };
 
 export type PlannedPost = {
@@ -54,7 +57,7 @@ export type RevenueEntry = {
   notes: string;
 };
 
-export type Tab = 'personas' | 'create' | 'gallery' | 'assistant' | 'settings' | 'intelligence';
+export type Tab = 'personas' | 'create' | 'gallery' | 'assistant' | 'settings' | 'intelligence' | 'revenue';
 
 export interface NavEntry {
   view: Tab | 'persona-builder';
