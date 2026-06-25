@@ -47,6 +47,9 @@ export default function TalkingHeadStudio({
   });
   const [heygenEngine, setHeygenEngine] = useState<'avatar_iv' | 'avatar_v'>('avatar_v');
   const [useCustomAvatar, setUseCustomAvatar] = useState(!!persona?.heygenAvatarId);
+  const [camera, setCamera] = useState('close_up');
+  const [expression, setExpression] = useState('neutral');
+  const [lighting, setLighting] = useState('studio');
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const portraitInputRef = useRef<HTMLInputElement>(null);
@@ -102,6 +105,9 @@ export default function TalkingHeadStudio({
         engine,
         heygenEngine,
         heygenApiKey: loadPrefs().heygenApiKey || undefined,
+        camera,
+        expression,
+        lighting,
       });
       setVideoUrl(result.videoUrl);
       setProgress('');
@@ -350,7 +356,6 @@ export default function TalkingHeadStudio({
               </div>
             </div>
 
-            {/* HeyGen Engine Quality (Avatar 4 vs 5) */}
             {isPro && engine === 'heygen' && (
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)]">HeyGen Avatar Engine</label>
@@ -371,6 +376,62 @@ export default function TalkingHeadStudio({
                   >
                     Avatar V (v5 - Latest)
                   </button>
+                </div>
+              </div>
+            )}
+
+            {/* Advanced Cinematic Settings */}
+            {isPro && (
+              <div className="space-y-3 p-3 bg-[var(--bg-elevated)]/40 rounded-xl border border-[var(--border-default)]">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <Video size={12} className="text-pink-400" />
+                    Advanced Cinematic Settings
+                  </h4>
+                  <span className="text-[8px] px-1.5 py-0.5 rounded bg-pink-500/20 text-pink-400 font-extrabold tracking-wider uppercase">Pro Only</span>
+                </div>
+                
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-bold text-[var(--text-tertiary)] uppercase tracking-wider">Camera Angle</label>
+                    <select
+                      value={camera}
+                      onChange={e => setCamera(e.target.value)}
+                      className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-lg px-2 py-1.5 text-[11px] text-white outline-none focus:border-pink-500 cursor-pointer"
+                    >
+                      <option value="close_up">Close-Up</option>
+                      <option value="medium">Medium</option>
+                      <option value="wide">Wide Body</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-bold text-[var(--text-tertiary)] uppercase tracking-wider">Expression</label>
+                    <select
+                      value={expression}
+                      onChange={e => setExpression(e.target.value)}
+                      className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-lg px-2 py-1.5 text-[11px] text-white outline-none focus:border-pink-500 cursor-pointer"
+                    >
+                      <option value="neutral">Neutral</option>
+                      <option value="smiling">Smiling</option>
+                      <option value="serious">Serious</option>
+                      <option value="surprised">Surprised</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-bold text-[var(--text-tertiary)] uppercase tracking-wider">Lighting</label>
+                    <select
+                      value={lighting}
+                      onChange={e => setLighting(e.target.value)}
+                      className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-lg px-2 py-1.5 text-[11px] text-white outline-none focus:border-pink-500 cursor-pointer"
+                    >
+                      <option value="studio">Studio</option>
+                      <option value="cinematic">Cinematic</option>
+                      <option value="warm">Warm Accent</option>
+                      <option value="neon">Neon Cyberpunk</option>
+                    </select>
+                  </div>
                 </div>
               </div>
             )}

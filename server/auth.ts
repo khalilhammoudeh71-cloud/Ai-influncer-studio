@@ -22,6 +22,23 @@ export interface AuthenticatedRequest extends Request {
 }
 
 export async function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  // Automatically bypass auth in local development
+  if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+    req.user = { id: 'mock-user-id', email: 'khalilhammoudeh71@gmail.com', email_confirmed_at: new Date().toISOString() };
+    
+    try {
+      await db.insert(users).values({
+        id: req.user.id,
+        email: req.user.email,
+        credits: 99999, // Infinite credits for local development
+        subscriptionStatus: 'active',
+      }).onConflictDoNothing();
+    } catch (err) {
+      console.error('[Auth] Failed to sync mock user:', err);
+    }
+    return next();
+  }
+
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Unauthorized: Missing or invalid token' });

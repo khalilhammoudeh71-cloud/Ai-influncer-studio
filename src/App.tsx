@@ -65,6 +65,18 @@ function App() {
 
   // Listen to Supabase authentication state
   useEffect(() => {
+    // Automatically bypass authentication in local development mode
+    if (import.meta.env.DEV) {
+      setUser({
+        id: 'mock-user-id',
+        email: 'khalilhammoudeh71@gmail.com',
+        email_confirmed_at: new Date().toISOString(),
+        confirmed_at: new Date().toISOString()
+      });
+      setAuthLoading(false);
+      return;
+    }
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       setAuthLoading(false);
@@ -414,9 +426,10 @@ function App() {
 
   const tabs = [
     { id: 'personas', label: 'Personas', icon: Users },
-    { id: 'create', label: 'Create', icon: PlusCircle },
+    { id: 'create', label: 'AI Studio', icon: PlusCircle },
+    { id: 'intelligence', label: 'AI Toolbox', icon: Wrench },
+    { id: 'planner', label: 'Planner', icon: Calendar },
     { id: 'gallery', label: 'Gallery', icon: Sparkles },
-    { id: 'intelligence', label: 'Creator Hub', icon: Wrench },
     { id: 'assistant', label: 'Assistant', icon: MessageSquare },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
@@ -459,6 +472,7 @@ function App() {
       case 'create': return <CreateView persona={activePersona} personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} subView={subView} nav={navActions} billingInfo={billingInfo} />;
       case 'gallery': return <GalleryView personas={personas} activePersona={activePersona} nav={navActions} onPersonasChange={setPersonas} />;
       case 'intelligence': return <CreatorHubView persona={activePersona} personas={personas} nav={navActions} />;
+      case 'planner': return <PlannerView persona={activePersona} personas={personas} onSelectPersona={setSelectedPersonaId} nav={navActions} />;
       case 'assistant': return <AssistantView persona={activePersona} personas={personas} nav={navActions} />;
       case 'revenue': return <RevenueView persona={activePersona} />;
       case 'settings': return (
@@ -673,6 +687,43 @@ function App() {
                           )}
                         </button>
                       ))}
+                    </div>
+                    {/* Create New Persona Button */}
+                    <div className="p-1.5 border-t border-white/5 bg-[#111827]/40">
+                      <button
+                        onClick={() => {
+                          document.getElementById('persona-switcher-dropdown')?.classList.add('hidden');
+                          pushView({
+                            view: 'persona-builder',
+                            params: {
+                              persona: {
+                                id: `user-${Date.now()}`,
+                                name: 'New Persona',
+                                niche: 'Luxury Lifestyle',
+                                tone: 'Luxury, Confident, Exclusive',
+                                platform: 'Instagram',
+                                status: 'Draft',
+                                avatar: '',
+                                personalityTraits: [],
+                                visualStyle: 'Sophisticated & Modern',
+                                audienceType: 'General',
+                                contentBoundaries: '',
+                                bio: '',
+                                brandVoiceRules: '',
+                                contentGoals: '',
+                                personaNotes: ''
+                              },
+                              onSave: (updated: Persona) => {
+                                setPersonas([...personas, updated]);
+                              }
+                            }
+                          });
+                        }}
+                        className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl bg-violet-600/15 border border-violet-500/20 text-violet-300 hover:bg-violet-600/25 hover:text-white transition-all text-xs font-bold cursor-pointer"
+                      >
+                        <PlusCircle size={14} className="text-[#00F5C2]" />
+                        Create New Persona
+                      </button>
                     </div>
                   </div>
                 </>

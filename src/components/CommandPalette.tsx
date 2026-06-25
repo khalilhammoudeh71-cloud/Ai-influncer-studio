@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, Users, PlusCircle, Sparkles, MessageSquare, Settings,
   Calendar, Wand2, Image as ImageIcon, Video, Mic, Scissors,
-  Palette, UserRound, ArrowRight, Command, CornerDownLeft
+  Palette, UserRound, ArrowRight, Command, CornerDownLeft, Wrench
 } from 'lucide-react';
 import { Persona, Tab } from '../types';
 
@@ -42,7 +42,9 @@ export default function CommandPalette({
   const allItems: CommandItem[] = useMemo(() => {
     const nav: CommandItem[] = [
       { id: 'nav-personas', label: 'Personas', description: 'Manage your AI personas', icon: <Users size={16} />, category: 'Navigation', action: () => onNavigate('personas'), keywords: ['home', 'dashboard'] },
-      { id: 'nav-create', label: 'Create Studio', description: 'Generate images, videos & content', icon: <PlusCircle size={16} />, category: 'Navigation', action: () => onNavigate('create'), keywords: ['generate', 'make', 'studio'] },
+      { id: 'nav-create', label: 'AI Studio', description: 'Generate images, videos & content', icon: <PlusCircle size={16} />, category: 'Navigation', action: () => onNavigate('create'), keywords: ['generate', 'make', 'studio'] },
+      { id: 'nav-toolbox', label: 'AI Toolbox', description: 'Visual editors & marketing strategy', icon: <Wrench size={16} />, category: 'Navigation', action: () => onNavigate('intelligence'), keywords: ['tools', 'edit', 'beautify', 'swap', 'brand', 'analytics'] },
+      { id: 'nav-planner', label: 'Planner', description: 'Schedule posts & calendar campaigns', icon: <Calendar size={16} />, category: 'Navigation', action: () => onNavigate('planner'), keywords: ['schedule', 'plan', 'calendar', 'week'] },
       { id: 'nav-gallery', label: 'Gallery', description: 'Browse all generated assets', icon: <Sparkles size={16} />, category: 'Navigation', action: () => onNavigate('gallery'), keywords: ['vault', 'library', 'images', 'media'] },
       { id: 'nav-assistant', label: 'AI Assistant', description: 'Chat with your persona', icon: <MessageSquare size={16} />, category: 'Navigation', action: () => onNavigate('assistant'), keywords: ['chat', 'talk', 'ask'] },
       { id: 'nav-settings', label: 'Settings', description: 'Theme, account & preferences', icon: <Settings size={16} />, category: 'Navigation', action: () => onNavigate('settings'), keywords: ['preferences', 'config', 'theme', 'dark', 'light'] },
@@ -63,9 +65,9 @@ export default function CommandPalette({
     const tools: CommandItem[] = [
       { id: 'tool-image', label: 'Generate Image', description: 'Text-to-image with 30+ models', icon: <ImageIcon size={16} />, category: 'Tools', action: () => onNavigate('create'), keywords: ['photo', 'picture'] },
       { id: 'tool-video', label: 'Generate Video', description: 'Text/Image-to-video generation', icon: <Video size={16} />, category: 'Tools', action: () => onNavigate('create'), keywords: ['reel', 'clip', 'animate'] },
-      { id: 'tool-aitools', label: 'AI Editing Tools', description: 'Beautify, morph, teleport & more', icon: <Wand2 size={16} />, category: 'Tools', action: () => { if (onOpenSubView) onOpenSubView('create', 'ai-tools'); else onNavigate('create'); }, keywords: ['edit', 'beautify', 'enhance', 'retouch'] },
+      { id: 'tool-aitools', label: 'AI Editing Tools', description: 'Beautify, morph, teleport & more', icon: <Wand2 size={16} />, category: 'Tools', action: () => onNavigate('intelligence'), keywords: ['edit', 'beautify', 'enhance', 'retouch', 'toolbox'] },
       { id: 'tool-voice', label: 'Voice Studio', description: 'Text-to-speech & voice cloning', icon: <Mic size={16} />, category: 'Tools', action: () => { if (onOpenSubView) onOpenSubView('create', 'voice'); else onNavigate('create'); }, keywords: ['audio', 'speech', 'tts'] },
-      { id: 'tool-planner', label: 'Content Planner', description: '7-day content strategy generator', icon: <Calendar size={16} />, category: 'Tools', action: () => { if (onOpenSubView) onOpenSubView('create', 'planner'); else onNavigate('create'); }, keywords: ['schedule', 'plan', 'calendar', 'week'] },
+      { id: 'tool-planner', label: 'Content Planner', description: '7-day content strategy generator', icon: <Calendar size={16} />, category: 'Tools', action: () => onNavigate('planner'), keywords: ['schedule', 'plan', 'calendar', 'week'] },
     ];
 
     return [...nav, ...personaItems, ...tools];

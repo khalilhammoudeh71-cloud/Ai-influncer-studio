@@ -148,8 +148,6 @@ const MODE_CONFIG: { id: CreateMode; label: string; icon: any; gradient: string;
   { id: 'video', label: 'Generate Videos', icon: Video, gradient: 'from-pink-600 to-orange-500', ringClass: 'focus:ring-pink-500', desc: 'Turn images into video scenes', bgImage: 'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?auto=format&fit=crop&w=300&q=80' },
   { id: 'talking-avatar', label: 'Talking Avatar', icon: UserRound, gradient: 'from-emerald-600 to-teal-500', ringClass: 'focus:ring-emerald-500', desc: 'Speaking avatar with voice', bgImage: 'https://images.unsplash.com/photo-1478737270239-2f02b77fc618?auto=format&fit=crop&w=300&q=80' },
   { id: 'voice', label: 'Voice', icon: Mic, gradient: 'from-amber-500 to-orange-500', ringClass: 'focus:ring-amber-500', desc: 'Generate audio and clone voice', bgImage: 'https://images.unsplash.com/photo-1478737270239-2f02b77fc618?auto=format&fit=crop&w=300&q=80' },
-  { id: 'ai-tools', label: 'AI Tools', icon: Sparkles, gradient: 'from-violet-600 to-purple-500', ringClass: 'focus:ring-violet-500', desc: 'Edit and enhance images', bgImage: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=300&q=80' },
-  { id: 'planner', label: 'Content Plan', icon: Calendar, gradient: 'from-fuchsia-600 to-pink-500', ringClass: 'focus:ring-fuchsia-500', desc: 'Schedule posts and campaigns', bgImage: 'https://images.unsplash.com/photo-1506784983877-45594efa4cbe?auto=format&fit=crop&w=300&q=80' },
 ];
 
 const QUICK_STYLES = [
@@ -213,7 +211,12 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   }, [localPersonaId, personas, initialPersona]);
 
   useEffect(() => {
-    if (localPersonaId !== 'none' && initialPersona) setLocalPersonaId(initialPersona.id);
+    if (localPersonaId !== 'none' && initialPersona) {
+      setLocalPersonaId(initialPersona.id);
+    }
+    if (initialPersona) {
+      setRefPersonaId(initialPersona.id);
+    }
   }, [initialPersona?.id]);
 
   useEffect(() => {
@@ -276,7 +279,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const [isProcessing, setIsProcessing] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const [refPersonaId, setRefPersonaId] = useState<string>('none');
+  const [refPersonaId, setRefPersonaId] = useState<string>(initialPersona?.id || 'none');
   const [refImages, setRefImages] = useState<{ id: string; url: string; name: string }[]>([]);
 
   const [videoPrompt, setVideoPrompt] = useState('');
@@ -612,17 +615,19 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       m.id.startsWith('google:') ? 0
       : (m.id.startsWith('openai:') || m.id.startsWith('replit:')) ? 1
       : m.id.startsWith('venice:') ? 3
+      : m.id.startsWith('atlascloud:') ? 4
       : 2;
     return [...models].sort((a, b) => priority(a) - priority(b) || a.name.localeCompare(b.name));
   }, [models]);
 
   const groupedModels = useMemo(() => {
-    const ORDER = ['Gemini', 'OpenAI', 'Wavespeed', 'Venice AI'] as const;
-    const groups: Record<string, ModelInfo[]> = { 'Gemini': [], 'OpenAI': [], 'Wavespeed': [], 'Venice AI': [] };
+    const ORDER = ['Gemini', 'OpenAI', 'Wavespeed', 'Venice AI', 'Atlas Cloud'] as const;
+    const groups: Record<string, ModelInfo[]> = { 'Gemini': [], 'OpenAI': [], 'Wavespeed': [], 'Venice AI': [], 'Atlas Cloud': [] };
     sortedModels.forEach(m => {
       const g = m.id.startsWith('google:') ? 'Gemini'
         : (m.id.startsWith('openai:') || m.id.startsWith('replit:')) ? 'OpenAI'
         : m.id.startsWith('venice:') ? 'Venice AI'
+        : m.id.startsWith('atlascloud:') ? 'Atlas Cloud'
         : 'Wavespeed';
       groups[g].push(m);
     });
@@ -1216,6 +1221,131 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       {/* ══ LEFT COLUMN: Configuration (Studio Sidebar) ══ */}
       <div className="space-y-4 h-full overflow-y-auto pr-2 custom-scrollbar pb-20">
         
+        {/* Reference Face & Images Card */}
+        <div className="rounded-2xl border border-white/5 bg-white/[0.02] overflow-hidden">
+          <div className="px-4 py-2.5 bg-gradient-to-r from-cyan-600/10 to-blue-600/5 border-b border-white/5 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ImageIcon className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="text-[10px] font-black text-cyan-300 uppercase tracking-wider">Reference Face & Images</span>
+            </div>
+            {allRefImages.length > 0 && (
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-300">
+                {allRefImages.length} active
+              </span>
+            )}
+          </div>
+          <div className="p-4 space-y-4">
+            {/* Persona Reference Selection */}
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-black text-[var(--text-tertiary)] uppercase tracking-wider block">
+                Subject/Persona Face Reference
+              </label>
+              <div className="relative">
+                <select
+                  value={refPersonaId}
+                  onChange={(e) => setRefPersonaId(e.target.value)}
+                  className="w-full bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-xl px-2.5 py-1.5 text-xs text-white outline-none appearance-none pr-6 font-medium"
+                >
+                  <option value="none">None (Custom Uploads Only)</option>
+                  {personas.map(p => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-[var(--text-tertiary)] pointer-events-none" />
+              </div>
+            </div>
+
+            {/* Persona Reference Image Preview / Exclude Option */}
+            {refPersonaId !== 'none' && (() => {
+              const selectedP = personas.find(p => p.id === refPersonaId);
+              const refImg = selectedP?.referenceImage;
+              return (
+                <div className="flex items-center justify-between p-2 rounded-xl bg-white/[0.02] border border-white/5">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-10 h-10 rounded-lg overflow-hidden border border-white/10 shrink-0">
+                      {refImg ? (
+                        <img src={refImg} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full bg-[#1e293b] flex items-center justify-center text-[#64748b]">
+                          <UserRound size={16} />
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-left">
+                      <p className="text-xs font-bold text-white truncate max-w-[150px]">{selectedP?.name}</p>
+                      <p className="text-[9px] text-[var(--text-muted)]">Persona Face Reference</p>
+                    </div>
+                  </div>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={excludePersonaRef}
+                      onChange={(e) => setExcludePersonaRef(e.target.checked)}
+                      className="rounded border-white/10 bg-white/5 text-purple-600 focus:ring-0 focus:ring-offset-0 w-3.5 h-3.5"
+                    />
+                    <span className="text-[10px] text-[var(--text-secondary)] font-medium select-none">Exclude</span>
+                  </label>
+                </div>
+              );
+            })()}
+
+            {/* Custom Uploads area */}
+            <div className="space-y-2">
+              <label className="text-[9px] font-black text-[var(--text-tertiary)] uppercase tracking-wider block">
+                Additional Reference Images
+              </label>
+              
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const el = document.getElementById('ref-image-file-input');
+                    if (el) el.click();
+                  }}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 border border-dashed border-white/15 hover:border-cyan-500/40 rounded-xl bg-white/[0.01] hover:bg-cyan-500/[0.02] text-xs font-semibold text-[var(--text-secondary)] hover:text-white transition-all cursor-pointer"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  Upload Image
+                </button>
+                <input
+                  id="ref-image-file-input"
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    const files = e.target.files;
+                    if (files) {
+                      Array.from(files).forEach(file => handleAddRefImage(file));
+                    }
+                    e.target.value = '';
+                  }}
+                />
+              </div>
+
+              {/* Uploaded custom images preview grid */}
+              {refImages.length > 0 && (
+                <div className="grid grid-cols-4 gap-2 pt-1">
+                  {refImages.map(img => (
+                    <div key={img.id} className="relative aspect-square rounded-lg overflow-hidden border border-white/10 group">
+                      <img src={img.url} alt={img.name} className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => setRefImages(prev => prev.filter(x => x.id !== img.id))}
+                        className="absolute top-1 right-1 p-1 rounded-full bg-black/75 text-white/70 hover:text-white hover:bg-black transition-colors"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
         {/* AI Model Card */}
         <div className="rounded-2xl border border-white/5 bg-white/[0.02] overflow-hidden">
           <div className="px-4 py-2.5 bg-gradient-to-r from-violet-600/10 to-purple-600/5 border-b border-white/5 flex items-center gap-2">
@@ -3036,8 +3166,6 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         {mode === 'talking-avatar' && renderTalkingAvatarMode()}
         {mode === 'angle' && renderAngleMode()}
         {mode === 'voice' && <VoiceView persona={activePersona} personas={personas} onSelectPersona={onSelectPersona} nav={nav} billingInfo={billingInfo} />}
-        {mode === 'ai-tools' && <AIToolsView persona={activePersona} personas={personas} onSelectPersona={onSelectPersona} nav={nav} />}
-        {mode === 'planner' && <PlannerView persona={activePersona} personas={personas} onSelectPersona={onSelectPersona} nav={nav} />}
       </div>
 
       {/* ── FOOTER TIP ── */}

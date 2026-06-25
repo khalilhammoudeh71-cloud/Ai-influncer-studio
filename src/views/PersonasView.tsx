@@ -1,4 +1,4 @@
-import { Plus, Search, Edit2, Trash2, X, Check, Camera, Upload, Image as ImageIcon, AlertTriangle, Sparkles, ArrowLeft, Download, Heart, Trash, Eye, Loader2, ChevronDown, Cpu, Wand2, Pencil, ArrowUpCircle, Film, LayoutGrid, MessageSquare, Mic, Users, ChevronRight, DollarSign } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, X, Check, Camera, Upload, Image as ImageIcon, AlertTriangle, Sparkles, ArrowLeft, Download, Heart, Trash, Eye, Loader2, ChevronDown, Cpu, Wand2, Pencil, ArrowUpCircle, Film, LayoutGrid, MessageSquare, Mic, Users, ChevronRight, DollarSign, Wrench, PlusCircle, Calendar } from 'lucide-react';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
@@ -786,8 +786,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
             </div>
           </div>
 
-          {/* Feature Cards Row */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
             {[
               { 
                 title: 'Create\nPersona', 
@@ -799,49 +798,49 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                 action: handleAddPersona
               },
               { 
-                title: 'Generate\nImage', 
-                desc: 'High-end AI images\nin any style.', 
-                icon: ImageIcon, 
+                title: 'AI\nStudio', 
+                desc: 'Generate premium images,\nvideos & voice tracks.', 
+                icon: PlusCircle, 
                 color: 'emerald',
                 gradient: 'from-[#00F5C2]/40 to-[#10B981]/40',
                 img: dashboardFeatureCards[1].img,
-                action: () => { setActivePersonaForGen(activePersona); setShowGenerator(true); } 
+                action: () => navigateToTab?.('create')
               },
               { 
-                title: 'Generate\nVideo', 
-                desc: 'Cinematic AI videos\nfrom text or images.', 
-                icon: Film, 
+                title: 'AI\nToolbox', 
+                desc: 'Face swap, edit clips\n& analyze brand deals.', 
+                icon: Wrench, 
                 color: 'indigo',
                 gradient: 'from-[#6366F1]/40 to-[#8B5CF6]/40',
                 img: dashboardFeatureCards[2].img,
-                action: () => navigateToTab?.('create') 
+                action: () => navigateToTab?.('intelligence')
               },
               { 
-                title: 'Talking\nAvatar', 
-                desc: 'Bring your persona\nto life with voice.', 
-                icon: Mic, 
+                title: 'Content\nPlanner', 
+                desc: 'Schedule campaigns\n& auto-post to socials.', 
+                icon: Calendar, 
                 color: 'cyan',
                 gradient: 'from-[#00D4FF]/40 to-[#38BDF8]/40',
                 img: dashboardFeatureCards[3].img,
-                action: () => navigateToTab?.('create') 
+                action: () => navigateToTab?.('planner')
               },
               { 
                 title: 'AI\nAssistant', 
-                desc: 'Your creative copilot\nfor growth & content.', 
+                desc: 'Your creative copilot\nfor scriptwriting & ideas.', 
                 icon: Sparkles, 
                 color: 'fuchsia',
                 gradient: 'from-[#D946EF]/40 to-[#6366F1]/40',
                 img: dashboardFeatureCards[4].img,
-                action: () => navigateToTab?.('assistant') 
+                action: () => navigateToTab?.('assistant')
               },
               { 
-                title: 'Revenue\n& ROI', 
-                desc: 'Track earnings, deals\n& performance metrics.', 
-                icon: DollarSign, 
+                title: 'Gallery\nVault', 
+                desc: 'Browse and manage\nall generated assets.', 
+                icon: ImageIcon, 
                 color: 'amber',
                 gradient: 'from-[#F59E0B]/40 to-[#EF4444]/40',
                 img: dashboardFeatureCards[1].img,
-                action: () => navigateToTab?.('revenue') 
+                action: () => navigateToTab?.('gallery')
               }
             ].map((feature, idx) => (
               <div 
@@ -849,16 +848,16 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                 onClick={feature.action}
                 className="relative h-[290px] rounded-[24px] overflow-hidden cursor-pointer group border transition-all duration-500 hover:-translate-y-1.5 hover:shadow-[0_20px_50px_rgba(0,0,0,0.6)]"
                 style={{
-                   boxShadow: feature.title.includes('Image') ? '0 0 24px rgba(0, 245, 194, 0.2)' : 
+                   boxShadow: feature.title.includes('Studio') ? '0 0 24px rgba(16, 185, 129, 0.2)' : 
                              feature.title.includes('Persona') ? '0 0 24px rgba(0, 212, 255, 0.2)' :
-                             feature.title.includes('Video') ? '0 0 24px rgba(99, 102, 241, 0.2)' : 
-                             feature.title.includes('Avatar') ? '0 0 24px rgba(14, 165, 233, 0.2)' : 
-                             feature.title.includes('Revenue') ? '0 0 24px rgba(245, 158, 11, 0.2)' : '0 0 24px rgba(217, 70, 239, 0.2)',
-                   borderColor: feature.title.includes('Image') ? 'rgba(0, 245, 194, 0.5)' : 
+                             feature.title.includes('Toolbox') ? '0 0 24px rgba(99, 102, 241, 0.2)' : 
+                             feature.title.includes('Planner') ? '0 0 24px rgba(14, 165, 233, 0.2)' : 
+                             feature.title.includes('Vault') ? '0 0 24px rgba(245, 158, 11, 0.2)' : '0 0 24px rgba(217, 70, 239, 0.2)',
+                   borderColor: feature.title.includes('Studio') ? 'rgba(16, 185, 129, 0.5)' : 
                                feature.title.includes('Persona') ? 'rgba(0, 212, 255, 0.5)' :
-                               feature.title.includes('Video') ? 'rgba(99, 102, 241, 0.5)' : 
-                               feature.title.includes('Avatar') ? 'rgba(14, 165, 233, 0.5)' : 
-                               feature.title.includes('Revenue') ? 'rgba(245, 158, 11, 0.5)' : 'rgba(217, 70, 239, 0.5)'
+                               feature.title.includes('Toolbox') ? 'rgba(99, 102, 241, 0.5)' : 
+                               feature.title.includes('Planner') ? 'rgba(14, 165, 233, 0.5)' : 
+                               feature.title.includes('Vault') ? 'rgba(245, 158, 11, 0.5)' : 'rgba(217, 70, 239, 0.5)'
                 }}
               >
                 <img src={feature.img} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 opacity-90 group-hover:opacity-100" alt="" />

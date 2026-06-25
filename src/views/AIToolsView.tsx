@@ -31,7 +31,7 @@ import {
 } from 'lucide-react';
 import { Persona, NavActions } from '../types';
 import { api } from '../services/apiService';
-import { editImage, faceSwap, removeBackground, virtualTryOn, fetchEditModels, upscaleImage, fetchUpscaleModels, type ModelInfo } from '../services/imageService';
+import { editImage, faceSwap, removeBackground, virtualTryOn, fetchEditModels, upscaleImage, fetchUpscaleModels, fetchVideoModels, type ModelInfo } from '../services/imageService';
 import BeforeAfterSlider from '../components/BeforeAfterSlider';
 import { processImageFile } from '../utils/imageProcessing';
 import { generatePersonaContent } from '../utils/personaEngine';
@@ -51,7 +51,7 @@ interface AIToolsViewProps {
   nav: NavActions;
 }
 
-type ToolType = 'beautify' | 'morph' | 'muscle' | 'ink' | 'teleport' | 'canvas' | 'face-swap' | 'bg-remover' | 'virtual-tryon' | null;
+type ToolType = 'beautify' | 'morph' | 'muscle' | 'ink' | 'teleport' | 'canvas' | 'face-swap' | 'bg-remover' | 'virtual-tryon' | 'video-edit' | null;
 
 const TOOLS = [
   { 
@@ -117,6 +117,13 @@ const TOOLS = [
     demoBefore: '/demo/tryon_before.png',
     demoAfter: '/demo/tryon_after.png',
   },
+  { 
+    id: 'video-edit', title: 'AI Video Editor', icon: Video, 
+    desc: 'Stylize, edit, or transform existing videos using AI.', 
+    color: 'from-violet-500 to-fuchsia-500',
+    demoBefore: '/demo/videoedit_before.mp4',
+    demoAfter: '/demo/videoedit_after.mp4',
+  },
 ] as const;
 
 export default function AIToolsView({ persona, personas, onSelectPersona, nav }: AIToolsViewProps) {
@@ -163,6 +170,15 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
   const [garmentImage, setGarmentImage] = useState<string | null>(null);
   const [garmentDescription, setGarmentDescription] = useState('');
   const garmentFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Video Editor specific state
+  const [sourceVideo, setSourceVideo] = useState<string | null>(null);
+  const [sourceVideoName, setSourceVideoName] = useState<string | null>(null);
+  const [videoModels, setVideoModels] = useState<ModelInfo[]>([]);
+  const [selectedVideoModel, setSelectedVideoModel] = useState<string>('');
+  const [editStrength, setEditStrength] = useState<number>(0.7);
+  const [videoPrompt, setVideoPrompt] = useState<string>('');
+  const videoInputRef = useRef<HTMLInputElement>(null);
 
   // Voice Studio & Talking Head overlays
   const [showVoiceStudio, setShowVoiceStudio] = useState(false);
@@ -344,6 +360,13 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
     });
     fetchUpscaleModels().then(models => {
       setUpscaleModels(models);
+    });
+    fetchVideoModels().then(models => {
+      const v2vModels = models.filter(m => m.id.startsWith('wavespeed-v2v:'));
+      setVideoModels(v2vModels);
+      if (v2vModels.length > 0) {
+        setSelectedVideoModel(v2vModels[0].id);
+      }
     });
   }, []);
 
@@ -548,19 +571,56 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
     }
   };
 
+  const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('video/')) {
+      return toast.error('Please upload a valid video file');
+    }
+    setSourceVideoName(file.name);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      setSourceVideo(ev.target?.result as string);
+      setResultImage(null);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleVideoEditExecute = async () => {
+    if (!sourceVideo || !selectedVideoModel) return;
+    setIsProcessing(true);
+    try {
+      const data = await api.images.generateVideo({
+        prompt: videoPrompt || 'Stylize video',
+        modelId: selectedVideoModel,
+        sourceVideo: sourceVideo,
+        strength: editStrength,
+      });
+      setResultImage(data.videoUrl);
+      setResultHistory(prev => [...prev, { imageUrl: data.videoUrl, timestamp: Date.now(), tool: 'video-edit' }]);
+      toast.success('Video edit complete!');
+    } catch (err: any) {
+      toast.error(err.message || 'Video editing failed');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const saveToLibrary = async () => {
     if (!resultImage) return;
     try {
+      const isVideo = activeTool === 'video-edit';
       const media = {
-        id: `img-${Date.now()}`,
+        id: `${isVideo ? 'vid' : 'img'}-${Date.now()}`,
         url: resultImage,
-        prompt: getToolPrompt(),
+        prompt: isVideo ? videoPrompt : getToolPrompt(),
         timestamp: Date.now(),
-        model: selectedModel,
+        model: isVideo ? selectedVideoModel : selectedModel,
+        mediaType: isVideo ? ('video' as const) : ('image' as const),
       };
       
       const updatedPersona = { ...persona, visualLibrary: [...(persona.visualLibrary || []), media] };
-      const updatedPersonas = personas.map(p => p.id === persona.id ? updatedPersona : p);
       
       await api.updatePersonaInVault(updatedPersona);
       await api.images.create(persona.id, media);
@@ -839,7 +899,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
       <div className="shrink-0 px-6 py-4 border-b border-[var(--border-subtle)] flex items-center justify-between bg-[var(--bg-elevated)]/50 backdrop-blur-md z-10">
         <div className="flex items-center gap-4">
           <button 
-            onClick={() => { setActiveTool(null); setSourceImage(null); setResultImage(null); }}
+            onClick={() => { setActiveTool(null); setSourceImage(null); setSourceVideo(null); setSourceVideoName(null); setResultImage(null); }}
             className="p-2 -ml-2 rounded-xl text-[var(--text-secondary)] hover:text-white hover:bg-[var(--bg-overlay)] transition-colors"
           >
             <ChevronLeft size={20} />
@@ -855,13 +915,26 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
           </div>
         </div>
         
-        {editModels.length > 0 && (
+        {activeTool === 'video-edit' ? (
+          videoModels.length > 0 && (
+            <div className="flex items-center gap-2">
+              <Settings2 size={14} className="text-[var(--text-tertiary)]" />
+              <select 
+                value={selectedVideoModel}
+                onChange={(e) => setSelectedVideoModel(e.target.value)}
+                className="bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-lg px-2 py-1 text-xs text-[var(--text-secondary)] outline-none cursor-pointer"
+              >
+                {videoModels.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            </div>
+          )
+        ) : editModels.length > 0 && (
           <div className="flex items-center gap-2">
             <Settings2 size={14} className="text-[var(--text-tertiary)]" />
             <select 
               value={selectedModel}
               onChange={(e) => setSelectedModel(e.target.value)}
-              className="bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-lg px-2 py-1 text-xs text-[var(--text-secondary)] outline-none"
+              className="bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-lg px-2 py-1 text-xs text-[var(--text-secondary)] outline-none cursor-pointer"
             >
               <option value="auto">✨ Automatic (Best AI for Tool)</option>
               {editModels.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
@@ -881,35 +954,59 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
         <div className="w-full lg:w-80 shrink-0 border-r border-[var(--border-subtle)] bg-[var(--bg-surface)] flex flex-col min-h-0">
           <div className="flex-1 overflow-y-auto p-5 space-y-6">
             
-            {/* Source Image Panel */}
-            <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)]">Target Image</label>
-              {sourceImage ? (
-                <div className="relative aspect-square rounded-2xl overflow-hidden border border-[var(--border-default)] group">
-                  <img src={sourceImage} alt="Source" className="w-full h-full object-cover" />
-                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                     <button onClick={() => setSourceImage(null)} className="p-2 bg-rose-500 rounded-full text-white"><X size={16}/></button>
+            {/* Source Image/Video Panel */}
+            {activeTool === 'video-edit' ? (
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)]">Target Video</label>
+                {sourceVideo ? (
+                  <div className="relative aspect-video rounded-2xl overflow-hidden border border-[var(--border-default)] group bg-black/40">
+                    <video src={sourceVideo} className="w-full h-full object-cover" muted playsInline />
+                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                       <button onClick={() => { setSourceVideo(null); setSourceVideoName(null); setResultImage(null); }} className="p-2 bg-rose-500 rounded-full text-white"><X size={16}/></button>
+                    </div>
                   </div>
-                </div>
-              ) : (
-                <div
-                  onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-                  onDragLeave={() => setIsDragging(false)}
-                  onDrop={handleDrop}
-                  onClick={() => fileInputRef.current?.click()}
-                  className={`w-full aspect-square rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-3 transition-all cursor-pointer ${
-                    isDragging
-                      ? 'border-[#00D4FF] bg-[#00D4FF]/10 text-[#00D4FF] scale-[1.02] shadow-[0_0_30px_rgba(0,212,255,0.15)]'
-                      : 'border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-white hover:border-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/5'
-                  }`}
-                >
-                  <Upload size={24} className={isDragging ? 'animate-bounce' : ''} />
-                  <span className="text-xs font-bold">{isDragging ? 'Drop Image Here' : 'Upload or Drop Image'}</span>
-                  <span className="text-[10px] text-[var(--text-muted)]">PNG, JPG, WEBP supported</span>
-                </div>
-              )}
-              <input type="file" ref={fileInputRef} hidden accept="image/*" onChange={handleFileUpload} />
-            </div>
+                ) : (
+                  <div
+                    onClick={() => videoInputRef.current?.click()}
+                    className="w-full aspect-square rounded-2xl border-2 border-dashed border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-white hover:border-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/5 flex flex-col items-center justify-center gap-3 transition-all cursor-pointer"
+                  >
+                    <Upload size={24} />
+                    <span className="text-xs font-bold">Upload Video</span>
+                    <span className="text-[10px] text-[var(--text-muted)]">MP4, MOV, WebM supported</span>
+                  </div>
+                )}
+                <input type="file" ref={videoInputRef} hidden accept="video/*" onChange={handleVideoUpload} />
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)]">Target Image</label>
+                {sourceImage ? (
+                  <div className="relative aspect-square rounded-2xl overflow-hidden border border-[var(--border-default)] group">
+                    <img src={sourceImage} alt="Source" className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                       <button onClick={() => { setSourceImage(null); setResultImage(null); }} className="p-2 bg-rose-500 rounded-full text-white"><X size={16}/></button>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                    onDragLeave={() => setIsDragging(false)}
+                    onDrop={handleDrop}
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`w-full aspect-square rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-3 transition-all cursor-pointer ${
+                      isDragging
+                        ? 'border-[#00D4FF] bg-[#00D4FF]/10 text-[#00D4FF] scale-[1.02] shadow-[0_0_30px_rgba(0,212,255,0.15)]'
+                        : 'border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-white hover:border-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/5'
+                    }`}
+                  >
+                    <Upload size={24} className={isDragging ? 'animate-bounce' : ''} />
+                    <span className="text-xs font-bold">{isDragging ? 'Drop Image Here' : 'Upload or Drop Image'}</span>
+                    <span className="text-[10px] text-[var(--text-muted)]">PNG, JPG, WEBP supported</span>
+                  </div>
+                )}
+                <input type="file" ref={fileInputRef} hidden accept="image/*" onChange={handleFileUpload} />
+              </div>
+            )}
 
             {/* Masking Canvas Toggle */}
             {sourceImage && (activeTool === 'beautify' || activeTool === 'morph' || activeTool === 'muscle' || activeTool === 'ink' || activeTool === 'teleport') && (
@@ -975,74 +1072,108 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
             )}
 
             {/* Prompt Templates */}
-            <div className="space-y-2">
-              <button
-                onClick={() => setShowTemplates(!showTemplates)}
-                className="w-full flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)] hover:text-white transition-colors"
-              >
-                <span className="flex items-center gap-1.5"><FileText size={12} className="text-violet-400" /> Prompt Templates</span>
-                <span className="text-[8px]">{showTemplates ? '▲' : '▼'}</span>
-              </button>
-              {showTemplates && (
-                <div className="space-y-1.5">
-                  {[
-                    { label: '📸 Instagram Glow-Up', prompt: 'Enhance skin for an Instagram-ready glow. Soft studio lighting, flawless complexion, dewy finish. Keep the face exactly the same.' },
-                    { label: '🎬 TikTok Energy', prompt: 'Add vibrant, high-energy look. Bright colors, sharp contrast, youthful glow. Maintain all facial features identically.' },
-                    { label: '💼 Professional LinkedIn', prompt: 'Clean, corporate headshot refinement. Subtle skin smoothing, professional lighting. No feature changes.' },
-                    { label: '✨ Red Carpet Ready', prompt: 'Glamorous red carpet enhancement. Flawless skin, soft contouring highlights. Preserve exact bone structure and identity.' },
-                    { label: '🌿 Natural & Minimal', prompt: 'Minimal, barely-there enhancement. Just remove blemishes and even skin tone. Keep everything else 100% natural.' },
-                  ].map((tmpl, i) => (
+            {activeTool !== 'video-edit' && (
+              <div className="space-y-2">
+                <button
+                  onClick={() => setShowTemplates(!showTemplates)}
+                  className="w-full flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)] hover:text-white transition-colors"
+                >
+                  <span className="flex items-center gap-1.5"><FileText size={12} className="text-violet-400" /> Prompt Templates</span>
+                  <span className="text-[8px]">{showTemplates ? '▲' : '▼'}</span>
+                </button>
+                {showTemplates && (
+                  <div className="space-y-1.5">
+                    {[
+                      { label: '📸 Instagram Glow-Up', prompt: 'Enhance skin for an Instagram-ready glow. Soft studio lighting, flawless complexion, dewy finish. Keep the face exactly the same.' },
+                      { label: '🎬 TikTok Energy', prompt: 'Add vibrant, high-energy look. Bright colors, sharp contrast, youthful glow. Maintain all facial features identically.' },
+                      { label: '💼 Professional LinkedIn', prompt: 'Clean, corporate headshot refinement. Subtle skin smoothing, professional lighting. No feature changes.' },
+                      { label: '✨ Red Carpet Ready', prompt: 'Glamorous red carpet enhancement. Flawless skin, soft contouring highlights. Preserve exact bone structure and identity.' },
+                      { label: '🌿 Natural & Minimal', prompt: 'Minimal, barely-there enhancement. Just remove blemishes and even skin tone. Keep everything else 100% natural.' },
+                    ].map((tmpl, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setCustomPromptOverride(tmpl.prompt)}
+                        className="w-full text-left p-2.5 rounded-xl bg-[var(--bg-elevated)] hover:bg-violet-500/10 border border-transparent hover:border-violet-500/20 transition-all"
+                      >
+                        <span className="text-xs font-bold text-white block">{tmpl.label}</span>
+                        <span className="text-[10px] text-[var(--text-muted)] line-clamp-1 mt-0.5">{tmpl.prompt}</span>
+                      </button>
+                    ))}
+                    {savedPrompts.length > 0 && (
+                      <>
+                        <div className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-wider pt-2 border-t border-[var(--border-subtle)]">Your Saved Prompts</div>
+                        {savedPrompts.map((sp, i) => (
+                          <div key={i} className="flex items-center gap-1">
+                            <button
+                              onClick={() => setCustomPromptOverride(sp.prompt)}
+                              className="flex-1 text-left p-2.5 rounded-xl bg-[var(--bg-elevated)] hover:bg-cyan-500/10 border border-transparent hover:border-cyan-500/20 transition-all"
+                            >
+                              <span className="text-xs font-bold text-white block">💾 {sp.label}</span>
+                              <span className="text-[10px] text-[var(--text-muted)] line-clamp-1 mt-0.5">{sp.prompt}</span>
+                            </button>
+                            <button
+                              onClick={() => {
+                                const next = savedPrompts.filter((_, j) => j !== i);
+                                setSavedPrompts(next);
+                                localStorage.setItem('ai_tools_saved_prompts', JSON.stringify(next));
+                              }}
+                              className="p-1.5 rounded-lg text-rose-400/50 hover:text-rose-400 transition-colors shrink-0"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        ))}
+                      </>
+                    )}
                     <button
-                      key={i}
-                      onClick={() => setCustomPromptOverride(tmpl.prompt)}
-                      className="w-full text-left p-2.5 rounded-xl bg-[var(--bg-elevated)] hover:bg-violet-500/10 border border-transparent hover:border-violet-500/20 transition-all"
+                      onClick={() => {
+                        const currentPrompt = customPromptOverride || getToolPrompt();
+                        const label = currentPrompt.slice(0, 30) + '...';
+                        const next = [...savedPrompts, { label, prompt: currentPrompt, tool: activeTool || '' }];
+                        setSavedPrompts(next);
+                        localStorage.setItem('ai_tools_saved_prompts', JSON.stringify(next));
+                        toast.success('Prompt saved!');
+                      }}
+                      className="w-full p-2 rounded-xl border border-dashed border-violet-500/30 text-[10px] font-bold text-violet-400 hover:bg-violet-500/10 transition-colors"
                     >
-                      <span className="text-xs font-bold text-white block">{tmpl.label}</span>
-                      <span className="text-[10px] text-[var(--text-muted)] line-clamp-1 mt-0.5">{tmpl.prompt}</span>
+                      + Save Current Prompt
                     </button>
-                  ))}
-                  {savedPrompts.length > 0 && (
-                    <>
-                      <div className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-wider pt-2 border-t border-[var(--border-subtle)]">Your Saved Prompts</div>
-                      {savedPrompts.map((sp, i) => (
-                        <div key={i} className="flex items-center gap-1">
-                          <button
-                            onClick={() => setCustomPromptOverride(sp.prompt)}
-                            className="flex-1 text-left p-2.5 rounded-xl bg-[var(--bg-elevated)] hover:bg-cyan-500/10 border border-transparent hover:border-cyan-500/20 transition-all"
-                          >
-                            <span className="text-xs font-bold text-white block">💾 {sp.label}</span>
-                            <span className="text-[10px] text-[var(--text-muted)] line-clamp-1 mt-0.5">{sp.prompt}</span>
-                          </button>
-                          <button
-                            onClick={() => {
-                              const next = savedPrompts.filter((_, j) => j !== i);
-                              setSavedPrompts(next);
-                              localStorage.setItem('ai_tools_saved_prompts', JSON.stringify(next));
-                            }}
-                            className="p-1.5 rounded-lg text-rose-400/50 hover:text-rose-400 transition-colors shrink-0"
-                          >
-                            <X size={12} />
-                          </button>
-                        </div>
-                      ))}
-                    </>
-                  )}
-                  <button
-                    onClick={() => {
-                      const currentPrompt = customPromptOverride || getToolPrompt();
-                      const label = currentPrompt.slice(0, 30) + '...';
-                      const next = [...savedPrompts, { label, prompt: currentPrompt, tool: activeTool || '' }];
-                      setSavedPrompts(next);
-                      localStorage.setItem('ai_tools_saved_prompts', JSON.stringify(next));
-                      toast.success('Prompt saved!');
-                    }}
-                    className="w-full p-2 rounded-xl border border-dashed border-violet-500/30 text-[10px] font-bold text-violet-400 hover:bg-violet-500/10 transition-colors"
-                  >
-                    + Save Current Prompt
-                  </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Video Editor controls */}
+            {activeTool === 'video-edit' && (
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)]">Styling Prompt</label>
+                  <textarea
+                    value={videoPrompt}
+                    onChange={(e) => setVideoPrompt(e.target.value)}
+                    placeholder="e.g. Cartoon anime style, 3D animated model, vintage movie look..."
+                    className="w-full h-24 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-3 text-sm text-white outline-none resize-none"
+                  />
                 </div>
-              )}
-            </div>
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)]">
+                    <span>Styling Strength: {Math.round(editStrength * 100)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="10"
+                    max="100"
+                    step="5"
+                    value={editStrength * 100}
+                    onChange={(e) => setEditStrength(parseInt(e.target.value) / 100)}
+                    className="w-full accent-violet-500"
+                  />
+                  <p className="text-[9px] text-[var(--text-muted)] leading-relaxed">
+                    Lower strength keeps the original video structure; higher strength transforms the video more aggressively.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {activeTool === 'morph' && (
               <div className="space-y-4">
@@ -1286,16 +1417,32 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
                 activeTool === 'face-swap' ? handleFaceSwapExecute :
                 activeTool === 'bg-remover' ? handleBgRemoveExecute :
                 activeTool === 'virtual-tryon' ? handleVirtualTryOnExecute :
+                activeTool === 'video-edit' ? handleVideoEditExecute :
                 handleExecute
               }
-              disabled={isProcessing || !sourceImage || (activeTool === 'face-swap' && !faceSwapFaceImage) || (activeTool === 'virtual-tryon' && !garmentImage)}
-              className={`w-full py-3.5 rounded-xl font-bold flex flex-col items-center justify-center transition-all shadow-lg ${isProcessing || !sourceImage || (activeTool === 'face-swap' && !faceSwapFaceImage) || (activeTool === 'virtual-tryon' && !garmentImage) ? 'bg-white/5 text-white/30 shadow-none' : `bg-gradient-to-r ${currentToolDetails?.color} hover:brightness-110 text-white`}`}
+              disabled={
+                isProcessing ||
+                (activeTool === 'video-edit' ? !sourceVideo : !sourceImage) ||
+                (activeTool === 'face-swap' && !faceSwapFaceImage) ||
+                (activeTool === 'virtual-tryon' && !garmentImage)
+              }
+              className={`w-full py-3.5 rounded-xl font-bold flex flex-col items-center justify-center transition-all shadow-lg ${
+                isProcessing ||
+                (activeTool === 'video-edit' ? !sourceVideo : !sourceImage) ||
+                (activeTool === 'face-swap' && !faceSwapFaceImage) ||
+                (activeTool === 'virtual-tryon' && !garmentImage)
+                  ? 'bg-white/5 text-white/30 shadow-none cursor-not-allowed' 
+                  : `bg-gradient-to-r ${currentToolDetails?.color} hover:brightness-110 text-white hover:scale-[1.01]`
+              }`}
             >
               {isProcessing ? (
                 <div className="flex items-center gap-2"><Loader2 size={18} className="animate-spin" /> Processing...</div>
               ) : (
                 <>
-                  <div className="flex items-center gap-2"><ToolIcon size={18} /> {activeTool === 'bg-remover' ? 'Remove Background' : activeTool === 'virtual-tryon' ? 'Try On ($0.12)' : 'Apply Effect'}</div>
+                  <div className="flex items-center gap-2">
+                    <ToolIcon size={18} /> 
+                    {activeTool === 'bg-remover' ? 'Remove Background' : activeTool === 'virtual-tryon' ? 'Try On ($0.12)' : activeTool === 'video-edit' ? 'Stylize Video' : 'Apply Effect'}
+                  </div>
                   <span className="text-[9px] opacity-50 font-medium mt-0.5">⌘ Enter</span>
                 </>
               )}
@@ -1306,26 +1453,23 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
         {/* Viewport */}
         <div className="flex-1 bg-black overflow-hidden relative flex flex-col">
           <div className="relative flex-1 flex flex-col items-center justify-center p-6">
-             {!sourceImage && !resultImage && (
+             {!(activeTool === 'video-edit' ? sourceVideo : sourceImage) && !resultImage && (
                <div className="text-[var(--text-tertiary)] flex flex-col items-center gap-4 opacity-50">
-                  <ImageIcon size={48} />
-                  <p>Upload a source image to begin editing</p>
+                  {activeTool === 'video-edit' ? <Video size={48} /> : <ImageIcon size={48} />}
+                  <p>Upload a source {activeTool === 'video-edit' ? 'video' : 'image'} to begin editing</p>
                </div>
              )}
              
-             {isProcessing && sourceImage && !resultImage && (
-               <div className="absolute inset-0 flex items-center justify-center">
-                 <div className="relative aspect-square max-w-lg w-full rounded-2xl overflow-hidden opacity-50 blur-sm">
-                   <img src={sourceImage} className="w-full h-full object-contain" alt="" />
-                 </div>
-                 <div className="absolute flex flex-col items-center text-white drop-shadow-xl z-20">
-                   <Loader2 size={40} className="animate-spin text-white mb-4" />
-                   <div className="px-4 py-2 bg-black/60 backdrop-blur-md rounded-full font-bold">Applying AI Algorithm...</div>
+             {isProcessing && (activeTool === 'video-edit' ? sourceVideo : sourceImage) && !resultImage && (
+               <div className="absolute inset-0 flex items-center justify-center bg-black/60 z-50">
+                 <div className="flex flex-col items-center text-white drop-shadow-xl">
+                   <Loader2 size={40} className="animate-spin text-violet-400 mb-4" />
+                   <div className="px-4 py-2 bg-black/60 backdrop-blur-md rounded-full font-bold">Applying AI Video Effects...</div>
                  </div>
                </div>
              )}
 
-             {sourceImage && !resultImage && !isProcessing && (
+             {!(activeTool === 'video-edit') && sourceImage && !resultImage && !isProcessing && (
                 <div className="relative max-w-3xl w-full h-full flex flex-col items-center justify-center gap-4">
                   <div 
                     className="relative rounded-2xl overflow-hidden border border-white/10 shadow-2xl bg-[var(--bg-elevated)] flex items-center justify-center select-none"
@@ -1397,6 +1541,14 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
                 </div>
               )}
 
+             {activeTool === 'video-edit' && sourceVideo && !resultImage && !isProcessing && (
+                <div className="relative max-w-3xl w-full h-full flex flex-col items-center justify-center gap-4">
+                  <div className="relative h-full w-full rounded-2xl overflow-hidden border border-white/20 shadow-2xl bg-[var(--bg-elevated)] flex items-center justify-center">
+                    <video src={sourceVideo} controls className="max-h-[65vh] max-w-full object-contain" />
+                  </div>
+                </div>
+              )}
+
              {resultImage && sourceImage && (
                <div className="relative max-w-3xl w-full h-full flex flex-col items-center justify-center gap-4">
                  <BeforeAfterSlider beforeImage={sourceImage} afterImage={resultImage} />
@@ -1434,11 +1586,29 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
              {resultImage && !sourceImage && (
                <div className="relative max-w-3xl w-full h-full flex flex-col items-center justify-center gap-4">
                  <div className="relative h-full w-full rounded-2xl overflow-hidden border border-white/20 shadow-2xl bg-[var(--bg-elevated)] flex items-center justify-center">
-                   <img src={resultImage} alt="Result" className="max-w-full max-h-full object-contain" />
+                   {activeTool === 'video-edit' ? (
+                     <video src={resultImage} controls autoPlay loop className="max-w-full max-h-full object-contain" />
+                   ) : (
+                     <img src={resultImage} alt="Result" className="max-w-full max-h-full object-contain" />
+                   )}
                  </div>
                  <div className="absolute bottom-4 flex gap-3">
                    <button onClick={() => setResultImage(null)} className="px-6 py-2.5 rounded-xl bg-black/80 hover:bg-black text-white font-bold backdrop-blur-xl border border-white/10 transition-colors">Discard</button>
-                   {upscaleModels.length > 0 && (
+                   {activeTool === 'video-edit' && (
+                     <button
+                       onClick={() => {
+                         const a = document.createElement('a');
+                         a.href = resultImage;
+                         a.download = `stylized_video_${Date.now()}.mp4`;
+                         a.target = '_blank';
+                         a.click();
+                       }}
+                       className="px-6 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold backdrop-blur-xl border border-white/10 transition-colors flex items-center gap-2"
+                     >
+                       Download
+                     </button>
+                   )}
+                   {upscaleModels.length > 0 && activeTool !== 'video-edit' && (
                      <button
                        onClick={async () => {
                          if (!resultImage || isUpscaling) return;
@@ -1461,7 +1631,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
                      </button>
                    )}
                    <button onClick={saveToLibrary} className={`px-6 py-2.5 rounded-xl bg-gradient-to-r ${currentToolDetails?.color} text-white font-bold backdrop-blur-xl border border-white/20 shadow-lg hover:scale-105 transition-transform flex items-center gap-2`}>
-                     <Camera size={16} /> Save to Library
+                     {activeTool === 'video-edit' ? <Video size={16} /> : <Camera size={16} />} Save to Library
                    </button>
                  </div>
                </div>

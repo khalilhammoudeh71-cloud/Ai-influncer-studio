@@ -93,6 +93,15 @@ export async function fetchUpscaleModels(): Promise<ModelInfo[]> {
   return data.upscaleModels || [];
 }
 
+export async function fetchVideoModels(): Promise<ModelInfo[]> {
+  const response = await authFetch('/api/models');
+  if (!response.ok) {
+    throw new Error('Failed to fetch video models');
+  }
+  const data = await response.json();
+  return data.videoModels || [];
+}
+
 export async function fetchAllModelTypes(): Promise<{ models: ModelInfo[]; editModels: ModelInfo[]; upscaleModels: ModelInfo[]; videoModels: ModelInfo[] }> {
   const response = await authFetch('/api/models');
   if (!response.ok) {
@@ -552,6 +561,9 @@ export async function generateTalkingHead(params: {
   heygenEngine?: 'avatar_iv' | 'avatar_v';
   heygenApiKey?: string;
   heygenAvatarId?: string;
+  camera?: string;
+  expression?: string;
+  lighting?: string;
 }): Promise<{ videoUrl: string; model: string }> {
   const compressed = params.portraitImage ? await compressForUpload(params.portraitImage) : undefined;
   const response = await authFetch('/api/talking-head', {

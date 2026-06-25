@@ -5,7 +5,9 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import OpenAI, { toFile } from 'openai';
 import { GoogleGenAI } from '@google/genai';
-import { Pool } from '@neondatabase/serverless';
+import convert from 'heic-convert';
+import { Jimp } from 'jimp';
+// Pool is imported dynamically in pushSchema to support different environments
 import apiRoutes from './routes';
 import stripeRoutes, { handleStripeWebhook } from './stripe-routes';
 import { requireAuth, deductCredits, isCreatorUser, AuthenticatedRequest } from './auth';
@@ -69,7 +71,11 @@ const HEYGEN_API_KEY = process.env.HEYGEN_API_KEY || process.env.heygen_api_key 
 const VENICE_API_KEY = process.env.Veniceai_api_key || process.env.veniceai_api_key || process.env.VENICEAI_API_KEY || process.env.VENICE_API_KEY || '';
 const VENICE_BASE = 'https://api.venice.ai/api/v1';
 
+const ATLASCLOUD_API_KEY = process.env.ATLASCLOUD_API_KEY || process.env.atlascloud_api_key || process.env.Atlascloud_api_key || '';
+const ATLASCLOUD_BASE = 'https://api.atlascloud.ai';
+
 const OPENAI_DIRECT_KEY = process.env.Openai_api_key || process.env.openai_api_key || process.env.OPENAI_API_KEY || '';
+
 
 interface ModelInfo {
   id: string;
@@ -164,8 +170,10 @@ let cachedEditModels: ModelInfo[] | null = null;
 let cachedUpscaleModels: ModelInfo[] | null = null;
 let cachedVideoModels: ModelInfo[] | null = null;
 let cachedVeniceModels: ModelInfo[] | null = null;
+let cachedAtlasCloudModels: ModelInfo[] | null = null;
 let cacheTimestamp = 0;
 let veniceCacheTimestamp = 0;
+let atlasCloudCacheTimestamp = 0;
 const CACHE_TTL = 30 * 60 * 1000;
 
 const SUBSCRIPTION_FREE_MODELS = [
@@ -374,6 +382,7 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
 
     const textToVideo = rawModels.filter((m: { type: string }) => m.type === 'text-to-video');
     const imageToVideo = rawModels.filter((m: { type: string }) => m.type === 'image-to-video');
+    const videoToVideo = rawModels.filter((m: { type: string }) => m.type === 'video-to-video');
 
     const videoModels: ModelInfo[] = [
       ...textToVideo.map((m: { model_id: string; base_price: number; description?: string; api_schema?: { api_schemas?: { api_path: string; request_schema?: { properties?: Record<string, unknown> } }[] } }) => {
@@ -420,6 +429,29 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
           apiPath,
           hasEditVariant: false,
           editImageField: imageField,
+          nsfw: isNsfwModel(m.model_id),
+        };
+      }),
+      ...videoToVideo.map((m: { model_id: string; base_price: number; description?: string; api_schema?: { api_schemas?: { api_path: string; request_schema?: { properties?: Record<string, unknown> } }[] } }) => {
+        const apiPath = resolveApiPath(m);
+        const providerSlash = m.model_id.indexOf('/');
+        const provider = m.model_id.slice(0, providerSlash);
+        const friendlyName = m.model_id
+          .replace('/video-to-video', '')
+          .replace('/v2v-', '')
+          .split('/').slice(1).join(' ')
+          .replace(/-/g, ' ')
+          .replace(/\b\w/g, (c: string) => c.toUpperCase());
+
+        return {
+          id: `wavespeed-v2v:${m.model_id}`,
+          name: friendlyName + ' (Video Edit)',
+          provider: PROVIDER_NAMES[provider] || provider,
+          type: 'video-to-video' as const,
+          price: applySubscriptionPricing(m.model_id, m.base_price),
+          description: m.description || 'Video style transfer or editing',
+          apiPath,
+          hasEditVariant: false,
           nsfw: isNsfwModel(m.model_id),
         };
       }),
@@ -511,7 +543,77 @@ async function fetchVeniceModels(): Promise<ModelInfo[]> {
   }
 }
 
-function getAllModels(wavespeedModels: ModelInfo[], veniceModels: ModelInfo[] = []): ModelInfo[] {
+async function fetchAtlasCloudModels(): Promise<ModelInfo[]> {
+  if (cachedAtlasCloudModels && Date.now() - atlasCloudCacheTimestamp < CACHE_TTL) {
+    return cachedAtlasCloudModels;
+  }
+  if (!ATLASCLOUD_API_KEY) {
+    console.warn('[AtlasCloud] No API key configured — skipping model fetch');
+    cachedAtlasCloudModels = [];
+    return [];
+  }
+
+  try {
+    const res = await fetch(`${ATLASCLOUD_BASE}/v1/models`, {
+      headers: { Authorization: `Bearer ${ATLASCLOUD_API_KEY}` },
+    });
+    if (!res.ok) {
+      console.warn('[AtlasCloud] Failed to fetch models:', res.status);
+      cachedAtlasCloudModels = cachedAtlasCloudModels || [];
+      return cachedAtlasCloudModels;
+    }
+    type AtlasModel = { id: string; name?: string; description?: string };
+    const json = await res.json() as { data?: AtlasModel[] };
+    const rawModels = json.data || [];
+
+    const imageModelIds = new Set([
+      'google/gemini-2.5-flash-image',
+      'google/gemini-3-pro-image-preview',
+      'google/gemini-3.1-flash-image-preview',
+      'openai/gpt-image-2',
+      'google/gemini-3.1-flash-image',
+    ]);
+
+    const models: ModelInfo[] = rawModels
+      .filter(m => imageModelIds.has(m.id))
+      .map(m => {
+        let displayName = m.name || m.id;
+        if (m.id === 'google/gemini-3.1-flash-image') {
+          displayName = 'Gemini 3.1 Flash Image (Atlas)';
+        } else if (m.id === 'openai/gpt-image-2') {
+          displayName = 'GPT Image 2 (Atlas)';
+        } else if (m.id === 'google/gemini-2.5-flash-image') {
+          displayName = 'Gemini 2.5 Flash Image (Atlas)';
+        } else if (m.id === 'google/gemini-3-pro-image-preview') {
+          displayName = 'Gemini 3 Pro Image (Atlas)';
+        } else if (m.id === 'google/gemini-3.1-flash-image-preview') {
+          displayName = 'Gemini 3.1 Flash Image Preview (Atlas)';
+        }
+
+        return {
+          id: `atlascloud:${m.id}`,
+          name: displayName,
+          provider: 'Atlas Cloud',
+          type: 'text-to-image' as const,
+          price: m.id.includes('gpt-image') ? 0.009 : 0.003,
+          description: m.description || `Atlas Cloud ${displayName}`,
+          apiPath: '',
+          hasEditVariant: false,
+        };
+      });
+
+    console.log('[AtlasCloud] Fetched', models.length, 'image models');
+    cachedAtlasCloudModels = models;
+    atlasCloudCacheTimestamp = Date.now();
+    return models;
+  } catch (err) {
+    console.error('[AtlasCloud] Failed to fetch models:', err);
+    cachedAtlasCloudModels = cachedAtlasCloudModels || [];
+    return cachedAtlasCloudModels;
+  }
+}
+
+function getAllModels(wavespeedModels: ModelInfo[], veniceModels: ModelInfo[] = [], atlasCloudModels: ModelInfo[] = []): ModelInfo[] {
   const builtIn: ModelInfo[] = [];
   if (OPENAI_DIRECT_KEY) {
     builtIn.push({
@@ -525,9 +627,8 @@ function getAllModels(wavespeedModels: ModelInfo[], veniceModels: ModelInfo[] = 
       hasEditVariant: true,
     });
   }
-  // Filter out Google/Nano Banana models from Wavespeed — these are served directly via Gemini API
   const filtered = wavespeedModels.filter(m => !/nano-banana/i.test(m.id));
-  return [...builtIn, ...filtered, ...veniceModels];
+  return [...builtIn, ...filtered, ...veniceModels, ...atlasCloudModels];
 }
 
 async function calculateGenerationCost(
@@ -546,11 +647,12 @@ async function calculateGenerationCost(
         baseCredits = 1; // Google images cost 1 credit
       } else {
         try {
-          const [wavespeedModels, veniceModels] = await Promise.all([
+          const [wavespeedModels, veniceModels, atlasCloudModels] = await Promise.all([
             fetchWavespeedModels(),
             fetchVeniceModels(),
+            fetchAtlasCloudModels(),
           ]);
-          const all = getAllModels(wavespeedModels, veniceModels);
+          const all = getAllModels(wavespeedModels, veniceModels, atlasCloudModels);
           const found = all.find(m => m.id === modelId);
           if (found) {
             baseCredits = found.price > 0 ? Math.ceil(found.price * 100) : 1;
@@ -753,6 +855,28 @@ async function generateWithReplit(prompt: string, referenceImage?: string | stri
   return `data:image/png;base64,${b64}`;
 }
 
+async function convertToSquarePngBuffer(dataUrl: string): Promise<Buffer> {
+  const cleanDataUrl = await convertHeicToJpegIfNecessary(dataUrl);
+  const { mimeType, data } = stripDataPrefix(cleanDataUrl);
+  const inputBuffer = Buffer.from(data, 'base64');
+  const image = await Jimp.read(inputBuffer);
+  
+  // Crop to square (center crop)
+  const width = image.bitmap.width;
+  const height = image.bitmap.height;
+  const size = Math.min(width, height);
+  const x = Math.floor((width - size) / 2);
+  const y = Math.floor((height - size) / 2);
+  image.crop({ x, y, w: size, h: size });
+  
+  // Resize if too large
+  if (size > 1024) {
+    image.resize({ w: 1024, h: 1024 });
+  }
+  
+  return await image.getBuffer('image/png');
+}
+
 async function generateWithDirectOpenAI(prompt: string, referenceImage?: string | string[], aspectRatio?: string, maskImage?: string): Promise<string> {
   if (!OPENAI_DIRECT_KEY) throw new Error('OpenAI API key not configured');
   const client = new OpenAI({ apiKey: OPENAI_DIRECT_KEY });
@@ -762,10 +886,17 @@ async function generateWithDirectOpenAI(prompt: string, referenceImage?: string 
 
   if (images.length > 0) {
     const imageFiles = await Promise.all(images.map(async (img, i) => {
-      const { mimeType, data } = stripDataPrefix(img);
-      const buffer = Buffer.from(data, 'base64');
-      const ext = mimeType.includes('png') ? 'png' : 'jpg';
-      return toFile(buffer, `reference_${i}.${ext}`, { type: mimeType });
+      try {
+        console.log('[OpenAI] Converting reference image to square PNG...');
+        const pngBuf = await convertToSquarePngBuffer(img);
+        return toFile(pngBuf, `reference_${i}.png`, { type: 'image/png' });
+      } catch (err) {
+        console.error('[OpenAI] Jimp conversion failed, falling back to raw:', err);
+        const { mimeType, data } = stripDataPrefix(img);
+        const buffer = Buffer.from(data, 'base64');
+        const ext = mimeType.includes('png') ? 'png' : 'jpg';
+        return toFile(buffer, `reference_${i}.${ext}`, { type: mimeType });
+      }
     }));
 
     const editParams: any = {
@@ -777,9 +908,16 @@ async function generateWithDirectOpenAI(prompt: string, referenceImage?: string 
     };
 
     if (maskImage) {
-      const { mimeType, data } = stripDataPrefix(maskImage);
-      const buffer = Buffer.from(data, 'base64');
-      editParams.mask = await toFile(buffer, 'mask.png', { type: mimeType });
+      try {
+        console.log('[OpenAI] Converting mask image to square PNG...');
+        const pngBuf = await convertToSquarePngBuffer(maskImage);
+        editParams.mask = await toFile(pngBuf, 'mask.png', { type: 'image/png' });
+      } catch (err) {
+        console.error('[OpenAI] Jimp mask conversion failed, falling back to raw:', err);
+        const { mimeType, data } = stripDataPrefix(maskImage);
+        const buffer = Buffer.from(data, 'base64');
+        editParams.mask = await toFile(buffer, 'mask.png', { type: mimeType });
+      }
     }
 
     response = await client.images.edit(editParams);
@@ -868,6 +1006,98 @@ async function generateWithVenice(rawModelId: string, prompt: string, aspectRati
   throw new Error('Venice AI returned no image data');
 }
 
+async function generateWithAtlasCloud(rawModelId: string, prompt: string, aspectRatio?: string, resolution?: string): Promise<string> {
+  if (!ATLASCLOUD_API_KEY) throw new Error('Atlas Cloud API key not configured');
+
+  // Try primary generateImage endpoint
+  try {
+    const res = await fetch(`${ATLASCLOUD_BASE}/api/v1/model/generateImage`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${ATLASCLOUD_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: rawModelId,
+        prompt,
+        enable_sync_mode: true,
+        enable_base64_output: true,
+      }),
+    });
+
+    if (res.ok) {
+      const data = await res.json() as {
+        data?: { url?: string; b64_json?: string }[] | string;
+        images?: { url?: string; b64_json?: string }[];
+        image?: string;
+      };
+      
+      if (typeof data.data === 'string' && data.data.startsWith('data:')) {
+        return data.data;
+      }
+      const images = Array.isArray(data.data) ? data.data : (data.images || []);
+      if (images.length > 0) {
+        const img = images[0];
+        if (img.b64_json) {
+          return img.b64_json.startsWith('data:') ? img.b64_json : `data:image/png;base64,${img.b64_json}`;
+        }
+        if (img.url) {
+          const imgRes = await fetch(img.url);
+          if (imgRes.ok) {
+            const buf = Buffer.from(await imgRes.arrayBuffer());
+            const ct = imgRes.headers.get('content-type') || 'image/png';
+            return `data:${ct.split(';')[0].trim()};base64,${buf.toString('base64')}`;
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[AtlasCloud] generateImage failed, falling back to OpenAI endpoint:', err);
+  }
+
+  // Fallback to OpenAI compatible /v1/images/generations endpoint
+  const res = await fetch(`${ATLASCLOUD_BASE}/v1/images/generations`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${ATLASCLOUD_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: rawModelId,
+      prompt,
+      n: 1,
+      response_format: 'b64_json',
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Atlas Cloud API error (${res.status}): ${text.slice(0, 300)}`);
+  }
+
+  const data = await res.json() as {
+    data?: { url?: string; b64_json?: string }[];
+  };
+
+  const images = data.data || [];
+  if (images.length > 0) {
+    const img = images[0];
+    if (img.b64_json) {
+      return img.b64_json.startsWith('data:') ? img.b64_json : `data:image/png;base64,${img.b64_json}`;
+    }
+    if (img.url) {
+      const imgRes = await fetch(img.url);
+      if (!imgRes.ok) throw new Error(`Failed to fetch image: ${imgRes.status}`);
+      const buf = Buffer.from(await imgRes.arrayBuffer());
+      const ct = imgRes.headers.get('content-type') || 'image/png';
+      return `data:${ct.split(';')[0].trim()};base64,${buf.toString('base64')}`;
+    }
+  }
+
+  throw new Error('Atlas Cloud returned no image data');
+}
+
+
 const WAVESPEED_ALLOWED_HOSTS = ['api.wavespeed.ai', 'wscdn.wavespeed.ai', 'cdn.wavespeed.ai'];
 
 function isAllowedWavespeedUrl(urlStr: string): boolean {
@@ -892,18 +1122,34 @@ async function fetchAllowedImage(urlStr: string): Promise<string> {
   return `data:${mimeType};base64,${imgBuf.toString('base64')}`;
 }
 
-async function resolveImageToDataUrl(input: string): Promise<string> {
-  if (input.startsWith('data:')) {
-    return input;
+async function convertHeicToJpegIfNecessary(dataUrl: string): Promise<string> {
+  if (dataUrl.startsWith('data:image/heic') || dataUrl.startsWith('data:image/heif')) {
+    const mimeMatch = dataUrl.match(/^data:([^;]+);base64,/);
+    const mimeType = mimeMatch?.[1] || '';
+    if (mimeType.includes('heic') || mimeType.includes('heif')) {
+      console.log('[HEIC] Converting HEIC image to JPEG...');
+      const base64Data = dataUrl.replace(/^data:[^;]+;base64,/, '');
+      const inputBuffer = Buffer.from(base64Data, 'base64');
+      const outputBuffer = await convert({
+        buffer: inputBuffer,
+        format: 'JPEG',
+        quality: 0.92
+      });
+      return `data:image/jpeg;base64,${outputBuffer.toString('base64')}`;
+    }
   }
-  if (input.startsWith('http://') || input.startsWith('https://')) {
+  return dataUrl;
+}
+
+async function resolveImageToDataUrl(input: string): Promise<string> {
+  let resolved: string;
+  if (input.startsWith('data:')) {
+    resolved = input;
+  } else if (input.startsWith('http://') || input.startsWith('https://')) {
     // For Wavespeed URLs use the existing trusted fetch path
     if (isAllowedWavespeedUrl(input)) {
-      return await fetchAllowedImage(input);
-    }
-    // For any other HTTPS image URL (e.g. visual library images from other CDNs),
-    // fetch and validate that the response is actually an image
-    if (input.startsWith('https://')) {
+      resolved = await fetchAllowedImage(input);
+    } else if (input.startsWith('https://')) {
       const imgRes = await fetch(input);
       if (!imgRes.ok) throw new Error(`Failed to fetch source image: ${imgRes.status}`);
       const ct = imgRes.headers.get('content-type') || '';
@@ -915,6 +1161,7 @@ async function resolveImageToDataUrl(input: string): Promise<string> {
           if (sig[0] === 0x89 && sig[1] === 0x50) mimeType = 'image/png';
           else if (sig[0] === 0xFF && sig[1] === 0xD8) mimeType = 'image/jpeg';
           else if (sig[0] === 0x52 && sig[1] === 0x49) mimeType = 'image/webp';
+          else if (imgBuf.toString('ascii', 4, 12) === 'ftypheic' || imgBuf.toString('ascii', 4, 12) === 'ftypmif1') mimeType = 'image/heic';
           else mimeType = 'image/png';
           console.log('[Image] Content-type was', ct, '→ detected as', mimeType, 'from magic bytes');
         } else {
@@ -922,11 +1169,14 @@ async function resolveImageToDataUrl(input: string): Promise<string> {
         }
       }
       console.log('[Image] Fetched external image, size:', imgBuf.length, 'type:', mimeType);
-      return `data:${mimeType};base64,${imgBuf.toString('base64')}`;
+      resolved = `data:${mimeType};base64,${imgBuf.toString('base64')}`;
+    } else {
+      throw new Error('Only HTTPS image URLs or base64/data URLs are accepted as source images');
     }
-    throw new Error('Only HTTPS image URLs or base64/data URLs are accepted as source images');
+  } else {
+    resolved = `data:image/png;base64,${input}`;
   }
-  return `data:image/png;base64,${input}`;
+  return await convertHeicToJpegIfNecessary(resolved);
 }
 
 function normalizeBase64Output(raw: string): string {
@@ -1171,8 +1421,12 @@ app.get('/api/models', requireAuth, async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     const isCreator = isCreatorUser(authReq.user.email);
 
-    const [wavespeedModels, veniceModels] = await Promise.all([fetchWavespeedModels(), fetchVeniceModels()]);
-    const allModels = getAllModels(wavespeedModels, veniceModels);
+    const [wavespeedModels, veniceModels, atlasCloudModels] = await Promise.all([
+      fetchWavespeedModels(),
+      fetchVeniceModels(),
+      fetchAtlasCloudModels(),
+    ]);
+    const allModels = getAllModels(wavespeedModels, veniceModels, atlasCloudModels);
 
     const googleImagenModels: ModelInfo[] = [
       {
@@ -1618,7 +1872,73 @@ Chat rules:
     const reply = response.text?.trim() || "Hey, give me a sec — I'll get back to you!";
     return res.json({ reply });
   } catch (err) {
-    console.error('[chat] Error:', err instanceof Error ? err.message : err);
+    console.error('[chat] Gemini error, attempting Atlas Cloud fallback:', err);
+    if (ATLASCLOUD_API_KEY) {
+      try {
+        const traits = Array.isArray(persona.personalityTraits) ? persona.personalityTraits.join(', ') : '';
+        const voiceRules = persona.brandVoiceRules ? `\nVoice rules: ${persona.brandVoiceRules}` : '';
+        const boundaries = persona.contentBoundaries ? `\nBoundaries: ${persona.contentBoundaries}` : '';
+        
+        const systemPrompt = `You are ${persona.name}, a real human influencer in the ${persona.niche} space. You are NOT an AI — never say you are, never break character.
+
+Tone: ${persona.tone}
+Bio: ${persona.bio || 'No bio provided'}
+Platform: ${persona.platform || 'Instagram'}${traits ? `\nPersonality: ${traits}` : ''}${voiceRules}${boundaries}
+
+Chat rules:
+- Sound exactly like a real human texting or DM-ing. Casual, warm, and authentic.
+- Keep replies short and natural — 1 to 3 sentences unless the topic warrants more.
+- Never use bullet points or lists unless it feels completely natural in context.
+- Don't start every reply with the person's name.
+- Use your persona's unique voice consistently.
+- If someone asks if you're AI, deflect charmingly and stay in character.
+- Avoid corporate-sounding or overly polished language.`;
+
+        const formattedMessages = [
+          { role: 'system', content: systemPrompt }
+        ];
+
+        if (Array.isArray(messages)) {
+          messages
+            .filter((m: any) => m.type === 'text' && m.content)
+            .slice(-12)
+            .forEach((m: any) => {
+              formattedMessages.push({
+                role: m.role === 'user' ? 'user' : 'assistant',
+                content: m.content
+              });
+            });
+        }
+        formattedMessages.push({ role: 'user', content: userMessage });
+
+        const atlasRes = await fetch(`${ATLASCLOUD_BASE}/v1/chat/completions`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${ATLASCLOUD_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'deepseek-ai/DeepSeek-V3.1',
+            messages: formattedMessages,
+            temperature: 0.92,
+            max_tokens: 400,
+          }),
+        });
+
+        if (atlasRes.ok) {
+          const atlasData = await atlasRes.json() as any;
+          const reply = atlasData.choices?.[0]?.message?.content?.trim();
+          if (reply) {
+            console.log('[chat] Success with Atlas Cloud DeepSeek fallback');
+            return res.json({ reply });
+          }
+        } else {
+          console.warn('[chat] Atlas Cloud fallback request failed with status:', atlasRes.status);
+        }
+      } catch (atlasErr) {
+        console.error('[chat] Atlas Cloud fallback failed:', atlasErr);
+      }
+    }
     return res.status(500).json({ error: err instanceof Error ? err.message : 'Chat failed' });
   }
 });
@@ -1850,12 +2170,12 @@ NEW ANGLE: ${prompt}` });
 
   // Map model IDs to their actual Gemini API model names
   const GEMINI_MODEL_MAP: Record<string, string> = {
-    'google:nano-banana-2': 'gemini-3.1-flash-image-preview',
-    'google:nano-banana-pro': 'gemini-3-pro-image-preview',
+    'google:nano-banana-2': 'gemini-3.1-flash-image',
+    'google:nano-banana-pro': 'gemini-3-pro-image',
     'google:nano-banana': 'gemini-2.5-flash-image',
-    'google:gemini-image': 'gemini-3.1-flash-image-preview',
+    'google:gemini-image': 'gemini-3.1-flash-image',
   };
-  const geminiModel = GEMINI_MODEL_MAP[modelId] || 'gemini-3.1-flash-image-preview';
+  const geminiModel = GEMINI_MODEL_MAP[modelId] || 'gemini-3.1-flash-image';
   const isGeminiModel = !!GEMINI_MODEL_MAP[modelId];
   const effectiveCount = count && count > 1 ? Math.min(count, 4) : 1;
   let geminiBlockReason: string | undefined;
@@ -2032,6 +2352,22 @@ app.post('/api/generate-image', async (req, res) => {
         imageUrls = [await generateWithVenice(veniceModelId, prompt, aspectRatio, isNsfw, resolution)];
       }
       modelName = veniceModel?.name || veniceModelId;
+    } else if (modelId.startsWith('atlascloud:')) {
+      const atlasModelId = modelId.replace('atlascloud:', '');
+      prompt = buildPrompt({ ...rest, referenceImage });
+      const allAtlasModels = cachedAtlasCloudModels || [];
+      const atlasModel = allAtlasModels.find(m => m.id === modelId);
+      if (count > 1) {
+        const results = await Promise.allSettled(Array.from({ length: count }, () => generateWithAtlasCloud(atlasModelId, prompt, aspectRatio, resolution)));
+        imageUrls = results.filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled').map(r => r.value);
+        if (imageUrls.length === 0) {
+          const firstErr = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
+          throw firstErr ? firstErr.reason : new Error('All Atlas Cloud image generation requests failed');
+        }
+      } else {
+        imageUrls = [await generateWithAtlasCloud(atlasModelId, prompt, aspectRatio, resolution)];
+      }
+      modelName = atlasModel?.name || atlasModelId;
     } else if (modelId.startsWith('google:')) {
       prompt = buildPrompt({ ...rest, referenceImage });
       const GOOGLE_NAMES: Record<string, string> = {
@@ -2349,7 +2685,7 @@ async function extractWavespeedVideoOutput(json: Record<string, unknown>): Promi
     const pollUrl = (data?.urls as Record<string, string>)?.get || (data?.id ? `https://api.wavespeed.ai/api/v3/predictions/${data.id}/result` : null);
     if (pollUrl && isAllowedWavespeedUrl(pollUrl)) {
       console.log('[Wavespeed Video] Polling:', pollUrl.substring(0, 120));
-      for (let attempt = 0; attempt < 60; attempt++) {
+      for (let attempt = 0; attempt < 200; attempt++) {
         await new Promise(r => setTimeout(r, 3000));
         const pollRes = await fetch(pollUrl, {
           headers: { Authorization: `Bearer ${WAVESPEED_API_KEY}` },
@@ -2379,15 +2715,23 @@ async function extractWavespeedVideoOutput(json: Record<string, unknown>): Promi
           throw new Error('Video completed but no video URL found');
         }
       }
-      throw new Error('Video generation timed out after 3 minutes');
+      throw new Error('Video generation timed out after 10 minutes');
     }
   }
 
   throw new Error('No video output found in Wavespeed response');
 }
 
+async function resolveVideoUrlOrDataUrl(input: string): Promise<string> {
+  if (input.startsWith('data:') || input.startsWith('http://') || input.startsWith('https://')) {
+    return input;
+  }
+  throw new Error('Invalid video input source');
+}
+
 app.post('/api/generate-video', async (req, res) => {
-  const { prompt: rawPrompt, modelId, sourceImage, identityLock, naturalLook } = req.body;
+  req.setTimeout(600000);
+  const { prompt: rawPrompt, modelId, sourceImage, sourceVideo, strength, identityLock, naturalLook } = req.body;
 
   if (!rawPrompt || typeof rawPrompt !== 'string' || !rawPrompt.trim() || !modelId) {
     return res.status(400).json({ error: 'prompt and modelId are required' });
@@ -2432,10 +2776,14 @@ app.post('/api/generate-video', async (req, res) => {
     }
 
     let isI2V = modelId.startsWith('wavespeed-i2v:');
+    let isV2V = modelId.startsWith('wavespeed-v2v:');
     let activeModel = videoModel;
 
     if (isI2V && !sourceImage) {
       return res.status(400).json({ error: 'Image-to-video models require a source image' });
+    }
+    if (isV2V && !sourceVideo) {
+      return res.status(400).json({ error: 'Video-to-video models require a source video' });
     }
 
     if (!isI2V && sourceImage) {
@@ -2480,7 +2828,15 @@ app.post('/api/generate-video', async (req, res) => {
       }
     }
 
-    console.log('[Video Gen] Model:', activeModel.name, 'Path:', activeModel.apiPath, 'Type:', isI2V ? 'i2v' : 't2v', '| hasImage:', !!sourceImage);
+    if (sourceVideo) {
+      const videoSrc = await resolveVideoUrlOrDataUrl(sourceVideo);
+      payload.video = videoSrc;
+      if (strength !== undefined) {
+        payload.strength = Number(strength);
+      }
+    }
+
+    console.log('[Video Gen] Model:', activeModel.name, 'Path:', activeModel.apiPath, 'Type:', isV2V ? 'v2v' : isI2V ? 'i2v' : 't2v', '| hasImage:', !!sourceImage, '| hasVideo:', !!sourceVideo);
     const url = `https://api.wavespeed.ai${activeModel.apiPath}`;
     const apiRes = await fetch(url, {
       method: 'POST',
@@ -3092,8 +3448,30 @@ app.post('/api/heygen-create-avatar', async (req, res) => {
 
 // ─── Talking Head ─────────────────────────────────────────────────────────────
 app.post('/api/talking-head', async (req, res) => {
-  const { portraitImage, audioUrl, script, voiceName = 'Aoede', engine = 'wavespeed', heygenEngine = 'avatar_iv', heygenApiKey, heygenAvatarId } = req.body as {
-    portraitImage?: string; audioUrl?: string; script?: string; voiceName?: string; engine?: 'wavespeed' | 'heygen'; heygenEngine?: 'avatar_iv' | 'avatar_v'; heygenApiKey?: string; heygenAvatarId?: string;
+  const { 
+    portraitImage, 
+    audioUrl, 
+    script, 
+    voiceName = 'Aoede', 
+    engine = 'wavespeed', 
+    heygenEngine = 'avatar_iv', 
+    heygenApiKey, 
+    heygenAvatarId,
+    camera = 'close_up',
+    expression = 'neutral',
+    lighting = 'studio'
+  } = req.body as {
+    portraitImage?: string; 
+    audioUrl?: string; 
+    script?: string; 
+    voiceName?: string; 
+    engine?: 'wavespeed' | 'heygen'; 
+    heygenEngine?: 'avatar_iv' | 'avatar_v'; 
+    heygenApiKey?: string; 
+    heygenAvatarId?: string;
+    camera?: string;
+    expression?: string;
+    lighting?: string;
   };
   
   if (!portraitImage && !heygenAvatarId) return res.status(400).json({ error: 'portraitImage or heygenAvatarId is required' });
@@ -3185,7 +3563,13 @@ app.post('/api/talking-head', async (req, res) => {
     const r = await fetch(`${WAVESPEED_BASE}/wavespeed-ai/ai-talking-photos`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${WAVESPEED_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image_url: img, audio_url: resolvedAudioUrl }),
+      body: JSON.stringify({ 
+        image_url: img, 
+        audio_url: resolvedAudioUrl,
+        camera,
+        expression,
+        lighting
+      }),
     });
     const json = await r.json() as Record<string, unknown>;
     const videoUrl = await extractWavespeedVideoOutput(json);
@@ -3580,7 +3964,18 @@ sentiment percentages must add to 100.`;
 
 async function pushSchema() {
   try {
-    const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+    let pool;
+    if (process.env.VERCEL) {
+      const { Pool } = await import('@neondatabase/serverless');
+      pool = new Pool({ connectionString: process.env.DATABASE_URL });
+    } else {
+      const pgModule = await import('pg');
+      const cleanUrl = process.env.DATABASE_URL ? process.env.DATABASE_URL.split('?')[0] : '';
+      pool = new pgModule.default.Pool({ 
+        connectionString: cleanUrl,
+        ssl: { rejectUnauthorized: false }
+      });
+    }
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
@@ -3714,8 +4109,10 @@ if (process.env.NODE_ENV === 'production') {
 if (!process.env.VERCEL) {
   const PORT = parseInt(process.env.PORT || '3001', 10);
   pushSchema().then(() => {
-    app.listen(PORT, '0.0.0.0', () => {
+    const server = app.listen(PORT, '0.0.0.0', () => {
       console.log(`[AI Image Server] Listening on port ${PORT}`);
+      // Reloaded on key update
+      console.log(`[Gemini Key Check] Active Gemini API Key prefix: ${getGeminiDirectKey() ? getGeminiDirectKey().substring(0, 7) + '...' : 'none'}`);
       if (WAVESPEED_API_KEY) {
         fetchWavespeedModels().then(models => {
           console.log(`[Wavespeed] Loaded ${models.length} generation, ${(cachedEditModels || []).length} edit, ${(cachedUpscaleModels || []).length} upscale models`);
@@ -3724,5 +4121,6 @@ if (!process.env.VERCEL) {
         console.warn('[Wavespeed] No API key configured — only built-in models available');
       }
     });
+    server.timeout = 600000;
   });
 }

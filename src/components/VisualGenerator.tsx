@@ -900,8 +900,14 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
                             onChange={(e) => setModelA(e.target.value)}
                             className="w-full bg-[#111827]/80 border border-[#334155]/60 focus:border-[#00D4FF] rounded-xl px-3 py-1.5 text-xs text-white outline-none appearance-none pr-8 cursor-pointer shadow-sm font-semibold animate-in fade-in"
                           >
-                            {models.map((m) => (
-                              <option key={m.id} value={m.id}>{m.name}</option>
+                            {Object.entries(groupedModels).map(([provider, providerModels]) => (
+                              <optgroup key={provider} label={provider} className="bg-[#111827] text-[#94A3B8] font-bold">
+                                {providerModels.map((m) => (
+                                  <option key={m.id} value={m.id} className="text-white font-semibold">
+                                    {m.name}
+                                  </option>
+                                ))}
+                              </optgroup>
                             ))}
                           </select>
                           <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8] pointer-events-none" />
@@ -916,8 +922,14 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
                             onChange={(e) => setModelB(e.target.value)}
                             className="w-full bg-[#111827]/80 border border-[#334155]/60 focus:border-[#00D4FF] rounded-xl px-3 py-1.5 text-xs text-white outline-none appearance-none pr-8 cursor-pointer shadow-sm font-semibold animate-in fade-in"
                           >
-                            {models.map((m) => (
-                              <option key={m.id} value={m.id}>{m.name}</option>
+                            {Object.entries(groupedModels).map(([provider, providerModels]) => (
+                              <optgroup key={provider} label={provider} className="bg-[#111827] text-[#94A3B8] font-bold">
+                                {providerModels.map((m) => (
+                                  <option key={m.id} value={m.id} className="text-white font-semibold">
+                                    {m.name}
+                                  </option>
+                                ))}
+                              </optgroup>
                             ))}
                           </select>
                           <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8] pointer-events-none" />
@@ -951,10 +963,14 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
                           }}
                           className="w-full bg-[#111827]/80 border border-[#334155]/60 focus:border-[#00D4FF] rounded-xl px-3 py-1.5 text-xs text-white outline-none appearance-none pr-8 cursor-pointer shadow-sm transition-all font-semibold"
                         >
-                          {models.map((m) => (
-                            <option key={m.id} value={m.id}>
-                              {m.name} {m.hasEditVariant ? '(Pro)' : ''}
-                            </option>
+                          {Object.entries(groupedModels).map(([provider, providerModels]) => (
+                            <optgroup key={provider} label={provider} className="bg-[#111827] text-[#94A3B8] font-bold">
+                              {providerModels.map((m) => (
+                                <option key={m.id} value={m.id} className="text-white font-semibold">
+                                  {m.name} {m.hasEditVariant ? '(Pro)' : ''}
+                                </option>
+                              ))}
+                            </optgroup>
                           ))}
                         </select>
                         <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8] pointer-events-none" />

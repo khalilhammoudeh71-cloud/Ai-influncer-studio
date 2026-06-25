@@ -63,7 +63,7 @@ export const api = {
       request<GeneratedImage>(`/personas/${encodeURIComponent(personaId)}/images`, { method: 'POST', body: JSON.stringify(img) }),
     delete: (personaId: string, imageId: string) =>
       request<void>(`/personas/${encodeURIComponent(personaId)}/images/${encodeURIComponent(imageId)}`, { method: 'DELETE' }),
-    generateVideo: (params: { prompt: string; modelId: string; sourceImage?: string | null; identityLock?: boolean; naturalLook?: boolean }) =>
+    generateVideo: (params: { prompt: string; modelId: string; sourceImage?: string | null; sourceVideo?: string | null; strength?: number; identityLock?: boolean; naturalLook?: boolean }) =>
       requestWithBody<{ videoUrl: string }>('/generate-video', params),
   },
 
