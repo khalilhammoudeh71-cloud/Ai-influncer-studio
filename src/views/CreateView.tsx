@@ -40,6 +40,7 @@ import {
   Play,
   Pause,
   Volume2,
+  Sliders,
 } from 'lucide-react';
 import { Persona, GeneratedImage, NavActions, Tab, NavEntry } from '../types';
 import PlannerView from './PlannerView';
@@ -309,6 +310,9 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const [videoModels, setVideoModels] = useState<ModelInfo[]>([]);
   const [selectedModel, setSelectedModel] = useState('');
   const [selectedVideoModel, setSelectedVideoModel] = useState('');
+  const [selectedVideoAspectRatio, setSelectedVideoAspectRatio] = useState('16:9');
+  const [selectedVideoDuration, setSelectedVideoDuration] = useState(5);
+  const [selectedVideoResolution, setSelectedVideoResolution] = useState('720p');
   const [modelsLoading, setModelsLoading] = useState(true);
 
   const [isGenerating, setIsGenerating] = useState(false);
@@ -610,6 +614,30 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       .finally(() => setModelsLoading(false));
   }, []);
 
+  useEffect(() => {
+    if (!selectedVideoModel) return;
+    const selectedVideoInfo = videoModels.find(m => m.id === selectedVideoModel);
+    if (!selectedVideoInfo) return;
+
+    const isGoogle = selectedVideoInfo.provider?.toLowerCase().includes('google') || false;
+    
+    if (isGoogle) {
+      if (!['16:9', '9:16', '1:1'].includes(selectedVideoAspectRatio)) {
+        setSelectedVideoAspectRatio('16:9');
+      }
+      if (!['720p', '1080p'].includes(selectedVideoResolution)) {
+        setSelectedVideoResolution('720p');
+      }
+    } else {
+      if (!['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'].includes(selectedVideoAspectRatio)) {
+        setSelectedVideoAspectRatio('16:9');
+      }
+      if (!['480p', '720p', '1080p', '4k'].includes(selectedVideoResolution)) {
+        setSelectedVideoResolution('720p');
+      }
+    }
+  }, [selectedVideoModel, videoModels]);
+
   const sortedModels = useMemo(() => {
     const priority = (m: ModelInfo) =>
       m.id.startsWith('google:') ? 0
@@ -848,7 +876,21 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       if (isI2VModel && !sourceImg) {
         throw new Error('Image-to-video models require a source image. Select a persona or upload an image.');
       }
-      const data = await generateVideo(videoPrompt, selectedVideoModel, sourceImg, identityLock, naturalLook);
+      const selectedVideoInfo = videoModels.find(m => m.id === selectedVideoModel);
+      const supportsAspectRatio = selectedVideoInfo?.supportedProperties?.some(p => ['aspect_ratio', 'aspectRatio', 'ratio'].includes(p)) ?? false;
+      const supportsDuration = selectedVideoInfo?.supportedProperties?.some(p => ['duration', 'length', 'seconds'].includes(p)) ?? false;
+      const supportsResolution = selectedVideoInfo?.supportedProperties?.some(p => ['resolution', 'quality', 'size'].includes(p)) ?? false;
+
+      const data = await generateVideo(
+        videoPrompt,
+        selectedVideoModel,
+        sourceImg,
+        identityLock,
+        naturalLook,
+        supportsAspectRatio ? selectedVideoAspectRatio : undefined,
+        supportsDuration ? selectedVideoDuration : undefined,
+        supportsResolution ? selectedVideoResolution : undefined
+      );
       setVideoResult(data);
     } catch (err: unknown) {
       setGlobalError(err instanceof Error ? err.message : 'Video generation failed.');
@@ -871,7 +913,21 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       const frameData = await frameRes.json();
       if (!frameRes.ok) throw new Error(frameData.error || 'Could not extract last frame');
 
-      const data = await generateVideo(videoPrompt, selectedVideoModel, frameData.frameDataUrl, identityLock, naturalLook);
+      const selectedVideoInfo = videoModels.find(m => m.id === selectedVideoModel);
+      const supportsAspectRatio = selectedVideoInfo?.supportedProperties?.some(p => ['aspect_ratio', 'aspectRatio', 'ratio'].includes(p)) ?? false;
+      const supportsDuration = selectedVideoInfo?.supportedProperties?.some(p => ['duration', 'length', 'seconds'].includes(p)) ?? false;
+      const supportsResolution = selectedVideoInfo?.supportedProperties?.some(p => ['resolution', 'quality', 'size'].includes(p)) ?? false;
+
+      const data = await generateVideo(
+        videoPrompt,
+        selectedVideoModel,
+        frameData.frameDataUrl,
+        identityLock,
+        naturalLook,
+        supportsAspectRatio ? selectedVideoAspectRatio : undefined,
+        supportsDuration ? selectedVideoDuration : undefined,
+        supportsResolution ? selectedVideoResolution : undefined
+      );
       setExtendResult(data);
     } catch (err: unknown) {
       setExtendError(err instanceof Error ? err.message : 'Video extension failed.');
@@ -1796,11 +1852,127 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     </div>
   );
 
-  const renderVideoMode = () => (
-    <div className="grid grid-cols-1 lg:grid-cols-[440px_1fr] gap-4 items-start">
-      {/* ══ LEFT COLUMN — Controls ══ */}
-      <div className="space-y-4 h-full overflow-y-auto pr-2 custom-scrollbar pb-20">
-        {renderVideoModelSelect()}
+  const renderVideoMode = () => {
+    const selectedVideoInfo = videoModels.find(m => m.id === selectedVideoModel);
+    const isGoogleVideo = selectedVideoInfo?.provider?.toLowerCase().includes('google') || false;
+    const supportsVideoAspectRatio = selectedVideoInfo?.supportedProperties?.some(p => ['aspect_ratio', 'aspectRatio', 'ratio'].includes(p)) ?? false;
+    const supportsVideoDuration = selectedVideoInfo?.supportedProperties?.some(p => ['duration', 'length', 'seconds'].includes(p)) ?? false;
+    const supportsVideoResolution = selectedVideoInfo?.supportedProperties?.some(p => ['resolution', 'quality', 'size'].includes(p)) ?? false;
+
+    const videoAspectRatioOptions = isGoogleVideo ? [
+      { value: '16:9', label: '16:9', desc: 'Landscape' },
+      { value: '9:16', label: '9:16', desc: 'Vertical' },
+      { value: '1:1', label: '1:1', desc: 'Square' }
+    ] : [
+      { value: '16:9', label: '16:9', desc: 'Landscape' },
+      { value: '9:16', label: '9:16', desc: 'Vertical' },
+      { value: '1:1', label: '1:1', desc: 'Square' },
+      { value: '4:3', label: '4:3', desc: 'Standard' },
+      { value: '3:4', label: '3:4', desc: 'Tall' },
+      { value: '21:9', label: '21:9', desc: 'Cinematic' }
+    ];
+
+    const videoResolutionOptions = isGoogleVideo ? [
+      { value: '720p', label: '720p' },
+      { value: '1080p', label: '1080p' }
+    ] : [
+      { value: '480p', label: '480p' },
+      { value: '720p', label: '720p' },
+      { value: '1080p', label: '1080p' },
+      { value: '4k', label: '4K' }
+    ];
+
+    return (
+      <div className="grid grid-cols-1 lg:grid-cols-[440px_1fr] gap-4 items-start">
+        {/* ══ LEFT COLUMN — Controls ══ */}
+        <div className="space-y-4 h-full overflow-y-auto pr-2 custom-scrollbar pb-20">
+          {renderVideoModelSelect()}
+
+          {/* Video Generation Parameters */}
+          {(supportsVideoAspectRatio || supportsVideoResolution || supportsVideoDuration) && (
+            <div className="p-4 bg-white/[0.02] border border-white/5 rounded-2xl space-y-4">
+              <div className="flex items-center gap-2 pb-1 border-b border-white/5">
+                <Sliders className="w-3.5 h-3.5 text-pink-400" />
+                <span className="text-[10px] font-black text-pink-300 uppercase tracking-wider">Video Settings</span>
+              </div>
+
+              {/* Aspect Ratio Selector */}
+              {supportsVideoAspectRatio && (
+                <div className="space-y-2">
+                  <label className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase block tracking-wider">Aspect Ratio</label>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {videoAspectRatioOptions.map(ar => {
+                      const active = selectedVideoAspectRatio === ar.value;
+                      return (
+                        <button
+                          key={ar.value}
+                          type="button"
+                          onClick={() => setSelectedVideoAspectRatio(ar.value)}
+                          className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-center transition-all ${
+                            active 
+                              ? 'bg-pink-500/10 border-pink-500/40 text-pink-300 shadow-md shadow-pink-500/5' 
+                              : 'bg-[var(--bg-elevated)] border-[var(--border-default)] text-[var(--text-tertiary)] hover:border-white/20 hover:text-white'
+                          }`}
+                        >
+                          <span className="text-xs font-bold">{ar.label}</span>
+                          <span className="text-[8px] font-medium opacity-60 mt-0.5">{ar.desc}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Resolution Selector */}
+              {supportsVideoResolution && (
+                <div className="space-y-2">
+                  <label className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase block tracking-wider">Resolution</label>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {videoResolutionOptions.map(resOption => {
+                      const active = selectedVideoResolution === resOption.value;
+                      return (
+                        <button
+                          key={resOption.value}
+                          type="button"
+                          onClick={() => setSelectedVideoResolution(resOption.value)}
+                          className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl border text-center transition-all ${
+                            active 
+                              ? 'bg-pink-500/10 border-pink-500/40 text-pink-300 shadow-md shadow-pink-500/5' 
+                              : 'bg-[var(--bg-elevated)] border-[var(--border-default)] text-[var(--text-tertiary)] hover:border-white/20 hover:text-white'
+                          }`}
+                        >
+                          <span className="text-xs font-bold">{resOption.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Duration Selector */}
+              {supportsVideoDuration && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase tracking-wider">Duration</label>
+                    <span className="text-xs font-black text-pink-400 bg-pink-500/10 px-2 py-0.5 rounded-md border border-pink-500/20">{selectedVideoDuration} seconds</span>
+                  </div>
+                  <div className="flex items-center gap-3 bg-[var(--bg-elevated)] border border-[var(--border-default)] p-3 rounded-xl">
+                    <span className="text-[10px] text-[var(--text-muted)] font-bold">3s</span>
+                    <input
+                      type="range"
+                      min="3"
+                      max="15"
+                      step="1"
+                      value={selectedVideoDuration}
+                      onChange={e => setSelectedVideoDuration(Number(e.target.value))}
+                      className="w-full h-1 bg-black/40 rounded-lg appearance-none cursor-pointer accent-pink-500 focus:outline-none"
+                    />
+                    <span className="text-[10px] text-[var(--text-muted)] font-bold">15s</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
         <div className="space-y-2">
           <div className="flex items-center justify-between">
@@ -1948,6 +2120,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       </div>
     </div>
   );
+  };
 
   const renderTextMode = () => {
     const isPromptMode = mode === 'prompt';

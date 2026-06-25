@@ -22,6 +22,7 @@ export interface ModelInfo {
   editHasStrengthControl?: boolean;
   isIdentityModel?: boolean;
   nsfw?: boolean;
+  supportedProperties?: string[];
 }
 
 export function canUseReference(model: ModelInfo, allModels: ModelInfo[]): boolean {
@@ -284,11 +285,23 @@ export async function upscaleImage(sourceImage: string, modelId: string): Promis
   return { imageUrl: data.imageUrl, model: data.model };
 }
 
-export async function generateVideo(prompt: string, modelId: string, sourceImage?: string, identityLock?: boolean, naturalLook?: boolean): Promise<{ videoUrl: string; model: string }> {
+export async function generateVideo(
+  prompt: string, 
+  modelId: string, 
+  sourceImage?: string, 
+  identityLock?: boolean, 
+  naturalLook?: boolean,
+  aspectRatio?: string,
+  duration?: number,
+  resolution?: string
+): Promise<{ videoUrl: string; model: string }> {
   const body: Record<string, unknown> = { prompt, modelId };
   if (sourceImage) body.sourceImage = sourceImage;
   if (identityLock !== undefined) body.identityLock = identityLock;
   if (naturalLook !== undefined) body.naturalLook = naturalLook;
+  if (aspectRatio) body.aspectRatio = aspectRatio;
+  if (duration !== undefined) body.duration = duration;
+  if (resolution) body.resolution = resolution;
   const response = await fetch('/api/generate-video', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

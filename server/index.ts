@@ -92,6 +92,7 @@ interface ModelInfo {
   isIdentityModel?: boolean;
   nsfw?: boolean;
   hasReferenceImage?: boolean;
+  supportedProperties?: string[];
 }
 
 const NSFW_MODEL_IDS = new Set([
@@ -394,6 +395,8 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
           .split('/').slice(1).join(' ')
           .replace(/-/g, ' ')
           .replace(/\b\w/g, (c: string) => c.toUpperCase());
+        const props = m.api_schema?.api_schemas?.[0]?.request_schema?.properties || {};
+        const supportedProps = Object.keys(props);
 
         return {
           id: `wavespeed-t2v:${m.model_id}`,
@@ -405,6 +408,7 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
           apiPath,
           hasEditVariant: false,
           nsfw: isNsfwModel(m.model_id),
+          supportedProperties: supportedProps,
         };
       }),
       ...imageToVideo.map((m: { model_id: string; base_price: number; description?: string; api_schema?: { api_schemas?: { api_path: string; request_schema?: { properties?: Record<string, unknown> } }[] } }) => {
@@ -418,6 +422,7 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
           .split('/').slice(1).join(' ')
           .replace(/-/g, ' ')
           .replace(/\b\w/g, (c: string) => c.toUpperCase());
+        const supportedProps = Object.keys(props);
 
         return {
           id: `wavespeed-i2v:${m.model_id}`,
@@ -430,6 +435,7 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
           hasEditVariant: false,
           editImageField: imageField,
           nsfw: isNsfwModel(m.model_id),
+          supportedProperties: supportedProps,
         };
       }),
       ...videoToVideo.map((m: { model_id: string; base_price: number; description?: string; api_schema?: { api_schemas?: { api_path: string; request_schema?: { properties?: Record<string, unknown> } }[] } }) => {
@@ -442,6 +448,8 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
           .split('/').slice(1).join(' ')
           .replace(/-/g, ' ')
           .replace(/\b\w/g, (c: string) => c.toUpperCase());
+        const props = m.api_schema?.api_schemas?.[0]?.request_schema?.properties || {};
+        const supportedProps = Object.keys(props);
 
         return {
           id: `wavespeed-v2v:${m.model_id}`,
@@ -453,6 +461,7 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
           apiPath,
           hasEditVariant: false,
           nsfw: isNsfwModel(m.model_id),
+          supportedProperties: supportedProps,
         };
       }),
     ];
@@ -1531,6 +1540,7 @@ app.get('/api/models', requireAuth, async (req, res) => {
         apiPath: 'veo-3.1-generate-preview',
         hasEditVariant: false,
         hasReferenceImage: true,
+        supportedProperties: ['aspect_ratio', 'resolution'],
       },
       {
         id: 'google:veo-3.1',
@@ -1542,6 +1552,7 @@ app.get('/api/models', requireAuth, async (req, res) => {
         apiPath: 'veo-3.1-generate-preview',
         hasEditVariant: false,
         hasReferenceImage: true,
+        supportedProperties: ['aspect_ratio', 'resolution'],
       },
       {
         id: 'google:veo-3.1-fast',
@@ -1553,6 +1564,7 @@ app.get('/api/models', requireAuth, async (req, res) => {
         apiPath: 'veo-3.1-fast-generate-preview',
         hasEditVariant: false,
         hasReferenceImage: true,
+        supportedProperties: ['aspect_ratio', 'resolution'],
       },
       {
         id: 'google:veo-3',
@@ -1564,6 +1576,7 @@ app.get('/api/models', requireAuth, async (req, res) => {
         apiPath: 'veo-3.0-generate-preview',
         hasEditVariant: false,
         hasReferenceImage: true,
+        supportedProperties: ['aspect_ratio', 'resolution'],
       },
       {
         id: 'google:veo-3-fast',
@@ -1575,6 +1588,7 @@ app.get('/api/models', requireAuth, async (req, res) => {
         apiPath: 'veo-3.0-fast-generate-preview',
         hasEditVariant: false,
         hasReferenceImage: true,
+        supportedProperties: ['aspect_ratio', 'resolution'],
       },
       {
         id: 'google:veo-2',
@@ -1586,6 +1600,7 @@ app.get('/api/models', requireAuth, async (req, res) => {
         apiPath: 'veo-2.0-generate-001',
         hasEditVariant: false,
         hasReferenceImage: true,
+        supportedProperties: ['aspect_ratio', 'resolution'],
       },
     ];
 
@@ -1647,18 +1662,33 @@ function getGeminiDirectClient(): GoogleGenAI {
   return new GoogleGenAI({ apiKey });
 }
 
-async function generateWithGeminiVideo(geminiModelId: string, prompt: string, sourceImage?: string): Promise<string> {
+async function generateWithGeminiVideo(
+  geminiModelId: string, 
+  prompt: string, 
+  sourceImage?: string,
+  aspectRatio?: string,
+  resolution?: string
+): Promise<string> {
   const apiKey = getGeminiDirectKey();
   if (!apiKey) throw new Error('Gemini API key not configured.');
 
   const ai = new GoogleGenAI({ apiKey });
 
+  const videoConfig: Record<string, unknown> = {
+    personGeneration: 'allow_all',
+    numberOfVideos: 1,
+  };
+
+  if (aspectRatio) {
+    videoConfig.aspect_ratio = aspectRatio;
+  }
+  if (resolution) {
+    videoConfig.resolution = resolution;
+  }
+
   const params: Record<string, unknown> = {
     model: geminiModelId,
-    config: {
-      personGeneration: 'allow_all',
-      numberOfVideos: 1,
-    },
+    config: videoConfig,
   };
 
   if (sourceImage) {
@@ -2731,7 +2761,7 @@ async function resolveVideoUrlOrDataUrl(input: string): Promise<string> {
 
 app.post('/api/generate-video', async (req, res) => {
   req.setTimeout(600000);
-  const { prompt: rawPrompt, modelId, sourceImage, sourceVideo, strength, identityLock, naturalLook } = req.body;
+  const { prompt: rawPrompt, modelId, sourceImage, sourceVideo, strength, identityLock, naturalLook, aspectRatio, duration, resolution } = req.body;
 
   if (!rawPrompt || typeof rawPrompt !== 'string' || !rawPrompt.trim() || !modelId) {
     return res.status(400).json({ error: 'prompt and modelId are required' });
@@ -2764,7 +2794,7 @@ app.post('/api/generate-video', async (req, res) => {
     if (GOOGLE_VEO_MAP[modelId]) {
       const geminiModelId = GOOGLE_VEO_MAP[modelId];
       console.log('[Video Gen] Google Veo model:', modelId, '→', geminiModelId, '| hasImage:', !!sourceImage);
-      const videoUrl = await generateWithGeminiVideo(geminiModelId, prompt, sourceImage || undefined);
+      const videoUrl = await generateWithGeminiVideo(geminiModelId, prompt, sourceImage || undefined, aspectRatio, resolution);
       const displayName = modelId.replace('google:', '').replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
       return res.json({ videoUrl, model: displayName });
     }
@@ -2818,6 +2848,20 @@ app.post('/api/generate-video', async (req, res) => {
     const payload: Record<string, unknown> = {
       prompt,
     };
+
+    const supported = activeModel.supportedProperties || [];
+    if (aspectRatio && (supported.includes('aspect_ratio') || supported.includes('aspectRatio') || supported.includes('ratio'))) {
+      const field = supported.find(k => k === 'aspect_ratio' || k === 'aspectRatio' || k === 'ratio')!;
+      payload[field] = aspectRatio;
+    }
+    if (duration !== undefined && (supported.includes('duration') || supported.includes('length') || supported.includes('seconds'))) {
+      const field = supported.find(k => k === 'duration' || k === 'length' || k === 'seconds')!;
+      payload[field] = Number(duration);
+    }
+    if (resolution && (supported.includes('resolution') || supported.includes('quality') || supported.includes('size'))) {
+      const field = supported.find(k => k === 'resolution' || k === 'quality' || k === 'size')!;
+      payload[field] = resolution;
+    }
 
     if (sourceImage) {
       const b64Url = await resolveImageToDataUrl(sourceImage);
