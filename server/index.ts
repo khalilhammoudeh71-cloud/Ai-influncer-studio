@@ -3263,6 +3263,132 @@ app.post('/api/remove-background', async (req, res) => {
   }
 });
 
+// ─── Voice Cloning (OmniVoice) ──────────────────────────────────────────────────
+async function extractWavespeedAudioOutput(json: Record<string, unknown>): Promise<string> {
+  const data = json.data as Record<string, unknown> | undefined;
+  if ((json.code as number) !== 200 || (data?.status as string) === 'failed') {
+    throw new Error((data?.error as string) || (json.message as string) || 'Wavespeed voice cloning request failed');
+  }
+
+  const outputs = (data?.outputs as string[]) || [];
+  if (outputs.length) return outputs[0];
+
+  const output = data?.output as string | undefined;
+  if (output) return output;
+
+  const audioUrl = (data?.audio_url || data?.audioUrl || data?.audio || data?.url) as string | undefined;
+  if (audioUrl) return audioUrl;
+
+  const status = data?.status as string | undefined;
+  if (status === 'processing' || status === 'queued' || status === 'completed' || status === 'created' || status === 'pending') {
+    const pollUrl = (data?.urls as Record<string, string>)?.get || (data?.id ? `https://api.wavespeed.ai/api/v3/predictions/${data.id}/result` : null);
+    if (pollUrl) {
+      console.log('[Wavespeed Audio] Polling prediction:', data.id);
+      for (let attempt = 0; attempt < 200; attempt++) {
+        await new Promise(r => setTimeout(r, 3000));
+        const pollRes = await fetch(pollUrl, {
+          headers: { Authorization: `Bearer ${WAVESPEED_API_KEY}` },
+        });
+        const pollJson = await pollRes.json();
+        const pollData = pollJson.data || {};
+        console.log('[Wavespeed Audio] Poll attempt', attempt + 1, 'status:', pollData.status);
+        if (pollData.status === 'failed') {
+          throw new Error(pollData.error || 'Audio generation failed during polling');
+        }
+        if (pollData.status === 'completed' || pollData.outputs?.length || pollData.output || pollData.audio_url) {
+          return pollData.outputs?.[0] || pollData.output || pollData.audio_url || pollData.audioUrl || pollData.url;
+        }
+      }
+    }
+  }
+
+  throw new Error('No audio output URL found in response');
+}
+
+async function resolveAudioToDataUrl(input: string): Promise<string> {
+  if (input.startsWith('data:')) return input;
+  if (input.startsWith('http')) {
+    const res = await fetch(input);
+    const buffer = Buffer.from(await res.arrayBuffer());
+    const mime = res.headers.get('content-type') || 'audio/mpeg';
+    return `data:${mime};base64,${buffer.toString('base64')}`;
+  }
+  return input;
+}
+
+app.post('/api/voice-clone', async (req, res) => {
+  if (!WAVESPEED_API_KEY) return res.status(503).json({ error: 'Wavespeed not configured' });
+  const { audio, text } = req.body as { audio: string; text: string };
+  if (!audio || !text) return res.status(400).json({ error: 'audio (reference) and text (script) are required' });
+
+  try {
+    const resolvedAudio = await resolveAudioToDataUrl(audio);
+    const r = await fetch(`${WAVESPEED_BASE}/wavespeed-ai/omnivoice`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${WAVESPEED_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        voice_file: resolvedAudio,
+        text: text
+      }),
+    });
+    const json = await r.json() as Record<string, unknown>;
+    const audioUrl = await extractWavespeedAudioOutput(json);
+    res.json({ audioUrl, model: 'wavespeed-ai/omnivoice' });
+  } catch (err) {
+    console.error('[voice-clone] Error:', err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Voice cloning failed' });
+  }
+});
+
+// ─── Talking Avatar (InfiniteTalk) ──────────────────────────────────────────────
+app.post('/api/talking-avatar', async (req, res) => {
+  if (!WAVESPEED_API_KEY) return res.status(503).json({ error: 'Wavespeed not configured' });
+  const { image, audio, text } = req.body as { image: string; audio: string; text: string };
+  if (!image || !audio || !text) {
+    return res.status(400).json({ error: 'image, audio (voice reference), and text (script) are required' });
+  }
+
+  try {
+    // 1. Clone voice via OmniVoice
+    console.log('[Talking Avatar] Step 1: Cloning voice via OmniVoice...');
+    const resolvedAudio = await resolveAudioToDataUrl(audio);
+    const cloneRes = await fetch(`${WAVESPEED_BASE}/wavespeed-ai/omnivoice`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${WAVESPEED_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        voice_file: resolvedAudio,
+        text: text
+      }),
+    });
+    const cloneJson = await cloneRes.json() as Record<string, unknown>;
+    const clonedAudioUrl = await extractWavespeedAudioOutput(cloneJson);
+    console.log('[Talking Avatar] Step 1 Complete. Cloned audio URL:', clonedAudioUrl);
+
+    // 2. Generate Lip-sync video via InfiniteTalk
+    console.log('[Talking Avatar] Step 2: Creating talking photo via InfiniteTalk...');
+    const resolvedImage = await resolveImageToDataUrl(image);
+    const talkingRes = await fetch(`${WAVESPEED_BASE}/wavespeed-ai/infinitetalk`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${WAVESPEED_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        image_url: resolvedImage,
+        audio_url: clonedAudioUrl,
+        camera: 'close_up',
+        expression: 'neutral',
+        lighting: 'studio'
+      }),
+    });
+    const talkingJson = await talkingRes.json() as Record<string, unknown>;
+    const videoUrl = await extractWavespeedVideoOutput(talkingJson);
+    console.log('[Talking Avatar] Step 2 Complete. Talking video URL:', videoUrl);
+
+    res.json({ videoUrl, audioUrl: clonedAudioUrl, model: 'wavespeed-ai/infinitetalk' });
+  } catch (err) {
+    console.error('[talking-avatar] Error:', err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Talking avatar generation failed' });
+  }
+});
+
 // ─── Virtual Try-On ───────────────────────────────────────────────────────────
 app.post('/api/virtual-tryon', async (req, res) => {
   if (!WAVESPEED_API_KEY) return res.status(503).json({ error: 'Wavespeed not configured' });

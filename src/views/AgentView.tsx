@@ -26,12 +26,15 @@ import {
   Heart,
   Save,
   Clock,
-  Coins
+  Coins,
+  RefreshCw,
+  Sliders,
+  Play
 } from 'lucide-react';
 import { Persona, Tab } from '../types';
 import { api } from '../services/apiService';
 import { generatePersonaPlan } from '../utils/personaEngine';
-import { generateImage } from '../services/imageService';
+import { generateImage, upscaleImage } from '../services/imageService';
 import toast from 'react-hot-toast';
 
 interface AgentViewProps {
@@ -67,7 +70,13 @@ interface Message {
   collaborationLogs?: CollaborationMsg[];
   isExecuting?: boolean;
   execLogs?: string[];
-  execSteps?: { type: string; params: any; status: 'pending' | 'running' | 'success' | 'error' }[];
+  execSteps?: { 
+    type: string; 
+    params: any; 
+    status: 'pending' | 'running' | 'success' | 'error';
+    resultUrl?: string;
+    isActionLoading?: 'video' | 'upscale' | 'swap' | null;
+  }[];
 }
 
 interface CustomPreset {
@@ -78,7 +87,7 @@ interface CustomPreset {
 const BASE_PRESETS: CustomPreset[] = [
   {
     name: "🎮 Twitch Gamer Sofia",
-    prompt: "Create a gamer girl named Sofia who streams on Twitch, Minecraft niche. Schedule a 7-day flirty Instagram planner, a video of her streaming, and log $50 tips."
+    prompt: "Create a gamer girl named Sofia who streams on Twitch, Minecraft niche. Schedule a 7-day flirty OnlyFans planner, a beach photo, and log $50 tips."
   },
   {
     name: "👔 Finance Coach Marco",
@@ -104,10 +113,25 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
   
   const [isSending, setIsSending] = useState(false);
   const [isListening, setIsListening] = useState(false);
-  const [canvasTab, setCanvasTab] = useState<'profile' | 'planner' | 'media'>('profile');
+  const [canvasTab, setCanvasTab] = useState<'profile' | 'planner' | 'studio' | 'media'>('profile');
   const [customPresets, setCustomPresets] = useState<CustomPreset[]>([]);
+  
+  // Clone & Talking Avatar Studio states
+  const [studioScript, setStudioScript] = useState('');
+  const [studioVoiceFile, setStudioVoiceFile] = useState<Attachment | null>(null);
+  const [studioAvatarImage, setStudioAvatarImage] = useState<Attachment | null>(null);
+  const [isStudioLoading, setIsStudioLoading] = useState<boolean>(false);
+  const [studioResultAudioUrl, setStudioResultAudioUrl] = useState<string | null>(null);
+  const [studioResultVideoUrl, setStudioResultVideoUrl] = useState<string | null>(null);
+
+  // In-chat swap context
+  const [activeSwapTarget, setActiveSwapTarget] = useState<{ msgId: string; stepIdx: number } | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const swapFileInputRef = useRef<HTMLInputElement>(null);
+  const studioVoiceRef = useRef<HTMLInputElement>(null);
+  const studioAvatarRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<any>(null);
 
   // Load custom presets from localStorage on mount
@@ -223,7 +247,6 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
     const name = personaStep?.params.name || 'Custom Influencer';
     const presetName = `✨ Preset: ${name}`;
 
-    // Find the user prompt that triggered this
     const userMsg = [...messages].reverse().find(m => m.role === 'user');
     const promptText = userMsg?.content || `Create influencer named ${name}`;
 
@@ -287,7 +310,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
           critiqueLogs: data.critiqueLogs || undefined,
           collaborationLogs: data.collaborationLogs || undefined,
           execSteps: data.suggestedSteps 
-            ? data.suggestedSteps.map((s: any) => ({ ...s, status: 'pending' }))
+            ? data.suggestedSteps.map((s: any) => ({ ...s, status: 'pending', resultUrl: undefined, isActionLoading: null }))
             : undefined,
           execLogs: data.suggestedSteps ? [] : undefined
         }
@@ -308,6 +331,261 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
     }
   };
 
+  // ─── In-Chat Visual Media Actions ──────────────────────────────────────────────
+  const handleUpscale = async (messageId: string, stepIdx: number, imageUrl: string) => {
+    setMessages(prev => prev.map(m => {
+      if (m.id === messageId && m.execSteps) {
+        const updated = [...m.execSteps];
+        updated[stepIdx].isActionLoading = 'upscale';
+        return { ...m, execSteps: updated };
+      }
+      return m;
+    }));
+
+    try {
+      // Default to wavespeed upscaler model
+      const result = await upscaleImage(imageUrl, 'wavespeed-upscale:wavespeed-ai/image-super-resolution-v2-4x');
+      toast.success('Image upscaled successfully!');
+      
+      setMessages(prev => prev.map(m => {
+        if (m.id === messageId && m.execSteps) {
+          const updated = [...m.execSteps];
+          updated[stepIdx].resultUrl = result.imageUrl;
+          updated[stepIdx].isActionLoading = null;
+          return { ...m, execSteps: updated };
+        }
+        return m;
+      }));
+    } catch (err: any) {
+      toast.error(err.message || 'Upscale failed');
+      setMessages(prev => prev.map(m => {
+        if (m.id === messageId && m.execSteps) {
+          const updated = [...m.execSteps];
+          updated[stepIdx].isActionLoading = null;
+          return { ...m, execSteps: updated };
+        }
+        return m;
+      }));
+    }
+  };
+
+  const handleMakeVideo = async (messageId: string, stepIdx: number, imageUrl: string) => {
+    setMessages(prev => prev.map(m => {
+      if (m.id === messageId && m.execSteps) {
+        const updated = [...m.execSteps];
+        updated[stepIdx].isActionLoading = 'video';
+        return { ...m, execSteps: updated };
+      }
+      return m;
+    }));
+
+    try {
+      const activeDraft = getActiveDraftState();
+      const currentPersona = personas.find(p => p.id !== 'empty') || personas[0];
+      
+      const result = await api.images.generateVideo({
+        prompt: `Cinematic motion video clip of influencer avatar, subtle camera movement, photorealistic`,
+        modelId: 'google:veo-omni',
+        strength: 0.6,
+        sourceImage: imageUrl
+      });
+
+      toast.success('Video clip generated successfully!');
+      
+      // Append video to media tab & show in toast/log
+      setMessages(prev => prev.map(m => {
+        if (m.id === messageId && m.execSteps) {
+          const updated = [...m.execSteps];
+          updated[stepIdx].isActionLoading = null;
+          // Temporarily override resultUrl as video to play inline
+          updated[stepIdx].resultUrl = result.videoUrl;
+          return { ...m, execSteps: updated };
+        }
+        return m;
+      }));
+    } catch (err: any) {
+      toast.error(err.message || 'Video generation failed');
+      setMessages(prev => prev.map(m => {
+        if (m.id === messageId && m.execSteps) {
+          const updated = [...m.execSteps];
+          updated[stepIdx].isActionLoading = null;
+          return { ...m, execSteps: updated };
+        }
+        return m;
+      }));
+    }
+  };
+
+  const triggerFaceSwap = (messageId: string, stepIdx: number) => {
+    setActiveSwapTarget({ msgId: messageId, stepIdx });
+    swapFileInputRef.current?.click();
+  };
+
+  const handleSwapFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!activeSwapTarget || !e.target.files?.[0]) return;
+    const file = e.target.files[0];
+    const { msgId, stepIdx } = activeSwapTarget;
+
+    setMessages(prev => prev.map(m => {
+      if (m.id === msgId && m.execSteps) {
+        const updated = [...m.execSteps];
+        updated[stepIdx].isActionLoading = 'swap';
+        return { ...m, execSteps: updated };
+      }
+      return m;
+    }));
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const swapImageBase64 = reader.result as string;
+        
+        // Find current step's image url
+        const targetMsg = messages.find(m => m.id === msgId);
+        const originalImageUrl = targetMsg?.execSteps?.[stepIdx].resultUrl || '';
+
+        const res = await fetch('/api/face-swap', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            targetImage: originalImageUrl,
+            swapImage: swapImageBase64
+          })
+        });
+
+        if (!res.ok) {
+          const d = await res.json();
+          throw new Error(d.error || 'Face swap failed');
+        }
+
+        const data = await res.json();
+        toast.success('Face swap executed successfully!');
+
+        setMessages(prev => prev.map(m => {
+          if (m.id === msgId && m.execSteps) {
+            const updated = [...m.execSteps];
+            updated[stepIdx].resultUrl = data.imageUrl;
+            updated[stepIdx].isActionLoading = null;
+            return { ...m, execSteps: updated };
+          }
+          return m;
+        }));
+      } catch (err: any) {
+        toast.error(err.message || 'Face swap failed');
+        setMessages(prev => prev.map(m => {
+          if (m.id === msgId && m.execSteps) {
+            const updated = [...m.execSteps];
+            updated[stepIdx].isActionLoading = null;
+            return { ...m, execSteps: updated };
+          }
+          return m;
+        }));
+      } finally {
+        setActiveSwapTarget(null);
+      }
+    };
+    reader.readAsDataURL(file);
+    if (swapFileInputRef.current) swapFileInputRef.current.value = '';
+  };
+
+  // ─── Wavespeed Clone & Talking Avatar Studio Handlers ───────────────────────
+  const handleStudioVoiceSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setStudioVoiceFile({
+        name: file.name,
+        dataUrl: reader.result as string,
+        mimeType: file.type
+      });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleStudioAvatarSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setStudioAvatarImage({
+        name: file.name,
+        dataUrl: reader.result as string,
+        mimeType: file.type
+      });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const executeVoiceCloneOnly = async () => {
+    if (!studioScript.trim() || !studioVoiceFile) {
+      toast.error('Script and Voice Reference file are required.');
+      return;
+    }
+
+    setIsStudioLoading(true);
+    setStudioResultAudioUrl(null);
+    setStudioResultVideoUrl(null);
+    toast.loading('Cloning voice via OmniVoice API...', { id: 'studio-job' });
+
+    try {
+      const res = await fetch('/api/voice-clone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          audio: studioVoiceFile.dataUrl,
+          text: studioScript
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Voice cloning failed');
+
+      setStudioResultAudioUrl(data.audioUrl);
+      toast.success('Voice narration cloned successfully!', { id: 'studio-job' });
+    } catch (err: any) {
+      toast.error(err.message || 'OmniVoice clone failed', { id: 'studio-job' });
+    } finally {
+      setIsStudioLoading(false);
+    }
+  };
+
+  const executeTalkingAvatar = async () => {
+    if (!studioScript.trim() || !studioVoiceFile || !studioAvatarImage) {
+      toast.error('Script, Voice Reference file, and Avatar Image are required.');
+      return;
+    }
+
+    setIsStudioLoading(true);
+    setStudioResultAudioUrl(null);
+    setStudioResultVideoUrl(null);
+    toast.loading('Creating Talking Avatar (OmniVoice + InfiniteTalk)...', { id: 'studio-job' });
+
+    try {
+      const res = await fetch('/api/talking-avatar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          image: studioAvatarImage.dataUrl,
+          audio: studioVoiceFile.dataUrl,
+          text: studioScript
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Talking avatar failed');
+
+      setStudioResultAudioUrl(data.audioUrl);
+      setStudioResultVideoUrl(data.videoUrl);
+      toast.success('Talking avatar lip-sync video created successfully!', { id: 'studio-job' });
+    } catch (err: any) {
+      toast.error(err.message || 'InfiniteTalk pipeline failed', { id: 'studio-job' });
+    } finally {
+      setIsStudioLoading(false);
+    }
+  };
+
+  // ─── Pipeline runner execution ──────────────────────────────────────────────
   const runPipeline = async (messageId: string) => {
     const targetMsg = messages.find(m => m.id === messageId);
     if (!targetMsg || !targetMsg.execSteps || targetMsg.isExecuting) return;
@@ -328,11 +606,12 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
       }));
     };
 
-    const updateStepStatus = (stepIdx: number, status: 'pending' | 'running' | 'success' | 'error') => {
+    const updateStepStatus = (stepIdx: number, status: 'pending' | 'running' | 'success' | 'error', resultUrl?: string) => {
       setMessages(prev => prev.map(m => {
         if (m.id === messageId && m.execSteps) {
           const updated = [...m.execSteps];
           updated[stepIdx].status = status;
+          if (resultUrl) updated[stepIdx].resultUrl = resultUrl;
           return { ...m, execSteps: updated };
         }
         return m;
@@ -403,7 +682,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
           onSelectPersona(uniqueId);
 
           addLocalLog(`✅ Persona '${saved.name}' created with database entry.`);
-          updateStepStatus(i, 'success');
+          updateStepStatus(i, 'success', fallbackAvatar);
         }
 
         else if (step.type === 'generate_content_plan') {
@@ -509,7 +788,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
           setPersonas(prev => prev.map(p => p.id === createdPersonaId ? savedPersona : p));
 
           addLocalLog(`✅ Profile avatar fully synced!`);
-          updateStepStatus(i, 'success');
+          updateStepStatus(i, 'success', imageUrl);
         }
 
         else if (step.type === 'generate_video') {
@@ -555,7 +834,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
 
           await api.images.create(createdPersonaId, videoPayload);
           addLocalLog(`✅ Video asset successfully generated & saved to library.`);
-          updateStepStatus(i, 'success');
+          updateStepStatus(i, 'success', result.videoUrl);
         }
 
         else if (step.type === 'generate_voice') {
@@ -586,8 +865,8 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
           }
 
           const data = await response.json();
-          addLocalLog(`✅ Audio narration generated successfully: ${data.audioUrl}`);
-          updateStepStatus(i, 'success');
+          addLocalLog(`✅ Audio narration generated successfully.`);
+          updateStepStatus(i, 'success', data.audioUrl);
         }
 
         else if (step.type === 'log_revenue') {
@@ -620,7 +899,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
       
       setTimeout(() => {
         nav.replace({ view: 'personas' });
-      }, 3000);
+      }, 5000);
 
     } catch (err: any) {
       addLocalLog(`❌ Error: ${err.message || 'Workflow execution halted.'}`);
@@ -635,13 +914,6 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
     } finally {
       setMessages(prev => prev.map(m => m.id === messageId ? { ...m, isExecuting: false } : m));
     }
-  };
-
-  const getAttachmentIcon = (mimeType: string) => {
-    if (mimeType.startsWith('image/')) return <ImageIcon className="w-5 h-5 text-pink-400" />;
-    if (mimeType.startsWith('audio/')) return <Volume2 className="w-5 h-5 text-cyan-400" />;
-    if (mimeType.startsWith('video/')) return <VideoIcon className="w-5 h-5 text-indigo-400" />;
-    return <FileText className="w-5 h-5 text-amber-400" />;
   };
 
   // Helper to retrieve the active model plan details for the Canvas preview
@@ -671,6 +943,15 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
 
   return (
     <div className="flex-1 flex h-full overflow-hidden bg-[var(--bg-base)]">
+      {/* Hidden file input for face swapping */}
+      <input
+        type="file"
+        ref={swapFileInputRef}
+        accept="image/*"
+        onChange={handleSwapFileSelected}
+        className="hidden"
+      />
+
       {/* LEFT COLUMN: Agent Conversational Console */}
       <div className="w-1/2 flex flex-col h-full border-r border-white/5 relative">
         {/* Header */}
@@ -802,14 +1083,67 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                             </div>
                             <div>
                               {step.status === 'pending' && <span className="text-[8px] font-black uppercase text-zinc-500 tracking-wider">Pending</span>}
-                              {step.status === 'running' && <Loader2 className="w-3 h-3 animate-spin text-pink-400" />}
+                              {step.status === 'running' && <Loader2 className="w-3.5 h-3.5 animate-spin text-pink-400" />}
                               {step.status === 'success' && <Check className="w-3.5 h-3.5 text-emerald-400" />}
                               {step.status === 'error' && <AlertCircle className="w-3.5 h-3.5 text-rose-500" />}
                             </div>
                           </div>
 
+                          {/* Render step outputs inline with actions */}
+                          {step.status === 'success' && step.resultUrl && (
+                            <div className="pl-3 space-y-2">
+                              {step.type === 'generate_image' && (
+                                <div className="space-y-2 bg-white/5 p-2 rounded-lg border border-white/5">
+                                  {step.resultUrl.endsWith('.mp4') ? (
+                                    <video src={step.resultUrl} controls className="w-40 rounded border border-white/10" />
+                                  ) : (
+                                    <img src={step.resultUrl} alt="Visual Output" className="w-32 h-32 rounded object-cover border border-white/10" />
+                                  )}
+                                  
+                                  {/* In-Chat Action Buttons */}
+                                  {!step.resultUrl.endsWith('.mp4') && (
+                                    <div className="flex gap-1.5 pt-1">
+                                      <button
+                                        onClick={() => handleUpscale(msg.id, idx, step.resultUrl!)}
+                                        disabled={step.isActionLoading !== null}
+                                        className="px-2 py-1 rounded bg-pink-500/20 hover:bg-pink-500/30 text-[9px] font-black uppercase text-pink-300 flex items-center gap-0.5 disabled:opacity-50"
+                                      >
+                                        {step.isActionLoading === 'upscale' ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : '🪄 Upscale'}
+                                      </button>
+                                      <button
+                                        onClick={() => handleMakeVideo(msg.id, idx, step.resultUrl!)}
+                                        disabled={step.isActionLoading !== null}
+                                        className="px-2 py-1 rounded bg-cyan-500/20 hover:bg-cyan-500/30 text-[9px] font-black uppercase text-cyan-300 flex items-center gap-0.5 disabled:opacity-50"
+                                      >
+                                        {step.isActionLoading === 'video' ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : '🎬 Make Video'}
+                                      </button>
+                                      <button
+                                        onClick={() => triggerFaceSwap(msg.id, idx)}
+                                        disabled={step.isActionLoading !== null}
+                                        className="px-2 py-1 rounded bg-violet-500/20 hover:bg-violet-500/30 text-[9px] font-black uppercase text-violet-300 flex items-center gap-0.5 disabled:opacity-50"
+                                      >
+                                        {step.isActionLoading === 'swap' ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : '✨ Face Swap'}
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              {step.type === 'generate_voice' && (
+                                <div className="bg-white/5 p-2 rounded-lg border border-white/5 space-y-1">
+                                  <span className="text-[8px] font-black text-amber-400 uppercase tracking-wider block">Generated Voiceover Audio:</span>
+                                  <audio controls src={step.resultUrl} className="w-full h-8" />
+                                </div>
+                              )}
+                              {step.type === 'generate_video' && (
+                                <div className="bg-white/5 p-2 rounded-lg border border-white/5">
+                                  <video src={step.resultUrl} controls className="w-56 rounded border border-white/10" />
+                                </div>
+                              )}
+                            </div>
+                          )}
+
                           {/* Inline Parameters controls */}
-                          {!msg.isExecuting && (
+                          {!msg.isExecuting && step.status === 'pending' && (
                             <div className="pl-3 space-y-2">
                               {step.type === 'create_persona' && (
                                 <div className="grid grid-cols-2 gap-2">
@@ -1085,7 +1419,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
             <Layers className="w-3.5 h-3.5 text-pink-400" /> Canvas Workspace
           </span>
           <div className="flex items-center gap-1.5 bg-black/40 border border-white/5 p-1 rounded-xl">
-            {(['profile', 'planner', 'media'] as const).map((tab) => (
+            {(['profile', 'planner', 'studio', 'media'] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setCanvasTab(tab)}
@@ -1097,6 +1431,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
               >
                 {tab === 'profile' && 'Influencer Card'}
                 {tab === 'planner' && '7-Day Calendar'}
+                {tab === 'studio' && '🎙️ Cloning Studio'}
                 {tab === 'media' && 'Media Preview'}
               </button>
             ))}
@@ -1110,7 +1445,6 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
             <div className="space-y-6 max-w-md mx-auto">
               {activeDraft?.createStep ? (
                 <div className="bg-[var(--bg-elevated)] border border-white/5 rounded-3xl p-6 shadow-xl relative overflow-hidden space-y-4">
-                  {/* Decorative glowing gradient circle */}
                   <div className="absolute top-0 right-0 w-24 h-24 bg-pink-500/10 rounded-full blur-3xl pointer-events-none" />
 
                   {/* Profile Mockup Card header */}
@@ -1207,6 +1541,141 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                   <CalendarRange className="w-8 h-8 text-zinc-600 mb-2.5 animate-pulse" />
                   <div className="text-xs font-black text-zinc-400 uppercase tracking-widest">No Post Schedule Draft</div>
                   <p className="text-[10px] text-zinc-500 mt-1 max-w-[200px]">Instruct the agent to generate a 7-day plan on platforms like OnlyFans/Instagram.</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* CLONING STUDIO BOARD (Voice cloning + Lip-sync Talking Avatars) */}
+          {canvasTab === 'studio' && (
+            <div className="space-y-5 max-w-md mx-auto bg-[var(--bg-elevated)] p-6 rounded-2xl border border-white/5 shadow-xl relative">
+              <span className="text-xs font-black text-violet-400 uppercase tracking-widest flex items-center gap-1">
+                <Volume2 className="w-4 h-4 text-violet-400" /> Voice & Talking Avatar Studio
+              </span>
+              <p className="text-[10px] text-zinc-400 font-bold leading-relaxed pb-3 border-b border-white/5">
+                Upload a reference voice file (audio/video), select a portrait image, write a script narration, and generate cloned speech or talking head video clips.
+              </p>
+
+              {/* Form Input elements */}
+              <div className="space-y-4">
+                {/* Reference Voice upload */}
+                <div className="space-y-1.5">
+                  <span className="text-[9px] font-black uppercase text-zinc-500 tracking-wider">1. Reference Voice (Audio/Video file)</span>
+                  <input
+                    type="file"
+                    ref={studioVoiceRef}
+                    accept="audio/*,video/*"
+                    onChange={handleStudioVoiceSelected}
+                    className="hidden"
+                  />
+                  <div 
+                    onClick={() => studioVoiceRef.current?.click()}
+                    className="h-20 border border-dashed border-white/10 hover:border-violet-500/20 rounded-xl flex flex-col items-center justify-center bg-white/[0.01] hover:bg-white/[0.02] cursor-pointer transition-all p-3 text-center"
+                  >
+                    {studioVoiceFile ? (
+                      <div className="space-y-0.5">
+                        <div className="text-xs font-bold text-violet-300 truncate max-w-[280px]">🔊 {studioVoiceFile.name}</div>
+                        <div className="text-[8px] font-black text-zinc-500 uppercase">{studioVoiceFile.mimeType}</div>
+                      </div>
+                    ) : (
+                      <>
+                        <Volume2 className="w-5 h-5 text-zinc-500 mb-1" />
+                        <span className="text-[10px] text-zinc-400 font-bold">Select audio or video voice clip</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Avatar Portrait image upload */}
+                <div className="space-y-1.5">
+                  <span className="text-[9px] font-black uppercase text-zinc-500 tracking-wider">2. Avatar Photo (For Lip-Sync Talking video, Optional)</span>
+                  <input
+                    type="file"
+                    ref={studioAvatarRef}
+                    accept="image/*"
+                    onChange={handleStudioAvatarSelected}
+                    className="hidden"
+                  />
+                  <div 
+                    onClick={() => studioAvatarRef.current?.click()}
+                    className="h-20 border border-dashed border-white/10 hover:border-violet-500/20 rounded-xl flex flex-col items-center justify-center bg-white/[0.01] hover:bg-white/[0.02] cursor-pointer transition-all p-3 text-center"
+                  >
+                    {studioAvatarImage ? (
+                      <div className="flex items-center gap-2">
+                        <img src={studioAvatarImage.dataUrl} alt="Avatar Draft" className="w-10 h-10 rounded-lg object-cover border border-white/10" />
+                        <div className="text-left">
+                          <div className="text-xs font-bold text-emerald-300 truncate max-w-[200px]">{studioAvatarImage.name}</div>
+                          <span className="text-[8px] font-black text-zinc-500 uppercase">{studioAvatarImage.mimeType}</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <ImageIcon className="w-5 h-5 text-zinc-500 mb-1" />
+                        <span className="text-[10px] text-zinc-400 font-bold">Select character reference photo</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Script text */}
+                <div className="space-y-1.5">
+                  <span className="text-[9px] font-black uppercase text-zinc-500 tracking-wider">3. Narrative script script text</span>
+                  <textarea
+                    value={studioScript}
+                    onChange={(e) => setStudioScript(e.target.value)}
+                    placeholder="Type script transcription narrative here..."
+                    className="w-full h-24 bg-white/5 border border-white/5 rounded-xl p-3 text-xs text-white focus:border-violet-500/30 outline-none resize-none shadow-inner"
+                  />
+                </div>
+
+                {/* Action trigger buttons */}
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <button
+                    onClick={executeVoiceCloneOnly}
+                    disabled={isStudioLoading || !studioScript.trim() || !studioVoiceFile}
+                    className="py-2.5 rounded-xl border border-white/5 bg-gradient-to-r from-violet-500/20 to-indigo-500/20 hover:from-violet-500/30 hover:to-indigo-500/30 font-black text-[10px] uppercase tracking-wider text-violet-300 flex items-center justify-center gap-1 transition-all disabled:opacity-40"
+                  >
+                    {isStudioLoading && !studioResultVideoUrl ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Volume2 className="w-3.5 h-3.5" />}
+                    Clone Voice
+                  </button>
+                  <button
+                    onClick={executeTalkingAvatar}
+                    disabled={isStudioLoading || !studioScript.trim() || !studioVoiceFile || !studioAvatarImage}
+                    className="py-2.5 rounded-xl border border-pink-500/10 bg-gradient-to-r from-pink-500/20 to-violet-500/20 hover:from-pink-500/30 hover:to-violet-500/30 font-black text-[10px] uppercase tracking-wider text-pink-300 flex items-center justify-center gap-1 transition-all disabled:opacity-40"
+                  >
+                    {isStudioLoading && studioResultVideoUrl === null ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <VideoIcon className="w-3.5 h-3.5" />}
+                    Talking Avatar
+                  </button>
+                </div>
+              </div>
+
+              {/* Outputs panel */}
+              {isStudioLoading && (
+                <div className="absolute inset-0 bg-black/60 backdrop-blur-sm rounded-2xl flex flex-col items-center justify-center space-y-2 text-center p-6">
+                  <Loader2 className="w-8 h-8 animate-spin text-pink-500" />
+                  <div className="text-xs font-black uppercase text-white tracking-widest">Generating Studio Asset...</div>
+                  <p className="text-[10px] text-zinc-400 max-w-[200px]">Wavespeed is cloning voice and generating lip-sync models. This takes a few seconds.</p>
+                </div>
+              )}
+
+              {/* Synthesis Output preview player box */}
+              {(studioResultAudioUrl || studioResultVideoUrl) && (
+                <div className="mt-4 pt-4 border-t border-white/5 space-y-3">
+                  <span className="text-[9px] font-black text-emerald-400 uppercase tracking-widest block">Studio Generation Results</span>
+                  
+                  {studioResultAudioUrl && (
+                    <div className="bg-white/5 p-3 rounded-xl border border-white/5 space-y-1">
+                      <span className="text-[8px] font-black text-zinc-500 block uppercase">Cloned speech audio</span>
+                      <audio controls src={studioResultAudioUrl} className="w-full h-8" />
+                    </div>
+                  )}
+
+                  {studioResultVideoUrl && (
+                    <div className="bg-white/5 p-3 rounded-xl border border-white/5 space-y-1">
+                      <span className="text-[8px] font-black text-zinc-500 block uppercase">Lip-sync avatar video</span>
+                      <video controls src={studioResultVideoUrl} className="w-full rounded border border-white/10" />
+                    </div>
+                  )}
                 </div>
               )}
             </div>
