@@ -664,6 +664,19 @@ router.post('/agent/chat', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const genAI = getGeminiClientForRoutes();
     
+    // 1. Trend Analysis Engine
+    const lastUserMessage = messages[messages.length - 1];
+    const userPrompt = lastUserMessage?.content || '';
+    const needsTrends = /trend|viral|popular|hype/i.test(userPrompt);
+    let trendContext = '';
+    if (needsTrends) {
+      trendContext = `\n[TRENDING INSIGHTS ENGINE ACTIVE]:
+Inject these active viral trends if suitable for the request:
+- Niche A: "Hybrid Athletic Aesthetics" (OnlyFans/Instagram cross-over fitness, high contrast gym lighting, lifestyle snippets, vertical vlog clips)
+- Niche B: "Quiet Luxury Travel reels" (warm cinematic drone shots, minimal modern outfits, voice script narration with soothing tone)
+- Niche C: "ASMR Mech-Desk setups" (mechanical keyboard soundscapes, warm fairy lights, macro lens camera shots, whisper-soft scripts)`;
+    }
+
     // Map client messages to Gemini content format with base64 attachments support
     const contents = messages.map(msg => {
       const parts: any[] = [];
@@ -691,6 +704,7 @@ router.post('/agent/chat', async (req: AuthenticatedRequest, res: Response) => {
 
     const systemInstruction = `You are the orchestrator for an AI Influencer Studio.
 Your job is to interact with the user via chat, help them define their personas, build content schedules, and generate visual assets.
+${trendContext}
 
 Analyze the conversation history and any attached files (images, audio, video, documents, etc.).
 If the user's instructions are incomplete (e.g., they want a new influencer but didn't specify platform, visual style, or niche), ask clear and helpful questions to get the required details. Keep the status as "clarifying".
@@ -773,6 +787,48 @@ Do not wrap your response in markdown code blocks or HTML tags. Return ONLY the 
     text = text.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
 
     const data = JSON.parse(text);
+
+    // 2. Dual-Brain "Review & Critique" Loop Pass
+    if (data.status === 'executing' && data.suggestedSteps && data.suggestedSteps.length > 0) {
+      try {
+        const critiqueSystemInstruction = `You are a Senior Reviewer and Prompt Engineer.
+You have been given a draft task execution plan generated for the AI Influencer Studio.
+
+Your job is to:
+1. Review each task step.
+2. If the task is "generate_image" or "generate_video", optimize the "prompt" to be highly detailed, photorealistic, specify lighting (e.g. volumetric lighting, warm glow, cinematic), visual details (e.g., highly detailed skin, 8k resolution, photorealistic), and ensure it fits the persona style.
+3. Verify that modelId routing is correct: Wavespeed NSFW models for flirty themes (prioritizing "wavespeed:wavespeed-ai/firered-v1.5-image" first), and Google/OpenAI for clean ones.
+4. Output a JSON array of "critiqueLogs" describing what you optimized (e.g. ["Improved visual prompt detail for Sofia", "Confirmed Wavespeed model selection for flirty niche"]).
+5. Output the final optimized "suggestedSteps" array.
+
+You must reply in valid JSON format:
+{
+  "critiqueLogs": [ "string details" ],
+  "suggestedSteps": [ ...optimized array... ]
+}`;
+
+        const critiqueResult = await genAI.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: [{ role: 'user', parts: [{ text: `System instruction:\n${critiqueSystemInstruction}\n\nDraft Plan JSON:\n${JSON.stringify(data.suggestedSteps)}` }] }],
+          config: {
+            responseMimeType: 'application/json'
+          }
+        });
+
+        let critiqueText = critiqueResult.text?.trim() || '';
+        critiqueText = critiqueText.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
+        const critiqueData = JSON.parse(critiqueText);
+
+        data.suggestedSteps = critiqueData.suggestedSteps || data.suggestedSteps;
+        data.critiqueLogs = critiqueData.critiqueLogs || ["Completed plan verification"];
+      } catch (critiqueErr) {
+        console.error('[API] Critique pass failed, using original plan:', critiqueErr);
+        data.critiqueLogs = ["Bypassed critique loop verification due to timeout"];
+      }
+    } else {
+      data.critiqueLogs = [];
+    }
+
     res.json(data);
   } catch (err) {
     console.error('[API] /agent/chat error:', err);

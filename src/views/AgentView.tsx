@@ -53,6 +53,7 @@ interface Message {
   attachments?: Attachment[];
   status?: 'clarifying' | 'executing' | 'normal';
   suggestedSteps?: any[];
+  critiqueLogs?: string[];
   isExecuting?: boolean;
   execLogs?: string[];
   execSteps?: { type: string; params: any; status: 'pending' | 'running' | 'success' | 'error' }[];
@@ -222,6 +223,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
           content: data.text || '',
           status: data.status || 'normal',
           suggestedSteps: data.suggestedSteps || undefined,
+          critiqueLogs: data.critiqueLogs || undefined,
           execSteps: data.suggestedSteps 
             ? data.suggestedSteps.map((s: any) => ({ ...s, status: 'pending' }))
             : undefined,
@@ -278,10 +280,22 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
     addLocalLog('🤖 Auto-Pilot Pipeline initialized...', true);
     
     try {
+      // Multimodal Memory Scanner: Find latest reference photo in history
+      let memoryFaceImage: string | null = null;
+      for (let mIdx = messages.length - 1; mIdx >= 0; mIdx--) {
+        const msgHistoryItem = messages[mIdx];
+        if (msgHistoryItem.attachments && msgHistoryItem.attachments.length > 0) {
+          const imgAtt = msgHistoryItem.attachments.find(a => a.mimeType.startsWith('image/'));
+          if (imgAtt) {
+            memoryFaceImage = imgAtt.dataUrl;
+            break;
+          }
+        }
+      }
+
       let createdPersona: Persona | null = null;
       let createdPersonaId = '';
 
-      // Reads execSteps directly (allowing users to edit parameters inline!)
       const stepsList = targetMsg.execSteps || [];
 
       for (let i = 0; i < stepsList.length; i++) {
@@ -291,10 +305,14 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
         if (step.type === 'create_persona') {
           addLocalLog(`⏳ Building persona profile '${step.params.name}'...`);
           
+          if (memoryFaceImage) {
+            addLocalLog(`🧠 [Memory System]: Applying face reference photo from conversation history.`);
+          }
+
           const uniqueId = `user-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-          const fallbackAvatar = step.params.outfit === 'Swimsuit' || step.params.outfit === 'Lingerie'
+          const fallbackAvatar = memoryFaceImage || (step.params.outfit === 'Swimsuit' || step.params.outfit === 'Lingerie'
             ? 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=400&q=80'
-            : 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80';
+            : 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80');
 
           const newPersona: Persona = {
             id: uniqueId,
@@ -319,7 +337,6 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
           createdPersona = saved;
           createdPersonaId = uniqueId;
 
-          // Update parent context
           setPersonas(prev => [...prev, saved]);
           onSelectPersona(uniqueId);
 
@@ -350,6 +367,11 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
             createdPersonaId = createdPersona.id;
           }
 
+          if (memoryFaceImage && createdPersona) {
+            addLocalLog(`🧠 [Memory System]: Syncing reference face photo for visual generation.`);
+            createdPersona.referenceImage = memoryFaceImage;
+          }
+
           let modelId = step.params.modelId || 'google:nano-banana-pro';
           addLocalLog(`Chosen Model ID: ${modelId}`, true, true);
           addLocalLog(`⏳ Spinning up visual generation pipeline...`);
@@ -371,12 +393,11 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
           } catch (firstErr: any) {
             addLocalLog(`⚠️ [Self-Correction] Model ${modelId} failed: ${firstErr.message || 'unknown error'}`);
             
-            // Dynamic Fallback selection rules
             let fallbackModel = 'google:nano-banana-pro';
             if (modelId.startsWith('wavespeed:')) {
-              fallbackModel = 'venice:lustify-v8'; // Try Venice first
+              fallbackModel = 'venice:lustify-v8';
             } else if (modelId.startsWith('venice:')) {
-              fallbackModel = 'google:nano-banana-pro'; // Try Google next
+              fallbackModel = 'google:nano-banana-pro';
             }
             
             addLocalLog(`🔄 Retrying pipeline with fallback model: ${fallbackModel}...`);
@@ -399,7 +420,6 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
           const promptUsed = Array.isArray(result) ? result[0].promptUsed : result.promptUsed;
           const resolvedModel = Array.isArray(result) ? result[0].model : result.model;
 
-          // Save visual asset
           const imgPayload = {
             id: 'img-' + Math.random().toString(36).substring(2, 9),
             url: imageUrl,
@@ -416,7 +436,6 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
           await api.images.create(createdPersonaId, imgPayload);
           addLocalLog(`✅ Visual asset generated & saved to library.`);
 
-          // Update avatar references
           addLocalLog(`⏳ Syncing persona profile avatar reference...`);
           const updatedPersona = {
             ...createdPersona,
@@ -632,6 +651,20 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                     )}
                   </div>
 
+                  {/* Super Agent Optimizations critique panel */}
+                  {msg.critiqueLogs && msg.critiqueLogs.length > 0 && (
+                    <div className="bg-white/5 border border-white/5 rounded-xl p-3.5 space-y-2">
+                      <div className="flex items-center gap-1.5 text-[9px] font-black text-violet-400 uppercase tracking-widest">
+                        <Zap className="w-3.5 h-3.5 animate-pulse text-violet-400" /> Super Agent Optimizations
+                      </div>
+                      <ul className="list-disc pl-4 space-y-1 text-[9px] text-zinc-300 font-bold">
+                        {msg.critiqueLogs.map((log, lIdx) => (
+                          <li key={lIdx}>{log}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
                   {/* Steps with Interactive Parameter Editing */}
                   <div className="space-y-4 divide-y divide-white/5 pt-1">
                     {msg.execSteps?.map((step, idx) => (
@@ -667,24 +700,43 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                         {!msg.isExecuting && (
                           <div className="pl-8 space-y-2">
                             {step.type === 'create_persona' && (
-                              <div className="grid grid-cols-2 gap-2">
-                                <div>
-                                  <label className="text-[8px] uppercase tracking-wider text-[var(--text-muted)] font-black">Name</label>
-                                  <input
-                                    type="text"
-                                    value={step.params.name || ''}
-                                    onChange={(e) => handleParamChange(msg.id, idx, 'name', e.target.value)}
-                                    className="w-full bg-white/5 border border-white/5 rounded px-2 py-1 text-xs text-white outline-none focus:border-pink-500/20"
-                                  />
+                              <div className="space-y-2">
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div>
+                                    <label className="text-[8px] uppercase tracking-wider text-[var(--text-muted)] font-black">Name</label>
+                                    <input
+                                      type="text"
+                                      value={step.params.name || ''}
+                                      onChange={(e) => handleParamChange(msg.id, idx, 'name', e.target.value)}
+                                      className="w-full bg-white/5 border border-white/5 rounded px-2 py-1 text-xs text-white outline-none focus:border-pink-500/20"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-[8px] uppercase tracking-wider text-[var(--text-muted)] font-black">Niche</label>
+                                    <input
+                                      type="text"
+                                      value={step.params.niche || ''}
+                                      onChange={(e) => handleParamChange(msg.id, idx, 'niche', e.target.value)}
+                                      className="w-full bg-white/5 border border-white/5 rounded px-2 py-1 text-xs text-white outline-none focus:border-pink-500/20"
+                                    />
+                                  </div>
                                 </div>
-                                <div>
-                                  <label className="text-[8px] uppercase tracking-wider text-[var(--text-muted)] font-black">Niche</label>
-                                  <input
-                                    type="text"
-                                    value={step.params.niche || ''}
-                                    onChange={(e) => handleParamChange(msg.id, idx, 'niche', e.target.value)}
-                                    className="w-full bg-white/5 border border-white/5 rounded px-2 py-1 text-xs text-white outline-none focus:border-pink-500/20"
-                                  />
+
+                                {/* Live Persona Draft Preview Card */}
+                                <div className="mt-3 p-3 bg-white/[0.02] border border-white/5 rounded-xl space-y-1.5">
+                                  <span className="text-[9px] font-black text-pink-400/80 uppercase tracking-widest">✨ Persona Preview Card</span>
+                                  <div className="flex items-center gap-3 pt-1">
+                                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-pink-500 to-violet-500 flex items-center justify-center font-bold text-sm text-white border border-white/10 shrink-0">
+                                      {step.params.name ? step.params.name.charAt(0) : '?'}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <div className="font-extrabold text-sm text-white truncate">{step.params.name || 'Unnamed Persona'}</div>
+                                      <div className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">{step.params.niche || 'Not specified'}</div>
+                                    </div>
+                                  </div>
+                                  <div className="text-[10px] text-zinc-300 italic leading-relaxed pt-1 border-t border-white/5">
+                                    "{step.params.bio || 'No biography written yet.'}"
+                                  </div>
                                 </div>
                               </div>
                             )}
