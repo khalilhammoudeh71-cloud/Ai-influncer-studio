@@ -203,6 +203,30 @@ input, textarea, select {
   box-shadow: 0 0 32px rgba(0, 245, 194, 0.2);
 }
 
+.glass-pink {
+  background: rgba(244, 63, 94, 0.04);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(244, 63, 94, 0.2);
+  box-shadow: 0 8px 32px rgba(244, 63, 94, 0.05);
+}
+
+.glass-purple {
+  background: rgba(168, 85, 247, 0.04);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(168, 85, 247, 0.2);
+  box-shadow: 0 8px 32px rgba(168, 85, 247, 0.05);
+}
+
+.glow-pink {
+  box-shadow: 0 0 24px rgba(244, 63, 94, 0.15);
+}
+
+.glow-purple {
+  box-shadow: 0 0 24px rgba(168, 85, 247, 0.15);
+}
+
 .premium-header {
   position: relative;
   overflow: hidden;
