@@ -13,7 +13,14 @@ import {
   Image as ImageIcon,
   ArrowRight,
   ShieldCheck,
-  Zap
+  Zap,
+  Paperclip,
+  X,
+  Trash2,
+  Check,
+  Volume2,
+  Video as VideoIcon,
+  FileText
 } from 'lucide-react';
 import { Persona, Tab } from '../types';
 import { api } from '../services/apiService';
@@ -32,116 +39,195 @@ interface AgentViewProps {
   };
 }
 
-interface AgentLog {
-  id: string;
-  type: 'info' | 'success' | 'error' | 'warning' | 'model';
-  message: string;
-  timestamp: string;
+interface Attachment {
+  name: string;
+  dataUrl: string;
+  mimeType: string;
 }
 
-interface AgentTaskStep {
-  type: 'create_persona' | 'generate_content_plan' | 'generate_image';
-  params: any;
-  status: 'pending' | 'running' | 'success' | 'error';
+interface Message {
+  id: string;
+  role: 'user' | 'model';
+  content: string;
+  attachments?: Attachment[];
+  status?: 'clarifying' | 'executing' | 'normal';
+  suggestedSteps?: any[];
+  isExecuting?: boolean;
+  execLogs?: string[];
+  execSteps?: { type: string; params: any; status: 'pending' | 'running' | 'success' | 'error' }[];
 }
 
 const SUGGESTIONS = [
   {
-    label: "Tech Reviewer",
-    desc: "Create a tech reviewer named Isabella, YouTube plan, and a studio photo.",
-    prompt: "Create a tech reviewer named Isabella who is insightful and posts on YouTube. Generate a 7-day content schedule for her, and generate a portrait image of her at a high-end tech desk."
+    label: "Gamer Girl Sofia",
+    prompt: "Create a gamer girl named Sofia who streams on Twitch, niche is Minecraft. Give her a 7-day flirty OnlyFans planner, and generate a portrait image of her in activewear in front of her dual-monitor setup."
   },
   {
-    label: "Swimsuit Model (NSFW)",
-    desc: "Create a flirty swimsuit model Sofia, OnlyFans plan, and beach swimsuit photo.",
-    prompt: "Create a flirty fitness and swimsuit influencer named Sofia who streams swimsuit content on OnlyFans. Generate a 7-day flirty plan for her, and make a highly realistic portrait photo of her in a blue bikini on a tropical beach."
-  },
-  {
-    label: "Luxury Lifestyle",
-    desc: "Create a luxury blogger Marco, Instagram plan, and luxury car photo.",
-    prompt: "Create a luxury lifestyle influencer named Marco, high-status and exclusive tone, who posts on Instagram. Generate a 7-day premium plan, and generate a portrait image of him next to a private jet or sports car."
+    label: "Finance Coach Marco",
+    prompt: "Create a high-status finance coach named Marco who posts on Twitter, niche is stock trading, bio focuses on elite mindset. Generate a 7-day plan, and make a professional suit photo of him in a luxury office."
   }
 ];
 
 export default function AgentView({ personas, setPersonas, onSelectPersona, nav }: AgentViewProps) {
-  const [prompt, setPrompt] = useState('');
-  const [isExecuting, setIsExecuting] = useState(false);
-  const [logs, setLogs] = useState<AgentLog[]>([]);
-  const [steps, setSteps] = useState<AgentTaskStep[]>([]);
-  const consoleEndRef = useRef<HTMLDivElement>(null);
+  const [inputText, setInputText] = useState('');
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      id: 'welcome',
+      role: 'model',
+      content: "Hello! I am your AI Auto-Pilot Agent. Tell me who you want to build today!\n\nI can create a custom persona, design their content schedule, and generate high-quality starting visuals using the best model automatically (including Wavespeed NSFW or Google/OpenAI models depending on your goals).\n\nFeel free to write simple directions, or attach reference images, scripts, or audio files to get started!",
+      status: 'normal'
+    }
+  ]);
+  
+  const [isSending, setIsSending] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (consoleEndRef.current) {
-      consoleEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [logs]);
+  }, [messages, isSending]);
 
-  const addLog = (type: AgentLog['type'], message: string) => {
-    const time = new Date().toLocaleTimeString();
-    setLogs(prev => [...prev, { id: Math.random().toString(), type, message, timestamp: time }]);
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    Array.from(files).forEach(file => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        setAttachments(prev => [
+          ...prev,
+          {
+            name: file.name,
+            dataUrl: reader.result as string,
+            mimeType: file.type
+          }
+        ]);
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // Reset input
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const handleSuggestionClick = (p: string) => {
-    setPrompt(p);
+  const removeAttachment = (idx: number) => {
+    setAttachments(prev => prev.filter((_, i) => i !== idx));
   };
 
-  const runAgent = async () => {
-    if (!prompt.trim() || isExecuting) return;
-    setIsExecuting(true);
-    setLogs([]);
-    setSteps([]);
+  const sendMessage = async () => {
+    if ((!inputText.trim() && attachments.length === 0) || isSending) return;
 
-    addLog('info', '🤖 Agent initiated. Contacting parsing brain...');
-    
+    const userMessage: Message = {
+      id: Math.random().toString(),
+      role: 'user',
+      content: inputText,
+      attachments: [...attachments]
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    setInputText('');
+    setAttachments([]);
+    setIsSending(true);
+
     try {
-      // Step 1: Parse prompt to structured instructions via backend
-      const res = await fetch('/api/agent/parse', {
+      const history = [...messages, userMessage].map(m => ({
+        role: m.role,
+        content: m.content,
+        attachments: m.attachments
+      }));
+
+      const res = await fetch('/api/agent/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt })
+        body: JSON.stringify({ messages: history })
       });
 
       if (!res.ok) {
-        throw new Error('Failed to parse instruction with Gemini.');
+        throw new Error('Failed to get response from Agent.');
       }
 
       const data = await res.json();
-      const parsedSteps: AgentTaskStep[] = (data.steps || []).map((s: any) => ({
-        ...s,
-        status: 'pending' as const
+      
+      setMessages(prev => [
+        ...prev,
+        {
+          id: Math.random().toString(),
+          role: 'model',
+          content: data.text || '',
+          status: data.status || 'normal',
+          suggestedSteps: data.suggestedSteps || undefined,
+          execSteps: data.suggestedSteps 
+            ? data.suggestedSteps.map((s: any) => ({ ...s, status: 'pending' }))
+            : undefined,
+          execLogs: data.suggestedSteps ? [] : undefined
+        }
+      ]);
+    } catch (err: any) {
+      toast.error(err.message || 'Chat error');
+      setMessages(prev => [
+        ...prev,
+        {
+          id: Math.random().toString(),
+          role: 'model',
+          content: "Sorry, I ran into an error parsing that request. Please try again.",
+          status: 'normal'
+        }
+      ]);
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const runPipeline = async (messageId: string) => {
+    const targetMsg = messages.find(m => m.id === messageId);
+    if (!targetMsg || !targetMsg.suggestedSteps || targetMsg.isExecuting) return;
+
+    // Set message executing state
+    setMessages(prev => prev.map(m => m.id === messageId ? { ...m, isExecuting: true } : m));
+
+    const addLocalLog = (msg: string, success = true, isModel = false) => {
+      setMessages(prev => prev.map(m => {
+        if (m.id === messageId) {
+          const logs = m.execLogs || [];
+          const prefix = `[${new Date().toLocaleTimeString()}]`;
+          const prefixType = isModel ? '🎯 Routing: ' : '';
+          const line = `${prefix} ${prefixType}${msg}`;
+          return { ...m, execLogs: [...logs, line] };
+        }
+        return m;
       }));
+    };
 
-      if (parsedSteps.length === 0) {
-        addLog('warning', '⚠️ Gemini couldn\'t extract any valid steps. Try rephrasing.');
-        setIsExecuting(false);
-        return;
-      }
+    const updateStepStatus = (stepIdx: number, status: 'pending' | 'running' | 'success' | 'error') => {
+      setMessages(prev => prev.map(m => {
+        if (m.id === messageId && m.execSteps) {
+          const updated = [...m.execSteps];
+          updated[stepIdx].status = status;
+          return { ...m, execSteps: updated };
+        }
+        return m;
+      }));
+    };
 
-      setSteps(parsedSteps);
-      addLog('success', `Parsed successfully! Prepared ${parsedSteps.length} tasks.`);
-
-      // Find if we have image generation task to display selected model
-      const imageStep = parsedSteps.find(s => s.type === 'generate_image');
-      if (imageStep && imageStep.params.modelId) {
-        addLog('model', `🎯 Dynamic Model Routing: Selected model [${imageStep.params.modelId}] based on prompt theme.`);
-      }
-
-      // Step 2: Execute steps sequentially
+    addLocalLog('🤖 Auto-Pilot Pipeline initialized...', true);
+    
+    try {
       let createdPersona: Persona | null = null;
       let createdPersonaId = '';
 
-      for (let i = 0; i < parsedSteps.length; i++) {
-        const step = parsedSteps[i];
-        
-        // Update task status to running
-        setSteps(prev => prev.map((s, idx) => idx === i ? { ...s, status: 'running' as const } : s));
+      const stepsList = targetMsg.execSteps || [];
+
+      for (let i = 0; i < stepsList.length; i++) {
+        const step = stepsList[i];
+        updateStepStatus(i, 'running');
 
         if (step.type === 'create_persona') {
-          addLog('info', `⏳ Creating persona '${step.params.name}'...`);
+          addLocalLog(`⏳ Building persona profile '${step.params.name}'...`);
           
           const uniqueId = `user-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-          
-          // Seed temporary avatar until generated image arrives
           const fallbackAvatar = step.params.outfit === 'Swimsuit' || step.params.outfit === 'Lingerie'
             ? 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=400&q=80'
             : 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80';
@@ -165,56 +251,49 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
             personaNotes: ''
           };
 
-          // Save to backend
           const saved = await api.personas.create(newPersona);
           createdPersona = saved;
           createdPersonaId = uniqueId;
 
-          // Update parent state
+          // Update parent persona list context
           setPersonas(prev => [...prev, saved]);
           onSelectPersona(uniqueId);
 
-          addLog('success', `✅ Persona '${saved.name}' created with ID: ${uniqueId}`);
-          setSteps(prev => prev.map((s, idx) => idx === i ? { ...s, status: 'success' as const } : s));
+          addLocalLog(`✅ Persona '${saved.name}' created database entry.`);
+          updateStepStatus(i, 'success');
         }
 
         else if (step.type === 'generate_content_plan') {
           if (!createdPersona) {
-            // Find existing if we didn't just create one
             createdPersona = personas[0] || null;
-            if (!createdPersona || createdPersona.id === 'empty') {
-              throw new Error('No active persona to create content plan for.');
-            }
+            if (!createdPersona || createdPersona.id === 'empty') throw new Error('No active persona detected.');
             createdPersonaId = createdPersona.id;
           }
 
-          addLog('info', `⏳ Planning 7-day content schedule for ${createdPersona.name} [${step.params.platform}]...`);
-          
+          addLocalLog(`⏳ Generating 7-day ${step.params.platform || 'Instagram'} planner schedule...`);
           const plan = generatePersonaPlan(createdPersona, step.params.platform, step.params.theme || 'Growth');
           
-          // Save planner content plan to database
           await api.plannedPosts.save(createdPersonaId, step.params.platform, plan.map(({ day, type, hook, angle, cta }) => ({ day, type, hook, angle, cta })));
 
-          addLog('success', `✅ Scheduled 7 posts successfully in Content Planner.`);
-          setSteps(prev => prev.map((s, idx) => idx === i ? { ...s, status: 'success' as const } : s));
+          addLocalLog(`✅ Scheduled 7 days of structured content posts.`);
+          updateStepStatus(i, 'success');
         }
 
         else if (step.type === 'generate_image') {
           if (!createdPersona) {
             createdPersona = personas[0] || null;
-            if (!createdPersona || createdPersona.id === 'empty') {
-              throw new Error('No active persona to generate image for.');
-            }
+            if (!createdPersona || createdPersona.id === 'empty') throw new Error('No active persona detected.');
             createdPersonaId = createdPersona.id;
           }
 
-          const chosenModel = step.params.modelId || 'google:nano-banana-pro';
-          addLog('info', `⏳ Spinning up visual generation pipeline using [${chosenModel}]...`);
-          addLog('info', `📝 Prompt: "${step.params.prompt}"`);
+          const modelId = step.params.modelId || 'google:nano-banana-pro';
+          addLocalLog(`Chosen Model ID: ${modelId}`, true, true);
+          addLocalLog(`⏳ Spinning up visual generation pipeline...`);
+          addLocalLog(`📝 Prompt: "${step.params.prompt}"`);
 
           const result = await generateImage({
             persona: createdPersona,
-            modelId: chosenModel,
+            modelId,
             environment: step.params.environment,
             outfitStyle: step.params.outfit,
             framing: step.params.framing,
@@ -228,7 +307,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
           const promptUsed = Array.isArray(result) ? result[0].promptUsed : result.promptUsed;
           const resolvedModel = Array.isArray(result) ? result[0].model : result.model;
 
-          // Save image to persona visual library
+          // Save visual asset
           const imgPayload = {
             id: 'img-' + Math.random().toString(36).substring(2, 9),
             url: imageUrl,
@@ -243,10 +322,10 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
           };
 
           await api.images.create(createdPersonaId, imgPayload);
-          addLog('success', `✅ Asset successfully generated & saved to library.`);
+          addLocalLog(`✅ Visual asset generated & saved to library.`);
 
-          // Update avatar of persona with generated image
-          addLog('info', `⏳ Overwriting persona avatar with newly generated asset...`);
+          // Update avatar references
+          addLocalLog(`⏳ Setting persona profile avatar reference...`);
           const updatedPersona = {
             ...createdPersona,
             avatar: imageUrl,
@@ -254,183 +333,250 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
           };
           const savedPersona = await api.personas.update(updatedPersona);
           
-          // Update parent state with updated persona
           setPersonas(prev => prev.map(p => p.id === createdPersonaId ? savedPersona : p));
 
-          addLog('success', `✅ Avatar updated successfully!`);
-          setSteps(prev => prev.map((s, idx) => idx === i ? { ...s, status: 'success' as const } : s));
+          addLocalLog(`✅ Profile avatar fully synced!`);
+          updateStepStatus(i, 'success');
         }
       }
 
-      addLog('success', '🏆 Autopilot execution complete! Redirecting you to the dashboard...');
-      toast.success('Agent completed all tasks successfully!');
+      addLocalLog('🏆 Pipeline complete! Closing Auto-Pilot console...');
+      toast.success('Auto-Pilot setup completed successfully!');
       
-      // Wait a moment for the logs to sink in, then redirect to personas view
       setTimeout(() => {
         nav.replace({ view: 'personas' });
       }, 3000);
 
     } catch (err: any) {
-      addLog('error', `❌ Error: ${err.message || 'Execution halted.'}`);
+      addLocalLog(`❌ Error: ${err.message || 'Workflow failed.'}`);
       // Mark current running step as error
-      setSteps(prev => prev.map(s => s.status === 'running' ? { ...s, status: 'error' as const } : s));
-      toast.error('Agent execution failed.');
+      setMessages(prev => prev.map(m => {
+        if (m.id === messageId && m.execSteps) {
+          const updated = m.execSteps.map(s => s.status === 'running' ? { ...s, status: 'error' as const } : s);
+          return { ...m, execSteps: updated };
+        }
+        return m;
+      }));
+      toast.error('Workflow failed.');
     } finally {
-      setIsExecuting(false);
+      setMessages(prev => prev.map(m => m.id === messageId ? { ...m, isExecuting: false } : m));
     }
   };
 
-  const getStepIcon = (type: string) => {
-    switch (type) {
-      case 'create_persona': return <UserPlus className="w-4 h-4 text-pink-400" />;
-      case 'generate_content_plan': return <CalendarRange className="w-4 h-4 text-indigo-400" />;
-      case 'generate_image': return <ImageIcon className="w-4 h-4 text-emerald-400" />;
-      default: return <Cpu className="w-4 h-4 text-violet-400" />;
-    }
-  };
-
-  const getStepLabel = (type: string, params: any) => {
-    switch (type) {
-      case 'create_persona': return `Create Persona: ${params.name || 'Unnamed'}`;
-      case 'generate_content_plan': return `Schedule 7-day ${params.platform || 'Instagram'} Plan`;
-      case 'generate_image': return `Generate starting image (${params.modelId ? params.modelId.split(':')[0] : 'default'})`;
-      default: return 'Custom Action';
-    }
+  const getAttachmentIcon = (mimeType: string) => {
+    if (mimeType.startsWith('image/')) return <ImageIcon className="w-5 h-5 text-pink-400" />;
+    if (mimeType.startsWith('audio/')) return <Volume2 className="w-5 h-5 text-cyan-400" />;
+    if (mimeType.startsWith('video/')) return <VideoIcon className="w-5 h-5 text-indigo-400" />;
+    return <FileText className="w-5 h-5 text-amber-400" />;
   };
 
   return (
-    <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar pb-20 px-6 lg:px-12 py-8 bg-[var(--bg-base)]">
-      <div className="max-w-4xl mx-auto space-y-8">
-        {/* Header */}
-        <div className="flex items-center gap-3 border-b border-white/5 pb-6">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-pink-500 to-violet-500 flex items-center justify-center text-white shadow-lg shadow-pink-500/20">
-            <Cpu className="w-6 h-6 animate-pulse" />
+    <div className="flex-1 flex flex-col h-full bg-[var(--bg-base)]">
+      {/* Header */}
+      <div className="flex-none flex items-center justify-between border-b border-white/5 px-6 lg:px-12 py-4 bg-[var(--bg-elevated)]/30 backdrop-blur-md">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 to-violet-500 flex items-center justify-center text-white shadow-lg shadow-pink-500/20">
+            <Cpu className="w-5 h-5 animate-pulse" />
           </div>
           <div>
-            <h1 className="text-3xl font-extrabold tracking-tight">
-              <span className="gradient-text">Auto-Pilot Agent</span>
-            </h1>
-            <p className="text-[var(--text-tertiary)] text-sm mt-1.5 font-medium">
-              Give simple commands to automate persona setups, planner slots, and image generations.
-            </p>
+            <h1 className="text-lg font-extrabold tracking-tight">Auto-Pilot Agent</h1>
+            <p className="text-[var(--text-muted)] text-[10px] font-bold uppercase tracking-wider">Multimodal Agentic Console</p>
           </div>
         </div>
+        <div className="text-[10px] font-bold text-[var(--text-muted)] flex items-center gap-1.5">
+          <ShieldCheck className="w-4 h-4 text-emerald-400" /> Multi-API Routing
+        </div>
+      </div>
 
-        {/* Input prompt card */}
-        <div className="rounded-3xl bg-[var(--bg-elevated)] border border-white/5 p-6 shadow-xl relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-pink-500/5 rounded-full blur-3xl pointer-events-none" />
-          <h3 className="text-sm font-bold text-white mb-3 uppercase tracking-wider flex items-center gap-2">
-            <Zap className="w-4 h-4 text-amber-400" /> Enter Agent Instructions
-          </h3>
-          <textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            disabled={isExecuting}
-            placeholder="e.g. Create a flirty swimsuit model Sofia, generate a 7-day TikTok schedule, and generate a portrait image of her in a bikini on a tropical beach."
-            className="w-full h-32 bg-[var(--bg-input)] border border-white/5 rounded-2xl p-4 text-sm text-white placeholder:text-[var(--text-muted)] focus:border-pink-500/40 outline-none resize-none transition-all shadow-inner"
-          />
-          <div className="flex items-center justify-between mt-4">
-            <span className="text-[10px] font-bold text-[var(--text-muted)] flex items-center gap-1.5">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Smart NSFW Model Routing Enabled
+      {/* Messages list area */}
+      <div className="flex-1 overflow-y-auto px-6 lg:px-12 py-8 space-y-6 custom-scrollbar">
+        {messages.map((msg) => (
+          <div
+            key={msg.id}
+            className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'} max-w-3xl ${msg.role === 'user' ? 'ml-auto' : 'mr-auto'}`}
+          >
+            {/* Sender badge */}
+            <span className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-wider mb-1.5 px-2">
+              {msg.role === 'model' ? '🤖 Agent' : '👤 You'}
             </span>
-            <button
-              onClick={runAgent}
-              disabled={isExecuting || !prompt.trim()}
-              className="px-6 py-3 rounded-2xl bg-gradient-to-r from-pink-500 to-violet-500 hover:from-pink-600 hover:to-violet-600 text-white font-bold text-xs transition-all shadow-lg flex items-center gap-2 hover:-translate-y-0.5 disabled:opacity-50 disabled:translate-y-0"
-            >
-              {isExecuting ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" /> Executing Action...
-                </>
-              ) : (
-                <>
-                  <Send className="w-4 h-4" /> Run Agent
-                </>
-              )}
-            </button>
-          </div>
-        </div>
 
-        {/* Suggestions Panel */}
-        {!isExecuting && steps.length === 0 && (
-          <div className="space-y-3">
-            <h4 className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest">Quick Start Templates</h4>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Bubble container */}
+            <div className={`p-5 rounded-3xl relative overflow-hidden shadow-xl border ${
+              msg.role === 'user' 
+                ? 'bg-gradient-to-br from-pink-500/10 to-violet-500/10 border-pink-500/20 text-white rounded-tr-none'
+                : 'bg-[var(--bg-elevated)] border-white/5 text-[var(--text-primary)] rounded-tl-none'
+            }`}>
+              <div className="text-sm font-medium leading-relaxed whitespace-pre-wrap">{msg.content}</div>
+
+              {/* Message Attachments */}
+              {msg.attachments && msg.attachments.length > 0 && (
+                <div className="flex flex-wrap gap-2.5 mt-3 pt-3 border-t border-white/5">
+                  {msg.attachments.map((att, idx) => (
+                    <div key={idx} className="flex items-center gap-2 p-2 bg-white/5 border border-white/5 rounded-xl text-xs">
+                      {att.mimeType.startsWith('image/') ? (
+                        <img src={att.dataUrl} alt={att.name} className="w-8 h-8 rounded object-cover" />
+                      ) : (
+                        getAttachmentIcon(att.mimeType)
+                      )}
+                      <span className="max-w-[120px] truncate text-[10px] font-bold text-[var(--text-tertiary)]">{att.name}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Suggestion / Executing card inside Agent replies */}
+              {msg.role === 'model' && msg.suggestedSteps && (
+                <div className="mt-5 p-5 bg-black/40 border border-pink-500/10 rounded-2xl space-y-4">
+                  <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                    <span className="text-xs font-black text-pink-400 uppercase tracking-widest flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5" /> Proposed Action Plan
+                    </span>
+                    {!msg.isExecuting && (
+                      <button
+                        onClick={() => runPipeline(msg.id)}
+                        className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-pink-500 to-violet-500 hover:from-pink-600 hover:to-violet-600 font-black text-[10px] uppercase tracking-wider text-white shadow-lg flex items-center gap-1 transition-all hover:-translate-y-0.5"
+                      >
+                        Approve & Execute <ArrowRight className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Tasks List */}
+                  <div className="space-y-3">
+                    {msg.execSteps?.map((step, idx) => (
+                      <div key={idx} className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-lg bg-white/5 flex items-center justify-center shrink-0 text-white">
+                            {step.type === 'create_persona' && <UserPlus className="w-3 h-3" />}
+                            {step.type === 'generate_content_plan' && <CalendarRange className="w-3 h-3" />}
+                            {step.type === 'generate_image' && <ImageIcon className="w-3 h-3" />}
+                          </div>
+                          <span className="font-bold text-[var(--text-secondary)]">
+                            {step.type === 'create_persona' && `Create Persona: ${step.params.name || 'Unnamed'}`}
+                            {step.type === 'generate_content_plan' && `Generate ${step.params.platform} Plan`}
+                            {step.type === 'generate_image' && `Generate starting photo`}
+                          </span>
+                        </div>
+                        <div>
+                          {step.status === 'pending' && <span className="text-[8px] font-black uppercase text-[var(--text-muted)] tracking-wider">Pending</span>}
+                          {step.status === 'running' && <Loader2 className="w-3 h-3 animate-spin text-pink-400" />}
+                          {step.status === 'success' && <Check className="w-4.5 h-4.5 text-emerald-400" />}
+                          {step.status === 'error' && <AlertCircle className="w-4 h-4 text-rose-500" />}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Running Logs terminal */}
+                  {(msg.execLogs && msg.execLogs.length > 0) && (
+                    <div className="p-4 bg-black border border-white/5 rounded-xl h-40 overflow-y-auto font-mono text-[10px] text-zinc-400 space-y-1.5 custom-scrollbar shadow-inner">
+                      {msg.execLogs.map((log, idx) => (
+                        <div key={idx} className="leading-relaxed">{log}</div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+
+        {isSending && (
+          <div className="flex items-start mr-auto max-w-3xl animate-pulse">
+            <div className="flex flex-col items-start">
+              <span className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-wider mb-1.5 px-2">🤖 Agent</span>
+              <div className="p-5 rounded-3xl bg-[var(--bg-elevated)] border border-white/5 rounded-tl-none flex items-center gap-2.5">
+                <Loader2 className="w-4 h-4 animate-spin text-pink-500" />
+                <span className="text-xs text-[var(--text-muted)] font-medium">Agent is thinking...</span>
+              </div>
+            </div>
+          </div>
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Suggestion starter templates when chat is fresh */}
+      {messages.length === 1 && (
+        <div className="flex-none px-6 lg:px-12 py-3 border-t border-white/5 bg-[var(--bg-elevated)]/10">
+          <div className="max-w-3xl mx-auto flex flex-col md:flex-row gap-3 items-center">
+            <span className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest shrink-0">Try Prompts:</span>
+            <div className="flex flex-wrap gap-2">
               {SUGGESTIONS.map((s, idx) => (
                 <button
                   key={idx}
-                  onClick={() => handleSuggestionClick(s.prompt)}
-                  className="p-5 rounded-2xl bg-[var(--bg-elevated)] border border-white/5 hover:border-pink-500/20 hover:bg-white/[0.01] transition-all text-left shadow-md flex flex-col justify-between h-40 group"
+                  onClick={() => setInputText(s.prompt)}
+                  className="px-3.5 py-1.5 rounded-full border border-white/5 bg-white/[0.01] hover:border-pink-500/20 text-xs font-semibold text-[var(--text-secondary)] hover:text-white transition-all text-left"
                 >
-                  <div>
-                    <span className="text-xs font-bold text-white group-hover:text-pink-400 transition-colors">{s.label}</span>
-                    <p className="text-[11px] text-[var(--text-tertiary)] mt-1.5 leading-relaxed">{s.desc}</p>
-                  </div>
-                  <div className="text-[10px] font-bold text-pink-400 flex items-center gap-1 mt-3">
-                    Use Template <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
-                  </div>
+                  💡 {s.label}
                 </button>
               ))}
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Executing Terminal & Pipeline log */}
-        {(isExecuting || logs.length > 0) && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in-up">
-            {/* Task list list */}
-            <div className="lg:col-span-1 space-y-3">
-              <h4 className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest">Pipeline Tasks</h4>
-              <div className="rounded-3xl bg-[var(--bg-elevated)] border border-white/5 p-5 space-y-4 shadow-lg">
-                {steps.map((step, idx) => (
-                  <div key={idx} className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center shrink-0">
-                        {getStepIcon(step.type)}
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-white leading-tight">{getStepLabel(step.type, step.params)}</p>
-                      </div>
-                    </div>
-                    <div>
-                      {step.status === 'pending' && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-white/5 text-[var(--text-muted)]">Pending</span>}
-                      {step.status === 'running' && <Loader2 className="w-3.5 h-3.5 animate-spin text-pink-400" />}
-                      {step.status === 'success' && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
-                      {step.status === 'error' && <AlertCircle className="w-4 h-4 text-rose-500" />}
-                    </div>
+      {/* Input panel bar */}
+      <div className="flex-none p-4 lg:p-6 border-t border-white/5 bg-[var(--bg-elevated)]/40 backdrop-blur-md">
+        <div className="max-w-3xl mx-auto">
+          {/* Files preview list */}
+          {attachments.length > 0 && (
+            <div className="flex flex-wrap gap-2.5 mb-3 bg-[var(--bg-input)] p-3 border border-white/5 rounded-2xl shadow-inner">
+              {attachments.map((att, idx) => (
+                <div key={idx} className="flex items-center gap-2 p-2 bg-white/5 border border-white/5 rounded-xl text-xs relative group">
+                  {att.mimeType.startsWith('image/') ? (
+                    <img src={att.dataUrl} alt={att.name} className="w-10 h-10 rounded object-cover" />
+                  ) : (
+                    getAttachmentIcon(att.mimeType)
+                  )}
+                  <div className="flex flex-col">
+                    <span className="max-w-[120px] truncate text-[10px] font-bold text-white leading-tight">{att.name}</span>
+                    <span className="text-[8px] font-black text-[var(--text-muted)] uppercase mt-0.5">{att.mimeType.split('/')[0]}</span>
                   </div>
-                ))}
-                {steps.length === 0 && (
-                  <div className="text-center py-6 text-xs text-[var(--text-muted)]">Parsing instructions...</div>
-                )}
-              </div>
+                  <button
+                    onClick={() => removeAttachment(idx)}
+                    className="w-4 h-4 rounded-full bg-rose-500 hover:bg-rose-600 flex items-center justify-center text-white absolute -top-1.5 -right-1.5 shadow-md"
+                  >
+                    <X size={10} />
+                  </button>
+                </div>
+              ))}
             </div>
+          )}
 
-            {/* Terminal log logs */}
-            <div className="lg:col-span-2 space-y-3">
-              <h4 className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest flex items-center gap-2">
-                <Terminal className="w-3.5 h-3.5 text-pink-400" /> Console Logs
-              </h4>
-              <div className="rounded-3xl bg-black border border-white/5 p-6 h-[320px] overflow-y-auto font-mono text-xs flex flex-col gap-2.5 shadow-2xl custom-scrollbar">
-                {logs.map((log) => (
-                  <div key={log.id} className="flex items-start gap-2.5 leading-relaxed">
-                    <span className="text-[var(--text-muted)] shrink-0 select-none">[{log.timestamp}]</span>
-                    <span className={
-                      log.type === 'success' ? 'text-emerald-400' :
-                      log.type === 'error' ? 'text-rose-400 font-bold' :
-                      log.type === 'warning' ? 'text-amber-400' :
-                      log.type === 'model' ? 'text-cyan-400 font-bold' :
-                      'text-[var(--text-secondary)]'
-                    }>
-                      {log.message}
-                    </span>
-                  </div>
-                ))}
-                <div ref={consoleEndRef} />
-              </div>
-            </div>
+          {/* Prompt Entry Box */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isSending}
+              className="w-12 h-12 rounded-2xl border border-white/5 bg-[var(--bg-input)] hover:border-pink-500/20 flex items-center justify-center text-[var(--text-muted)] hover:text-white transition-all shadow"
+            >
+              <Paperclip size={18} />
+            </button>
+            <input
+              type="file"
+              ref={fileInputRef}
+              multiple
+              onChange={handleFileUpload}
+              className="hidden"
+            />
+            <input
+              type="text"
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
+              disabled={isSending}
+              placeholder="Tell the agent what to build, attach reference files..."
+              className="flex-1 h-12 bg-[var(--bg-input)] border border-white/5 rounded-2xl px-4 text-sm text-white placeholder:text-[var(--text-muted)] focus:border-pink-500/40 outline-none transition-all shadow-inner"
+            />
+            <button
+              onClick={sendMessage}
+              disabled={isSending || (!inputText.trim() && attachments.length === 0)}
+              className="w-12 h-12 rounded-2xl bg-gradient-to-r from-pink-500 to-violet-500 hover:from-pink-600 hover:to-violet-600 flex items-center justify-center text-white shadow-lg transition-all hover:-translate-y-0.5 disabled:opacity-50 disabled:translate-y-0"
+            >
+              <Send size={18} />
+            </button>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

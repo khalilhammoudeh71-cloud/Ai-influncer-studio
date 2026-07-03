@@ -655,16 +655,48 @@ router.post('/personas/:personaClientId/analyze-face', async (req: Authenticated
   }
 });
 
-router.post('/agent/parse', async (req: AuthenticatedRequest, res: Response) => {
-  const { prompt } = req.body as { prompt?: string };
-  if (!prompt) return res.status(400).json({ error: 'prompt is required' });
+router.post('/agent/chat', async (req: AuthenticatedRequest, res: Response) => {
+  const { messages } = req.body as { messages?: any[] };
+  if (!messages || !Array.isArray(messages) || messages.length === 0) {
+    return res.status(400).json({ error: 'messages history array is required' });
+  }
 
   try {
     const genAI = getGeminiClientForRoutes();
-    const systemInstruction = `You are the orchestrator for an AI Influencer Studio.
-Your job is to parse a user's natural language request (e.g. "Create a sporty persona Sofia, generate a 7-day plan, and make an image of her in a gym") into a list of structured task steps.
+    
+    // Map client messages to Gemini content format with base64 attachments support
+    const contents = messages.map(msg => {
+      const parts: any[] = [];
+      if (msg.content) {
+        parts.push({ text: msg.content });
+      }
+      if (msg.attachments && Array.isArray(msg.attachments)) {
+        msg.attachments.forEach(att => {
+          const match = att.dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+          if (match) {
+            parts.push({
+              inlineData: {
+                mimeType: match[1],
+                data: match[2]
+              }
+            });
+          }
+        });
+      }
+      return {
+        role: msg.role === 'model' ? 'model' : 'user',
+        parts
+      };
+    });
 
-You must choose the best visual generator model depending on the nature of the request:
+    const systemInstruction = `You are the orchestrator for an AI Influencer Studio.
+Your job is to interact with the user via chat, help them define their personas, build content schedules, and generate visual assets.
+
+Analyze the conversation history and any attached files (images, audio, video, documents, etc.).
+If the user's instructions are incomplete (e.g., they want a new influencer but didn't specify platform, visual style, or niche), ask clear and helpful questions to get the required details. Keep the status as "clarifying".
+Only when you have gathered all details and the user is ready to proceed, outline an implementation plan and propose it. Set status to "executing" and include the array of tasks in "suggestedSteps".
+
+For visual assets, you must select the best generator model:
 - For standard, professional, tech, fashion, food, normal lifestyle, or clean prompts, select one of these clean models:
   - "google:nano-banana-pro" (default clean, fast, free)
   - "google:imagen-4-ultra" (highest quality clean)
@@ -676,46 +708,56 @@ You must choose the best visual generator model depending on the nature of the r
   - "venice:lustify-v8" (fourth choice / Venice premium NSFW)
   - "venice:seedream-v5" (fifth choice / Venice alternative NSFW)
 
-The available task steps are:
+Available steps inside "suggestedSteps":
 1. "create_persona":
    Required parameters:
-   - name: string (e.g., Isabella Laurent, Sofia)
-   - niche: string (e.g., Luxury Lifestyle, Fitness Model, ASMR Creator)
-   - tone: string (comma-separated list of adjectives, e.g., Energetic, Confident, Inspiring)
-   - platform: string (e.g., Instagram, YouTube, TikTok, Twitter/X, OnlyFans)
-   - bio: string (concise biography, 2-3 sentences)
-   - visualStyle: string (visual guidelines, e.g., warm lighting, gym workspace, bedroom setting)
-   - personalityTraits: string[] (3-4 adjectives)
+   - name: string
+   - niche: string
+   - tone: string (comma-separated list of adjectives)
+   - platform: string
+   - bio: string
+   - visualStyle: string
+   - personalityTraits: string[]
 
 2. "generate_content_plan":
    Required parameters:
-   - platform: string (e.g., Instagram, TikTok, OnlyFans, etc.)
-   - theme: string (main topic or focus of the content plan)
+   - platform: string
+   - theme: string
 
 3. "generate_image":
    Required parameters:
-   - prompt: string (detailed prompt combining the persona name, visual style, outfit, setting, e.g., "Professional portrait photo of Isabella Laurent in activewear, gym setup, workout pose, detailed skin, highly realistic")
+   - prompt: string (detailed prompt combining name, style, outfit, setting, e.g., "Professional portrait photo of Isabella Laurent in activewear, gym setup, workout pose, detailed skin, highly realistic")
    - environment: string (e.g., Studio, Outdoors, Office, Gym, Kitchen, Bedroom, Beach)
    - outfit: string (e.g., Activewear, Casual, Professional, Formal, Swimsuit, Lingerie)
    - framing: string (e.g., Portrait, Medium Shot, Wide Shot, Cinematic)
    - modelId: string (MUST be one of the clean or NSFW model IDs selected according to the rules above)
 
-Return ONLY a valid JSON array of objects. Do not wrap it in markdown code fences or HTML tags. Each object must have a "type" field (either "create_persona", "generate_content_plan", or "generate_image") and a "params" object.`;
+You must ALWAYS reply in valid JSON format with these exact properties:
+{
+  "text": "Your textual chat reply to the user (e.g., questions, explanations, or plan summary)",
+  "status": "clarifying" | "executing" | "normal",
+  "suggestedSteps": [ ...optional array of steps if status is executing... ]
+}
+Do not wrap your response in markdown code blocks or HTML tags. Return ONLY the JSON object.`;
 
     const result = await genAI.models.generateContent({
       model: 'gemini-2.5-flash',
-      contents: [{ role: 'user', parts: [{ text: `System instruction:\n${systemInstruction}\n\nUser request: "${prompt}"` }] }]
+      contents,
+      config: {
+        systemInstruction,
+        responseMimeType: 'application/json'
+      }
     });
 
     let text = result.text?.trim() || '';
     // Clean up code block backticks if model generated any
     text = text.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
 
-    const steps = JSON.parse(text);
-    res.json({ steps });
+    const data = JSON.parse(text);
+    res.json(data);
   } catch (err) {
-    console.error('[API] /agent/parse error:', err);
-    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to parse request with agent' });
+    console.error('[API] /agent/chat error:', err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to parse request with agent chat' });
   }
 });
 
