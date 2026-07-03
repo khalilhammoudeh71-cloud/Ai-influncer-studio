@@ -13,7 +13,8 @@ import {
   Wrench,
   Sparkles,
   ChevronDown,
-  Bell
+  Bell,
+  Cpu
 } from 'lucide-react';
 import { cn } from './utils/cn';
 import { Persona, RevenueEntry, PlannedPost, Tab, NavEntry } from './types';
@@ -29,6 +30,7 @@ import LandingView from './views/LandingView';
 import PersonaBuilderView from './views/PersonaBuilderView';
 import CreatorHubView from './views/CreatorHubView';
 import RevenueView from './views/RevenueView';
+import AgentView from './views/AgentView';
 import OnboardingTour from './components/OnboardingTour';
 import CommandPalette from './components/CommandPalette';
 
@@ -431,6 +433,7 @@ function App() {
     { id: 'planner', label: 'Planner', icon: Calendar },
     { id: 'gallery', label: 'Gallery', icon: Sparkles },
     { id: 'assistant', label: 'Assistant', icon: MessageSquare },
+    { id: 'agent', label: 'Auto-Pilot', icon: Cpu },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
@@ -474,6 +477,7 @@ function App() {
       case 'intelligence': return <CreatorHubView persona={activePersona} personas={personas} nav={navActions} />;
       case 'planner': return <PlannerView persona={activePersona} personas={personas} onSelectPersona={setSelectedPersonaId} nav={navActions} />;
       case 'assistant': return <AssistantView persona={activePersona} personas={personas} nav={navActions} />;
+      case 'agent': return <AgentView personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} nav={navActions} />;
       case 'revenue': return <RevenueView persona={activePersona} />;
       case 'settings': return (
         <SettingsView 

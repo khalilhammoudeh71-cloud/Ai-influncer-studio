@@ -655,4 +655,68 @@ router.post('/personas/:personaClientId/analyze-face', async (req: Authenticated
   }
 });
 
+router.post('/agent/parse', async (req: AuthenticatedRequest, res: Response) => {
+  const { prompt } = req.body as { prompt?: string };
+  if (!prompt) return res.status(400).json({ error: 'prompt is required' });
+
+  try {
+    const genAI = getGeminiClientForRoutes();
+    const systemInstruction = `You are the orchestrator for an AI Influencer Studio.
+Your job is to parse a user's natural language request (e.g. "Create a sporty persona Sofia, generate a 7-day plan, and make an image of her in a gym") into a list of structured task steps.
+
+You must choose the best visual generator model depending on the nature of the request:
+- For standard, professional, tech, fashion, food, normal lifestyle, or clean prompts, select one of these clean models:
+  - "google:nano-banana-pro" (default clean, fast, free)
+  - "google:imagen-4-ultra" (highest quality clean)
+  - "openai:gpt-image-2" (OpenAI photorealistic clean)
+- For NSFW, adult, flirty, swimsuit, lingerie, boudoir, or highly sensual requests, select one of these NSFW models (ordered by priority):
+  - "wavespeed:wavespeed-ai/firered-v1.5-image" (first choice for NSFW/sensual, cheap & highly realistic)
+  - "wavespeed:wavespeed-ai/z-image" (second choice for NSFW/sensual)
+  - "wavespeed:wavespeed-ai/uso-full" (third choice for NSFW/sensual)
+  - "venice:lustify-v8" (fourth choice / Venice premium NSFW)
+  - "venice:seedream-v5" (fifth choice / Venice alternative NSFW)
+
+The available task steps are:
+1. "create_persona":
+   Required parameters:
+   - name: string (e.g., Isabella Laurent, Sofia)
+   - niche: string (e.g., Luxury Lifestyle, Fitness Model, ASMR Creator)
+   - tone: string (comma-separated list of adjectives, e.g., Energetic, Confident, Inspiring)
+   - platform: string (e.g., Instagram, YouTube, TikTok, Twitter/X, OnlyFans)
+   - bio: string (concise biography, 2-3 sentences)
+   - visualStyle: string (visual guidelines, e.g., warm lighting, gym workspace, bedroom setting)
+   - personalityTraits: string[] (3-4 adjectives)
+
+2. "generate_content_plan":
+   Required parameters:
+   - platform: string (e.g., Instagram, TikTok, OnlyFans, etc.)
+   - theme: string (main topic or focus of the content plan)
+
+3. "generate_image":
+   Required parameters:
+   - prompt: string (detailed prompt combining the persona name, visual style, outfit, setting, e.g., "Professional portrait photo of Isabella Laurent in activewear, gym setup, workout pose, detailed skin, highly realistic")
+   - environment: string (e.g., Studio, Outdoors, Office, Gym, Kitchen, Bedroom, Beach)
+   - outfit: string (e.g., Activewear, Casual, Professional, Formal, Swimsuit, Lingerie)
+   - framing: string (e.g., Portrait, Medium Shot, Wide Shot, Cinematic)
+   - modelId: string (MUST be one of the clean or NSFW model IDs selected according to the rules above)
+
+Return ONLY a valid JSON array of objects. Do not wrap it in markdown code fences or HTML tags. Each object must have a "type" field (either "create_persona", "generate_content_plan", or "generate_image") and a "params" object.`;
+
+    const result = await genAI.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: [{ role: 'user', parts: [{ text: `System instruction:\n${systemInstruction}\n\nUser request: "${prompt}"` }] }]
+    });
+
+    let text = result.text?.trim() || '';
+    // Clean up code block backticks if model generated any
+    text = text.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
+
+    const steps = JSON.parse(text);
+    res.json({ steps });
+  } catch (err) {
+    console.error('[API] /agent/parse error:', err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to parse request with agent' });
+  }
+});
+
 export default router;
