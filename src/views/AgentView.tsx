@@ -905,6 +905,18 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
         }
       }
 
+      let memoryVideo: string | null = null;
+      for (let mIdx = messages.length - 1; mIdx >= 0; mIdx--) {
+        const msgHistoryItem = messages[mIdx];
+        if (msgHistoryItem.attachments && msgHistoryItem.attachments.length > 0) {
+          const vidAtt = msgHistoryItem.attachments.find(a => a.mimeType.startsWith('video/'));
+          if (vidAtt) {
+            memoryVideo = vidAtt.dataUrl;
+            break;
+          }
+        }
+      }
+
       let createdPersona: Persona | null = null;
       let createdPersonaId = '';
 
@@ -1075,7 +1087,18 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
             }
           }
 
+          // Scan for uploaded reference video in history if not explicitly provided
+          let finalSourceVideo = step.params.sourceVideo || null;
+          if (!finalSourceVideo && memoryVideo) {
+            finalSourceVideo = memoryVideo;
+            addLocalLog(`🧠 [Memory System]: Applying uploaded reference video from conversation history for editing.`);
+          }
+
           let modelId = step.params.modelId || 'google:veo-omni';
+          if (finalSourceVideo && !modelId.startsWith('wavespeed-v2v:')) {
+            modelId = 'wavespeed-v2v:wavespeed-ai/wan-2.2-v2v-720p';
+          }
+
           addLocalLog(`Chosen Video Model: ${modelId}`, true, true);
           addLocalLog(`⏳ Generating video segment...`);
           addLocalLog(`📝 Motion Prompt: "${step.params.prompt}"`);
@@ -1086,7 +1109,8 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
               prompt: step.params.prompt,
               modelId,
               strength: step.params.strength || 0.6,
-              sourceImage: finalSourceImage
+              sourceImage: finalSourceVideo ? undefined : finalSourceImage,
+              sourceVideo: finalSourceVideo || undefined
             });
           } catch (firstErr: any) {
             addLocalLog(`⚠️ Video model ${modelId} failed. Fallback triggered.`);
@@ -1094,7 +1118,8 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
               prompt: step.params.prompt,
               modelId: 'google:veo-omni',
               strength: 0.6,
-              sourceImage: finalSourceImage
+              sourceImage: finalSourceVideo ? undefined : finalSourceImage,
+              sourceVideo: finalSourceVideo || undefined
             });
           }
 

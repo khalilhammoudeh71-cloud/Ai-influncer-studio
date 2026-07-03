@@ -748,10 +748,11 @@ Available steps inside "suggestedSteps":
 
 4. "generate_video":
    Required parameters:
-   - prompt: string (detailed description of motion, e.g., "Sofia laughing and dancing in a tropical swimming pool, cinematic camera slide, sun flares")
-   - modelId: string (e.g. "google:veo-omni" or "wavespeed-i2v:wavespeed-ai/wan-2.2-i2v-720p")
+   - prompt: string (detailed description of motion or video edit changes, e.g., "Sofia laughing and dancing in a tropical swimming pool, cinematic camera slide, sun flares")
+   - modelId: string (e.g. "google:veo-omni" or "wavespeed-i2v:wavespeed-ai/wan-2.2-i2v-720p" or "wavespeed-v2v:wavespeed-ai/wan-2.2-v2v-720p")
    - strength: number (edit strength from 0.1 to 1.0, e.g. 0.6)
    - sourceImageFromStepIndex: number (optional, index of previous generate_video step to extract last frame from for continuity to prevent identity drift)
+   - sourceVideo: string (optional, dataUrl/source link of the reference video to edit/transform)
 
 5. "generate_voice":
    Required parameters:

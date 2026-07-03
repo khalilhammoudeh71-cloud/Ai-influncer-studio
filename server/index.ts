@@ -2816,9 +2816,18 @@ app.post('/api/generate-video', async (req, res) => {
     }
 
     await fetchWavespeedModels();
-    const videoModel = (cachedVideoModels || []).find(m => m.id === modelId);
+    let videoModel = (cachedVideoModels || []).find(m => m.id === modelId);
     if (!videoModel) {
-      return res.status(400).json({ error: 'Unknown video model ID' });
+      if (modelId.startsWith('wavespeed-v2v:')) {
+        videoModel = (cachedVideoModels || []).find(m => m.id.startsWith('wavespeed-v2v:'));
+      } else if (modelId.startsWith('wavespeed-i2v:')) {
+        videoModel = (cachedVideoModels || []).find(m => m.id.startsWith('wavespeed-i2v:'));
+      } else if (modelId.startsWith('wavespeed-t2v:')) {
+        videoModel = (cachedVideoModels || []).find(m => m.id.startsWith('wavespeed-t2v:'));
+      }
+    }
+    if (!videoModel) {
+      return res.status(400).json({ error: 'Unknown or unavailable video model ID: ' + modelId });
     }
 
     let isI2V = modelId.startsWith('wavespeed-i2v:');

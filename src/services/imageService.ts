@@ -293,7 +293,9 @@ export async function generateVideo(
   naturalLook?: boolean,
   aspectRatio?: string,
   duration?: number,
-  resolution?: string
+  resolution?: string,
+  sourceVideo?: string,
+  strength?: number
 ): Promise<{ videoUrl: string; model: string }> {
   const body: Record<string, unknown> = { prompt, modelId };
   if (sourceImage) body.sourceImage = sourceImage;
@@ -302,6 +304,8 @@ export async function generateVideo(
   if (aspectRatio) body.aspectRatio = aspectRatio;
   if (duration !== undefined) body.duration = duration;
   if (resolution) body.resolution = resolution;
+  if (sourceVideo) body.sourceVideo = sourceVideo;
+  if (strength !== undefined) body.strength = strength;
   const response = await fetch('/api/generate-video', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
