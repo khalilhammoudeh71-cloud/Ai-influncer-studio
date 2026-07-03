@@ -144,6 +144,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
   const [captionCopied, setCaptionCopied] = useState(false);
   const [autoModelReason, setAutoModelReason] = useState('');
   const [showTemplates, setShowTemplates] = useState(false);
+  const [allowNsfw, setAllowNsfw] = useState(false);
   const [savedPrompts, setSavedPrompts] = useState<{ label: string; prompt: string; tool: string }[]>(() => {
     try {
       const saved = localStorage.getItem('ai_tools_saved_prompts');
@@ -470,7 +471,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
     const fallbackSeedream = seedream45?.id || 'wavespeed-edit:bytedance/seedream-v4.5/edit';
 
     const nsfwKeywords = ['nsfw', 'uncensored', 'sexy', 'naked', 'bikini', 'lingerie', 'underwear', 'lewd', 'adult', 'erotic'];
-    const isNsfw = nsfwKeywords.some(k => prompt.toLowerCase().includes(k));
+    const isNsfw = allowNsfw || nsfwKeywords.some(k => prompt.toLowerCase().includes(k));
 
     if (isNsfw) {
       setAutoModelReason('Seedream v4.5 — uncensored model for creative content');
@@ -962,6 +963,22 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
           )
         ) : editModels.length > 0 && (
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                const newVal = !allowNsfw;
+                setAllowNsfw(newVal);
+                toast.success(newVal ? 'Uncensored content generation enabled!' : 'Safety filter enabled.');
+              }}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all border ${
+                allowNsfw 
+                  ? 'bg-rose-500/20 border-rose-500 text-rose-400' 
+                  : 'bg-zinc-800/40 border-zinc-700 text-zinc-400 hover:text-zinc-200'
+              }`}
+              title="Toggle safety content filter for image edits"
+            >
+              <Shield size={12} className={allowNsfw ? 'text-rose-400' : 'text-zinc-400'} />
+              {allowNsfw ? '🔞 Uncensored' : '🛡️ Safe Mode'}
+            </button>
             <Settings2 size={14} className="text-[var(--text-tertiary)]" />
             <select 
               value={selectedModel}
