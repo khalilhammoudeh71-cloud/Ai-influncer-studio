@@ -732,6 +732,25 @@ Available steps inside "suggestedSteps":
    - framing: string (e.g., Portrait, Medium Shot, Wide Shot, Cinematic)
    - modelId: string (MUST be one of the clean or NSFW model IDs selected according to the rules above)
 
+4. "generate_video":
+   Required parameters:
+   - prompt: string (detailed description of motion, e.g., "Sofia laughing and dancing in a tropical swimming pool, cinematic camera slide, sun flares")
+   - modelId: string (e.g. "google:veo-omni" or "wavespeed-i2v:wavespeed-ai/wan-2.2-i2v-720p")
+   - strength: number (edit strength from 0.1 to 1.0, e.g. 0.6)
+
+5. "generate_voice":
+   Required parameters:
+   - text: string (narrative content script, e.g. "Hey guys, Isabella here! Ready for some luxury travel tips?")
+   - voiceId: string (e.g., "Aoede", "Charon", "Kore")
+   - engine: string (e.g., "gemini", "openai", "elevenlabs")
+
+6. "log_revenue":
+   Required parameters:
+   - amount: number (e.g., 85.00)
+   - source: string (e.g., "Sponsorship", "Subscriptions", "Tips")
+   - platform: string (e.g., "OnlyFans", "Instagram", "YouTube")
+   - notes: string (brief transaction description)
+
 You must ALWAYS reply in valid JSON format with these exact properties:
 {
   "text": "Your textual chat reply to the user (e.g., questions, explanations, or plan summary)",

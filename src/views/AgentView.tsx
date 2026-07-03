@@ -16,11 +16,12 @@ import {
   Zap,
   Paperclip,
   X,
-  Trash2,
   Check,
   Volume2,
   Video as VideoIcon,
-  FileText
+  FileText,
+  Mic,
+  DollarSign
 } from 'lucide-react';
 import { Persona, Tab } from '../types';
 import { api } from '../services/apiService';
@@ -59,12 +60,12 @@ interface Message {
 
 const SUGGESTIONS = [
   {
-    label: "Gamer Girl Sofia",
-    prompt: "Create a gamer girl named Sofia who streams on Twitch, niche is Minecraft. Give her a 7-day flirty OnlyFans planner, and generate a portrait image of her in activewear in front of her dual-monitor setup."
+    label: "ASMR Sofia (Swimsuit/OnlyFans)",
+    prompt: "Create a flirty swimsuit model Sofia, ASMR niche, platforms OnlyFans & Instagram. Generate a 7-day flirty schedule, a beach video clip of her, and log $50 subscription revenue."
   },
   {
-    label: "Finance Coach Marco",
-    prompt: "Create a high-status finance coach named Marco who posts on Twitter, niche is stock trading, bio focuses on elite mindset. Generate a 7-day plan, and make a professional suit photo of him in a luxury office."
+    label: "Fitness Marco (TikTok/Gym)",
+    prompt: "Create a fitness motivator Marco, TikTok plan. Write a voice narration script, generate a gym photo of him, and log $150 sponsorship revenue."
   }
 ];
 
@@ -75,20 +76,66 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
     {
       id: 'welcome',
       role: 'model',
-      content: "Hello! I am your AI Auto-Pilot Agent. Tell me who you want to build today!\n\nI can create a custom persona, design their content schedule, and generate high-quality starting visuals using the best model automatically (including Wavespeed NSFW or Google/OpenAI models depending on your goals).\n\nFeel free to write simple directions, or attach reference images, scripts, or audio files to get started!",
+      content: "Hello! I am your AI Auto-Pilot Agent. Tell me who you want to build today!\n\nI can create a custom persona, design their content schedule, generate starting visuals, produce voice narrations, render cinematic video edits, and log sponsor/subscription revenue.\n\nNow supporting voice transcription input, dynamic model self-correction, and human-in-the-loop parameter adjustments before execution!",
       status: 'normal'
     }
   ]);
   
   const [isSending, setIsSending] = useState(false);
+  const [isListening, setIsListening] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const recognitionRef = useRef<any>(null);
+
+  // Initialize Speech Recognition
+  useEffect(() => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      const rec = new SpeechRecognition();
+      rec.continuous = false;
+      rec.interimResults = false;
+      rec.lang = 'en-US';
+      
+      rec.onstart = () => {
+        setIsListening(true);
+        toast.success('Microphone active... Speak now!');
+      };
+      
+      rec.onresult = (e: any) => {
+        const text = e.results[0][0].transcript;
+        setInputText(prev => (prev ? prev + ' ' + text : text));
+      };
+      
+      rec.onerror = () => {
+        toast.error('Speech recognition failed or permission denied.');
+        setIsListening(false);
+      };
+      
+      rec.onend = () => {
+        setIsListening(false);
+      };
+      
+      recognitionRef.current = rec;
+    }
+  }, []);
 
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages, isSending]);
+
+  const toggleListening = () => {
+    if (isListening) {
+      recognitionRef.current?.stop();
+    } else {
+      if (!recognitionRef.current) {
+        toast.error('Voice input is not supported in this browser. Please use Chrome/Safari.');
+        return;
+      }
+      recognitionRef.current.start();
+    }
+  };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -109,12 +156,28 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
       reader.readAsDataURL(file);
     });
 
-    // Reset input
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const removeAttachment = (idx: number) => {
     setAttachments(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleParamChange = (messageId: string, stepIdx: number, paramKey: string, value: any) => {
+    setMessages(prev => prev.map(m => {
+      if (m.id === messageId && m.execSteps) {
+        const updatedSteps = [...m.execSteps];
+        updatedSteps[stepIdx] = {
+          ...updatedSteps[stepIdx],
+          params: {
+            ...updatedSteps[stepIdx].params,
+            [paramKey]: value
+          }
+        };
+        return { ...m, execSteps: updatedSteps };
+      }
+      return m;
+    }));
   };
 
   const sendMessage = async () => {
@@ -183,9 +246,9 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
 
   const runPipeline = async (messageId: string) => {
     const targetMsg = messages.find(m => m.id === messageId);
-    if (!targetMsg || !targetMsg.suggestedSteps || targetMsg.isExecuting) return;
+    if (!targetMsg || !targetMsg.execSteps || targetMsg.isExecuting) return;
 
-    // Set message executing state
+    // Set executing state
     setMessages(prev => prev.map(m => m.id === messageId ? { ...m, isExecuting: true } : m));
 
     const addLocalLog = (msg: string, success = true, isModel = false) => {
@@ -218,6 +281,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
       let createdPersona: Persona | null = null;
       let createdPersonaId = '';
 
+      // Reads execSteps directly (allowing users to edit parameters inline!)
       const stepsList = targetMsg.execSteps || [];
 
       for (let i = 0; i < stepsList.length; i++) {
@@ -255,11 +319,11 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
           createdPersona = saved;
           createdPersonaId = uniqueId;
 
-          // Update parent persona list context
+          // Update parent context
           setPersonas(prev => [...prev, saved]);
           onSelectPersona(uniqueId);
 
-          addLocalLog(`✅ Persona '${saved.name}' created database entry.`);
+          addLocalLog(`✅ Persona '${saved.name}' created with database entry.`);
           updateStepStatus(i, 'success');
         }
 
@@ -286,22 +350,50 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
             createdPersonaId = createdPersona.id;
           }
 
-          const modelId = step.params.modelId || 'google:nano-banana-pro';
+          let modelId = step.params.modelId || 'google:nano-banana-pro';
           addLocalLog(`Chosen Model ID: ${modelId}`, true, true);
           addLocalLog(`⏳ Spinning up visual generation pipeline...`);
           addLocalLog(`📝 Prompt: "${step.params.prompt}"`);
 
-          const result = await generateImage({
-            persona: createdPersona,
-            modelId,
-            environment: step.params.environment,
-            outfitStyle: step.params.outfit,
-            framing: step.params.framing,
-            prompt: step.params.prompt,
-            aspectRatio: '1:1',
-            resolution: 'standard',
-            count: 1
-          });
+          let result;
+          try {
+            result = await generateImage({
+              persona: createdPersona,
+              modelId,
+              environment: step.params.environment,
+              outfitStyle: step.params.outfit,
+              framing: step.params.framing,
+              prompt: step.params.prompt,
+              aspectRatio: '1:1',
+              resolution: 'standard',
+              count: 1
+            });
+          } catch (firstErr: any) {
+            addLocalLog(`⚠️ [Self-Correction] Model ${modelId} failed: ${firstErr.message || 'unknown error'}`);
+            
+            // Dynamic Fallback selection rules
+            let fallbackModel = 'google:nano-banana-pro';
+            if (modelId.startsWith('wavespeed:')) {
+              fallbackModel = 'venice:lustify-v8'; // Try Venice first
+            } else if (modelId.startsWith('venice:')) {
+              fallbackModel = 'google:nano-banana-pro'; // Try Google next
+            }
+            
+            addLocalLog(`🔄 Retrying pipeline with fallback model: ${fallbackModel}...`);
+            modelId = fallbackModel;
+            
+            result = await generateImage({
+              persona: createdPersona,
+              modelId,
+              environment: step.params.environment,
+              outfitStyle: step.params.outfit,
+              framing: step.params.framing,
+              prompt: step.params.prompt,
+              aspectRatio: '1:1',
+              resolution: 'standard',
+              count: 1
+            });
+          }
 
           const imageUrl = Array.isArray(result) ? result[0].imageUrl : result.imageUrl;
           const promptUsed = Array.isArray(result) ? result[0].promptUsed : result.promptUsed;
@@ -325,7 +417,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
           addLocalLog(`✅ Visual asset generated & saved to library.`);
 
           // Update avatar references
-          addLocalLog(`⏳ Setting persona profile avatar reference...`);
+          addLocalLog(`⏳ Syncing persona profile avatar reference...`);
           const updatedPersona = {
             ...createdPersona,
             avatar: imageUrl,
@@ -338,18 +430,119 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
           addLocalLog(`✅ Profile avatar fully synced!`);
           updateStepStatus(i, 'success');
         }
+
+        else if (step.type === 'generate_video') {
+          if (!createdPersona) {
+            createdPersona = personas[0] || null;
+            if (!createdPersona || createdPersona.id === 'empty') throw new Error('No active persona detected.');
+            createdPersonaId = createdPersona.id;
+          }
+
+          let modelId = step.params.modelId || 'google:veo-omni';
+          addLocalLog(`Chosen Video Model: ${modelId}`, true, true);
+          addLocalLog(`⏳ Spinning up cinematic video generation pipeline...`);
+          addLocalLog(`📝 Motion Prompt: "${step.params.prompt}"`);
+
+          let result;
+          try {
+            result = await api.images.generateVideo({
+              prompt: step.params.prompt,
+              modelId,
+              strength: step.params.strength || 0.6,
+              sourceImage: createdPersona.avatar || null
+            });
+          } catch (firstErr: any) {
+            addLocalLog(`⚠️ [Self-Correction] Video model ${modelId} failed. Retrying with fallback: google:veo-omni...`);
+            modelId = 'google:veo-omni';
+            result = await api.images.generateVideo({
+              prompt: step.params.prompt,
+              modelId,
+              strength: step.params.strength || 0.6,
+              sourceImage: createdPersona.avatar || null
+            });
+          }
+
+          const videoPayload = {
+            id: 'video-' + Math.random().toString(36).substring(2, 9),
+            url: result.videoUrl,
+            prompt: step.params.prompt,
+            timestamp: Date.now(),
+            isFavorite: true,
+            model: modelId,
+            mediaType: 'video' as const
+          };
+
+          await api.images.create(createdPersonaId, videoPayload);
+          addLocalLog(`✅ Video asset successfully generated & saved to library.`);
+          updateStepStatus(i, 'success');
+        }
+
+        else if (step.type === 'generate_voice') {
+          if (!createdPersona) {
+            createdPersona = personas[0] || null;
+            if (!createdPersona || createdPersona.id === 'empty') throw new Error('No active persona detected.');
+            createdPersonaId = createdPersona.id;
+          }
+
+          const engine = step.params.engine || 'gemini';
+          const voiceId = step.params.voiceId || 'Aoede';
+          addLocalLog(`Chosen Voice: ${voiceId} (${engine})`, true, true);
+          addLocalLog(`⏳ Synthesizing voice script narration...`);
+
+          const response = await fetch('/api/generate-speech', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              text: step.params.text,
+              voiceId,
+              engine,
+              voiceName: voiceId
+            })
+          });
+
+          if (!response.ok) {
+            throw new Error('Speech synthesis failed');
+          }
+
+          const data = await response.json();
+          addLocalLog(`✅ Audio narration generated successfully: ${data.audioUrl}`);
+          updateStepStatus(i, 'success');
+        }
+
+        else if (step.type === 'log_revenue') {
+          if (!createdPersona) {
+            createdPersona = personas[0] || null;
+            if (!createdPersona || createdPersona.id === 'empty') throw new Error('No active persona detected.');
+            createdPersonaId = createdPersona.id;
+          }
+
+          const amount = Number(step.params.amount) || 0;
+          addLocalLog(`⏳ Logging revenue: $${amount} from ${step.params.source} on ${step.params.platform}...`);
+
+          await api.revenue.create({
+            id: 'rev-' + Math.random().toString(36).substring(2, 9),
+            date: new Date().toISOString().split('T')[0],
+            amount,
+            source: step.params.source || 'Subscriptions',
+            platform: step.params.platform || 'OnlyFans',
+            personaId: createdPersonaId,
+            notes: step.params.notes || 'Logged via Auto-Pilot Agent'
+          });
+
+          addLocalLog(`✅ Financial transaction logged successfully.`);
+          updateStepStatus(i, 'success');
+        }
       }
 
-      addLocalLog('🏆 Pipeline complete! Closing Auto-Pilot console...');
-      toast.success('Auto-Pilot setup completed successfully!');
+      addLocalLog('🏆 Auto-Pilot pipeline executions finished successfully!');
+      toast.success('Agent completed all tasks successfully!');
       
       setTimeout(() => {
         nav.replace({ view: 'personas' });
       }, 3000);
 
     } catch (err: any) {
-      addLocalLog(`❌ Error: ${err.message || 'Workflow failed.'}`);
-      // Mark current running step as error
+      addLocalLog(`❌ Error: ${err.message || 'Workflow execution halted.'}`);
       setMessages(prev => prev.map(m => {
         if (m.id === messageId && m.execSteps) {
           const updated = m.execSteps.map(s => s.status === 'running' ? { ...s, status: 'error' as const } : s);
@@ -380,7 +573,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
           </div>
           <div>
             <h1 className="text-lg font-extrabold tracking-tight">Auto-Pilot Agent</h1>
-            <p className="text-[var(--text-muted)] text-[10px] font-bold uppercase tracking-wider">Multimodal Agentic Console</p>
+            <p className="text-[var(--text-muted)] text-[10px] font-bold uppercase tracking-wider">Conversational Auto-Pilot</p>
           </div>
         </div>
         <div className="text-[10px] font-bold text-[var(--text-muted)] flex items-center gap-1.5">
@@ -388,19 +581,17 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
         </div>
       </div>
 
-      {/* Messages list area */}
+      {/* Messages thread list */}
       <div className="flex-1 overflow-y-auto px-6 lg:px-12 py-8 space-y-6 custom-scrollbar">
         {messages.map((msg) => (
           <div
             key={msg.id}
             className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'} max-w-3xl ${msg.role === 'user' ? 'ml-auto' : 'mr-auto'}`}
           >
-            {/* Sender badge */}
             <span className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-wider mb-1.5 px-2">
               {msg.role === 'model' ? '🤖 Agent' : '👤 You'}
             </span>
 
-            {/* Bubble container */}
             <div className={`p-5 rounded-3xl relative overflow-hidden shadow-xl border ${
               msg.role === 'user' 
                 ? 'bg-gradient-to-br from-pink-500/10 to-violet-500/10 border-pink-500/20 text-white rounded-tr-none'
@@ -408,7 +599,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
             }`}>
               <div className="text-sm font-medium leading-relaxed whitespace-pre-wrap">{msg.content}</div>
 
-              {/* Message Attachments */}
+              {/* Attachments rendering */}
               {msg.attachments && msg.attachments.length > 0 && (
                 <div className="flex flex-wrap gap-2.5 mt-3 pt-3 border-t border-white/5">
                   {msg.attachments.map((att, idx) => (
@@ -424,12 +615,12 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                 </div>
               )}
 
-              {/* Suggestion / Executing card inside Agent replies */}
+              {/* Human-in-the-Loop plan proposal */}
               {msg.role === 'model' && msg.suggestedSteps && (
                 <div className="mt-5 p-5 bg-black/40 border border-pink-500/10 rounded-2xl space-y-4">
-                  <div className="flex items-center justify-between border-b border-white/5 pb-3">
-                    <span className="text-xs font-black text-pink-400 uppercase tracking-widest flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5" /> Proposed Action Plan
+                  <div className="flex items-center justify-between border-b border-white/5 pb-3 gap-4">
+                    <span className="text-xs font-black text-pink-400 uppercase tracking-widest flex items-center gap-1.5 shrink-0">
+                      <Sparkles className="w-3.5 h-3.5 animate-pulse" /> Proposed Action Plan (Editable)
                     </span>
                     {!msg.isExecuting && (
                       <button
@@ -441,33 +632,183 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                     )}
                   </div>
 
-                  {/* Tasks List */}
-                  <div className="space-y-3">
+                  {/* Steps with Interactive Parameter Editing */}
+                  <div className="space-y-4 divide-y divide-white/5 pt-1">
                     {msg.execSteps?.map((step, idx) => (
-                      <div key={idx} className="flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-2">
-                          <div className="w-6 h-6 rounded-lg bg-white/5 flex items-center justify-center shrink-0 text-white">
-                            {step.type === 'create_persona' && <UserPlus className="w-3 h-3" />}
-                            {step.type === 'generate_content_plan' && <CalendarRange className="w-3 h-3" />}
-                            {step.type === 'generate_image' && <ImageIcon className="w-3 h-3" />}
+                      <div key={idx} className="pt-3 first:pt-0 space-y-2">
+                        <div className="flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 rounded-lg bg-white/5 flex items-center justify-center shrink-0 text-white">
+                              {step.type === 'create_persona' && <UserPlus className="w-3 h-3 text-pink-400" />}
+                              {step.type === 'generate_content_plan' && <CalendarRange className="w-3 h-3 text-indigo-400" />}
+                              {step.type === 'generate_image' && <ImageIcon className="w-3 h-3 text-emerald-400" />}
+                              {step.type === 'generate_video' && <VideoIcon className="w-3 h-3 text-cyan-400" />}
+                              {step.type === 'generate_voice' && <Volume2 className="w-3 h-3 text-amber-400" />}
+                              {step.type === 'log_revenue' && <DollarSign className="w-3 h-3 text-rose-400" />}
+                            </div>
+                            <span className="font-bold text-[var(--text-secondary)]">
+                              {step.type === 'create_persona' && 'Create Persona Profile'}
+                              {step.type === 'generate_content_plan' && 'Build 7-Day Content Schedule'}
+                              {step.type === 'generate_image' && 'Generate visual library starting asset'}
+                              {step.type === 'generate_video' && 'Produce cinematic editing video clip'}
+                              {step.type === 'generate_voice' && 'Synthesize voice narration script'}
+                              {step.type === 'log_revenue' && 'Log Revenue vault income'}
+                            </span>
                           </div>
-                          <span className="font-bold text-[var(--text-secondary)]">
-                            {step.type === 'create_persona' && `Create Persona: ${step.params.name || 'Unnamed'}`}
-                            {step.type === 'generate_content_plan' && `Generate ${step.params.platform} Plan`}
-                            {step.type === 'generate_image' && `Generate starting photo`}
-                          </span>
+                          <div>
+                            {step.status === 'pending' && <span className="text-[8px] font-black uppercase text-[var(--text-muted)] tracking-wider">Pending</span>}
+                            {step.status === 'running' && <Loader2 className="w-3 h-3 animate-spin text-pink-400" />}
+                            {step.status === 'success' && <Check className="w-4 h-4 text-emerald-400" />}
+                            {step.status === 'error' && <AlertCircle className="w-4 h-4 text-rose-500" />}
+                          </div>
                         </div>
-                        <div>
-                          {step.status === 'pending' && <span className="text-[8px] font-black uppercase text-[var(--text-muted)] tracking-wider">Pending</span>}
-                          {step.status === 'running' && <Loader2 className="w-3 h-3 animate-spin text-pink-400" />}
-                          {step.status === 'success' && <Check className="w-4.5 h-4.5 text-emerald-400" />}
-                          {step.status === 'error' && <AlertCircle className="w-4 h-4 text-rose-500" />}
-                        </div>
+
+                        {/* Interactive Edit Fields */}
+                        {!msg.isExecuting && (
+                          <div className="pl-8 space-y-2">
+                            {step.type === 'create_persona' && (
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <label className="text-[8px] uppercase tracking-wider text-[var(--text-muted)] font-black">Name</label>
+                                  <input
+                                    type="text"
+                                    value={step.params.name || ''}
+                                    onChange={(e) => handleParamChange(msg.id, idx, 'name', e.target.value)}
+                                    className="w-full bg-white/5 border border-white/5 rounded px-2 py-1 text-xs text-white outline-none focus:border-pink-500/20"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="text-[8px] uppercase tracking-wider text-[var(--text-muted)] font-black">Niche</label>
+                                  <input
+                                    type="text"
+                                    value={step.params.niche || ''}
+                                    onChange={(e) => handleParamChange(msg.id, idx, 'niche', e.target.value)}
+                                    className="w-full bg-white/5 border border-white/5 rounded px-2 py-1 text-xs text-white outline-none focus:border-pink-500/20"
+                                  />
+                                </div>
+                              </div>
+                            )}
+
+                            {step.type === 'generate_content_plan' && (
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <label className="text-[8px] uppercase tracking-wider text-[var(--text-muted)] font-black">Platform</label>
+                                  <input
+                                    type="text"
+                                    value={step.params.platform || ''}
+                                    onChange={(e) => handleParamChange(msg.id, idx, 'platform', e.target.value)}
+                                    className="w-full bg-white/5 border border-white/5 rounded px-2 py-1 text-xs text-white outline-none focus:border-pink-500/20"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="text-[8px] uppercase tracking-wider text-[var(--text-muted)] font-black">Topic</label>
+                                  <input
+                                    type="text"
+                                    value={step.params.theme || ''}
+                                    onChange={(e) => handleParamChange(msg.id, idx, 'theme', e.target.value)}
+                                    className="w-full bg-white/5 border border-white/5 rounded px-2 py-1 text-xs text-white outline-none focus:border-pink-500/20"
+                                  />
+                                </div>
+                              </div>
+                            )}
+
+                            {step.type === 'generate_image' && (
+                              <div className="space-y-2">
+                                <div>
+                                  <label className="text-[8px] uppercase tracking-wider text-[var(--text-muted)] font-black">Visual Prompt</label>
+                                  <textarea
+                                    value={step.params.prompt || ''}
+                                    onChange={(e) => handleParamChange(msg.id, idx, 'prompt', e.target.value)}
+                                    className="w-full h-16 bg-white/5 border border-white/5 rounded p-2 text-xs text-white outline-none focus:border-pink-500/20 resize-none"
+                                  />
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div>
+                                    <label className="text-[8px] uppercase tracking-wider text-[var(--text-muted)] font-black">Model ID</label>
+                                    <input
+                                      type="text"
+                                      value={step.params.modelId || ''}
+                                      onChange={(e) => handleParamChange(msg.id, idx, 'modelId', e.target.value)}
+                                      className="w-full bg-white/5 border border-white/5 rounded px-2 py-1 text-xs text-white outline-none focus:border-pink-500/20 font-mono"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-[8px] uppercase tracking-wider text-[var(--text-muted)] font-black">Outfit Style</label>
+                                    <input
+                                      type="text"
+                                      value={step.params.outfit || ''}
+                                      onChange={(e) => handleParamChange(msg.id, idx, 'outfit', e.target.value)}
+                                      className="w-full bg-white/5 border border-white/5 rounded px-2 py-1 text-xs text-white outline-none focus:border-pink-500/20"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {step.type === 'generate_video' && (
+                              <div className="space-y-2">
+                                <div>
+                                  <label className="text-[8px] uppercase tracking-wider text-[var(--text-muted)] font-black">Video Prompt</label>
+                                  <textarea
+                                    value={step.params.prompt || ''}
+                                    onChange={(e) => handleParamChange(msg.id, idx, 'prompt', e.target.value)}
+                                    className="w-full h-16 bg-white/5 border border-white/5 rounded p-2 text-xs text-white outline-none focus:border-pink-500/20 resize-none"
+                                  />
+                                </div>
+                              </div>
+                            )}
+
+                            {step.type === 'generate_voice' && (
+                              <div className="space-y-2">
+                                <div>
+                                  <label className="text-[8px] uppercase tracking-wider text-[var(--text-muted)] font-black">Narration Script</label>
+                                  <textarea
+                                    value={step.params.text || ''}
+                                    onChange={(e) => handleParamChange(msg.id, idx, 'text', e.target.value)}
+                                    className="w-full h-16 bg-white/5 border border-white/5 rounded p-2 text-xs text-white outline-none focus:border-pink-500/20 resize-none"
+                                  />
+                                </div>
+                              </div>
+                            )}
+
+                            {step.type === 'log_revenue' && (
+                              <div className="grid grid-cols-3 gap-2">
+                                <div>
+                                  <label className="text-[8px] uppercase tracking-wider text-[var(--text-muted)] font-black">Amount</label>
+                                  <input
+                                    type="number"
+                                    value={step.params.amount || 0}
+                                    onChange={(e) => handleParamChange(msg.id, idx, 'amount', Number(e.target.value))}
+                                    className="w-full bg-white/5 border border-white/5 rounded px-2 py-1 text-xs text-white outline-none focus:border-pink-500/20 font-mono"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="text-[8px] uppercase tracking-wider text-[var(--text-muted)] font-black">Source</label>
+                                  <input
+                                    type="text"
+                                    value={step.params.source || ''}
+                                    onChange={(e) => handleParamChange(msg.id, idx, 'source', e.target.value)}
+                                    className="w-full bg-white/5 border border-white/5 rounded px-2 py-1 text-xs text-white outline-none focus:border-pink-500/20"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="text-[8px] uppercase tracking-wider text-[var(--text-muted)] font-black">Platform</label>
+                                  <input
+                                    type="text"
+                                    value={step.params.platform || ''}
+                                    onChange={(e) => handleParamChange(msg.id, idx, 'platform', e.target.value)}
+                                    className="w-full bg-white/5 border border-white/5 rounded px-2 py-1 text-xs text-white outline-none focus:border-pink-500/20"
+                                  />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
 
-                  {/* Running Logs terminal */}
+                  {/* Execution logs terminal inside checklist */}
                   {(msg.execLogs && msg.execLogs.length > 0) && (
                     <div className="p-4 bg-black border border-white/5 rounded-xl h-40 overflow-y-auto font-mono text-[10px] text-zinc-400 space-y-1.5 custom-scrollbar shadow-inner">
                       {msg.execLogs.map((log, idx) => (
@@ -487,7 +828,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
               <span className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-wider mb-1.5 px-2">🤖 Agent</span>
               <div className="p-5 rounded-3xl bg-[var(--bg-elevated)] border border-white/5 rounded-tl-none flex items-center gap-2.5">
                 <Loader2 className="w-4 h-4 animate-spin text-pink-500" />
-                <span className="text-xs text-[var(--text-muted)] font-medium">Agent is thinking...</span>
+                <span className="text-xs text-[var(--text-muted)] font-medium">Agent is composing response...</span>
               </div>
             </div>
           </div>
@@ -495,7 +836,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Suggestion starter templates when chat is fresh */}
+      {/* Suggestion tags */}
       {messages.length === 1 && (
         <div className="flex-none px-6 lg:px-12 py-3 border-t border-white/5 bg-[var(--bg-elevated)]/10">
           <div className="max-w-3xl mx-auto flex flex-col md:flex-row gap-3 items-center">
@@ -515,10 +856,10 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
         </div>
       )}
 
-      {/* Input panel bar */}
+      {/* Input panel block */}
       <div className="flex-none p-4 lg:p-6 border-t border-white/5 bg-[var(--bg-elevated)]/40 backdrop-blur-md">
         <div className="max-w-3xl mx-auto">
-          {/* Files preview list */}
+          {/* File previews */}
           {attachments.length > 0 && (
             <div className="flex flex-wrap gap-2.5 mb-3 bg-[var(--bg-input)] p-3 border border-white/5 rounded-2xl shadow-inner">
               {attachments.map((att, idx) => (
@@ -543,7 +884,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
             </div>
           )}
 
-          {/* Prompt Entry Box */}
+          {/* Form input controls */}
           <div className="flex items-center gap-2">
             <button
               onClick={() => fileInputRef.current?.click()}
@@ -552,6 +893,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
             >
               <Paperclip size={18} />
             </button>
+            
             <input
               type="file"
               ref={fileInputRef}
@@ -559,15 +901,30 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
               onChange={handleFileUpload}
               className="hidden"
             />
+
+            {/* Mic transcription trigger */}
+            <button
+              onClick={toggleListening}
+              disabled={isSending}
+              className={`w-12 h-12 rounded-2xl border flex items-center justify-center transition-all shadow ${
+                isListening 
+                  ? 'bg-rose-500/20 border-rose-500 text-rose-500 animate-pulse'
+                  : 'bg-[var(--bg-input)] border-white/5 text-[var(--text-muted)] hover:text-white'
+              }`}
+            >
+              <Mic size={18} />
+            </button>
+
             <input
               type="text"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
               disabled={isSending}
-              placeholder="Tell the agent what to build, attach reference files..."
+              placeholder={isListening ? "Listening... Speak clearly" : "Tell the agent what to build, attach reference files..."}
               className="flex-1 h-12 bg-[var(--bg-input)] border border-white/5 rounded-2xl px-4 text-sm text-white placeholder:text-[var(--text-muted)] focus:border-pink-500/40 outline-none transition-all shadow-inner"
             />
+
             <button
               onClick={sendMessage}
               disabled={isSending || (!inputText.trim() && attachments.length === 0)}
