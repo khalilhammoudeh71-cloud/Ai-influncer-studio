@@ -2313,11 +2313,21 @@ NEW ANGLE: ${prompt}` });
 }
 
 app.post('/api/generate-image', async (req, res) => {
-  const { referenceImage, additionalImages, modelId, imageWeight, aspectRatio, resolution, count: rawCount, ...rest } = req.body as ImageGenRequest & { modelId: string; imageWeight?: number; count?: number };
+  const { referenceImage, additionalImages, modelId: rawModelId, imageWeight, aspectRatio, resolution, count: rawCount, ...rest } = req.body as ImageGenRequest & { modelId: string; imageWeight?: number; count?: number };
   const count = Math.max(1, Math.min(4, Math.floor(Number(rawCount) || 1)));
 
-  if (!modelId) {
+  if (!rawModelId) {
     return res.status(400).json({ error: 'modelId is required' });
+  }
+
+  let modelId = rawModelId;
+  if (!modelId.startsWith('google:') && 
+      !modelId.startsWith('venice:') && 
+      !modelId.startsWith('atlascloud:') && 
+      !modelId.startsWith('replit:') && 
+      !modelId.startsWith('openai:') && 
+      !modelId.startsWith('wavespeed:')) {
+    modelId = `wavespeed:${modelId}`;
   }
 
   const authReq = req as AuthenticatedRequest;
@@ -2541,11 +2551,17 @@ app.post('/api/edit-image', async (req, res) => {
       if (resolvedAdditional) images.push(resolvedAdditional);
       imageUrl = await generateWithDirectOpenAI(prompt, images, undefined, maskImage);
       modelName = 'GPT Image 2';
-    } else if (modelId === 'google:nano-banana-2' || modelId === 'google:nano-banana-2/edit' || modelId === 'nano-banana-2') {
+    } else if (modelId.startsWith('google:')) {
       const resolvedSource = await resolveImageToDataUrl(sourceImage);
       try {
-        imageUrl = await generateWithGoogleImagen('google:nano-banana-2', prompt, resolvedSource) as string;
-        modelName = 'Nano Banana 2';
+        imageUrl = await generateWithGoogleImagen(modelId, prompt, resolvedSource) as string;
+        const GOOGLE_NAMES: Record<string, string> = {
+          'google:nano-banana-2': 'Nano Banana 2',
+          'google:nano-banana-pro': 'Nano Banana Pro',
+          'google:nano-banana': 'Nano Banana',
+          'google:gemini-image': 'Gemini 3.1 Image',
+        };
+        modelName = GOOGLE_NAMES[modelId] || modelId;
       } catch (geminiError) {
         console.warn('[Gemini fallback] Direct Gemini failed, falling back to Seedream via Wavespeed:', geminiError instanceof Error ? geminiError.message : geminiError);
         await fetchWavespeedModels();
