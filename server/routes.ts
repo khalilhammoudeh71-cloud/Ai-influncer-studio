@@ -800,11 +800,20 @@ Your job is to:
 3. Verify that modelId routing is correct: Wavespeed NSFW models for flirty themes (prioritizing "wavespeed:wavespeed-ai/firered-v1.5-image" first), and Google/OpenAI for clean ones.
 4. Output a JSON array of "critiqueLogs" describing what you optimized (e.g. ["Improved visual prompt detail for Sofia", "Confirmed Wavespeed model selection for flirty niche"]).
 5. Output the final optimized "suggestedSteps" array.
+6. Simulate a team discussion thread between:
+   - "🎨 Creative Director" (commenting on aesthetics, visual tone, and model routing)
+   - "✍️ Copywriter" (commenting on the tone of bio, hashtags, and script quality)
+   - "📊 Analyst" (commenting on niche monetization indexes, platform selections, and projected pricing log)
+   Return this dialogue as a JSON array of objects inside "collaborationLogs":
+   [{ "agent": "🎨 Creative Director", "message": "..." }, { "agent": "✍️ Copywriter", "message": "..." }, { "agent": "📊 Analyst", "message": "..." }]
 
 You must reply in valid JSON format:
 {
-  "critiqueLogs": [ "string details" ],
-  "suggestedSteps": [ ...optimized array... ]
+  "critiqueLogs": [ "string" ],
+  "suggestedSteps": [ ...optimized array... ],
+  "collaborationLogs": [
+    { "agent": "string", "message": "string" }
+  ]
 }`;
 
         const critiqueResult = await genAI.models.generateContent({
@@ -821,12 +830,15 @@ You must reply in valid JSON format:
 
         data.suggestedSteps = critiqueData.suggestedSteps || data.suggestedSteps;
         data.critiqueLogs = critiqueData.critiqueLogs || ["Completed plan verification"];
+        data.collaborationLogs = critiqueData.collaborationLogs || [];
       } catch (critiqueErr) {
         console.error('[API] Critique pass failed, using original plan:', critiqueErr);
         data.critiqueLogs = ["Bypassed critique loop verification due to timeout"];
+        data.collaborationLogs = [];
       }
     } else {
       data.critiqueLogs = [];
+      data.collaborationLogs = [];
     }
 
     res.json(data);
