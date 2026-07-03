@@ -128,6 +128,7 @@ const TOOLS = [
 
 export default function AIToolsView({ persona, personas, onSelectPersona, nav }: AIToolsViewProps) {
   const [activeTool, setActiveTool] = useState<ToolType>(null);
+  const [toolCategory, setToolCategory] = useState<'editor' | 'studios'>('editor');
   
   // Shared Editor State
   const [sourceImage, setSourceImage] = useState<string | null>(null);
@@ -635,215 +636,246 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
       <>
       <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar pb-20 px-6 lg:px-12 py-8 bg-[var(--bg-base)]">
         <div className="max-w-6xl mx-auto space-y-8">
-          <div>
-            <h1 className="text-3xl font-extrabold tracking-tight"><span className="gradient-text">AI Tools</span></h1>
-            <p className="text-[var(--text-tertiary)] text-sm mt-1.5 mb-8 font-medium">Specialized AI editing for your personas</p>
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-white/5 pb-6">
+            <div>
+              <h1 className="text-3xl font-extrabold tracking-tight"><span className="gradient-text">AI Tools</span></h1>
+              <p className="text-[var(--text-tertiary)] text-sm mt-1.5 font-medium">Specialized AI editing for your personas</p>
+            </div>
+            
+            {/* Category Toggle */}
+            <div className="inline-flex p-1 bg-[var(--bg-elevated)] border border-white/5 rounded-2xl self-start md:self-center">
+              <button
+                type="button"
+                onClick={() => setToolCategory('editor')}
+                className={`px-5 py-2 rounded-xl text-xs font-bold transition-all ${
+                  toolCategory === 'editor'
+                    ? 'bg-gradient-to-r from-pink-500/20 to-violet-500/20 border border-pink-500/30 text-white shadow-md'
+                    : 'text-[var(--text-secondary)] hover:text-white border border-transparent'
+                }`}
+              >
+                🪄 Core Editor
+              </button>
+              <button
+                type="button"
+                onClick={() => setToolCategory('studios')}
+                className={`px-5 py-2 rounded-xl text-xs font-bold transition-all ${
+                  toolCategory === 'studios'
+                    ? 'bg-gradient-to-r from-pink-500/20 to-violet-500/20 border border-pink-500/30 text-white shadow-md'
+                    : 'text-[var(--text-secondary)] hover:text-white border border-transparent'
+                }`}
+              >
+                🎬 AI Studios
+              </button>
+            </div>
           </div>
           
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {TOOLS.map((tool) => {
-              const Icon = tool.icon;
-              return (
-                <button
-                  key={tool.id}
-                  onClick={() => setActiveTool(tool.id as ToolType)}
-                  className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-[var(--border-default)] hover:border-[var(--accent-primary)] transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
-                >
-                  <div className="relative h-64 w-full flex bg-black overflow-hidden shrink-0">
-                    {/* Before Image */}
-                    <div className="relative w-1/2 h-full border-r border-white/20 overflow-hidden">
-                      <img src={tool.demoBefore} alt="Before" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
-                      <div className="absolute top-4 left-4 px-2.5 py-1 bg-black/60 backdrop-blur-md rounded text-[10px] font-black text-white uppercase tracking-widest shadow-md border border-white/10">Before</div>
-                    </div>
-                    {/* After Image */}
-                    <div className="relative w-1/2 h-full overflow-hidden">
-                      <img src={tool.demoAfter} alt="After" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
-                      <div className="absolute top-4 right-4 px-2.5 py-1 bg-gradient-to-r from-purple-600 to-blue-600 backdrop-blur-md rounded text-[10px] font-black text-white uppercase tracking-widest shadow-xl border border-white/20">After</div>
+          {toolCategory === 'editor' && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {TOOLS.map((tool) => {
+                const Icon = tool.icon;
+                return (
+                  <button
+                    key={tool.id}
+                    onClick={() => setActiveTool(tool.id as ToolType)}
+                    className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-[var(--border-default)] hover:border-[var(--accent-primary)] transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
+                  >
+                    <div className="relative h-64 w-full flex bg-black overflow-hidden shrink-0">
+                      {/* Before Image */}
+                      <div className="relative w-1/2 h-full border-r border-white/20 overflow-hidden">
+                        <img src={tool.demoBefore} alt="Before" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
+                        <div className="absolute top-4 left-4 px-2.5 py-1 bg-black/60 backdrop-blur-md rounded text-[10px] font-black text-white uppercase tracking-widest shadow-md border border-white/10">Before</div>
+                      </div>
+                      {/* After Image */}
+                      <div className="relative w-1/2 h-full overflow-hidden">
+                        <img src={tool.demoAfter} alt="After" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
+                        <div className="absolute top-4 right-4 px-2.5 py-1 bg-gradient-to-r from-purple-600 to-blue-600 backdrop-blur-md rounded text-[10px] font-black text-white uppercase tracking-widest shadow-xl border border-white/20">After</div>
+                      </div>
+                      
+                      {/* Lightning Separator */}
+                      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center z-10 shadow-2xl group-hover:rotate-180 transition-transform duration-700 text-white group-hover:text-[var(--accent-primary)]">
+                         <Wand2 size={16} />
+                      </div>
                     </div>
                     
-                    {/* Lightning Separator */}
-                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center z-10 shadow-2xl group-hover:rotate-180 transition-transform duration-700 text-white group-hover:text-[var(--accent-primary)]">
-                       <Wand2 size={16} />
-                    </div>
-                  </div>
-                  
-                  <div className="p-7 relative flex-1 flex flex-col justify-center">
-                    <div className={`absolute top-0 right-0 w-32 h-32 bg-gradient-to-br ${tool.color} opacity-0 group-hover:opacity-10 rounded-bl-full transition-opacity`} />
-                    <div className="flex items-center gap-4 mb-3">
-                      <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${tool.color} flex items-center justify-center text-white shadow-lg shadow-black/20 shrink-0`}>
-                        <Icon size={26} />
+                    <div className="p-7 relative flex-1 flex flex-col justify-center">
+                      <div className={`absolute top-0 right-0 w-32 h-32 bg-gradient-to-br ${tool.color} opacity-0 group-hover:opacity-10 rounded-bl-full transition-opacity`} />
+                      <div className="flex items-center gap-4 mb-3">
+                        <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${tool.color} flex items-center justify-center text-white shadow-lg shadow-black/20 shrink-0`}>
+                          <Icon size={26} />
+                        </div>
+                        <h3 className="text-2xl font-black text-[var(--text-primary)] tracking-tight">{tool.title}</h3>
                       </div>
-                      <h3 className="text-2xl font-black text-[var(--text-primary)] tracking-tight">{tool.title}</h3>
+                      <p className="text-sm text-[var(--text-secondary)] font-medium leading-relaxed max-w-[90%]">{tool.desc}</p>
                     </div>
-                    <p className="text-sm text-[var(--text-secondary)] font-medium leading-relaxed max-w-[90%]">{tool.desc}</p>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
-          {/* Voice, Video & Specialty Tools */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
-            {/* Voice Studio */}
-            <button
-              onClick={() => setShowVoiceStudio(true)}
-              className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-cyan-500/20 hover:border-cyan-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
-            >
-              <div className="relative h-48 w-full bg-black overflow-hidden">
-                <img src="/demo/voice_studio_hero.png" alt="Voice Studio" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
-              </div>
-              <div className="p-6 flex-1 flex flex-col justify-center">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center text-white shadow-lg shadow-cyan-500/20">
-                    <Mic size={20} />
-                  </div>
-                  <h3 className="text-lg font-black text-[var(--text-primary)] tracking-tight">Voice Studio</h3>
-                  <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 uppercase tracking-widest">Free</span>
+          {toolCategory === 'studios' && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Voice Studio */}
+              <button
+                onClick={() => setShowVoiceStudio(true)}
+                className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-cyan-500/20 hover:border-cyan-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
+              >
+                <div className="relative h-48 w-full bg-black overflow-hidden">
+                  <img src="/demo/voice_studio_hero.png" alt="Voice Studio" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
                 </div>
-                <p className="text-sm text-[var(--text-secondary)] font-medium">AI Text-to-Speech with 5 natural voices. Generate voiceovers for reels and stories.</p>
-              </div>
-            </button>
+                <div className="p-6 flex-1 flex flex-col justify-center">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center text-white shadow-lg shadow-cyan-500/20">
+                      <Mic size={20} />
+                    </div>
+                    <h3 className="text-lg font-black text-[var(--text-primary)] tracking-tight">Voice Studio</h3>
+                    <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 uppercase tracking-widest">Free</span>
+                  </div>
+                  <p className="text-sm text-[var(--text-secondary)] font-medium">AI Text-to-Speech with 5 natural voices. Generate voiceovers for reels and stories.</p>
+                </div>
+              </button>
 
-            {/* Talking Head */}
-            <button
-              onClick={() => setShowTalkingHead(true)}
-              className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-pink-500/20 hover:border-pink-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
-            >
-              <div className="relative h-48 w-full bg-black overflow-hidden">
-                <img src="/demo/talking_head_hero.png" alt="Talking Head" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
-              </div>
-              <div className="p-6 flex-1 flex flex-col justify-center">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 to-violet-500 flex items-center justify-center text-white shadow-lg shadow-pink-500/20">
-                    <Video size={20} />
-                  </div>
-                  <h3 className="text-lg font-black text-[var(--text-primary)] tracking-tight">Talking Head</h3>
-                  <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase tracking-widest">AI Video</span>
+              {/* Talking Head */}
+              <button
+                onClick={() => setShowTalkingHead(true)}
+                className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-pink-500/20 hover:border-pink-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
+              >
+                <div className="relative h-48 w-full bg-black overflow-hidden">
+                  <img src="/demo/talking_head_hero.png" alt="Talking Head" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
                 </div>
-                <p className="text-sm text-[var(--text-secondary)] font-medium">Animate any portrait with lip-synced speech. Type a script or upload audio.</p>
-              </div>
-            </button>
+                <div className="p-6 flex-1 flex flex-col justify-center">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 to-violet-500 flex items-center justify-center text-white shadow-lg shadow-pink-500/20">
+                      <Video size={20} />
+                    </div>
+                    <h3 className="text-lg font-black text-[var(--text-primary)] tracking-tight">Talking Head</h3>
+                    <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase tracking-widest">AI Video</span>
+                  </div>
+                  <p className="text-sm text-[var(--text-secondary)] font-medium">Animate any portrait with lip-synced speech. Type a script or upload audio.</p>
+                </div>
+              </button>
 
-            {/* Story Chain */}
-            <button
-              onClick={() => setShowStoryChain(true)}
-              className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-amber-500/20 hover:border-amber-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
-            >
-              <div className="relative h-48 w-full bg-black overflow-hidden">
-                <img src="/demo/story_chain_hero.png" alt="Story Chain" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
-              </div>
-              <div className="p-6 flex-1 flex flex-col justify-center">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center text-white shadow-lg shadow-amber-500/20">
-                    <Video size={20} />
-                  </div>
-                  <h3 className="text-lg font-black text-[var(--text-primary)] tracking-tight">Story Chain</h3>
-                  <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase tracking-widest">New</span>
+              {/* Story Chain */}
+              <button
+                onClick={() => setShowStoryChain(true)}
+                className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-amber-500/20 hover:border-amber-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
+              >
+                <div className="relative h-48 w-full bg-black overflow-hidden">
+                  <img src="/demo/story_chain_hero.png" alt="Story Chain" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
                 </div>
-                <p className="text-sm text-[var(--text-secondary)] font-medium">Generate sequential images with consistent identity for visual storytelling.</p>
-              </div>
-            </button>
+                <div className="p-6 flex-1 flex flex-col justify-center">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center text-white shadow-lg shadow-amber-500/20">
+                      <Video size={20} />
+                    </div>
+                    <h3 className="text-lg font-black text-[var(--text-primary)] tracking-tight">Story Chain</h3>
+                    <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase tracking-widest">New</span>
+                  </div>
+                  <p className="text-sm text-[var(--text-secondary)] font-medium">Generate sequential images with consistent identity for visual storytelling.</p>
+                </div>
+              </button>
 
-            {/* Pro Headshot */}
-            <button
-              onClick={() => setShowHeadshot(true)}
-              className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-blue-500/20 hover:border-blue-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
-            >
-              <div className="relative h-48 w-full bg-black overflow-hidden">
-                <img src="/demo/headshot_hero.png" alt="Pro Headshot" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
-              </div>
-              <div className="p-6 flex-1 flex flex-col justify-center">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-white shadow-lg shadow-blue-500/20">
-                    <Camera size={20} />
-                  </div>
-                  <h3 className="text-lg font-black text-[var(--text-primary)] tracking-tight">Pro Headshot</h3>
-                  <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 uppercase tracking-widest">New</span>
+              {/* Pro Headshot */}
+              <button
+                onClick={() => setShowHeadshot(true)}
+                className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-blue-500/20 hover:border-blue-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
+              >
+                <div className="relative h-48 w-full bg-black overflow-hidden">
+                  <img src="/demo/headshot_hero.png" alt="Pro Headshot" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
                 </div>
-                <p className="text-sm text-[var(--text-secondary)] font-medium">Professional headshots for LinkedIn, resumes & business cards.</p>
-              </div>
-            </button>
+                <div className="p-6 flex-1 flex flex-col justify-center">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-white shadow-lg shadow-blue-500/20">
+                      <Camera size={20} />
+                    </div>
+                    <h3 className="text-lg font-black text-[var(--text-primary)] tracking-tight">Pro Headshot</h3>
+                    <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 uppercase tracking-widest">New</span>
+                  </div>
+                  <p className="text-sm text-[var(--text-secondary)] font-medium">Professional headshots for LinkedIn, resumes & business cards.</p>
+                </div>
+              </button>
 
-            {/* Time Machine */}
-            <button
-              onClick={() => setShowTimeMachine(true)}
-              className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-purple-500/20 hover:border-purple-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
-            >
-              <div className="relative h-48 w-full bg-black overflow-hidden">
-                <img src="/demo/time_machine_hero.png" alt="Time Machine" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
-              </div>
-              <div className="p-6 flex-1 flex flex-col justify-center">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-violet-500 flex items-center justify-center text-white shadow-lg shadow-purple-500/20">
-                    <Settings2 size={20} />
-                  </div>
-                  <h3 className="text-lg font-black text-[var(--text-primary)] tracking-tight">Time Machine</h3>
-                  <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 uppercase tracking-widest">Fun</span>
+              {/* Time Machine */}
+              <button
+                onClick={() => setShowTimeMachine(true)}
+                className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-purple-500/20 hover:border-purple-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
+              >
+                <div className="relative h-48 w-full bg-black overflow-hidden">
+                  <img src="/demo/time_machine_hero.png" alt="Time Machine" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
                 </div>
-                <p className="text-sm text-[var(--text-secondary)] font-medium">Travel through 14 eras — 1920s to Cyberpunk 2077.</p>
-              </div>
-            </button>
+                <div className="p-6 flex-1 flex flex-col justify-center">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-violet-500 flex items-center justify-center text-white shadow-lg shadow-purple-500/20">
+                      <Settings2 size={20} />
+                    </div>
+                    <h3 className="text-lg font-black text-[var(--text-primary)] tracking-tight">Time Machine</h3>
+                    <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 uppercase tracking-widest">Fun</span>
+                  </div>
+                  <p className="text-sm text-[var(--text-secondary)] font-medium">Travel through 14 eras — 1920s to Cyberpunk 2077.</p>
+                </div>
+              </button>
 
-            {/* Hairstyle Try-On */}
-            <button
-              onClick={() => setShowHairstyle(true)}
-              className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-pink-500/20 hover:border-pink-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
-            >
-              <div className="relative h-48 w-full bg-black overflow-hidden">
-                <img src="/demo/hairstyle_hero.png" alt="Hairstyle Try-On" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
-              </div>
-              <div className="p-6 flex-1 flex flex-col justify-center">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 to-rose-500 flex items-center justify-center text-white shadow-lg shadow-pink-500/20">
-                    <Sparkles size={20} />
-                  </div>
-                  <h3 className="text-lg font-black text-[var(--text-primary)] tracking-tight">Hairstyle Try-On</h3>
-                  <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-300 border border-pink-500/30 uppercase tracking-widest">New</span>
+              {/* Hairstyle Try-On */}
+              <button
+                onClick={() => setShowHairstyle(true)}
+                className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-pink-500/20 hover:border-pink-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
+              >
+                <div className="relative h-48 w-full bg-black overflow-hidden">
+                  <img src="/demo/hairstyle_hero.png" alt="Hairstyle Try-On" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
                 </div>
-                <p className="text-sm text-[var(--text-secondary)] font-medium">Preview 144 haircut & color combos before visiting the salon.</p>
-              </div>
-            </button>
+                <div className="p-6 flex-1 flex flex-col justify-center">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 to-rose-500 flex items-center justify-center text-white shadow-lg shadow-pink-500/20">
+                      <Sparkles size={20} />
+                    </div>
+                    <h3 className="text-lg font-black text-[var(--text-primary)] tracking-tight">Hairstyle Try-On</h3>
+                    <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-300 border border-pink-500/30 uppercase tracking-widest">New</span>
+                  </div>
+                  <p className="text-sm text-[var(--text-secondary)] font-medium">Preview 144 haircut & color combos before visiting the salon.</p>
+                </div>
+              </button>
 
-            {/* Motion Control */}
-            <button
-              onClick={() => setShowMotionControl(true)}
-              className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-violet-500/20 hover:border-violet-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
-            >
-              <div className="relative h-48 w-full bg-black overflow-hidden">
-                <img src="https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?auto=format&fit=crop&w=800&q=80" alt="Motion Control" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
-              </div>
-              <div className="p-6 flex-1 flex flex-col justify-center">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-600 to-fuchsia-600 flex items-center justify-center text-white shadow-lg shadow-violet-500/20">
-                    <Video size={20} />
-                  </div>
-                  <h3 className="text-lg font-black text-[var(--text-primary)] tracking-tight">Motion Control</h3>
-                  <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-300 border border-violet-500/30 uppercase tracking-widest">AI Video</span>
+              {/* Motion Control */}
+              <button
+                onClick={() => setShowMotionControl(true)}
+                className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-violet-500/20 hover:border-violet-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
+              >
+                <div className="relative h-48 w-full bg-black overflow-hidden">
+                  <img src="https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?auto=format&fit=crop&w=800&q=80" alt="Motion Control" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
                 </div>
-                <p className="text-sm text-[var(--text-secondary)] font-medium">Replicate any movement or dance. Upload a reference photo + a motion video, or select from viral dances.</p>
-              </div>
-            </button>
+                <div className="p-6 flex-1 flex flex-col justify-center">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-600 to-fuchsia-600 flex items-center justify-center text-white shadow-lg shadow-violet-500/20">
+                      <Video size={20} />
+                    </div>
+                    <h3 className="text-lg font-black text-[var(--text-primary)] tracking-tight">Motion Control</h3>
+                    <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-300 border border-violet-500/30 uppercase tracking-widest">AI Video</span>
+                  </div>
+                  <p className="text-sm text-[var(--text-secondary)] font-medium">Replicate any movement or dance. Upload a reference photo + a motion video, or select from viral dances.</p>
+                </div>
+              </button>
 
-            {/* Virtual Try-On */}
-            <button
-              onClick={() => setShowVirtualTryOn(true)}
-              className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-rose-500/20 hover:border-rose-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
-            >
-              <div className="relative h-48 w-full bg-black overflow-hidden">
-                <img src="https://images.unsplash.com/photo-1558618666-fcd25c85cd64?auto=format&fit=crop&w=800&q=80" alt="Virtual Try-On" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
-              </div>
-              <div className="p-6 flex-1 flex flex-col justify-center">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-600 to-pink-600 flex items-center justify-center text-white shadow-lg shadow-rose-500/20">
-                    <Shirt size={20} />
-                  </div>
-                  <h3 className="text-lg font-black text-[var(--text-primary)] tracking-tight">Virtual Try-On</h3>
-                  <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 uppercase tracking-widest">Fashion AI</span>
+              {/* Virtual Try-On */}
+              <button
+                onClick={() => setShowVirtualTryOn(true)}
+                className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-rose-500/20 hover:border-rose-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
+              >
+                <div className="relative h-48 w-full bg-black overflow-hidden">
+                  <img src="https://images.unsplash.com/photo-1558618666-fcd25c85cd64?auto=format&fit=crop&w=800&q=80" alt="Virtual Try-On" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
                 </div>
-                <p className="text-sm text-[var(--text-secondary)] font-medium">Dress your persona in any outfit. Upload a reference image + garment photo to preview the look instantly.</p>
-              </div>
-            </button>
-          </div>
+                <div className="p-6 flex-1 flex flex-col justify-center">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-600 to-pink-600 flex items-center justify-center text-white shadow-lg shadow-rose-500/20">
+                      <Shirt size={20} />
+                    </div>
+                    <h3 className="text-lg font-black text-[var(--text-primary)] tracking-tight">Virtual Try-On</h3>
+                    <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 uppercase tracking-widest">Fashion AI</span>
+                  </div>
+                  <p className="text-sm text-[var(--text-secondary)] font-medium">Dress your persona in any outfit. Upload a reference image + garment photo to preview the look instantly.</p>
+                </div>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
