@@ -105,7 +105,7 @@ const BASE_PRESETS: CustomPreset[] = [
   },
   {
     name: "👔 Finance Coach Marco",
-    prompt: "Create a stock trading finance motivator Marco on Twitter. Write a voice narration about elite mindset, generate a luxury office photo, and log $150 sponsorship."
+    prompt: "Create a stock trading finance motivator Marco on Twitter. Write a voice narrative about elite mindset, generate a luxury office photo, and log $150 sponsorship."
   },
   {
     name: "🏝️ Travel Blogger Elena",
@@ -124,6 +124,135 @@ const MOCK_COMMENT_TEXTS = [
   "OnlyFans link is in bio? 👀",
   "Elite mindset indeed!"
 ];
+
+// Helper to extract the last frame of a video segment in the browser
+async function extractLastFrameFromVideo(videoUrl: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video');
+    video.src = videoUrl;
+    video.crossOrigin = 'anonymous';
+    video.preload = 'auto';
+    video.muted = true;
+    video.playsInline = true;
+    
+    // Set a timeout to reject if video doesn't load/seek
+    const timeout = setTimeout(() => {
+      video.onloadeddata = null;
+      video.onseeked = null;
+      reject(new Error('Video frame extraction timed out'));
+    }, 12000);
+
+    video.onloadeddata = () => {
+      // Seek to 0.2 seconds before the end of the video
+      video.currentTime = Math.max(0, video.duration - 0.2);
+    };
+
+    video.onseeked = () => {
+      clearTimeout(timeout);
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth || 640;
+        canvas.height = video.videoHeight || 480;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const base64 = canvas.toDataURL('image/jpeg', 0.9);
+          resolve(base64);
+        } else {
+          reject(new Error('Failed to get canvas context'));
+        }
+      } catch (err) {
+        reject(err);
+      }
+    };
+
+    video.onerror = (e) => {
+      clearTimeout(timeout);
+      reject(new Error('Video loading error: ' + e));
+    };
+  });
+}
+
+// Helper to stitch multiple video segments into one WebM movie client-side
+async function stitchVideoSegments(videoUrls: string[]): Promise<string> {
+  const canvas = document.createElement('canvas');
+  canvas.width = 640;
+  canvas.height = 480;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Could not create canvas context');
+
+  const stream = canvas.captureStream(30); // 30 fps
+  const recordedChunks: Blob[] = [];
+  
+  const mediaRecorder = new MediaRecorder(stream, {
+    mimeType: 'video/webm;codecs=vp9'
+  });
+
+  mediaRecorder.ondataavailable = (event) => {
+    if (event.data && event.data.size > 0) {
+      recordedChunks.push(event.data);
+    }
+  };
+
+  const playAndRecordSegment = (url: string): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      const video = document.createElement('video');
+      video.src = url;
+      video.crossOrigin = 'anonymous';
+      video.muted = true;
+      video.autoplay = true;
+      video.playsInline = true;
+
+      let isEnded = false;
+      let animFrameId: number;
+      
+      const renderFrame = () => {
+        if (isEnded) return;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        animFrameId = requestAnimationFrame(renderFrame);
+      };
+
+      video.onplay = () => {
+        renderFrame();
+      };
+
+      video.onended = () => {
+        isEnded = true;
+        cancelAnimationFrame(animFrameId);
+        resolve();
+      };
+
+      video.onerror = (e) => {
+        isEnded = true;
+        cancelAnimationFrame(animFrameId);
+        reject(new Error('Error playing segment: ' + e));
+      };
+    });
+  };
+
+  return new Promise(async (resolve, reject) => {
+    mediaRecorder.start();
+
+    try {
+      for (const url of videoUrls) {
+        await playAndRecordSegment(url);
+      }
+      
+      // Wait briefly to commit final frames
+      await new Promise(r => setTimeout(r, 500));
+      
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(recordedChunks, { type: 'video/webm' });
+        const finalUrl = URL.createObjectURL(blob);
+        resolve(finalUrl);
+      };
+
+      mediaRecorder.stop();
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
 
 export default function AgentView({ personas, setPersonas, onSelectPersona, nav }: AgentViewProps) {
   const [inputText, setInputText] = useState('');
@@ -188,7 +317,6 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
       setPublishedPosts(prev => prev.map(post => {
         const isOnlyFans = post.platform.toLowerCase().includes('onlyfans');
         
-        // Dynamic additions
         const viewsDiff = Math.floor(Math.random() * 8) + 2;
         const likesDiff = Math.random() > 0.5 ? Math.floor(Math.random() * 3) + 1 : 0;
         
@@ -685,11 +813,9 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
   };
 
   const readSpeechSpeech = async (msgIdx: number, text: string) => {
-    // Flag message as reading speech
     setPersonaChatMessages(prev => prev.map((m, idx) => idx === msgIdx ? { ...m, isReading: true } : m));
 
     try {
-      // Use cloned voice if reference uploaded in studio, else default to Gemini TTS
       const res = await fetch(studioVoiceFile ? '/api/voice-clone' : '/api/generate-speech', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -704,7 +830,6 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
 
-      // Save URL on message
       setPersonaChatMessages(prev => prev.map((m, idx) => idx === msgIdx ? { ...m, voiceUrl: data.audioUrl, isReading: false } : m));
     } catch (err) {
       toast.error('Failed to clone/synthesize voice.');
@@ -715,7 +840,6 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
   // ─── Social Feed Publishing Simulator ──────────────────────────────────────
   const publishToFeed = (imageUrl: string) => {
     if (!activeDraft?.createStep) return;
-    const isOnlyFans = activeDraft.createStep.params.platform.toLowerCase().includes('onlyfans');
 
     const newPost: SimulatedPost = {
       id: Math.random().toString(),
@@ -739,7 +863,6 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
     const targetMsg = messages.find(m => m.id === messageId);
     if (!targetMsg || !targetMsg.execSteps || targetMsg.isExecuting) return;
 
-    // Set executing state
     setMessages(prev => prev.map(m => m.id === messageId ? { ...m, isExecuting: true } : m));
 
     const addLocalLog = (msg: string, success = true, isModel = false) => {
@@ -770,7 +893,6 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
     addLocalLog('🤖 Auto-Pilot Pipeline initialized...', true);
     
     try {
-      // Multimodal Memory Scanner: Find latest reference photo in history
       let memoryFaceImage: string | null = null;
       for (let mIdx = messages.length - 1; mIdx >= 0; mIdx--) {
         const msgHistoryItem = messages[mIdx];
@@ -881,21 +1003,11 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
               count: 1
             });
           } catch (firstErr: any) {
-            addLocalLog(`⚠️ [Self-Correction] Model ${modelId} failed: ${firstErr.message || 'unknown error'}`);
-            
+            addLocalLog(`⚠️ [Self-Correction] Model ${modelId} failed. Fallback triggered.`);
             let fallbackModel = 'google:nano-banana-pro';
-            if (modelId.startsWith('wavespeed:')) {
-              fallbackModel = 'venice:lustify-v8';
-            } else if (modelId.startsWith('venice:')) {
-              fallbackModel = 'google:nano-banana-pro';
-            }
-            
-            addLocalLog(`🔄 Retrying pipeline with fallback model: ${fallbackModel}...`);
-            modelId = fallbackModel;
-            
             result = await generateImage({
               persona: createdPersona,
-              modelId,
+              modelId: fallbackModel,
               environment: step.params.environment,
               outfitStyle: step.params.outfit,
               framing: step.params.framing,
@@ -926,7 +1038,6 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
           await api.images.create(createdPersonaId, imgPayload);
           addLocalLog(`✅ Visual asset generated & saved to library.`);
 
-          addLocalLog(`⏳ Syncing persona profile avatar reference...`);
           const updatedPersona = {
             ...createdPersona,
             avatar: imageUrl,
@@ -947,9 +1058,26 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
             createdPersonaId = createdPersona.id;
           }
 
+          // Check if continuity frame requested from previous step
+          let finalSourceImage = createdPersona.avatar || null;
+          if (step.params.sourceImageFromStepIndex !== undefined) {
+            const prevIdx = step.params.sourceImageFromStepIndex;
+            const prevStep = stepsList[prevIdx];
+            if (prevStep && prevStep.status === 'success' && prevStep.resultUrl) {
+              addLocalLog(`🧠 [Continuity Lock]: Extracting last frame of Step ${prevIdx + 1} to prevent identity drift...`);
+              try {
+                const lastFrameB64 = await extractLastFrameFromVideo(prevStep.resultUrl);
+                finalSourceImage = lastFrameB64;
+                addLocalLog(`✅ Frame continuity locked. Applying frame as sequential starting source.`);
+              } catch (frameErr) {
+                addLocalLog(`⚠️ Last frame extraction failed. Falling back to default avatar.`);
+              }
+            }
+          }
+
           let modelId = step.params.modelId || 'google:veo-omni';
           addLocalLog(`Chosen Video Model: ${modelId}`, true, true);
-          addLocalLog(`⏳ Spinning up video generation pipeline...`);
+          addLocalLog(`⏳ Generating video segment...`);
           addLocalLog(`📝 Motion Prompt: "${step.params.prompt}"`);
 
           let result;
@@ -958,16 +1086,15 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
               prompt: step.params.prompt,
               modelId,
               strength: step.params.strength || 0.6,
-              sourceImage: createdPersona.avatar || null
+              sourceImage: finalSourceImage
             });
           } catch (firstErr: any) {
-            addLocalLog(`⚠️ [Self-Correction] Video model ${modelId} failed. Retrying with fallback: google:veo-omni...`);
-            modelId = 'google:veo-omni';
+            addLocalLog(`⚠️ Video model ${modelId} failed. Fallback triggered.`);
             result = await api.images.generateVideo({
               prompt: step.params.prompt,
-              modelId,
-              strength: step.params.strength || 0.6,
-              sourceImage: createdPersona.avatar || null
+              modelId: 'google:veo-omni',
+              strength: 0.6,
+              sourceImage: finalSourceImage
             });
           }
 
@@ -982,8 +1109,30 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
           };
 
           await api.images.create(createdPersonaId, videoPayload);
-          addLocalLog(`✅ Video asset successfully generated & saved to library.`);
+          addLocalLog(`✅ Video segment successfully generated & saved to library.`);
           updateStepStatus(i, 'success', result.videoUrl);
+        }
+
+        else if (step.type === 'stitch_video') {
+          const indices = step.params.segmentIndices || [];
+          addLocalLog(`⏳ Canvas Stitcher compiling video segments: [${indices.map((idx: number) => idx + 1).join(', ')}]...`);
+          
+          try {
+            const urlsToStitch = indices.map((idx: number) => {
+              const segStep = stepsList[idx];
+              if (!segStep || segStep.status !== 'success' || !segStep.resultUrl) {
+                throw new Error(`Video segment step ${idx + 1} did not generate successfully.`);
+              }
+              return segStep.resultUrl;
+            });
+
+            const stitchedMovieUrl = await stitchVideoSegments(urlsToStitch);
+            addLocalLog(`✅ Stitching successfully completed! Output blob packaged.`);
+            updateStepStatus(i, 'success', stitchedMovieUrl);
+          } catch (stitchErr: any) {
+            addLocalLog(`❌ Stitching failed: ${stitchErr.message}`);
+            updateStepStatus(i, 'error');
+          }
         }
 
         else if (step.type === 'generate_voice') {
@@ -1227,9 +1376,10 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                                 {step.type === 'create_persona' && `1. Create Profile: ${step.params.name}`}
                                 {step.type === 'generate_content_plan' && `2. Generate Post Planner: ${step.params.platform}`}
                                 {step.type === 'generate_image' && `3. Generate Starting Image`}
-                                {step.type === 'generate_video' && `4. Generate Action Video Clip`}
+                                {step.type === 'generate_video' && `4. Generate Video Segment (Step ${idx + 1})`}
                                 {step.type === 'generate_voice' && `5. Generate Narrative Voiceover`}
                                 {step.type === 'log_revenue' && `6. Log Financial Transaction`}
+                                {step.type === 'stitch_video' && `7. Stitch Video Movie`}
                               </span>
                             </div>
                             <div>
@@ -1245,14 +1395,14 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                             <div className="pl-3 space-y-2">
                               {step.type === 'generate_image' && (
                                 <div className="space-y-2 bg-white/5 p-2 rounded-lg border border-white/5">
-                                  {step.resultUrl.endsWith('.mp4') ? (
+                                  {step.resultUrl.endsWith('.mp4') || step.resultUrl.includes('blob:') ? (
                                     <video src={step.resultUrl} controls className="w-40 rounded border border-white/10" />
                                   ) : (
                                     <img src={step.resultUrl} alt="Visual Output" className="w-32 h-32 rounded object-cover border border-white/10" />
                                   )}
                                   
                                   {/* In-Chat Action Buttons */}
-                                  {!step.resultUrl.endsWith('.mp4') && (
+                                  {!step.resultUrl.endsWith('.mp4') && !step.resultUrl.includes('blob:') && (
                                     <div className="flex gap-1.5 pt-1">
                                       <button
                                         onClick={() => handleUpscale(msg.id, idx, step.resultUrl!)}
@@ -1300,6 +1450,19 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                                   >
                                     🚀 Publish Video
                                   </button>
+                                </div>
+                              )}
+                              {step.type === 'stitch_video' && (
+                                <div className="bg-white/5 p-3 rounded-lg border border-white/5 space-y-2">
+                                  <span className="text-[8px] font-black text-emerald-400 uppercase tracking-widest block">🎬 Stitched Movie Output</span>
+                                  <video src={step.resultUrl} controls className="w-full rounded border border-white/10 shadow" />
+                                  <a 
+                                    href={step.resultUrl} 
+                                    download="stitched_movie.webm"
+                                    className="inline-flex px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/35 border border-emerald-500/30 rounded text-[9px] text-emerald-300 font-bold uppercase transition-all"
+                                  >
+                                    📥 Download Movie
+                                  </a>
                                 </div>
                               )}
                             </div>
@@ -1388,13 +1551,20 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                               )}
 
                               {step.type === 'generate_video' && (
-                                <div>
-                                  <label className="text-[8px] uppercase tracking-wider text-zinc-500 font-black">Video Prompt</label>
-                                  <textarea
-                                    value={step.params.prompt || ''}
-                                    onChange={(e) => handleParamChange(msg.id, idx, 'prompt', e.target.value)}
-                                    className="w-full h-12 bg-white/5 border border-white/5 rounded p-1.5 text-[11px] text-white outline-none focus:border-pink-500/20 resize-none"
-                                  />
+                                <div className="space-y-2">
+                                  <div>
+                                    <label className="text-[8px] uppercase tracking-wider text-zinc-500 font-black">Video Prompt</label>
+                                    <textarea
+                                      value={step.params.prompt || ''}
+                                      onChange={(e) => handleParamChange(msg.id, idx, 'prompt', e.target.value)}
+                                      className="w-full h-12 bg-white/5 border border-white/5 rounded p-1.5 text-[11px] text-white outline-none focus:border-pink-500/20 resize-none"
+                                    />
+                                  </div>
+                                  {step.params.sourceImageFromStepIndex !== undefined && (
+                                    <div className="text-[9px] text-amber-400 font-bold">
+                                      🔗 Continuity: Extracts final frame of Step {step.params.sourceImageFromStepIndex + 1}
+                                    </div>
+                                  )}
                                 </div>
                               )}
 
@@ -1438,6 +1608,12 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                                       className="w-full bg-white/5 border border-white/5 rounded px-2 py-1 text-[11px] text-white outline-none focus:border-pink-500/20"
                                     />
                                   </div>
+                                </div>
+                              )}
+
+                              {step.type === 'stitch_video' && (
+                                <div className="text-[10px] text-zinc-400">
+                                  🎬 Will stitch video segments from steps: <span className="font-bold text-white">{(step.params.segmentIndices || []).map((x: number) => x + 1).join(', ')}</span>
                                 </div>
                               )}
                             </div>
@@ -1783,11 +1959,11 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
 
                 {/* Script text */}
                 <div className="space-y-1.5">
-                  <span className="text-[9px] font-black uppercase text-zinc-500 tracking-wider">3. Script Translation speech text</span>
+                  <span className="text-[9px] font-black uppercase text-zinc-500 tracking-wider">3. Script text</span>
                   <textarea
                     value={studioScript}
                     onChange={(e) => setStudioScript(e.target.value)}
-                    placeholder="Type script script text here..."
+                    placeholder="Type script text here..."
                     className="w-full h-24 bg-white/5 border border-white/5 rounded-xl p-3 text-xs text-white focus:border-violet-500/30 outline-none resize-none shadow-inner"
                   />
                 </div>
@@ -1941,7 +2117,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
 
                       {/* Post media */}
                       <div className="rounded-xl overflow-hidden border border-white/5 bg-black/40">
-                        {post.imageUrl.endsWith('.mp4') ? (
+                        {post.imageUrl.endsWith('.mp4') || post.imageUrl.includes('blob:') ? (
                           <video src={post.imageUrl} controls className="w-full max-h-72 object-cover" />
                         ) : (
                           <img src={post.imageUrl} alt="Social content" className="w-full max-h-72 object-cover" />
@@ -2043,7 +2219,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                     </div>
                   </div>
 
-                  {/* Niche suitability indices */}
+                  {/* Niche suitability insights */}
                   <div className="bg-[var(--bg-elevated)] border border-white/5 p-5 rounded-2xl space-y-3 text-xs leading-normal">
                     <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">Niche Traffic Suitability Insights</span>
                     <div className="flex items-center gap-2">
