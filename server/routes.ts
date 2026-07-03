@@ -848,4 +848,44 @@ You must reply in valid JSON format:
   }
 });
 
+router.post('/agent/persona-chat', async (req: AuthenticatedRequest, res: Response) => {
+  const { persona, messages } = req.body as { persona: any; messages: any[] };
+  if (!persona || !messages || !Array.isArray(messages)) {
+    return res.status(400).json({ error: 'persona and messages array are required' });
+  }
+
+  try {
+    const genAI = getGeminiClientForRoutes();
+
+    const systemInstruction = `You are simulated influencer persona named "${persona.name || 'Unnamed Persona'}".
+Your profile specifications are:
+- Niche: ${persona.niche || 'Lifestyle'}
+- Bio: ${persona.bio || 'Not specified'}
+- Platform: ${persona.platform || 'Instagram'}
+- Visual Style: ${persona.visualStyle || 'High-fidelity portrait'}
+- Tone: ${persona.tone || 'Friendly'}
+
+Your job is to talk to the user. You must reply strictly in character, matching the tone, niche, and platform guidelines. Keep your responses brief, conversational, and representative of your personality.`;
+
+    const contents = messages.map(m => ({
+      role: m.role === 'model' ? 'model' : 'user',
+      parts: [{ text: m.content }]
+    }));
+
+    const result = await genAI.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents,
+      config: {
+        systemInstruction
+      }
+    });
+
+    const reply = result.text?.trim() || '';
+    res.json({ reply });
+  } catch (err) {
+    console.error('[API] /agent/persona-chat error:', err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to generate persona chat response' });
+  }
+});
+
 export default router;

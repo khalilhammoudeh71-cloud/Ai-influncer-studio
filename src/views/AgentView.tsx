@@ -27,9 +27,11 @@ import {
   Save,
   Clock,
   Coins,
-  RefreshCw,
-  Sliders,
-  Play
+  MessageSquare,
+  Globe,
+  TrendingUp,
+  Award,
+  Users
 } from 'lucide-react';
 import { Persona, Tab } from '../types';
 import { api } from '../services/apiService';
@@ -84,6 +86,18 @@ interface CustomPreset {
   prompt: string;
 }
 
+interface SimulatedPost {
+  id: string;
+  imageUrl: string;
+  caption: string;
+  platform: string;
+  timestamp: number;
+  views: number;
+  likes: number;
+  comments: string[];
+  tips: { user: string; amount: number }[];
+}
+
 const BASE_PRESETS: CustomPreset[] = [
   {
     name: "🎮 Twitch Gamer Sofia",
@@ -91,12 +105,24 @@ const BASE_PRESETS: CustomPreset[] = [
   },
   {
     name: "👔 Finance Coach Marco",
-    prompt: "Create a stock trading finance motivator Marco on Twitter. Write a voice narrative about elite mindset, generate a luxury office photo, and log $150 sponsorship."
+    prompt: "Create a stock trading finance motivator Marco on Twitter. Write a voice narration about elite mindset, generate a luxury office photo, and log $150 sponsorship."
   },
   {
     name: "🏝️ Travel Blogger Elena",
     prompt: "Create a luxury travel blogger Elena, post platform Instagram. Write a script, generate a video of her on a tropical beach at sunset, and log $200 revenue."
   }
+];
+
+const MOCK_NAMES = ["Alex99", "Sarah_m", "DavidK", "Jane_D", "OnlyCoolUser", "GamerX", "RichTrader", "BeachFan"];
+const MOCK_COMMENT_TEXTS = [
+  "Wow, this looks absolutely stunning!",
+  "Brand representation on point! 💎",
+  "Love the style and tone here.",
+  "Which model did you use for this visual?",
+  "Perfect representation! Keep it up!",
+  "Outstanding aesthetics and presentation.",
+  "OnlyFans link is in bio? 👀",
+  "Elite mindset indeed!"
 ];
 
 export default function AgentView({ personas, setPersonas, onSelectPersona, nav }: AgentViewProps) {
@@ -113,7 +139,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
   
   const [isSending, setIsSending] = useState(false);
   const [isListening, setIsListening] = useState(false);
-  const [canvasTab, setCanvasTab] = useState<'profile' | 'planner' | 'studio' | 'media'>('profile');
+  const [canvasTab, setCanvasTab] = useState<'profile' | 'planner' | 'studio' | 'chat' | 'feed' | 'analytics'>('profile');
   const [customPresets, setCustomPresets] = useState<CustomPreset[]>([]);
   
   // Clone & Talking Avatar Studio states
@@ -123,6 +149,16 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
   const [isStudioLoading, setIsStudioLoading] = useState<boolean>(false);
   const [studioResultAudioUrl, setStudioResultAudioUrl] = useState<string | null>(null);
   const [studioResultVideoUrl, setStudioResultVideoUrl] = useState<string | null>(null);
+
+  // Chat Sandbox States
+  const [personaChatMessages, setPersonaChatMessages] = useState<{ role: 'user' | 'model'; content: string; voiceUrl?: string; isReading?: boolean }[]>([
+    { role: 'model', content: "Hey! Ready to talk about our content goals?" }
+  ]);
+  const [personaChatInput, setPersonaChatInput] = useState('');
+  const [isPersonaTyping, setIsPersonaTyping] = useState(false);
+
+  // Social Feed Simulator States
+  const [publishedPosts, setPublishedPosts] = useState<SimulatedPost[]>([]);
 
   // In-chat swap context
   const [activeSwapTarget, setActiveSwapTarget] = useState<{ msgId: string; stepIdx: number } | null>(null);
@@ -144,6 +180,43 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
     } catch (e) {
       console.error('Failed to load presets:', e);
     }
+  }, []);
+
+  // Timer to increment mock feed stats dynamically
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setPublishedPosts(prev => prev.map(post => {
+        const isOnlyFans = post.platform.toLowerCase().includes('onlyfans');
+        
+        // Dynamic additions
+        const viewsDiff = Math.floor(Math.random() * 8) + 2;
+        const likesDiff = Math.random() > 0.5 ? Math.floor(Math.random() * 3) + 1 : 0;
+        
+        const newComments = [...post.comments];
+        if (Math.random() > 0.92) {
+          const user = MOCK_NAMES[Math.floor(Math.random() * MOCK_NAMES.length)];
+          const txt = MOCK_COMMENT_TEXTS[Math.floor(Math.random() * MOCK_COMMENT_TEXTS.length)];
+          newComments.push(`${user}: ${txt}`);
+        }
+
+        const newTips = [...post.tips];
+        if (isOnlyFans && Math.random() > 0.95) {
+          const user = MOCK_NAMES[Math.floor(Math.random() * MOCK_NAMES.length)];
+          const amount = Math.floor(Math.random() * 25) + 5;
+          newTips.push({ user, amount });
+        }
+
+        return {
+          ...post,
+          views: post.views + viewsDiff,
+          likes: post.likes + likesDiff,
+          comments: newComments,
+          tips: newTips
+        };
+      }));
+    }, 2500);
+
+    return () => clearInterval(timer);
   }, []);
 
   // Initialize Speech Recognition
@@ -343,7 +416,6 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
     }));
 
     try {
-      // Default to wavespeed upscaler model
       const result = await upscaleImage(imageUrl, 'wavespeed-upscale:wavespeed-ai/image-super-resolution-v2-4x');
       toast.success('Image upscaled successfully!');
       
@@ -380,9 +452,6 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
     }));
 
     try {
-      const activeDraft = getActiveDraftState();
-      const currentPersona = personas.find(p => p.id !== 'empty') || personas[0];
-      
       const result = await api.images.generateVideo({
         prompt: `Cinematic motion video clip of influencer avatar, subtle camera movement, photorealistic`,
         modelId: 'google:veo-omni',
@@ -392,12 +461,10 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
 
       toast.success('Video clip generated successfully!');
       
-      // Append video to media tab & show in toast/log
       setMessages(prev => prev.map(m => {
         if (m.id === messageId && m.execSteps) {
           const updated = [...m.execSteps];
           updated[stepIdx].isActionLoading = null;
-          // Temporarily override resultUrl as video to play inline
           updated[stepIdx].resultUrl = result.videoUrl;
           return { ...m, execSteps: updated };
         }
@@ -439,8 +506,6 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
     reader.onload = async () => {
       try {
         const swapImageBase64 = reader.result as string;
-        
-        // Find current step's image url
         const targetMsg = messages.find(m => m.id === msgId);
         const originalImageUrl = targetMsg?.execSteps?.[stepIdx].resultUrl || '';
 
@@ -583,6 +648,90 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
     } finally {
       setIsStudioLoading(false);
     }
+  };
+
+  // ─── Brand Voice Chat Sandbox Handlers ─────────────────────────────────────
+  const sendPersonaChatMessage = async () => {
+    if (!personaChatInput.trim() || !activeDraft?.createStep) return;
+
+    const userMsg = { role: 'user' as const, content: personaChatInput };
+    const updatedHistory = [...personaChatMessages, userMsg];
+    setPersonaChatMessages(updatedHistory);
+    setPersonaChatInput('');
+    setIsPersonaTyping(true);
+
+    try {
+      const res = await fetch('/api/agent/persona-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          persona: activeDraft.createStep.params,
+          messages: updatedHistory
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Persona chat failed');
+
+      setPersonaChatMessages(prev => [
+        ...prev,
+        { role: 'model', content: data.reply }
+      ]);
+    } catch (err: any) {
+      toast.error(err.message || 'Chat failed');
+    } finally {
+      setIsPersonaTyping(false);
+    }
+  };
+
+  const readSpeechSpeech = async (msgIdx: number, text: string) => {
+    // Flag message as reading speech
+    setPersonaChatMessages(prev => prev.map((m, idx) => idx === msgIdx ? { ...m, isReading: true } : m));
+
+    try {
+      // Use cloned voice if reference uploaded in studio, else default to Gemini TTS
+      const res = await fetch(studioVoiceFile ? '/api/voice-clone' : '/api/generate-speech', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text,
+          voiceId: 'Aoede',
+          engine: 'gemini',
+          audio: studioVoiceFile?.dataUrl || undefined
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      // Save URL on message
+      setPersonaChatMessages(prev => prev.map((m, idx) => idx === msgIdx ? { ...m, voiceUrl: data.audioUrl, isReading: false } : m));
+    } catch (err) {
+      toast.error('Failed to clone/synthesize voice.');
+      setPersonaChatMessages(prev => prev.map((m, idx) => idx === msgIdx ? { ...m, isReading: false } : m));
+    }
+  };
+
+  // ─── Social Feed Publishing Simulator ──────────────────────────────────────
+  const publishToFeed = (imageUrl: string) => {
+    if (!activeDraft?.createStep) return;
+    const isOnlyFans = activeDraft.createStep.params.platform.toLowerCase().includes('onlyfans');
+
+    const newPost: SimulatedPost = {
+      id: Math.random().toString(),
+      imageUrl,
+      caption: `Hey everyone! Starting my new aesthetic journey today on ${activeDraft.createStep.params.platform}. Thanks for all the support! 💖 #influencer #newvibes`,
+      platform: activeDraft.createStep.params.platform,
+      timestamp: Date.now(),
+      views: 0,
+      likes: 0,
+      comments: [],
+      tips: []
+    };
+
+    setPublishedPosts(prev => [newPost, ...prev]);
+    toast.success(`Published post to mock ${activeDraft.createStep.params.platform} feed!`);
+    setCanvasTab('feed');
   };
 
   // ─── Pipeline runner execution ──────────────────────────────────────────────
@@ -897,10 +1046,6 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
       addLocalLog('🏆 Auto-Pilot pipeline executions finished successfully!');
       toast.success('Agent completed all tasks successfully!');
       
-      setTimeout(() => {
-        nav.replace({ view: 'personas' });
-      }, 5000);
-
     } catch (err: any) {
       addLocalLog(`❌ Error: ${err.message || 'Workflow execution halted.'}`);
       setMessages(prev => prev.map(m => {
@@ -916,30 +1061,36 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
     }
   };
 
-  // Helper to retrieve the active model plan details for the Canvas preview
-  const getActiveDraftState = () => {
-    const activeMsg = [...messages].reverse().find(m => m.suggestedSteps);
-    if (!activeMsg || !activeMsg.execSteps) return null;
+  const getAnalyticsIndices = () => {
+    if (!activeDraft?.createStep) return { cpm: 0, projection: 0, conversion: 0, growthIndex: 0 };
+    const niche = (activeDraft.createStep.params.niche || '').toLowerCase();
+    
+    let cpm = 5.20;
+    let projection = 2500;
+    let conversion = 1.4;
+    let growthIndex = 62;
 
-    const createStep = activeMsg.execSteps.find(s => s.type === 'create_persona');
-    const planStep = activeMsg.execSteps.find(s => s.type === 'generate_content_plan');
-    const imgStep = activeMsg.execSteps.find(s => s.type === 'generate_image');
-    const videoStep = activeMsg.execSteps.find(s => s.type === 'generate_video');
-    const voiceStep = activeMsg.execSteps.find(s => s.type === 'generate_voice');
-    const revStep = activeMsg.execSteps.find(s => s.type === 'log_revenue');
+    if (niche.includes('finance') || niche.includes('crypto')) {
+      cpm = 18.50;
+      projection = 7400;
+      conversion = 2.1;
+      growthIndex = 51;
+    } else if (niche.includes('swimsuit') || niche.includes('lingerie') || niche.includes('onlyfans')) {
+      cpm = 8.40;
+      projection = 12000;
+      conversion = 4.8;
+      growthIndex = 92;
+    } else if (niche.includes('gamer') || niche.includes('gaming')) {
+      cpm = 3.10;
+      projection = 4800;
+      conversion = 1.1;
+      growthIndex = 78;
+    }
 
-    return {
-      createStep,
-      planStep,
-      imgStep,
-      videoStep,
-      voiceStep,
-      revStep,
-      messageId: activeMsg.id
-    };
+    return { cpm, projection, conversion, growthIndex };
   };
 
-  const activeDraft = getActiveDraftState();
+  const metrics = getAnalyticsIndices();
 
   return (
     <div className="flex-1 flex h-full overflow-hidden bg-[var(--bg-base)]">
@@ -1124,6 +1275,12 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                                       >
                                         {step.isActionLoading === 'swap' ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : '✨ Face Swap'}
                                       </button>
+                                      <button
+                                        onClick={() => publishToFeed(step.resultUrl!)}
+                                        className="px-2 py-1 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-[9px] font-black uppercase text-emerald-300 flex items-center gap-0.5"
+                                      >
+                                        🚀 Publish
+                                      </button>
                                     </div>
                                   )}
                                 </div>
@@ -1135,8 +1292,14 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                                 </div>
                               )}
                               {step.type === 'generate_video' && (
-                                <div className="bg-white/5 p-2 rounded-lg border border-white/5">
+                                <div className="bg-white/5 p-2 rounded-lg border border-white/5 space-y-2">
                                   <video src={step.resultUrl} controls className="w-56 rounded border border-white/10" />
+                                  <button
+                                    onClick={() => publishToFeed(step.resultUrl!)}
+                                    className="px-2 py-1 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-[9px] font-black uppercase text-emerald-300 flex items-center gap-0.5"
+                                  >
+                                    🚀 Publish Video
+                                  </button>
                                 </div>
                               )}
                             </div>
@@ -1419,20 +1582,22 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
             <Layers className="w-3.5 h-3.5 text-pink-400" /> Canvas Workspace
           </span>
           <div className="flex items-center gap-1.5 bg-black/40 border border-white/5 p-1 rounded-xl">
-            {(['profile', 'planner', 'studio', 'media'] as const).map((tab) => (
+            {(['profile', 'planner', 'studio', 'chat', 'feed', 'analytics'] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setCanvasTab(tab)}
-                className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all ${
+                className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all ${
                   canvasTab === tab
                     ? 'bg-gradient-to-r from-pink-500/20 to-violet-500/20 border border-pink-500/30 text-white'
                     : 'text-zinc-400 hover:text-white border border-transparent'
                 }`}
               >
-                {tab === 'profile' && 'Influencer Card'}
-                {tab === 'planner' && '7-Day Calendar'}
-                {tab === 'studio' && '🎙️ Cloning Studio'}
-                {tab === 'media' && 'Media Preview'}
+                {tab === 'profile' && 'Card'}
+                {tab === 'planner' && 'Calendar'}
+                {tab === 'studio' && '🎙️ Cloning'}
+                {tab === 'chat' && '💬 Chat Box'}
+                {tab === 'feed' && '📱 Feed'}
+                {tab === 'analytics' && '📊 Stats'}
               </button>
             ))}
           </div>
@@ -1506,7 +1671,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-[9px] font-black uppercase text-zinc-400 tracking-wider">
-                      7-Day content schedule theme: {activeDraft.planStep.params.theme || 'Default Niche'}
+                      7-Day theme: {activeDraft.planStep.params.theme || 'Default Niche'}
                     </span>
                     <span className="text-[9px] font-black uppercase text-pink-400 bg-pink-500/15 px-2 py-0.5 rounded border border-pink-500/10 tracking-widest">
                       {activeDraft.planStep.params.platform || 'Instagram'}
@@ -1553,10 +1718,9 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                 <Volume2 className="w-4 h-4 text-violet-400" /> Voice & Talking Avatar Studio
               </span>
               <p className="text-[10px] text-zinc-400 font-bold leading-relaxed pb-3 border-b border-white/5">
-                Upload a reference voice file (audio/video), select a portrait image, write a script narration, and generate cloned speech or talking head video clips.
+                Upload reference voice file, select avatar portrait, and create cloned talking photos.
               </p>
 
-              {/* Form Input elements */}
               <div className="space-y-4">
                 {/* Reference Voice upload */}
                 <div className="space-y-1.5">
@@ -1588,7 +1752,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
 
                 {/* Avatar Portrait image upload */}
                 <div className="space-y-1.5">
-                  <span className="text-[9px] font-black uppercase text-zinc-500 tracking-wider">2. Avatar Photo (For Lip-Sync Talking video, Optional)</span>
+                  <span className="text-[9px] font-black uppercase text-zinc-500 tracking-wider">2. Avatar Photo (For lip-sync talking photo)</span>
                   <input
                     type="file"
                     ref={studioAvatarRef}
@@ -1619,16 +1783,16 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
 
                 {/* Script text */}
                 <div className="space-y-1.5">
-                  <span className="text-[9px] font-black uppercase text-zinc-500 tracking-wider">3. Narrative script script text</span>
+                  <span className="text-[9px] font-black uppercase text-zinc-500 tracking-wider">3. Script Translation speech text</span>
                   <textarea
                     value={studioScript}
                     onChange={(e) => setStudioScript(e.target.value)}
-                    placeholder="Type script transcription narrative here..."
+                    placeholder="Type script script text here..."
                     className="w-full h-24 bg-white/5 border border-white/5 rounded-xl p-3 text-xs text-white focus:border-violet-500/30 outline-none resize-none shadow-inner"
                   />
                 </div>
 
-                {/* Action trigger buttons */}
+                {/* Action buttons */}
                 <div className="grid grid-cols-2 gap-3 pt-2">
                   <button
                     onClick={executeVoiceCloneOnly}
@@ -1651,14 +1815,13 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
 
               {/* Outputs panel */}
               {isStudioLoading && (
-                <div className="absolute inset-0 bg-black/60 backdrop-blur-sm rounded-2xl flex flex-col items-center justify-center space-y-2 text-center p-6">
+                <div className="absolute inset-0 bg-black/60 backdrop-blur-sm rounded-2xl flex flex-col items-center justify-center space-y-2 text-center p-6 z-10">
                   <Loader2 className="w-8 h-8 animate-spin text-pink-500" />
                   <div className="text-xs font-black uppercase text-white tracking-widest">Generating Studio Asset...</div>
-                  <p className="text-[10px] text-zinc-400 max-w-[200px]">Wavespeed is cloning voice and generating lip-sync models. This takes a few seconds.</p>
+                  <p className="text-[10px] text-zinc-400 max-w-[200px]">Wavespeed is cloning voice and generating talking photo. This takes a few seconds.</p>
                 </div>
               )}
 
-              {/* Synthesis Output preview player box */}
               {(studioResultAudioUrl || studioResultVideoUrl) && (
                 <div className="mt-4 pt-4 border-t border-white/5 space-y-3">
                   <span className="text-[9px] font-black text-emerald-400 uppercase tracking-widest block">Studio Generation Results</span>
@@ -1672,7 +1835,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
 
                   {studioResultVideoUrl && (
                     <div className="bg-white/5 p-3 rounded-xl border border-white/5 space-y-1">
-                      <span className="text-[8px] font-black text-zinc-500 block uppercase">Lip-sync avatar video</span>
+                      <span className="text-[8px] font-black text-zinc-500 block uppercase">Lip-sync video</span>
                       <video controls src={studioResultVideoUrl} className="w-full rounded border border-white/10" />
                     </div>
                   )}
@@ -1681,23 +1844,242 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
             </div>
           )}
 
+          {/* BRAND VOICE CHAT SANDBOX BOARD */}
+          {canvasTab === 'chat' && (
+            <div className="space-y-4 max-w-md mx-auto flex flex-col h-[500px] bg-[var(--bg-elevated)] border border-white/5 rounded-2xl p-4 shadow-xl overflow-hidden">
+              <div className="flex-none flex items-center justify-between border-b border-white/5 pb-2">
+                <span className="text-xs font-black text-pink-400 uppercase tracking-widest flex items-center gap-1.5">
+                  <MessageSquare className="w-4 h-4 text-pink-400" /> Brand Chat Sandbox
+                </span>
+                <span className="text-[9px] font-bold text-zinc-400">
+                  Talking to: {activeDraft?.createStep?.params.name || 'Sofia (Draft)'}
+                </span>
+              </div>
+
+              {/* Chat log list */}
+              <div className="flex-1 overflow-y-auto space-y-3 pr-1 custom-scrollbar text-xs">
+                {personaChatMessages.map((pMsg, pIdx) => (
+                  <div key={pIdx} className={`flex flex-col ${pMsg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                    <div className={`p-3 rounded-xl max-w-[85%] leading-relaxed ${
+                      pMsg.role === 'user'
+                        ? 'bg-violet-500/10 border border-violet-500/20 text-white rounded-tr-none'
+                        : 'bg-white/5 border border-white/5 text-zinc-200 rounded-tl-none'
+                    }`}>
+                      <div>{pMsg.content}</div>
+
+                      {/* Voice player if speaker cloned */}
+                      {pMsg.role === 'model' && (
+                        <div className="mt-2 flex items-center gap-2">
+                          {pMsg.voiceUrl ? (
+                            <audio controls src={pMsg.voiceUrl} className="h-6 w-full" />
+                          ) : (
+                            <button
+                              onClick={() => readSpeechSpeech(pIdx, pMsg.content)}
+                              disabled={pMsg.isReading}
+                              className="px-2.5 py-1 rounded bg-white/5 hover:bg-white/10 text-[9px] font-black uppercase text-zinc-300 flex items-center gap-1 transition-all disabled:opacity-40"
+                            >
+                              {pMsg.isReading ? <Loader2 className="w-3 h-3 animate-spin text-pink-400" /> : <Volume2 className="w-3 h-3" />}
+                              Speak cloned voice
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {isPersonaTyping && (
+                  <div className="flex items-center gap-1.5 text-zinc-500 italic text-[10px] animate-pulse">
+                    <Loader2 className="w-3 h-3 animate-spin text-pink-500" />
+                    <span>{activeDraft?.createStep?.params.name || 'Influencer'} is typing...</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Console input box */}
+              <div className="flex-none flex items-center gap-2 pt-2 border-t border-white/5">
+                <input
+                  type="text"
+                  value={personaChatInput}
+                  onChange={(e) => setPersonaChatInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && sendPersonaChatMessage()}
+                  disabled={isPersonaTyping || !activeDraft}
+                  placeholder={activeDraft ? "Type chat message..." : "Draft a persona first to unlock chat"}
+                  className="flex-1 h-9 bg-black/40 border border-white/5 rounded-lg px-3 text-xs text-white focus:border-pink-500/30 outline-none"
+                />
+                <button
+                  onClick={sendPersonaChatMessage}
+                  disabled={isPersonaTyping || !personaChatInput.trim()}
+                  className="w-9 h-9 rounded-lg bg-pink-500/20 hover:bg-pink-500/30 text-white flex items-center justify-center shadow transition-all"
+                >
+                  <Send size={14} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* SOCIAL PUBLISHING SIMULATOR FEED BOARD */}
+          {canvasTab === 'feed' && (
+            <div className="space-y-5 max-w-md mx-auto">
+              <span className="text-xs font-black text-emerald-400 uppercase tracking-widest flex items-center gap-1.5">
+                <Globe className="w-4 h-4 text-emerald-400" /> Mock Social Publishing Feed
+              </span>
+
+              {publishedPosts.length === 0 ? (
+                <div className="h-64 border border-dashed border-white/10 rounded-2xl flex flex-col items-center justify-center text-center p-6 bg-white/[0.01]">
+                  <Globe className="w-8 h-8 text-zinc-600 mb-2.5 animate-pulse" />
+                  <div className="text-xs font-black text-zinc-400 uppercase tracking-widest">No Posts Published Yet</div>
+                  <p className="text-[10px] text-zinc-500 mt-1 max-w-[200px]">Click "🚀 Publish" under generated visuals in the chat pipeline on the left to see posts here.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {publishedPosts.map((post) => (
+                    <div key={post.id} className="bg-[var(--bg-elevated)] border border-white/5 rounded-2xl p-4 shadow space-y-3 relative overflow-hidden">
+                      {/* Platform badge */}
+                      <span className="absolute top-3 right-3 text-[8px] font-black uppercase text-pink-400 bg-pink-500/10 border border-pink-500/20 px-2 py-0.5 rounded-full tracking-wider">
+                        {post.platform}
+                      </span>
+
+                      {/* Post media */}
+                      <div className="rounded-xl overflow-hidden border border-white/5 bg-black/40">
+                        {post.imageUrl.endsWith('.mp4') ? (
+                          <video src={post.imageUrl} controls className="w-full max-h-72 object-cover" />
+                        ) : (
+                          <img src={post.imageUrl} alt="Social content" className="w-full max-h-72 object-cover" />
+                        )}
+                      </div>
+
+                      {/* Ticking Engagement Stats */}
+                      <div className="flex justify-between text-[10px] text-zinc-400 border-b border-white/5 pb-2.5 font-bold">
+                        <span className="flex items-center gap-1">👁️ {post.views} Views</span>
+                        <span className="flex items-center gap-1 text-pink-400">❤️ {post.likes} Likes</span>
+                        <span className="flex items-center gap-1 text-cyan-400">💬 {post.comments.length} Comments</span>
+                      </div>
+
+                      {/* OnlyFans Tips Ticker */}
+                      {post.platform.toLowerCase().includes('onlyfans') && post.tips.length > 0 && (
+                        <div className="bg-emerald-500/10 border border-emerald-500/20 p-2.5 rounded-xl space-y-1.5">
+                          <span className="text-[8px] font-black text-emerald-400 uppercase tracking-widest block">💰 Live Tips Ticker</span>
+                          <div className="space-y-1 text-[10px]">
+                            {post.tips.slice(-3).map((tip, tIdx) => (
+                              <div key={tIdx} className="flex justify-between text-zinc-300 font-bold">
+                                <span>👤 User {tip.user}</span>
+                                <span className="text-emerald-400">+${tip.amount} tip</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* caption */}
+                      <p className="text-xs text-zinc-300 leading-relaxed font-medium">"{post.caption}"</p>
+
+                      {/* comments section */}
+                      {post.comments.length > 0 && (
+                        <div className="space-y-1 pt-1.5 text-[10px] text-zinc-400 leading-normal border-t border-white/5">
+                          <span className="font-black text-[8px] uppercase tracking-wider text-zinc-500">Live Comments:</span>
+                          {post.comments.slice(-3).map((c, cIdx) => (
+                            <div key={cIdx} className="italic text-zinc-300">"{c}"</div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* PREDICTIVE ANALYTICS DASHBOARD BOARD */}
+          {canvasTab === 'analytics' && (
+            <div className="space-y-5 max-w-md mx-auto">
+              <span className="text-xs font-black text-violet-400 uppercase tracking-widest flex items-center gap-1.5">
+                <TrendingUp className="w-4 h-4 text-violet-400" /> Predictive Analytics Dashboard
+              </span>
+
+              {activeDraft ? (
+                <div className="space-y-4">
+                  {/* Scorecards */}
+                  <div className="grid grid-cols-2 gap-3.5">
+                    <div className="bg-[var(--bg-elevated)] border border-white/5 p-4 rounded-xl space-y-1 text-center">
+                      <span className="text-[8px] font-black text-zinc-500 uppercase tracking-wider block">Estimated CPM</span>
+                      <span className="text-lg font-black text-white">${metrics.cpm.toFixed(2)}</span>
+                    </div>
+                    <div className="bg-[var(--bg-elevated)] border border-white/5 p-4 rounded-xl space-y-1 text-center">
+                      <span className="text-[8px] font-black text-zinc-500 uppercase tracking-wider block">Conversion rate Index</span>
+                      <span className="text-lg font-black text-pink-400">{metrics.conversion.toFixed(1)}%</span>
+                    </div>
+                  </div>
+
+                  {/* Growth charts list */}
+                  <div className="bg-[var(--bg-elevated)] border border-white/5 p-5 rounded-2xl space-y-4">
+                    <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">Projected 30-Day Growth Index</span>
+                    
+                    {/* Followers growth bar */}
+                    <div className="space-y-1 text-[10px]">
+                      <div className="flex justify-between font-bold">
+                        <span className="text-zinc-300">Followers Traffic Momentum</span>
+                        <span className="text-violet-400">+{metrics.growthIndex}% Index</span>
+                      </div>
+                      <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden border border-white/5">
+                        <div 
+                          className="h-full bg-gradient-to-r from-pink-500 to-violet-500 rounded-full" 
+                          style={{ width: `${metrics.growthIndex}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Projected monthly revenue scorecard */}
+                    <div className="space-y-1 text-[10px]">
+                      <div className="flex justify-between font-bold">
+                        <span className="text-zinc-300">Projected Monthly Earnings</span>
+                        <span className="text-emerald-400">${metrics.projection.toLocaleString()}/mo</span>
+                      </div>
+                      <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden border border-white/5">
+                        <div 
+                          className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full" 
+                          style={{ width: `${Math.min(100, (metrics.projection / 15000) * 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Niche suitability indices */}
+                  <div className="bg-[var(--bg-elevated)] border border-white/5 p-5 rounded-2xl space-y-3 text-xs leading-normal">
+                    <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">Niche Traffic Suitability Insights</span>
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-lg bg-pink-500/10 flex items-center justify-center shrink-0 border border-pink-500/20 text-pink-400">
+                        <Award className="w-3.5 h-3.5" />
+                      </div>
+                      <p className="text-zinc-300 font-bold">
+                        {activeDraft.createStep.params.niche || 'General'} niche has a high engagement multipliers on {activeDraft.createStep.params.platform || 'Instagram'}.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="h-64 border border-dashed border-white/10 rounded-2xl flex flex-col items-center justify-center text-center p-6 bg-white/[0.01]">
+                  <TrendingUp className="w-8 h-8 text-zinc-600 mb-2.5 animate-pulse" />
+                  <div className="text-xs font-black text-zinc-400 uppercase tracking-widest">No Analytics Projections</div>
+                  <p className="text-[10px] text-zinc-500 mt-1 max-w-[200px]">Propose a layout pipeline to calculate expected CPM, growth index, and earnings curves.</p>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* MEDIA PREVIEW BOARD */}
           {canvasTab === 'media' && (
             <div className="space-y-6 max-w-md mx-auto">
-              {/* Image step draft layout */}
               {activeDraft?.imgStep ? (
                 <div className="bg-[var(--bg-elevated)] border border-white/5 rounded-2xl p-5 shadow space-y-3.5">
                   <span className="text-[9px] font-black text-emerald-400 uppercase tracking-widest flex items-center gap-1">
                     <ImageIcon className="w-3.5 h-3.5 text-emerald-400" /> Visual Generator Settings
                   </span>
-                  
                   <div className="space-y-1.5">
                     <span className="text-[8px] uppercase tracking-wider text-zinc-500 font-black">Draft Image Prompt</span>
                     <p className="text-xs text-zinc-300 font-bold bg-white/5 p-3 border border-white/5 rounded-xl leading-relaxed">
                       "{activeDraft.imgStep.params.prompt}"
                     </p>
                   </div>
-
                   <div className="grid grid-cols-2 gap-3 text-xs">
                     <div className="bg-white/5 p-2 rounded-lg border border-white/5">
                       <span className="text-[8px] uppercase tracking-wider text-zinc-500 block font-black">Generator Model</span>
@@ -1711,7 +2093,6 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                 </div>
               ) : null}
 
-              {/* Video step draft layout */}
               {activeDraft?.videoStep ? (
                 <div className="bg-[var(--bg-elevated)] border border-white/5 rounded-2xl p-5 shadow space-y-3.5">
                   <span className="text-[9px] font-black text-cyan-400 uppercase tracking-widest flex items-center gap-1">
@@ -1726,7 +2107,6 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                 </div>
               ) : null}
 
-              {/* Voice step draft layout */}
               {activeDraft?.voiceStep ? (
                 <div className="bg-[var(--bg-elevated)] border border-white/5 rounded-2xl p-5 shadow space-y-3.5">
                   <span className="text-[9px] font-black text-amber-400 uppercase tracking-widest flex items-center gap-1">
@@ -1741,7 +2121,6 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                 </div>
               ) : null}
 
-              {/* Revenue step draft layout */}
               {activeDraft?.revStep ? (
                 <div className="bg-[var(--bg-elevated)] border border-white/5 rounded-2xl p-5 shadow space-y-3.5">
                   <span className="text-[9px] font-black text-rose-400 uppercase tracking-widest flex items-center gap-1">
