@@ -403,6 +403,9 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
   // In-chat swap context
   const [activeSwapTarget, setActiveSwapTarget] = useState<{ msgId: string; stepIdx: number } | null>(null);
 
+  // Guided Tour Onboarding states
+  const [tourStep, setTourStep] = useState<number | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const swapFileInputRef = useRef<HTMLInputElement>(null);
@@ -421,6 +424,36 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
       console.error('Failed to load presets:', e);
     }
   }, []);
+
+  // Guided Tour Tab auto-switching handler
+  useEffect(() => {
+    if (tourStep === 2) setCanvasTab('studio');
+    else if (tourStep === 3) setCanvasTab('downloader');
+    else if (tourStep === 4) setCanvasTab('analytics');
+  }, [tourStep]);
+
+  const onboardingSteps = [
+    {
+      title: "👋 Welcome to AI Influencer Studio!",
+      desc: "This studio empowers you to manage virtual personas, clone voices, synthesize videos, download watermark-free Reels/TikToks, and analyze simulated social traffic."
+    },
+    {
+      title: "🤖 The Step Pipeline (Left Panel)",
+      desc: "Here, you propose and execute content pipeline steps. You can generate ideas, synthesize model profiles, render voiceover tracks, and compile stitched video stories."
+    },
+    {
+      title: "🎙️ Voice & Avatar Cloning Studio",
+      desc: "Switch here to clone voice tracks from as short as a 5-second video/audio sample using Wavespeed OmniVoice or ElevenLabs, and generate talking photos."
+    },
+    {
+      title: "📲 Reels & TikTok Downloader",
+      desc: "Paste any public Instagram Reels or TikTok video link. The studio extracts the raw video file watermark-free and allows direct download or import."
+    },
+    {
+      title: "📊 Simulated Analytics & Demographic Maps",
+      desc: "Track simulated daily follower growth curves, monthly revenue breakdowns by stream, and geographic traffic concentrations on the global map."
+    }
+  ];
 
   // Timer to increment mock feed stats dynamically
   useEffect(() => {
@@ -2128,10 +2161,74 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                   )}
                 </div>
               ) : (
-                <div className="h-64 border border-dashed border-white/10 rounded-2xl flex flex-col items-center justify-center text-center p-6 bg-white/[0.01]">
-                  <UserPlus className="w-8 h-8 text-zinc-600 mb-2.5 animate-pulse" />
-                  <div className="text-xs font-black text-zinc-400 uppercase tracking-widest">No Profile Draft Active</div>
-                  <p className="text-[10px] text-zinc-500 mt-1 max-w-[200px]">Prompt the agent on the left to generate an influencer setup draft.</p>
+                <div className="space-y-4">
+                  <div className="h-44 border border-dashed border-white/10 rounded-2xl flex flex-col items-center justify-center text-center p-5 bg-white/[0.01]">
+                    <UserPlus className="w-8 h-8 text-zinc-600 mb-2 animate-pulse" />
+                    <div className="text-xs font-black text-zinc-400 uppercase tracking-widest">No Active Persona Draft</div>
+                    <p className="text-[10px] text-zinc-500 mt-1 max-w-[240px]">Prompt the agent in the chat console to build a custom influencer draft persona.</p>
+                    <button
+                      onClick={() => setTourStep(0)}
+                      className="mt-3.5 px-3 py-1.5 rounded-lg bg-pink-500/10 border border-pink-500/20 text-pink-300 text-[9px] font-black uppercase tracking-wider hover:bg-pink-500/20 transition-all"
+                    >
+                      💡 Start Guided Walkthrough Tour
+                    </button>
+                  </div>
+
+                  {/* Beginner Quick Start Hub */}
+                  <div className="bg-[var(--bg-elevated)] border border-white/5 p-5 rounded-2xl space-y-4 shadow-xl">
+                    <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block border-b border-white/5 pb-2">
+                      🚀 Quick Starter Actions Hub
+                    </span>
+                    <div className="grid grid-cols-1 gap-2.5">
+                      <button
+                        onClick={() => setCanvasTab('downloader')}
+                        className="p-3 text-left bg-white/[0.01] hover:bg-white/5 border border-white/5 rounded-xl flex items-center justify-between transition-all group"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-pink-500/10 flex items-center justify-center border border-pink-500/20 text-pink-400">
+                            <Globe className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-black text-white block uppercase group-hover:text-pink-400 transition-colors">Extract Reel or TikTok Video</span>
+                            <span className="text-[9px] text-zinc-500">Download watermark-free MP4s from public links.</span>
+                          </div>
+                        </div>
+                        <span className="text-zinc-500 group-hover:text-white transition-colors text-xs font-bold font-mono">→</span>
+                      </button>
+
+                      <button
+                        onClick={() => setCanvasTab('studio')}
+                        className="p-3 text-left bg-white/[0.01] hover:bg-white/5 border border-white/5 rounded-xl flex items-center justify-between transition-all group"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-violet-500/10 flex items-center justify-center border border-violet-500/20 text-violet-400">
+                            <Volume2 className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-black text-white block uppercase group-hover:text-violet-400 transition-colors">Voice & Avatar Studio</span>
+                            <span className="text-[9px] text-zinc-500">Clone high-fidelity custom voices or lip-sync avatars.</span>
+                          </div>
+                        </div>
+                        <span className="text-zinc-500 group-hover:text-white transition-colors text-xs font-bold font-mono">→</span>
+                      </button>
+
+                      <button
+                        onClick={() => setCanvasTab('chat')}
+                        className="p-3 text-left bg-white/[0.01] hover:bg-white/5 border border-white/5 rounded-xl flex items-center justify-between transition-all group"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-cyan-500/10 flex items-center justify-center border border-cyan-500/20 text-cyan-400">
+                            <MessageSquare className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-black text-white block uppercase group-hover:text-cyan-400 transition-colors">Talk to Creative Agents</span>
+                            <span className="text-[9px] text-zinc-500">Brainstorm content ideas and marketing copy.</span>
+                          </div>
+                        </div>
+                        <span className="text-zinc-500 group-hover:text-white transition-colors text-xs font-bold font-mono">→</span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -2954,6 +3051,64 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
           )}
         </div>
       </div>
+
+      {/* Onboarding Tour Overlay Card */}
+      {tourStep !== null && (
+        <div className="fixed bottom-6 right-6 z-50 w-80 bg-[var(--bg-elevated)] border border-pink-500/30 p-5 rounded-2xl shadow-2xl space-y-4 backdrop-blur-md animate-fade-in">
+          <div className="flex justify-between items-center pb-2 border-b border-white/5">
+            <span className="text-[10px] font-black uppercase text-pink-400 tracking-wider">
+              {onboardingSteps[tourStep].title}
+            </span>
+            <button 
+              onClick={() => setTourStep(null)}
+              className="text-xs text-zinc-500 hover:text-zinc-300 font-bold"
+            >
+              ✕
+            </button>
+          </div>
+          <p className="text-[10px] text-zinc-300 font-medium leading-relaxed">
+            {onboardingSteps[tourStep].desc}
+          </p>
+          <div className="flex items-center justify-between text-[9px] pt-1">
+            <span className="font-bold text-zinc-500">
+              Step {tourStep + 1} of {onboardingSteps.length}
+            </span>
+            <div className="flex gap-1.5">
+              {tourStep > 0 && (
+                <button
+                  onClick={() => setTourStep(tourStep - 1)}
+                  className="px-2 py-1 bg-white/5 hover:bg-white/10 rounded font-black uppercase text-zinc-300 transition-all"
+                >
+                  Back
+                </button>
+              )}
+              {tourStep < onboardingSteps.length - 1 ? (
+                <button
+                  onClick={() => setTourStep(tourStep + 1)}
+                  className="px-2 py-1 bg-gradient-to-r from-pink-500/25 to-violet-500/25 border border-pink-500/20 hover:from-pink-500/35 rounded font-black uppercase text-white transition-all"
+                >
+                  Next
+                </button>
+              ) : (
+                <button
+                  onClick={() => setTourStep(null)}
+                  className="px-2 py-1 bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 rounded font-black uppercase transition-all"
+                >
+                  Finish
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Tour Launch Button */}
+      <button
+        onClick={() => setTourStep(0)}
+        className="fixed bottom-6 left-6 z-40 bg-black/60 border border-white/10 hover:border-pink-500/20 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider text-pink-300 flex items-center gap-1.5 transition-all shadow-lg backdrop-blur-sm"
+      >
+        <span>💡 Guided Tour</span>
+      </button>
     </div>
   );
 }
