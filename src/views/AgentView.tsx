@@ -253,7 +253,50 @@ async function stitchVideoSegments(videoUrls: string[]): Promise<string> {
     }
   });
 }
+// Simple WAV encoder helper for Web Audio API buffers
+function audioBufferToWav(buffer: AudioBuffer): Blob {
+  const numOfChan = buffer.numberOfChannels;
+  const length = buffer.length * numOfChan * 2 + 44;
+  const bufferArr = new ArrayBuffer(length);
+  const view = new DataView(bufferArr);
+  const channels = [];
+  let sampleRate = buffer.sampleRate;
+  let offset = 0;
+  let pos = 0;
 
+  const setUint32 = (data: number) => { view.setUint32(pos, data, true); pos += 4; };
+  const setUint16 = (data: number) => { view.setUint16(pos, data, true); pos += 2; };
+
+  setUint32(0x46464952); // "RIFF"
+  setUint32(length - 8); // file length - 8
+  setUint32(0x45564157); // "WAVE"
+  setUint32(0x20746d66); // "fmt " chunk
+  setUint32(16);         // length of format chunk
+  setUint16(1);          // PCM format
+  setUint16(numOfChan);
+  setUint32(sampleRate);
+  setUint32(sampleRate * numOfChan * 2); // byte rate
+  setUint16(numOfChan * 2);              // block align
+  setUint16(16);                         // bits per sample
+  setUint32(0x61746164); // "data" chunk
+  setUint32(length - pos - 4); // chunk length
+
+  for (let i = 0; i < numOfChan; i++) {
+    channels.push(buffer.getChannelData(i));
+  }
+
+  while (pos < length) {
+    for (let i = 0; i < numOfChan; i++) {
+      let sample = Math.max(-1, Math.min(1, channels[i][offset]));
+      sample = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+      view.setInt16(pos, sample, true);
+      pos += 2;
+    }
+    offset++;
+  }
+
+  return new Blob([bufferArr], { type: 'audio/wav' });
+}
 export default function AgentView({ personas, setPersonas, onSelectPersona, nav }: AgentViewProps) {
   const [inputText, setInputText] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -278,6 +321,12 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
   const [isStudioLoading, setIsStudioLoading] = useState<boolean>(false);
   const [studioResultAudioUrl, setStudioResultAudioUrl] = useState<string | null>(null);
   const [studioResultVideoUrl, setStudioResultVideoUrl] = useState<string | null>(null);
+
+  // Voice engine states
+  const [voiceEngine, setVoiceEngine] = useState<'omnivoice' | 'elevenlabs'>('omnivoice');
+  const [voiceNameInput, setVoiceNameInput] = useState('Sofia Voice');
+  const [voiceDescInput, setVoiceDescInput] = useState('Voice clone of Sofia reference clip');
+  const [clonedVoiceId, setClonedVoiceId] = useState<string | null>(null);
 
   // Chat Sandbox States
   const [personaChatMessages, setPersonaChatMessages] = useState<{ role: 'user' | 'model'; content: string; voiceUrl?: string; isReading?: boolean }[]>([
@@ -685,15 +734,53 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
   const handleStudioVoiceSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      setStudioVoiceFile({
-        name: file.name,
-        dataUrl: reader.result as string,
-        mimeType: file.type
-      });
-    };
-    reader.readAsDataURL(file);
+
+    if (file.type.startsWith('video/')) {
+      const loadingToastId = toast.loading('🎬 Extracting high-quality audio track from video reference...');
+      const fileReader = new FileReader();
+      
+      fileReader.onload = async () => {
+        try {
+          const arrayBuffer = fileReader.result as ArrayBuffer;
+          const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+          const audioCtx = new AudioContextClass();
+          
+          audioCtx.decodeAudioData(arrayBuffer, async (audioBuffer) => {
+            try {
+              const wavBlob = audioBufferToWav(audioBuffer);
+              const wavReader = new FileReader();
+              wavReader.onload = () => {
+                setStudioVoiceFile({
+                  name: file.name.replace(/\.[^/.]+$/, "") + '.wav',
+                  dataUrl: wavReader.result as string,
+                  mimeType: 'audio/wav'
+                });
+                toast.success('🔊 High-quality voice track successfully extracted!', { id: loadingToastId });
+              };
+              wavReader.readAsDataURL(wavBlob);
+            } catch (encodeErr: any) {
+              toast.error('Failed to encode audio: ' + encodeErr.message, { id: loadingToastId });
+            }
+          }, (err) => {
+            toast.error('Video audio track decoding failed. Please use a standard audio file.', { id: loadingToastId });
+          });
+        } catch (e: any) {
+          toast.error('Failed to process video: ' + e.message, { id: loadingToastId });
+        }
+      };
+      fileReader.onerror = () => toast.error('Failed to read video file', { id: loadingToastId });
+      fileReader.readAsArrayBuffer(file);
+    } else {
+      const reader = new FileReader();
+      reader.onload = () => {
+        setStudioVoiceFile({
+          name: file.name,
+          dataUrl: reader.result as string,
+          mimeType: file.type
+        });
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const handleStudioAvatarSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -719,27 +806,70 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
     setIsStudioLoading(true);
     setStudioResultAudioUrl(null);
     setStudioResultVideoUrl(null);
-    toast.loading('Cloning voice via OmniVoice API...', { id: 'studio-job' });
 
-    try {
-      const res = await fetch('/api/voice-clone', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          audio: studioVoiceFile.dataUrl,
-          text: studioScript
-        })
-      });
+    if (voiceEngine === 'elevenlabs') {
+      toast.loading(`Cloning voice '${voiceNameInput}' via ElevenLabs...`, { id: 'studio-job' });
+      try {
+        const cloneRes = await fetch('/api/elevenlabs-clone-voice', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: voiceNameInput,
+            description: voiceDescInput,
+            sampleBase64: studioVoiceFile.dataUrl
+          })
+        });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Voice cloning failed');
+        const cloneData = await cloneRes.json();
+        if (!cloneRes.ok) throw new Error(cloneData.error || 'ElevenLabs cloning failed');
 
-      setStudioResultAudioUrl(data.audioUrl);
-      toast.success('Voice narration cloned successfully!', { id: 'studio-job' });
-    } catch (err: any) {
-      toast.error(err.message || 'OmniVoice clone failed', { id: 'studio-job' });
-    } finally {
-      setIsStudioLoading(false);
+        const voiceId = cloneData.voiceId;
+        setClonedVoiceId(voiceId);
+        
+        toast.loading(`Synthesizing test speech with cloned voice ID...`, { id: 'studio-job' });
+        
+        const speechRes = await fetch('/api/generate-speech', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text: studioScript,
+            voiceId: voiceId,
+            engine: 'elevenlabs'
+          })
+        });
+
+        const speechData = await speechRes.json();
+        if (!speechRes.ok) throw new Error(speechData.error || 'Speech generation failed');
+
+        setStudioResultAudioUrl(speechData.audioUrl);
+        toast.success(`Voice cloned & narration generated! (Voice ID: ${voiceId})`, { id: 'studio-job' });
+      } catch (err: any) {
+        toast.error(err.message || 'ElevenLabs pipeline failed', { id: 'studio-job' });
+      } finally {
+        setIsStudioLoading(false);
+      }
+    } else {
+      toast.loading('Cloning voice via OmniVoice API...', { id: 'studio-job' });
+      try {
+        const res = await fetch('/api/voice-clone', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            audio: studioVoiceFile.dataUrl,
+            text: studioScript
+          })
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Voice cloning failed');
+
+        setStudioResultAudioUrl(data.audioUrl);
+        toast.success('Voice narration cloned successfully!', { id: 'studio-job' });
+      } catch (err: any) {
+        toast.error(err.message || 'OmniVoice clone failed', { id: 'studio-job' });
+      } finally {
+        setIsStudioLoading(false);
+      }
     }
   };
 
@@ -1919,10 +2049,47 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                 <Volume2 className="w-4 h-4 text-violet-400" /> Voice & Talking Avatar Studio
               </span>
               <p className="text-[10px] text-zinc-400 font-bold leading-relaxed pb-3 border-b border-white/5">
-                Upload reference voice file, select avatar portrait, and create cloned talking photos.
+                Upload reference voice/video file, select avatar portrait, and create cloned talking photos.
               </p>
 
               <div className="space-y-4">
+                {/* Engine Selector */}
+                <div className="space-y-1.5">
+                  <span className="text-[9px] font-black uppercase text-zinc-500 tracking-wider">Voice Engine</span>
+                  <select
+                    value={voiceEngine}
+                    onChange={(e) => setVoiceEngine(e.target.value as 'omnivoice' | 'elevenlabs')}
+                    className="w-full bg-white/5 border border-white/5 rounded-xl px-3 py-2 text-xs text-white focus:border-violet-500/30 outline-none"
+                  >
+                    <option value="omnivoice">✨ Wavespeed OmniVoice (Instant, 5s reference)</option>
+                    <option value="elevenlabs">🎙️ ElevenLabs (High-fidelity custom clone)</option>
+                  </select>
+                </div>
+
+                {/* ElevenLabs inputs */}
+                {voiceEngine === 'elevenlabs' && (
+                  <div className="grid grid-cols-2 gap-3 pt-1">
+                    <div>
+                      <span className="text-[9px] font-black uppercase text-zinc-500 tracking-wider">Voice Name</span>
+                      <input
+                        type="text"
+                        value={voiceNameInput}
+                        onChange={(e) => setVoiceNameInput(e.target.value)}
+                        className="w-full bg-white/5 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-violet-500/30"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[9px] font-black uppercase text-zinc-500 tracking-wider">Description</span>
+                      <input
+                        type="text"
+                        value={voiceDescInput}
+                        onChange={(e) => setVoiceDescInput(e.target.value)}
+                        className="w-full bg-white/5 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-violet-500/30"
+                      />
+                    </div>
+                  </div>
+                )}
+
                 {/* Reference Voice upload */}
                 <div className="space-y-1.5">
                   <span className="text-[9px] font-black uppercase text-zinc-500 tracking-wider">1. Reference Voice (Audio/Video file)</span>
@@ -1945,7 +2112,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                     ) : (
                       <>
                         <Volume2 className="w-5 h-5 text-zinc-500 mb-1" />
-                        <span className="text-[10px] text-zinc-400 font-bold">Select audio or video voice clip</span>
+                        <span className="text-[10px] text-zinc-400 font-bold">Select audio or video voice clip (min 5s)</span>
                       </>
                     )}
                   </div>
@@ -2005,8 +2172,9 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                   </button>
                   <button
                     onClick={executeTalkingAvatar}
-                    disabled={isStudioLoading || !studioScript.trim() || !studioVoiceFile || !studioAvatarImage}
+                    disabled={isStudioLoading || !studioScript.trim() || !studioVoiceFile || !studioAvatarImage || voiceEngine === 'elevenlabs'}
                     className="py-2.5 rounded-xl border border-pink-500/10 bg-gradient-to-r from-pink-500/20 to-violet-500/20 hover:from-pink-500/30 hover:to-violet-500/30 font-black text-[10px] uppercase tracking-wider text-pink-300 flex items-center justify-center gap-1 transition-all disabled:opacity-40"
+                    title={voiceEngine === 'elevenlabs' ? 'Talking Avatars currently require OmniVoice engine' : ''}
                   >
                     {isStudioLoading && studioResultVideoUrl === null ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <VideoIcon className="w-3.5 h-3.5" />}
                     Talking Avatar
