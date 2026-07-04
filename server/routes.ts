@@ -722,6 +722,16 @@ For visual assets, you must select the best generator model:
   - "venice:lustify-v8" (fourth choice / Venice premium NSFW)
   - "venice:seedream-v5" (fifth choice / Venice alternative NSFW)
 
+- For Video generation and Video-to-Video (V2V) editing, choose models according to these rules:
+  - If NSFW/Adult content requested, select in order of priority:
+    1. "wavespeed-v2v:wavespeed-ai/seedance-2.0" (Best NSFW/uncensored video edit)
+    2. "wavespeed-v2v:wavespeed-ai/wan-2.7-pro" (Second best NSFW video edit)
+    3. "wavespeed-v2v:wavespeed-ai/qwen-2.0-pro" (Third best NSFW video edit)
+  - If SFW/Clean content requested, select in order of priority:
+    1. "wavespeed-v2v:wavespeed-ai/seedance" (Best SFW video edit)
+    2. "wavespeed-v2v:wavespeed-ai/kling-3.0" (Second best SFW video edit)
+    3. "google:veo-omni" (Third best SFW/Omni video edit)
+
 Available steps inside "suggestedSteps":
 1. "create_persona":
    Required parameters:

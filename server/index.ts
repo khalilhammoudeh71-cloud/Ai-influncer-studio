@@ -2777,7 +2777,7 @@ async function resolveVideoUrlOrDataUrl(input: string): Promise<string> {
 
 app.post('/api/generate-video', async (req, res) => {
   req.setTimeout(600000);
-  const { prompt: rawPrompt, modelId, sourceImage, sourceVideo, strength, identityLock, naturalLook, aspectRatio, duration, resolution } = req.body;
+  const { prompt: rawPrompt, modelId, sourceImage, sourceVideo, strength, identityLock, naturalLook, aspectRatio, duration, resolution, allowNsfw } = req.body;
 
   if (!rawPrompt || typeof rawPrompt !== 'string' || !rawPrompt.trim() || !modelId) {
     return res.status(400).json({ error: 'prompt and modelId are required' });
@@ -2819,7 +2819,28 @@ app.post('/api/generate-video', async (req, res) => {
     let videoModel = (cachedVideoModels || []).find(m => m.id === modelId);
     if (!videoModel) {
       if (modelId.startsWith('wavespeed-v2v:')) {
-        videoModel = (cachedVideoModels || []).find(m => m.id.startsWith('wavespeed-v2v:'));
+        const isNsfw = allowNsfw || isNsfwModel(prompt) || ['nsfw', 'uncensored', 'sexy', 'naked', 'bikini', 'lingerie', 'underwear', 'lewd', 'adult', 'erotic'].some(k => prompt.toLowerCase().includes(k));
+        const allModels = cachedVideoModels || [];
+        let candidates: string[] = [];
+        if (isNsfw) {
+          candidates = [
+            'wavespeed-v2v:wavespeed-ai/seedance-2.0',
+            'wavespeed-v2v:wavespeed-ai/wan-2.7-pro',
+            'wavespeed-v2v:wavespeed-ai/qwen-2.0-pro'
+          ];
+        } else {
+          candidates = [
+            'wavespeed-v2v:wavespeed-ai/seedance',
+            'wavespeed-v2v:wavespeed-ai/kling-3.0'
+          ];
+        }
+        for (const cand of candidates) {
+          videoModel = allModels.find(m => m.id === cand);
+          if (videoModel) break;
+        }
+        if (!videoModel) {
+          videoModel = allModels.find(m => m.id.startsWith('wavespeed-v2v:'));
+        }
       } else if (modelId.startsWith('wavespeed-i2v:')) {
         videoModel = (cachedVideoModels || []).find(m => m.id.startsWith('wavespeed-i2v:'));
       } else if (modelId.startsWith('wavespeed-t2v:')) {
