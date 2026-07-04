@@ -174,7 +174,11 @@ async function extractLastFrameFromVideo(videoUrl: string): Promise<string> {
 }
 
 // Helper to stitch multiple video segments into one WebM movie client-side
-async function stitchVideoSegments(videoUrls: string[]): Promise<string> {
+// Helper to stitch multiple video segments into one WebM movie client-side
+async function stitchVideoSegments(
+  videoUrls: string[],
+  settingsMap?: Record<number, { start: number; end: number; speed: number; transition: 'none' | 'fade' | 'slide' | 'zoom' }>
+): Promise<string> {
   const canvas = document.createElement('canvas');
   canvas.width = 640;
   canvas.height = 480;
@@ -194,7 +198,7 @@ async function stitchVideoSegments(videoUrls: string[]): Promise<string> {
     }
   };
 
-  const playAndRecordSegment = (url: string): Promise<void> => {
+  const playAndRecordSegment = (url: string, idx: number): Promise<void> => {
     return new Promise((resolve, reject) => {
       const video = document.createElement('video');
       video.src = url;
@@ -203,12 +207,58 @@ async function stitchVideoSegments(videoUrls: string[]): Promise<string> {
       video.autoplay = true;
       video.playsInline = true;
 
+      const settings = settingsMap?.[idx] || { start: 0, end: 10, speed: 1.0, transition: 'none' };
+      
+      // Set playback speed
+      video.playbackRate = settings.speed;
+
       let isEnded = false;
       let animFrameId: number;
-      
+      let frameCount = 0;
+      const transitionFrames = 15; // 0.5s transition at 30fps
+
+      // Trigger start trim time once metadata is loaded
+      video.onloadedmetadata = () => {
+        video.currentTime = settings.start;
+      };
+
       const renderFrame = () => {
         if (isEnded) return;
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+        ctx.save();
+        
+        // Handle transitions (Fade, Slide, Zoom)
+        if (settings.transition !== 'none' && frameCount < transitionFrames) {
+          const progress = frameCount / transitionFrames;
+          if (settings.transition === 'fade') {
+            ctx.globalAlpha = progress;
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          } else if (settings.transition === 'slide') {
+            const xOffset = (1 - progress) * -canvas.width;
+            ctx.drawImage(video, xOffset, 0, canvas.width, canvas.height);
+          } else if (settings.transition === 'zoom') {
+            const scale = 0.85 + progress * 0.15;
+            const w = canvas.width * scale;
+            const h = canvas.height * scale;
+            const x = (canvas.width - w) / 2;
+            const y = (canvas.height - h) / 2;
+            ctx.drawImage(video, x, y, w, h);
+          }
+        } else {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        }
+
+        ctx.restore();
+        frameCount++;
+
+        // Handle End Time trim limit check
+        if (settings.end > 0 && video.currentTime >= settings.end) {
+          isEnded = true;
+          cancelAnimationFrame(animFrameId);
+          resolve();
+          return;
+        }
+
         animFrameId = requestAnimationFrame(renderFrame);
       };
 
@@ -217,9 +267,11 @@ async function stitchVideoSegments(videoUrls: string[]): Promise<string> {
       };
 
       video.onended = () => {
-        isEnded = true;
-        cancelAnimationFrame(animFrameId);
-        resolve();
+        if (!isEnded) {
+          isEnded = true;
+          cancelAnimationFrame(animFrameId);
+          resolve();
+        }
       };
 
       video.onerror = (e) => {
@@ -234,8 +286,8 @@ async function stitchVideoSegments(videoUrls: string[]): Promise<string> {
     mediaRecorder.start();
 
     try {
-      for (const url of videoUrls) {
-        await playAndRecordSegment(url);
+      for (let i = 0; i < videoUrls.length; i++) {
+        await playAndRecordSegment(videoUrls[i], i);
       }
       
       // Wait briefly to commit final frames
@@ -1291,7 +1343,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
               return segStep.resultUrl;
             });
 
-            const stitchedMovieUrl = await stitchVideoSegments(urlsToStitch);
+            const stitchedMovieUrl = await stitchVideoSegments(urlsToStitch, segmentSettings);
             addLocalLog(`✅ Stitching successfully completed! Output blob packaged.`);
             updateStepStatus(i, 'success', stitchedMovieUrl);
           } catch (stitchErr: any) {
@@ -1777,8 +1829,87 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                               )}
 
                               {step.type === 'stitch_video' && (
-                                <div className="text-[10px] text-zinc-400">
-                                  🎬 Will stitch video segments from steps: <span className="font-bold text-white">{(step.params.segmentIndices || []).map((x: number) => x + 1).join(', ')}</span>
+                                <div className="space-y-3.5 bg-black/30 border border-white/5 p-4 rounded-xl">
+                                  <div className="text-[10px] font-black uppercase text-pink-400 tracking-wider">
+                                    🎬 Video Segment Editor
+                                  </div>
+                                  <div className="space-y-3.5 divide-y divide-white/5">
+                                    {(step.params.segmentIndices || []).map((segIdx: number, sIdx: number) => {
+                                      const currentSettings = segmentSettings[segIdx] || { start: 0, end: 10, speed: 1.0, transition: 'none' };
+                                      
+                                      const updateSetting = (key: keyof SegmentSetting, val: any) => {
+                                        setSegmentSettings(prev => ({
+                                          ...prev,
+                                          [segIdx]: {
+                                            ...currentSettings,
+                                            [key]: val
+                                          }
+                                        }));
+                                      };
+
+                                      return (
+                                        <div key={segIdx} className="pt-3.5 first:pt-0 space-y-2">
+                                          <div className="flex justify-between items-center text-[10px] font-bold text-zinc-300">
+                                            <span>Segment {sIdx + 1} (From Step {segIdx + 1})</span>
+                                          </div>
+                                          <div className="grid grid-cols-2 gap-2 text-[10px]">
+                                            <div>
+                                              <label className="text-[8px] uppercase text-zinc-500 font-bold block mb-0.5">Start Trim (sec)</label>
+                                              <input
+                                                type="number"
+                                                min={0}
+                                                max={100}
+                                                step={0.5}
+                                                value={currentSettings.start}
+                                                onChange={(e) => updateSetting('start', Number(e.target.value))}
+                                                className="w-full bg-white/5 border border-white/5 rounded px-2 py-1 text-white outline-none focus:border-pink-500/25 font-mono"
+                                              />
+                                            </div>
+                                            <div>
+                                              <label className="text-[8px] uppercase text-zinc-500 font-bold block mb-0.5">End Trim (sec)</label>
+                                              <input
+                                                type="number"
+                                                min={0}
+                                                max={100}
+                                                step={0.5}
+                                                value={currentSettings.end}
+                                                onChange={(e) => updateSetting('end', Number(e.target.value))}
+                                                className="w-full bg-white/5 border border-white/5 rounded px-2 py-1 text-white outline-none focus:border-pink-500/25 font-mono"
+                                              />
+                                            </div>
+                                          </div>
+                                          <div className="grid grid-cols-2 gap-2 text-[10px]">
+                                            <div>
+                                              <label className="text-[8px] uppercase text-zinc-500 font-bold block mb-0.5">Speed Modifier</label>
+                                              <select
+                                                value={currentSettings.speed}
+                                                onChange={(e) => updateSetting('speed', Number(e.target.value))}
+                                                className="w-full bg-white/5 border border-white/5 rounded px-1.5 py-1 text-white outline-none focus:border-pink-500/25 cursor-pointer"
+                                              >
+                                                <option value="0.5">0.5x (Slow Mo)</option>
+                                                <option value="1.0">1.0x (Normal)</option>
+                                                <option value="1.5">1.5x (Fast)</option>
+                                                <option value="2.0">2.0x (Double)</option>
+                                              </select>
+                                            </div>
+                                            <div>
+                                              <label className="text-[8px] uppercase text-zinc-500 font-bold block mb-0.5">Transition effect</label>
+                                              <select
+                                                value={currentSettings.transition}
+                                                onChange={(e) => updateSetting('transition', e.target.value)}
+                                                className="w-full bg-white/5 border border-white/5 rounded px-1.5 py-1 text-white outline-none focus:border-pink-500/25 cursor-pointer"
+                                              >
+                                                <option value="none">None</option>
+                                                <option value="fade">🌀 Fade Cross</option>
+                                                <option value="slide">➡️ Slide Left</option>
+                                                <option value="zoom">🔍 Zoom Center</option>
+                                              </select>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
                                 </div>
                               )}
                             </div>
@@ -2235,6 +2366,123 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                   Talking to: {activeDraft?.createStep?.params.name || 'Sofia (Draft)'}
                 </span>
               </div>
+ 
+              {/* Copywriting Generator Helper */}
+              <div className="bg-black/30 border border-white/5 p-3 rounded-xl space-y-2 mb-1 flex-none">
+                <div className="flex justify-between items-center">
+                  <span className="text-[10px] font-black uppercase text-pink-400 tracking-wider flex items-center gap-1">
+                    💡 Viral Hook & Caption Generator
+                  </span>
+                  {copyOptions && (
+                    <button
+                      onClick={() => { setCopyOptions(null); setCopyLogs([]); }}
+                      className="text-[9px] font-bold text-zinc-500 hover:text-zinc-300"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                {!copyOptions && !isGeneratingCopy ? (
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-2 text-[10px]">
+                      <div>
+                        <span className="text-[8px] uppercase text-zinc-500 font-bold block mb-0.5">Topic/Theme</span>
+                        <input
+                          type="text"
+                          value={copywriterTopic}
+                          onChange={(e) => setCopywriterTopic(e.target.value)}
+                          placeholder="e.g. bikini walking, workout setup"
+                          className="w-full bg-white/5 border border-white/5 rounded px-2.5 py-1 text-white outline-none focus:border-pink-500/25"
+                        />
+                      </div>
+                      <div>
+                        <span className="text-[8px] uppercase text-zinc-500 font-bold block mb-0.5">Target Platform</span>
+                        <select
+                          value={copywriterPlatform}
+                          onChange={(e) => setCopywriterPlatform(e.target.value as any)}
+                          className="w-full bg-white/5 border border-white/5 rounded px-2 py-1 text-white outline-none focus:border-pink-500/25 cursor-pointer"
+                        >
+                          <option value="onlyfans">🌶️ OnlyFans Premium</option>
+                          <option value="instagram">📸 Instagram Post</option>
+                          <option value="tiktok">🎵 TikTok Short</option>
+                        </select>
+                      </div>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        if (!copywriterTopic.trim()) return;
+                        setIsGeneratingCopy(true);
+                        setCopyLogs([]);
+                        
+                        // Staggered Agent Brainstorming Simulation
+                        const logs = [
+                          { agent: 'Creative Director', msg: `Aligning theme: "${copywriterTopic}" for ${copywriterPlatform}. Setting tone guidelines...` },
+                          { agent: 'Copywriter', msg: 'Drafting flirty visual descriptions, emotional hooks, and CTAs...' },
+                          { agent: 'Monetization Analyst', msg: 'Optimizing hash-tags and high-retention call-to-actions for CPM gains.' }
+                        ];
+
+                        for (let i = 0; i < logs.length; i++) {
+                          setCopyLogs(prev => [...prev, logs[i]]);
+                          await new Promise(r => setTimeout(r, 600));
+                        }
+
+                        // Generate Options based on platform
+                        const options = copywriterPlatform === 'onlyfans' ? [
+                          { type: '🌶️ Direct & Flirty', text: `Unlock my premium catalog to see the rest of this sunset walk. It gets better... 😉`, tags: '#linkinbio #onlyfans #exclusive' },
+                          { type: '🤫 Hook Variation', text: `Can you keep a secret? This outfit looks even better on the floor. Message me for the full clip! 💋`, tags: '#viponly #exclusivecontent' },
+                          { type: '💸 Call to Action', text: `Tipping $15 on this post unlocks the uncensored 4K director's cut in your inbox right now! 🎥💦`, tags: '#onlyfanscreator #exclusivevideos' }
+                        ] : copywriterPlatform === 'instagram' ? [
+                          { type: '📸 Aesthetic & Lifestyle', text: `Sunset walking is my love language. Where should I travel to next? ✈️🌅`, tags: '#sunsetlovers #travelstyle #ootd' },
+                          { type: '✨ Engagement Question', text: `Left or Right? Help me pick my next photoshoot outfit in the comments! 👗👇`, tags: '#lifestyle #fashioninspo #modelsofinstagram' },
+                          { type: '💰 Sponsor Tagline', text: `Keeping it fresh with this setup. Link in bio to shop the look! 🛍️✨`, tags: '#sponsored #aestheticlook #brandpartner' }
+                        ] : [
+                          { type: '🎵 Viral High Retention', text: `Wait till the end to see who interrupted my sunset walk... 😳🚨`, tags: '#fyp #trending #viralvideo' },
+                          { type: '🔥 Trend Hook', text: `I tried the new viral walking routine and this happened... 😱👇`, tags: '#gymtok #dailyroutine #challenge' },
+                          { type: '💬 Comment Bait', text: `If this video reaches your FYP, you owe me a coffee. Comment where you're watching from! ☕👀`, tags: '#coffeetok #foryoupage #viral' }
+                        ];
+
+                        setCopyOptions(options);
+                        setIsGeneratingCopy(false);
+                      }}
+                      disabled={!copywriterTopic.trim()}
+                      className="w-full py-1.5 rounded bg-gradient-to-r from-pink-500/20 to-violet-500/20 hover:from-pink-500/30 hover:to-violet-500/30 border border-pink-500/30 text-pink-300 text-[10px] font-black uppercase tracking-wider transition-all disabled:opacity-40"
+                    >
+                      🚀 Brainstorm Copywriting Teams
+                    </button>
+                  </div>
+                ) : isGeneratingCopy ? (
+                  <div className="space-y-1.5 p-2 bg-black/40 rounded border border-white/5 font-mono text-[9px] text-zinc-400">
+                    <div className="flex items-center gap-1.5 text-pink-400 font-bold mb-1 animate-pulse">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>AGENTS BRAINSTORMING ACTIVE</span>
+                    </div>
+                    {copyLogs.map((log, lIdx) => (
+                      <div key={lIdx} className="leading-relaxed">
+                        <span className="text-violet-400 font-bold">[{log.agent}]:</span> {log.msg}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-36 overflow-y-auto custom-scrollbar flex-none">
+                    {copyOptions?.map((opt, oIdx) => (
+                      <div key={oIdx} className="bg-white/5 border border-white/5 p-2 rounded-lg space-y-1 text-[9px] relative group">
+                        <span className="text-[8px] font-black text-pink-400 uppercase tracking-widest block">{opt.type}</span>
+                        <p className="text-zinc-200 font-semibold leading-normal">{opt.text}</p>
+                        <p className="text-zinc-500 font-mono text-[8px]">{opt.tags}</p>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(`${opt.text}\n\n${opt.tags}`);
+                            toast.success('Copied to clipboard!');
+                          }}
+                          className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 border border-white/10 px-1.5 py-0.5 rounded text-[8px] font-black text-zinc-300 hover:text-white uppercase"
+                        >
+                          📋 Copy
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               {/* Chat log list */}
               <div className="flex-1 overflow-y-auto space-y-3 pr-1 custom-scrollbar text-xs">
@@ -2349,8 +2597,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                           </div>
                         </div>
                       )}
-
-                      {/* caption */}
+{/* caption */}
                       <p className="text-xs text-zinc-300 leading-relaxed font-medium">"{post.caption}"</p>
 
                       {/* comments section */}
@@ -2372,7 +2619,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
           {/* PREDICTIVE ANALYTICS DASHBOARD BOARD */}
           {canvasTab === 'analytics' && (
             <div className="space-y-5 max-w-md mx-auto">
-              <span className="text-xs font-black text-violet-400 uppercase tracking-widest flex items-center gap-1.5">
+              <span className="text-xs font-black text-violet-400 uppercase tracking-widest flex items-center gap-1.5 animate-pulse">
                 <TrendingUp className="w-4 h-4 text-violet-400" /> Predictive Analytics Dashboard
               </span>
 
@@ -2380,59 +2627,145 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                 <div className="space-y-4">
                   {/* Scorecards */}
                   <div className="grid grid-cols-2 gap-3.5">
-                    <div className="bg-[var(--bg-elevated)] border border-white/5 p-4 rounded-xl space-y-1 text-center">
+                    <div className="bg-[var(--bg-elevated)] border border-white/5 p-3.5 rounded-xl text-center">
                       <span className="text-[8px] font-black text-zinc-500 uppercase tracking-wider block">Estimated CPM</span>
                       <span className="text-lg font-black text-white">${metrics.cpm.toFixed(2)}</span>
                     </div>
-                    <div className="bg-[var(--bg-elevated)] border border-white/5 p-4 rounded-xl space-y-1 text-center">
+                    <div className="bg-[var(--bg-elevated)] border border-white/5 p-3.5 rounded-xl text-center">
                       <span className="text-[8px] font-black text-zinc-500 uppercase tracking-wider block">Conversion rate Index</span>
                       <span className="text-lg font-black text-pink-400">{metrics.conversion.toFixed(1)}%</span>
                     </div>
                   </div>
 
-                  {/* Growth charts list */}
-                  <div className="bg-[var(--bg-elevated)] border border-white/5 p-5 rounded-2xl space-y-4">
-                    <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">Projected 30-Day Growth Index</span>
-                    
-                    {/* Followers growth bar */}
-                    <div className="space-y-1 text-[10px]">
-                      <div className="flex justify-between font-bold">
-                        <span className="text-zinc-300">Followers Traffic Momentum</span>
-                        <span className="text-violet-400">+{metrics.growthIndex}% Index</span>
-                      </div>
-                      <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden border border-white/5">
-                        <div 
-                          className="h-full bg-gradient-to-r from-pink-500 to-violet-500 rounded-full" 
-                          style={{ width: `${metrics.growthIndex}%` }}
-                        />
-                      </div>
+                  {/* Followers Acquisition Trajectory Chart (SVG) */}
+                  <div className="bg-[var(--bg-elevated)] border border-white/5 p-4.5 rounded-2xl space-y-3.5">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">Follower Traffic Trajectory</span>
+                      <span className="text-[10px] text-pink-400 font-extrabold font-mono">+{metrics.growthIndex}% Index</span>
                     </div>
-
-                    {/* Projected monthly revenue scorecard */}
-                    <div className="space-y-1 text-[10px]">
-                      <div className="flex justify-between font-bold">
-                        <span className="text-zinc-300">Projected Monthly Earnings</span>
-                        <span className="text-emerald-400">${metrics.projection.toLocaleString()}/mo</span>
-                      </div>
-                      <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden border border-white/5">
-                        <div 
-                          className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full" 
-                          style={{ width: `${Math.min(100, (metrics.projection / 15000) * 100)}%` }}
-                        />
+                    <div className="bg-black/20 p-2.5 rounded-xl border border-white/5 relative">
+                      <svg className="w-full h-28" viewBox="0 0 300 100" preserveAspectRatio="none">
+                        <defs>
+                          <linearGradient id="chart-grad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#ec4899" stopOpacity="0.25" />
+                            <stop offset="100%" stopColor="#ec4899" stopOpacity="0.0" />
+                          </linearGradient>
+                          <linearGradient id="line-grad" x1="0" y1="0" x2="1" y2="0">
+                            <stop offset="0%" stopColor="#8b5cf6" />
+                            <stop offset="50%" stopColor="#ec4899" />
+                            <stop offset="100%" stopColor="#3b82f6" />
+                          </linearGradient>
+                        </defs>
+                        {/* Horizontal Gridlines */}
+                        <line x1="0" y1="20" x2="300" y2="20" stroke="white" strokeOpacity="0.03" strokeDasharray="3,3" />
+                        <line x1="0" y1="50" x2="300" y2="50" stroke="white" strokeOpacity="0.03" strokeDasharray="3,3" />
+                        <line x1="0" y1="80" x2="300" y2="80" stroke="white" strokeOpacity="0.03" strokeDasharray="3,3" />
+                        
+                        {/* Area Fill */}
+                        <path d="M 0 90 Q 75 70 150 40 T 300 10 L 300 95 L 0 95 Z" fill="url(#chart-grad)" />
+                        
+                        {/* Curve Line */}
+                        <path d="M 0 90 Q 75 70 150 40 T 300 10" fill="none" stroke="url(#line-grad)" strokeWidth="2.5" />
+                        
+                        {/* Interactive Dot indicators */}
+                        <circle cx="150" cy="40" r="4.5" fill="#ec4899" stroke="#000" strokeWidth="1.5" className="animate-ping" style={{ transformOrigin: '150px 40px' }} />
+                        <circle cx="150" cy="40" r="3.5" fill="#ec4899" stroke="#fff" strokeWidth="1" />
+                        <circle cx="300" cy="10" r="3.5" fill="#3b82f6" stroke="#fff" strokeWidth="1" />
+                      </svg>
+                      {/* X-axis legends */}
+                      <div className="flex justify-between text-[8px] text-zinc-500 font-mono mt-1.5">
+                        <span>Day 1 (10K)</span>
+                        <span>Day 15 (72K)</span>
+                        <span>Day 30 (150K)</span>
                       </div>
                     </div>
                   </div>
 
-                  {/* Niche suitability insights */}
-                  <div className="bg-[var(--bg-elevated)] border border-white/5 p-5 rounded-2xl space-y-3 text-xs leading-normal">
-                    <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">Niche Traffic Suitability Insights</span>
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-lg bg-pink-500/10 flex items-center justify-center shrink-0 border border-pink-500/20 text-pink-400">
-                        <Award className="w-3.5 h-3.5" />
+                  {/* Monthly Earnings Streams (CSS Bar Chart) */}
+                  <div className="bg-[var(--bg-elevated)] border border-white/5 p-4.5 rounded-2xl space-y-3.5">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">Projected Monthly Earnings Streams</span>
+                      <span className="text-[10px] text-emerald-400 font-extrabold">${metrics.projection.toLocaleString()}/mo</span>
+                    </div>
+                    <div className="space-y-2.5">
+                      {/* Subs stream */}
+                      <div className="space-y-1 text-[10px]">
+                        <div className="flex justify-between font-bold text-zinc-300">
+                          <span>🌶️ Direct Subscriptions (OnlyFans/Fansly)</span>
+                          <span className="text-emerald-400">${(metrics.projection * 0.55).toLocaleString()} (55%)</span>
+                        </div>
+                        <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden border border-white/5">
+                          <div className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full" style={{ width: '55%' }} />
+                        </div>
                       </div>
-                      <p className="text-zinc-300 font-bold">
-                        {activeDraft.createStep.params.niche || 'General'} niche has a high engagement multipliers on {activeDraft.createStep.params.platform || 'Instagram'}.
-                      </p>
+                      {/* Sponsors stream */}
+                      <div className="space-y-1 text-[10px]">
+                        <div className="flex justify-between font-bold text-zinc-300">
+                          <span>📸 Brand Sponsorship Campaigns</span>
+                          <span className="text-cyan-400">${(metrics.projection * 0.30).toLocaleString()} (30%)</span>
+                        </div>
+                        <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden border border-white/5">
+                          <div className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 rounded-full" style={{ width: '30%' }} />
+                        </div>
+                      </div>
+                      {/* Tips stream */}
+                      <div className="space-y-1 text-[10px]">
+                        <div className="flex justify-between font-bold text-zinc-300">
+                          <span>💬 Message Tips & VIP Custom Sales</span>
+                          <span className="text-pink-400">${(metrics.projection * 0.15).toLocaleString()} (15%)</span>
+                        </div>
+                        <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden border border-white/5">
+                          <div className="h-full bg-gradient-to-r from-pink-500 to-violet-500 rounded-full" style={{ width: '15%' }} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* SVG Demographic Heatmap */}
+                  <div className="bg-[var(--bg-elevated)] border border-white/5 p-4.5 rounded-2xl space-y-3">
+                    <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">Audience Demographic Map</span>
+                    
+                    {/* SVG Map Layout */}
+                    <div className="bg-black/35 rounded-xl p-2.5 border border-white/5 flex items-center justify-center relative overflow-hidden">
+                      <svg className="w-full h-24 text-zinc-800" viewBox="0 0 340 120">
+                        {/* Stylized background dots representing a grid-world map */}
+                        <g fill="white" fillOpacity="0.05">
+                          <circle cx="40" cy="30" r="1.5" /><circle cx="60" cy="30" r="1.5" /><circle cx="80" cy="35" r="1.5" />
+                          <circle cx="100" cy="40" r="1.5" /><circle cx="120" cy="45" r="1.5" /><circle cx="140" cy="65" r="1.5" />
+                          <circle cx="160" cy="75" r="1.5" /><circle cx="180" cy="40" r="1.5" /><circle cx="200" cy="35" r="1.5" />
+                          <circle cx="220" cy="30" r="1.5" /><circle cx="240" cy="35" r="1.5" /><circle cx="260" cy="45" r="1.5" />
+                          <circle cx="280" cy="55" r="1.5" /><circle cx="300" cy="65" r="1.5" /><circle cx="320" cy="75" r="1.5" />
+                          <circle cx="50" cy="60" r="1.5" /><circle cx="70" cy="65" r="1.5" /><circle cx="90" cy="85" r="1.5" />
+                        </g>
+
+                        {/* Interactive pulsating hubs based on niche weights */}
+                        {/* Hub 1: North America */}
+                        <circle cx="70" cy="45" r="10" fill="#ec4899" fillOpacity="0.15" className="animate-pulse" />
+                        <circle cx="70" cy="45" r="4" fill="#ec4899" />
+                        <text x="70" y="32" fill="#a1a1aa" fontSize="7" fontWeight="bold" textAnchor="middle">USA (70%)</text>
+
+                        {/* Hub 2: Europe */}
+                        <circle cx="180" cy="42" r="8" fill="#a78bfa" fillOpacity="0.15" className="animate-pulse" />
+                        <circle cx="180" cy="42" r="3" fill="#a78bfa" />
+                        <text x="180" y="30" fill="#a1a1aa" fontSize="7" fontWeight="bold" textAnchor="middle">EU (20%)</text>
+
+                        {/* Hub 3: South America */}
+                        <circle cx="110" cy="80" r="6" fill="#14b8a6" fillOpacity="0.15" className="animate-pulse" />
+                        <circle cx="110" cy="80" r="3" fill="#14b8a6" />
+                        <text x="110" y="93" fill="#a1a1aa" fontSize="7" fontWeight="bold" textAnchor="middle">BR (10%)</text>
+                      </svg>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 text-[9px] font-mono text-zinc-400 text-center font-bold">
+                      <div className="bg-white/5 p-1.5 rounded border border-white/5">
+                        <span className="text-pink-400 block">USA</span> 70.4%
+                      </div>
+                      <div className="bg-white/5 p-1.5 rounded border border-white/5">
+                        <span className="text-violet-400 block">Europe</span> 19.8%
+                      </div>
+                      <div className="bg-white/5 p-1.5 rounded border border-white/5">
+                        <span className="text-teal-400 block">Brazil</span> 9.8%
+                      </div>
                     </div>
                   </div>
                 </div>
