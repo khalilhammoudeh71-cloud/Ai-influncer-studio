@@ -363,7 +363,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
   
   const [isSending, setIsSending] = useState(false);
   const [isListening, setIsListening] = useState(false);
-  const [canvasTab, setCanvasTab] = useState<'profile' | 'planner' | 'studio' | 'chat' | 'feed' | 'analytics' | 'downloader'>('profile');
+  const [canvasTab, setCanvasTab] = useState<'studio' | 'chat' | 'marketing'>('studio');
   const [customPresets, setCustomPresets] = useState<CustomPreset[]>([]);
   
   // Clone & Talking Avatar Studio states
@@ -428,8 +428,8 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
   // Guided Tour Tab auto-switching handler
   useEffect(() => {
     if (tourStep === 2) setCanvasTab('studio');
-    else if (tourStep === 3) setCanvasTab('downloader');
-    else if (tourStep === 4) setCanvasTab('analytics');
+    else if (tourStep === 3) setCanvasTab('marketing');
+    else if (tourStep === 4) setCanvasTab('marketing');
   }, [tourStep]);
 
   const onboardingSteps = [
@@ -1080,7 +1080,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
 
     setPublishedPosts(prev => [newPost, ...prev]);
     toast.success(`Published post to mock ${activeDraft.createStep.params.platform} feed!`);
-    setCanvasTab('feed');
+    setCanvasTab('marketing');
   };
 
   // ─── Pipeline runner execution ──────────────────────────────────────────────
@@ -2087,23 +2087,19 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
             <Layers className="w-3.5 h-3.5 text-pink-400" /> Canvas Workspace
           </span>
           <div className="flex items-center gap-1.5 bg-black/40 border border-white/5 p-1 rounded-xl">
-            {(['profile', 'planner', 'studio', 'chat', 'feed', 'analytics', 'downloader'] as const).map((tab) => (
+            {(['studio', 'chat', 'marketing'] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setCanvasTab(tab)}
-                className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all ${
+                className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
                   canvasTab === tab
                     ? 'bg-gradient-to-r from-pink-500/20 to-violet-500/20 border border-pink-500/30 text-white'
                     : 'text-zinc-400 hover:text-white border border-transparent'
                 }`}
               >
-                {tab === 'profile' && 'Card'}
-                {tab === 'planner' && 'Calendar'}
-                {tab === 'studio' && '🎙️ Cloning'}
-                {tab === 'chat' && '💬 Chat Box'}
-                {tab === 'feed' && '📱 Feed'}
-                {tab === 'analytics' && '📊 Stats'}
-                {tab === 'downloader' && '📲 Downloader'}
+                {tab === 'studio' && '🎨 Studio'}
+                {tab === 'chat' && '💬 Sandbox'}
+                {tab === 'marketing' && '📈 Marketing'}
               </button>
             ))}
           </div>
@@ -2111,50 +2107,261 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
 
         {/* Tab Canvas panels */}
         <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
-          {/* PROFILE BOARD */}
-          {canvasTab === 'profile' && (
+          {canvasTab === 'studio' && (
             <div className="space-y-6 max-w-md mx-auto">
               {activeDraft?.createStep ? (
-                <div className="bg-[var(--bg-elevated)] border border-white/5 rounded-3xl p-6 shadow-xl relative overflow-hidden space-y-4">
-                  <div className="absolute top-0 right-0 w-24 h-24 bg-pink-500/10 rounded-full blur-3xl pointer-events-none" />
+                <div className="space-y-6">
+                  {/* PROFILE CARD */}
+                  <div className="bg-[var(--bg-elevated)] border border-white/5 rounded-3xl p-6 shadow-xl relative overflow-hidden space-y-4">
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-pink-500/10 rounded-full blur-3xl pointer-events-none" />
 
-                  {/* Profile Mockup Card header */}
-                  <div className="flex items-center gap-4 border-b border-white/5 pb-4">
-                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-pink-500 to-violet-500 flex items-center justify-center font-black text-xl text-white border border-white/10 shrink-0 shadow-lg shadow-pink-500/10">
-                      {activeDraft.createStep.params.name ? activeDraft.createStep.params.name.charAt(0) : '?'}
+                    {/* Profile Mockup Card header */}
+                    <div className="flex items-center gap-4 border-b border-white/5 pb-4">
+                      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-pink-500 to-violet-500 flex items-center justify-center font-black text-xl text-white border border-white/10 shrink-0 shadow-lg shadow-pink-500/10">
+                        {activeDraft.createStep.params.name ? activeDraft.createStep.params.name.charAt(0) : '?'}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-extrabold text-lg text-white truncate">{activeDraft.createStep.params.name || 'Unnamed Persona'}</div>
+                        <div className="text-[10px] text-pink-400 font-black uppercase tracking-wider">{activeDraft.createStep.params.niche || 'Lifestyle Niche'}</div>
+                        <div className="text-[9px] text-zinc-500 font-bold uppercase mt-0.5">Platform: {activeDraft.createStep.params.platform || 'Instagram'}</div>
+                      </div>
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="font-extrabold text-lg text-white truncate">{activeDraft.createStep.params.name || 'Unnamed Persona'}</div>
-                      <div className="text-[10px] text-pink-400 font-black uppercase tracking-wider">{activeDraft.createStep.params.niche || 'Lifestyle Niche'}</div>
-                      <div className="text-[9px] text-zinc-500 font-bold uppercase mt-0.5">Platform: {activeDraft.createStep.params.platform || 'Instagram'}</div>
+
+                    {/* Biography */}
+                    <div className="space-y-1">
+                      <span className="text-[9px] font-black uppercase text-zinc-500 tracking-wider">Bio Description</span>
+                      <p className="text-xs text-zinc-300 italic leading-relaxed">
+                        "{activeDraft.createStep.params.bio || 'No biography written yet.'}"
+                      </p>
                     </div>
+
+                    {/* Style Guidelines */}
+                    <div className="space-y-1">
+                      <span className="text-[9px] font-black uppercase text-zinc-500 tracking-wider">Aesthetic & Visual Guidelines</span>
+                      <p className="text-xs text-zinc-300 leading-relaxed font-bold bg-white/5 p-3 border border-white/5 rounded-xl">
+                        {activeDraft.createStep.params.visualStyle || 'High-fidelity cinematic portrait, soft lighting, detailed face features.'}
+                      </p>
+                    </div>
+
+                    {/* Personality traits taglist */}
+                    {activeDraft.createStep.params.personalityTraits && activeDraft.createStep.params.personalityTraits.length > 0 && (
+                      <div className="space-y-1.5">
+                        <span className="text-[9px] font-black uppercase text-zinc-500 tracking-wider">Personality Alignment</span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {activeDraft.createStep.params.personalityTraits.map((t: string, tIdx: number) => (
+                            <span key={tIdx} className="px-2 py-0.5 rounded-full bg-violet-500/15 border border-violet-500/10 text-[9px] font-bold text-violet-300">
+                              🎭 {t}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
-                  {/* Biography */}
-                  <div className="space-y-1">
-                    <span className="text-[9px] font-black uppercase text-zinc-500 tracking-wider">Bio Description</span>
-                    <p className="text-xs text-zinc-300 italic leading-relaxed">
-                      "{activeDraft.createStep.params.bio || 'No biography written yet.'}"
+                  {/* VOICE & AVATAR STUDIO */}
+                  <div className="bg-[var(--bg-elevated)] p-6 rounded-2xl border border-white/5 shadow-xl relative space-y-5">
+                    <span className="text-xs font-black text-violet-400 uppercase tracking-widest flex items-center gap-1">
+                      <Volume2 className="w-4 h-4 text-violet-400" /> Voice & Talking Avatar Studio
+                    </span>
+                    <p className="text-[10px] text-zinc-400 font-bold leading-relaxed pb-3 border-b border-white/5">
+                      Upload reference voice/video file, select avatar portrait, and create cloned talking photos.
                     </p>
+
+                    <div className="space-y-4">
+                      {/* Engine Selector */}
+                      <div className="space-y-1.5">
+                        <span className="text-[9px] font-black uppercase text-zinc-500 tracking-wider font-bold">
+                          Voice Engine
+                          <span className="text-zinc-500 cursor-help font-bold" title="Wavespeed clones voice instantly from video/audio references in 5 seconds. ElevenLabs runs high-fidelity cloning."> ℹ️</span>
+                        </span>
+                        <select
+                          value={voiceEngine}
+                          onChange={(e) => setVoiceEngine(e.target.value as 'omnivoice' | 'elevenlabs')}
+                          className="w-full bg-white/5 border border-white/5 rounded-xl px-3 py-2 text-xs text-white focus:border-violet-500/30 outline-none"
+                        >
+                          <option value="omnivoice">✨ Wavespeed OmniVoice (Instant, 5s reference)</option>
+                          <option value="elevenlabs">🎙️ ElevenLabs (High-fidelity custom clone)</option>
+                        </select>
+                      </div>
+
+                      {/* ElevenLabs inputs */}
+                      {voiceEngine === 'elevenlabs' && (
+                        <div className="grid grid-cols-2 gap-3 pt-1">
+                          <div>
+                            <span className="text-[9px] font-black uppercase text-zinc-500 tracking-wider font-bold">Voice Name</span>
+                            <input
+                              type="text"
+                              value={voiceNameInput}
+                              onChange={(e) => setVoiceNameInput(e.target.value)}
+                              className="w-full bg-white/5 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-violet-500/30"
+                            />
+                          </div>
+                          <div>
+                            <span className="text-[9px] font-black uppercase text-zinc-500 tracking-wider font-bold">Description</span>
+                            <input
+                              type="text"
+                              value={voiceDescInput}
+                              onChange={(e) => setVoiceDescInput(e.target.value)}
+                              className="w-full bg-white/5 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-violet-500/30"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Reference Voice upload */}
+                      <div className="space-y-1.5">
+                        <span className="text-[9px] font-black uppercase text-zinc-500 tracking-wider font-bold">
+                          1. Reference Voice (Audio/Video file)
+                          <span className="text-zinc-500 cursor-help font-bold" title="Upload audio or video clip. If video is selected, the audio track is extracted natively in the browser via Web Audio API."> ℹ️</span>
+                        </span>
+                        <input
+                          type="file"
+                          ref={studioVoiceRef}
+                          accept="audio/*,video/*"
+                          onChange={handleStudioVoiceSelected}
+                          className="hidden"
+                        />
+                        <div 
+                          onClick={() => studioVoiceRef.current?.click()}
+                          className="h-20 border border-dashed border-white/10 hover:border-violet-500/20 rounded-xl flex flex-col items-center justify-center bg-white/[0.01] hover:bg-white/[0.02] cursor-pointer transition-all p-3 text-center"
+                        >
+                          {studioVoiceFile ? (
+                            <div className="space-y-0.5">
+                              <div className="text-xs font-bold text-violet-300 truncate max-w-[280px]">🔊 {studioVoiceFile.name}</div>
+                              <div className="text-[8px] font-black text-zinc-500 uppercase">{studioVoiceFile.mimeType}</div>
+                            </div>
+                          ) : (
+                            <>
+                              <Volume2 className="w-5 h-5 text-zinc-500 mb-1" />
+                              <span className="text-[10px] text-zinc-400 font-bold">Select audio or video voice clip (min 5s)</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Avatar Portrait image upload */}
+                      <div className="space-y-1.5">
+                        <span className="text-[9px] font-black uppercase text-zinc-500 tracking-wider font-bold">2. Avatar Photo (For lip-sync talking photo)</span>
+                        <input
+                          type="file"
+                          ref={studioAvatarRef}
+                          accept="image/*"
+                          onChange={handleStudioAvatarSelected}
+                          className="hidden"
+                        />
+                        <div 
+                          onClick={() => studioAvatarRef.current?.click()}
+                          className="h-20 border border-dashed border-white/10 hover:border-violet-500/20 rounded-xl flex flex-col items-center justify-center bg-white/[0.01] hover:bg-white/[0.02] cursor-pointer transition-all p-3 text-center"
+                        >
+                          {studioAvatarImage ? (
+                            <div className="flex items-center gap-2">
+                              <img src={studioAvatarImage.dataUrl} alt="Avatar Draft" className="w-10 h-10 rounded-lg object-cover border border-white/10" />
+                              <div className="text-left">
+                                <div className="text-xs font-bold text-emerald-300 truncate max-w-[200px]">{studioAvatarImage.name}</div>
+                                <span className="text-[8px] font-black text-zinc-500 uppercase">{studioAvatarImage.mimeType}</span>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <ImageIcon className="w-5 h-5 text-zinc-500 mb-1" />
+                              <span className="text-[10px] text-zinc-400 font-bold">Select character reference photo</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Script text */}
+                      <div className="space-y-1.5">
+                        <span className="text-[9px] font-black uppercase text-zinc-500 tracking-wider font-bold">3. Script text</span>
+                        <textarea
+                          value={studioScript}
+                          onChange={(e) => setStudioScript(e.target.value)}
+                          placeholder="Type script text here..."
+                          className="w-full h-24 bg-white/5 border border-white/5 rounded-xl p-3 text-xs text-white focus:border-violet-500/30 outline-none resize-none shadow-inner"
+                        />
+                      </div>
+
+                      {/* Action buttons */}
+                      <div className="grid grid-cols-2 gap-3 pt-2">
+                        <button
+                          onClick={executeVoiceCloneOnly}
+                          disabled={isStudioLoading || !studioScript.trim() || !studioVoiceFile}
+                          className="py-2.5 rounded-xl border border-white/5 bg-gradient-to-r from-violet-500/20 to-indigo-500/20 hover:from-violet-500/30 hover:to-indigo-500/30 font-black text-[10px] uppercase tracking-wider text-violet-300 flex items-center justify-center gap-1 transition-all disabled:opacity-40"
+                        >
+                          {isStudioLoading && !studioResultVideoUrl ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Volume2 className="w-3.5 h-3.5" />}
+                          Clone Voice
+                        </button>
+                        <button
+                          onClick={executeTalkingAvatar}
+                          disabled={isStudioLoading || !studioScript.trim() || !studioVoiceFile || !studioAvatarImage || voiceEngine === 'elevenlabs'}
+                          className="py-2.5 rounded-xl border border-pink-500/10 bg-gradient-to-r from-pink-500/20 to-violet-500/20 hover:from-pink-500/30 hover:to-violet-500/30 font-black text-[10px] uppercase tracking-wider text-pink-300 flex items-center justify-center gap-1 transition-all disabled:opacity-40"
+                          title={voiceEngine === 'elevenlabs' ? 'Talking Avatars currently require OmniVoice engine' : ''}
+                        >
+                          {isStudioLoading && studioResultVideoUrl === null ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <VideoIcon className="w-3.5 h-3.5" />}
+                          Talking Avatar
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Outputs panel */}
+                    {isStudioLoading && (
+                      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm rounded-2xl flex flex-col items-center justify-center space-y-2 text-center p-6 z-10">
+                        <Loader2 className="w-8 h-8 animate-spin text-pink-500" />
+                        <div className="text-xs font-black uppercase text-white tracking-widest">Generating Studio Asset...</div>
+                        <p className="text-[10px] text-zinc-400 max-w-[200px]">Wavespeed is cloning voice and generating talking photo. This takes a few seconds.</p>
+                      </div>
+                    )}
+
+                    {(studioResultAudioUrl || studioResultVideoUrl) && (
+                      <div className="mt-4 pt-4 border-t border-white/5 space-y-3">
+                        <span className="text-[9px] font-black text-emerald-400 uppercase tracking-widest block">Studio Generation Results</span>
+                        
+                        {studioResultAudioUrl && (
+                          <div className="bg-white/5 p-3 rounded-xl border border-white/5 space-y-1">
+                            <span className="text-[8px] font-black text-zinc-500 block uppercase">Cloned speech audio</span>
+                            <audio controls src={studioResultAudioUrl} className="w-full h-8" />
+                          </div>
+                        )}
+
+                        {studioResultVideoUrl && (
+                          <div className="bg-white/5 p-3 rounded-xl border border-white/5 space-y-1">
+                            <span className="text-[8px] font-black text-zinc-500 block uppercase">Lip-sync video</span>
+                            <video controls src={studioResultVideoUrl} className="w-full rounded border border-white/10" />
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
-                  {/* Style Guidelines */}
-                  <div className="space-y-1">
-                    <span className="text-[9px] font-black uppercase text-zinc-500 tracking-wider">Aesthetic & Visual Guidelines</span>
-                    <p className="text-xs text-zinc-300 leading-relaxed font-bold bg-white/5 p-3 border border-white/5 rounded-xl">
-                      {activeDraft.createStep.params.visualStyle || 'High-fidelity cinematic portrait, soft lighting, detailed face features.'}
-                    </p>
-                  </div>
+                  {/* CALENDAR PLANNER */}
+                  {activeDraft?.planStep && (
+                    <div className="bg-[var(--bg-elevated)] border border-white/5 p-5 rounded-2xl shadow-xl space-y-4">
+                      <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                        <span className="text-[9px] font-black uppercase text-zinc-400 tracking-wider">
+                          📅 7-Day theme: {activeDraft.planStep.params.theme || 'Default Niche'}
+                        </span>
+                        <span className="text-[9px] font-black uppercase text-pink-400 bg-pink-500/15 px-2 py-0.5 rounded border border-pink-500/10 tracking-widest">
+                          {activeDraft.planStep.params.platform || 'Instagram'}
+                        </span>
+                      </div>
 
-                  {/* Personality traits taglist */}
-                  {activeDraft.createStep.params.personalityTraits && activeDraft.createStep.params.personalityTraits.length > 0 && (
-                    <div className="space-y-1.5">
-                      <span className="text-[9px] font-black uppercase text-zinc-500 tracking-wider">Personality Alignment</span>
-                      <div className="flex flex-wrap gap-1.5">
-                        {activeDraft.createStep.params.personalityTraits.map((t: string, tIdx: number) => (
-                          <span key={tIdx} className="px-2 py-0.5 rounded-full bg-violet-500/15 border border-violet-500/10 text-[9px] font-bold text-violet-300">
-                            🎭 {t}
-                          </span>
+                      {/* 7 Days planner loop */}
+                      <div className="grid grid-cols-1 gap-2.5 max-h-64 overflow-y-auto custom-scrollbar pr-1">
+                        {[1, 2, 3, 4, 5, 6, 7].map((day) => (
+                          <div key={day} className="bg-black/15 border border-white/5 p-3 rounded-xl flex gap-3 relative overflow-hidden shadow text-xs">
+                            <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center shrink-0 border border-white/5">
+                              <span className="text-xs font-black text-zinc-300">D{day}</span>
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <span className="text-[8px] font-black text-pink-400 uppercase tracking-widest block">Suggested Topic</span>
+                              <div className="font-extrabold text-white mt-0.5 truncate">
+                                {activeDraft.planStep.params.days?.[day - 1]?.topic || `Day ${day} Viral Concept`}
+                              </div>
+                              <p className="text-[10px] text-zinc-400 font-medium leading-relaxed mt-0.5">
+                                {activeDraft.planStep.params.days?.[day - 1]?.concept || 'Aesthetic viral layout and messaging hooks.'}
+                              </p>
+                            </div>
+                          </div>
                         ))}
                       </div>
                     </div>
@@ -2181,7 +2388,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                     </span>
                     <div className="grid grid-cols-1 gap-2.5">
                       <button
-                        onClick={() => setCanvasTab('downloader')}
+                        onClick={() => setCanvasTab('marketing')}
                         className="p-3 text-left bg-white/[0.01] hover:bg-white/5 border border-white/5 rounded-xl flex items-center justify-between transition-all group"
                       >
                         <div className="flex items-center gap-3">
@@ -2234,223 +2441,6 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
             </div>
           )}
 
-          {/* CALENDAR PLANNER BOARD */}
-          {canvasTab === 'planner' && (
-            <div className="space-y-4 max-w-md mx-auto">
-              {activeDraft?.planStep ? (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[9px] font-black uppercase text-zinc-400 tracking-wider">
-                      7-Day theme: {activeDraft.planStep.params.theme || 'Default Niche'}
-                    </span>
-                    <span className="text-[9px] font-black uppercase text-pink-400 bg-pink-500/15 px-2 py-0.5 rounded border border-pink-500/10 tracking-widest">
-                      {activeDraft.planStep.params.platform || 'Instagram'}
-                    </span>
-                  </div>
-
-                  {/* 7 Days planner loop */}
-                  <div className="grid grid-cols-1 gap-2.5">
-                    {[1, 2, 3, 4, 5, 6, 7].map((day) => (
-                      <div key={day} className="bg-[var(--bg-elevated)] border border-white/5 p-4 rounded-xl flex gap-3 relative overflow-hidden shadow">
-                        <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center shrink-0 border border-white/5">
-                          <span className="text-xs font-black text-zinc-300">D{day}</span>
-                        </div>
-                        <div className="min-w-0 flex-1 space-y-1">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[9px] font-black uppercase text-pink-400 tracking-wider">Post Concept</span>
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                          </div>
-                          <p className="text-xs text-zinc-300 font-bold leading-normal">
-                            Generate a post showcasing {activeDraft.createStep?.params.name || 'Sofia'} following the niche aesthetic guidelines.
-                          </p>
-                          <div className="text-[10px] text-zinc-400 italic">
-                            Hook: "Check out day {day} of the journey..."
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="h-64 border border-dashed border-white/10 rounded-2xl flex flex-col items-center justify-center text-center p-6 bg-white/[0.01]">
-                  <CalendarRange className="w-8 h-8 text-zinc-600 mb-2.5 animate-pulse" />
-                  <div className="text-xs font-black text-zinc-400 uppercase tracking-widest">No Post Schedule Draft</div>
-                  <p className="text-[10px] text-zinc-500 mt-1 max-w-[200px]">Instruct the agent to generate a 7-day plan on platforms like OnlyFans/Instagram.</p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* CLONING STUDIO BOARD (Voice cloning + Lip-sync Talking Avatars) */}
-          {canvasTab === 'studio' && (
-            <div className="space-y-5 max-w-md mx-auto bg-[var(--bg-elevated)] p-6 rounded-2xl border border-white/5 shadow-xl relative">
-              <span className="text-xs font-black text-violet-400 uppercase tracking-widest flex items-center gap-1">
-                <Volume2 className="w-4 h-4 text-violet-400" /> Voice & Talking Avatar Studio
-              </span>
-              <p className="text-[10px] text-zinc-400 font-bold leading-relaxed pb-3 border-b border-white/5">
-                Upload reference voice/video file, select avatar portrait, and create cloned talking photos.
-              </p>
-
-              <div className="space-y-4">
-                {/* Engine Selector */}
-                <div className="space-y-1.5">
-                  <span className="text-[9px] font-black uppercase text-zinc-500 tracking-wider">Voice Engine</span>
-                  <select
-                    value={voiceEngine}
-                    onChange={(e) => setVoiceEngine(e.target.value as 'omnivoice' | 'elevenlabs')}
-                    className="w-full bg-white/5 border border-white/5 rounded-xl px-3 py-2 text-xs text-white focus:border-violet-500/30 outline-none"
-                  >
-                    <option value="omnivoice">✨ Wavespeed OmniVoice (Instant, 5s reference)</option>
-                    <option value="elevenlabs">🎙️ ElevenLabs (High-fidelity custom clone)</option>
-                  </select>
-                </div>
-
-                {/* ElevenLabs inputs */}
-                {voiceEngine === 'elevenlabs' && (
-                  <div className="grid grid-cols-2 gap-3 pt-1">
-                    <div>
-                      <span className="text-[9px] font-black uppercase text-zinc-500 tracking-wider">Voice Name</span>
-                      <input
-                        type="text"
-                        value={voiceNameInput}
-                        onChange={(e) => setVoiceNameInput(e.target.value)}
-                        className="w-full bg-white/5 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-violet-500/30"
-                      />
-                    </div>
-                    <div>
-                      <span className="text-[9px] font-black uppercase text-zinc-500 tracking-wider">Description</span>
-                      <input
-                        type="text"
-                        value={voiceDescInput}
-                        onChange={(e) => setVoiceDescInput(e.target.value)}
-                        className="w-full bg-white/5 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-violet-500/30"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* Reference Voice upload */}
-                <div className="space-y-1.5">
-                  <span className="text-[9px] font-black uppercase text-zinc-500 tracking-wider">1. Reference Voice (Audio/Video file)</span>
-                  <input
-                    type="file"
-                    ref={studioVoiceRef}
-                    accept="audio/*,video/*"
-                    onChange={handleStudioVoiceSelected}
-                    className="hidden"
-                  />
-                  <div 
-                    onClick={() => studioVoiceRef.current?.click()}
-                    className="h-20 border border-dashed border-white/10 hover:border-violet-500/20 rounded-xl flex flex-col items-center justify-center bg-white/[0.01] hover:bg-white/[0.02] cursor-pointer transition-all p-3 text-center"
-                  >
-                    {studioVoiceFile ? (
-                      <div className="space-y-0.5">
-                        <div className="text-xs font-bold text-violet-300 truncate max-w-[280px]">🔊 {studioVoiceFile.name}</div>
-                        <div className="text-[8px] font-black text-zinc-500 uppercase">{studioVoiceFile.mimeType}</div>
-                      </div>
-                    ) : (
-                      <>
-                        <Volume2 className="w-5 h-5 text-zinc-500 mb-1" />
-                        <span className="text-[10px] text-zinc-400 font-bold">Select audio or video voice clip (min 5s)</span>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                {/* Avatar Portrait image upload */}
-                <div className="space-y-1.5">
-                  <span className="text-[9px] font-black uppercase text-zinc-500 tracking-wider">2. Avatar Photo (For lip-sync talking photo)</span>
-                  <input
-                    type="file"
-                    ref={studioAvatarRef}
-                    accept="image/*"
-                    onChange={handleStudioAvatarSelected}
-                    className="hidden"
-                  />
-                  <div 
-                    onClick={() => studioAvatarRef.current?.click()}
-                    className="h-20 border border-dashed border-white/10 hover:border-violet-500/20 rounded-xl flex flex-col items-center justify-center bg-white/[0.01] hover:bg-white/[0.02] cursor-pointer transition-all p-3 text-center"
-                  >
-                    {studioAvatarImage ? (
-                      <div className="flex items-center gap-2">
-                        <img src={studioAvatarImage.dataUrl} alt="Avatar Draft" className="w-10 h-10 rounded-lg object-cover border border-white/10" />
-                        <div className="text-left">
-                          <div className="text-xs font-bold text-emerald-300 truncate max-w-[200px]">{studioAvatarImage.name}</div>
-                          <span className="text-[8px] font-black text-zinc-500 uppercase">{studioAvatarImage.mimeType}</span>
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <ImageIcon className="w-5 h-5 text-zinc-500 mb-1" />
-                        <span className="text-[10px] text-zinc-400 font-bold">Select character reference photo</span>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                {/* Script text */}
-                <div className="space-y-1.5">
-                  <span className="text-[9px] font-black uppercase text-zinc-500 tracking-wider">3. Script text</span>
-                  <textarea
-                    value={studioScript}
-                    onChange={(e) => setStudioScript(e.target.value)}
-                    placeholder="Type script text here..."
-                    className="w-full h-24 bg-white/5 border border-white/5 rounded-xl p-3 text-xs text-white focus:border-violet-500/30 outline-none resize-none shadow-inner"
-                  />
-                </div>
-
-                {/* Action buttons */}
-                <div className="grid grid-cols-2 gap-3 pt-2">
-                  <button
-                    onClick={executeVoiceCloneOnly}
-                    disabled={isStudioLoading || !studioScript.trim() || !studioVoiceFile}
-                    className="py-2.5 rounded-xl border border-white/5 bg-gradient-to-r from-violet-500/20 to-indigo-500/20 hover:from-violet-500/30 hover:to-indigo-500/30 font-black text-[10px] uppercase tracking-wider text-violet-300 flex items-center justify-center gap-1 transition-all disabled:opacity-40"
-                  >
-                    {isStudioLoading && !studioResultVideoUrl ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Volume2 className="w-3.5 h-3.5" />}
-                    Clone Voice
-                  </button>
-                  <button
-                    onClick={executeTalkingAvatar}
-                    disabled={isStudioLoading || !studioScript.trim() || !studioVoiceFile || !studioAvatarImage || voiceEngine === 'elevenlabs'}
-                    className="py-2.5 rounded-xl border border-pink-500/10 bg-gradient-to-r from-pink-500/20 to-violet-500/20 hover:from-pink-500/30 hover:to-violet-500/30 font-black text-[10px] uppercase tracking-wider text-pink-300 flex items-center justify-center gap-1 transition-all disabled:opacity-40"
-                    title={voiceEngine === 'elevenlabs' ? 'Talking Avatars currently require OmniVoice engine' : ''}
-                  >
-                    {isStudioLoading && studioResultVideoUrl === null ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <VideoIcon className="w-3.5 h-3.5" />}
-                    Talking Avatar
-                  </button>
-                </div>
-              </div>
-
-              {/* Outputs panel */}
-              {isStudioLoading && (
-                <div className="absolute inset-0 bg-black/60 backdrop-blur-sm rounded-2xl flex flex-col items-center justify-center space-y-2 text-center p-6 z-10">
-                  <Loader2 className="w-8 h-8 animate-spin text-pink-500" />
-                  <div className="text-xs font-black uppercase text-white tracking-widest">Generating Studio Asset...</div>
-                  <p className="text-[10px] text-zinc-400 max-w-[200px]">Wavespeed is cloning voice and generating talking photo. This takes a few seconds.</p>
-                </div>
-              )}
-
-              {(studioResultAudioUrl || studioResultVideoUrl) && (
-                <div className="mt-4 pt-4 border-t border-white/5 space-y-3">
-                  <span className="text-[9px] font-black text-emerald-400 uppercase tracking-widest block">Studio Generation Results</span>
-                  
-                  {studioResultAudioUrl && (
-                    <div className="bg-white/5 p-3 rounded-xl border border-white/5 space-y-1">
-                      <span className="text-[8px] font-black text-zinc-500 block uppercase">Cloned speech audio</span>
-                      <audio controls src={studioResultAudioUrl} className="w-full h-8" />
-                    </div>
-                  )}
-
-                  {studioResultVideoUrl && (
-                    <div className="bg-white/5 p-3 rounded-xl border border-white/5 space-y-1">
-                      <span className="text-[8px] font-black text-zinc-500 block uppercase">Lip-sync video</span>
-                      <video controls src={studioResultVideoUrl} className="w-full rounded border border-white/10" />
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
 
           {/* BRAND VOICE CHAT SANDBOX BOARD */}
           {canvasTab === 'chat' && (
@@ -2642,228 +2632,153 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
             </div>
           )}
 
-          {/* SOCIAL PUBLISHING SIMULATOR FEED BOARD */}
-          {canvasTab === 'feed' && (
-            <div className="space-y-5 max-w-md mx-auto">
-              <span className="text-xs font-black text-emerald-400 uppercase tracking-widest flex items-center gap-1.5">
-                <Globe className="w-4 h-4 text-emerald-400" /> Mock Social Publishing Feed
-              </span>
+          {canvasTab === 'marketing' && (
+            <div className="space-y-6 max-w-md mx-auto animate-fade-in">
+              {/* SOCIAL MEDIA DOWNLOADER BOARD */}
+              <div className="bg-[var(--bg-elevated)] p-6 rounded-2xl border border-white/5 shadow-xl relative">
+                <span className="text-xs font-black text-pink-400 uppercase tracking-widest flex items-center gap-1.5">
+                  <Globe className="w-4 h-4 text-pink-400 animate-spin" style={{ animationDuration: '6s' }} /> Instagram & TikTok Downloader
+                </span>
+                <p className="text-[10px] text-zinc-400 font-bold leading-relaxed pb-3 border-b border-white/5">
+                  Paste Instagram Reels link or TikTok URL to extract and download watermark-free MP4 media instantly.
+                </p>
 
-              {publishedPosts.length === 0 ? (
-                <div className="h-64 border border-dashed border-white/10 rounded-2xl flex flex-col items-center justify-center text-center p-6 bg-white/[0.01]">
-                  <Globe className="w-8 h-8 text-zinc-600 mb-2.5 animate-pulse" />
-                  <div className="text-xs font-black text-zinc-400 uppercase tracking-widest">No Posts Published Yet</div>
-                  <p className="text-[10px] text-zinc-500 mt-1 max-w-[200px]">Click "🚀 Publish" under generated visuals in the chat pipeline on the left to see posts here.</p>
+                <div className="space-y-4 mt-3">
+                  <div className="space-y-1.5">
+                    <span className="text-[9px] font-black uppercase text-zinc-500 tracking-wider">Social Video Link</span>
+                    <input
+                      type="text"
+                      value={downloaderUrl}
+                      onChange={(e) => setDownloaderUrl(e.target.value)}
+                      placeholder="https://instagram.com/reel/... or https://tiktok.com/..."
+                      className="w-full bg-white/5 border border-white/5 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-zinc-600 focus:border-pink-500/30 outline-none transition-all"
+                    />
+                  </div>
+
+                  <button
+                    onClick={async () => {
+                      if (!downloaderUrl.trim()) return;
+                      setDownloaderLoading(true);
+                      setDownloaderResult(null);
+                      const toastId = toast.loading('Extracting video from link...');
+                      try {
+                        const res = await fetch('/api/download-social-video', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ url: downloaderUrl })
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.error || 'Failed to download');
+                        setDownloaderResult(data);
+                        toast.success('Video extracted successfully!', { id: toastId });
+                      } catch (err: any) {
+                        toast.error(err.message || 'Extraction failed', { id: toastId });
+                      } finally {
+                        setDownloaderLoading(false);
+                      }
+                    }}
+                    disabled={downloaderLoading || !downloaderUrl.trim()}
+                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-pink-500 to-violet-500 hover:from-pink-600 hover:to-violet-600 font-black text-[10px] uppercase tracking-wider text-white shadow-lg flex items-center justify-center gap-1 transition-all disabled:opacity-40"
+                  >
+                    {downloaderLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Globe className="w-3.5 h-3.5" />}
+                    Extract Watermark-Free MP4
+                  </button>
                 </div>
-              ) : (
-                <div className="space-y-4">
-                  {publishedPosts.map((post) => (
-                    <div key={post.id} className="bg-[var(--bg-elevated)] border border-white/5 rounded-2xl p-4 shadow space-y-3 relative overflow-hidden">
-                      {/* Platform badge */}
-                      <span className="absolute top-3 right-3 text-[8px] font-black uppercase text-pink-400 bg-pink-500/10 border border-pink-500/20 px-2 py-0.5 rounded-full tracking-wider">
-                        {post.platform}
+
+                {downloaderResult && (
+                  <div className="mt-4 pt-4 border-t border-white/5 space-y-4">
+                    <div className="bg-black/30 border border-white/5 rounded-xl p-4 space-y-3 relative overflow-hidden">
+                      <span className="absolute top-2 right-2 text-[8px] font-black uppercase text-pink-400 bg-pink-500/10 border border-pink-500/20 px-2 py-0.5 rounded-full">
+                        {downloaderResult.platform}
                       </span>
 
-                      {/* Post media */}
-                      <div className="rounded-xl overflow-hidden border border-white/5 bg-black/40">
-                        {post.imageUrl.endsWith('.mp4') || post.imageUrl.includes('blob:') ? (
-                          <video src={post.imageUrl} controls className="w-full max-h-72 object-cover" />
-                        ) : (
-                          <img src={post.imageUrl} alt="Social content" className="w-full max-h-72 object-cover" />
-                        )}
+                      <span className="text-[9px] font-black text-zinc-500 block uppercase">Extracted Video Card</span>
+                      <video src={downloaderResult.videoUrl} controls className="w-full rounded-xl border border-white/10 shadow" />
+                      
+                      <p className="text-xs text-zinc-300 font-bold leading-normal truncate">
+                        {downloaderResult.title}
+                      </p>
+
+                      <div className="flex gap-2 pt-1">
+                        <a
+                          href={downloaderResult.videoUrl}
+                          download={`social_video_${downloaderResult.platform}.mp4`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex-1 py-2 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 font-black text-[9px] uppercase tracking-wider text-emerald-300 flex items-center justify-center gap-1 transition-all"
+                        >
+                          📥 Download File
+                        </a>
+                        <button
+                          onClick={() => {
+                            publishToFeed(downloaderResult.videoUrl);
+                          }}
+                          className="flex-1 py-2 rounded-lg bg-pink-500/20 hover:bg-pink-500/30 border border-pink-500/30 font-black text-[9px] uppercase tracking-wider text-pink-300 flex items-center justify-center gap-1 transition-all"
+                        >
+                          🚀 Import to Feed
+                        </button>
                       </div>
-
-                      {/* Ticking Engagement Stats */}
-                      <div className="flex justify-between text-[10px] text-zinc-400 border-b border-white/5 pb-2.5 font-bold">
-                        <span className="flex items-center gap-1">👁️ {post.views} Views</span>
-                        <span className="flex items-center gap-1 text-pink-400">❤️ {post.likes} Likes</span>
-                        <span className="flex items-center gap-1 text-cyan-400">💬 {post.comments.length} Comments</span>
-                      </div>
-
-                      {/* OnlyFans Tips Ticker */}
-                      {post.platform.toLowerCase().includes('onlyfans') && post.tips.length > 0 && (
-                        <div className="bg-emerald-500/10 border border-emerald-500/20 p-2.5 rounded-xl space-y-1.5">
-                          <span className="text-[8px] font-black text-emerald-400 uppercase tracking-widest block">💰 Live Tips Ticker</span>
-                          <div className="space-y-1 text-[10px]">
-                            {post.tips.slice(-3).map((tip, tIdx) => (
-                              <div key={tIdx} className="flex justify-between text-zinc-300 font-bold">
-                                <span>👤 User {tip.user}</span>
-                                <span className="text-emerald-400">+${tip.amount} tip</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-{/* caption */}
-                      <p className="text-xs text-zinc-300 leading-relaxed font-medium">"{post.caption}"</p>
-
-                      {/* comments section */}
-                      {post.comments.length > 0 && (
-                        <div className="space-y-1 pt-1.5 text-[10px] text-zinc-400 leading-normal border-t border-white/5">
-                          <span className="font-black text-[8px] uppercase tracking-wider text-zinc-500">Live Comments:</span>
-                          {post.comments.slice(-3).map((c, cIdx) => (
-                            <div key={cIdx} className="italic text-zinc-300">"{c}"</div>
-                          ))}
-                        </div>
-                      )}
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+                  </div>
+                )}
+              </div>
 
-          {/* PREDICTIVE ANALYTICS DASHBOARD BOARD */}
-          {canvasTab === 'analytics' && (
-            <div className="space-y-5 max-w-md mx-auto">
-              <span className="text-xs font-black text-violet-400 uppercase tracking-widest flex items-center gap-1.5 animate-pulse">
-                <TrendingUp className="w-4 h-4 text-violet-400" /> Predictive Analytics Dashboard
-              </span>
-
+              {/* PREDICTIVE ANALYTICS GRAPH */}
               {activeDraft ? (
-                <div className="space-y-4">
+                <div className="space-y-4 bg-[var(--bg-elevated)] p-6 rounded-2xl border border-white/5 shadow-xl relative">
+                  <span className="text-xs font-black text-violet-400 uppercase tracking-widest flex items-center gap-1.5">
+                    <TrendingUp className="w-4 h-4 text-violet-400" /> Predictive Analytics & Audience
+                  </span>
+                  
                   {/* Scorecards */}
-                  <div className="grid grid-cols-2 gap-3.5">
-                    <div className="bg-[var(--bg-elevated)] border border-white/5 p-3.5 rounded-xl text-center">
+                  <div className="grid grid-cols-2 gap-3.5 mt-3">
+                    <div className="bg-black/20 border border-white/5 p-3 rounded-xl text-center">
                       <span className="text-[8px] font-black text-zinc-500 uppercase tracking-wider block">Estimated CPM</span>
-                      <span className="text-lg font-black text-white">${metrics.cpm.toFixed(2)}</span>
+                      <span className="text-sm font-black text-white">${metrics.cpm.toFixed(2)}</span>
                     </div>
-                    <div className="bg-[var(--bg-elevated)] border border-white/5 p-3.5 rounded-xl text-center">
-                      <span className="text-[8px] font-black text-zinc-500 uppercase tracking-wider block">Conversion rate Index</span>
-                      <span className="text-lg font-black text-pink-400">{metrics.conversion.toFixed(1)}%</span>
-                    </div>
-                  </div>
-
-                  {/* Followers Acquisition Trajectory Chart (SVG) */}
-                  <div className="bg-[var(--bg-elevated)] border border-white/5 p-4.5 rounded-2xl space-y-3.5">
-                    <div className="flex justify-between items-center">
-                      <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">Follower Traffic Trajectory</span>
-                      <span className="text-[10px] text-pink-400 font-extrabold font-mono">+{metrics.growthIndex}% Index</span>
-                    </div>
-                    <div className="bg-black/20 p-2.5 rounded-xl border border-white/5 relative">
-                      <svg className="w-full h-28" viewBox="0 0 300 100" preserveAspectRatio="none">
-                        <defs>
-                          <linearGradient id="chart-grad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#ec4899" stopOpacity="0.25" />
-                            <stop offset="100%" stopColor="#ec4899" stopOpacity="0.0" />
-                          </linearGradient>
-                          <linearGradient id="line-grad" x1="0" y1="0" x2="1" y2="0">
-                            <stop offset="0%" stopColor="#8b5cf6" />
-                            <stop offset="50%" stopColor="#ec4899" />
-                            <stop offset="100%" stopColor="#3b82f6" />
-                          </linearGradient>
-                        </defs>
-                        {/* Horizontal Gridlines */}
-                        <line x1="0" y1="20" x2="300" y2="20" stroke="white" strokeOpacity="0.03" strokeDasharray="3,3" />
-                        <line x1="0" y1="50" x2="300" y2="50" stroke="white" strokeOpacity="0.03" strokeDasharray="3,3" />
-                        <line x1="0" y1="80" x2="300" y2="80" stroke="white" strokeOpacity="0.03" strokeDasharray="3,3" />
-                        
-                        {/* Area Fill */}
-                        <path d="M 0 90 Q 75 70 150 40 T 300 10 L 300 95 L 0 95 Z" fill="url(#chart-grad)" />
-                        
-                        {/* Curve Line */}
-                        <path d="M 0 90 Q 75 70 150 40 T 300 10" fill="none" stroke="url(#line-grad)" strokeWidth="2.5" />
-                        
-                        {/* Interactive Dot indicators */}
-                        <circle cx="150" cy="40" r="4.5" fill="#ec4899" stroke="#000" strokeWidth="1.5" className="animate-ping" style={{ transformOrigin: '150px 40px' }} />
-                        <circle cx="150" cy="40" r="3.5" fill="#ec4899" stroke="#fff" strokeWidth="1" />
-                        <circle cx="300" cy="10" r="3.5" fill="#3b82f6" stroke="#fff" strokeWidth="1" />
-                      </svg>
-                      {/* X-axis legends */}
-                      <div className="flex justify-between text-[8px] text-zinc-500 font-mono mt-1.5">
-                        <span>Day 1 (10K)</span>
-                        <span>Day 15 (72K)</span>
-                        <span>Day 30 (150K)</span>
-                      </div>
+                    <div className="bg-black/20 border border-white/5 p-3 rounded-xl text-center">
+                      <span className="text-[8px] font-black text-zinc-500 uppercase tracking-wider block">Earnings Projection</span>
+                      <span className="text-sm font-black text-emerald-400">${metrics.projection.toLocaleString()}/mo</span>
                     </div>
                   </div>
 
-                  {/* Monthly Earnings Streams (CSS Bar Chart) */}
-                  <div className="bg-[var(--bg-elevated)] border border-white/5 p-4.5 rounded-2xl space-y-3.5">
-                    <div className="flex justify-between items-center">
-                      <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">Projected Monthly Earnings Streams</span>
-                      <span className="text-[10px] text-emerald-400 font-extrabold">${metrics.projection.toLocaleString()}/mo</span>
-                    </div>
-                    <div className="space-y-2.5">
-                      {/* Subs stream */}
-                      <div className="space-y-1 text-[10px]">
-                        <div className="flex justify-between font-bold text-zinc-300">
-                          <span>🌶️ Direct Subscriptions (OnlyFans/Fansly)</span>
-                          <span className="text-emerald-400">${(metrics.projection * 0.55).toLocaleString()} (55%)</span>
-                        </div>
-                        <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden border border-white/5">
-                          <div className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full" style={{ width: '55%' }} />
-                        </div>
-                      </div>
-                      {/* Sponsors stream */}
-                      <div className="space-y-1 text-[10px]">
-                        <div className="flex justify-between font-bold text-zinc-300">
-                          <span>📸 Brand Sponsorship Campaigns</span>
-                          <span className="text-cyan-400">${(metrics.projection * 0.30).toLocaleString()} (30%)</span>
-                        </div>
-                        <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden border border-white/5">
-                          <div className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 rounded-full" style={{ width: '30%' }} />
-                        </div>
-                      </div>
-                      {/* Tips stream */}
-                      <div className="space-y-1 text-[10px]">
-                        <div className="flex justify-between font-bold text-zinc-300">
-                          <span>💬 Message Tips & VIP Custom Sales</span>
-                          <span className="text-pink-400">${(metrics.projection * 0.15).toLocaleString()} (15%)</span>
-                        </div>
-                        <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden border border-white/5">
-                          <div className="h-full bg-gradient-to-r from-pink-500 to-violet-500 rounded-full" style={{ width: '15%' }} />
-                        </div>
-                      </div>
+                  {/* Stats line chart */}
+                  <div className="bg-black/20 p-2.5 rounded-xl border border-white/5 relative mt-3">
+                    <svg className="w-full h-28" viewBox="0 0 300 100" preserveAspectRatio="none">
+                      <defs>
+                        <linearGradient id="chart-grad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#ec4899" stopOpacity="0.25" />
+                          <stop offset="100%" stopColor="#ec4899" stopOpacity="0.0" />
+                        </linearGradient>
+                        <linearGradient id="line-grad" x1="0" y1="0" x2="1" y2="0">
+                          <stop offset="0%" stopColor="#8b5cf6" />
+                          <stop offset="50%" stopColor="#ec4899" />
+                          <stop offset="100%" stopColor="#3b82f6" />
+                        </linearGradient>
+                      </defs>
+                      <line x1="0" y1="20" x2="300" y2="20" stroke="white" strokeOpacity="0.03" strokeDasharray="3,3" />
+                      <line x1="0" y1="50" x2="300" y2="50" stroke="white" strokeOpacity="0.03" strokeDasharray="3,3" />
+                      <line x1="0" y1="80" x2="300" y2="80" stroke="white" strokeOpacity="0.03" strokeDasharray="3,3" />
+                      <path d="M 0 90 Q 75 70 150 40 T 300 10 L 300 95 L 0 95 Z" fill="url(#chart-grad)" />
+                      <path d="M 0 90 Q 75 70 150 40 T 300 10" fill="none" stroke="url(#line-grad)" strokeWidth="2.5" />
+                    </svg>
+                    <div className="flex justify-between text-[8px] text-zinc-500 font-mono mt-1.5">
+                      <span>Day 1 (10K)</span>
+                      <span>Day 15 (72K)</span>
+                      <span>Day 30 (150K)</span>
                     </div>
                   </div>
 
-                  {/* SVG Demographic Heatmap */}
-                  <div className="bg-[var(--bg-elevated)] border border-white/5 p-4.5 rounded-2xl space-y-3">
-                    <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">Audience Demographic Map</span>
-                    
-                    {/* SVG Map Layout */}
-                    <div className="bg-black/35 rounded-xl p-2.5 border border-white/5 flex items-center justify-center relative overflow-hidden">
-                      <svg className="w-full h-24 text-zinc-800" viewBox="0 0 340 120">
-                        {/* Stylized background dots representing a grid-world map */}
-                        <g fill="white" fillOpacity="0.05">
-                          <circle cx="40" cy="30" r="1.5" /><circle cx="60" cy="30" r="1.5" /><circle cx="80" cy="35" r="1.5" />
-                          <circle cx="100" cy="40" r="1.5" /><circle cx="120" cy="45" r="1.5" /><circle cx="140" cy="65" r="1.5" />
-                          <circle cx="160" cy="75" r="1.5" /><circle cx="180" cy="40" r="1.5" /><circle cx="200" cy="35" r="1.5" />
-                          <circle cx="220" cy="30" r="1.5" /><circle cx="240" cy="35" r="1.5" /><circle cx="260" cy="45" r="1.5" />
-                          <circle cx="280" cy="55" r="1.5" /><circle cx="300" cy="65" r="1.5" /><circle cx="320" cy="75" r="1.5" />
-                          <circle cx="50" cy="60" r="1.5" /><circle cx="70" cy="65" r="1.5" /><circle cx="90" cy="85" r="1.5" />
-                        </g>
-
-                        {/* Interactive pulsating hubs based on niche weights */}
-                        {/* Hub 1: North America */}
-                        <circle cx="70" cy="45" r="10" fill="#ec4899" fillOpacity="0.15" className="animate-pulse" />
-                        <circle cx="70" cy="45" r="4" fill="#ec4899" />
-                        <text x="70" y="32" fill="#a1a1aa" fontSize="7" fontWeight="bold" textAnchor="middle">USA (70%)</text>
-
-                        {/* Hub 2: Europe */}
-                        <circle cx="180" cy="42" r="8" fill="#a78bfa" fillOpacity="0.15" className="animate-pulse" />
-                        <circle cx="180" cy="42" r="3" fill="#a78bfa" />
-                        <text x="180" y="30" fill="#a1a1aa" fontSize="7" fontWeight="bold" textAnchor="middle">EU (20%)</text>
-
-                        {/* Hub 3: South America */}
-                        <circle cx="110" cy="80" r="6" fill="#14b8a6" fillOpacity="0.15" className="animate-pulse" />
-                        <circle cx="110" cy="80" r="3" fill="#14b8a6" />
-                        <text x="110" y="93" fill="#a1a1aa" fontSize="7" fontWeight="bold" textAnchor="middle">BR (10%)</text>
-                      </svg>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2 text-[9px] font-mono text-zinc-400 text-center font-bold">
-                      <div className="bg-white/5 p-1.5 rounded border border-white/5">
-                        <span className="text-pink-400 block">USA</span> 70.4%
-                      </div>
-                      <div className="bg-white/5 p-1.5 rounded border border-white/5">
-                        <span className="text-violet-400 block">Europe</span> 19.8%
-                      </div>
-                      <div className="bg-white/5 p-1.5 rounded border border-white/5">
-                        <span className="text-teal-400 block">Brazil</span> 9.8%
-                      </div>
-                    </div>
+                  {/* SVG Heatmap */}
+                  <div className="bg-black/35 rounded-xl p-2 border border-white/5 relative overflow-hidden mt-3">
+                    <svg className="w-full h-20 text-zinc-800" viewBox="0 0 340 120">
+                      <circle cx="70" cy="45" r="10" fill="#ec4899" fillOpacity="0.15" className="animate-pulse" />
+                      <circle cx="70" cy="45" r="4" fill="#ec4899" />
+                      <text x="70" y="32" fill="#a1a1aa" fontSize="7" fontWeight="bold" textAnchor="middle">USA (70%)</text>
+                      <circle cx="180" cy="42" r="8" fill="#a78bfa" fillOpacity="0.15" className="animate-pulse" />
+                      <circle cx="180" cy="42" r="3" fill="#a78bfa" />
+                      <text x="180" y="30" fill="#a1a1aa" fontSize="7" fontWeight="bold" textAnchor="middle">EU (20%)</text>
+                    </svg>
                   </div>
                 </div>
               ) : (
