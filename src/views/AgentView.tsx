@@ -311,7 +311,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
   
   const [isSending, setIsSending] = useState(false);
   const [isListening, setIsListening] = useState(false);
-  const [canvasTab, setCanvasTab] = useState<'profile' | 'planner' | 'studio' | 'chat' | 'feed' | 'analytics'>('profile');
+  const [canvasTab, setCanvasTab] = useState<'profile' | 'planner' | 'studio' | 'chat' | 'feed' | 'analytics' | 'downloader'>('profile');
   const [customPresets, setCustomPresets] = useState<CustomPreset[]>([]);
   
   // Clone & Talking Avatar Studio states
@@ -327,6 +327,16 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
   const [voiceNameInput, setVoiceNameInput] = useState('Sofia Voice');
   const [voiceDescInput, setVoiceDescInput] = useState('Voice clone of Sofia reference clip');
   const [clonedVoiceId, setClonedVoiceId] = useState<string | null>(null);
+
+  // Social Downloader States
+  const [downloaderUrl, setDownloaderUrl] = useState('');
+  const [downloaderLoading, setDownloaderLoading] = useState(false);
+  const [downloaderResult, setDownloaderResult] = useState<{
+    videoUrl: string;
+    title: string;
+    cover: string;
+    platform: 'instagram' | 'tiktok';
+  } | null>(null);
 
   // Chat Sandbox States
   const [personaChatMessages, setPersonaChatMessages] = useState<{ role: 'user' | 'model'; content: string; voiceUrl?: string; isReading?: boolean }[]>([
@@ -1913,7 +1923,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
             <Layers className="w-3.5 h-3.5 text-pink-400" /> Canvas Workspace
           </span>
           <div className="flex items-center gap-1.5 bg-black/40 border border-white/5 p-1 rounded-xl">
-            {(['profile', 'planner', 'studio', 'chat', 'feed', 'analytics'] as const).map((tab) => (
+            {(['profile', 'planner', 'studio', 'chat', 'feed', 'analytics', 'downloader'] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setCanvasTab(tab)}
@@ -1929,6 +1939,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                 {tab === 'chat' && '💬 Chat Box'}
                 {tab === 'feed' && '📱 Feed'}
                 {tab === 'analytics' && '📊 Stats'}
+                {tab === 'downloader' && '📲 Downloader'}
               </button>
             ))}
           </div>
@@ -2515,6 +2526,97 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                   <p className="text-[10px] text-zinc-500 mt-1 max-w-[200px]">Prompt the agent to synthesize media (pictures, videos, speech tracks) to view setups.</p>
                 </div>
               ) : null}
+            </div>
+          )}
+
+          {/* SOCIAL MEDIA DOWNLOADER BOARD */}
+          {canvasTab === 'downloader' && (
+            <div className="space-y-5 max-w-md mx-auto bg-[var(--bg-elevated)] p-6 rounded-2xl border border-white/5 shadow-xl relative animate-fade-in">
+              <span className="text-xs font-black text-pink-400 uppercase tracking-widest flex items-center gap-1.5">
+                <Globe className="w-4 h-4 text-pink-400 animate-spin" style={{ animationDuration: '6s' }} /> Instagram & TikTok Downloader
+              </span>
+              <p className="text-[10px] text-zinc-400 font-bold leading-relaxed pb-3 border-b border-white/5">
+                Paste Instagram Reels link or TikTok URL to extract and download watermark-free MP4 media instantly.
+              </p>
+
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <span className="text-[9px] font-black uppercase text-zinc-500 tracking-wider">Social Video Link</span>
+                  <input
+                    type="text"
+                    value={downloaderUrl}
+                    onChange={(e) => setDownloaderUrl(e.target.value)}
+                    placeholder="https://instagram.com/reel/... or https://tiktok.com/..."
+                    className="w-full bg-white/5 border border-white/5 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-zinc-600 focus:border-pink-500/30 outline-none transition-all"
+                  />
+                </div>
+
+                <button
+                  onClick={async () => {
+                    if (!downloaderUrl.trim()) return;
+                    setDownloaderLoading(true);
+                    setDownloaderResult(null);
+                    const toastId = toast.loading('Extracting video from link...');
+                    try {
+                      const res = await fetch('/api/download-social-video', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ url: downloaderUrl })
+                      });
+                      const data = await res.json();
+                      if (!res.ok) throw new Error(data.error || 'Failed to download');
+                      setDownloaderResult(data);
+                      toast.success('Video extracted successfully!', { id: toastId });
+                    } catch (err: any) {
+                      toast.error(err.message || 'Extraction failed', { id: toastId });
+                    } finally {
+                      setDownloaderLoading(false);
+                    }
+                  }}
+                  disabled={downloaderLoading || !downloaderUrl.trim()}
+                  className="w-full py-2.5 rounded-xl bg-gradient-to-r from-pink-500 to-violet-500 hover:from-pink-600 hover:to-violet-600 font-black text-[10px] uppercase tracking-wider text-white shadow-lg flex items-center justify-center gap-1 transition-all disabled:opacity-40"
+                >
+                  {downloaderLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Globe className="w-3.5 h-3.5" />}
+                  Extract Watermark-Free MP4
+                </button>
+              </div>
+
+              {downloaderResult && (
+                <div className="mt-4 pt-4 border-t border-white/5 space-y-4">
+                  <div className="bg-black/30 border border-white/5 rounded-xl p-4 space-y-3 relative overflow-hidden">
+                    <span className="absolute top-2 right-2 text-[8px] font-black uppercase text-pink-400 bg-pink-500/10 border border-pink-500/20 px-2 py-0.5 rounded-full">
+                      {downloaderResult.platform}
+                    </span>
+
+                    <span className="text-[9px] font-black text-zinc-500 block uppercase">Extracted Video Card</span>
+                    <video src={downloaderResult.videoUrl} controls className="w-full rounded-xl border border-white/10 shadow" />
+                    
+                    <p className="text-xs text-zinc-300 font-bold leading-normal truncate">
+                      {downloaderResult.title}
+                    </p>
+
+                    <div className="flex gap-2 pt-1">
+                      <a
+                        href={downloaderResult.videoUrl}
+                        download={`social_video_${downloaderResult.platform}.mp4`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex-1 py-2 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 font-black text-[9px] uppercase tracking-wider text-emerald-300 flex items-center justify-center gap-1 transition-all"
+                      >
+                        📥 Download File
+                      </a>
+                      <button
+                        onClick={() => {
+                          publishToFeed(downloaderResult.videoUrl);
+                        }}
+                        className="flex-1 py-2 rounded-lg bg-pink-500/20 hover:bg-pink-500/30 border border-pink-500/30 font-black text-[9px] uppercase tracking-wider text-pink-300 flex items-center justify-center gap-1 transition-all"
+                      >
+                        🚀 Import to Feed
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

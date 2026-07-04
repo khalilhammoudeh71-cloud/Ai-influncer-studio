@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { instagramGetUrl } from 'instagram-url-direct';
 import OpenAI, { toFile } from 'openai';
 import { GoogleGenAI } from '@google/genai';
 import convert from 'heic-convert';
@@ -4301,6 +4302,53 @@ async function pushSchema() {
     console.error('[DB] Schema push error:', err);
   }
 }
+
+app.post('/api/download-social-video', async (req, res) => {
+  const { url } = req.body as { url: string };
+  if (!url || typeof url !== 'string' || !url.trim()) {
+    return res.status(400).json({ error: 'url is required' });
+  }
+
+  try {
+    const targetUrl = url.trim();
+    if (targetUrl.includes('tiktok.com')) {
+      console.log('[Downloader] Downloading TikTok:', targetUrl);
+      const apiRes = await fetch(`https://www.tikwm.com/api/?url=${encodeURIComponent(targetUrl)}`);
+      const json = await apiRes.json() as any;
+      if (json.code !== 0 || !json.data) {
+        throw new Error(json.msg || 'TikTok extraction failed');
+      }
+      
+      return res.json({
+        videoUrl: json.data.play,
+        title: json.data.title || 'TikTok Video',
+        cover: json.data.cover || '',
+        platform: 'tiktok'
+      });
+    }
+
+    if (targetUrl.includes('instagram.com')) {
+      console.log('[Downloader] Downloading Instagram:', targetUrl);
+      const data = await instagramGetUrl(targetUrl);
+      if (!data || !data.url_list || data.url_list.length === 0) {
+        throw new Error('Instagram extraction failed. Post may be private or format unsupported.');
+      }
+      
+      const firstUrl = data.url_list[0];
+      return res.json({
+        videoUrl: firstUrl,
+        title: data.caption || 'Instagram Reel',
+        cover: data.thumbnail || '',
+        platform: 'instagram'
+      });
+    }
+
+    return res.status(400).json({ error: 'Unsupported URL platform. Only Instagram Reels and TikTok videos are supported.' });
+  } catch (err: any) {
+    console.error('[download-social-video] Error:', err);
+    return res.status(500).json({ error: err.message || 'Failed to extract video' });
+  }
+});
 
 // Global error handler — always return JSON, never HTML error pages
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

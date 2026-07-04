@@ -29,6 +29,7 @@
     "express": "^5.2.1",
     "framer-motion": "^12.38.0",
     "heic-convert": "^2.1.0",
+    "instagram-url-direct": "^2.0.7",
     "jimp": "^1.6.1",
     "lucide-react": "^0.575.0",
     "openai": "^6.32.0",
