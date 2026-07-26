@@ -32,9 +32,11 @@ import {
   LayoutGrid,
   SlidersHorizontal,
   Type,
+  Plus,
 } from 'lucide-react';
 import { Persona, GeneratedImage } from '../types';
 import VideoSamplePreview from './VideoSamplePreview';
+import ExtendVideoModal from './ExtendVideoModal';
 import {
   generateImage,
   generateVideo,
@@ -268,6 +270,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
   const [editModels, setEditModels] = useState<ModelInfo[]>([]);
   const [upscaleModels, setUpscaleModels] = useState<ModelInfo[]>([]);
   const [videoModels, setVideoModels] = useState<ModelInfo[]>([]);
+  const [threeDModels, setThreeDModels] = useState<ModelInfo[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [selectedVideoModel, setSelectedVideoModel] = useState<string>('');
   const [modelsLoading, setModelsLoading] = useState(true);
@@ -299,6 +302,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
   const [actionError, setActionError] = useState<string | null>(null);
 
   const [videoResult, setVideoResult] = useState<{ videoUrl: string; model: string } | null>(null);
+  const [extendVideoModalUrl, setExtendVideoModalUrl] = useState<string | null>(null);
   const [videoSourceImage, setVideoSourceImage] = useState<string | null>(null);
   const [videoSourceImageName, setVideoSourceImageName] = useState<string | null>(null);
   const [imageWeight, setImageWeight] = useState(0.35);
@@ -361,14 +365,24 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
 
   useEffect(() => {
     fetchAllModelTypes()
-      .then(({ models: m, editModels: em, upscaleModels: um, videoModels: vm }) => {
+      .then(({ models: m, editModels: em, upscaleModels: um, videoModels: vm, threeDModels: tm }) => {
         setModels(m);
         setEditModels(em);
         setUpscaleModels(um);
         setVideoModels(vm);
-        const preferred = hasRefImage
-          ? m.find(x => x.isIdentityModel) || m.find(x => x.hasEditVariant) || m[0]
-          : m[0];
+        setThreeDModels(tm);
+
+        // Non-Pro Mode Default Cascade: GPT Image 2 -> Nano Banana Pro -> Nano Banana 2
+        const findDefaultNonProModel = (list: ModelInfo[]) => {
+          const cascade = ['openai:gpt-image-2', 'replit:gpt-image-1', 'google:nano-banana-pro', 'google:nano-banana-2'];
+          for (const candidate of cascade) {
+            const found = list.find(x => x.id === candidate);
+            if (found) return found;
+          }
+          return list[0];
+        };
+
+        const preferred = findDefaultNonProModel(m);
         if (preferred) {
           setSelectedModel(preferred.id);
           setModelA(preferred.id);
@@ -1504,10 +1518,16 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
             {videoResult?.videoUrl && genMode === 'video' && (
               <>
                 <button
-                  onClick={handleSaveVideo}
-                  className="flex-1 py-3 px-3 rounded-xl font-black text-xs uppercase tracking-wider bg-[#111827] border border-[#334155]/60 hover:bg-[#0F172A] text-white hover:border-[#334155] transition-all cursor-pointer select-none text-center flex items-center justify-center gap-2 min-w-[120px]"
+                  onClick={() => setExtendVideoModalUrl(videoResult.videoUrl)}
+                  className="flex-1 py-3 px-3 rounded-xl font-black text-xs uppercase tracking-wider bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:brightness-110 text-black transition-all cursor-pointer select-none text-center flex items-center justify-center gap-1.5 shadow-lg shadow-amber-500/20"
                 >
-                  Save Video
+                  <Plus className="w-4 h-4" /> Extend Video (+5s)
+                </button>
+                <button
+                  onClick={handleSaveVideo}
+                  className="flex-none py-3 px-3.5 rounded-xl font-black text-xs uppercase tracking-wider bg-[#111827] border border-[#334155]/60 hover:bg-[#0F172A] text-white hover:border-[#334155] transition-all cursor-pointer select-none text-center flex items-center justify-center gap-2"
+                >
+                  Save
                 </button>
                 <button
                   onClick={downloadVideo}
@@ -1526,6 +1546,21 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
               </>
             )}
           </div>
+
+          {/* Extend Video Modal Overlay */}
+          {extendVideoModalUrl && (
+            <ExtendVideoModal
+              persona={activePersonaObj || persona}
+              originalVideoUrl={extendVideoModalUrl}
+              originalPrompt={prompt}
+              originalModel={selectedVideoModel}
+              onClose={() => setExtendVideoModalUrl(null)}
+              onSuccess={(newVideoUrl) => {
+                setVideoResult(prev => prev ? { ...prev, videoUrl: newVideoUrl } : { videoUrl: newVideoUrl, model: 'Extended Video' });
+                setExtendVideoModalUrl(null);
+              }}
+            />
+          )}
 
           {/* Compact Variations Strip */}
           <div className="flex-none mt-3.5 bg-[#0F172A]/30 border border-[#1E293B]/40 rounded-xl p-2.5 animate-in fade-in select-none">

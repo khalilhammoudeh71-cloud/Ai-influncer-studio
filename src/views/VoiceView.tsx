@@ -21,6 +21,7 @@ import {
   Image as ImageIcon,
   Type,
   ChevronRight,
+  ChevronDown,
   Loader2,
   Settings2,
   Music,
@@ -29,7 +30,9 @@ import {
   AudioLines,
   Globe2,
   Crown,
-  Star
+  Star,
+  Film,
+  FolderOpen
 } from 'lucide-react';
 import { Persona, NavActions } from '../types';
 import { api } from '../services/apiService';
@@ -111,7 +114,19 @@ const VIDEO_MODELS = [
   { id: 'wavespeed-i2v:wavespeed-ai/wan-2.2-i2v-720p', name: 'Wan 2.2 I2V 720p', price: '~$0.05/5s', provider: 'wavespeed', desc: 'Next-gen, improved realism' },
 ];
 
-type VoiceEngine = 'elevenlabs' | 'openai' | 'gemini';
+const OMNIVOICE_VOICES = [
+  { id: 'persona-clone', name: 'Persona Cloned Voice', desc: 'Zero-shot clone using persona audio reference', gender: 'Dynamic' },
+  { id: 'preset-luna', name: 'Luna Presets Clone', desc: 'Feminine, professional, and clear', gender: 'Female' },
+  { id: 'preset-alex', name: 'Alex Presets Clone', desc: 'Masculine, deep, and conversational', gender: 'Male' },
+];
+
+const QWEN_VOICES = [
+  { id: 'qwen-female', name: 'Qwen Female', desc: 'Warm, expressive female voice', gender: 'Female' },
+  { id: 'qwen-male', name: 'Qwen Male', desc: 'Deep, conversational male voice', gender: 'Male' },
+  { id: 'qwen-neutral', name: 'Qwen Neutral', desc: 'Clear, informative neutral voice', gender: 'Neutral' },
+];
+
+type VoiceEngine = 'elevenlabs' | 'openai' | 'gemini' | 'omnivoice' | 'qwen-tts';
 
 export default function VoiceView({ persona, personas, onSelectPersona, nav, billingInfo }: VoiceViewProps) {
   const [isPro, togglePro] = useProMode();
@@ -141,6 +156,20 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
   const [voicesError, setVoicesError] = useState<string | null>(null);
   const [selectedELVoiceId, setSelectedELVoiceId] = useState<string>('');
   const [voiceSearch, setVoiceSearch] = useState('');
+
+  // OmniVoice Reference File States
+  const [omnivoiceRefBase64, setOmnivoiceRefBase64] = useState<string | null>(null);
+  const [omnivoiceRefUrl, setOmnivoiceRefUrl] = useState<string | null>(null);
+  const [omnivoiceRefName, setOmnivoiceRefName] = useState<string | null>(null);
+  const [hasStartedStudio, setHasStartedStudio] = useState(false);
+
+  const activeVoices = useMemo(() => {
+    if (voiceEngine === 'gemini') return GEMINI_VOICES;
+    if (voiceEngine === 'openai') return OPENAI_VOICES;
+    if (voiceEngine === 'omnivoice') return OMNIVOICE_VOICES;
+    if (voiceEngine === 'qwen-tts') return QWEN_VOICES;
+    return [];
+  }, [voiceEngine]);
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [genderFilter, setGenderFilter] = useState<string>('all');
   const [hasElevenLabsKey, setHasElevenLabsKey] = useState(true);
@@ -155,6 +184,14 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
 
+  const cloningAudioLibraryInputRef = useRef<HTMLInputElement>(null);
+  const cloningAudioFilesInputRef = useRef<HTMLInputElement>(null);
+  const [cloningAudioUploadMenuOpen, setCloningAudioUploadMenuOpen] = useState(false);
+
+  const omnivoiceRefLibraryInputRef = useRef<HTMLInputElement>(null);
+  const omnivoiceRefFilesInputRef = useRef<HTMLInputElement>(null);
+  const [omnivoiceRefUploadMenuOpen, setOmnivoiceRefUploadMenuOpen] = useState(false);
+
   // Voice Cloning & Sync States
   const [showClonePanel, setShowClonePanel] = useState(false);
   const [cloneName, setCloneName] = useState('');
@@ -165,6 +202,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
   const [cloningAudioUrl, setCloningAudioUrl] = useState<string | null>(null);
   const [isCloning, setIsCloning] = useState(false);
   const [attachOnClone, setAttachOnClone] = useState(true);
+  const [targetAttachPersonaId, setTargetAttachPersonaId] = useState<string>('none');
   const [isWebcamCreatorOpen, setIsWebcamCreatorOpen] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
 
@@ -290,6 +328,19 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
     setCloningAudioUrl(URL.createObjectURL(file));
   };
 
+  const handleOmnivoiceRefUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    setOmnivoiceRefName(file.name);
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setOmnivoiceRefBase64(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+    setOmnivoiceRefUrl(URL.createObjectURL(file));
+  };
+
   const handleSaveDefaultVoice = async () => {
     if (!persona) return;
     try {
@@ -330,14 +381,15 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
       setElevenLabsVoices(data.voices);
       setSelectedELVoiceId(result.voiceId);
       
-      if (attachOnClone && persona) {
+      const targetP = (persona && persona.id !== 'empty') ? persona : personas.find(p => p.id === targetAttachPersonaId);
+      if (attachOnClone && targetP && targetP.id !== 'empty') {
         const updatedPersona = {
-          ...persona,
+          ...targetP,
           voiceEngine: 'elevenlabs',
           voiceId: result.voiceId,
         };
         await api.updatePersonaInVault(updatedPersona);
-        toast.success(`Voice attached as default for ${persona.name}!`);
+        toast.success(`Voice attached as default for ${targetP.name}!`);
       }
 
       setCloneName('');
@@ -377,6 +429,10 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
       setSelectedVoice(GEMINI_VOICES[0].id);
     } else if (voiceEngine === 'openai') {
       setSelectedVoice(OPENAI_VOICES[0].id);
+    } else if (voiceEngine === 'omnivoice') {
+      setSelectedVoice(OMNIVOICE_VOICES[0].id);
+    } else if (voiceEngine === 'qwen-tts') {
+      setSelectedVoice(QWEN_VOICES[0].id);
     }
   }, [voiceEngine]);
 
@@ -488,6 +544,9 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
         };
       } else {
         speechParams.voice = selectedVoice;
+        if (voiceEngine === 'omnivoice' && selectedVoice === 'persona-clone' && omnivoiceRefBase64) {
+          speechParams.voiceReference = omnivoiceRefBase64;
+        }
       }
 
       const res = await api.voice.generateSpeech(speechParams);
@@ -552,7 +611,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
         const audio = new Audio();
         previewAudioRef.current = audio;
 
-        const voiceList = voiceEngine === 'gemini' ? GEMINI_VOICES : OPENAI_VOICES;
+        const voiceList = activeVoices;
         const v = voiceList.find(ov => ov.id === voiceId);
         const res = await api.voice.generateSpeech({
           text: `Hello, I am ${v?.name || 'a voice'}. I am here to assist you.`,
@@ -717,47 +776,31 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
     );
   }
 
-  // Voice Engine Toggle Component
   const EngineToggle = () => (
-    <div className="flex items-center gap-1 p-1 bg-[var(--bg-elevated)] rounded-xl border border-[var(--border-default)]">
-      <button
-        onClick={() => hasElevenLabsKey && setVoiceEngine('elevenlabs')}
-        className={cn(
-          "flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all",
-          voiceEngine === 'elevenlabs'
-            ? "bg-gradient-to-r from-[#6C63FF] to-[#A855F7] text-white shadow-lg shadow-purple-500/20"
-            : hasElevenLabsKey 
-              ? "text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
-              : "text-[var(--text-muted)] opacity-40 cursor-not-allowed"
-        )}
+    <div className="relative">
+      <select
+        value={voiceEngine}
+        onChange={(e) => {
+          const val = e.target.value as VoiceEngine;
+          if (val === 'elevenlabs' && !hasElevenLabsKey) {
+            toast.error('ElevenLabs API key is not configured.');
+            return;
+          }
+          setVoiceEngine(val);
+        }}
+        className="bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-xs font-bold text-[var(--text-primary)] hover:border-violet-500/30 focus:border-violet-500/50 outline-none transition-all cursor-pointer appearance-none pr-8 min-w-[160px]"
       >
-        <Crown className="w-3.5 h-3.5" />
-        ElevenLabs
-      </button>
-      <button
-        onClick={() => setVoiceEngine('openai')}
-        className={cn(
-          "flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all",
-          voiceEngine === 'openai'
-            ? "bg-[var(--accent-primary)] text-white shadow-lg"
-            : "text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
-        )}
-      >
-        <AudioLines className="w-3.5 h-3.5" />
-        OpenAI
-      </button>
-      <button
-        onClick={() => setVoiceEngine('gemini')}
-        className={cn(
-          "flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all",
-          voiceEngine === 'gemini'
-            ? "bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg"
-            : "text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
-        )}
-      >
-        <Sparkles className="w-3.5 h-3.5" />
-        Gemini 2.5 TTS
-      </button>
+        <option value="elevenlabs" disabled={!hasElevenLabsKey} className="bg-[#0f0f12] text-white">
+          ElevenLabs {!hasElevenLabsKey ? '(Unavailable)' : ''}
+        </option>
+        <option value="openai" className="bg-[#0f0f12] text-white">OpenAI</option>
+        <option value="gemini" className="bg-[#0f0f12] text-white">Gemini 2.5 TTS</option>
+        <option value="omnivoice" className="bg-[#0f0f12] text-white">OmniVoice</option>
+        <option value="qwen-tts" className="bg-[#0f0f12] text-white">Qwen TTS</option>
+      </select>
+      <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-[var(--text-muted)]">
+        <ChevronDown size={14} />
+      </div>
     </div>
   );
 
@@ -933,20 +976,26 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
           <ProModeToggle isPro={isPro} onToggle={togglePro} />
           <EngineToggle />
           <div className="flex items-center gap-3">
-            {persona.referenceImage && (
+            {persona.id !== 'empty' && persona.referenceImage ? (
               <img 
                 src={persona.referenceImage} 
                 alt={persona.name} 
                 className="w-8 h-8 rounded-lg object-cover ring-2 ring-[var(--accent-primary)]/25"
               />
+            ) : (
+              <div className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-[var(--text-muted)] ring-2 ring-violet-500/25">
+                <Users size={14} />
+              </div>
             )}
-            <p className="text-[var(--text-tertiary)] text-xs font-bold uppercase tracking-wider hidden md:block">Active: <span className="text-[var(--text-primary)]">{persona.name}</span></p>
+            <p className="text-[var(--text-tertiary)] text-xs font-bold uppercase tracking-wider hidden md:block">
+              Active: <span className="text-[var(--text-primary)]">{persona.id === 'empty' ? 'No Persona' : persona.name}</span>
+            </p>
           </div>
         </div>
       </div>
       </header>
 
-      {history.length === 0 && !script ? (
+      {!hasStartedStudio && history.length === 0 && !script ? (
         <div className="flex flex-col items-center justify-center py-10 md:py-20 text-center relative overflow-hidden">
           {/* Rotating Hero Gallery */}
           <div className="relative flex justify-center items-center w-full max-w-full mx-auto -mt-6 mb-6">
@@ -983,7 +1032,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
           )}
           <motion.button
             initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.7, type: "spring" }}
-            onClick={() => handleGenerateScript('surprise')}
+            onClick={() => setHasStartedStudio(true)}
             className="bg-[#D9FC50] text-[#0A0A0B] hover:bg-[#c9f032] px-8 py-3.5 rounded-xl font-black uppercase tracking-wider text-sm flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-[#D9FC50]/10 mx-auto"
           >
             Start Audio Studio <Sparkles size={16} />
@@ -1041,7 +1090,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
               value={script}
               onChange={(e) => setScript(e.target.value)}
               placeholder="Paste your transcript here or use Magic Write above..."
-              className="flex-1 w-full min-h-[160px] bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-2xl p-6 text-[var(--text-primary)] text-lg focus:outline-none focus:border-[var(--border-accent)] resize-none font-serif leading-relaxed"
+              className="flex-1 w-full min-h-[160px] bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-2xl p-4 text-[var(--text-primary)] text-sm focus:outline-none focus:border-[var(--border-accent)] resize-none font-sans leading-relaxed"
             />
             
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 border-t border-[var(--border-subtle)]">
@@ -1181,7 +1230,10 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                               <button
                                 onClick={() => {
                                   const audio = new Audio(cloningAudioUrl);
-                                  audio.play();
+                                  audio.play().catch(err => {
+                                    console.warn('Audio playback error:', err);
+                                    toast.error('Playback failed. Please ensure file is valid.');
+                                  });
                                 }}
                                 className="text-[9px] font-bold text-cyan-400 hover:text-cyan-300 transition-colors uppercase tracking-wider"
                               >
@@ -1209,16 +1261,61 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                               </button>
                             )}
                             
-                            <label className="flex-1 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-white border border-white/10 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer text-center">
-                              <Download size={12} className="rotate-180" />
-                              Upload File
+                            <div className="relative flex-1">
+                              <button
+                                type="button"
+                                onClick={() => setCloningAudioUploadMenuOpen(!cloningAudioUploadMenuOpen)}
+                                className="w-full py-2 rounded-lg bg-white/5 hover:bg-white/10 text-white border border-white/10 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer text-center"
+                              >
+                                <Download size={12} className="rotate-180" />
+                                <span>Upload Audio or Video</span>
+                              </button>
+                              
+                              {cloningAudioUploadMenuOpen && (
+                                <>
+                                  <div className="fixed inset-0 z-20" onClick={() => setCloningAudioUploadMenuOpen(false)} />
+                                  <div className="absolute right-0 top-full mt-1.5 w-48 rounded-xl border border-white/10 bg-[#0B0F17] p-1.5 shadow-2xl z-30 space-y-1 select-none text-left">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setCloningAudioUploadMenuOpen(false);
+                                        cloningAudioLibraryInputRef.current?.click();
+                                      }}
+                                      className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs text-slate-200 hover:bg-white/5 hover:text-white flex items-center gap-2 font-bold transition-all"
+                                    >
+                                      <Film size={13} className="text-pink-400" />
+                                      Photo/Video Library
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setCloningAudioUploadMenuOpen(false);
+                                        cloningAudioFilesInputRef.current?.click();
+                                      }}
+                                      className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs text-slate-200 hover:bg-white/5 hover:text-white flex items-center gap-2 font-bold transition-all"
+                                    >
+                                      <FolderOpen size={13} className="text-violet-400" />
+                                      Browse Files (MP3, MP4, etc.)
+                                    </button>
+                                  </div>
+                                </>
+                              )}
+                              
                               <input
+                                ref={cloningAudioLibraryInputRef}
                                 type="file"
-                                accept="audio/*"
+                                accept="audio/mp3,audio/mpeg,audio/wav,audio/x-wav,audio/ogg,audio/m4a,audio/x-m4a,video/mp4,video/quicktime,video/webm,.mp3,.wav,.m4a,.ogg,.mp4,.mov,.webm"
                                 className="hidden"
                                 onChange={handleCloningAudioUpload}
                               />
-                            </label>
+                              <input
+                                ref={cloningAudioFilesInputRef}
+                                type="file"
+                                accept="audio/mp3,audio/mpeg,audio/wav,audio/x-wav,audio/ogg,audio/m4a,audio/x-m4a,video/mp4,video/quicktime,video/webm,.mp3,.wav,.m4a,.ogg,.mp4,.mov,.webm"
+                                className="hidden"
+                                onChange={handleCloningAudioUpload}
+                              />
+                            </div>
                           </div>
 
                           {cloningAudioUrl && (
@@ -1228,18 +1325,44 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                           )}
                         </div>
 
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            id="attachOnClone"
-                            checked={attachOnClone}
-                            onChange={(e) => setAttachOnClone(e.target.checked)}
-                            className="rounded bg-[var(--bg-input)] border-[var(--border-default)] text-[#A855F7] focus:ring-0"
-                          />
-                          <label htmlFor="attachOnClone" className="text-[10px] font-medium text-[var(--text-secondary)] cursor-pointer">
-                            Attach to {persona.name} on creation
-                          </label>
-                        </div>
+                        {persona.id === 'empty' ? (
+                          <div className="flex flex-col gap-1 w-full text-left">
+                            <label className="text-[9px] font-black text-[var(--text-tertiary)] uppercase tracking-wider block">
+                              Attach to Persona (Optional)
+                            </label>
+                            <div className="relative">
+                              <select
+                                value={targetAttachPersonaId}
+                                onChange={(e) => {
+                                  setTargetAttachPersonaId(e.target.value);
+                                  setAttachOnClone(e.target.value !== 'none');
+                                }}
+                                className="w-full bg-[var(--bg-input)] border border-[var(--border-default)] rounded-xl px-2.5 py-1.5 text-xs text-white outline-none appearance-none pr-6 font-medium"
+                              >
+                                <option value="none">Don't Attach (Standalone Voice)</option>
+                                {personas.map(p => (
+                                  <option key={p.id} value={p.id}>
+                                    {p.name}
+                                  </option>
+                                ))}
+                              </select>
+                              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-[var(--text-tertiary)] pointer-events-none" />
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              id="attachOnClone"
+                              checked={attachOnClone}
+                              onChange={(e) => setAttachOnClone(e.target.checked)}
+                              className="rounded bg-[var(--bg-input)] border-[var(--border-default)] text-[#A855F7] focus:ring-0"
+                            />
+                            <label htmlFor="attachOnClone" className="text-[10px] font-medium text-[var(--text-secondary)] cursor-pointer">
+                              Attach to {persona.name} on creation
+                            </label>
+                          </div>
+                        )}
                       </div>
 
                       <button
@@ -1253,120 +1376,172 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                     </div>
                   )}
 
-                  {/* Search & Filters */}
+                  {/* Preset Voices Dropdown */}
                   <div className="space-y-2">
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-muted)]" />
-                      <input
-                        type="text"
-                        value={voiceSearch}
-                        onChange={(e) => setVoiceSearch(e.target.value)}
-                        placeholder="Search voices..."
-                        className="w-full bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-xl py-2.5 pl-9 pr-4 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-primary)] transition-all"
-                      />
-                    </div>
-
-                    {/* Filter chips */}
-                    <div className="flex flex-wrap gap-1.5">
-                      {['all', 'premade', 'cloned', 'generated'].map(cat => (
-                        <button
-                          key={cat}
-                          onClick={() => setCategoryFilter(cat)}
-                          className={cn(
-                            "text-[9px] px-2.5 py-1 rounded-lg font-bold uppercase tracking-wider transition-all border",
-                            categoryFilter === cat
-                              ? "bg-[var(--accent-primary-soft)] border-[var(--accent-primary)]/40 text-[var(--accent-primary)]"
-                              : "bg-transparent border-[var(--border-default)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-                          )}
-                        >
-                          {cat}
-                        </button>
-                      ))}
-                      <span className="w-px h-5 bg-[var(--border-default)] self-center mx-1" />
-                      {['all', 'male', 'female'].map(g => (
-                        <button
-                          key={g}
-                          onClick={() => setGenderFilter(g)}
-                          className={cn(
-                            "text-[9px] px-2.5 py-1 rounded-lg font-bold uppercase tracking-wider transition-all border",
-                            genderFilter === g
-                              ? "bg-[var(--accent-sky)]/10 border-[var(--accent-sky)]/30 text-[var(--accent-sky)]"
-                              : "bg-transparent border-[var(--border-default)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-                          )}
-                        >
-                          {g}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Voice Grid */}
-                  {isLoadingVoices ? (
-                    <div className="flex flex-col items-center justify-center py-12 gap-3">
-                      <Loader2 className="w-6 h-6 animate-spin text-[#A855F7]" />
-                      <span className="text-xs text-[var(--text-muted)] font-medium">Loading voices...</span>
-                    </div>
-                  ) : voicesError ? (
-                    <div className="text-center py-8 text-xs text-[var(--accent-rose)]">{voicesError}</div>
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-[280px] overflow-y-auto pr-1 custom-scrollbar">
-                      {filteredVoices.map(v => (
-                        <ELVoiceCard key={v.voice_id} voice={v} />
-                      ))}
-                      {filteredVoices.length === 0 && (
-                        <div className="col-span-2 text-center py-8">
-                          <p className="text-xs text-[var(--text-muted)]">No voices match your filters</p>
+                    {isLoadingVoices ? (
+                      <div className="flex items-center justify-center py-4 gap-2">
+                        <Loader2 className="w-4 h-4 animate-spin text-[#A855F7]" />
+                        <span className="text-[10px] text-[var(--text-muted)]">Loading voices...</span>
+                      </div>
+                    ) : voicesError ? (
+                      <div className="text-xs text-[var(--accent-rose)]">{voicesError}</div>
+                    ) : (
+                      <div className="flex gap-2">
+                        <div className="relative flex-1">
+                          <select
+                            value={selectedELVoiceId}
+                            onChange={(e) => setSelectedELVoiceId(e.target.value)}
+                            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs font-bold text-[var(--text-primary)] hover:border-violet-500/30 focus:border-violet-500/50 outline-none transition-all cursor-pointer appearance-none pr-8"
+                          >
+                            <option value="" disabled className="bg-[#0f0f12] text-white">Select a voice actor...</option>
+                            {filteredVoices.map(v => (
+                              <option key={v.voice_id} value={v.voice_id} className="bg-[#0f0f12] text-white">
+                                {v.name} ({v.labels?.gender || 'Unknown'} - {v.labels?.accent || 'Default'})
+                              </option>
+                            ))}
+                          </select>
+                          <div className="absolute inset-y-0 right-4 flex items-center pointer-events-none text-[var(--text-muted)]">
+                            <ChevronDown size={14} />
+                          </div>
                         </div>
-                      )}
-                    </div>
-                  )}
+                        {selectedELVoiceId && (
+                          <button
+                            onClick={() => handleVoicePreview(selectedELVoiceId)}
+                            className={cn(
+                              "w-11 h-11 rounded-xl flex items-center justify-center transition-all border border-white/10 shrink-0",
+                              previewingVoice === selectedELVoiceId 
+                                ? "bg-[var(--accent-primary)] text-white shadow-lg" 
+                                : "bg-white/5 hover:bg-white/10 text-[var(--text-tertiary)] hover:text-white"
+                            )}
+                          >
+                            {previewingVoice === selectedELVoiceId ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current ml-0.5" />}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
 
                   {/* Voice Settings */}
                   {isPro && <VoiceSettingsPanel />}
                 </>
               ) : (
-                /* OpenAI/Gemini Voice Grid (original) */
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[320px] overflow-y-auto pr-2 custom-scrollbar">
-                  {(voiceEngine === 'gemini' ? GEMINI_VOICES : OPENAI_VOICES).map(v => (
-                    <div
-                      key={v.id}
-                      className={cn(
-                        "group relative p-4 rounded-2xl border transition-all cursor-pointer",
-                        selectedVoice === v.id 
-                          ? "bg-[var(--accent-primary-soft)] border-[var(--accent-primary)] shadow-[0_0_20px_rgba(124,91,240,0.15)]" 
-                          : "bg-[var(--bg-elevated)] border-[var(--border-default)] hover:border-[var(--border-strong)]"
-                      )}
-                      onClick={() => setSelectedVoice(v.id)}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className={cn(
-                            "w-2.5 h-2.5 rounded-full shadow-lg",
-                            selectedVoice === v.id ? "bg-[var(--accent-primary)]" : "bg-[var(--text-muted)]"
-                          )} />
-                          <span className={cn(
-                            "text-sm font-bold",
-                            selectedVoice === v.id ? "text-[var(--text-primary)]" : "text-[var(--text-tertiary)]"
-                          )}>{v.name}</span>
-                        </div>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleVoicePreview(v.id);
-                          }}
-                          className={cn(
-                            "w-8 h-8 rounded-full flex items-center justify-center transition-all",
-                            previewingVoice === v.id 
-                              ? "bg-[var(--accent-primary)] scale-110 text-white shadow-lg" 
-                              : "bg-[var(--bg-overlay)] hover:bg-[var(--bg-hover)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
-                          )}
-                        >
-                          {previewingVoice === v.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current ml-0.5" />}
-                        </button>
+                <div className="space-y-4">
+                  {/* Preset Voices Dropdown */}
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <select
+                        value={selectedVoice}
+                        onChange={(e) => setSelectedVoice(e.target.value)}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs font-bold text-[var(--text-primary)] hover:border-violet-500/30 focus:border-violet-500/50 outline-none transition-all cursor-pointer appearance-none pr-8"
+                      >
+                        {activeVoices.map(v => (
+                          <option key={v.id} value={v.id} className="bg-[#0f0f12] text-white">
+                            {v.name} ({v.gender || 'Dynamic'})
+                          </option>
+                        ))}
+                      </select>
+                      <div className="absolute inset-y-0 right-4 flex items-center pointer-events-none text-[var(--text-muted)]">
+                        <ChevronDown size={14} />
                       </div>
-                      <div className="mt-2 text-[10px] text-[var(--text-muted)] font-medium leading-relaxed">{v.desc}</div>
                     </div>
-                  ))}
+                    {selectedVoice && (
+                      <button
+                        onClick={() => handleVoicePreview(selectedVoice)}
+                        className={cn(
+                          "w-11 h-11 rounded-xl flex items-center justify-center transition-all border border-white/10 shrink-0",
+                          previewingVoice === selectedVoice 
+                            ? "bg-[var(--accent-primary)] text-white shadow-lg" 
+                            : "bg-white/5 hover:bg-white/10 text-[var(--text-tertiary)] hover:text-white"
+                        )}
+                      >
+                        {previewingVoice === selectedVoice ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current ml-0.5" />}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Custom Reference Voice Upload for OmniVoice 'persona-clone' */}
+                  {voiceEngine === 'omnivoice' && selectedVoice === 'persona-clone' && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="p-4 rounded-2xl bg-gradient-to-b from-cyan-500/5 to-black/20 border border-cyan-500/20 space-y-3 shadow-xl"
+                    >
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-cyan-400">OmniVoice Reference Sample</span>
+                        {omnivoiceRefUrl && (
+                          <button
+                            onClick={() => {
+                              const audio = new Audio(omnivoiceRefUrl);
+                              audio.play().catch(() => {});
+                            }}
+                            className="text-[9px] font-bold text-cyan-300 hover:text-cyan-200 transition-colors uppercase tracking-widest"
+                          >
+                            Play Sample
+                          </button>
+                        )}
+                      </div>
+                      
+                       <div className="relative w-full">
+                        <button
+                          type="button"
+                          onClick={() => setOmnivoiceRefUploadMenuOpen(!omnivoiceRefUploadMenuOpen)}
+                          className="w-full py-2.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/20 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer text-center transition-all select-none"
+                        >
+                          <Download size={12} className="rotate-180" />
+                          <span>{omnivoiceRefName ? `Uploaded: ${omnivoiceRefName.substring(0, 24)}...` : 'Upload Audio or Video'}</span>
+                        </button>
+                        
+                        {omnivoiceRefUploadMenuOpen && (
+                          <>
+                            <div className="fixed inset-0 z-20" onClick={() => setOmnivoiceRefUploadMenuOpen(false)} />
+                            <div className="absolute left-0 right-0 top-full mt-1.5 rounded-xl border border-white/10 bg-[#0B0F17] p-1.5 shadow-2xl z-30 space-y-1 select-none text-left">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setOmnivoiceRefUploadMenuOpen(false);
+                                  omnivoiceRefLibraryInputRef.current?.click();
+                                }}
+                                className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs text-slate-200 hover:bg-white/5 hover:text-white flex items-center gap-2 font-bold transition-all"
+                              >
+                                <Film size={13} className="text-pink-400" />
+                                Photo/Video Library
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setOmnivoiceRefUploadMenuOpen(false);
+                                  omnivoiceRefFilesInputRef.current?.click();
+                                }}
+                                className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs text-slate-200 hover:bg-white/5 hover:text-white flex items-center gap-2 font-bold transition-all"
+                              >
+                                <FolderOpen size={13} className="text-violet-400" />
+                                Browse Files (MP3, WAV, etc.)
+                              </button>
+                            </div>
+                          </>
+                        )}
+                        
+                        <input
+                          ref={omnivoiceRefLibraryInputRef}
+                          type="file"
+                          accept="audio/mp3,audio/mpeg,audio/wav,audio/x-wav,audio/ogg,audio/m4a,audio/x-m4a,video/mp4,video/quicktime,video/webm,.mp3,.wav,.m4a,.ogg,.mp4,.mov,.webm"
+                          className="hidden"
+                          onChange={handleOmnivoiceRefUpload}
+                        />
+                        <input
+                          ref={omnivoiceRefFilesInputRef}
+                          type="file"
+                          accept="audio/mp3,audio/mpeg,audio/wav,audio/x-wav,audio/ogg,audio/m4a,audio/x-m4a,video/mp4,video/quicktime,video/webm,.mp3,.wav,.m4a,.ogg,.mp4,.mov,.webm"
+                          className="hidden"
+                          onChange={handleOmnivoiceRefUpload}
+                        />
+                      </div>
+                      <p className="text-[9px] text-[var(--text-muted)] font-medium pl-0.5 leading-relaxed">
+                        Upload any audio or video reference. The voice clone engine will automatically extract reference characteristics to match your target script.
+                      </p>
+                    </motion.div>
+                  )}
                 </div>
               )}
             </div>

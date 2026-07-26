@@ -106,6 +106,7 @@ export default function AssistantView({ personas, persona: propActivePersona, na
   const [callInput, setCallInput] = useState('');
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const callTimerRef = useRef<any>(null);
+  const callRecRef = useRef<any>(null);
 
   // Format timer duration (e.g. 00:05)
   const formatDuration = (seconds: number) => {
@@ -128,7 +129,12 @@ export default function AssistantView({ personas, persona: propActivePersona, na
       };
       if ((activePersona as any).voiceEngine) {
         voiceParams.engine = (activePersona as any).voiceEngine;
+      }
+      if ((activePersona as any).voiceId) {
         voiceParams.voiceId = (activePersona as any).voiceId;
+      }
+      if ((activePersona as any).voiceSampleUrl || (activePersona as any).voiceFile) {
+        voiceParams.voiceFile = (activePersona as any).voiceSampleUrl || (activePersona as any).voiceFile;
       }
       
       const { audioUrl } = await textToSpeech(voiceParams);
@@ -161,7 +167,55 @@ export default function AssistantView({ personas, persona: propActivePersona, na
     }
   };
 
-  // Start Call
+  // Send message inside Live Call (supports speech override & interruption)
+  const handleSendCallMessage = async (overrideText?: string) => {
+    const text = (overrideText || callInput).trim();
+    if (!text) return;
+
+    // Interruption logic (barge-in): stop persona speech immediately if speaking
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    
+    setCallInput('');
+    
+    const userMsg = { id: uid(), role: 'user' as const, content: text };
+    setCallTranscript(prev => [...prev, userMsg]);
+    
+    setCallStatus('speaking');
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          persona: activePersona,
+          messages: callTranscript.filter(t => t.content.indexOf('Calling') !== 0).map(m => ({ role: m.role, type: 'text', content: m.content })),
+          userMessage: text,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed call dialogue response');
+      
+      const reply = data.reply;
+      
+      setCallTranscript(prev => [...prev, { id: uid(), role: 'persona', content: reply }]);
+      
+      // Sync into command center chat history
+      setMessages(prev => [...prev, 
+        { id: uid(), role: 'user', type: 'text', content: text, timestamp: new Date() },
+        { id: uid(), role: 'persona', type: 'text', content: reply, timestamp: new Date() }
+      ]);
+      
+      playTTS(reply);
+    } catch (err) {
+      console.error(err);
+      setCallStatus('listening');
+      toast.error("Call connection interrupted. Try again.");
+    }
+  };
+
+  // Start Hands-Free Live Call with Interruption support
   const handleStartCall = () => {
     setIsCallActive(true);
     setCallStatus('connecting');
@@ -169,6 +223,45 @@ export default function AssistantView({ personas, persona: propActivePersona, na
     setCallTranscript([
       { id: uid(), role: 'persona', content: `Calling ${activePersona.name}...` }
     ]);
+    
+    // Initialize hands-free speech recognition
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      try {
+        const rec = new SpeechRecognition();
+        rec.continuous = true;
+        rec.interimResults = false;
+        rec.lang = 'en-US';
+
+        rec.onresult = (e: any) => {
+          const transcript = e.results[e.results.length - 1]?.[0]?.transcript;
+          if (transcript && transcript.trim().length > 1) {
+            // Cut off AI audio immediately on interruption
+            if (audioRef.current && !audioRef.current.paused) {
+              audioRef.current.pause();
+              audioRef.current = null;
+            }
+            handleSendCallMessage(transcript.trim());
+          }
+        };
+
+        rec.onerror = (e: any) => {
+          console.warn('[Call Voice Input] Error:', e.error);
+        };
+
+        rec.onend = () => {
+          // Keep listening hands-free while call is active
+          if (callTimerRef.current) {
+            try { rec.start(); } catch {}
+          }
+        };
+
+        rec.start();
+        callRecRef.current = rec;
+      } catch (err) {
+        console.warn('[Call Voice Input] Not initialized:', err);
+      }
+    }
     
     // Simulate connection delay
     setTimeout(() => {
@@ -209,62 +302,17 @@ export default function AssistantView({ personas, persona: propActivePersona, na
       clearInterval(callTimerRef.current);
       callTimerRef.current = null;
     }
+
+    if (callRecRef.current) {
+      try { callRecRef.current.stop(); } catch {}
+      callRecRef.current = null;
+    }
     
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current = null;
     }
   }, []);
-
-  // Cleanup on unmount or persona change
-  useEffect(() => {
-    return () => {
-      if (callTimerRef.current) clearInterval(callTimerRef.current);
-      if (audioRef.current) audioRef.current.pause();
-    };
-  }, [selectedPersonaId]);
-
-  // Send message inside Live Call
-  const handleSendCallMessage = async () => {
-    const text = callInput.trim();
-    if (!text || callStatus === 'speaking' || callStatus === 'connecting') return;
-    
-    setCallInput('');
-    
-    const userMsg = { id: uid(), role: 'user' as const, content: text };
-    setCallTranscript(prev => [...prev, userMsg]);
-    
-    setCallStatus('speaking');
-    try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          persona: activePersona,
-          messages: callTranscript.filter(t => t.content.indexOf('Calling') !== 0).map(m => ({ role: m.role, type: 'text', content: m.content })),
-          userMessage: text,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed call dialogue response');
-      
-      const reply = data.reply;
-      
-      setCallTranscript(prev => [...prev, { id: uid(), role: 'persona', content: reply }]);
-      
-      // Sync into command center chat history
-      setMessages(prev => [...prev, 
-        { id: uid(), role: 'user', type: 'text', content: text, timestamp: new Date() },
-        { id: uid(), role: 'persona', type: 'text', content: reply, timestamp: new Date() }
-      ]);
-      
-      playTTS(reply);
-    } catch (err) {
-      console.error(err);
-      setCallStatus('listening');
-      toast.error("Call connection interrupted. Try again.");
-    }
-  };
 
   const [editModels, setEditModels] = useState<ModelInfo[]>([]);
   const [videoModels, setVideoModels] = useState<ModelInfo[]>([]);
@@ -969,7 +1017,7 @@ Return ONLY a JSON array of 3 strings (no markdown, no keys, just the array).`;
                   </div>
                   <motion.button
                     whileTap={{ scale: 0.92 }}
-                    onClick={handleSendCallMessage}
+                    onClick={() => handleSendCallMessage()}
                     disabled={!callInput.trim() || callStatus === 'speaking'}
                     className="premium-button text-white text-xs px-4 py-2.5 rounded-xl font-bold flex-shrink-0 disabled:opacity-50 flex items-center justify-center"
                   >

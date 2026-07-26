@@ -4,10 +4,12 @@ import { Persona, GeneratedImage, NavActions } from '../types';
 import {
   Download, Film, Image as ImageIcon, Search, X, Filter,
   AlertCircle, FolderDown, Loader2, Trash2, Heart, ChevronLeft,
-  ChevronRight, ArrowUpDown, Play, SortAsc, LayoutGrid, Columns, Share2
+  ChevronRight, ArrowUpDown, Play, SortAsc, LayoutGrid, Columns, Share2,
+  Check, Sparkles
 } from 'lucide-react';
 import { api } from '../services/apiService';
 import toast from 'react-hot-toast';
+import { upscaleImage } from '../services/imageService';
 
 interface GalleryViewProps {
   personas: Persona[];
@@ -35,6 +37,16 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
   });
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [layoutMode, setLayoutMode] = useState<'grid' | 'masonry'>('grid');
+
+  // Batch Upscale states
+  const [isBatchMode, setIsBatchMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [uploadedFiles, setUploadedFiles] = useState<{ id: string; name: string; dataUrl: string }[]>([]);
+  const [upscaleTarget, setUpscaleTarget] = useState<'2k' | '4k'>('4k');
+  const [upscaleModelId, setUpscaleModelId] = useState<string>('wavespeed-upscale:wavespeed-ai/image-upscaler');
+  const [isUpscaling, setIsUpscaling] = useState(false);
+  const [upscaleProgress, setUpscaleProgress] = useState({ current: 0, total: 0, currentName: '' });
+  const uploadInputRef = useRef<HTMLInputElement>(null);
 
   // Context menu state (#14)
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; item: GalleryItem } | null>(null);
@@ -132,6 +144,127 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
     a.click();
   };
 
+  const handleLocalFilesAdded = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files) return;
+    const files = Array.from(e.target.files);
+    
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        setUploadedFiles(prev => [
+          ...prev,
+          {
+            id: 'upload-' + Math.random().toString(36).substring(2, 9),
+            name: file.name,
+            dataUrl: reader.result as string
+          }
+        ]);
+      };
+      reader.readAsDataURL(file);
+    });
+    // Reset file input
+    e.target.value = '';
+  };
+
+  const runBatchUpscale = async () => {
+    const selectedItems = allMedia.filter(item => selectedIds.has(item.id) && (!item.mediaType || item.mediaType === 'image'));
+    const totalCount = selectedItems.length + uploadedFiles.length;
+    if (totalCount === 0) {
+      toast.error('No images selected or uploaded.');
+      return;
+    }
+
+    setIsUpscaling(true);
+    let successCount = 0;
+    let failCount = 0;
+
+    const toastId = toast.loading(`Starting batch upscale of ${totalCount} images...`);
+
+    try {
+      // Process Selected Images from Library
+      for (let i = 0; i < selectedItems.length; i++) {
+        const item = selectedItems[i];
+        const currentIdx = i + 1;
+        setUpscaleProgress({ current: currentIdx, total: totalCount, currentName: `Library Image ${currentIdx}` });
+        toast.loading(`Processing image ${currentIdx}/${totalCount}...`, { id: toastId });
+
+        try {
+          const res = await upscaleImage(item.url, upscaleModelId, upscaleTarget);
+          
+          const payload = {
+            id: 'img-' + Math.random().toString(36).substring(2, 9),
+            url: res.imageUrl,
+            prompt: `[${upscaleTarget.toUpperCase()} Upscaled] ${item.prompt || 'Library Image'}`,
+            timestamp: Date.now(),
+            isFavorite: false,
+            model: res.model,
+            mediaType: 'image' as const
+          };
+
+          await api.images.create(activePersona.id, payload);
+
+          if (onPersonasChange) {
+            const nextPersonas = personas.map(p => {
+              if (p.id !== activePersona.id) return p;
+              return { ...p, visualLibrary: [...(p.visualLibrary || []), payload] };
+            });
+            onPersonasChange(nextPersonas);
+          }
+          successCount++;
+        } catch (err: any) {
+          console.error('Upscale error for library item:', err);
+          failCount++;
+        }
+      }
+
+      // Process Uploaded files
+      for (let i = 0; i < uploadedFiles.length; i++) {
+        const fileItem = uploadedFiles[i];
+        const currentIdx = selectedItems.length + i + 1;
+        setUpscaleProgress({ current: currentIdx, total: totalCount, currentName: fileItem.name });
+        toast.loading(`Processing file "${fileItem.name}" (${currentIdx}/${totalCount})...`, { id: toastId });
+
+        try {
+          const res = await upscaleImage(fileItem.dataUrl, upscaleModelId, upscaleTarget);
+
+          const payload = {
+            id: 'img-' + Math.random().toString(36).substring(2, 9),
+            url: res.imageUrl,
+            prompt: `[${upscaleTarget.toUpperCase()} Upscaled] Uploaded file: ${fileItem.name}`,
+            timestamp: Date.now(),
+            isFavorite: false,
+            model: res.model,
+            mediaType: 'image' as const
+          };
+
+          await api.images.create(activePersona.id, payload);
+
+          if (onPersonasChange) {
+            const nextPersonas = personas.map(p => {
+              if (p.id !== activePersona.id) return p;
+              return { ...p, visualLibrary: [...(p.visualLibrary || []), payload] };
+            });
+            onPersonasChange(nextPersonas);
+          }
+          successCount++;
+        } catch (err: any) {
+          console.error('Upscale error for uploaded file:', err);
+          failCount++;
+        }
+      }
+
+      toast.success(`Batch upscaling complete! Success: ${successCount}, Failed: ${failCount}`, { id: toastId });
+    } catch (globalErr: any) {
+      toast.error(globalErr.message || 'Upscaling failed', { id: toastId });
+    } finally {
+      setIsUpscaling(false);
+      setSelectedIds(new Set());
+      setUploadedFiles([]);
+      setIsBatchMode(false);
+      setUpscaleProgress({ current: 0, total: 0, currentName: '' });
+    }
+  };
+
   const SORT_OPTIONS: { value: SortMode; label: string }[] = [
     { value: 'newest', label: 'Newest First' },
     { value: 'oldest', label: 'Oldest First' },
@@ -186,6 +319,27 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
               <option value="all">All Personas</option>
               {personas.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
+
+            {/* Batch Upscale Toggle */}
+            <button
+              onClick={() => {
+                setIsBatchMode(prev => {
+                  if (prev) {
+                    setSelectedIds(new Set());
+                    setUploadedFiles([]);
+                  }
+                  return !prev;
+                });
+              }}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white transition-all shadow-lg hover:scale-105 ${
+                isBatchMode
+                  ? 'bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 border border-pink-500/20'
+                  : 'bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500'
+              }`}
+            >
+              <Sparkles size={14} className={isBatchMode ? 'animate-pulse' : ''} />
+              {isBatchMode ? 'Cancel Upscale' : '🚀 Batch Upscale'}
+            </button>
 
             {/* Download All */}
             {filteredMedia.length > 0 && (
@@ -324,6 +478,7 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
             {filteredMedia.map(item => {
               const isVideo = item.mediaType === 'video';
               const isFav = favorites.has(item.id);
+              const isSelected = selectedIds.has(item.id);
               return (
                 <motion.div
                   key={item.id}
@@ -332,10 +487,39 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.9 }}
                   transition={{ duration: 0.2 }}
-                  className={`group relative ${layoutMode === 'masonry' ? 'masonry-item rounded-2xl overflow-hidden' : 'aspect-square rounded-2xl overflow-hidden'} bg-[var(--bg-elevated)] border border-[var(--border-subtle)] cursor-pointer hover:border-emerald-500/50 transition-colors`}
-                  onClick={() => setSelectedItem(item)}
+                  className={`group relative ${layoutMode === 'masonry' ? 'masonry-item rounded-2xl overflow-hidden' : 'aspect-square rounded-2xl overflow-hidden'} bg-[var(--bg-elevated)] border cursor-pointer transition-all ${
+                    isBatchMode && isSelected 
+                      ? 'border-emerald-500 ring-2 ring-emerald-500/30 scale-[0.98]' 
+                      : 'border-[var(--border-subtle)] hover:border-emerald-500/50'
+                  }`}
+                  onClick={() => {
+                    if (isBatchMode) {
+                      if (isVideo) {
+                        toast.error("Upscaling is only supported for images!");
+                        return;
+                      }
+                      setSelectedIds(prev => {
+                        const next = new Set(prev);
+                        if (next.has(item.id)) next.delete(item.id); else next.add(item.id);
+                        return next;
+                      });
+                    } else {
+                      setSelectedItem(item);
+                    }
+                  }}
                   onContextMenu={(e) => openCtxMenu(e, item)}
                 >
+                  {isBatchMode && !isVideo && (
+                    <div className="absolute top-3 left-3 z-20">
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center border backdrop-blur-md shadow-lg transition-all ${
+                        isSelected 
+                          ? 'bg-emerald-500 border-emerald-400 text-white' 
+                          : 'bg-black/40 border-white/20 text-transparent hover:border-white/40'
+                      }`}>
+                        <Check size={12} className="stroke-[3]" />
+                      </div>
+                    </div>
+                  )}
                   {isVideo ? (
                     <video src={item.url} className="w-full h-full object-cover" />
                   ) : (
@@ -575,6 +759,161 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
             >
               <Trash2 size={14} /> Delete
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Floating Batch Upscale Panel */}
+      <AnimatePresence>
+        {isBatchMode && (
+          <motion.div
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[90] w-[95%] max-w-4xl bg-black/90 backdrop-blur-xl border border-emerald-500/20 rounded-3xl p-5 shadow-2xl shadow-emerald-950/40 flex flex-col gap-4 text-white"
+          >
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              {/* Left Side: Stats */}
+              <div>
+                <h3 className="text-lg font-black flex items-center gap-2 text-emerald-400">
+                  <Sparkles size={18} /> AI Batch Upscaler
+                </h3>
+                <p className="text-xs text-[var(--text-tertiary)] mt-1 font-medium">
+                  Select images from your vault above, or upload new files directly.
+                </p>
+              </div>
+
+              {/* Action queue stats */}
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-bold px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-300">
+                  Vault: {selectedIds.size} selected
+                </span>
+                <span className="text-xs font-bold px-3 py-1.5 bg-violet-500/10 border border-violet-500/20 rounded-xl text-violet-300">
+                  Uploads: {uploadedFiles.length} files
+                </span>
+              </div>
+            </div>
+
+            <div className="h-px bg-white/10" />
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+              {/* Option 1: Upscaler Model */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] uppercase tracking-wider font-extrabold text-[var(--text-tertiary)]">Upscaler Engine</label>
+                <select
+                  value={upscaleModelId}
+                  onChange={e => setUpscaleModelId(e.target.value)}
+                  disabled={isUpscaling}
+                  className="bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 disabled:opacity-50"
+                >
+                  <option value="wavespeed-upscale:wavespeed-ai/image-upscaler">Wavespeed Super Resolution (Fast)</option>
+                  <option value="wavespeed-upscale:wavespeed-ai/ultimate-image-upscaler">Ultimate Image Upscaler (High Detail)</option>
+                  <option value="wavespeed-upscale:clarity-ai/crystal-upscaler">Clarity Crystal (Crisp)</option>
+                  <option value="wavespeed-upscale:wavespeed-ai/seedvr2/image">SeedVR2 Realism Upscaler</option>
+                </select>
+              </div>
+
+              {/* Option 2: Resolution (2K / 4K) */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] uppercase tracking-wider font-extrabold text-[var(--text-tertiary)]">Target Resolution</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['2k', '4k'] as const).map(res => (
+                    <button
+                      key={res}
+                      type="button"
+                      disabled={isUpscaling}
+                      onClick={() => setUpscaleTarget(res)}
+                      className={`py-2 rounded-xl text-xs font-bold transition-all border ${
+                        upscaleTarget === res
+                          ? 'bg-emerald-500 border-emerald-400 text-white font-extrabold'
+                          : 'bg-white/5 border-white/10 text-[var(--text-secondary)] hover:text-white hover:bg-white/10'
+                      } disabled:opacity-50`}
+                    >
+                      {res.toUpperCase()} HD
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Option 3: Local Upload Button */}
+              <div className="flex flex-col gap-1.5 justify-end">
+                <label className="text-[10px] uppercase tracking-wider font-extrabold text-[var(--text-tertiary)]">Local Uploads</label>
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  ref={uploadInputRef}
+                  onChange={handleLocalFilesAdded}
+                  className="hidden"
+                  disabled={isUpscaling}
+                />
+                <button
+                  type="button"
+                  disabled={isUpscaling}
+                  onClick={() => uploadInputRef.current?.click()}
+                  className="w-full py-2 bg-white/5 border border-dashed border-white/20 hover:border-emerald-500/50 rounded-xl text-xs font-bold hover:bg-white/10 transition-all flex items-center justify-center gap-2 disabled:opacity-50 text-white"
+                >
+                  <ImageIcon size={14} className="text-emerald-400" />
+                  {uploadedFiles.length > 0 ? `Add More (${uploadedFiles.length} total)` : 'Upload Local Images'}
+                </button>
+              </div>
+            </div>
+
+            {/* List of uploaded files preview */}
+            {uploadedFiles.length > 0 && (
+              <div className="flex flex-wrap gap-2 max-h-16 overflow-y-auto p-1 bg-white/5 rounded-xl">
+                {uploadedFiles.map(file => (
+                  <div key={file.id} className="relative group/thumb w-10 h-10 rounded-lg overflow-hidden border border-white/10">
+                    <img src={file.dataUrl} alt="" className="w-full h-full object-cover" />
+                    <button
+                      type="button"
+                      disabled={isUpscaling}
+                      onClick={() => setUploadedFiles(prev => prev.filter(f => f.id !== file.id))}
+                      className="absolute inset-0 bg-black/60 opacity-0 group-hover/thumb:opacity-100 transition-opacity flex items-center justify-center text-rose-400 disabled:opacity-0"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Progress or Execution */}
+            {isUpscaling ? (
+              <div className="space-y-2 bg-white/5 border border-white/10 p-4 rounded-2xl">
+                <div className="flex justify-between text-xs font-bold">
+                  <span className="text-emerald-400 animate-pulse">Upscaling: {upscaleProgress.currentName}</span>
+                  <span>{upscaleProgress.current} / {upscaleProgress.total}</span>
+                </div>
+                <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
+                  <div
+                    className="bg-gradient-to-r from-emerald-500 to-teal-500 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${(upscaleProgress.current / upscaleProgress.total) * 100}%` }}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="flex gap-2 justify-end mt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsBatchMode(false);
+                    setSelectedIds(new Set());
+                    setUploadedFiles([]);
+                  }}
+                  className="px-5 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl text-xs font-bold text-white transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={runBatchUpscale}
+                  className="px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 rounded-2xl text-xs font-extrabold text-white shadow-lg hover:scale-102 transition-all flex items-center gap-1.5"
+                >
+                  🚀 Run Batch Upscale ({selectedIds.size + uploadedFiles.length})
+                </button>
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>

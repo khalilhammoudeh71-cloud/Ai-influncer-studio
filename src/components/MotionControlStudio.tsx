@@ -37,6 +37,23 @@ const CATEGORIES = [
   { id: 'party', label: 'Party', emoji: '🎉' },
 ] as const;
 
+interface MotionModel {
+  id: string;
+  name: string;
+  desc: string;
+  badge?: 'new' | 'hot';
+}
+
+const MOTION_MODELS: MotionModel[] = [
+  { id: 'wavespeed-ai/scail-2', name: 'SCAIL-2', desc: 'Zero-shot high-quality motion mapping', badge: 'new' },
+  { id: 'wavespeed-ai/wan-2.2-animate', name: 'WAN 2.2 Animate', desc: 'Next-gen motion flow' },
+  { id: 'wavespeed-ai/kling-3.0-motion-control', name: 'Kling 3.0 Motion Control', desc: 'Premium cinematic movement' },
+  { id: 'wavespeed-ai/kling-2.6-motion-control', name: 'Kling 2.6 Motion Control', desc: 'Balanced realism & speed' },
+  { id: 'wavespeed-ai/pixverse-motion-mimic', name: 'PixVerse Motion Mimic', desc: 'Dynamic dance imitation', badge: 'new' },
+  { id: 'wavespeed-ai/steadydancer', name: 'SteadyDancer', desc: 'Smooth, continuous walk cycle' },
+  { id: 'wavespeed-ai/face-swapper', name: 'Face Swapper', desc: 'Face animation & reference match' },
+];
+
 const VIRAL_DANCES: DanceEntry[] = [
   {
     id: 'slickback',
@@ -316,6 +333,7 @@ export default function MotionControlStudio({ isOpen, onClose, persona }: Motion
 
   // Library state
   const [selectedDanceId, setSelectedDanceId] = useState<string>(VIRAL_DANCES[0].id);
+  const [selectedModel, setSelectedModel] = useState<string>(MOTION_MODELS[0].id);
 
   // Advanced options
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -371,7 +389,7 @@ export default function MotionControlStudio({ isOpen, onClose, persona }: Motion
     const steps = [
       { label: 'Extracting motion skeleton...', pct: 20 },
       { label: 'Aligning body pose to reference...', pct: 45 },
-      { label: 'Synthesizing motion frames with Wavespeed...', pct: 70 },
+      { label: `Synthesizing motion frames with ${MOTION_MODELS.find(m => m.id === selectedModel)?.name || 'Wavespeed'}...`, pct: 70 },
       { label: 'Perfecting face resolution & blending...', pct: 90 },
     ];
 
@@ -390,6 +408,7 @@ export default function MotionControlStudio({ isOpen, onClose, persona }: Motion
     try {
       const result = await generateMotionControl({
         refImage,
+        model: selectedModel,
         ...(sourceTab === 'library' ? { danceId: selectedDanceId } : {}),
         ...(sourceTab === 'url' && customVideoUrl ? { motionVideoUrl: customVideoUrl } : {}),
         ...(sourceTab === 'upload' && customVideoBase64 ? { motionVideoBase64: customVideoBase64 } : {}),
@@ -419,7 +438,7 @@ export default function MotionControlStudio({ isOpen, onClose, persona }: Motion
           sourceTab === 'library' ? selectedDance?.name || selectedDanceId : customVideoName || customVideoUrl || 'Custom motion'
         }`,
         timestamp: Date.now(),
-        model: 'wavespeed-ai/motion-control',
+        model: selectedModel,
         mediaType: 'video' as const,
       };
       const updatedPersona = { ...persona, visualLibrary: [...(persona.visualLibrary || []), media] };
@@ -699,7 +718,34 @@ export default function MotionControlStudio({ isOpen, onClose, persona }: Motion
                 </AnimatePresence>
               </div>
 
-              {/* 3. Advanced Options */}
+              {/* 3. Motion Model */}
+              <div className="space-y-3">
+                <label className="text-[10px] font-black uppercase tracking-widest text-violet-400/80 flex items-center gap-1.5">
+                  <span className="w-4 h-4 rounded-full bg-violet-500/20 flex items-center justify-center text-violet-400 text-[8px] font-black border border-violet-500/30">3</span>
+                  Motion Model
+                </label>
+                <div className="relative">
+                  <select
+                    value={selectedModel}
+                    onChange={(e) => setSelectedModel(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs font-bold text-[var(--text-primary)] hover:border-violet-500/30 focus:border-violet-500/50 outline-none transition-all cursor-pointer appearance-none"
+                  >
+                    {MOTION_MODELS.map(model => (
+                      <option key={model.id} value={model.id} className="bg-[#0f0f12] text-white py-2">
+                        {model.name} {model.badge ? ` (${model.badge.toUpperCase()})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="absolute inset-y-0 right-4 flex items-center pointer-events-none text-[var(--text-muted)]">
+                    <ChevronRight size={14} className="rotate-90" />
+                  </div>
+                </div>
+                <p className="text-[10px] text-[var(--text-muted)] font-medium leading-relaxed italic pl-1">
+                  {MOTION_MODELS.find(m => m.id === selectedModel)?.desc}
+                </p>
+              </div>
+
+              {/* 4. Advanced Options */}
               <div className="space-y-2">
                 <button
                   onClick={() => setShowAdvanced(v => !v)}

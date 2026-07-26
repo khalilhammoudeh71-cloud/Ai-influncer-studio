@@ -131,9 +131,10 @@ export const api = {
       voice?: string;
       performancePrompt?: string;
       backgroundAtmosphere?: string;
-      engine?: 'elevenlabs' | 'openai' | 'gemini';
+      engine?: 'elevenlabs' | 'openai' | 'gemini' | 'omnivoice' | 'qwen-tts';
       voiceId?: string;
       voiceSettings?: { stability?: number; similarity_boost?: number; style?: number };
+      voiceReference?: string;
     }) =>
       requestWithBody<{ audioUrl: string; engine?: string }>('/generate-speech', params),
     translateText: (params: { text: string; targetLanguage: string }) =>

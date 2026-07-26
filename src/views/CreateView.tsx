@@ -41,6 +41,9 @@ import {
   Pause,
   Volume2,
   Sliders,
+  FolderOpen,
+  VideoOff,
+  Box,
 } from 'lucide-react';
 import { Persona, GeneratedImage, NavActions, Tab, NavEntry } from '../types';
 import PlannerView from './PlannerView';
@@ -48,6 +51,7 @@ import VoiceView from './VoiceView';
 import AIToolsView from './AIToolsView';
 import WebcamAvatarCreator from '../components/WebcamAvatarCreator';
 import VideoSamplePreview from '../components/VideoSamplePreview';
+import ThreeDStudio from '../components/ThreeDStudio';
 import {
   generateImage,
   generateVideo,
@@ -73,7 +77,27 @@ import { processImageFile } from '../utils/imageProcessing';
 import toast from 'react-hot-toast';
 import { useRef } from 'react';
 
-type CreateMode = 'angle' | 'image' | 'video' | 'talking-avatar' | 'voice' | 'ai-tools' | 'planner' | 'prompt' | 'transcript' | 'multi-scene';
+type CreateMode = 'image' | 'video' | 'talking-avatar' | 'voice' | 'ai-tools' | 'planner' | 'prompt' | 'transcript' | 'multi-scene' | '3d';
+
+interface LipSyncModel {
+  id: string;
+  name: string;
+  provider: string;
+  inputType: 'image' | 'video';
+  desc: string;
+}
+
+export const LIPSYNC_MODELS: LipSyncModel[] = [
+  { id: 'wavespeed', name: 'Wavespeed LTX Talking Photo', provider: 'Wavespeed', inputType: 'image', desc: 'Generate a talking photo using audio/script' },
+  { id: 'wavespeed-ai/multitalk', name: 'InfiniteTalk (Image)', provider: 'Wavespeed', inputType: 'image', desc: 'High-realism photo face animator' },
+  { id: 'heygen', name: 'HeyGen AI Studio', provider: 'HeyGen', inputType: 'image', desc: 'Studio-quality photo-to-video avatar animator' },
+  { id: 'bytedance/lipsync/audio-to-video', name: 'Sync 1.0 (ByteDance)', provider: 'ByteDance', inputType: 'video', desc: 'High-fidelity video lipsync' },
+  { id: 'kwaivgi/kling-lipsync/audio-to-video', name: 'Sync 2.0 (Kling AI)', provider: 'Kling', inputType: 'video', desc: 'Realtime video lipsync' },
+  { id: 'wavespeed-ai/infinitetalk/video-to-video', name: 'Sync 3.0 (Wavespeed)', provider: 'Wavespeed', inputType: 'video', desc: 'Temporal video lip synchronization' },
+  { id: 'veed', name: 'VEED Lip-Sync 1.0', provider: 'Veed', inputType: 'video', desc: 'Veed style voice matching animation' },
+  { id: 'veed2', name: 'VEED Lip-Sync 2.0', provider: 'Veed', inputType: 'video', desc: 'High-fidelity Veed voice-to-video alignment' },
+  { id: 'pixverse', name: 'PixVerse Lip-Sync', provider: 'PixVerse', inputType: 'video', desc: 'Pixverse character lipsync editor' },
+];
 
 const ANONYMOUS_PERSONA: Persona = {
   id: 'none',
@@ -143,8 +167,9 @@ const PRESET_CATEGORIES = [
   }
 ];
 
-const MODE_CONFIG: { id: CreateMode; label: string; icon: any; gradient: string; ringClass: string; desc: string; bgImage: string }[] = [
-  { id: 'angle', label: 'Camera Angles', icon: Camera, gradient: 'from-cyan-600 to-sky-500', ringClass: 'focus:ring-cyan-500', desc: 'Generate 9-angle identity sheets', bgImage: 'https://images.unsplash.com/photo-1542038784456-1ea8e935640e?auto=format&fit=crop&w=300&q=80' },
+type CreateModeConfig = { id: CreateMode; label: string; icon: any; gradient: string; ringClass: string; desc: string; bgImage: string }[];
+
+const MODE_CONFIG: CreateModeConfig = [
   { id: 'image', label: 'Generate Images', icon: ImageIcon, gradient: 'from-purple-600 to-blue-600', ringClass: 'focus:ring-purple-500', desc: 'Create persona-consistent images', bgImage: 'https://images.unsplash.com/photo-1509631179647-0177331693ae?auto=format&fit=crop&w=300&q=80' },
   { id: 'video', label: 'Generate Videos', icon: Video, gradient: 'from-pink-600 to-orange-500', ringClass: 'focus:ring-pink-500', desc: 'Turn images into video scenes', bgImage: 'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?auto=format&fit=crop&w=300&q=80' },
   { id: 'talking-avatar', label: 'Talking Avatar', icon: UserRound, gradient: 'from-emerald-600 to-teal-500', ringClass: 'focus:ring-emerald-500', desc: 'Speaking avatar with voice', bgImage: 'https://images.unsplash.com/photo-1478737270239-2f02b77fc618?auto=format&fit=crop&w=300&q=80' },
@@ -198,7 +223,7 @@ const RESOLUTION_OPTIONS: Record<string, { value: 'standard' | 'hd'; label: stri
 };
 
 export default function CreateView({ persona, personas, setPersonas, onSelectPersona, subView, nav, billingInfo }: CreateViewProps) {
-  const initialPersona = persona || (personas && personas.length > 0 ? personas[0] : null);
+  const initialPersona = persona && persona.id !== 'empty' ? persona : null;
   const audioPreviewRef = useRef<HTMLAudioElement | null>(null);
 
 
@@ -208,15 +233,14 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
   const activePersona = useMemo(() => {
     if (localPersonaId === 'none') return ANONYMOUS_PERSONA;
-    return personas.find(p => p.id === localPersonaId) || initialPersona;
+    return personas.find(p => p.id === localPersonaId) || initialPersona || ANONYMOUS_PERSONA;
   }, [localPersonaId, personas, initialPersona]);
 
   useEffect(() => {
-    if (localPersonaId !== 'none' && initialPersona) {
-      setLocalPersonaId(initialPersona.id);
-    }
     if (initialPersona) {
-      setRefPersonaId(initialPersona.id);
+      setLocalPersonaId(initialPersona.id);
+    } else {
+      setLocalPersonaId('none');
     }
   }, [initialPersona?.id]);
 
@@ -253,6 +277,23 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     }
   }, [subView]);
 
+  useEffect(() => {
+    if (mode !== 'image') return;
+    const interval = setInterval(() => {
+      setActiveSlideIndex(prev => (prev + 1) % 3);
+    }, 4500);
+    return () => clearInterval(interval);
+  }, [mode]);
+
+  const [activeVideoSlideIndex, setActiveVideoSlideIndex] = useState(0);
+  useEffect(() => {
+    if (mode !== 'video') return;
+    const interval = setInterval(() => {
+      setActiveVideoSlideIndex(prev => (prev + 1) % 4);
+    }, 5500);
+    return () => clearInterval(interval);
+  }, [mode]);
+
   const updateMode = (newMode: CreateMode) => {
     if (newMode === mode) return;
     setMode(newMode);
@@ -280,7 +321,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const [isProcessing, setIsProcessing] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const [refPersonaId, setRefPersonaId] = useState<string>(initialPersona?.id || 'none');
+  const [refPersonaId, setRefPersonaId] = useState<string>('none');
   const [refImages, setRefImages] = useState<{ id: string; url: string; name: string }[]>([]);
 
   const [videoPrompt, setVideoPrompt] = useState('');
@@ -291,6 +332,10 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const [videoSourcePersonaId, setVideoSourcePersonaId] = useState<string>('none');
   const [videoSourceImage, setVideoSourceImage] = useState<string | null>(null);
   const [videoSourceImageName, setVideoSourceImageName] = useState<string | null>(null);
+  const [videoSourceVideo, setVideoSourceVideo] = useState<string | null>(null);
+  const [videoSourceVideoName, setVideoSourceVideoName] = useState<string | null>(null);
+  const [generateAudioToggle, setGenerateAudioToggle] = useState(false);
+  const [videoUploadMenuOpen, setVideoUploadMenuOpen] = useState(false);
 
   const [textTopic, setTextTopic] = useState('');
   const [textResult, setTextResult] = useState('');
@@ -303,6 +348,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const [createError, setCreateError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [copiedPromptIndex, setCopiedPromptIndex] = useState<number | null>(null);
+  const [activeSlideIndex, setActiveSlideIndex] = useState(0);
+  const [uploadMenuOpen, setUploadMenuOpen] = useState(false);
 
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [editModels, setEditModels] = useState<ModelInfo[]>([]);
@@ -310,6 +357,25 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const [videoModels, setVideoModels] = useState<ModelInfo[]>([]);
   const [selectedModel, setSelectedModel] = useState('');
   const [selectedVideoModel, setSelectedVideoModel] = useState('');
+  const [videoSubMode, setVideoSubMode] = useState<'generate' | 'edit' | 'extend'>('generate');
+
+  useEffect(() => {
+    if (!videoSubMode || videoModels.length === 0) return;
+    if (videoSubMode === 'edit') {
+      const found = videoModels.find(m => {
+        const id = m.id.toLowerCase();
+        return id.includes('v2v') || id.includes('edit') || id.includes('seedance') || id.includes('wan') || id.includes('qwen') || id.includes('veo-omni');
+      });
+      setSelectedVideoModel(found?.id || 'wavespeed-v2v:runway-gen3-v2v');
+    } else if (videoSubMode === 'extend') {
+      const found = videoModels.find(m => m.type === 'image-to-video' || m.id.includes('i2v'));
+      setSelectedVideoModel(found?.id || 'wavespeed-i2v:runway-gen3-i2v');
+    } else {
+      const found = videoModels.find(m => m.type === 'text-to-video' || m.id.includes('t2v'));
+      setSelectedVideoModel(found?.id || 'wavespeed-t2v:runway-gen3-t2v');
+    }
+  }, [videoSubMode, videoModels]);
+
   const [selectedVideoAspectRatio, setSelectedVideoAspectRatio] = useState('16:9');
   const [selectedVideoDuration, setSelectedVideoDuration] = useState(5);
   const [selectedVideoResolution, setSelectedVideoResolution] = useState('720p');
@@ -333,8 +399,12 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const [personaPickerOpen, setPersonaPickerOpen] = useState(false);
 
   const [selectedAspectRatio, setSelectedAspectRatio] = useState('1:1');
-  const [selectedResolution, setSelectedResolution] = useState<'standard' | 'hd'>('standard');
+  const [selectedResolution, setSelectedResolution] = useState<string>('1k');
   const audioUploadRef = useRef<HTMLInputElement | null>(null);
+  const videoImageLibraryInputRef = useRef<HTMLInputElement | null>(null);
+  const videoImageFilesInputRef = useRef<HTMLInputElement | null>(null);
+  const videoVideoLibraryInputRef = useRef<HTMLInputElement | null>(null);
+  const videoVideoFilesInputRef = useRef<HTMLInputElement | null>(null);
   const [uploadedAudio, setUploadedAudio] = useState<{ url: string; name: string } | null>(null);
   const [generatedFeed, setGeneratedFeed] = useState<GeneratedEntry[]>([]);
   const [focusedEntryId, setFocusedEntryId] = useState<string | null>(null);
@@ -349,7 +419,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const [playingPreviewId, setPlayingPreviewId] = useState<string | null>(null);
 
   // Talking Avatar Engine/Quality states
-  const [talkingAvatarEngine, setTalkingAvatarEngine] = useState<'wavespeed' | 'heygen'>(() => {
+  const [talkingAvatarEngine, setTalkingAvatarEngine] = useState<'wavespeed' | 'infinitetalk' | 'longcat' | 'heygen'>(() => {
     try {
       const prefs = JSON.parse(localStorage.getItem('ai_studio_prefs') || '{}');
       return prefs.heygenApiKey ? 'heygen' : 'wavespeed';
@@ -408,16 +478,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     }
   };
 
-  if (!initialPersona) {
-    return (
-      <div className="flex-1 flex flex-col h-full overflow-hidden bg-[var(--bg-base)]">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="w-8 h-8 text-emerald-500 animate-spin" />
-          <p className="text-emerald-500/60 font-bold uppercase tracking-widest text-xs">Initializing Persona...</p>
-        </div>
-      </div>
-    );
-  }
+
 
   useEffect(() => {
     fetchElevenLabsVoices().then(elVoices => {
@@ -493,10 +554,28 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const handleGenerateTalkingAvatar = async () => {
     if (isGenerating) return;
     
-    const portraitImage = selectedAvatarSource || activePersona.avatar || '';
-    if (!portraitImage && !(activePersona as any).heygenAvatarId) {
-      toast.error('Please select a portrait or record a webcam avatar first.');
-      return;
+    const activeModelConfig = LIPSYNC_MODELS.find(m => m.id === selectedLipSyncModel);
+    const isVideoInput = activeModelConfig?.inputType === 'video';
+
+    let portraitImage = '';
+    let videoReference = '';
+
+    if (isVideoInput) {
+      videoReference = selectedAvatarVideoSource || '';
+      if (!videoReference) {
+        toast.error('Please upload a reference video first.');
+        return;
+      }
+    } else {
+      portraitImage = selectedAvatarSource || activePersona.avatar || '';
+      if (!portraitImage && !(activePersona as any).heygenAvatarId && selectedLipSyncModel === 'heygen') {
+        toast.error('Please select a portrait or record a webcam avatar first.');
+        return;
+      }
+      if (!portraitImage && selectedLipSyncModel !== 'heygen') {
+        toast.error('Please select or upload a portrait image first.');
+        return;
+      }
     }
 
     setIsGenerating(true);
@@ -531,14 +610,16 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
       toast.loading('Animating avatar face (this may take a minute)...', { id: t });
       const result = await generateTalkingHead({
-        portraitImage: (activePersona as any).heygenAvatarId ? undefined : portraitImage,
+        portraitImage: isVideoInput ? undefined : ((activePersona as any).heygenAvatarId && selectedLipSyncModel === 'heygen' ? undefined : portraitImage),
+        video: isVideoInput ? videoReference : undefined,
+        model: selectedLipSyncModel,
         audioUrl,
         script: avatarScript,
         voiceName: selectedAvatarVoice,
-        engine: talkingAvatarEngine,
+        engine: selectedLipSyncModel === 'heygen' ? 'heygen' : 'wavespeed',
         heygenEngine: talkingHeygenEngine,
         heygenApiKey,
-        heygenAvatarId: (activePersona as any).heygenAvatarId || undefined,
+        heygenAvatarId: selectedLipSyncModel === 'heygen' ? ((activePersona as any).heygenAvatarId || undefined) : undefined,
       });
 
       toast.success('Talking Avatar ready!', { id: t });
@@ -554,6 +635,11 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     }
   };
   const [selectedAvatarSource, setSelectedAvatarSource] = useState('');
+  const [selectedLipSyncModel, setSelectedLipSyncModel] = useState<string>('wavespeed');
+  const [uploadedAvatarVideo, setUploadedAvatarVideo] = useState<string | null>(null);
+  const [uploadedAvatarVideoName, setUploadedAvatarVideoName] = useState<string | null>(null);
+  const [selectedAvatarVideoSource, setSelectedAvatarVideoSource] = useState<string>('');
+  const avatarVideoUploadRef = useRef<HTMLInputElement | null>(null);
   const [selectedAvatarTone, setSelectedAvatarTone] = useState('Professional');
   const [selectedAvatarFraming, setSelectedAvatarFraming] = useState('Medium Shot');
   const [selectedAvatarDuration, setSelectedAvatarDuration] = useState('30s (approx)');
@@ -677,24 +763,39 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const groupedVideoModels = useMemo(() => {
     const t2v: Record<string, ModelInfo[]> = {};
     const i2v: Record<string, ModelInfo[]> = {};
+    const v2v: Record<string, ModelInfo[]> = {};
     videoModels.forEach(m => {
-      const target = m.type === 'image-to-video' ? i2v : t2v;
+      const typeStr = (m.type || '').toLowerCase();
+      const idStr = (m.id || '').toLowerCase();
+      const isV2V = typeStr === 'video-to-video' || idStr.includes('v2v') || idStr.includes('edit') || idStr.includes('seedance') || idStr.includes('wan') || idStr.includes('qwen') || idStr.includes('veo-omni');
+      const isI2V = typeStr === 'image-to-video' || idStr.includes('i2v');
+      const target = isV2V ? v2v : (isI2V ? i2v : t2v);
       if (!target[m.provider]) target[m.provider] = [];
       target[m.provider].push(m);
     });
-    return { t2v, i2v };
+    return { t2v, i2v, v2v };
   }, [videoModels]);
 
   const selectedModelInfo = useMemo(() => models.find(m => m.id === selectedModel), [models, selectedModel]);
 
   const resolutionOpts = useMemo(() => {
-    const p = selectedModelInfo?.provider?.toLowerCase() ?? '';
-    if (p.includes('venice')) return RESOLUTION_OPTIONS.venice;
-    if (p.includes('wavespeed')) return RESOLUTION_OPTIONS.wavespeed;
-    if (p.includes('google')) return RESOLUTION_OPTIONS.google;
-    if (p.includes('openai')) return RESOLUTION_OPTIONS.openai;
-    return RESOLUTION_OPTIONS.default;
-  }, [selectedModelInfo]);
+    const opts = [{ value: '1k', label: '1K Resolution' }];
+    if (!selectedModel) return opts;
+    const mid = selectedModel.toLowerCase();
+    if (mid.includes('venice') || mid.includes('flux') || mid.includes('ultra') || mid.includes('dev') || mid.includes('pro')) {
+      opts.push({ value: '2k', label: '2K Resolution' });
+    }
+    if (mid.includes('venice') || mid.includes('ultra') || mid.includes('dev')) {
+      opts.push({ value: '4k', label: '4K Resolution' });
+    }
+    return opts;
+  }, [selectedModel]);
+
+  useEffect(() => {
+    if (!resolutionOpts.some(o => o.value === selectedResolution)) {
+      setSelectedResolution('1k');
+    }
+  }, [selectedModel, resolutionOpts, selectedResolution]);
   const isI2VModel = selectedVideoModel.startsWith('wavespeed-i2v:');
 
   const copyToClipboard = (text: string) => {
@@ -871,11 +972,20 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     setExtendResult(null);
     setExtendError(null);
 
+    const isI2V = selectedVideoModel.includes('i2v');
+    const isV2V = selectedVideoModel.toLowerCase().includes('v2v') || selectedVideoModel.toLowerCase().includes('video-to-video') || selectedVideoModel.toLowerCase().includes('edit') || selectedVideoModel.toLowerCase().includes('pulid') || selectedVideoModel.toLowerCase().includes('consist') || selectedVideoModel.toLowerCase().includes('seedance') || selectedVideoModel.toLowerCase().includes('wan') || selectedVideoModel.toLowerCase().includes('qwen') || selectedVideoModel.toLowerCase().includes('veo-omni');
+
     try {
       const sourceImg = effectiveVideoSourceImage || undefined;
-      if (isI2VModel && !sourceImg) {
+      const sourceVid = videoSourceVideo || undefined;
+      
+      if (isI2V && !sourceImg) {
         throw new Error('Image-to-video models require a source image. Select a persona or upload an image.');
       }
+      if (isV2V && !sourceVid) {
+        throw new Error('Video-to-video/editing models require an uploaded source video.');
+      }
+      
       const selectedVideoInfo = videoModels.find(m => m.id === selectedVideoModel);
       const supportsAspectRatio = selectedVideoInfo?.supportedProperties?.some(p => ['aspect_ratio', 'aspectRatio', 'ratio'].includes(p)) ?? false;
       const supportsDuration = selectedVideoInfo?.supportedProperties?.some(p => ['duration', 'length', 'seconds'].includes(p)) ?? false;
@@ -889,7 +999,9 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         naturalLook,
         supportsAspectRatio ? selectedVideoAspectRatio : undefined,
         supportsDuration ? selectedVideoDuration : undefined,
-        supportsResolution ? selectedVideoResolution : undefined
+        supportsResolution ? selectedVideoResolution : undefined,
+        sourceVid,
+        generateAudioToggle
       );
       setVideoResult(data);
     } catch (err: unknown) {
@@ -929,6 +1041,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         supportsResolution ? selectedVideoResolution : undefined
       );
       setExtendResult(data);
+      setVideoResult(data);
     } catch (err: unknown) {
       setExtendError(err instanceof Error ? err.message : 'Video extension failed.');
     } finally {
@@ -1185,7 +1298,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   };
  
   const renderVideoModelSelect = () => {
-    const { t2v, i2v } = groupedVideoModels;
+    const { t2v, i2v, v2v } = groupedVideoModels;
     const selectedVideoInfo = videoModels.find(m => m.id === selectedVideoModel);
     return (
       <div className="space-y-1.5">
@@ -1217,6 +1330,17 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               {Object.keys(i2v).length > 0 && (
                 <optgroup label="Image-to-Video">
                   {Object.entries(i2v).map(([provider, ms]) =>
+                    ms.map(m => (
+                      <option key={m.id} value={m.id}>
+                        {m.name} ({provider}){m.price > 0 ? (billingInfo?.isCreator ? ` $${m.price.toFixed(3)}` : ` ${m.price} credits`) : ' Free'}{m.nsfw ? ' 🔞' : ''}
+                      </option>
+                    ))
+                  )}
+                </optgroup>
+              )}
+              {Object.keys(v2v).length > 0 && (
+                <optgroup label="Video-to-Video">
+                  {Object.entries(v2v).map(([provider, ms]) =>
                     ms.map(m => (
                       <option key={m.id} value={m.id}>
                         {m.name} ({provider}){m.price > 0 ? (billingInfo?.isCreator ? ` $${m.price.toFixed(3)}` : ` ${m.price} credits`) : ' Free'}{m.nsfw ? ' 🔞' : ''}
@@ -1272,267 +1396,530 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     </div>
   );
 
-  const renderImageMode = () => (
-    <div className="grid grid-cols-1 lg:grid-cols-[440px_1fr] gap-5 items-start">
-      {/* ══ LEFT COLUMN: Configuration (Studio Sidebar) ══ */}
-      <div className="space-y-4 h-full overflow-y-auto pr-2 custom-scrollbar pb-20">
-        
-        {/* Reference Face & Images Card */}
-        <div className="rounded-2xl border border-white/5 bg-white/[0.02] overflow-hidden">
-          <div className="px-4 py-2.5 bg-gradient-to-r from-cyan-600/10 to-blue-600/5 border-b border-white/5 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <ImageIcon className="w-3.5 h-3.5 text-cyan-400" />
-              <span className="text-[10px] font-black text-cyan-300 uppercase tracking-wider">Reference Face & Images</span>
+    const HERO_SLIDES = [
+    {
+      title: "Nano Banana Pro",
+      desc: "Create hyper-consistent digital creator portraits with cinematic lighting and custom outfits.",
+      image: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=80",
+      thumbnails: [
+        "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=250&h=350&q=80",
+        "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=250&h=350&q=80",
+        "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=250&h=350&q=80",
+        "https://images.unsplash.com/photo-1501196354995-cbb51c65aaea?auto=format&fit=crop&w=250&h=350&q=80"
+      ],
+      badge: "Face-Consistent",
+      badgeColor: "bg-cyan-500/10 text-cyan-400 border-cyan-500/20"
+    },
+    {
+      title: "Flux 1.1 Pro",
+      desc: "Produce ultra-detailed editorial photoshoots with complex text prompts and structures.",
+      image: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=1200&q=80",
+      thumbnails: [
+        "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=250&h=350&q=80",
+        "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=250&h=350&q=80",
+        "https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?auto=format&fit=crop&w=250&h=350&q=80",
+        "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=250&h=350&q=80"
+      ],
+      badge: "Ultra Quality",
+      badgeColor: "bg-purple-500/10 text-purple-400 border-purple-500/20"
+    },
+    {
+      title: "Imagen 4 Ultra",
+      desc: "Outstanding photorealism and spatial coherence under complex multi-subject descriptions.",
+      image: "https://images.unsplash.com/photo-1509631179647-0177331693ae?auto=format&fit=crop&w=1200&q=80",
+      thumbnails: [
+        "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=250&h=350&q=80",
+        "https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=250&h=350&q=80",
+        "https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?auto=format&fit=crop&w=250&h=350&q=80",
+        "https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?auto=format&fit=crop&w=250&h=350&q=80"
+      ],
+      badge: "Photorealistic",
+      badgeColor: "bg-amber-500/10 text-amber-400 border-amber-500/20"
+    }
+  ];
+
+  const VIDEO_HERO_SLIDES = [
+    {
+      title: "Minimax v2",
+      desc: "Create dynamic cinematic video action clips with fluid subject movements and realistic physics.",
+      videoUrl: "/demo-assets/showcase-1.mp4",
+      thumbnails: [
+        "/demo-assets/showcase-1.mp4",
+        "/demo-assets/showcase-2.mp4",
+        "/demo-assets/showcase-3.mp4",
+        "/demo-assets/showcase-4.mp4"
+      ],
+      badge: "Text-to-Video",
+      badgeColor: "bg-cyan-500/10 text-cyan-400 border-cyan-500/20"
+    },
+    {
+      title: "Luma Dream Machine",
+      desc: "Produce complex physics simulations and camera pans based on static reference images.",
+      videoUrl: "/demo-assets/video-preview.mp4",
+      thumbnails: [
+        "/demo-assets/video-preview.mp4",
+        "/demo-assets/generated-talking.mp4",
+        "/demo-assets/showcase-1.mp4",
+        "/demo-assets/showcase-2.mp4"
+      ],
+      badge: "Image-to-Video",
+      badgeColor: "bg-purple-500/10 text-purple-400 border-purple-500/20"
+    },
+    {
+      title: "Kling AI 1.5",
+      desc: "Ultra-consistent human actions, facial expressions, and complex spatial object movements.",
+      videoUrl: "/demo-assets/showcase-2.mp4",
+      thumbnails: [
+        "/demo-assets/showcase-3.mp4",
+        "/demo-assets/showcase-4.mp4",
+        "/demo-assets/video-preview.mp4",
+        "/demo-assets/generated-talking.mp4"
+      ],
+      badge: "Text-to-Video",
+      badgeColor: "bg-amber-500/10 text-amber-400 border-amber-500/20"
+    },
+    {
+      title: "Runway Gen-3 Alpha",
+      desc: "Hollywood-grade cinematic outputs, photorealistic character skins, and high-fidelity movement controls.",
+      videoUrl: "/demo-assets/generated-talking.mp4",
+      thumbnails: [
+        "/demo-assets/generated-talking.mp4",
+        "/demo-assets/showcase-2.mp4",
+        "/demo-assets/showcase-4.mp4",
+        "/demo-assets/showcase-1.mp4"
+      ],
+      badge: "Video-to-Video",
+      badgeColor: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+    }
+  ];
+
+  const renderImageMode = () => {
+    const isIdentityModel = selectedModelInfo?.isIdentityModel ?? false;
+    const refPersonaImage = refPersonaId !== 'none' ? (personas.find(p => p.id === refPersonaId)?.referenceImage ?? null) : null;
+
+    return (
+      <div className="flex flex-col gap-4 w-full max-w-5xl mx-auto pb-10">
+        {/* ── TOP SECTION: Showcase Slideshow OR Generating State OR Canvas Results ── */}
+        <div className="w-full relative h-44 md:h-52 max-h-[220px] bg-gradient-to-b from-[#0B0F17]/65 to-[#0B0F17]/35 border border-white/10 rounded-[20px] overflow-hidden shadow-inner flex flex-col justify-center items-center">
+          {isGenerating || isProcessing ? (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0B0F17]/85 backdrop-blur-sm z-30 gap-2 select-none">
+              <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+              <div className="text-center">
+                <p className="text-xs font-bold text-white tracking-wide animate-pulse">
+                  {isProcessing
+                    ? (postAction === 'upscale' ? 'Upscaling image to 4K...' : 'Editing visual canvas...')
+                    : `Creating with ${selectedModelInfo?.name || 'AI'}`}
+                </p>
+                <p className="text-[9px] text-slate-500 mt-0.5">Generating {imageCount > 1 ? `${imageCount} variations` : 'image'} - please wait</p>
+              </div>
             </div>
-            {allRefImages.length > 0 && (
-              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-300">
-                {allRefImages.length} active
-              </span>
+          ) : activeVersion ? (
+            <div className="relative w-full h-full flex items-center justify-center h-44 md:h-52 max-h-[220px] select-none p-2 bg-[#070b13]/40">
+              <img src={activeVersion.imageUrl} alt="Active preview" className="max-w-full max-h-[200px] object-contain rounded-xl shadow-2xl transition-transform duration-500 hover:scale-[1.01]" />
+              
+              {/* Quick Image Download & View Action Badges */}
+              <div className="absolute bottom-2 right-2 flex items-center gap-1.5 z-20">
+                <button
+                  onClick={e => { e.stopPropagation(); downloadFile(activeVersion.imageUrl, 'png'); }}
+                  className="p-1.5 bg-black/75 backdrop-blur-sm rounded-lg text-white hover:bg-black transition-all border border-white/10 hover:border-purple-500 shadow-lg"
+                  title="Download"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={e => { e.stopPropagation(); handleImageGenerate(); }}
+                  className="p-1.5 bg-black/75 backdrop-blur-sm rounded-lg text-white hover:bg-purple-650 transition-all border border-white/10 shadow-lg"
+                  title="Regenerate"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/75 backdrop-blur-sm border border-white/15 rounded-md text-[8px] font-bold text-slate-350">
+                {activeVersion.model}
+              </div>
+            </div>
+          ) : (
+            /* Auto-playing slideshow */
+            <div className="relative w-full h-full h-44 md:h-52 max-h-[220px] flex items-center justify-between overflow-hidden px-5 md:px-8 bg-[#090D16]">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={activeSlideIndex}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 10 }}
+                  transition={{ duration: 0.5 }}
+                  className="w-full h-full flex items-center justify-between gap-6"
+                >
+                  {/* Left Side: Model Info */}
+                  <div className="flex-1 flex flex-col justify-center text-left py-4 select-none">
+                    <span className={`self-start text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full border mb-1.5 ${HERO_SLIDES[activeSlideIndex].badgeColor}`}>
+                      {HERO_SLIDES[activeSlideIndex].badge}
+                    </span>
+                    <h2 className="text-[10px] font-black uppercase text-zinc-400 tracking-wider mb-0.5 leading-none">
+                      Start Creating with
+                    </h2>
+                    <h1 className="text-xl md:text-2xl font-black tracking-tight mb-1.5 leading-tight">
+                      <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-fuchsia-450 to-pink-400">
+                        {HERO_SLIDES[activeSlideIndex].title}
+                      </span>
+                    </h1>
+                    <p className="text-[10px] md:text-xs text-slate-400 font-medium leading-relaxed max-w-md">
+                      {HERO_SLIDES[activeSlideIndex].desc}
+                    </p>
+                  </div>
+
+                  {/* Right Side: Showcase Actual Images as Thumbnails */}
+                  <div className="hidden sm:flex items-center gap-2 md:gap-3 shrink-0 py-2">
+                    {HERO_SLIDES[activeSlideIndex].thumbnails.map((thumbUrl, idx) => (
+                      <div
+                        key={idx}
+                        className="relative w-20 md:w-24 h-28 md:h-32 rounded-xl overflow-hidden border border-white/10 shadow-lg shadow-black/40 hover:scale-105 hover:border-purple-500/40 transition-all duration-300"
+                      >
+                        <img
+                          src={thumbUrl}
+                          alt={`Showcase ${idx + 1}`}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </motion.div>
+              </AnimatePresence>
+              
+              {/* Pagination Dots */}
+              <div className="absolute bottom-3 right-6 flex gap-1.5 z-25">
+                {HERO_SLIDES.map((_, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setActiveSlideIndex(i)}
+                    className={`w-2 h-2 rounded-full transition-all duration-350 ${i === activeSlideIndex ? 'w-5 bg-violet-500' : 'bg-white/20 hover:bg-white/40'}`}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Post Generation Toolkit for Active Version */}
+        {activeVersion && !isGenerating && !isProcessing && (
+          <div className="space-y-3 bg-[#0B0F17]/30 p-4 rounded-2xl border border-white/5">
+            <div className="flex gap-2">
+              <button onClick={() => setPostAction(postAction === 'edit' ? null : 'edit')} className={`flex-1 py-2.5 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all ${postAction === 'edit' ? 'bg-blue-600 text-white shadow-md' : 'bg-white/[0.04] text-[var(--text-secondary)] hover:text-white border border-white/10 hover:border-white/20'}`}>
+                <Pencil className="w-3.5 h-3.5" /> Edit Image
+              </button>
+              <button onClick={() => setPostAction(postAction === 'upscale' ? null : 'upscale')} className={`flex-1 py-2.5 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all ${postAction === 'upscale' ? 'bg-green-600 text-white shadow-md' : 'bg-white/[0.04] text-[var(--text-secondary)] hover:text-white border border-white/10 hover:border-white/20'}`}>
+                <ArrowUpCircle className="w-3.5 h-3.5" /> Upscale 4K
+              </button>
+              <button onClick={handleSaveImage} disabled={saved} className="flex-1 py-2.5 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white transition-all disabled:opacity-50 shadow-md shadow-purple-500/10">
+                {saved ? <><Check className="w-3.5 h-3.5" /> Saved!</> : <><CheckCircle className="w-3.5 h-3.5" /> Save to Vault</>}
+              </button>
+            </div>
+
+            {postAction === 'edit' && (
+              <div className="bg-[var(--bg-elevated)]/50 border border-white/10 rounded-xl p-3.5 space-y-3">
+                {renderModelSelect(selectedEditModel, setSelectedEditModel, groupedEditModels)}
+                <textarea value={editPrompt} onChange={e => setEditPrompt(e.target.value)} placeholder="Describe what to change in the active image..." className="w-full bg-[var(--bg-surface)] border border-white/5 rounded-lg px-3 py-2 text-xs text-white placeholder-[var(--text-muted)] resize-none h-16 outline-none" />
+                <div className="flex gap-2">
+                  <label className="flex-1 flex items-center gap-2 px-3 py-2 bg-[var(--bg-surface)] rounded-lg cursor-pointer hover:bg-[var(--bg-elevated)] text-xs text-[var(--text-secondary)] border border-white/5">
+                    <Upload className="w-3.5 h-3.5" />
+                    <span className="truncate">{editAdditionalImageName || 'Add reference (optional)'}</span>
+                    <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload(setEditAdditionalImage, setEditAdditionalImageName)} />
+                  </label>
+                  <button onClick={handleEdit} disabled={isProcessing || !editPrompt.trim()} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs font-bold disabled:opacity-50 text-white">
+                    {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Apply Edit'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {postAction === 'upscale' && (
+              <div className="bg-[var(--bg-elevated)]/50 border border-white/10 rounded-xl p-3.5 space-y-3">
+                {renderModelSelect(selectedUpscaleModel, setSelectedUpscaleModel, groupedUpscaleModels)}
+                <button onClick={handleUpscale} disabled={isProcessing} className="w-full py-2 bg-green-600 hover:bg-green-500 rounded-lg text-xs font-bold disabled:opacity-50 text-white flex items-center justify-center gap-1.5">
+                  {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <><ArrowUpCircle className="w-4 h-4" /> Enhance Resolution</>}
+                </button>
+              </div>
             )}
           </div>
-          <div className="p-4 space-y-4">
-            {/* Persona Reference Selection */}
-            <div className="space-y-1.5">
-              <label className="text-[9px] font-black text-[var(--text-tertiary)] uppercase tracking-wider block">
-                Subject/Persona Face Reference
-              </label>
+        )}
+
+        {/* ── INTERMEDIATE SECTION: Variation History Stream Thumbnails ── */}
+        {activeVersion && generatedFeed.length > 0 && (
+          <div className="space-y-2 bg-[#0B0F17]/20 border border-white/5 p-3.5 rounded-2xl">
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Creations History Stream</span>
+            <div className="flex gap-2.5 overflow-x-auto pb-1 scrollbar-hide select-none">
+              {generatedFeed.map(entry => {
+                const isFocused = focusedEntryId === entry.id;
+                return (
+                  <div
+                    key={entry.id}
+                    onClick={() => {
+                      setFocusedEntryId(entry.id);
+                      setImageResult({ imageUrl: entry.imageUrl, model: entry.model, promptUsed: entry.promptUsed });
+                      setImageHistory([{ imageUrl: entry.imageUrl, model: entry.model, promptUsed: entry.promptUsed, label: entry.label }]);
+                      setActiveHistoryIndex(0);
+                      setPostAction(null);
+                    }}
+                    className={`relative rounded-xl overflow-hidden border cursor-pointer transition-all shrink-0 w-16 h-20 ${
+                      isFocused ? 'border-purple-500 ring-2 ring-purple-500/20 scale-95 shadow-lg' : 'border-white/10 hover:border-white/30'
+                    }`}
+                  >
+                    <img src={entry.imageUrl} alt={entry.label} className="w-full h-full object-cover" />
+                    <div className="absolute bottom-1 left-1 px-1 py-0.5 bg-black/60 rounded text-[7px] font-bold text-white max-w-[calc(100%-8px)] truncate">
+                      {entry.label}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ── BOTTOM SECTION: Redesigned Prompt Box ── */}
+        <div className="relative bg-[#131b2e]/80 border border-white/20 rounded-[24px] p-4.5 space-y-3.5 focus-within:border-violet-500/50 focus-within:shadow-[0_0_30px_rgba(139,92,246,0.05)] transition-all duration-300">
+          
+          {/* Top Row: Dropzone popover, Upload previews, prompt input, Wand icon */}
+          <div className="flex items-start gap-4">
+            
+            {/* Upload Button (+) & Dropdown */}
+            <div className="relative shrink-0">
+              <button
+                type="button"
+                onClick={() => setUploadMenuOpen(!uploadMenuOpen)}
+                className="w-10 h-10 rounded-2xl bg-white/[0.04] border border-white/10 flex items-center justify-center text-slate-350 hover:bg-white/10 hover:text-white transition-all shadow-md"
+              >
+                <Plus size={18} />
+              </button>
+              
+              {uploadMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-29" onClick={() => setUploadMenuOpen(false)} />
+                  <div className="absolute left-0 top-full mt-2 w-48 rounded-xl border border-white/10 bg-[#0B0F17] p-1.5 shadow-2xl z-30 space-y-0.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUploadMenuOpen(false);
+                        document.getElementById('ref-image-file-input')?.click();
+                      }}
+                      className="w-full text-left px-3 py-2 rounded-lg text-xs text-slate-200 hover:bg-white/5 hover:text-white flex items-center gap-2 font-bold transition-all"
+                    >
+                      <ImageIcon size={14} className="text-cyan-400" />
+                      Photo Library
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUploadMenuOpen(false);
+                        document.getElementById('ref-image-file-input')?.click();
+                      }}
+                      className="w-full text-left px-3 py-2 rounded-lg text-xs text-slate-200 hover:bg-white/5 hover:text-white flex items-center gap-2 font-bold transition-all"
+                    >
+                      <FolderOpen size={14} className="text-violet-400" />
+                      Files
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUploadMenuOpen(false);
+                        document.getElementById('ref-image-file-input')?.click();
+                      }}
+                      className="w-full text-left px-3 py-2 rounded-lg text-xs text-slate-200 hover:bg-white/5 hover:text-white flex items-center gap-2 font-bold transition-all"
+                    >
+                      <Camera size={14} className="text-emerald-400" />
+                      Take Photo / Camera
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Prompt input field */}
+            <div className="flex-1 min-w-0">
+              <textarea
+                value={imagePrompt}
+                onChange={e => setImagePrompt(e.target.value)}
+                placeholder="Describe what you want the AI to create in vivid details..."
+                className="w-full bg-transparent border-0 outline-none resize-none text-sm text-white placeholder-slate-500 h-20 focus:ring-0 p-0"
+              />
+            </div>
+
+            {/* Enhance with AI Icon */}
+            <button
+              type="button"
+              onClick={() => handleEnhanceField(imagePrompt, setImagePrompt, 'imagePrompt')}
+              disabled={!imagePrompt.trim() || !!enhancingField}
+              className="p-2 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400 hover:bg-purple-500/20 hover:text-purple-300 transition-all disabled:opacity-30 self-start"
+              title="Enhance prompt with AI"
+            >
+              {enhancingField === 'imagePrompt' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
+            </button>
+          </div>
+
+          {/* Reference files input */}
+          <input
+            id="ref-image-file-input"
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              const files = e.target.files;
+              if (files) {
+                Array.from(files).forEach(file => handleAddRefImage(file));
+              }
+              e.target.value = '';
+            }}
+          />
+
+          {/* Uploaded Reference Thumbnails Inline Preview */}
+          {(refImages.length > 0 || refPersonaId !== 'none') && (
+            <div className="flex flex-wrap items-center gap-2 px-1 pt-1">
+              {/* Persona Reference Thumbnail */}
+              {refPersonaId !== 'none' && (() => {
+                const p = personas.find(x => x.id === refPersonaId);
+                if (!p?.referenceImage) return null;
+                return (
+                  <div className="relative w-8 h-8 rounded-lg overflow-hidden border border-emerald-500/30 shrink-0 ring-1 ring-emerald-500/20" title={`Persona face: ${p.name}`}>
+                    <img src={p.referenceImage} alt="" className="w-full h-full object-cover" />
+                    <div className="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-emerald-500 border border-[#0B0F17]" />
+                  </div>
+                );
+              })()}
+
+              {/* Custom Uploaded Thumbnails */}
+              {refImages.map(img => (
+                <div key={img.id} className="relative w-8 h-8 rounded-lg overflow-hidden border border-white/10 shrink-0 group">
+                  <img src={img.url} alt="" className="w-full h-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => setRefImages(prev => prev.filter(x => x.id !== img.id))}
+                    className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity"
+                  >
+                    <X size={10} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Bottom Row: Selection Dropdowns & CTA Generate */}
+          <div className="flex items-center justify-between gap-2 pt-2.5 border-t border-white/10 w-full overflow-x-auto scrollbar-hide">
+            <div className="flex items-center gap-1.5 shrink-0">
+              
+              {/* 1. Persona Selector Dropdown */}
               <div className="relative">
                 <select
                   value={refPersonaId}
                   onChange={(e) => setRefPersonaId(e.target.value)}
-                  className="w-full bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-xl px-2.5 py-1.5 text-xs text-white outline-none appearance-none pr-6 font-medium"
+                  className="bg-[#161f30] border border-white/10 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-200 outline-none appearance-none pr-6 hover:bg-white/[0.08] hover:border-white/20 transition-all cursor-pointer h-8 text-ellipsis overflow-hidden max-w-[130px]"
                 >
-                  <option value="none">None (Custom Uploads Only)</option>
+                  <option value="none">No Persona Reference</option>
                   {personas.map(p => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+              </div>
+
+              {/* 2. Model Selection Dropdown */}
+              <div className="relative">
+                <select
+                  value={selectedModel}
+                  onChange={e => setSelectedModel(e.target.value)}
+                  className="bg-[#161f30] border border-white/10 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-200 outline-none appearance-none pr-6 hover:bg-white/[0.08] hover:border-white/20 transition-all cursor-pointer h-8 text-ellipsis overflow-hidden max-w-[215px]"
+                >
+                  {Object.entries(groupedModels).map(([provider, list]) => (
+                    <optgroup key={provider} label={provider}>
+                      {list.map(m => (
+                        <option key={m.id} value={m.id}>
+                          {m.name} (${(m.price || 0).toFixed(3)}) {m.nsfw ? '🌶️' : ''}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+              </div>
+
+              {/* 3. Aspect Ratio Dropdown */}
+              <div className="relative">
+                <select
+                  value={selectedAspectRatio}
+                  onChange={e => setSelectedAspectRatio(e.target.value)}
+                  className="bg-[#161f30] border border-white/10 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-200 outline-none appearance-none pr-6 hover:bg-white/[0.08] hover:border-white/20 transition-all cursor-pointer h-8 text-ellipsis overflow-hidden max-w-[110px]"
+                >
+                  <option value="1:1">1:1 Square</option>
+                  <option value="16:9">16:9 Landscape</option>
+                  <option value="9:16">9:16 Shorts</option>
+                  <option value="4:5">4:5 Post</option>
+                  <option value="4:3">4:3 Widescreen</option>
+                  <option value="2:3">2:3 Tall</option>
+                  <option value="3:2">3:2 Classic</option>
+                </select>
+                <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+              </div>
+
+              {/* 4. Resolution Dropdown */}
+              <div className="relative">
+                <select
+                  value={selectedResolution}
+                  onChange={e => setSelectedResolution(e.target.value)}
+                  className="bg-[#161f30] border border-white/10 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-200 outline-none appearance-none pr-6 hover:bg-white/[0.08] hover:border-white/20 transition-all cursor-pointer h-8 text-ellipsis overflow-hidden max-w-[130px]"
+                >
+                  {resolutionOpts.map(o => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
                     </option>
                   ))}
                 </select>
-                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-[var(--text-tertiary)] pointer-events-none" />
+                <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
               </div>
-            </div>
 
-            {/* Persona Reference Image Preview / Exclude Option */}
-            {refPersonaId !== 'none' && (() => {
-              const selectedP = personas.find(p => p.id === refPersonaId);
-              const refImg = selectedP?.referenceImage;
-              return (
-                <div className="flex items-center justify-between p-2 rounded-xl bg-white/[0.02] border border-white/5">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-10 h-10 rounded-lg overflow-hidden border border-white/10 shrink-0">
-                      {refImg ? (
-                        <img src={refImg} alt="" className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full bg-[#1e293b] flex items-center justify-center text-[#64748b]">
-                          <UserRound size={16} />
-                        </div>
-                      )}
-                    </div>
-                    <div className="text-left">
-                      <p className="text-xs font-bold text-white truncate max-w-[150px]">{selectedP?.name}</p>
-                      <p className="text-[9px] text-[var(--text-muted)]">Persona Face Reference</p>
-                    </div>
-                  </div>
-                  <label className="flex items-center gap-1.5 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={excludePersonaRef}
-                      onChange={(e) => setExcludePersonaRef(e.target.checked)}
-                      className="rounded border-white/10 bg-white/5 text-purple-600 focus:ring-0 focus:ring-offset-0 w-3.5 h-3.5"
-                    />
-                    <span className="text-[10px] text-[var(--text-secondary)] font-medium select-none">Exclude</span>
-                  </label>
-                </div>
-              );
-            })()}
-
-            {/* Custom Uploads area */}
-            <div className="space-y-2">
-              <label className="text-[9px] font-black text-[var(--text-tertiary)] uppercase tracking-wider block">
-                Additional Reference Images
-              </label>
-              
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const el = document.getElementById('ref-image-file-input');
-                    if (el) el.click();
-                  }}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 border border-dashed border-white/15 hover:border-cyan-500/40 rounded-xl bg-white/[0.01] hover:bg-cyan-500/[0.02] text-xs font-semibold text-[var(--text-secondary)] hover:text-white transition-all cursor-pointer"
+              {/* 5. Number of Generations Dropdown */}
+              <div className="relative">
+                <select
+                  value={imageCount}
+                  onChange={e => setImageCount(Number(e.target.value))}
+                  className="bg-[#161f30] border border-white/10 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-200 outline-none appearance-none pr-6 hover:bg-white/[0.08] hover:border-white/20 transition-all cursor-pointer h-8 text-ellipsis overflow-hidden max-w-[110px]"
                 >
-                  <Upload className="w-3.5 h-3.5" />
-                  Upload Image
-                </button>
-                <input
-                  id="ref-image-file-input"
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  className="hidden"
-                  onChange={(e) => {
-                    const files = e.target.files;
-                    if (files) {
-                      Array.from(files).forEach(file => handleAddRefImage(file));
-                    }
-                    e.target.value = '';
-                  }}
-                />
+                  <option value={1}>1 Gen</option>
+                  <option value={2}>2 Gens</option>
+                  <option value={3}>3 Gens</option>
+                  <option value={4}>4 Gens</option>
+                </select>
+                <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
               </div>
 
-              {/* Uploaded custom images preview grid */}
-              {refImages.length > 0 && (
-                <div className="grid grid-cols-4 gap-2 pt-1">
-                  {refImages.map(img => (
-                    <div key={img.id} className="relative aspect-square rounded-lg overflow-hidden border border-white/10 group">
-                      <img src={img.url} alt={img.name} className="w-full h-full object-cover" />
-                      <button
-                        type="button"
-                        onClick={() => setRefImages(prev => prev.filter(x => x.id !== img.id))}
-                        className="absolute top-1 right-1 p-1 rounded-full bg-black/75 text-white/70 hover:text-white hover:bg-black transition-colors"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* AI Model Card */}
-        <div className="rounded-2xl border border-white/5 bg-white/[0.02] overflow-hidden">
-          <div className="px-4 py-2.5 bg-gradient-to-r from-violet-600/10 to-purple-600/5 border-b border-white/5 flex items-center gap-2">
-            <Cpu className="w-3.5 h-3.5 text-violet-400" />
-            <span className="text-[10px] font-black text-violet-300 uppercase tracking-wider">AI Model</span>
-          </div>
-          <div className="p-4 space-y-3">
-            {renderModelSelect(selectedModel, setSelectedModel, groupedModels, true, false)}
-            {selectedModelInfo && (
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-300 border border-purple-500/20">{selectedModelInfo.provider}</span>
-                {selectedModelInfo.isIdentityModel && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-300 border border-violet-500/20 flex items-center gap-0.5">★ Face-consistent</span>}
-                {selectedModelInfo.price > 0 && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20">{billingInfo?.isCreator ? `$${selectedModelInfo.price.toFixed(3)} per image` : `${selectedModelInfo.price} credits per image`}</span>}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Prompt Field - MOVED BELOW MODEL */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <label className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase tracking-wider flex items-center gap-1.5">
-              <Type className="w-3 h-3" /> Prompt
-            </label>
-            <div className="flex items-center gap-2">
+              {/* Optional Style presets builder button */}
               <button
                 type="button"
-                onClick={() => handleEnhanceField(imagePrompt, setImagePrompt, 'imagePrompt')}
-                disabled={!imagePrompt.trim() || !!enhancingField}
-                className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-400 hover:bg-purple-500/20 hover:text-purple-300 transition-all text-[9px] font-black tracking-tighter disabled:opacity-30"
+                onClick={() => setStyleOptionsOpen(!styleOptionsOpen)}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-all border h-8 ${
+                  styleOptionsOpen || activeQuickStyle || activePresetChips.length > 0 || selectedEnv !== 'None'
+                    ? 'bg-fuchsia-600/10 border-fuchsia-500/30 text-fuchsia-400'
+                    : 'bg-[#161f30] border-white/10 text-slate-350 hover:bg-white/[0.08]'
+                }`}
               >
-                {enhancingField === 'imagePrompt' ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Sparkles className="w-2.5 h-2.5" />}
-                ENHANCE
+                <Wand2 size={12} />
+                Presets
               </button>
-              {activeVersion?.promptUsed && (
-                <button
-                   onClick={() => {
-                     navigator.clipboard.writeText(activeVersion.promptUsed);
-                     setCopied(true);
-                     setTimeout(() => setCopied(false), 2000);
-                   }}
-                   className="text-[10px] font-bold text-purple-400 hover:text-purple-300 transition-colors flex items-center gap-1"
-                >
-                  {copied ? <Check size={11} /> : <Copy size={11} />} {copied ? 'Copied' : 'Copy'}
-                </button>
-              )}
             </div>
-          </div>
-          <div className="relative">
-            <textarea
-              value={imagePrompt}
-              onChange={e => setImagePrompt(e.target.value)}
-              placeholder="Describe your AI vision in detail..."
-              className="w-full bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white placeholder-[var(--text-muted)] resize-none h-24 outline-none focus:ring-2 focus:ring-purple-500"
-            />
+
+            {/* Big CTA Generate Button */}
+            <button
+              onClick={handleImageGenerate}
+              disabled={isGenerating || !selectedModel || (selectedModelInfo?.isIdentityModel && !refPersonaImage && refImages.length === 0)}
+              className="px-3.5 py-1 rounded-lg font-black text-[10px] bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 disabled:opacity-40 disabled:cursor-not-allowed text-white flex items-center gap-1 transition-all shadow-md shadow-violet-500/10 group h-7 shrink-0"
+            >
+              <Sparkles size={11} className="group-hover:animate-pulse" />
+              Generate {imageCount > 1 ? `x${imageCount}` : ''}
+            </button>
           </div>
 
-          {/* Live Compiled Prompt Preview */}
-          <div className="bg-[#111827]/40 border border-white/5 rounded-xl p-3 space-y-1.5 mt-2">
-            <div className="flex items-center gap-1.5">
-              <Sparkles className="w-3 h-3 text-cyan-400" />
-              <span className="text-[9px] font-black text-cyan-300 uppercase tracking-widest">Compiled Prompt Preview</span>
-            </div>
-            <p className="text-[10px] text-[#94A3B8] leading-relaxed select-all italic bg-black/20 p-2 rounded-lg border border-white/[0.02]">
-              A photorealistic photo of <span className="text-white font-bold">{activePersona.name || 'Anonymous Persona'}</span>
-              {selectedEnv && selectedEnv !== 'None' && selectedEnv !== 'Custom' && <>, in a <span className="text-purple-300 font-medium">{selectedEnv}</span> environment</>}
-              {selectedOutfit && selectedOutfit !== 'None' && selectedOutfit !== 'Custom' && <>, wearing a <span className="text-purple-300 font-medium">{selectedOutfit}</span></>}
-              {selectedFraming && selectedFraming !== 'None' && selectedFraming !== 'Custom' && <>, in a <span className="text-purple-300 font-medium">{selectedFraming}</span> shot</>}
-              {selectedMood && selectedMood !== 'None' && selectedMood !== 'Custom' && <>, showing a <span className="text-purple-300 font-medium">{selectedMood}</span> expression</>}
-              {activePresetChips.length > 0 && (
-                <>, styled with <span className="text-cyan-300 font-medium">{activePresetChips.map(c => PRESET_EXPANSIONS[c]).join(', ')}</span></>
-              )}
-              {imagePrompt.trim() && (
-                <>, and following instructions: <span className="text-emerald-300">"{imagePrompt.trim()}"</span></>
-              )}
-              {naturalLook && <>, capturing authentic details with candid photography and natural skin texture</>}
-              {identityLock && <>, keeping facial features perfectly consistent</>}
-              .
-            </p>
-          </div>
-        </div>
-
-        {/* Aspect Ratio Selector */}
-        <div className="space-y-2">
-          <label className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase block tracking-wider">Aspect Ratio</label>
-          <div className="grid grid-cols-4 gap-1.5">
-            {[
-              { value: '1:1', label: '1:1', desc: 'Square' },
-              { value: '16:9', label: '16:9', desc: 'Video' },
-              { value: '9:16', label: '9:16', desc: 'Shorts' },
-              { value: '4:5', label: '4:5', desc: 'Post' }
-            ].map(ar => {
-              const active = selectedAspectRatio === ar.value;
-              return (
-                <button
-                  key={ar.value}
-                  onClick={() => setSelectedAspectRatio(ar.value)}
-                  className={`flex flex-col items-center justify-center p-2 rounded-xl border text-center transition-all ${
-                    active ? 'bg-purple-600/15 border-purple-500 text-white shadow-md' : 'bg-[var(--bg-surface)] border-[var(--border-default)] text-[var(--text-tertiary)] hover:border-white/20'
-                  }`}
-                >
-                  <span className="text-xs font-bold">{ar.label}</span>
-                  <span className="text-[8px] font-medium opacity-60 mt-0.5">{ar.desc}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Collapsible Style Options & Presets */}
-        <div className="rounded-2xl border border-white/5 bg-white/[0.02] overflow-hidden">
-          <button
-            type="button"
-            onClick={() => setStyleOptionsOpen(!styleOptionsOpen)}
-            className="w-full px-4 py-3 flex items-center justify-between hover:bg-white/[0.02] transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <Wand2 className="w-3.5 h-3.5 text-fuchsia-400" />
-              <span className="text-[10px] font-black text-fuchsia-300 uppercase tracking-wider">Style Options & Presets</span>
-              {!styleOptionsOpen && (activeQuickStyle || selectedEnv !== 'None' || selectedOutfit !== 'None' || selectedFraming !== 'None' || selectedMood !== 'None') && (
-                <span className="w-1.5 h-1.5 rounded-full bg-fuchsia-500 animate-pulse" />
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[8px] text-[var(--text-muted)] font-bold uppercase">Optional</span>
-              <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-300 ${styleOptionsOpen ? 'rotate-180' : ''}`} />
-            </div>
-          </button>
-
+          {/* Style presets panel */}
           {styleOptionsOpen && (
-            <div className="border-t border-white/5 p-4 space-y-4">
+            <div className="border-t border-white/5 pt-4 space-y-4 transition-all duration-350">
+              
               {/* Preset Templates */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
@@ -1541,13 +1928,13 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                     <button onClick={clearQuickStyle} className="text-[10px] text-purple-400 hover:text-purple-300 transition-colors">Clear</button>
                   )}
                 </div>
-                <div className="grid grid-cols-3 gap-1.5">
+                <div className="grid grid-cols-2 sm:grid-cols-6 gap-1.5">
                   {QUICK_STYLES.map(qs => (
                     <button
                       key={qs.id}
                       type="button"
                       onClick={() => applyQuickStyle(qs)}
-                      className={`relative flex flex-col items-center gap-1.5 p-2.5 rounded-xl text-[10px] font-bold transition-all border overflow-hidden ${
+                      className={`relative flex flex-col items-center gap-1.5 p-2 rounded-xl text-[9px] font-bold transition-all border overflow-hidden ${
                         activeQuickStyle === qs.id
                           ? 'bg-gradient-to-br from-purple-600/40 to-violet-600/20 text-white border-purple-500/40 shadow-purple-500/20 shadow-lg'
                           : `bg-gradient-to-br ${qs.gradient} ${qs.border} text-[var(--text-secondary)] hover:text-white ${qs.glow}`
@@ -1555,14 +1942,13 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                     >
                       <span className="text-base">{qs.emoji}</span>
                       <span className="truncate w-full text-center font-extrabold">{qs.label}</span>
-                      <span className="text-[7px] text-[var(--text-muted)] font-medium truncate w-full text-center opacity-85">{qs.env}</span>
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* Style Preset Builder */}
-              <div className="space-y-3 pt-3 border-t border-white/5">
+              {/* Chips Preset Builder */}
+              <div className="space-y-2 pt-2 border-t border-white/5">
                 <div className="flex items-center justify-between">
                   <p className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase tracking-wide">Style Preset Builder</p>
                   {activePresetChips.length > 0 && (
@@ -1575,11 +1961,11 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                   )}
                 </div>
                 
-                <div className="space-y-3 max-h-[220px] overflow-y-auto pr-1 custom-scrollbar">
+                <div className="space-y-3 max-h-[140px] overflow-y-auto pr-1 custom-scrollbar">
                   {PRESET_CATEGORIES.map(category => (
-                    <div key={category.name} className="space-y-1.5">
+                    <div key={category.name} className="space-y-1">
                       <label className="text-[8px] font-black text-[var(--text-muted)] uppercase tracking-wider block">{category.name}</label>
-                      <div className="flex flex-wrap gap-1.5">
+                      <div className="flex flex-wrap gap-1">
                         {category.presets.map(preset => {
                           const isActive = activePresetChips.includes(preset);
                           return (
@@ -1591,7 +1977,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                                   prev.includes(preset) ? prev.filter(x => x !== preset) : [...prev, preset]
                                 );
                               }}
-                              className={`px-2 py-1 rounded-lg text-[9px] font-bold transition-all border ${
+                              className={`px-2 py-0.5 rounded-lg text-[8px] font-bold transition-all border ${
                                 isActive 
                                   ? 'bg-purple-600/20 border-purple-500/50 text-white shadow-sm'
                                   : 'bg-white/5 border-white/5 text-[var(--text-tertiary)] hover:border-white/15 hover:text-white'
@@ -1607,10 +1993,10 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 </div>
               </div>
 
-              {/* Style Director */}
+              {/* Style Director selectors */}
               <div className="space-y-2 pt-2 border-t border-white/5">
                 <p className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase tracking-wide">Style Director</p>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {[
                     { label: 'Environment', value: selectedEnv, onChange: (v: string) => { clearQuickStyle(); setSelectedEnv(v); }, options: ENVIRONMENTS },
                     { label: 'Outfit', value: selectedOutfit, onChange: (v: string) => { clearQuickStyle(); setSelectedOutfit(v); }, options: OUTFITS },
@@ -1623,7 +2009,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                         <select
                           value={value}
                           onChange={e => onChange(e.target.value)}
-                          className="w-full bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-xl px-2.5 py-1.5 text-xs text-white outline-none appearance-none pr-6 font-medium"
+                          className="w-full bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-xl px-2.5 py-1.5 text-[10px] text-white outline-none appearance-none pr-6 font-medium"
                         >
                           {options.map(o => <option key={o} value={o}>{o}</option>)}
                         </select>
@@ -1635,491 +2021,518 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               </div>
             </div>
           )}
+
         </div>
-
-        {/* Variations + Generate */}
-        <div className="rounded-2xl border border-white/5 bg-white/[0.02] overflow-hidden">
-          <div className="p-4 space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-black text-[var(--text-tertiary)] uppercase tracking-wider">Variations</span>
-              <div className="flex gap-1">
-                {[1, 2, 3, 4].map(n => (
-                  <button key={n} onClick={() => setImageCount(n)} className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${imageCount === n ? 'bg-gradient-to-br from-violet-600 to-purple-600 text-white shadow-md shadow-violet-500/20' : 'bg-[var(--bg-surface)] border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-white hover:border-white/20'}`}>{n}×</button>
-                ))}
-              </div>
-            </div>
-
-            {/* Generate Button */}
-            <button 
-              onClick={handleImageGenerate} 
-              disabled={isGenerating || !selectedModel || (localPersonaId === 'none' && allRefImages.length === 0)} 
-              className="w-full py-4 rounded-xl font-black text-sm bg-gradient-to-r from-violet-600 via-purple-600 to-fuchsia-600 hover:from-violet-500 hover:via-purple-500 hover:to-fuchsia-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex flex-col items-center justify-center gap-1 shadow-xl shadow-violet-500/20 text-white group"
-            >
-              {isGenerating ? (
-                <div className="flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Generating {imageCount > 1 ? `${imageCount} images` : 'image'}...</div>
-              ) : (
-                <>
-                  <div className="flex items-center gap-2"><Sparkles className="w-4 h-4 group-hover:animate-pulse" /> Generate {imageCount > 1 ? `${imageCount} Variations` : 'Image'}</div>
-                  <span className="text-[9px] opacity-50 font-medium">⌘ Enter</span>
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* ══ RIGHT COLUMN: Preview Canvas & Workspace ══ */}
-      <div className="h-full overflow-y-auto pr-2 custom-scrollbar pb-20 space-y-4">
-
-        {/* Canvas / Main focused Preview area */}
-        <div className="flex-1 min-h-[360px] max-h-[540px] flex flex-col justify-center bg-gradient-to-b from-[#0B0F17]/60 to-[#0B0F17]/30 border border-[#334155]/40 rounded-2xl overflow-hidden relative shadow-inner group">
-          {isGenerating || isProcessing ? (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0B0F17]/70 backdrop-blur-md z-30 gap-4 select-none">
-              <Loader2 className="w-12 h-12 animate-spin text-purple-500" />
-              <p className="text-xs text-[var(--text-secondary)] font-medium animate-pulse">
-                {isProcessing
-                  ? (postAction === 'upscale' ? 'Upscaling image to 4K...' : 'Editing visual canvas...')
-                  : `Creating with ${selectedModelInfo?.name || 'AI'}`}
-              </p>
-            </div>
-          ) : activeVersion ? (
-            <div className="relative h-full flex items-center justify-center select-none">
-              <img src={activeVersion.imageUrl} alt="Focused active preview" className="w-full h-full object-contain max-h-[520px] transition-transform duration-500 hover:scale-[1.01]" />
-              
-              {/* Quick Image Download & View Action Badges */}
-              <div className="absolute bottom-4 right-4 flex items-center gap-2 z-20">
-                <button
-                  onClick={e => { e.stopPropagation(); downloadFile(activeVersion.imageUrl, 'png'); }}
-                  className="p-2 bg-black/60 backdrop-blur-md rounded-xl text-white hover:bg-black/80 transition-all border border-white/10 hover:border-purple-500 shadow-lg"
-                  title="Download"
-                >
-                  <Download className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={e => { e.stopPropagation(); handleImageGenerate(); }}
-                  className="p-2 bg-black/60 backdrop-blur-md rounded-xl text-white hover:bg-purple-600/80 transition-all border border-white/10 shadow-lg"
-                  title="Regenerate"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="relative w-full h-full flex flex-col items-center justify-center min-h-[340px] p-6 select-none overflow-hidden bg-[#070b13]">
-              {/* Background grid line pattern */}
-              <div className="absolute inset-0">
-                <img 
-                  src="/canvas_empty_state.png" 
-                  alt="" 
-                  className="w-full h-full object-cover opacity-[0.02] mix-blend-overlay"
-                  style={{ filter: 'blur(3px) grayscale(100%)' }}
-                />
-                <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:32px_32px]" />
-              </div>
-              
-              {/* Subtle background glow */}
-              <div className="absolute inset-0 pointer-events-none overflow-hidden opacity-40">
-                <motion.div 
-                  animate={{ y: [0, -10, 0], opacity: [0.1, 0.15, 0.1] }}
-                  transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
-                  className="absolute top-[20%] left-[25%] w-36 h-36 bg-slate-500/10 rounded-full blur-3xl"
-                />
-              </div>
-
-              {/* Central icon with subtle ring */}
-              <div className="relative mb-6 z-10">
-                <motion.div 
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 30, repeat: Infinity, ease: 'linear' }}
-                  className="absolute -inset-2.5 rounded-full border border-dashed border-slate-700/30"
-                />
-                <div className="w-16 h-16 rounded-2xl bg-slate-900/80 border border-white/10 flex items-center justify-center backdrop-blur-md shadow-2xl">
-                  <ImageIcon size={24} className="text-slate-400" />
-                </div>
-                <motion.div 
-                  className="absolute -top-1 -right-1 w-5 h-5 bg-slate-800 rounded-md flex items-center justify-center border border-white/10 shadow-lg"
-                >
-                  <Sparkles size={10} className="text-slate-400" />
-                </motion.div>
-              </div>
-              
-              <h3 className="text-sm font-extrabold text-white mb-1 z-10 tracking-tight">Your Canvas Awaits</h3>
-              <p className="text-[11px] text-slate-500 text-center max-w-[260px] mb-5 leading-relaxed z-10">
-                Choose a model, write a prompt, and click <span className="text-violet-400 font-semibold">Generate</span> to bring your vision to life.
-              </p>
-              
-              {/* Premium step cards */}
-              <div className="flex flex-col gap-2 w-full max-w-[280px] z-10">
-                {[
-                  { step: '1', text: 'Select an AI model from the sidebar', iconColor: 'bg-slate-800 text-slate-300' },
-                  { step: '2', text: 'Describe your scene in the prompt', iconColor: 'bg-slate-800 text-slate-300' },
-                  { step: '3', text: 'Pick a preset style or customize', iconColor: 'bg-slate-800 text-slate-300' },
-                ].map((tip, i) => (
-                  <motion.div 
-                    key={tip.step}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.1 + i * 0.08, duration: 0.4 }}
-                    className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-slate-900/40 border border-white/[0.04] backdrop-blur-sm shadow-md"
-                  >
-                    <span className={`w-5 h-5 rounded-md ${tip.iconColor} text-[9px] font-black flex items-center justify-center shrink-0 shadow-inner`}>{tip.step}</span>
-                    <span className="text-[10px] text-slate-400 font-semibold">{tip.text}</span>
-                  </motion.div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Post Generation Toolkit for Active Version */}
-        {activeVersion && !isGenerating && !isProcessing && (
-          <div className="space-y-3 bg-[#0B0F17]/30 p-3 rounded-xl border border-[var(--border-subtle)]">
-            <div className="flex gap-2">
-              <button onClick={() => setPostAction(postAction === 'edit' ? null : 'edit')} className={`flex-1 py-2 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all ${postAction === 'edit' ? 'bg-blue-600 text-white shadow-md' : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-white border border-white/5 hover:border-white/10'}`}>
-                <Pencil className="w-3.5 h-3.5" /> Edit Image
-              </button>
-              <button onClick={() => setPostAction(postAction === 'upscale' ? null : 'upscale')} className={`flex-1 py-2 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all ${postAction === 'upscale' ? 'bg-green-600 text-white shadow-md' : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-white border border-white/5 hover:border-white/10'}`}>
-                <ArrowUpCircle className="w-3.5 h-3.5" /> Upscale
-              </button>
-              <button onClick={handleSaveImage} disabled={saved} className="flex-1 py-2 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 bg-purple-600 hover:bg-purple-500 text-white transition-all disabled:opacity-50 shadow-md shadow-purple-500/10">
-                {saved ? <><Check className="w-3.5 h-3.5" /> Saved!</> : <><CheckCircle className="w-3.5 h-3.5" /> Save to Vault</>}
-              </button>
-            </div>
-
-            {postAction === 'edit' && (
-              <div className="bg-[var(--bg-elevated)]/50 border border-[var(--border-default)] rounded-xl p-3 space-y-2">
-                {renderModelSelect(selectedEditModel, setSelectedEditModel, groupedEditModels)}
-                <textarea value={editPrompt} onChange={e => setEditPrompt(e.target.value)} placeholder="Describe what to change..." className="w-full bg-[var(--bg-surface)] border border-white/5 rounded-lg px-3 py-2 text-sm text-white placeholder-[var(--text-muted)] resize-none h-16 outline-none" />
-                <div className="flex gap-2">
-                  <label className="flex-1 flex items-center gap-2 px-3 py-2 bg-[var(--bg-surface)] rounded-lg cursor-pointer hover:bg-[var(--bg-elevated)] text-xs text-[var(--text-secondary)] border border-white/5">
-                    <Upload className="w-3.5 h-3.5" />
-                    <span className="truncate">{editAdditionalImageName || 'Add reference (optional)'}</span>
-                    <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload(setEditAdditionalImage, setEditAdditionalImageName)} />
-                  </label>
-                  <button onClick={handleEdit} disabled={isProcessing || !editPrompt.trim()} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs font-bold disabled:opacity-50 text-white">
-                    {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Apply'}
-                  </button>
-                </div>
-                {actionError && <p className="text-xs text-rose-400">{actionError}</p>}
-              </div>
-            )}
-
-            {postAction === 'upscale' && (
-              <div className="bg-[var(--bg-elevated)]/50 border border-[var(--border-default)] rounded-xl p-3 space-y-2">
-                {renderModelSelect(selectedUpscaleModel, setSelectedUpscaleModel, groupedUpscaleModels)}
-                <button onClick={handleUpscale} disabled={isProcessing} className="w-full py-2.5 bg-green-600 hover:bg-emerald-500 rounded-lg text-xs font-extrabold disabled:opacity-50 flex items-center justify-center gap-2 text-white">
-                  {isProcessing ? <><Loader2 className="w-4 h-4 animate-spin" /> Upscaling to 4K...</> : <><ArrowUpCircle className="w-3.5 h-3.5" /> Upscale Now</>}
-                </button>
-                {actionError && <p className="text-xs text-rose-400">{actionError}</p>}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Scrollable feed list of variation thumbnails */}
-        {generatedFeed.length > 0 && (
-          <div className="space-y-1.5 pt-1">
-            <span className="text-[10px] font-black text-[var(--text-tertiary)] uppercase tracking-wide">Variation Thumbnails</span>
-            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide select-none">
-              {generatedFeed.map(entry => {
-                const isFocused = focusedEntryId === entry.id;
-                return (
-                  <div
-                    key={entry.id}
-                    onClick={() => {
-                      setFocusedEntryId(entry.id);
-                      setImageResult({ imageUrl: entry.imageUrl, model: entry.model, promptUsed: entry.promptUsed });
-                      setImageHistory([{ imageUrl: entry.imageUrl, model: entry.model, promptUsed: entry.promptUsed, label: entry.label }]);
-                      setActiveHistoryIndex(0);
-                      setPostAction(null);
-                    }}
-                    className={`relative rounded-xl overflow-hidden border cursor-pointer transition-all shrink-0 w-20 h-24 ${
-                      isFocused ? 'border-purple-500 ring-2 ring-purple-500/30' : 'border-[#334155]/60 hover:border-white/30'
-                    }`}
-                  >
-                    <img src={entry.imageUrl} alt={entry.label} className="w-full h-full object-cover" />
-                    <div className="absolute bottom-1 left-1 px-1 py-0.5 bg-black/60 rounded text-[7px] font-bold text-white max-w-[calc(100%-8px)] truncate">
-                      {entry.label}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
 
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderVideoMode = () => {
     const selectedVideoInfo = videoModels.find(m => m.id === selectedVideoModel);
     const isGoogleVideo = selectedVideoInfo?.provider?.toLowerCase().includes('google') || false;
-    const supportsVideoAspectRatio = selectedVideoInfo?.supportedProperties?.some(p => ['aspect_ratio', 'aspectRatio', 'ratio'].includes(p)) ?? false;
-    const supportsVideoDuration = selectedVideoInfo?.supportedProperties?.some(p => ['duration', 'length', 'seconds'].includes(p)) ?? false;
-    const supportsVideoResolution = selectedVideoInfo?.supportedProperties?.some(p => ['resolution', 'quality', 'size'].includes(p)) ?? false;
+    const isI2V = selectedVideoInfo?.type === 'image-to-video' || selectedVideoModel.includes('i2v');
+    const isV2V = selectedVideoModel.toLowerCase().includes('v2v') || selectedVideoModel.toLowerCase().includes('video-to-video') || selectedVideoModel.toLowerCase().includes('edit') || selectedVideoModel.toLowerCase().includes('pulid') || selectedVideoModel.toLowerCase().includes('consist') || selectedVideoModel.toLowerCase().includes('seedance') || selectedVideoModel.toLowerCase().includes('wan') || selectedVideoModel.toLowerCase().includes('qwen') || selectedVideoModel.toLowerCase().includes('veo-omni');
 
-    const videoAspectRatioOptions = isGoogleVideo ? [
-      { value: '16:9', label: '16:9', desc: 'Landscape' },
-      { value: '9:16', label: '9:16', desc: 'Vertical' },
-      { value: '1:1', label: '1:1', desc: 'Square' }
-    ] : [
-      { value: '16:9', label: '16:9', desc: 'Landscape' },
-      { value: '9:16', label: '9:16', desc: 'Vertical' },
-      { value: '1:1', label: '1:1', desc: 'Square' },
-      { value: '4:3', label: '4:3', desc: 'Standard' },
-      { value: '3:4', label: '3:4', desc: 'Tall' },
-      { value: '21:9', label: '21:9', desc: 'Cinematic' }
+    const videoAspectRatioOptions = [
+      { value: '16:9', label: '16:9 Landscape' },
+      { value: '9:16', label: '9:16 Shorts' },
+      { value: '1:1', label: '1:1 Square' },
+      { value: '4:3', label: '4:3 Standard' },
+      { value: '2:3', label: '2:3 Tall' }
     ];
 
-    const videoResolutionOptions = isGoogleVideo ? [
-      { value: '720p', label: '720p' },
-      { value: '1080p', label: '1080p' }
-    ] : [
-      { value: '480p', label: '480p' },
-      { value: '720p', label: '720p' },
-      { value: '1080p', label: '1080p' },
-      { value: '4k', label: '4K' }
+    const videoResolutionOptions = [
+      { value: '720p', label: '720p High Def' },
+      { value: '1080p', label: '1080p Full HD' },
+      { value: '4k', label: '4K Ultra HD' }
     ];
+
+    const effectiveVideoSource = videoSourceVideo || videoSourceImage || (videoSourcePersonaId !== 'none' ? (personas.find(p => p.id === videoSourcePersonaId)?.referenceImage ?? null) : null);
 
     return (
-      <div className="grid grid-cols-1 lg:grid-cols-[440px_1fr] gap-4 items-start">
-        {/* ══ LEFT COLUMN — Controls ══ */}
-        <div className="space-y-4 h-full overflow-y-auto pr-2 custom-scrollbar pb-20">
-          {renderVideoModelSelect()}
-
-          {/* Video Generation Parameters */}
-          {(supportsVideoAspectRatio || supportsVideoResolution || supportsVideoDuration) && (
-            <div className="p-4 bg-white/[0.02] border border-white/5 rounded-2xl space-y-4">
-              <div className="flex items-center gap-2 pb-1 border-b border-white/5">
-                <Sliders className="w-3.5 h-3.5 text-pink-400" />
-                <span className="text-[10px] font-black text-pink-300 uppercase tracking-wider">Video Settings</span>
+      <div className="flex flex-col gap-4 w-full max-w-5xl mx-auto pb-10">
+        
+        {/* ── TOP SECTION: Alternating Hero Slideshow / Video Output Canvas ── */}
+        <div className="relative w-full h-44 md:h-52 max-h-[220px] rounded-[24px] border border-white/10 bg-[#0B0F17] overflow-hidden shadow-2xl">
+          {isGenerating || isExtending ? (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[#0B0F19] z-10">
+              <Loader2 className="w-8 h-8 text-pink-500 animate-spin" />
+              <p className="text-xs font-black text-white/90 animate-pulse uppercase tracking-wider">
+                {isExtending ? 'Extending Cinematic Video...' : 'Generating Cinematic Video...'}
+              </p>
+            </div>
+          ) : videoResult?.videoUrl ? (
+            <div className="relative w-full h-full flex items-center justify-center h-44 md:h-52 max-h-[220px] select-none p-2 bg-[#070b13]/40">
+              <video src={videoResult.videoUrl} controls className="max-w-full max-h-[200px] object-contain rounded-xl shadow-2xl" />
+              
+              <div className="absolute bottom-2 right-2 flex items-center gap-1.5 z-20">
+                <button
+                  onClick={e => {
+                    e.stopPropagation();
+                    const media: GeneratedImage = {
+                      id: `vid-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                      url: videoResult.videoUrl,
+                      prompt: videoPrompt,
+                      timestamp: Date.now(),
+                      model: videoResult.model,
+                      mediaType: 'video',
+                    };
+                    saveMediaToLibrary(media);
+                    setSaved(true);
+                    setTimeout(() => setSaved(false), 2000);
+                  }}
+                  className="p-1.5 bg-black/75 backdrop-blur-sm rounded-lg text-white hover:bg-black transition-all border border-white/10 hover:border-pink-500 shadow-lg flex items-center gap-1 text-[10px] font-bold"
+                  title="Save to Library"
+                >
+                  {saved ? <Check className="w-3.5 h-3.5 text-emerald-450" /> : <FolderOpen className="w-3.5 h-3.5" />}
+                  <span>{saved ? 'Saved' : 'Save'}</span>
+                </button>
+                <button
+                  onClick={e => { e.stopPropagation(); downloadFile(videoResult.videoUrl, 'mp4'); }}
+                  className="p-1.5 bg-black/75 backdrop-blur-sm rounded-lg text-white hover:bg-black transition-all border border-white/10 hover:border-pink-500 shadow-lg"
+                  title="Download"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={e => { e.stopPropagation(); handleVideoGenerate(); }}
+                  className="p-1.5 bg-black/75 backdrop-blur-sm rounded-lg text-white hover:bg-pink-650 transition-all border border-white/10 shadow-lg"
+                  title="Regenerate"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                </button>
               </div>
+              <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/75 backdrop-blur-sm border border-white/15 rounded-md text-[8px] font-bold text-slate-350">
+                {videoResult.model}
+              </div>
+            </div>
+          ) : (
+            /* Alternating Hero Video Slideshow */
+            <div className="relative w-full h-full h-44 md:h-52 max-h-[220px] flex items-center justify-between overflow-hidden px-5 md:px-8 bg-[#090D16]">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={activeVideoSlideIndex}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 10 }}
+                  transition={{ duration: 0.5 }}
+                  className="w-full h-full flex items-center justify-between gap-6"
+                >
+                  {/* Left Side: Video Model Details */}
+                  <div className="flex-1 flex flex-col justify-center text-left py-4 select-none">
+                    <span className={`self-start text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full border mb-1.5 ${VIDEO_HERO_SLIDES[activeVideoSlideIndex].badgeColor}`}>
+                      {VIDEO_HERO_SLIDES[activeVideoSlideIndex].badge}
+                    </span>
+                    <h2 className="text-[10px] font-black uppercase text-zinc-400 tracking-wider mb-0.5 leading-none">
+                      Start Creating with
+                    </h2>
+                    <h1 className="text-xl md:text-2xl font-black tracking-tight mb-1.5 leading-tight">
+                      <span className="text-transparent bg-clip-text bg-gradient-to-r from-pink-400 via-orange-400 to-amber-300">
+                        {VIDEO_HERO_SLIDES[activeVideoSlideIndex].title}
+                      </span>
+                    </h1>
+                    <p className="text-[10px] md:text-xs text-slate-400 font-medium leading-relaxed max-w-md">
+                      {VIDEO_HERO_SLIDES[activeVideoSlideIndex].desc}
+                    </p>
+                  </div>
 
-              {/* Aspect Ratio Selector */}
-              {supportsVideoAspectRatio && (
-                <div className="space-y-2">
-                  <label className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase block tracking-wider">Aspect Ratio</label>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {videoAspectRatioOptions.map(ar => {
-                      const active = selectedVideoAspectRatio === ar.value;
-                      return (
-                        <button
-                          key={ar.value}
-                          type="button"
-                          onClick={() => setSelectedVideoAspectRatio(ar.value)}
-                          className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-center transition-all ${
-                            active 
-                              ? 'bg-pink-500/10 border-pink-500/40 text-pink-300 shadow-md shadow-pink-500/5' 
-                              : 'bg-[var(--bg-elevated)] border-[var(--border-default)] text-[var(--text-tertiary)] hover:border-white/20 hover:text-white'
-                          }`}
-                        >
-                          <span className="text-xs font-bold">{ar.label}</span>
-                          <span className="text-[8px] font-medium opacity-60 mt-0.5">{ar.desc}</span>
-                        </button>
-                      );
-                    })}
+                  {/* Right Side: Showcase Video Thumbnails */}
+                  <div className="hidden sm:flex items-center gap-2 md:gap-3 shrink-0 py-2">
+                    {VIDEO_HERO_SLIDES[activeVideoSlideIndex].thumbnails.map((thumbUrl, idx) => (
+                      <div
+                        key={idx}
+                        className="relative w-20 md:w-24 h-28 md:h-32 rounded-xl overflow-hidden border border-white/10 bg-black shadow-lg shadow-black/40 hover:scale-105 hover:border-pink-500/40 transition-all duration-300"
+                      >
+                        <video
+                          src={thumbUrl}
+                          autoPlay
+                          loop
+                          muted
+                          playsInline
+                          preload="auto"
+                          className="w-full h-full object-cover pointer-events-none"
+                        />
+                      </div>
+                    ))}
                   </div>
-                </div>
-              )}
-
-              {/* Resolution Selector */}
-              {supportsVideoResolution && (
-                <div className="space-y-2">
-                  <label className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase block tracking-wider">Resolution</label>
-                  <div className="grid grid-cols-4 gap-1.5">
-                    {videoResolutionOptions.map(resOption => {
-                      const active = selectedVideoResolution === resOption.value;
-                      return (
-                        <button
-                          key={resOption.value}
-                          type="button"
-                          onClick={() => setSelectedVideoResolution(resOption.value)}
-                          className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl border text-center transition-all ${
-                            active 
-                              ? 'bg-pink-500/10 border-pink-500/40 text-pink-300 shadow-md shadow-pink-500/5' 
-                              : 'bg-[var(--bg-elevated)] border-[var(--border-default)] text-[var(--text-tertiary)] hover:border-white/20 hover:text-white'
-                          }`}
-                        >
-                          <span className="text-xs font-bold">{resOption.label}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Duration Selector */}
-              {supportsVideoDuration && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase tracking-wider">Duration</label>
-                    <span className="text-xs font-black text-pink-400 bg-pink-500/10 px-2 py-0.5 rounded-md border border-pink-500/20">{selectedVideoDuration} seconds</span>
-                  </div>
-                  <div className="flex items-center gap-3 bg-[var(--bg-elevated)] border border-[var(--border-default)] p-3 rounded-xl">
-                    <span className="text-[10px] text-[var(--text-muted)] font-bold">3s</span>
-                    <input
-                      type="range"
-                      min="3"
-                      max="15"
-                      step="1"
-                      value={selectedVideoDuration}
-                      onChange={e => setSelectedVideoDuration(Number(e.target.value))}
-                      className="w-full h-1 bg-black/40 rounded-lg appearance-none cursor-pointer accent-pink-500 focus:outline-none"
-                    />
-                    <span className="text-[10px] text-[var(--text-muted)] font-bold">15s</span>
-                  </div>
-                </div>
-              )}
+                </motion.div>
+              </AnimatePresence>
             </div>
           )}
-
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <label className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase tracking-wider flex items-center gap-1.5">
-              <Type className="w-3 h-3" /> Prompt
-            </label>
-            <button
-              type="button"
-              onClick={() => handleEnhanceField(videoPrompt, setVideoPrompt, 'videoPrompt')}
-              disabled={!videoPrompt.trim() || !!enhancingField}
-              className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-pink-500/10 border border-pink-500/20 text-pink-400 hover:bg-pink-500/20 hover:text-pink-300 transition-all text-[9px] font-black tracking-tighter disabled:opacity-30"
-            >
-              {enhancingField === 'videoPrompt' ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Sparkles className="w-2.5 h-2.5" />}
-              ENHANCE
-            </button>
-          </div>
-          <div className="relative">
-            <textarea
-              value={videoPrompt}
-              onChange={e => setVideoPrompt(e.target.value)}
-              placeholder="Describe the video you want to create..."
-              className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white placeholder-[var(--text-muted)] resize-none h-28 outline-none focus:ring-2 focus:ring-pink-500"
-            />
-          </div>
         </div>
 
-        <div className="space-y-1.5">
-          <label className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase flex items-center gap-1.5">
-            <ImageIcon className="w-3 h-3" /> {isI2VModel ? 'Source Image' : 'Reference Image'}
-            {isI2VModel && <span className="text-rose-400 text-[9px] font-normal normal-case ml-0.5">(required)</span>}
-            {!isI2VModel && <span className="text-[var(--text-muted)] text-[9px] font-normal normal-case ml-0.5">(optional)</span>}
-          </label>
-          <div className="flex gap-3 items-start">
-            {effectiveVideoSourceImage && (
-              <img src={effectiveVideoSourceImage} alt="" className="w-16 h-16 rounded-xl object-cover shrink-0 border border-[var(--border-default)] shadow-sm" />
-            )}
-            <div className="flex-1 space-y-1.5">
+        {/* ── BOTTOM SECTION: Curved Premium Video Prompt Box ── */}
+        <div className="relative bg-[#131b2e]/80 border border-white/20 rounded-[24px] p-4.5 space-y-3.5 focus-within:border-pink-500/50 focus-within:shadow-[0_0_30px_rgba(244,63,94,0.05)] transition-all duration-300">
+          
+          {/* Sub-Mode Selector Tabs */}
+          <div className="flex border-b border-white/5 bg-[#0F1420]/45 p-1 rounded-xl">
+            {[
+              { id: 'generate', label: 'Generate Video', desc: 'Create from text or image' },
+              { id: 'edit', label: 'Edit Video / V2V', desc: 'Modify using reference video' },
+              { id: 'extend', label: 'Extend Video', desc: 'Lengthen from last frame' }
+            ].map(subMode => {
+              const isActive = videoSubMode === subMode.id;
+              return (
+                <button
+                  key={subMode.id}
+                  type="button"
+                  onClick={() => setVideoSubMode(subMode.id as any)}
+                  className={`flex-1 py-1.5 px-3 rounded-lg transition-all text-center flex flex-col items-center justify-center ${
+                    isActive
+                      ? 'bg-gradient-to-r from-pink-600/10 to-orange-500/10 border border-pink-500/30 text-white shadow-lg'
+                      : 'border border-transparent text-slate-400 hover:text-slate-200 hover:bg-white/[0.02]'
+                  }`}
+                >
+                  <span className="text-xs font-black tracking-wide leading-none">{subMode.label}</span>
+                  <span className="text-[9px] text-slate-500 mt-0.5 hidden md:inline font-medium">{subMode.desc}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex items-start gap-4">
+            {/* Multi-Format Plus Dropdown (Images & Videos) */}
+            <div className="relative shrink-0">
+              <button
+                type="button"
+                onClick={() => setVideoUploadMenuOpen(!videoUploadMenuOpen)}
+                className="w-10 h-10 rounded-2xl bg-white/[0.04] border border-white/10 flex items-center justify-center text-slate-350 hover:bg-white/10 hover:text-white transition-all shadow-md"
+              >
+                <Plus size={18} />
+              </button>
+
+              {videoUploadMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-29" onClick={() => setVideoUploadMenuOpen(false)} />
+                  <div className="absolute left-0 top-full mt-2 w-52 rounded-xl border border-white/10 bg-[#0B0F17] p-1.5 shadow-2xl z-30 space-y-1 select-none">
+                    {/* Image Group */}
+                    <div className="px-2.5 py-1 text-[9px] font-black text-slate-500 uppercase tracking-widest border-b border-white/5">
+                      Upload Image
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setVideoUploadMenuOpen(false);
+                        videoImageLibraryInputRef.current?.click();
+                      }}
+                      className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs text-slate-200 hover:bg-white/5 hover:text-white flex items-center gap-2 font-bold transition-all"
+                    >
+                      <ImageIcon size={13} className="text-cyan-400" />
+                      Photo Library
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setVideoUploadMenuOpen(false);
+                        videoImageFilesInputRef.current?.click();
+                      }}
+                      className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs text-slate-200 hover:bg-white/5 hover:text-white flex items-center gap-2 font-bold transition-all"
+                    >
+                      <FolderOpen size={13} className="text-violet-400" />
+                      Browse Files
+                    </button>
+
+                    {/* Video Group */}
+                    <div className="px-2.5 py-1 pt-1.5 text-[9px] font-black text-slate-500 uppercase tracking-widest border-b border-white/5">
+                      Upload Video
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setVideoUploadMenuOpen(false);
+                        videoVideoLibraryInputRef.current?.click();
+                      }}
+                      className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs text-slate-200 hover:bg-white/5 hover:text-white flex items-center gap-2 font-bold transition-all"
+                    >
+                      <Film size={13} className="text-pink-400" />
+                      Video Library
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setVideoUploadMenuOpen(false);
+                        videoVideoFilesInputRef.current?.click();
+                      }}
+                      className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs text-slate-200 hover:bg-white/5 hover:text-white flex items-center gap-2 font-bold transition-all"
+                    >
+                      <FolderOpen size={13} className="text-violet-400" />
+                      Browse Files
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Hidden iOS/iPad Inputs */}
+            <input
+              ref={videoImageLibraryInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={e => {
+                handleFileUpload(setVideoSourceImage, setVideoSourceImageName)(e);
+                setVideoSourceVideo(null);
+                setVideoSourceVideoName(null);
+              }}
+            />
+            <input
+              ref={videoImageFilesInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={e => {
+                handleFileUpload(setVideoSourceImage, setVideoSourceImageName)(e);
+                setVideoSourceVideo(null);
+                setVideoSourceVideoName(null);
+              }}
+            />
+            <input
+              ref={videoVideoLibraryInputRef}
+              type="file"
+              accept="video/*"
+              className="hidden"
+              onChange={e => {
+                handleFileUpload(setVideoSourceVideo, setVideoSourceVideoName)(e);
+                setVideoSourceImage(null);
+                setVideoSourceImageName(null);
+              }}
+            />
+            <input
+              ref={videoVideoFilesInputRef}
+              type="file"
+              accept="video/*"
+              className="hidden"
+              onChange={e => {
+                handleFileUpload(setVideoSourceVideo, setVideoSourceVideoName)(e);
+                setVideoSourceImage(null);
+                setVideoSourceImageName(null);
+              }}
+            />
+
+             {/* Prompt input field */}
+            <div className="flex-1 relative">
+              {videoSubMode === 'extend' && !videoResult?.videoUrl ? (
+                <div className="w-full h-20 flex flex-col items-center justify-center bg-black/20 rounded-xl border border-dashed border-white/15 px-4 text-center select-none">
+                  <VideoOff className="w-5 h-5 text-slate-500 mb-1" />
+                  <p className="text-[10px] font-bold text-slate-400">No generated video found</p>
+                  <p className="text-[9px] text-slate-400">Generate or play a video above first to extend it.</p>
+                </div>
+              ) : (
+                <textarea
+                  value={videoPrompt}
+                  onChange={e => setVideoPrompt(e.target.value)}
+                  placeholder={
+                    videoSubMode === 'extend'
+                      ? "Describe how the video should continue (e.g. they walk into the room)..."
+                      : (isV2V ? "Enter video editing instructions (e.g. make background snowy)..." : "Describe the video you want to generate in detail...")
+                  }
+                  className="w-full bg-transparent border-0 text-slate-100 placeholder-slate-500 focus:ring-0 outline-none resize-none text-sm h-20 scrollbar-hide py-1"
+                />
+              )}
+              
+              {/* Reference Attachment Preview */}
+              {effectiveVideoSource && (
+                <div className="absolute bottom-2 left-0 flex items-center gap-2 bg-black/60 border border-white/10 rounded-xl p-1.5 pr-3 shadow-lg max-w-[280px]">
+                  {videoSourceVideo ? (
+                    <Film className="w-7 h-7 text-violet-400 p-1.5 bg-white/5 rounded-lg shrink-0" />
+                  ) : (
+                    <img src={effectiveVideoSource} className="w-7 h-7 rounded-lg object-cover shrink-0" alt="Ref" />
+                  )}
+                  <span className="text-[10px] font-bold text-slate-300 truncate">
+                    {videoSourceVideoName || videoSourceImageName || (videoSourcePersonaId !== 'none' ? personas.find(p => p.id === videoSourcePersonaId)?.name : 'Attached Reference')}
+                  </span>
+                  <button 
+                    onClick={() => {
+                      setVideoSourcePersonaId('none');
+                      setVideoSourceImage(null);
+                      setVideoSourceImageName(null);
+                      setVideoSourceVideo(null);
+                      setVideoSourceVideoName(null);
+                    }} 
+                    className="ml-auto text-slate-400 hover:text-white transition-colors"
+                  >
+                    <X size={10} />
+                  </button>
+                </div>
+              )}
+
+              {/* Prompt enhancement button */}
+              <button
+                type="button"
+                onClick={() => handleEnhanceField(videoPrompt, setVideoPrompt, 'videoPrompt')}
+                disabled={!videoPrompt.trim() || !!enhancingField}
+                className="absolute right-1 top-1 p-2 rounded-xl text-slate-400 hover:text-pink-400 hover:bg-white/[0.04] transition-all disabled:opacity-40"
+              >
+                {enhancingField === 'videoPrompt' ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-pink-400" />
+                ) : (
+                  <Sparkles size={16} />
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Lower Parameter Toolbar */}
+          <div className="flex items-center justify-between gap-2 pt-2.5 border-t border-white/10 w-full overflow-x-auto scrollbar-hide">
+            <div className="flex items-center gap-1.5 shrink-0">
+              
+              {/* 1. Persona Selector Dropdown */}
               <div className="relative">
                 <select
                   value={videoSourcePersonaId}
-                  onChange={e => { setVideoSourcePersonaId(e.target.value); setVideoSourceImage(null); setVideoSourceImageName(null); }}
-                  className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2 text-sm text-white outline-none appearance-none pr-8"
+                  onChange={(e) => {
+                    setVideoSourcePersonaId(e.target.value);
+                    setVideoSourceImage(null);
+                    setVideoSourceImageName(null);
+                    setVideoSourceVideo(null);
+                    setVideoSourceVideoName(null);
+                  }}
+                  className="bg-[#161f30] border border-white/10 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-200 outline-none appearance-none pr-6 hover:bg-white/[0.08] hover:border-white/20 transition-all cursor-pointer h-8 text-ellipsis overflow-hidden max-w-[130px]"
                 >
-                  <option value="none">{isI2VModel ? 'Select a persona…' : 'No persona reference'}</option>
-                  {personas.filter(p => p.referenceImage).map(p => (
+                  <option value="none">No Persona Reference</option>
+                  {personas.map(p => (
                     <option key={p.id} value={p.id}>{p.name}</option>
                   ))}
                 </select>
-                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-tertiary)] pointer-events-none" />
+                <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
               </div>
-              <label className="flex items-center gap-2 px-3 py-1.5 bg-[var(--bg-elevated)] border border-dashed border-[var(--border-strong)] rounded-xl cursor-pointer hover:bg-[var(--bg-overlay)]/50 transition-colors">
-                <Upload className="w-3.5 h-3.5 text-[var(--text-secondary)] shrink-0" />
-                <span className="text-[10px] text-[var(--text-secondary)] truncate">{videoSourceImageName || 'Upload custom image'}</span>
-                <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload(setVideoSourceImage, setVideoSourceImageName)} />
-              </label>
-            </div>
-          </div>
-          {effectiveVideoSourceImage && (
-            <button onClick={() => { setVideoSourcePersonaId('none'); setVideoSourceImage(null); setVideoSourceImageName(null); }} className="text-[9px] font-bold text-[var(--text-tertiary)] hover:text-rose-400 transition-colors flex items-center gap-1">
-              <X size={10} /> Clear image
-            </button>
-          )}
-        </div>
 
-        <button
-          onClick={handleVideoGenerate}
-          disabled={isGenerating || !selectedVideoModel || !videoPrompt.trim()}
-          className="w-full py-3.5 rounded-xl font-black text-xs uppercase tracking-widest bg-gradient-to-r from-pink-600 to-orange-500 hover:from-pink-500 hover:to-orange-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-lg shadow-pink-500/20 active:scale-[0.98]"
-        >
-          {isGenerating ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating Video...</> : <><Video className="w-4 h-4" /> Generate Video</>}
-        </button>
-      </div>
-
-      {/* ══ RIGHT COLUMN — Output ══ */}
-      <div className="h-full overflow-y-auto pr-2 custom-scrollbar pb-20 space-y-4">
-        <div className="aspect-video rounded-2xl bg-[var(--bg-base)] border border-[var(--border-subtle)] overflow-hidden relative">
-          {isGenerating ? (
-            <VideoSamplePreview isLoading={isGenerating} loadingText="Generating cinematic video…" />
-          ) : videoResult?.videoUrl ? (
-            <>
-              <video src={videoResult.videoUrl} controls className="absolute inset-0 w-full h-full object-contain" />
-              <div className="absolute top-2 left-2 px-2.5 py-1 bg-black/60 backdrop-blur-md rounded-lg">
-                <span className="text-[10px] text-white font-medium">{videoResult.model}</span>
+              {/* 2. Video Model Selector Dropdown */}
+              <div className="relative">
+                <select
+                  value={selectedVideoModel}
+                  onChange={e => setSelectedVideoModel(e.target.value)}
+                  className="bg-[#161f30] border border-white/10 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-200 outline-none appearance-none pr-6 hover:bg-white/[0.08] hover:border-white/20 transition-all cursor-pointer h-8 text-ellipsis overflow-hidden max-w-[215px]"
+                >
+                  {videoSubMode === 'generate' && (
+                    <>
+                      <optgroup label="Text-to-Video">
+                        {Object.entries(groupedVideoModels.t2v).map(([provider, list]) =>
+                          list.map(m => (
+                            <option key={m.id} value={m.id}>
+                              {m.name} [T2V] (${(m.price || 0).toFixed(3)}) {m.nsfw ? '🌶️' : ''}
+                            </option>
+                          ))
+                        )}
+                      </optgroup>
+                      <optgroup label="Image-to-Video">
+                        {Object.entries(groupedVideoModels.i2v).map(([provider, list]) =>
+                          list.map(m => (
+                            <option key={m.id} value={m.id}>
+                              {m.name} [I2V] (${(m.price || 0).toFixed(3)}) {m.nsfw ? '🌶️' : ''}
+                            </option>
+                          ))
+                        )}
+                      </optgroup>
+                    </>
+                  )}
+                  {videoSubMode === 'edit' && (
+                    <optgroup label="Video-to-Video">
+                      <option value="wavespeed-v2v:runway-gen3-v2v">Runway Gen-3 V2V ($0.080) 🌶️</option>
+                      <option value="wavespeed-v2v:kling-v2v">Kling v2v Editing ($0.060)</option>
+                      {Object.entries(groupedVideoModels.v2v).map(([provider, list]) =>
+                        list.map(m => (
+                          <option key={m.id} value={m.id}>
+                            {m.name} [V2V] (${(m.price || 0).toFixed(3)}) {m.nsfw ? '🌶️' : ''}
+                          </option>
+                        ))
+                      )}
+                    </optgroup>
+                  )}
+                  {videoSubMode === 'extend' && (
+                    <optgroup label="Image-to-Video (Extenders)">
+                      {Object.entries(groupedVideoModels.i2v).map(([provider, list]) =>
+                        list.map(m => (
+                          <option key={m.id} value={m.id}>
+                            {m.name} [Extend] (${(m.price || 0).toFixed(3)}) {m.nsfw ? '🌶️' : ''}
+                          </option>
+                        ))
+                      )}
+                    </optgroup>
+                  )}
+                </select>
+                <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
               </div>
-            </>
-          ) : (
-            <VideoSamplePreview />
-          )}
-        </div>
 
-        {videoResult && (
-          <div className="space-y-2">
-            <div className="flex gap-2">
-              <button onClick={() => downloadFile(videoResult.videoUrl, 'mp4')} className="flex-1 py-2 rounded-xl text-xs font-bold bg-[var(--bg-elevated)] text-[var(--text-primary)] hover:text-white flex items-center justify-center gap-1.5">
-                <Download className="w-3.5 h-3.5" /> Download
-              </button>
-              <button onClick={handleSaveVideo} disabled={saved} className="flex-1 py-2 rounded-xl text-xs font-bold bg-pink-600 hover:bg-pink-500 text-white flex items-center justify-center gap-1.5 disabled:opacity-50">
-                {saved ? <><Check className="w-3.5 h-3.5" /> Saved!</> : <><CheckCircle className="w-3.5 h-3.5" /> Save to Library</>}
+              {/* 3. Duration Selector Dropdown */}
+              <div className="relative">
+                <select
+                  value={selectedVideoDuration}
+                  onChange={e => setSelectedVideoDuration(Number(e.target.value))}
+                  className="bg-[#161f30] border border-white/10 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-200 outline-none appearance-none pr-6 hover:bg-white/[0.08] hover:border-white/20 transition-all cursor-pointer h-8 text-ellipsis overflow-hidden max-w-[110px]"
+                >
+                  <option value={3}>3 Seconds</option>
+                  <option value={5}>5 Seconds</option>
+                  <option value={8}>8 Seconds</option>
+                  <option value={12}>12 Seconds</option>
+                  <option value={15}>15 Seconds</option>
+                </select>
+                <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+              </div>
+
+              {/* 4. Aspect Ratio / Resolution Dropdown */}
+              <div className="relative">
+                <select
+                  value={selectedVideoResolution}
+                  onChange={e => setSelectedVideoResolution(e.target.value)}
+                  className="bg-[#161f30] border border-white/10 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-200 outline-none appearance-none pr-6 hover:bg-white/[0.08] hover:border-white/20 transition-all cursor-pointer h-8 text-ellipsis overflow-hidden max-w-[130px]"
+                >
+                  {videoResolutionOptions.map(o => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+              </div>
+
+              {/* 5. Toggle Generate Audio Switch */}
+              <button
+                type="button"
+                onClick={() => setGenerateAudioToggle(!generateAudioToggle)}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all border h-8 ${
+                  generateAudioToggle
+                    ? 'bg-emerald-600/10 border-emerald-500/30 text-emerald-400'
+                    : 'bg-[#161f30] border-white/10 text-slate-350 hover:bg-white/[0.08]'
+                }`}
+              >
+                <Volume2 size={12} />
+                <span>Audio {generateAudioToggle ? 'ON' : 'OFF'}</span>
               </button>
             </div>
+
+             {/* Big CTA Generate Video Button */}
             <button
-              onClick={handleExtendVideo}
-              disabled={isExtending || isGenerating}
-              className="w-full py-2.5 rounded-xl text-xs font-bold bg-violet-600/20 border border-violet-500/30 text-violet-300 hover:bg-violet-600/30 hover:text-violet-200 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+              onClick={videoSubMode === 'extend' ? handleExtendVideo : handleVideoGenerate}
+              disabled={
+                isGenerating || isExtending || !selectedVideoModel || !videoPrompt.trim() ||
+                (videoSubMode === 'extend' && !videoResult?.videoUrl) ||
+                (videoSubMode === 'generate' && isI2V && !effectiveVideoSource) ||
+                (videoSubMode === 'edit' && !videoSourceVideo)
+              }
+              className="px-3.5 py-1 rounded-lg font-black text-[10px] bg-gradient-to-r from-pink-600 to-orange-500 hover:from-pink-500 hover:to-orange-400 disabled:opacity-40 disabled:cursor-not-allowed text-white flex items-center gap-1 transition-all shadow-md shadow-pink-500/10 group h-7 shrink-0"
             >
               {isExtending ? (
-                <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Extracting last frame & generating…</>
+                <>
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  <span>Extending...</span>
+                </>
               ) : (
-                <><ChevronsRight className="w-3.5 h-3.5" /> Extend Video</>
+                <>
+                  <Video size={11} className="group-hover:animate-pulse" />
+                  <span>
+                    {videoSubMode === 'extend' ? 'Extend Video' : (videoSubMode === 'edit' ? 'Edit Video' : 'Generate Video')}
+                  </span>
+                </>
               )}
             </button>
-
-            {extendError && (
-              <div className="flex items-center gap-2 bg-rose-500/10 border border-rose-500/20 rounded-xl px-3 py-2">
-                <AlertCircle className="w-3.5 h-3.5 text-rose-400 flex-shrink-0" />
-                <span className="text-xs text-rose-300">{extendError}</span>
-              </div>
-            )}
-
-            {extendResult?.videoUrl && (
-              <div className="space-y-2 pt-1">
-                <div className="flex items-center gap-2">
-                  <div className="h-px flex-1 bg-[var(--bg-elevated)]" />
-                  <span className="text-[10px] uppercase tracking-widest text-violet-400 font-bold">Extended</span>
-                  <div className="h-px flex-1 bg-[var(--bg-elevated)]" />
-                </div>
-                <div className="aspect-video rounded-2xl bg-[var(--bg-base)] border border-violet-500/20 overflow-hidden relative">
-                  <video src={extendResult.videoUrl} controls autoPlay loop className="absolute inset-0 w-full h-full object-contain" />
-                  <div className="absolute top-2 left-2 px-2.5 py-1 bg-black/60 backdrop-blur-md rounded-lg">
-                    <span className="text-[10px] text-violet-300 font-medium">{extendResult.model} · Extended</span>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={() => downloadFile(extendResult.videoUrl, 'mp4')} className="flex-1 py-2 rounded-xl text-xs font-bold bg-[var(--bg-elevated)] text-[var(--text-primary)] hover:text-white flex items-center justify-center gap-1.5">
-                    <Download className="w-3.5 h-3.5" /> Download Extended
-                  </button>
-                  <button onClick={handleSaveExtendedVideo} className="flex-1 py-2 rounded-xl text-xs font-bold bg-violet-600 hover:bg-violet-500 text-white flex items-center justify-center gap-1.5">
-                    <CheckCircle className="w-3.5 h-3.5" /> Save Extended
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
-        )}
+
+        </div>
+
       </div>
-    </div>
-  );
+    );
   };
 
   const renderTextMode = () => {
@@ -2357,234 +2770,6 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     );
   };
 
-  const HORIZONTAL_POSITIONS = [
-    { id: 1,  label: 'Front',       row: 0, col: 1 },
-    { id: 2,  label: 'FR',           row: 0, col: 2 },
-    { id: 3,  label: 'Right',        row: 1, col: 2 },
-    { id: 4,  label: 'BR',           row: 2, col: 2 },
-    { id: 5,  label: 'Back',         row: 2, col: 1 },
-    { id: 6,  label: 'BL',           row: 2, col: 0 },
-    { id: 7,  label: 'Left',         row: 1, col: 0 },
-    { id: 8,  label: 'FL',           row: 0, col: 0 },
-  ];
-
-  const VERTICAL_POSITIONS = [
-    { id: 0, label: "Bird's Eye" },
-    { id: 1, label: 'High Angle'  },
-    { id: 2, label: 'Eye Level'   },
-    { id: 3, label: 'Low Angle'   },
-  ];
-
-  const DISTANCE_OPTIONS = [
-    { id: 0,  label: 'Close-Up'     },
-    { id: 1,  label: 'Medium Shot'  },
-    { id: 2,  label: 'Wide Shot'    },
-  ];
-
-  const renderAngleMode = () => {
-    const angleSourceImg = angleSourceImage || persona.referenceImage || null;
-    const angleModelInfo = ANGLE_MODELS.find(m => m.id === angleModel);
-
-    const grid: (typeof HORIZONTAL_POSITIONS[0] | null)[][] = [
-      [null, null, null],
-      [null, null, null],
-      [null, null, null],
-    ];
-    HORIZONTAL_POSITIONS.forEach(p => { grid[p.row][p.col] = p; });
-
-    return (
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-
-        {/* ══ LEFT COLUMN — Controls ══ */}
-        <div className="space-y-5">
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase flex items-center gap-1.5">
-              <Upload className="w-3 h-3" /> Source Image
-            </label>
-            <label className="flex items-center gap-3 px-3 py-3 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl cursor-pointer hover:bg-[var(--bg-overlay)]/50 transition-colors">
-              {angleSourceImage ? (
-                <img src={angleSourceImage} alt="" className="w-14 h-14 rounded-lg object-cover" />
-              ) : persona.referenceImage ? (
-                <img src={persona.referenceImage} alt="" className="w-14 h-14 rounded-lg object-cover opacity-60" />
-              ) : (
-                <div className="w-14 h-14 rounded-lg bg-[var(--bg-overlay)] flex items-center justify-center">
-                  <Upload className="w-5 h-5 text-[var(--text-tertiary)]" />
-                </div>
-              )}
-              <div className="flex-1 min-w-0">
-                <p className="text-sm text-white truncate">{angleSourceImageName || (persona.referenceImage ? 'Using persona reference' : 'Upload image to reangle')}</p>
-                <p className="text-[10px] text-[var(--text-tertiary)]">Upload a photo to change its camera angle</p>
-              </div>
-              <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload(setAngleSourceImage, setAngleSourceImageName)} />
-            </label>
-            {angleSourceImage && (
-              <button onClick={() => { setAngleSourceImage(null); setAngleSourceImageName(null); }} className="text-[10px] text-[var(--text-tertiary)] hover:text-rose-400 transition-colors">
-                Remove uploaded image
-              </button>
-            )}
-          </div>
-
-          <div className="space-y-3">
-            <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase flex items-center gap-1.5">
-              <Camera className="w-3 h-3" /> Camera Angle
-            </label>
-            <div className="bg-[var(--bg-elevated)]/60 border border-[var(--border-default)] rounded-2xl p-4 space-y-4">
-              <div>
-                <p className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase mb-2">Horizontal Direction</p>
-                <div className="grid grid-cols-3 gap-1.5 max-w-[200px] mx-auto">
-                  {grid.map((row, ri) =>
-                    row.map((cell, ci) => {
-                      if (!cell) {
-                        return (
-                          <div key={`${ri}-${ci}`} className="h-12 flex items-center justify-center">
-                            <div className="w-8 h-8 rounded-full bg-[var(--bg-overlay)]/40 flex items-center justify-center">
-                              <Camera className="w-4 h-4 text-[var(--text-muted)]" />
-                            </div>
-                          </div>
-                        );
-                      }
-                      const isActive = angleHorizontal === cell.id;
-                      return (
-                        <button
-                          key={cell.id}
-                          onClick={() => setAngleHorizontal(cell.id)}
-                          className={`h-12 rounded-xl text-[10px] font-bold transition-all ${
-                            isActive
-                              ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/30'
-                              : 'bg-[var(--bg-overlay)]/60 text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)] hover:text-white'
-                          }`}
-                        >
-                          {cell.label}
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <p className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase mb-2">Vertical Elevation</p>
-                <div className="flex gap-1.5">
-                  {VERTICAL_POSITIONS.map(p => (
-                    <button
-                      key={p.id}
-                      onClick={() => setAngleVertical(p.id)}
-                      className={`flex-1 py-2 rounded-xl text-[10px] font-bold transition-all ${
-                        angleVertical === p.id
-                          ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/30'
-                          : 'bg-[var(--bg-overlay)]/60 text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)] hover:text-white'
-                      }`}
-                    >
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <p className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase mb-2">Shot Distance</p>
-                <div className="flex gap-1.5">
-                  {DISTANCE_OPTIONS.map(p => (
-                    <button
-                      key={p.id}
-                      onClick={() => setAngleDistance(p.id)}
-                      className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
-                        angleDistance === p.id
-                          ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/30'
-                          : 'bg-[var(--bg-overlay)]/60 text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)] hover:text-white'
-                      }`}
-                    >
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-[var(--text-tertiary)] uppercase flex items-center gap-1.5">
-              <Cpu className="w-3 h-3" /> Model
-            </label>
-            <div className="relative">
-              <select
-                value={angleModel}
-                onChange={e => setAngleModel(e.target.value)}
-                className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white focus:ring-2 focus:ring-cyan-500 outline-none appearance-none pr-10"
-              >
-                {ANGLE_MODELS.map(m => {
-                  const displayCost = billingInfo?.isCreator
-                    ? `$${m.price.toFixed(3)}`
-                    : `${Math.ceil(m.price * 100) * 2} credits`;
-                  return (
-                    <option key={m.id} value={m.id}>
-                      {m.name} ({displayCost}){m.nsfw ? ' 🔞' : ''}
-                    </option>
-                  );
-                })}
-              </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-tertiary)] pointer-events-none" />
-            </div>
-            {angleModelInfo?.nsfw && (
-              <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">
-                🔞 Uncensored — NSFW content enabled
-              </span>
-            )}
-          </div>
-
-          <button
-            onClick={handleAngleGenerate}
-            disabled={isGenerating || !angleSourceImg}
-            className="w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-cyan-600 to-sky-500 hover:from-cyan-500 hover:to-sky-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
-          >
-            {isGenerating
-              ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</>
-              : <><Camera className="w-4 h-4" /> Apply Camera Angle</>}
-          </button>
-
-          {!angleSourceImg && !isGenerating && (
-            <p className="text-center text-xs text-[var(--text-tertiary)]">Upload an image or set a persona reference image to get started</p>
-          )}
-        </div>
-
-        {/* ══ RIGHT COLUMN — Output ══ */}
-        <div className="space-y-3 lg:sticky lg:top-4">
-          <div className="aspect-square rounded-2xl bg-[var(--bg-base)] border border-[var(--border-subtle)] overflow-hidden relative group">
-            {isGenerating ? (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-                <Loader2 className="w-10 h-10 animate-spin text-cyan-500" />
-                <p className="text-xs text-[var(--text-tertiary)] animate-pulse">Repositioning camera...</p>
-              </div>
-            ) : angleResult?.imageUrl ? (
-              <>
-                <img src={angleResult.imageUrl} alt="Angle result" className="absolute inset-0 w-full h-full object-contain" />
-                <div className="absolute bottom-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={() => downloadFile(angleResult.imageUrl, 'png')} className="p-2 bg-black/60 backdrop-blur-md rounded-lg text-white hover:bg-black/80" title="Download">
-                    <Download className="w-4 h-4" />
-                  </button>
-                </div>
-                <div className="absolute top-2 left-2 px-2.5 py-1 bg-black/60 backdrop-blur-md rounded-lg">
-                  <span className="text-[10px] text-white font-medium">{angleResult.model}</span>
-                </div>
-              </>
-            ) : (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-                <Camera className="w-10 h-10 text-[var(--text-muted)] opacity-25" />
-                <p className="text-xs text-[var(--text-muted)]">Your reangled image will appear here</p>
-              </div>
-            )}
-          </div>
-
-          {angleResult && !isGenerating && (
-            <button onClick={handleSaveAngleImage} disabled={saved} className="w-full py-2.5 rounded-xl text-sm font-bold bg-cyan-600 hover:bg-cyan-500 text-white flex items-center justify-center gap-2 disabled:opacity-50 transition-all">
-              {saved ? <><Check className="w-4 h-4" /> Saved!</> : <><CheckCircle className="w-4 h-4" /> Save to Library</>}
-            </button>
-          )}
-        </div>
-      </div>
-    );
-  };
-
 
   const renderTalkingAvatarMode = () => {
     return (
@@ -2652,121 +2837,245 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <div className="w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center text-[10px] font-bold text-emerald-400 border border-emerald-500/30">2</div>
-              <label className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase tracking-widest">Avatar Source / Reference</label>
+              <label className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase tracking-widest">
+                {(() => {
+                  const modelObj = LIPSYNC_MODELS.find(m => m.id === selectedLipSyncModel);
+                  return modelObj?.inputType === 'video' ? 'Reference Video Source' : 'Avatar Portrait Source';
+                })()}
+              </label>
             </div>
-            <div className="grid grid-cols-5 gap-3">
-              <input
-                type="file"
-                ref={avatarImageUploadRef}
-                className="hidden"
-                accept="image/*"
-                onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  try {
-                    const dataUrl = await processImageFile(file);
-                    setUploadedAvatarImage(dataUrl);
-                    setUploadedAvatarImageName(file.name);
-                    setSelectedAvatarSource(dataUrl);
-                    toast.success(`Uploaded: ${file.name}`);
-                  } catch (err) {
-                    toast.error('Failed to process image');
-                  }
-                  e.target.value = '';
-                }}
-              />
-              <button 
-                onClick={() => avatarImageUploadRef.current?.click()}
-                className="aspect-square flex flex-col items-center justify-center gap-1.5 glass-card border-dashed border-white/20 bg-white/5 hover:bg-white/10 transition-colors"
-              >
-                <Upload className="w-5 h-5 text-emerald-400" />
-                <div className="text-center">
-                  <div className="text-[9px] font-bold text-white">Upload Image</div>
-                  <div className="text-[7px] text-[var(--text-muted)]">JPG, PNG, WEBP</div>
-                </div>
-              </button>
-              <button 
-                type="button"
-                onClick={() => setIsWebcamCreatorOpen(true)}
-                className="aspect-square flex flex-col items-center justify-center gap-1.5 glass-card bg-emerald-500/10 border border-emerald-500/30 hover:bg-emerald-500/20 transition-all"
-              >
-                <Video className="w-5 h-5 text-emerald-400" />
-                <div className="text-center">
-                  <div className="text-[9px] font-bold text-white">Record Video</div>
-                  <div className="text-[7px] text-[var(--text-muted)]">10s clip + voice</div>
-                </div>
-              </button>
-              <button 
-                onClick={() => updateMode('image')}
-                className="aspect-square flex flex-col items-center justify-center gap-1.5 glass-card bg-white/5 hover:bg-white/10 transition-colors"
-              >
-                <Sparkles className="w-5 h-5 text-purple-400" />
-                <div className="text-center">
-                  <div className="text-[9px] font-bold text-white">AI Generate</div>
-                  <div className="text-[7px] text-[var(--text-muted)]">Create from text</div>
-                </div>
-              </button>
-              
-              {/* Show up to 2 available images */}
-              {availableImages.slice(0, 2).map((imgUrl, idx) => (
-                <button 
-                  key={idx}
-                  onClick={() => setSelectedAvatarSource(imgUrl)}
-                  className={`aspect-square rounded-2xl overflow-hidden border-2 transition-all relative group ${selectedAvatarSource === imgUrl ? 'border-emerald-500' : 'border-transparent'}`}
-                >
-                  <img src={imgUrl} className="w-full h-full object-cover" alt={`Avatar Source ${idx + 1}`} />
-                  {selectedAvatarSource === imgUrl && (
-                    <div className="absolute inset-0 bg-emerald-500/10" />
-                  )}
-                </button>
-              ))}
 
-              {/* If fewer than 2 available images, show neutral placeholders */}
-              {Array.from({ length: Math.max(0, 2 - availableImages.length) }).map((_, idx) => (
-                <div 
-                  key={`placeholder-${idx}`}
-                  className="aspect-square rounded-2xl border border-white/5 bg-white/[0.02] flex items-center justify-center text-[var(--text-muted)]"
-                >
-                  <UserRound className="w-4 h-4 opacity-20" />
-                </div>
-              ))}
+            {(() => {
+              const modelObj = LIPSYNC_MODELS.find(m => m.id === selectedLipSyncModel);
+              const isVideoInput = modelObj?.inputType === 'video';
 
-              <button 
-                onClick={() => updateMode('image')}
-                className="aspect-square flex flex-col items-center justify-center glass-card bg-white/5 hover:bg-white/10 transition-colors"
-              >
-                <div className="text-[14px] text-[var(--text-muted)] font-bold">•••</div>
-                <div className="text-[9px] font-bold text-white">More</div>
-              </button>
-            </div>
+              if (isVideoInput) {
+                return (
+                  <div className="space-y-3">
+                    <input
+                      type="file"
+                      ref={avatarVideoUploadRef}
+                      className="hidden"
+                      accept="video/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const reader = new FileReader();
+                        reader.onload = (event) => {
+                          const dataUrl = event.target?.result as string;
+                          setUploadedAvatarVideo(dataUrl);
+                          setUploadedAvatarVideoName(file.name);
+                          setSelectedAvatarVideoSource(dataUrl);
+                          toast.success(`Uploaded: ${file.name}`);
+                        };
+                        reader.readAsDataURL(file);
+                        e.target.value = '';
+                      }}
+                    />
+                    
+                    <div className="grid grid-cols-4 gap-3">
+                      <button 
+                        onClick={() => avatarVideoUploadRef.current?.click()}
+                        className="aspect-square flex flex-col items-center justify-center gap-1.5 glass-card border-dashed border-white/20 bg-white/5 hover:bg-white/10 transition-colors"
+                      >
+                        <Upload className="w-5 h-5 text-emerald-400" />
+                        <div className="text-center">
+                          <div className="text-[9px] font-bold text-white">Upload Video</div>
+                          <div className="text-[7px] text-[var(--text-muted)]">MP4, MOV, WEBM</div>
+                        </div>
+                      </button>
+                      <button 
+                        type="button"
+                        onClick={() => setIsWebcamCreatorOpen(true)}
+                        className="aspect-square flex flex-col items-center justify-center gap-1.5 glass-card bg-emerald-500/10 border border-emerald-500/30 hover:bg-emerald-500/20 transition-all"
+                      >
+                        <Video className="w-5 h-5 text-emerald-400" />
+                        <div className="text-center">
+                          <div className="text-[9px] font-bold text-white">Record Clip</div>
+                          <div className="text-[7px] text-[var(--text-muted)]">Webcam capture</div>
+                        </div>
+                      </button>
+
+                      {/* Display active reference video */}
+                      {selectedAvatarVideoSource ? (
+                        <div className="col-span-2 aspect-video rounded-xl overflow-hidden border border-emerald-500/30 bg-black relative group">
+                          <video 
+                            src={selectedAvatarVideoSource} 
+                            className="w-full h-full object-cover" 
+                            controls 
+                          />
+                          <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-black/60 text-[8px] font-bold text-emerald-400 border border-emerald-500/20 truncate max-w-[120px]">
+                            {uploadedAvatarVideoName || 'Uploaded Video'}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="col-span-2 aspect-video rounded-xl border border-white/5 bg-white/[0.02] flex flex-col items-center justify-center text-[var(--text-muted)] p-4 text-center">
+                          <Film className="w-6 h-6 opacity-20 mb-1" />
+                          <span className="text-[9px] font-bold text-zinc-500">No reference video selected</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              }
+
+              // Standard Image reference input layout
+              return (
+                <div className="grid grid-cols-5 gap-3">
+                  <input
+                    type="file"
+                    ref={avatarImageUploadRef}
+                    className="hidden"
+                    accept="image/*"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      try {
+                        const dataUrl = await processImageFile(file);
+                        setUploadedAvatarImage(dataUrl);
+                        setUploadedAvatarImageName(file.name);
+                        setSelectedAvatarSource(dataUrl);
+                        toast.success(`Uploaded: ${file.name}`);
+                      } catch (err) {
+                        toast.error('Failed to process image');
+                      }
+                      e.target.value = '';
+                    }}
+                  />
+                  <button 
+                    onClick={() => avatarImageUploadRef.current?.click()}
+                    className="aspect-square flex flex-col items-center justify-center gap-1.5 glass-card border-dashed border-white/20 bg-white/5 hover:bg-white/10 transition-colors"
+                  >
+                    <Upload className="w-5 h-5 text-emerald-400" />
+                    <div className="text-center">
+                      <div className="text-[9px] font-bold text-white">Upload Image</div>
+                      <div className="text-[7px] text-[var(--text-muted)]">JPG, PNG, WEBP</div>
+                    </div>
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => setIsWebcamCreatorOpen(true)}
+                    className="aspect-square flex flex-col items-center justify-center gap-1.5 glass-card bg-emerald-500/10 border border-emerald-500/30 hover:bg-emerald-500/20 transition-all"
+                  >
+                    <Video className="w-5 h-5 text-emerald-400" />
+                    <div className="text-center">
+                      <div className="text-[9px] font-bold text-white">Record Video</div>
+                      <div className="text-[7px] text-[var(--text-muted)]">10s clip + voice</div>
+                    </div>
+                  </button>
+                  <button 
+                    onClick={() => updateMode('image')}
+                    className="aspect-square flex flex-col items-center justify-center gap-1.5 glass-card bg-white/5 hover:bg-white/10 transition-colors"
+                  >
+                    <Sparkles className="w-5 h-5 text-purple-400" />
+                    <div className="text-center">
+                      <div className="text-[9px] font-bold text-white">AI Generate</div>
+                      <div className="text-[7px] text-[var(--text-muted)]">Create from text</div>
+                    </div>
+                  </button>
+                  
+                  {/* Show up to 2 available images */}
+                  {availableImages.slice(0, 2).map((imgUrl, idx) => (
+                    <button 
+                      key={idx}
+                      onClick={() => setSelectedAvatarSource(imgUrl)}
+                      className={`aspect-square rounded-2xl overflow-hidden border-2 transition-all relative group ${selectedAvatarSource === imgUrl ? 'border-emerald-500' : 'border-transparent'}`}
+                    >
+                      <img src={imgUrl} className="w-full h-full object-cover" alt={`Avatar Source ${idx + 1}`} />
+                      {selectedAvatarSource === imgUrl && (
+                        <div className="absolute inset-0 bg-emerald-500/10" />
+                      )}
+                    </button>
+                  ))}
+
+                  {/* If fewer than 2 available images, show placeholders */}
+                  {Array.from({ length: Math.max(0, 2 - availableImages.length) }).map((_, idx) => (
+                    <div 
+                      key={`placeholder-${idx}`}
+                      className="aspect-square rounded-2xl border border-white/5 bg-white/[0.02] flex items-center justify-center text-[var(--text-muted)]"
+                    >
+                      <UserRound className="w-4 h-4 opacity-20" />
+                    </div>
+                  ))}
+
+                  <button 
+                    onClick={() => updateMode('image')}
+                    className="aspect-square flex flex-col items-center justify-center glass-card bg-white/5 hover:bg-white/10 transition-colors"
+                  >
+                    <div className="text-[14px] text-[var(--text-muted)] font-bold">•••</div>
+                    <div className="text-[9px] font-bold text-white">More</div>
+                  </button>
+                </div>
+              );
+            })()}
           </div>
 
           {/* ENGINE SELECTION */}
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <div className="w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center text-[10px] font-bold text-emerald-400 border border-emerald-500/30">E</div>
-              <label className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase tracking-widest">Avatar Engine</label>
-            </div>
-            <div className="flex bg-white/5 border border-white/10 rounded-xl p-1 gap-1">
-              <button
-                onClick={() => setTalkingAvatarEngine('wavespeed')}
-                className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${
-                  talkingAvatarEngine === 'wavespeed' ? 'bg-gradient-to-r from-emerald-600 to-teal-500 text-white shadow-lg' : 'text-[var(--text-secondary)] hover:text-white'
-                }`}
-              >
-                Wavespeed LTX
-              </button>
-              <button
-                onClick={() => setTalkingAvatarEngine('heygen')}
-                className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${
-                  talkingAvatarEngine === 'heygen' ? 'bg-gradient-to-r from-emerald-600 to-teal-500 text-white shadow-lg' : 'text-[var(--text-secondary)] hover:text-white'
-                }`}
-              >
-                HeyGen AI
-              </button>
+              <label className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase tracking-widest">Avatar / Lip-Sync Model</label>
             </div>
             
-            {talkingAvatarEngine === 'heygen' && (
+            <div className="relative">
+              <select
+                value={selectedLipSyncModel}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSelectedLipSyncModel(val);
+                  if (val === 'heygen') {
+                    setTalkingAvatarEngine('heygen');
+                  } else {
+                    setTalkingAvatarEngine('wavespeed');
+                  }
+                }}
+                className="w-full bg-[var(--bg-elevated)] border-[var(--border-default)] rounded-xl px-3 py-2.5 text-xs font-bold text-white focus:ring-2 focus:ring-emerald-500 outline-none appearance-none pr-10 cursor-pointer"
+              >
+                {LIPSYNC_MODELS.map(m => (
+                  <option key={m.id} value={m.id} className="bg-[#0f0f12] text-white">
+                    {m.name} ({m.inputType === 'video' ? 'Video' : 'Image'}-based)
+                  </option>
+                ))}
+              </select>
+              <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-[var(--text-muted)]">
+                <ChevronDown size={14} />
+              </div>
+            </div>
+
+            {/* Model Details & Requirements Card */}
+            {(() => {
+              const modelObj = LIPSYNC_MODELS.find(m => m.id === selectedLipSyncModel);
+              if (!modelObj) return null;
+              const isVideo = modelObj.inputType === 'video';
+              return (
+                <div className="glass-card p-3 border border-emerald-500/10 bg-emerald-500/[0.02] rounded-xl space-y-1.5 animate-in fade-in duration-300">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[9px] font-extrabold text-[var(--text-muted)] uppercase tracking-wider">Required Inputs</span>
+                    <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-extrabold text-[8px] uppercase tracking-wider">
+                      {modelObj.provider}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs font-bold text-white">
+                    {isVideo ? (
+                      <>
+                        <Video className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+                        <span>Reference Video (.mp4) + Audio reference (.mp3)</span>
+                      </>
+                    ) : (
+                      <>
+                        <ImageIcon className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Portrait Image (.png/.jpg) + Audio reference (.mp3)</span>
+                      </>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-[var(--text-tertiary)] font-medium leading-relaxed">
+                    {modelObj.desc}
+                  </p>
+                </div>
+              );
+            })()}
+            
+            {selectedLipSyncModel === 'heygen' && (
               <div className="animate-in fade-in slide-in-from-top-2 duration-300 space-y-2 mt-2">
                 <label className="block text-[8px] font-extrabold text-[var(--text-muted)] uppercase tracking-wider">HeyGen Avatar Version</label>
                 <div className="flex bg-white/5 border border-white/10 rounded-xl p-1 gap-1">
@@ -2827,7 +3136,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 type="file"
                 ref={audioUploadRef}
                 onChange={handleAudioUpload}
-                accept="audio/*"
+                accept="audio/mp3,audio/mpeg,audio/wav,audio/x-wav,audio/ogg,audio/m4a,audio/x-m4a,.mp3,.wav,.m4a,.ogg"
                 className="hidden"
               />
               <button
@@ -3177,11 +3486,12 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                </div>
             </div>
           </div>
-
         </div>
       </div>
     );
   };
+
+
   return (
     <div className="flex-1 bg-[var(--bg-base)] text-white p-4 max-w-[1600px] mx-auto w-full selection:bg-emerald-500/30 flex flex-col overflow-y-auto custom-scrollbar">
       
@@ -3195,135 +3505,23 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="space-y-1.5">
               <h1 className="text-3xl font-black tracking-tight flex items-center gap-3">
-                Create <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 via-fuchsia-400 to-cyan-400">Studio</span>
+                {mode === 'image' && <>Image <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-fuchsia-400 to-blue-400">Generator</span></>}
+                {mode === 'video' && <>Video <span className="text-transparent bg-clip-text bg-gradient-to-r from-pink-400 via-fuchsia-400 to-orange-400">Generator</span></>}
+                {mode === 'voice' && <>Voice <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-450 to-orange-400">Clone</span></>}
+                {mode === 'talking-avatar' && <>Avatar <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-500">Studio</span></>}
+                {mode === '3d' && <>3D Asset <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-violet-400">Generator</span></>}
               </h1>
               <p className="text-sm text-[var(--text-tertiary)] font-medium max-w-md">
-                Generate stunning images, videos, voices & content — all powered by AI.
+                {mode === 'image' && 'Generate high-fidelity, identity-consistent persona images.'}
+                {mode === 'video' && 'Turn text prompts or reference images into cinematic videos.'}
+                {mode === 'voice' && 'Clone reference speech patterns or synthesize custom voices.'}
+                {mode === 'talking-avatar' && 'Create speaking digital avatars with voice synchronization.'}
+                {mode === '3d' && 'Generate 3D assets and character meshes from prompts or photos.'}
               </p>
             </div>
-
-            {/* Active Persona Card */}
-            {activePersona.name ? (
-              <div className="flex items-center gap-3 bg-white/[0.04] border border-white/10 rounded-xl px-4 py-2.5 backdrop-blur-sm">
-                <div className="relative">
-                  {activePersona.avatar ? (
-                    <img 
-                      src={activePersona.avatar} 
-                      className="w-10 h-10 rounded-xl object-cover border border-white/10" 
-                      alt="" 
-                    />
-                  ) : (
-                    <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-[var(--text-muted)]">
-                      <UserRound size={16} />
-                    </div>
-                  )}
-                  <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 rounded-full border-2 border-[#0F172A]" />
-                </div>
-                <div className="text-left">
-                  <p className="text-[8px] font-black text-violet-400 uppercase tracking-[0.2em] leading-none mb-1">Creating as</p>
-                  <p className="text-sm font-bold text-white leading-none">{activePersona.name}</p>
-                  <p className="text-[10px] text-[var(--text-muted)] mt-0.5">{activePersona.niche || activePersona.platform || 'Digital Creator'}</p>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center gap-3 bg-gradient-to-r from-violet-600/10 to-fuchsia-600/10 border border-violet-500/20 rounded-xl px-4 py-3 backdrop-blur-sm">
-                <div className="w-10 h-10 rounded-xl bg-violet-500/20 border border-violet-500/30 flex items-center justify-center">
-                  <UserRound size={20} className="text-violet-400" />
-                </div>
-                <div className="text-left">
-                  <p className="text-[10px] font-black text-violet-400 uppercase tracking-wider leading-none mb-1">No Persona Selected</p>
-                  <p className="text-xs text-[var(--text-secondary)]">Create a persona first for identity-consistent results</p>
-                </div>
-              </div>
-            )}
           </div>
         </div>
-
-        {/* Step indicator */}
-        <div className="hidden md:flex items-center gap-2 mb-5 px-1">
-          {[
-            { step: 1, label: 'Choose Tool', done: true },
-            { step: 2, label: 'Configure', done: false },
-            { step: 3, label: 'Generate', done: false },
-          ].map((s, i) => (
-            <div key={s.step} className="flex items-center gap-2">
-              {i > 0 && <div className="w-8 h-px bg-[var(--border-subtle)]" />}
-              <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider ${
-                s.done 
-                  ? 'bg-violet-500/15 text-violet-300 border border-violet-500/20' 
-                  : 'bg-white/[0.03] text-[var(--text-muted)] border border-white/5'
-              }`}>
-                <span className={`w-4 h-4 rounded-full text-[8px] flex items-center justify-center font-black ${
-                  s.done ? 'bg-violet-500 text-white' : 'bg-white/5 text-[var(--text-tertiary)]'
-                }`}>{s.step}</span>
-                {s.label}
-              </div>
-            </div>
-          ))}
-        </div>
       </header>
-
-      {/* ── MODE SELECTOR (Premium Cards) ── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2.5 mb-8">
-        {MODE_CONFIG.map(m => {
-          const Icon = m.icon;
-          const isActive = mode === m.id;
-          return (
-            <motion.button
-              key={m.id}
-              onClick={() => { updateMode(m.id); setGlobalError(null); }}
-              whileHover={{ scale: 1.04, y: -2 }}
-              whileTap={{ scale: 0.96 }}
-              className={`relative flex flex-col items-center justify-end h-28 p-3.5 rounded-2xl border transition-all duration-300 group overflow-hidden ${
-                isActive
-                  ? `border-violet-500/80 shadow-[0_0_20px_rgba(139,92,246,0.15)] bg-[#0f172a]`
-                  : `border-white/[0.08] hover:border-white/30 bg-[#0f172a]/20`
-              }`}
-            >
-              {/* Background Image */}
-              <div className="absolute inset-0 w-full h-full overflow-hidden pointer-events-none">
-                <img 
-                  src={m.bgImage} 
-                  alt="" 
-                  className={`w-full h-full object-cover transition-all duration-500 group-hover:scale-110 ${
-                    isActive ? 'opacity-[0.45] brightness-110 saturate-100' : 'opacity-[0.3] brightness-90 saturate-75 group-hover:opacity-[0.4] group-hover:brightness-100 group-hover:saturate-100'
-                  }`}
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-[#0c1222] via-[#0c1222]/80 to-[#0c1222]/10" />
-              </div>
-
-              {/* Icon */}
-              <div className={`relative z-10 p-2 rounded-xl transition-all duration-300 mb-2 bg-gradient-to-br ${m.gradient} text-white shadow-md ${
-                isActive 
-                  ? `shadow-violet-500/20 scale-105 opacity-100` 
-                  : `opacity-70 group-hover:opacity-100 group-hover:scale-105`
-              }`}>
-                <Icon size={16} />
-              </div>
-
-              {/* Label & Description */}
-              <div className="text-center relative z-10 w-full">
-                <span className={`block text-[11px] font-black tracking-wide leading-none transition-colors ${
-                  isActive ? 'text-white' : 'text-slate-300 group-hover:text-white'
-                }`}>
-                  {m.label}
-                </span>
-                <span className="block text-[8px] text-slate-400 group-hover:text-slate-300 leading-tight mt-1 truncate px-1 font-medium transition-colors">
-                  {m.desc}
-                </span>
-              </div>
-
-              {/* Active indicator bar */}
-              {isActive && (
-                <motion.div 
-                  layoutId="activeMode"
-                  className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-violet-500 to-fuchsia-500" 
-                />
-              )}
-            </motion.button>
-          );
-        })}
-      </div>
 
       {globalError && (
         <div className="mb-4 bg-rose-500/10 border border-rose-500/20 rounded-xl p-3 flex items-start gap-2">
@@ -3337,8 +3535,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         {mode === 'image' && renderImageMode()}
         {mode === 'video' && renderVideoMode()}
         {mode === 'talking-avatar' && renderTalkingAvatarMode()}
-        {mode === 'angle' && renderAngleMode()}
         {mode === 'voice' && <VoiceView persona={activePersona} personas={personas} onSelectPersona={onSelectPersona} nav={nav} billingInfo={billingInfo} />}
+        {mode === '3d' && <ThreeDStudio persona={activePersona} personas={personas} onSelectPersona={onSelectPersona} />}
       </div>
 
       {/* ── FOOTER TIP ── */}

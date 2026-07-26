@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Wrench, Briefcase, Award, Zap, Columns, 
@@ -16,6 +16,8 @@ interface CreatorHubViewProps {
   persona: Persona;
   personas: Persona[];
   nav: NavActions;
+  initialTool?: any;
+  billingInfo?: any;
 }
 
 const TOOLS_CONFIG = [
@@ -101,8 +103,18 @@ const TOOLS_CONFIG = [
   }
 ];
 
-export default function CreatorHubView({ persona: activePersona, personas, nav }: CreatorHubViewProps) {
-  const [toolboxSection, setToolboxSection] = useState<'creative' | 'marketing'>('creative');
+export default function CreatorHubView({ persona: activePersona, personas, nav, initialTool, billingInfo }: CreatorHubViewProps) {
+  const [toolboxSection, setToolboxSection] = useState<'all' | 'creative' | 'marketing'>('all');
+
+  useEffect(() => {
+    if (initialTool) {
+      setToolboxSection('creative');
+    } else {
+      setActiveTool(null);
+      setToolboxSection('all');
+    }
+  }, [initialTool]);
+
   const [activeTool, setActiveTool] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [copiedText, setCopiedText] = useState<string | null>(null);
@@ -310,6 +322,23 @@ export default function CreatorHubView({ persona: activePersona, personas, nav }
       <div className="flex justify-center mb-8">
         <div className="relative flex p-1 bg-[#111827]/80 border border-white/5 rounded-full backdrop-blur-md">
           <button
+            onClick={() => setToolboxSection('all')}
+            className={`relative px-6 py-2.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all duration-300 z-10 cursor-pointer ${
+              toolboxSection === 'all' ? 'text-white' : 'text-[var(--text-muted)] hover:text-white'
+            }`}
+          >
+            {toolboxSection === 'all' && (
+              <motion.div
+                layoutId="toolboxTabBg"
+                className="absolute inset-0 bg-gradient-to-r from-violet-600 to-fuchsia-600 rounded-full -z-10 shadow-lg shadow-violet-500/20"
+                transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+              />
+            )}
+            <span className="flex items-center gap-2">
+              <Sparkles size={14} /> All Tools
+            </span>
+          </button>
+          <button
             onClick={() => setToolboxSection('creative')}
             className={`relative px-6 py-2.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all duration-300 z-10 cursor-pointer ${
               toolboxSection === 'creative' ? 'text-white' : 'text-[var(--text-muted)] hover:text-white'
@@ -346,15 +375,84 @@ export default function CreatorHubView({ persona: activePersona, personas, nav }
         </div>
       </div>
 
-      {toolboxSection === 'creative' ? (
+      {toolboxSection === 'all' && (
+        <div className="space-y-12">
+          {/* Creative Section */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2.5 pb-2 border-b border-white/5">
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-600 to-fuchsia-600 flex items-center justify-center text-white">
+                <Sparkles size={14} />
+              </div>
+              <h2 className="text-sm font-bold text-white uppercase tracking-wider">Creative & Image/Video Production Suite</h2>
+            </div>
+            <AIToolsView 
+              persona={activePersona} 
+              personas={personas} 
+              onSelectPersona={() => {}} 
+              nav={nav} 
+              initialTool={null}
+              billingInfo={billingInfo}
+            />
+          </div>
+
+          {/* Marketing Section */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2.5 pb-2 border-b border-white/5">
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-teal-500 to-emerald-600 flex items-center justify-center text-white">
+                <Wrench size={14} />
+              </div>
+              <h2 className="text-sm font-bold text-white uppercase tracking-wider">Strategic Marketing & Co-Pilot Suite</h2>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {TOOLS_CONFIG.map((tool) => {
+                const Icon = tool.icon;
+                return (
+                  <motion.div
+                    key={tool.id}
+                    whileHover={{ y: -3, scale: 1.01 }}
+                    onClick={() => handleOpenTool(tool.id)}
+                    className="premium-card p-6 flex flex-col justify-between cursor-pointer group relative overflow-hidden h-[180px]"
+                    style={{
+                      boxShadow: `0 8px 30px rgba(0, 0, 0, 0.2), inset 0 0 0 1px rgba(255,255,255,0.02)`
+                    }}
+                  >
+                    <div 
+                      className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"
+                      style={{
+                        background: `radial-gradient(circle at 10% 10%, ${tool.glow} 0%, transparent 60%)`
+                      }}
+                    />
+                    <div>
+                      <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${tool.color} p-3 text-white flex items-center justify-center mb-4`}>
+                        <Icon size={24} />
+                      </div>
+                      <h3 className="text-lg font-bold text-white group-hover:text-[#00F5C2] transition-colors">{tool.title}</h3>
+                      <p className="text-xs text-[var(--text-tertiary)] mt-1.5 line-clamp-2">{tool.desc}</p>
+                    </div>
+                    <div className="flex items-center gap-1 text-[11px] font-black text-[#00D4FF] mt-3 uppercase tracking-wider opacity-0 group-hover:opacity-100 transform translate-x-[-10px] group-hover:translate-x-0 transition-all duration-300">
+                      Launch Tool <ChevronRight size={12} className="mt-0.5 animate-pulse" />
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {toolboxSection === 'creative' && (
         <AIToolsView 
           persona={activePersona} 
           personas={personas} 
           onSelectPersona={() => {}} 
           nav={nav} 
+          initialTool={initialTool}
+          billingInfo={billingInfo}
         />
-      ) : (
-        /* Grid of Tools */
+      )}
+
+      {toolboxSection === 'marketing' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {TOOLS_CONFIG.map((tool) => {
             const Icon = tool.icon;
@@ -368,7 +466,6 @@ export default function CreatorHubView({ persona: activePersona, personas, nav }
                   boxShadow: `0 8px 30px rgba(0, 0, 0, 0.2), inset 0 0 0 1px rgba(255,255,255,0.02)`
                 }}
               >
-                {/* Radial gradient backing */}
                 <div 
                   className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"
                   style={{

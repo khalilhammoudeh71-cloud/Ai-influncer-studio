@@ -537,8 +537,10 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
                 desc: 'Log out of your account',
                 color: 'text-rose-400',
                 onClick: () => {
+                  localStorage.setItem('force_landing', 'true');
                   supabase.auth.signOut().then(() => {
                     toast.success('Signed out successfully');
+                    window.location.reload();
                   });
                 }
               },
