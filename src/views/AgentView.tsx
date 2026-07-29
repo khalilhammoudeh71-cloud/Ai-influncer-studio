@@ -31,12 +31,15 @@ import {
   Globe,
   TrendingUp,
   Award,
-  Users
+  Users,
+  ChevronRight,
+  ChevronLeft
 } from 'lucide-react';
 import { Persona, Tab } from '../types';
 import { api } from '../services/apiService';
 import { generatePersonaPlan } from '../utils/personaEngine';
 import { generateImage, upscaleImage } from '../services/imageService';
+import { cn } from '../utils/cn';
 import toast from 'react-hot-toast';
 
 interface AgentViewProps {
@@ -356,7 +359,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
     {
       id: 'welcome',
       role: 'model',
-      content: "Hello! I am your AI Auto-Pilot Agent. Tell me who you want to build today!\n\nI can create a custom persona, design their content schedule, generate starting visuals, produce voice narrations, render cinematic video edits, and log sponsor/subscription revenue.\n\nNow supporting voice transcription input, dynamic model self-correction, and human-in-the-loop parameter adjustments before execution!",
+      content: "👋 **Welcome to AI Auto-Pilot Agent!**\n\nTell me who or what you'd like to build today. I can architect new influencer personas, generate photo shoots, produce 1-minute video chains, clone voices, or log revenues.\n\nTry one of the quick actions below or type your custom prompt!",
       status: 'normal'
     }
   ]);
@@ -1467,6 +1470,150 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
           updateStepStatus(i, 'success', data.audioUrl);
         }
 
+        else if (step.type === 'generate_3d') {
+          if (!createdPersona) {
+            createdPersona = personas[0] || null;
+            if (!createdPersona || createdPersona.id === 'empty') throw new Error('No active persona detected.');
+            createdPersonaId = createdPersona.id;
+          }
+
+          const modelId = step.params.modelId || 'wavespeed-3d:tripo3d/tripo-v2.0';
+          const srcImg = step.params.sourceImage || createdPersona.avatar || undefined;
+          addLocalLog(`Chosen 3D Model: ${modelId}`, true, true);
+          addLocalLog(`⏳ Synthesizing 3D GLB asset mesh...`);
+
+          const res = await fetch('/api/generate-3d', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              prompt: step.params.prompt || 'High quality 3D asset mesh',
+              modelId,
+              sourceImage: srcImg
+            })
+          });
+
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || '3D generation failed');
+
+          const payload = {
+            id: '3d-' + Math.random().toString(36).substring(2, 9),
+            url: data.modelUrl,
+            prompt: step.params.prompt || '3D Asset Mesh',
+            timestamp: Date.now(),
+            model: data.model || modelId,
+            mediaType: '3d' as const
+          };
+
+          await api.images.create(createdPersonaId, payload);
+          addLocalLog(`✅ 3D GLB mesh asset generated & saved to library.`);
+          updateStepStatus(i, 'success', data.modelUrl);
+        }
+
+        else if (step.type === 'generate_talking_head') {
+          if (!createdPersona) {
+            createdPersona = personas[0] || null;
+            if (!createdPersona || createdPersona.id === 'empty') throw new Error('No active persona detected.');
+            createdPersonaId = createdPersona.id;
+          }
+
+          const avatarImg = step.params.image || createdPersona.avatar || createdPersona.referenceImage;
+          if (!avatarImg) throw new Error('Avatar image is required for talking head video.');
+
+          addLocalLog(`⏳ Synthesizing Talking Avatar lip-sync video...`);
+
+          const res = await fetch('/api/talking-head', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              text: step.params.text,
+              image: avatarImg,
+              voiceId: step.params.voiceId || 'Aoede'
+            })
+          });
+
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Talking head generation failed');
+
+          const payload = {
+            id: 'talk-' + Math.random().toString(36).substring(2, 9),
+            url: data.videoUrl,
+            prompt: step.params.text,
+            timestamp: Date.now(),
+            model: 'InfiniteTalk Avatar',
+            mediaType: 'video' as const
+          };
+
+          await api.images.create(createdPersonaId, payload);
+          addLocalLog(`✅ Talking Avatar video created & saved to library.`);
+          updateStepStatus(i, 'success', data.videoUrl);
+        }
+
+        else if (step.type === 'edit_image') {
+          if (!createdPersona) {
+            createdPersona = personas[0] || null;
+            if (!createdPersona || createdPersona.id === 'empty') throw new Error('No active persona detected.');
+            createdPersonaId = createdPersona.id;
+          }
+
+          const editType = step.params.editType || 'upscale';
+          const srcImg = step.params.sourceImage || createdPersona.avatar || createdPersona.referenceImage;
+          if (!srcImg) throw new Error('Source image is required for image editing.');
+
+          addLocalLog(`⏳ Executing AI Tool edit: ${editType}...`);
+
+          let editedUrl = '';
+          if (editType === 'bg-remover') {
+            const res = await fetch('/api/remove-bg', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ image: srcImg })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'BG removal failed');
+            editedUrl = data.imageUrl;
+          } else if (editType === 'face-swap') {
+            const res = await fetch('/api/face-swap', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ targetImage: srcImg, swapImage: step.params.secondImage || srcImg })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Face swap failed');
+            editedUrl = data.imageUrl;
+          } else if (editType === 'virtual-tryon') {
+            const res = await fetch('/api/virtual-tryon', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ personImage: srcImg, garmentImage: step.params.secondImage || srcImg })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Virtual try-on failed');
+            editedUrl = data.imageUrl;
+          } else {
+            const res = await fetch('/api/edit-image', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ sourceImage: srcImg, prompt: step.params.prompt || 'Enhance image details', modelId: 'wavespeed-edit:wavespeed-ai/seededit-v3.0' })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Image edit failed');
+            editedUrl = data.imageUrl;
+          }
+
+          const payload = {
+            id: 'edit-' + Math.random().toString(36).substring(2, 9),
+            url: editedUrl,
+            prompt: `Edit (${editType}): ${step.params.prompt || 'Enhanced'}`,
+            timestamp: Date.now(),
+            model: `AI Tool (${editType})`,
+            mediaType: 'image' as const
+          };
+
+          await api.images.create(createdPersonaId, payload);
+          addLocalLog(`✅ AI Tool edit (${editType}) completed & saved to library.`);
+          updateStepStatus(i, 'success', editedUrl);
+        }
+
         else if (step.type === 'log_revenue') {
           if (!createdPersona) {
             createdPersona = personas[0] || null;
@@ -1552,8 +1699,8 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
         className="hidden"
       />
 
-      {/* LEFT COLUMN: Agent Conversational Console */}
-      <div className="w-1/2 flex flex-col h-full border-r border-white/5 relative">
+      {/* LEFT COLUMN: Agent Conversational Console (Expanded) */}
+      <div className="flex-1 flex flex-col h-full border-r border-white/5 relative min-w-0">
         {/* Header */}
         <div className="flex-none flex items-center justify-between border-b border-white/5 px-6 py-4 bg-[var(--bg-elevated)]/30 backdrop-blur-md">
           <div className="flex items-center gap-3">
@@ -2129,34 +2276,56 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
         </div>
       </div>
 
-      {/* RIGHT COLUMN: Interactive Agent Canvas Workspace */}
-      <div className="w-1/2 flex flex-col h-full bg-[var(--bg-elevated)]/5">
+      {/* RIGHT COLUMN: Interactive Agent Canvas Workspace (Compact & Collapsible) */}
+      <div className={cn("transition-all duration-300 flex flex-col h-full bg-[var(--bg-elevated)]/5 shrink-0 relative", isPanelCollapsed ? "w-12" : "w-full lg:w-[280px] xl:w-[300px]")}>
         {/* Navigation Tabs bar */}
-        <div className="flex-none flex items-center justify-between border-b border-white/5 px-6 py-4 bg-black/20">
-          <span className="text-xs font-black text-pink-400 uppercase tracking-widest flex items-center gap-1">
-            <Layers className="w-3.5 h-3.5 text-pink-400" /> Canvas Workspace
-          </span>
-          <div className="flex items-center gap-1.5 bg-black/40 border border-white/5 p-1 rounded-xl">
-            {(['studio', 'chat', 'marketing'] as const).map((tab) => (
+        <div className="flex-none flex items-center justify-between border-b border-white/5 px-3 py-3 bg-black/30">
+          <button
+            onClick={() => setIsPanelCollapsed(!isPanelCollapsed)}
+            className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition-all shrink-0"
+            title={isPanelCollapsed ? "Expand Canvas Sidebar" : "Collapse Canvas Sidebar"}
+          >
+            {isPanelCollapsed ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
+          </button>
+
+          {!isPanelCollapsed && (
+            <div className="flex items-center gap-1 bg-black/60 border border-white/10 p-1 rounded-xl w-full ml-2 justify-around">
               <button
-                key={tab}
-                onClick={() => setCanvasTab(tab)}
-                className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
-                  canvasTab === tab
-                    ? 'bg-gradient-to-r from-pink-500/20 to-violet-500/20 border border-pink-500/30 text-white'
-                    : 'text-zinc-400 hover:text-white border border-transparent'
-                }`}
+                onClick={() => setCanvasTab('studio')}
+                className={cn('px-2.5 py-1 rounded-lg text-[10px] font-black uppercase transition-all flex items-center gap-1',
+                  canvasTab === 'studio' ? 'bg-pink-500/20 text-pink-300 border border-pink-500/30' : 'text-white/40 hover:text-white'
+                )}
+                title="View Draft Persona, Photos & Content Plan"
               >
-                {tab === 'studio' && '🎨 Studio'}
-                {tab === 'chat' && '💬 Sandbox'}
-                {tab === 'marketing' && '📈 Marketing'}
+                🎨 Drafts
               </button>
-            ))}
-          </div>
+
+              <button
+                onClick={() => setCanvasTab('chat')}
+                className={cn('px-2.5 py-1 rounded-lg text-[10px] font-black uppercase transition-all flex items-center gap-1',
+                  canvasTab === 'chat' ? 'bg-violet-500/20 text-violet-300 border border-violet-500/30' : 'text-white/40 hover:text-white'
+                )}
+                title="Test Chat Live in Character with AI Influencer"
+              >
+                💬 Test Chat
+              </button>
+
+              <button
+                onClick={() => setCanvasTab('marketing')}
+                className={cn('px-2.5 py-1 rounded-lg text-[10px] font-black uppercase transition-all flex items-center gap-1',
+                  canvasTab === 'marketing' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'text-white/40 hover:text-white'
+                )}
+                title="Download Social Reels & View Analytics"
+              >
+                📈 Growth
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Tab Canvas panels */}
-        <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+        {!isPanelCollapsed && (
+          <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
           {canvasTab === 'studio' && (
             <div className="space-y-6 max-w-md mx-auto">
               {activeDraft?.createStep ? (
@@ -2419,70 +2588,59 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                 </div>
               ) : (
                 <div className="space-y-4">
-                  <div className="h-44 border border-dashed border-white/10 rounded-2xl flex flex-col items-center justify-center text-center p-5 bg-white/[0.01]">
-                    <UserPlus className="w-8 h-8 text-zinc-600 mb-2 animate-pulse" />
-                    <div className="text-xs font-black text-zinc-400 uppercase tracking-widest">No Active Persona Draft</div>
-                    <p className="text-[10px] text-zinc-500 mt-1 max-w-[240px]">Prompt the agent in the chat console to build a custom influencer draft persona.</p>
-                    <button
-                      onClick={() => setTourStep(0)}
-                      className="mt-3.5 px-3 py-1.5 rounded-lg bg-pink-500/10 border border-pink-500/20 text-pink-300 text-[9px] font-black uppercase tracking-wider hover:bg-pink-500/20 transition-all"
-                    >
-                      💡 Start Guided Walkthrough Tour
-                    </button>
+                  {/* Clean Canvas Welcome Card */}
+                  <div className="p-6 bg-gradient-to-br from-indigo-900/20 via-purple-900/10 to-black border border-white/10 rounded-2xl text-center space-y-3">
+                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-pink-500 to-violet-600 flex items-center justify-center mx-auto shadow-lg shadow-pink-500/20">
+                      <Cpu className="w-6 h-6 text-white" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-black text-white">Live Creative Canvas</h3>
+                      <p className="text-xs text-white/50 max-w-xs mx-auto mt-1">
+                        Prompt the agent on the left to build a persona or run multi-step AI workflows.
+                      </p>
+                    </div>
                   </div>
 
-                  {/* Beginner Quick Start Hub */}
-                  <div className="bg-[var(--bg-elevated)] border border-white/5 p-5 rounded-2xl space-y-4 shadow-xl">
-                    <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block border-b border-white/5 pb-2">
-                      🚀 Quick Starter Actions Hub
+                  {/* Starter Workflows Grid */}
+                  <div className="bg-[#0b0c10] border border-white/5 p-4 rounded-2xl space-y-3 shadow-xl">
+                    <span className="text-[10px] font-black text-white/40 uppercase tracking-widest block border-b border-white/5 pb-2">
+                      🚀 Agent Workflows
                     </span>
-                    <div className="grid grid-cols-1 gap-2.5">
+                    <div className="grid grid-cols-2 gap-2.5">
                       <button
-                        onClick={() => setCanvasTab('marketing')}
-                        className="p-3 text-left bg-white/[0.01] hover:bg-white/5 border border-white/5 rounded-xl flex items-center justify-between transition-all group"
+                        onClick={() => setInputText(BASE_PRESETS[0].prompt)}
+                        className="p-3 text-left bg-white/[0.02] hover:bg-pink-500/10 border border-white/5 hover:border-pink-500/30 rounded-xl transition-all group"
                       >
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-pink-500/10 flex items-center justify-center border border-pink-500/20 text-pink-400">
-                            <Globe className="w-4 h-4" />
-                          </div>
-                          <div>
-                            <span className="text-[10px] font-black text-white block uppercase group-hover:text-pink-400 transition-colors">Extract Reel or TikTok Video</span>
-                            <span className="text-[9px] text-zinc-500">Download watermark-free MP4s from public links.</span>
-                          </div>
-                        </div>
-                        <span className="text-zinc-500 group-hover:text-white transition-colors text-xs font-bold font-mono">→</span>
+                        <UserPlus className="w-5 h-5 text-pink-400 mb-2 group-hover:scale-110 transition-transform" />
+                        <span className="text-xs font-bold text-white block">Persona Architect</span>
+                        <span className="text-[9px] text-white/40">Full profile & content plan</span>
+                      </button>
+
+                      <button
+                        onClick={() => setInputText("Generate a 1 minute video chain of a model walking in Tokyo at night, stitching 5-second clips smoothly")}
+                        className="p-3 text-left bg-white/[0.02] hover:bg-amber-500/10 border border-white/5 hover:border-amber-500/30 rounded-xl transition-all group"
+                      >
+                        <VideoIcon className="w-5 h-5 text-amber-400 mb-2 group-hover:scale-110 transition-transform" />
+                        <span className="text-xs font-bold text-white block">1-Min Video Chain</span>
+                        <span className="text-[9px] text-white/40">Sequential clip stitching</span>
                       </button>
 
                       <button
                         onClick={() => setCanvasTab('studio')}
-                        className="p-3 text-left bg-white/[0.01] hover:bg-white/5 border border-white/5 rounded-xl flex items-center justify-between transition-all group"
+                        className="p-3 text-left bg-white/[0.02] hover:bg-violet-500/10 border border-white/5 hover:border-violet-500/30 rounded-xl transition-all group"
                       >
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-violet-500/10 flex items-center justify-center border border-violet-500/20 text-violet-400">
-                            <Volume2 className="w-4 h-4" />
-                          </div>
-                          <div>
-                            <span className="text-[10px] font-black text-white block uppercase group-hover:text-violet-400 transition-colors">Voice & Avatar Studio</span>
-                            <span className="text-[9px] text-zinc-500">Clone high-fidelity custom voices or lip-sync avatars.</span>
-                          </div>
-                        </div>
-                        <span className="text-zinc-500 group-hover:text-white transition-colors text-xs font-bold font-mono">→</span>
+                        <Volume2 className="w-5 h-5 text-violet-400 mb-2 group-hover:scale-110 transition-transform" />
+                        <span className="text-xs font-bold text-white block">Voice & Avatar</span>
+                        <span className="text-[9px] text-white/40">Voice cloning & lip-sync</span>
                       </button>
 
                       <button
                         onClick={() => setCanvasTab('chat')}
-                        className="p-3 text-left bg-white/[0.01] hover:bg-white/5 border border-white/5 rounded-xl flex items-center justify-between transition-all group"
+                        className="p-3 text-left bg-white/[0.02] hover:bg-cyan-500/10 border border-white/5 hover:border-cyan-500/30 rounded-xl transition-all group"
                       >
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-cyan-500/10 flex items-center justify-center border border-cyan-500/20 text-cyan-400">
-                            <MessageSquare className="w-4 h-4" />
-                          </div>
-                          <div>
-                            <span className="text-[10px] font-black text-white block uppercase group-hover:text-cyan-400 transition-colors">Talk to Creative Agents</span>
-                            <span className="text-[9px] text-zinc-500">Brainstorm content ideas and marketing copy.</span>
-                          </div>
-                        </div>
-                        <span className="text-zinc-500 group-hover:text-white transition-colors text-xs font-bold font-mono">→</span>
+                        <MessageSquare className="w-5 h-5 text-cyan-400 mb-2 group-hover:scale-110 transition-transform" />
+                        <span className="text-xs font-bold text-white block">Marketing Copy</span>
+                        <span className="text-[9px] text-white/40">Brainstorm captions & ideas</span>
                       </button>
                     </div>
                   </div>
@@ -3015,6 +3173,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
             </div>
           )}
         </div>
+        )}
       </div>
 
       {/* Onboarding Tour Overlay Card */}

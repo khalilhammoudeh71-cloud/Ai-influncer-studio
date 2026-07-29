@@ -25,6 +25,7 @@ const PERSONA_TYPES = [
 export default function PersonaBuilderView({ persona: initialPersona, onChange, onSave, onCancel }: PersonaBuilderViewProps) {
   const [isPro, togglePro] = useProMode();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const voiceInputRef = useRef<HTMLInputElement>(null);
   const [persona, setPersona] = useState<Persona>(initialPersona);
   const [selectedType, setSelectedType] = useState(() => {
     const type = PERSONA_TYPES.find(t => initialPersona.niche?.toLowerCase().includes(t.id));
@@ -186,6 +187,25 @@ export default function PersonaBuilderView({ persona: initialPersona, onChange, 
     };
     setPersona(updated);
     if (onChange) onChange(updated);
+    e.target.value = '';
+  };
+
+  const handleVoiceUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      const updated = {
+        ...persona,
+        voiceSampleUrl: dataUrl,
+        voiceEngine: 'omnivoice'
+      };
+      setPersona(updated);
+      if (onChange) onChange(updated);
+    };
+    reader.readAsDataURL(file);
     e.target.value = '';
   };
 
@@ -379,55 +399,67 @@ export default function PersonaBuilderView({ persona: initialPersona, onChange, 
             </div>
           </div>
 
-          {/* Upload References Card */}
+          {/* Voice Cloning / Reference Audio Section */}
           <div className="bg-[#0F172A]/50 border border-[#334155]/50 backdrop-blur-xl rounded-2xl p-4 shadow-xl relative overflow-hidden group">
-            <div className="absolute inset-0 bg-gradient-to-br from-[#00F5C2]/3 via-transparent to-transparent opacity-40" />
+            <div className="absolute inset-0 bg-gradient-to-br from-violet-500/5 via-transparent to-transparent opacity-40" />
             <div className="flex flex-wrap items-center justify-between gap-2 mb-2 relative z-10">
               <h3 className="flex items-center gap-2 text-[14px] font-black text-white">
-                <ImageIcon className="text-[#00D4FF]" size={16} /> Upload Reference Images
+                <Volume2 className="text-violet-400" size={16} /> Persona Voice Clone & Audio
               </h3>
               <div className="flex items-center gap-2 text-[#94A3B8] text-[10px] font-bold bg-[#111827]/60 px-2 py-0.5 rounded-lg border border-[#334155]/40 select-none">
-                <span className={`${allImages.length >= 3 ? 'text-[#00F5C2]' : 'text-amber-400'}`}>{allImages.length} / 5</span> images
-                <span className="text-[#64748B] hidden sm:inline">•</span>
-                <span className="hidden sm:inline">Add 3+ for best results</span>
+                <span className={persona.voiceSampleUrl ? 'text-[#00F5C2]' : 'text-amber-400'}>
+                  {persona.voiceSampleUrl ? '✓ Voice Sample Attached' : 'Optional (Default: Nova)'}
+                </span>
               </div>
             </div>
-            
-            <div 
-              onClick={() => fileInputRef.current?.click()}
-              className="border-2 border-dashed border-[#334155]/60 hover:border-[#00D4FF]/40 bg-[#0B0F17]/40 rounded-xl p-3 flex flex-col items-center justify-center cursor-pointer transition-all duration-300 group mb-2.5 h-[84px] relative z-10 hover:bg-[#111827]/40"
+
+            <p className="text-[10px] text-[#94A3B8] font-medium mb-3 relative z-10">
+              Upload a 5+ second speaking sample (audio or video clip) to clone this persona's exact voice for calls, voiceovers, and videos.
+            </p>
+
+            <input
+              type="file"
+              ref={voiceInputRef}
+              accept="audio/*,video/*"
+              onChange={handleVoiceUpload}
+              className="hidden"
+            />
+
+            <div
+              onClick={() => voiceInputRef.current?.click()}
+              className="border-2 border-dashed border-[#334155]/60 hover:border-violet-400/50 bg-[#0B0F17]/40 rounded-xl p-3 flex flex-col items-center justify-center cursor-pointer transition-all duration-300 group relative z-10 hover:bg-[#111827]/40 min-h-[84px]"
             >
-              <div className="w-7 h-7 rounded-xl bg-[#111827] border border-[#334155]/60 flex items-center justify-center mb-1 group-hover:scale-105 group-hover:border-[#00D4FF]/40 transition-all">
-                <Upload size={13} className="text-[#00D4FF]" />
-              </div>
-              <p className="text-xs text-white font-extrabold mb-0.5">Drag & drop images here or <span className="text-[#00D4FF] hover:underline">click to browse</span></p>
-              <p className="text-[9px] text-[#64748B] font-bold">JPG, PNG, WebP up to 20MB each</p>
-              <input type="file" ref={fileInputRef} onChange={handleImageUpload} multiple accept="image/*" className="hidden" />
-            </div>
-
-            {/* Reference quality checklist chips */}
-            <div className="flex flex-wrap gap-1 mt-1 mb-2.5 select-none relative z-10">
-              <span className="text-[8px] font-black uppercase tracking-wider text-[#94A3B8] mr-1 flex items-center">Checklist:</span>
-              <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-[#00D4FF]/10 text-[#00D4FF]/80 border border-[#00D4FF]/20 flex items-center gap-0.5"><Check size={8} /> Clear face</span>
-              <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-[#00D4FF]/10 text-[#00D4FF]/80 border border-[#00D4FF]/20 flex items-center gap-0.5"><Check size={8} /> Good lighting</span>
-              <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-[#00D4FF]/10 text-[#00D4FF]/80 border border-[#00D4FF]/20 flex items-center gap-0.5"><Check size={8} /> Multiple angles</span>
-              <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-[#00D4FF]/10 text-[#00D4FF]/80 border border-[#00D4FF]/20 flex items-center gap-0.5"><Check size={8} /> No sunglasses</span>
-              <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-[#00D4FF]/10 text-[#00D4FF]/80 border border-[#00D4FF]/20 flex items-center gap-0.5"><Check size={8} /> No filters</span>
-            </div>
-
-            <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide relative z-10">
-              {allImages.map((img, i) => (
-                <div key={i} className="relative w-14 h-14 rounded-xl overflow-hidden shrink-0 border border-[#334155]/60 group shadow-md">
-                  <img src={img} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" alt="" />
-                  <button onClick={() => removeReferenceImage(i - (persona.referenceImage ? 1 : 0))} className="absolute top-1 right-1 w-4 h-4 rounded-full bg-black/70 backdrop-blur-md flex items-center justify-center text-white/70 hover:text-white hover:bg-rose-500/90 transition-all opacity-0 group-hover:opacity-100 border border-white/10">
-                    <X size={10} />
+              {persona.voiceSampleUrl ? (
+                <div className="flex items-center justify-between w-full px-3 py-1">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-violet-500/20 border border-violet-500/30 flex items-center justify-center text-violet-300">
+                      <Mic size={18} />
+                    </div>
+                    <div className="text-left">
+                      <p className="text-xs font-bold text-white">Cloned Voice Reference Attached</p>
+                      <p className="text-[9px] text-[#00F5C2] font-semibold">Engine: Wavespeed OmniVoice</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      updateField('voiceSampleUrl', undefined);
+                      updateField('voiceEngine', undefined);
+                    }}
+                    className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-xs font-bold transition-all"
+                  >
+                    <X size={14} />
                   </button>
                 </div>
-              ))}
-              <button onClick={() => fileInputRef.current?.click()} className="w-14 h-14 rounded-xl border-2 border-dashed border-[#334155]/60 hover:border-[#00D4FF]/40 flex flex-col items-center justify-center text-[#64748B] hover:text-[#00D4FF] transition-all bg-[#0B0F17]/30 shrink-0 group">
-                <Plus size={14} className="group-hover:scale-105 transition-transform duration-300" />
-                <span className="text-[8px] font-black tracking-wide mt-0.5">Add</span>
-              </button>
+              ) : (
+                <>
+                  <div className="w-8 h-8 rounded-xl bg-[#111827] border border-[#334155]/60 flex items-center justify-center mb-1 group-hover:scale-105 group-hover:border-violet-400/50 transition-all">
+                    <Mic size={15} className="text-violet-400" />
+                  </div>
+                  <p className="text-xs text-white font-extrabold mb-0.5">Upload audio or video clip to clone voice</p>
+                  <p className="text-[9px] text-[#64748B] font-bold">MP3, WAV, MP4, MOV (min 5s clip)</p>
+                </>
+              )}
             </div>
           </div>
 

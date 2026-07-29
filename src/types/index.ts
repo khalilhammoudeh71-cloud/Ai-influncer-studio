@@ -8,7 +8,7 @@ export type GeneratedImage = {
   framing?: string;
   isFavorite?: boolean;
   model?: string;
-  mediaType?: 'image' | 'video';
+  mediaType?: 'image' | 'video' | '3d';
 };
 
 export type Persona = {
@@ -36,6 +36,7 @@ export type Persona = {
   visualLibrary?: GeneratedImage[];
   voiceId?: string;
   voiceEngine?: string;
+  voiceSampleUrl?: string;
   heygenAvatarId?: string;
 };
 

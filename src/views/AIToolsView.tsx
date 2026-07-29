@@ -46,6 +46,10 @@ import HeadshotStudio from '../components/HeadshotStudio';
 import TimeMachine from '../components/TimeMachine';
 import HairstyleTryOn from '../components/HairstyleTryOn';
 import MotionControlStudio from '../components/MotionControlStudio';
+import ThreeDStudio from '../components/ThreeDStudio';
+import BatchImageStudio from '../components/BatchImageStudio';
+import InpaintStudio from '../components/InpaintStudio';
+import BatchFaceSwapStudio from '../components/BatchFaceSwapStudio';
 import toast from 'react-hot-toast';
 
 interface AIToolsViewProps {
@@ -60,6 +64,34 @@ interface AIToolsViewProps {
 type ToolType = 'beautify' | 'morph' | 'muscle' | 'ink' | 'teleport' | 'canvas' | 'face-swap' | 'bg-remover' | 'virtual-tryon' | 'video-edit' | 'skin-enhancer' | 'upscaler' | 'camera-angles' | null;
 
 const TOOLS = [
+  { 
+    id: 'batch-face-swap', title: 'Batch Adult Face-Swap Studio', icon: ArrowLeftRight, 
+    desc: 'Upload 10-20 target photosets/poses at once to swap your persona\'s face in bulk.', 
+    color: 'from-pink-500 to-rose-600',
+    demoBefore: '/demo/faceswap_before.png',
+    demoAfter: '/demo/faceswap_after.png',
+  },
+  { 
+    id: 'inpaint', title: 'AI Inpaint Brush Studio', icon: Wand2, 
+    desc: 'Paint over any region with the brush and describe what to replace, add, or edit.', 
+    color: 'from-pink-500 to-rose-600',
+    demoBefore: '/demo/canvas_before.png',
+    demoAfter: '/demo/canvas_after.png',
+  },
+  { 
+    id: 'batch-edit', title: 'Batch Isolator & Enhancer', icon: Box, 
+    desc: 'Upload 8-12 photos at once to extract, isolate, and enhance subjects in parallel.', 
+    color: 'from-pink-500 to-violet-600',
+    demoBefore: '/demo/canvas_before.png',
+    demoAfter: '/demo/canvas_after.png',
+  },
+  { 
+    id: '3d-studio', title: '3D Asset Studio', icon: Box, 
+    desc: 'Generate textured 3D GLB meshes and game assets from text or photo.', 
+    color: 'from-cyan-500 to-violet-600',
+    demoBefore: '/demo/canvas_before.png',
+    demoAfter: '/demo/canvas_after.png',
+  },
   { 
     id: 'beautify', title: 'Beautify Core', icon: Droplets, 
     desc: 'Refine nose contours, smooth undereyes and skin perfectly.', 
