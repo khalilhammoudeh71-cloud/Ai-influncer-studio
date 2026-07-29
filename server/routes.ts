@@ -684,7 +684,7 @@ Inject these active viral trends if suitable for the request:
         parts.push({ text: msg.content });
       }
       if (msg.attachments && Array.isArray(msg.attachments)) {
-        msg.attachments.forEach(att => {
+        msg.attachments.forEach((att: any) => {
           const match = att.dataUrl.match(/^data:([^;]+);base64,(.+)$/);
           if (match) {
             parts.push({

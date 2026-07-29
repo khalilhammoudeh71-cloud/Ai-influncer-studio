@@ -3,6 +3,8 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
+import { exec } from 'child_process';
 import { instagramGetUrl } from 'instagram-url-direct';
 import OpenAI, { toFile } from 'openai';
 import { GoogleGenAI } from '@google/genai';
@@ -133,6 +135,7 @@ const NSFW_MODEL_FRAGMENTS = [
   'lustify',
   'pony-realism',
   'akuma',
+  'qwen',
 ];
 
 function isNsfwModel(modelId: string): boolean {
@@ -576,39 +579,41 @@ async function fetchAtlasCloudModels(): Promise<ModelInfo[]> {
     const json = await res.json() as { data?: AtlasModel[] };
     const rawModels = json.data || [];
 
-    const imageModelIds = new Set([
-      'google/gemini-2.5-flash-image',
-      'google/gemini-3-pro-image-preview',
-      'google/gemini-3.1-flash-image-preview',
-      'openai/gpt-image-2',
-      'google/gemini-3.1-flash-image',
-    ]);
-
     const models: ModelInfo[] = rawModels
-      .filter(m => imageModelIds.has(m.id))
+      .filter(m => {
+        const idLower = m.id.toLowerCase();
+        return idLower.includes('image') || idLower.includes('flux') || idLower.includes('diffusion') || idLower.includes('schnell') || idLower.includes('dev') || idLower.includes('sd-') || idLower.includes('sdxl') || idLower.includes('illustrious');
+      })
       .map(m => {
         let displayName = m.name || m.id;
-        if (m.id === 'google/gemini-3.1-flash-image') {
-          displayName = 'Gemini 3.1 Flash Image (Atlas)';
-        } else if (m.id === 'openai/gpt-image-2') {
-          displayName = 'GPT Image 2 (Atlas)';
-        } else if (m.id === 'google/gemini-2.5-flash-image') {
-          displayName = 'Gemini 2.5 Flash Image (Atlas)';
-        } else if (m.id === 'google/gemini-3-pro-image-preview') {
-          displayName = 'Gemini 3 Pro Image (Atlas)';
-        } else if (m.id === 'google/gemini-3.1-flash-image-preview') {
-          displayName = 'Gemini 3.1 Flash Image Preview (Atlas)';
+        displayName = displayName
+          .split('/')
+          .slice(-1)[0]
+          .split('-')
+          .map((p: string) => p.charAt(0).toUpperCase() + p.slice(1))
+          .join(' ');
+        
+        let price = 0.003;
+        if (m.id.includes('dev') || m.id.includes('pro')) {
+          price = 0.015;
+        } else if (m.id.includes('schnell')) {
+          price = 0.003;
+        } else if (m.id.includes('gpt-image-2')) {
+          price = 0.009;
         }
+
+        const nsfw = m.id.includes('uncensored') || m.id.includes('nsfw') || m.id.includes('lustify') || m.id.includes('pony') || m.id.includes('illustrious');
 
         return {
           id: `atlascloud:${m.id}`,
           name: displayName,
           provider: 'Atlas Cloud',
           type: 'text-to-image' as const,
-          price: m.id.includes('gpt-image') ? 0.009 : 0.003,
+          price,
           description: m.description || `Atlas Cloud ${displayName}`,
           apiPath: '',
           hasEditVariant: false,
+          nsfw,
         };
       });
 
@@ -1140,11 +1145,11 @@ async function convertHeicToJpegIfNecessary(dataUrl: string): Promise<string> {
       console.log('[HEIC] Converting HEIC image to JPEG...');
       const base64Data = dataUrl.replace(/^data:[^;]+;base64,/, '');
       const inputBuffer = Buffer.from(base64Data, 'base64');
-      const outputBuffer = await convert({
+      const outputBuffer = Buffer.from(await convert({
         buffer: inputBuffer,
         format: 'JPEG',
         quality: 0.92
-      });
+      }));
       return `data:image/jpeg;base64,${outputBuffer.toString('base64')}`;
     }
   }
@@ -2658,7 +2663,7 @@ app.post('/api/edit-image', async (req, res) => {
 });
 
 app.post('/api/upscale-image', async (req, res) => {
-  const { sourceImage, modelId } = req.body;
+  const { sourceImage, modelId, targetResolution } = req.body;
 
   if (!sourceImage || !modelId) {
     return res.status(400).json({ error: 'sourceImage and modelId are required' });
@@ -2680,6 +2685,9 @@ app.post('/api/upscale-image', async (req, res) => {
       enable_sync_mode: true,
       enable_base64_output: true,
     };
+    if (targetResolution) {
+      payload.target_resolution = targetResolution;
+    }
     if (upscaleModel.editImageField === 'images') {
       payload.images = [b64Url];
     } else {
@@ -2840,12 +2848,15 @@ app.post('/api/generate-video', async (req, res) => {
           if (videoModel) break;
         }
         if (!videoModel) {
-          videoModel = allModels.find(m => m.id.startsWith('wavespeed-v2v:'));
+          videoModel = allModels.find(m => m.id.startsWith('wavespeed-v2v:') || m.id.startsWith('wavespeed-i2v:'));
+        }
+        if (!videoModel && allModels.length > 0) {
+          videoModel = allModels[0];
         }
       } else if (modelId.startsWith('wavespeed-i2v:')) {
-        videoModel = (cachedVideoModels || []).find(m => m.id.startsWith('wavespeed-i2v:'));
+        videoModel = (cachedVideoModels || []).find(m => m.id.startsWith('wavespeed-i2v:')) || (cachedVideoModels || [])[0];
       } else if (modelId.startsWith('wavespeed-t2v:')) {
-        videoModel = (cachedVideoModels || []).find(m => m.id.startsWith('wavespeed-t2v:'));
+        videoModel = (cachedVideoModels || []).find(m => m.id.startsWith('wavespeed-t2v:')) || (cachedVideoModels || [])[0];
       }
     }
     if (!videoModel) {
@@ -3130,7 +3141,48 @@ app.post('/api/translate-text', async (req, res) => {
   }
 });
 
-// ─── Shared TTS handler ────────────────────────────────────────────────────────
+async function extractAudioFromVideoBase64(videoBase64: string): Promise<string> {
+  // If it's already audio, return as is
+  if (videoBase64.startsWith('data:audio/')) return videoBase64;
+  if (!videoBase64.startsWith('data:video/')) return videoBase64;
+
+  const matches = videoBase64.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
+  if (!matches || matches.length < 3) return videoBase64;
+
+  const ext = matches[1].split('/')[1] || 'mp4';
+  const buffer = Buffer.from(matches[2], 'base64');
+  
+  const tempDir = path.join(__dirname, 'temp');
+  if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
+
+  const videoPath = path.join(tempDir, `temp_input_${Date.now()}.${ext}`);
+  const audioPath = path.join(tempDir, `temp_output_${Date.now()}.mp3`);
+
+  fs.writeFileSync(videoPath, buffer);
+
+  return new Promise((resolve) => {
+    exec(`ffmpeg -i "${videoPath}" -q:a 0 -map a "${audioPath}" -y`, (err: any) => {
+      if (err) {
+        console.warn('[VideoToAudio] ffmpeg extraction failed, returning original:', err);
+        // Fallback to original
+        try { fs.unlinkSync(videoPath); } catch {}
+        resolve(videoBase64);
+      } else {
+        try {
+          const audioBuffer = fs.readFileSync(audioPath);
+          const outBase64 = `data:audio/mp3;base64,${audioBuffer.toString('base64')}`;
+          fs.unlinkSync(videoPath);
+          fs.unlinkSync(audioPath);
+          resolve(outBase64);
+        } catch (e) {
+          console.warn('[VideoToAudio] Failed to read audio output:', e);
+          resolve(videoBase64);
+        }
+      }
+    });
+  });
+}
+
 async function handleTTS(req: express.Request, res: express.Response) {
   const {
     text,
@@ -3139,10 +3191,12 @@ async function handleTTS(req: express.Request, res: express.Response) {
     engine = 'gemini',
     speed = 1.0,
     voiceSettings,
+    voiceReference,
   } = req.body as {
     text: string; voiceName?: string; voice?: string; voiceId?: string;
-    engine?: 'gemini' | 'openai' | 'elevenlabs'; speed?: number;
+    engine?: 'gemini' | 'openai' | 'elevenlabs' | 'omnivoice' | 'qwen-tts'; speed?: number;
     voiceSettings?: { stability?: number; similarity_boost?: number; style?: number };
+    voiceReference?: string;
   };
   const resolvedVoice = voiceName || voiceParam || 'Aoede';
 
@@ -3180,6 +3234,94 @@ async function handleTTS(req: express.Request, res: express.Response) {
       return res.json({ audioUrl, voice: voiceId, model: 'eleven_multilingual_v2', engine: 'elevenlabs' });
     } catch (err) {
       return res.status(500).json({ error: err instanceof Error ? err.message : 'ElevenLabs TTS failed' });
+    }
+  }
+
+  // OmniVoice (Wavespeed)
+  if (engine === 'omnivoice') {
+    if (!WAVESPEED_API_KEY) return res.status(503).json({ error: 'Wavespeed API key not configured' });
+    try {
+      let resolvedAudio = '';
+      if (resolvedVoice === 'persona-clone' && voiceReference) {
+        console.log('[Wavespeed OmniVoice] Using custom uploaded reference voice.');
+        resolvedAudio = await extractAudioFromVideoBase64(voiceReference);
+      } else {
+        let voiceUrl = 'https://api.elevenlabs.io/v1/voices/21m00Tcm4TlvDq8ikWAM/previews'; // Rachel
+        if (resolvedVoice === 'preset-alex') {
+          voiceUrl = 'https://api.elevenlabs.io/v1/voices/ErXwobaYiN019PkySvjV/previews'; // Antoni
+        } else if (resolvedVoice === 'preset-luna') {
+          voiceUrl = 'https://api.elevenlabs.io/v1/voices/AZnzlk1XvdvUeBnXmlld/previews'; // Domi
+        }
+        console.log('[Wavespeed OmniVoice] Generating speech for text:', text, 'using voice URL:', voiceUrl);
+        resolvedAudio = await resolveAudioToDataUrl(voiceUrl);
+      }
+      
+      const r = await fetch(`${WAVESPEED_BASE}/wavespeed-ai/omnivoice`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${WAVESPEED_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          voice_file: resolvedAudio,
+          text: text
+        }),
+      });
+
+      if (!r.ok) {
+        const errMsg = await r.text();
+        throw new Error(`Wavespeed OmniVoice API error: ${errMsg}`);
+      }
+
+      const json = await r.json() as Record<string, unknown>;
+      const audioUrl = await extractWavespeedAudioOutput(json);
+      return res.json({ audioUrl, voice: resolvedVoice, model: 'wavespeed-ai/omnivoice', engine: 'omnivoice' });
+    } catch (err) {
+      console.error('[Wavespeed OmniVoice] Failed:', err);
+      return res.status(500).json({ error: err instanceof Error ? err.message : 'Wavespeed OmniVoice TTS failed' });
+    }
+  }
+
+  // Qwen TTS (Wavespeed)
+  if (engine === 'qwen-tts') {
+    if (!WAVESPEED_API_KEY) return res.status(503).json({ error: 'Wavespeed API key not configured' });
+    try {
+      console.log('[Wavespeed Qwen TTS] Generating speech for text:', text, 'using voice preset:', resolvedVoice);
+      const r = await fetch(`${WAVESPEED_BASE}/wavespeed-ai/qwen-tts`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${WAVESPEED_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: text,
+          voice: resolvedVoice || 'qwen-female'
+        }),
+      });
+
+      if (!r.ok) {
+        console.warn('[Wavespeed Qwen TTS] Qwen TTS failed, falling back to OmniVoice...');
+        let voiceUrl = 'https://api.elevenlabs.io/v1/voices/21m00Tcm4TlvDq8ikWAM/previews'; // Rachel
+        if (resolvedVoice === 'qwen-male') {
+          voiceUrl = 'https://api.elevenlabs.io/v1/voices/ErXwobaYiN019PkySvjV/previews'; // Antoni
+        }
+        const resolvedAudio = await resolveAudioToDataUrl(voiceUrl);
+        const fbRes = await fetch(`${WAVESPEED_BASE}/wavespeed-ai/omnivoice`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${WAVESPEED_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            voice_file: resolvedAudio,
+            text: text
+          }),
+        });
+        if (!fbRes.ok) {
+          throw new Error('Wavespeed fallback voice generation failed');
+        }
+        const json = await fbRes.json() as Record<string, unknown>;
+        const audioUrl = await extractWavespeedAudioOutput(json);
+        return res.json({ audioUrl, voice: resolvedVoice, model: 'wavespeed-ai/omnivoice-fallback', engine: 'qwen-tts' });
+      }
+
+      const json = await r.json() as Record<string, unknown>;
+      const audioUrl = await extractWavespeedAudioOutput(json);
+      return res.json({ audioUrl, voice: resolvedVoice, model: 'wavespeed-ai/qwen-tts', engine: 'qwen-tts' });
+    } catch (err) {
+      console.error('[Wavespeed Qwen TTS] Failed:', err);
+      return res.status(500).json({ error: err instanceof Error ? err.message : 'Wavespeed Qwen TTS failed' });
     }
   }
 
@@ -3330,7 +3472,7 @@ async function extractWavespeedAudioOutput(json: Record<string, unknown>): Promi
   if (status === 'processing' || status === 'queued' || status === 'completed' || status === 'created' || status === 'pending') {
     const pollUrl = (data?.urls as Record<string, string>)?.get || (data?.id ? `https://api.wavespeed.ai/api/v3/predictions/${data.id}/result` : null);
     if (pollUrl) {
-      console.log('[Wavespeed Audio] Polling prediction:', data.id);
+      console.log('[Wavespeed Audio] Polling prediction:', data?.id);
       for (let attempt = 0; attempt < 200; attempt++) {
         await new Promise(r => setTimeout(r, 3000));
         const pollRes = await fetch(pollUrl, {
@@ -3446,7 +3588,7 @@ app.post('/api/virtual-tryon', async (req, res) => {
     const r = await fetch(`${WAVESPEED_BASE}/wavespeed-ai/ai-virtual-outfit-tryon`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${WAVESPEED_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model_image: person, garment_image: garment, garment_des: garmentDescription }),
+      body: JSON.stringify({ image: person, clothes_images: [garment], prompt: garmentDescription }),
     });
     const json = await r.json() as Record<string, unknown>;
     const imageUrl = await extractWavespeedOutput(json);
@@ -3472,7 +3614,7 @@ app.post('/api/look-swap', async (req, res) => {
       const r = await fetch(`${WAVESPEED_BASE}/wavespeed-ai/ai-virtual-outfit-tryon`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${WAVESPEED_API_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model_image: src, garment_image: ref, garment_des: prompt }),
+        body: JSON.stringify({ image: src, clothes_images: [ref], prompt: prompt }),
       });
       const json = await r.json() as Record<string, unknown>;
       const imageUrl = await extractWavespeedOutput(json);
@@ -3667,6 +3809,7 @@ app.post('/api/heygen-create-avatar', async (req, res) => {
 app.post('/api/talking-head', async (req, res) => {
   const { 
     portraitImage, 
+    video,
     audioUrl, 
     script, 
     voiceName = 'Aoede', 
@@ -3676,22 +3819,27 @@ app.post('/api/talking-head', async (req, res) => {
     heygenAvatarId,
     camera = 'close_up',
     expression = 'neutral',
-    lighting = 'studio'
+    lighting = 'studio',
+    model
   } = req.body as {
     portraitImage?: string; 
+    video?: string;
     audioUrl?: string; 
     script?: string; 
     voiceName?: string; 
-    engine?: 'wavespeed' | 'heygen'; 
+    engine?: string; 
     heygenEngine?: 'avatar_iv' | 'avatar_v'; 
     heygenApiKey?: string; 
     heygenAvatarId?: string;
     camera?: string;
     expression?: string;
     lighting?: string;
+    model?: string;
   };
   
-  if (!portraitImage && !heygenAvatarId) return res.status(400).json({ error: 'portraitImage or heygenAvatarId is required' });
+  if (!portraitImage && !heygenAvatarId && !video) {
+    return res.status(400).json({ error: 'portraitImage, video reference, or heygenAvatarId is required' });
+  }
   if (!audioUrl && !script) return res.status(400).json({ error: 'audioUrl or script is required' });
 
   const finalHeygenKey = heygenApiKey || HEYGEN_API_KEY;
@@ -3773,6 +3921,60 @@ app.post('/api/talking-head', async (req, res) => {
 
   // --- Wavespeed Path ---
   try {
+    const selectedModel = model || 'wavespeed-ai/ai-talking-photos';
+    
+    if (selectedModel === 'bytedance/lipsync/audio-to-video' || selectedModel === 'veed') {
+      if (!video) return res.status(400).json({ error: 'Reference video is required for Sync 1.0 / VEED' });
+      const resolvedVideo = await resolveVideoUrlOrDataUrl(video);
+      const r = await fetch(`${WAVESPEED_BASE}/bytedance/lipsync/audio-to-video`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${WAVESPEED_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ video: resolvedVideo, audio: resolvedAudioUrl }),
+      });
+      const json = await r.json() as Record<string, unknown>;
+      const videoUrl = await extractWavespeedVideoOutput(json);
+      return res.json({ videoUrl, model: selectedModel });
+    }
+
+    if (selectedModel === 'kwaivgi/kling-lipsync/audio-to-video' || selectedModel === 'pixverse' || selectedModel === 'veed2') {
+      if (!video) return res.status(400).json({ error: 'Reference video is required for Sync 2.0 / Pixverse / VEED 2.0' });
+      const resolvedVideo = await resolveVideoUrlOrDataUrl(video);
+      const r = await fetch(`${WAVESPEED_BASE}/kwaivgi/kling-lipsync/audio-to-video`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${WAVESPEED_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ video: resolvedVideo, audio: resolvedAudioUrl }),
+      });
+      const json = await r.json() as Record<string, unknown>;
+      const videoUrl = await extractWavespeedVideoOutput(json);
+      return res.json({ videoUrl, model: selectedModel });
+    }
+
+    if (selectedModel === 'wavespeed-ai/infinitetalk/video-to-video') {
+      if (!video) return res.status(400).json({ error: 'Reference video is required for Sync 3.0' });
+      const resolvedVideo = await resolveVideoUrlOrDataUrl(video);
+      const r = await fetch(`${WAVESPEED_BASE}/wavespeed-ai/infinitetalk/video-to-video`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${WAVESPEED_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ video: resolvedVideo, audio: resolvedAudioUrl }),
+      });
+      const json = await r.json() as Record<string, unknown>;
+      const videoUrl = await extractWavespeedVideoOutput(json);
+      return res.json({ videoUrl, model: selectedModel });
+    }
+
+    if (selectedModel === 'wavespeed-ai/multitalk') {
+      if (!portraitImage) return res.status(400).json({ error: 'Portrait image is required for InfiniteTalk' });
+      const img = await resolveImageToDataUrl(portraitImage);
+      const r = await fetch(`${WAVESPEED_BASE}/wavespeed-ai/multitalk`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${WAVESPEED_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: img, audio: resolvedAudioUrl }),
+      });
+      const json = await r.json() as Record<string, unknown>;
+      const videoUrl = await extractWavespeedVideoOutput(json);
+      return res.json({ videoUrl, model: selectedModel });
+    }
+
     if (!portraitImage) {
       return res.status(400).json({ error: 'portraitImage is required for Wavespeed engine' });
     }
@@ -3790,7 +3992,7 @@ app.post('/api/talking-head', async (req, res) => {
     });
     const json = await r.json() as Record<string, unknown>;
     const videoUrl = await extractWavespeedVideoOutput(json);
-    res.json({ videoUrl, model: 'wavespeed-ai/ai-talking-photos' });
+    res.json({ videoUrl, model: selectedModel });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Talking head generation failed' });
   }
@@ -3798,8 +4000,8 @@ app.post('/api/talking-head', async (req, res) => {
 
 // ─── Motion Control ─────────────────────────────────────────────────────────────
 app.post('/api/motion-control', async (req, res) => {
-  const { refImage, motionVideoUrl, motionVideoBase64, danceId } = req.body as {
-    refImage: string; motionVideoUrl?: string; motionVideoBase64?: string; danceId?: string;
+  const { refImage, motionVideoUrl, motionVideoBase64, danceId, model = 'wavespeed-ai/motion-control' } = req.body as {
+    refImage: string; motionVideoUrl?: string; motionVideoBase64?: string; danceId?: string; model?: string;
   };
   if (!refImage) return res.status(400).json({ error: 'refImage is required' });
 
@@ -3817,7 +4019,9 @@ app.post('/api/motion-control', async (req, res) => {
         payload.motion_video_base64 = motionVideoBase64;
       }
 
-      const r = await fetch(`${WAVESPEED_BASE}/wavespeed-ai/motion-control`, {
+      const modelPath = model.includes('/') ? model : `wavespeed-ai/${model}`;
+      console.log('[Wavespeed Motion Control] Dispatching job for model:', modelPath);
+      const r = await fetch(`${WAVESPEED_BASE}/${modelPath}`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${WAVESPEED_API_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -3826,7 +4030,7 @@ app.post('/api/motion-control', async (req, res) => {
       if (r.ok) {
         const json = await r.json() as Record<string, unknown>;
         const videoUrl = await extractWavespeedVideoOutput(json);
-        return res.json({ videoUrl, model: 'wavespeed-ai/motion-control' });
+        return res.json({ videoUrl, model: modelPath });
       }
     } catch (err) {
       console.warn('[MotionControl] Wavespeed API failed, falling back to mock:', err);
@@ -4329,7 +4533,7 @@ app.post('/api/download-social-video', async (req, res) => {
 
     if (targetUrl.includes('instagram.com')) {
       console.log('[Downloader] Downloading Instagram:', targetUrl);
-      const data = await instagramGetUrl(targetUrl);
+      const data = (await instagramGetUrl(targetUrl)) as any;
       if (!data || !data.url_list || data.url_list.length === 0) {
         throw new Error('Instagram extraction failed. Post may be private or format unsupported.');
       }
@@ -4347,6 +4551,95 @@ app.post('/api/download-social-video', async (req, res) => {
   } catch (err: any) {
     console.error('[download-social-video] Error:', err);
     return res.status(500).json({ error: err.message || 'Failed to extract video' });
+  }
+});
+
+// Trend Script Generation Endpoint
+app.post('/api/generate-trend-script', async (req, res) => {
+  const { trendName, trendDescription, trendNiche, persona } = req.body;
+  if (!trendName) return res.status(400).json({ error: 'trendName is required' });
+
+  try {
+    const ai = getGeminiClient();
+    const personaName = persona?.name || 'General';
+    const personaNiche = persona?.niche || 'Lifestyle';
+    const personaTone = persona?.tone || 'Empathetic, Inspiring, Relatable';
+    const personaBio = persona?.bio || '';
+    const personaVisualStyle = persona?.visualStyle || '';
+
+    const prompt = `You are a social media growth advisor. Help the digital creator "${personaName}" hijack a viral trend.
+Trend details:
+- Name: "${trendName}"
+- Description: "${trendDescription}"
+- Niche: "${trendNiche}"
+
+Creator's profile:
+- Niche: "${personaNiche}"
+- Tone: "${personaTone}"
+- Bio: "${personaBio}"
+- Visual Style: "${personaVisualStyle}"
+
+Provide a comprehensive script concept that merges this trend perfectly with the creator's voice.
+Return ONLY a valid JSON object in this exact format:
+{
+  "concept": "A 1-sentence summary of how this creator will hijack the trend.",
+  "hook": "A highly clickable 1-line opening hook.",
+  "voiceoverScript": "A detailed 45-second vertical video script divided into scenes, with visual cues in brackets, e.g., [Visual: Isabel showing her desk setup] 'Ever feel like...'. Make it fit the creator's niche.",
+  "visualPrompts": [
+    "Prompt 1: Descriptive text-to-image prompt to generate matching visuals (e.g. for Flux)",
+    "Prompt 2: Visual description to generate a second scene",
+    "Prompt 3: Final scene visual description"
+  ],
+  "hashtags": ["#tag1", "#tag2", "#tag3"]
+}`;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.0-flash',
+      contents: prompt,
+      config: { maxOutputTokens: 1500, temperature: 0.7 }
+    });
+
+    const raw = (response.text || '{}').trim().replace(/```json\n?|```/g, '');
+    return res.json(JSON.parse(raw));
+  } catch (err: any) {
+    console.error('[generate-trend-script]', err);
+    return res.status(500).json({ error: err.message || 'Script generation failed' });
+  }
+});
+
+// Mock Video Stitching Endpoint
+app.post('/api/stitch-video-assets', async (req, res) => {
+  const { personaId, scenes, audioUrl } = req.body;
+  if (!scenes || !Array.isArray(scenes) || scenes.length === 0) {
+    return res.status(400).json({ error: 'Scenes are required for stitching' });
+  }
+
+  try {
+    console.log('[Stitcher] Stitching request received for persona:', personaId);
+    console.log('[Stitcher] Total scenes:', scenes.length, 'Audio track:', audioUrl);
+
+    // Vertical video templates representation
+    const mockVideos = [
+      'https://assets.mixkit.co/videos/preview/mixkit-influencer-recording-herself-with-a-smartphone-43034-large.mp4',
+      'https://assets.mixkit.co/videos/preview/mixkit-young-woman-talking-to-camera-on-smartphone-42287-large.mp4',
+      'https://assets.mixkit.co/videos/preview/mixkit-woman-vlogger-recording-video-for-blog-42416-large.mp4',
+      'https://assets.mixkit.co/videos/preview/mixkit-girl-working-out-at-home-with-her-phone-41989-large.mp4'
+    ];
+    
+    const randomStitchedUrl = mockVideos[Math.floor(Math.random() * mockVideos.length)];
+    
+    // Simulate compilation time
+    await new Promise(resolve => setTimeout(resolve, 4000));
+    
+    return res.json({
+      success: true,
+      videoUrl: randomStitchedUrl,
+      promptUsed: scenes.map((s: any) => s.caption || s.prompt).join(' | '),
+      duration: scenes.reduce((acc: number, s: any) => acc + (s.duration || 5), 0)
+    });
+  } catch (err: any) {
+    console.error('[Stitcher] Error stitching video assets:', err);
+    return res.status(500).json({ error: err.message || 'Stitching failed' });
   }
 });
 

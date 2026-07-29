@@ -27,11 +27,15 @@ import {
   Copy,
   CheckCircle2,
   Zap,
-  FileText
+  FileText,
+  Cpu,
+  Check,
+  Download,
+  ChevronDown
 } from 'lucide-react';
 import { Persona, NavActions } from '../types';
 import { api } from '../services/apiService';
-import { editImage, faceSwap, removeBackground, virtualTryOn, fetchEditModels, upscaleImage, fetchUpscaleModels, fetchVideoModels, type ModelInfo } from '../services/imageService';
+import { editImage, faceSwap, removeBackground, virtualTryOn, fetchEditModels, upscaleImage, fetchUpscaleModels, fetchVideoModels, generateAngleImage, ANGLE_MODELS, type ModelInfo } from '../services/imageService';
 import BeforeAfterSlider from '../components/BeforeAfterSlider';
 import { processImageFile } from '../utils/imageProcessing';
 import { generatePersonaContent } from '../utils/personaEngine';
@@ -49,9 +53,11 @@ interface AIToolsViewProps {
   personas: Persona[];
   onSelectPersona: (id: string) => void;
   nav: NavActions;
+  initialTool?: ToolType;
+  billingInfo?: any;
 }
 
-type ToolType = 'beautify' | 'morph' | 'muscle' | 'ink' | 'teleport' | 'canvas' | 'face-swap' | 'bg-remover' | 'virtual-tryon' | 'video-edit' | null;
+type ToolType = 'beautify' | 'morph' | 'muscle' | 'ink' | 'teleport' | 'canvas' | 'face-swap' | 'bg-remover' | 'virtual-tryon' | 'video-edit' | 'skin-enhancer' | 'upscaler' | 'camera-angles' | null;
 
 const TOOLS = [
   { 
@@ -121,14 +127,79 @@ const TOOLS = [
     id: 'video-edit', title: 'AI Video Editor', icon: Video, 
     desc: 'Stylize, edit, or transform existing videos using AI.', 
     color: 'from-violet-500 to-fuchsia-500',
-    demoBefore: '/demo/videoedit_before.mp4',
-    demoAfter: '/demo/videoedit_after.mp4',
+    demoBefore: '/demo-assets/video-preview.mp4',
+    demoAfter: '/demo-assets/generated-talking.mp4',
+  },
+  { 
+    id: 'skin-enhancer', title: 'Skin Enhancer', icon: Sparkles, 
+    desc: 'Blemish removal, skin smoothing, and texture enhancement in batch.', 
+    color: 'from-amber-400 to-orange-500',
+    demoBefore: '/demo/beautify_before.png',
+    demoAfter: '/demo/beautify_after.png',
+  },
+  { 
+    id: 'upscaler', title: 'Image Upscaler', icon: ArrowUpCircle, 
+    desc: 'Upscale low-resolution images to 2K/4K ultra HD in batch.', 
+    color: 'from-blue-500 to-indigo-600',
+    demoBefore: '/demo/canvas_before.png',
+    demoAfter: '/demo/canvas_after.png',
+  },
+  { 
+    id: 'camera-angles', title: 'Camera Angles', icon: Camera, 
+    desc: 'Generate 9-angle identity sheets or adjust camera perspective.', 
+    color: 'from-cyan-500 to-sky-500',
+    demoBefore: '/demo/canvas_before.png',
+    demoAfter: '/demo/canvas_after.png',
   },
 ] as const;
 
-export default function AIToolsView({ persona, personas, onSelectPersona, nav }: AIToolsViewProps) {
-  const [activeTool, setActiveTool] = useState<ToolType>(null);
+const HORIZONTAL_POSITIONS = [
+  { id: 1,  label: 'Front',       row: 0, col: 1 },
+  { id: 2,  label: 'FR',           row: 0, col: 2 },
+  { id: 3,  label: 'Right',        row: 1, col: 2 },
+  { id: 4,  label: 'BR',           row: 2, col: 2 },
+  { id: 5,  label: 'Back',         row: 2, col: 1 },
+  { id: 6,  label: 'BL',           row: 2, col: 0 },
+  { id: 7,  label: 'Left',         row: 1, col: 0 },
+  { id: 8,  label: 'FL',           row: 0, col: 0 },
+];
+
+const VERTICAL_POSITIONS = [
+  { id: 0, label: "Bird's Eye" },
+  { id: 1, label: 'High Angle'  },
+  { id: 2, label: 'Eye Level'   },
+  { id: 3, label: 'Low Angle'   },
+];
+
+const DISTANCE_OPTIONS = [
+  { id: 0,  label: 'Close-Up'     },
+  { id: 1,  label: 'Medium Shot'  },
+  { id: 2,  label: 'Wide Shot'    },
+];
+
+export default function AIToolsView({ persona, personas, onSelectPersona, nav, initialTool, billingInfo }: AIToolsViewProps) {
+  const [activeTool, setActiveTool] = useState<ToolType>(initialTool || null);
+
+  useEffect(() => {
+    setActiveTool(initialTool || null);
+  }, [initialTool]);
+
   const [toolCategory, setToolCategory] = useState<'editor' | 'studios'>('editor');
+  
+  // Batch processing interfaces & states
+  interface BatchItem {
+    id: string;
+    file: File;
+    previewUrl: string;
+    status: 'idle' | 'processing' | 'done' | 'failed';
+    resultUrl?: string;
+    error?: string;
+  }
+  const [batchItems, setBatchItems] = useState<BatchItem[]>([]);
+  const [batchEnhancementStrength, setBatchEnhancementStrength] = useState<number>(0.75); // 0 to 1
+  const [batchUpscaleResolution, setBatchUpscaleResolution] = useState<string>('4k'); // '2k' | '4k'
+  const batchFileInputRef = useRef<HTMLInputElement>(null);
+  const [isBatchProcessing, setIsBatchProcessing] = useState(false);
   
   // Shared Editor State
   const [sourceImage, setSourceImage] = useState<string | null>(null);
@@ -167,6 +238,19 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
   // Face Swap specific state
   const [faceSwapFaceImage, setFaceSwapFaceImage] = useState<string | null>(null);
   const faceFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Camera Angles specific state
+  const [angleSourceImage, setAngleSourceImage] = useState<string | null>(null);
+  const [angleSourceImageName, setAngleSourceImageName] = useState<string | null>(null);
+  const [angleSourceType, setAngleSourceType] = useState<'persona' | 'custom'>('custom');
+  const angleFileInputRef = useRef<HTMLInputElement>(null);
+  const [angleHorizontal, setAngleHorizontal] = useState(1);
+  const [angleVertical, setAngleVertical] = useState(2);
+  const [angleDistance, setAngleDistance] = useState(1);
+  const [angleModel, setAngleModel] = useState('angle-qwen-multiple');
+  const [angleResult, setAngleResult] = useState<{ imageUrl: string; model: string } | null>(null);
+  const [angleGenerating, setAngleGenerating] = useState(false);
+  const [angleSaved, setAngleSaved] = useState(false);
 
   // Virtual Try-On specific state
   const [garmentImage, setGarmentImage] = useState<string | null>(null);
@@ -465,10 +549,17 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
       setAutoModelReason('Bria Expand — specialized for outpainting & frame extension');
       return briaExpand?.id || 'wavespeed-edit:bria/expand';
     }
-    const seedream45 = editModels.find(m => m.id.includes('seedream-v4.5/edit'));
     
+    const seedream45 = editModels.find(m => m.id.includes('seedream-v4.5/edit'));
+    const editFallback = seedream45?.id || editModels.find(m => m.id.startsWith('wavespeed-edit:'))?.id || 'wavespeed-edit:bytedance/seedream-v4.5/edit';
+
+    if (activeTool === 'morph' || activeTool === 'muscle' || activeTool === 'beautify' || activeTool === 'ink' || activeTool === 'teleport') {
+      setAutoModelReason('Seedream v4.5 Edit — specialized instruction-based editor');
+      return editFallback;
+    }
+
     const fallbackNano = 'google:nano-banana-pro';
-    const fallbackSeedream = seedream45?.id || 'wavespeed-edit:bytedance/seedream-v4.5/edit';
+    const fallbackSeedream = editFallback;
 
     const nsfwKeywords = ['nsfw', 'uncensored', 'sexy', 'naked', 'bikini', 'lingerie', 'underwear', 'lewd', 'adult', 'erotic'];
     const isNsfw = allowNsfw || nsfwKeywords.some(k => prompt.toLowerCase().includes(k));
@@ -609,6 +700,103 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
     }
   };
 
+  const handleBatchFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    
+    const newItems: BatchItem[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      newItems.push({
+        id: `batch-${Math.random().toString(36).substring(2, 9)}`,
+        file,
+        previewUrl: URL.createObjectURL(file),
+        status: 'idle'
+      });
+    }
+    setBatchItems(prev => [...prev, ...newItems]);
+    e.target.value = '';
+  };
+
+  const handleBatchExecute = async () => {
+    if (batchItems.length === 0 || isBatchProcessing) return;
+    setIsBatchProcessing(true);
+    
+    const itemsToProcess = [...batchItems].filter(item => item.status === 'idle' || item.status === 'failed');
+    
+    setBatchItems(prev => prev.map(item => {
+      if (item.status === 'idle' || item.status === 'failed') {
+        return { ...item, status: 'processing', error: undefined };
+      }
+      return item;
+    }));
+
+    for (const item of itemsToProcess) {
+      setBatchItems(prev => prev.map(x => x.id === item.id ? { ...x, status: 'processing' } : x));
+
+      try {
+        const base64Data = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = (err) => reject(err);
+          reader.readAsDataURL(item.file);
+        });
+
+        let resultUrl = '';
+        if (activeTool === 'upscaler') {
+          const upscaleModel = upscaleModels[0]?.id || 'wavespeed-upscale:google-veo-4k';
+          const res = await upscaleImage(base64Data, upscaleModel, batchUpscaleResolution);
+          resultUrl = res.imageUrl;
+        } else {
+          const beautifyPrompt = `Natural skin refinement. Subtly soften skin texture to remove blemishes and soften under-eye areas. Enhance skin glow and radiance gently. Maintain 100% of the original facial structure, bone structure, and identity. Keep the person EXACTLY the same, just with a clean skin polish.`;
+          const model = selectedModel === 'auto' ? 'google:nano-banana-pro' : selectedModel;
+          const res = await editImage(base64Data, beautifyPrompt, model);
+          resultUrl = res.imageUrl;
+        }
+
+        setBatchItems(prev => prev.map(x => x.id === item.id ? { ...x, status: 'done', resultUrl } : x));
+      } catch (err: any) {
+        console.error('Batch item execution error:', err);
+        setBatchItems(prev => prev.map(x => x.id === item.id ? { ...x, status: 'failed', error: err.message || 'Error' } : x));
+      }
+    }
+    
+    setIsBatchProcessing(false);
+    toast.success('Batch processing completed!');
+  };
+
+  const saveBatchToLibrary = async () => {
+    const finishedItems = batchItems.filter(item => item.status === 'done' && item.resultUrl);
+    if (finishedItems.length === 0) {
+      toast.error('No successfully processed images to save.');
+      return;
+    }
+
+    try {
+      const newMediaEntries = finishedItems.map((item, idx) => ({
+        id: `img-${Date.now()}-${idx}`,
+        url: item.resultUrl!,
+        prompt: activeTool === 'upscaler' ? 'Upscaled Image' : 'Skin Enhanced Image',
+        timestamp: Date.now(),
+        model: activeTool === 'upscaler' ? (upscaleModels[0]?.id || 'wavespeed-upscale:google-veo-4k') : selectedModel,
+        mediaType: 'image' as const,
+      }));
+
+      const updatedPersona = {
+        ...persona,
+        visualLibrary: [...(persona.visualLibrary || []), ...newMediaEntries]
+      };
+
+      await api.updatePersonaInVault(updatedPersona);
+      for (const media of newMediaEntries) {
+        await api.images.create(persona.id, media);
+      }
+      toast.success(`Successfully saved ${finishedItems.length} images to Visual Library!`);
+    } catch (err) {
+      toast.error('Failed to save batch to library');
+    }
+  };
+
   const saveToLibrary = async () => {
     if (!resultImage) return;
     try {
@@ -632,6 +820,358 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
     }
   };
 
+  const handleAngleGenerate = async () => {
+    const hasPersonaRef = persona && persona.id !== 'none' && persona.referenceImage;
+    const resolvedSourceType = hasPersonaRef ? angleSourceType : 'custom';
+    const sourceImg = resolvedSourceType === 'persona' ? (persona.referenceImage || null) : (angleSourceImage || null);
+    if (!sourceImg) {
+      toast.error(resolvedSourceType === 'persona' ? 'Selected persona has no reference image.' : 'Please upload a source image first.');
+      return;
+    }
+    setAngleGenerating(true);
+    setAngleResult(null);
+    setAngleSaved(false);
+    try {
+      const data = await generateAngleImage({
+        imageBase64: sourceImg,
+        modelId: angleModel,
+        horizontalAngle: String(angleHorizontal),
+        verticalAngle: String(angleVertical),
+        distance: String(angleDistance),
+      });
+      setAngleResult(data);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Angle generation failed.');
+    } finally {
+      setAngleGenerating(false);
+    }
+  };
+
+  const handleSaveAngleImage = async () => {
+    if (!angleResult?.imageUrl) return;
+    try {
+      const media = {
+        id: `img-${Date.now()}`,
+        url: angleResult.imageUrl,
+        prompt: `Angle: H:${angleHorizontal} V:${angleVertical} D:${angleDistance}`,
+        timestamp: Date.now(),
+        model: angleResult.model,
+        mediaType: 'image' as const,
+      };
+      
+      const updatedPersona = { ...persona, visualLibrary: [...(persona.visualLibrary || []), media] };
+      await api.updatePersonaInVault(updatedPersona);
+      await api.images.create(persona.id, media);
+      setAngleSaved(true);
+      toast.success('Saved to Visual Library!');
+    } catch (err) {
+      toast.error('Failed to save to library');
+    }
+  };
+
+  const renderAngleToolMode = () => {
+    const hasPersonaRef = persona && persona.id !== 'none' && persona.referenceImage;
+    const resolvedSourceType = hasPersonaRef ? angleSourceType : 'custom';
+    const angleSourceImg = resolvedSourceType === 'persona' ? (persona.referenceImage || null) : (angleSourceImage || null);
+    const angleModelInfo = ANGLE_MODELS.find(m => m.id === angleModel);
+
+    const grid: (typeof HORIZONTAL_POSITIONS[0] | null)[][] = [
+      [null, null, null],
+      [null, null, null],
+      [null, null, null],
+    ];
+    HORIZONTAL_POSITIONS.forEach(p => { grid[p.row][p.col] = p; });
+
+    return (
+      <div className="flex-1 flex flex-col h-full overflow-y-auto pr-2 custom-scrollbar pb-20 bg-[var(--bg-base)]">
+        {/* Header */}
+        <div className="shrink-0 px-6 py-4 border-b border-[var(--border-subtle)] flex items-center justify-between bg-[var(--bg-elevated)]/50 backdrop-blur-md z-10">
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => { setActiveTool(null); setAngleSourceImage(null); setAngleSourceImageName(null); setAngleResult(null); }}
+              className="p-2 -ml-2 rounded-xl text-[var(--text-secondary)] hover:text-white hover:bg-[var(--bg-overlay)] transition-colors"
+            >
+              <ChevronLeft size={20} />
+            </button>
+            <div className="flex items-center gap-3">
+               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500 to-sky-500 flex items-center justify-center text-white">
+                  <Camera size={16} />
+               </div>
+               <div>
+                 <h2 className="text-sm font-bold text-white leading-tight">Camera Angles</h2>
+                 <p className="text-[10px] text-[var(--text-muted)] mt-0.5">Generate 9-angle identity sheets or adjust camera perspective.</p>
+               </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-6 max-w-6xl mx-auto w-full">
+          <div className="grid grid-cols-1 lg:grid-cols-[440px_1fr] gap-6 items-start">
+            {/* Left Controls */}
+            <div className="space-y-5">
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)] flex items-center gap-1.5">
+                    <Upload className="w-3 h-3" /> Source Image
+                  </label>
+                  
+                  {/* Segmented Source Type Selector */}
+                  {persona && persona.id !== 'none' && persona.referenceImage && (
+                    <div className="flex bg-[#0F1420]/60 p-0.5 rounded-lg border border-white/5">
+                      <button
+                        type="button"
+                        onClick={() => setAngleSourceType('persona')}
+                        className={`px-2 py-0.5 rounded-md text-[9px] font-black transition-all ${
+                          angleSourceType === 'persona'
+                            ? 'bg-gradient-to-r from-pink-600 to-orange-500 text-white shadow'
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        Persona
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAngleSourceType('custom')}
+                        className={`px-2 py-0.5 rounded-md text-[9px] font-black transition-all ${
+                          angleSourceType === 'custom'
+                            ? 'bg-gradient-to-r from-pink-600 to-orange-500 text-white shadow'
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        Custom
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {angleSourceType === 'persona' && persona && persona.id !== 'none' && persona.referenceImage ? (
+                  <div className="flex items-center gap-3 px-3 py-3 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl select-none">
+                    <img src={persona.referenceImage} alt="" className="w-14 h-14 rounded-lg object-cover" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-white truncate">{persona.name || 'Anonymous Persona'}</p>
+                      <p className="text-[10px] text-[var(--text-tertiary)]">Using current active persona's reference face</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <div 
+                      onClick={() => angleFileInputRef.current?.click()}
+                      className="flex items-center gap-3 px-3 py-3 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl cursor-pointer hover:bg-[var(--bg-overlay)]/50 transition-colors"
+                    >
+                      {angleSourceImage ? (
+                        <img src={angleSourceImage} alt="" className="w-14 h-14 rounded-lg object-cover" />
+                      ) : (
+                        <div className="w-14 h-14 rounded-lg bg-[var(--bg-overlay)] flex items-center justify-center">
+                          <Upload className="w-5 h-5 text-[var(--text-tertiary)]" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-white truncate">{angleSourceImageName || 'Upload custom image...'}</p>
+                        <p className="text-[10px] text-[var(--text-tertiary)]">Click to choose any image from files</p>
+                      </div>
+                      <input 
+                        ref={angleFileInputRef}
+                        type="file" 
+                        accept="image/*" 
+                        className="hidden" 
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          try {
+                            const b64 = await processImageFile(file);
+                            setAngleSourceImage(b64);
+                            setAngleSourceImageName(file.name);
+                          } catch (err) {
+                            toast.error('Failed to process image');
+                          }
+                        }} 
+                      />
+                    </div>
+                    {angleSourceImage && (
+                      <button 
+                        onClick={() => { setAngleSourceImage(null); setAngleSourceImageName(null); }} 
+                        className="text-[10px] text-rose-400/80 hover:text-rose-450 mt-1 pl-1 transition-colors block"
+                      >
+                        Remove custom image
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-3">
+                <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)] flex items-center gap-1.5">
+                  <Camera className="w-3 h-3" /> Camera Angle
+                </label>
+                <div className="bg-[var(--bg-elevated)]/60 border border-[var(--border-default)] rounded-2xl p-4 space-y-4">
+                  <div>
+                    <p className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase mb-2">Horizontal Direction</p>
+                    <div className="grid grid-cols-3 gap-1.5 max-w-[200px] mx-auto">
+                      {grid.map((row, ri) =>
+                        row.map((cell, ci) => {
+                          if (!cell) {
+                            return (
+                              <div key={`${ri}-${ci}`} className="h-12 flex items-center justify-center">
+                                <div className="w-8 h-8 rounded-full bg-[var(--bg-overlay)]/40 flex items-center justify-center">
+                                  <Camera className="w-4 h-4 text-[var(--text-muted)]" />
+                                </div>
+                              </div>
+                            );
+                          }
+                          const isActive = angleHorizontal === cell.id;
+                          return (
+                            <button
+                              key={cell.id}
+                              onClick={() => setAngleHorizontal(cell.id)}
+                              className={`h-12 rounded-xl text-[10px] font-bold transition-all ${
+                                isActive
+                                  ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/30'
+                                  : 'bg-[var(--bg-overlay)]/60 text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)] hover:text-white'
+                              }`}
+                            >
+                              {cell.label}
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase mb-2">Vertical Elevation</p>
+                    <div className="flex gap-1.5">
+                      {VERTICAL_POSITIONS.map(p => (
+                        <button
+                          key={p.id}
+                          onClick={() => setAngleVertical(p.id)}
+                          className={`flex-1 py-2 rounded-xl text-[10px] font-bold transition-all ${
+                            angleVertical === p.id
+                              ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/30'
+                              : 'bg-[var(--bg-overlay)]/60 text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)] hover:text-white'
+                          }`}
+                        >
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase mb-2">Shot Distance</p>
+                    <div className="flex gap-1.5">
+                      {DISTANCE_OPTIONS.map(p => (
+                        <button
+                          key={p.id}
+                          onClick={() => setAngleDistance(p.id)}
+                          className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
+                            angleDistance === p.id
+                              ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/30'
+                              : 'bg-[var(--bg-overlay)]/60 text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)] hover:text-white'
+                          }`}
+                        >
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)] flex items-center gap-1.5">
+                  <Cpu className="w-3 h-3" /> Model
+                </label>
+                <div className="relative">
+                  <select
+                    value={angleModel}
+                    onChange={e => setAngleModel(e.target.value)}
+                    className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white focus:ring-2 focus:ring-cyan-500 outline-none appearance-none pr-10"
+                  >
+                    {ANGLE_MODELS.map(m => {
+                      const displayCost = billingInfo?.isCreator
+                        ? `$${m.price.toFixed(3)}`
+                        : `${Math.ceil(m.price * 100) * 2} credits`;
+                      return (
+                        <option key={m.id} value={m.id}>
+                          {m.name} ({displayCost}){m.nsfw ? ' 🔞' : ''}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-tertiary)] pointer-events-none" />
+                </div>
+                {angleModelInfo?.nsfw && (
+                  <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                    🔞 Uncensored — NSFW content enabled
+                  </span>
+                )}
+              </div>
+
+              <button
+                onClick={handleAngleGenerate}
+                disabled={angleGenerating || !angleSourceImg}
+                className="w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-cyan-600 to-sky-500 hover:from-cyan-500 hover:to-sky-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+              >
+                {angleGenerating
+                  ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</>
+                  : <><Camera className="w-4 h-4" /> Apply Camera Angle</>}
+              </button>
+
+              {!angleSourceImg && !angleGenerating && (
+                <p className="text-center text-xs text-[var(--text-tertiary)]">Upload an image or set a persona reference image to get started</p>
+              )}
+            </div>
+
+            {/* Right Output Column */}
+            <div className="space-y-3 lg:sticky lg:top-4">
+              <div className="aspect-square rounded-2xl bg-[var(--bg-base)] border border-[var(--border-subtle)] overflow-hidden relative group">
+                {angleGenerating ? (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+                    <Loader2 className="w-10 h-10 animate-spin text-cyan-500" />
+                    <p className="text-xs text-[var(--text-tertiary)] animate-pulse">Repositioning camera...</p>
+                  </div>
+                ) : angleResult?.imageUrl ? (
+                  <>
+                    <img src={angleResult.imageUrl} alt="Angle result" className="absolute inset-0 w-full h-full object-contain" />
+                    <div className="absolute bottom-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => {
+                        const a = document.createElement('a');
+                        a.href = angleResult.imageUrl;
+                        a.download = `reangled_image_${Date.now()}.png`;
+                        a.target = '_blank';
+                        a.click();
+                      }} className="p-2 bg-black/60 backdrop-blur-md rounded-lg text-white hover:bg-black/80" title="Download">
+                        <Download className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <div className="absolute top-2 left-2 px-2.5 py-1 bg-black/60 backdrop-blur-md rounded-lg">
+                      <span className="text-[10px] text-white font-medium">{angleResult.model}</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                    <Camera className="w-10 h-10 text-[var(--text-muted)] opacity-25" />
+                    <p className="text-xs text-[var(--text-muted)]">Your reangled image will appear here</p>
+                  </div>
+                )}
+              </div>
+
+              {angleResult && !angleGenerating && (
+                <button onClick={handleSaveAngleImage} disabled={angleSaved} className="w-full py-2.5 rounded-xl text-sm font-bold bg-cyan-600 hover:bg-cyan-500 text-white flex items-center justify-center gap-2 disabled:opacity-50 transition-all">
+                  {angleSaved ? <><Check className="w-4 h-4" /> Saved!</> : <><CheckCircle2 className="w-4 h-4" /> Save to Library</>}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  if (activeTool === 'camera-angles') {
+    return renderAngleToolMode();
+  }
+
   if (!activeTool) {
     return (
       <>
@@ -639,244 +1179,221 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
         <div className="max-w-6xl mx-auto space-y-8">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-white/5 pb-6">
             <div>
-              <h1 className="text-3xl font-extrabold tracking-tight"><span className="gradient-text">AI Tools</span></h1>
-              <p className="text-[var(--text-tertiary)] text-sm mt-1.5 font-medium">Specialized AI editing for your personas</p>
-            </div>
-            
-            {/* Category Toggle */}
-            <div className="inline-flex p-1 bg-[var(--bg-elevated)] border border-white/5 rounded-2xl self-start md:self-center">
-              <button
-                type="button"
-                onClick={() => setToolCategory('editor')}
-                className={`px-5 py-2 rounded-xl text-xs font-bold transition-all ${
-                  toolCategory === 'editor'
-                    ? 'bg-gradient-to-r from-pink-500/20 to-violet-500/20 border border-pink-500/30 text-white shadow-md'
-                    : 'text-[var(--text-secondary)] hover:text-white border border-transparent'
-                }`}
-              >
-                🪄 Core Editor
-              </button>
-              <button
-                type="button"
-                onClick={() => setToolCategory('studios')}
-                className={`px-5 py-2 rounded-xl text-xs font-bold transition-all ${
-                  toolCategory === 'studios'
-                    ? 'bg-gradient-to-r from-pink-500/20 to-violet-500/20 border border-pink-500/30 text-white shadow-md'
-                    : 'text-[var(--text-secondary)] hover:text-white border border-transparent'
-                }`}
-              >
-                🎬 AI Studios
-              </button>
+              <h1 className="text-3xl font-extrabold tracking-tight"><span className="gradient-text">AI Toolbox</span></h1>
+              <p className="text-[var(--text-tertiary)] text-sm mt-1.5 font-medium">Unified AI content generation and image editing suite for your personas</p>
             </div>
           </div>
           
-          {toolCategory === 'editor' && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              {TOOLS.map((tool) => {
-                const Icon = tool.icon;
-                return (
-                  <button
-                    key={tool.id}
-                    onClick={() => setActiveTool(tool.id as ToolType)}
-                    className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-[var(--border-default)] hover:border-[var(--accent-primary)] transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
-                  >
-                    <div className="relative h-64 w-full flex bg-black overflow-hidden shrink-0">
-                      {/* Before Image */}
-                      <div className="relative w-1/2 h-full border-r border-white/20 overflow-hidden">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {/* Core Editor Tools */}
+            {TOOLS.map((tool) => {
+              const Icon = tool.icon;
+              return (
+                <button
+                  key={tool.id}
+                  onClick={() => setActiveTool(tool.id as ToolType)}
+                  className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-[var(--border-default)] hover:border-[var(--accent-primary)] transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
+                >
+                  <div className="relative h-48 w-full flex bg-black overflow-hidden shrink-0">
+                    {/* Before Image */}
+                    <div className="relative w-1/2 h-full border-r border-white/20 overflow-hidden">
+                      {tool.demoBefore.endsWith('.mp4') ? (
+                        <video src={tool.demoBefore} autoPlay loop muted playsInline className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
+                      ) : (
                         <img src={tool.demoBefore} alt="Before" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
-                        <div className="absolute top-4 left-4 px-2.5 py-1 bg-black/60 backdrop-blur-md rounded text-[10px] font-black text-white uppercase tracking-widest shadow-md border border-white/10">Before</div>
-                      </div>
-                      {/* After Image */}
-                      <div className="relative w-1/2 h-full overflow-hidden">
+                      )}
+                      <div className="absolute top-3 left-3 px-2 py-0.5 bg-black/60 backdrop-blur-md rounded text-[8px] font-black text-white uppercase tracking-widest shadow-md border border-white/10">Before</div>
+                    </div>
+                    {/* After Image */}
+                    <div className="relative w-1/2 h-full overflow-hidden">
+                      {tool.demoAfter.endsWith('.mp4') ? (
+                        <video src={tool.demoAfter} autoPlay loop muted playsInline className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
+                      ) : (
                         <img src={tool.demoAfter} alt="After" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
-                        <div className="absolute top-4 right-4 px-2.5 py-1 bg-gradient-to-r from-purple-600 to-blue-600 backdrop-blur-md rounded text-[10px] font-black text-white uppercase tracking-widest shadow-xl border border-white/20">After</div>
-                      </div>
-                      
-                      {/* Lightning Separator */}
-                      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center z-10 shadow-2xl group-hover:rotate-180 transition-transform duration-700 text-white group-hover:text-[var(--accent-primary)]">
-                         <Wand2 size={16} />
-                      </div>
+                      )}
+                      <div className="absolute top-3 right-3 px-2 py-0.5 bg-gradient-to-r from-purple-600 to-blue-600 backdrop-blur-md rounded text-[8px] font-black text-white uppercase tracking-widest shadow-xl border border-white/20">After</div>
                     </div>
                     
-                    <div className="p-7 relative flex-1 flex flex-col justify-center">
-                      <div className={`absolute top-0 right-0 w-32 h-32 bg-gradient-to-br ${tool.color} opacity-0 group-hover:opacity-10 rounded-bl-full transition-opacity`} />
-                      <div className="flex items-center gap-4 mb-3">
-                        <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${tool.color} flex items-center justify-center text-white shadow-lg shadow-black/20 shrink-0`}>
-                          <Icon size={26} />
-                        </div>
-                        <h3 className="text-2xl font-black text-[var(--text-primary)] tracking-tight">{tool.title}</h3>
+                    {/* Lightning Separator */}
+                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center z-10 shadow-2xl group-hover:rotate-180 transition-transform duration-700 text-white group-hover:text-[var(--accent-primary)]">
+                       <Wand2 size={14} />
+                    </div>
+                  </div>
+                  
+                  <div className="p-5 relative flex-1 flex flex-col justify-center">
+                    <div className={`absolute top-0 right-0 w-24 h-24 bg-gradient-to-br ${tool.color} opacity-0 group-hover:opacity-10 rounded-bl-full transition-opacity`} />
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${tool.color} flex items-center justify-center text-white shadow-lg shadow-black/20 shrink-0`}>
+                        <Icon size={20} />
                       </div>
-                      <p className="text-sm text-[var(--text-secondary)] font-medium leading-relaxed max-w-[90%]">{tool.desc}</p>
+                      <h3 className="text-base font-black text-[var(--text-primary)] tracking-tight">{tool.title}</h3>
                     </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {toolCategory === 'studios' && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Voice Studio */}
-              <button
-                onClick={() => setShowVoiceStudio(true)}
-                className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-cyan-500/20 hover:border-cyan-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
-              >
-                <div className="relative h-48 w-full bg-black overflow-hidden">
-                  <img src="/demo/voice_studio_hero.png" alt="Voice Studio" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
-                </div>
-                <div className="p-6 flex-1 flex flex-col justify-center">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center text-white shadow-lg shadow-cyan-500/20">
-                      <Mic size={20} />
-                    </div>
-                    <h3 className="text-lg font-black text-[var(--text-primary)] tracking-tight">Voice Studio</h3>
-                    <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 uppercase tracking-widest">Free</span>
+                    <p className="text-xs text-[var(--text-secondary)] font-medium leading-relaxed">{tool.desc}</p>
                   </div>
-                  <p className="text-sm text-[var(--text-secondary)] font-medium">AI Text-to-Speech with 5 natural voices. Generate voiceovers for reels and stories.</p>
-                </div>
-              </button>
+                </button>
+              );
+            })}
 
-              {/* Talking Head */}
-              <button
-                onClick={() => setShowTalkingHead(true)}
-                className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-pink-500/20 hover:border-pink-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
-              >
-                <div className="relative h-48 w-full bg-black overflow-hidden">
-                  <img src="/demo/talking_head_hero.png" alt="Talking Head" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
-                </div>
-                <div className="p-6 flex-1 flex flex-col justify-center">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 to-violet-500 flex items-center justify-center text-white shadow-lg shadow-pink-500/20">
-                      <Video size={20} />
-                    </div>
-                    <h3 className="text-lg font-black text-[var(--text-primary)] tracking-tight">Talking Head</h3>
-                    <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase tracking-widest">AI Video</span>
+            {/* Voice Studio */}
+            <button
+              onClick={() => setShowVoiceStudio(true)}
+              className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-cyan-500/20 hover:border-cyan-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
+            >
+              <div className="relative h-48 w-full bg-black overflow-hidden">
+                <img src="/demo/voice_studio_hero.png" alt="Voice Studio" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
+              </div>
+              <div className="p-5 flex-1 flex flex-col justify-center">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center text-white shadow-lg shadow-cyan-500/20">
+                    <Mic size={20} />
                   </div>
-                  <p className="text-sm text-[var(--text-secondary)] font-medium">Animate any portrait with lip-synced speech. Type a script or upload audio.</p>
+                  <h3 className="text-base font-black text-[var(--text-primary)] tracking-tight">Voice Studio</h3>
+                  <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 uppercase tracking-widest">Free</span>
                 </div>
-              </button>
+                <p className="text-xs text-[var(--text-secondary)] font-medium leading-relaxed">AI Text-to-Speech script generator & multi-engine cloner.</p>
+              </div>
+            </button>
 
-              {/* Story Chain */}
-              <button
-                onClick={() => setShowStoryChain(true)}
-                className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-amber-500/20 hover:border-amber-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
-              >
-                <div className="relative h-48 w-full bg-black overflow-hidden">
-                  <img src="/demo/story_chain_hero.png" alt="Story Chain" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
-                </div>
-                <div className="p-6 flex-1 flex flex-col justify-center">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center text-white shadow-lg shadow-amber-500/20">
-                      <Video size={20} />
-                    </div>
-                    <h3 className="text-lg font-black text-[var(--text-primary)] tracking-tight">Story Chain</h3>
-                    <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase tracking-widest">New</span>
+            {/* Talking Head */}
+            <button
+              onClick={() => setShowTalkingHead(true)}
+              className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-pink-500/20 hover:border-pink-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
+            >
+              <div className="relative h-48 w-full bg-black overflow-hidden">
+                <img src="/demo/talking_head_hero.png" alt="Talking Head" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
+              </div>
+              <div className="p-5 flex-1 flex flex-col justify-center">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 to-violet-500 flex items-center justify-center text-white shadow-lg shadow-pink-500/20">
+                    <Video size={20} />
                   </div>
-                  <p className="text-sm text-[var(--text-secondary)] font-medium">Generate sequential images with consistent identity for visual storytelling.</p>
+                  <h3 className="text-base font-black text-[var(--text-primary)] tracking-tight">Talking Head</h3>
+                  <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase tracking-widest">AI Video</span>
                 </div>
-              </button>
+                <p className="text-xs text-[var(--text-secondary)] font-medium leading-relaxed">Animate any portrait image with perfectly lip-synced audio.</p>
+              </div>
+            </button>
 
-              {/* Pro Headshot */}
-              <button
-                onClick={() => setShowHeadshot(true)}
-                className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-blue-500/20 hover:border-blue-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
-              >
-                <div className="relative h-48 w-full bg-black overflow-hidden">
-                  <img src="/demo/headshot_hero.png" alt="Pro Headshot" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
-                </div>
-                <div className="p-6 flex-1 flex flex-col justify-center">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-white shadow-lg shadow-blue-500/20">
-                      <Camera size={20} />
-                    </div>
-                    <h3 className="text-lg font-black text-[var(--text-primary)] tracking-tight">Pro Headshot</h3>
-                    <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 uppercase tracking-widest">New</span>
+            {/* Story Chain */}
+            <button
+              onClick={() => setShowStoryChain(true)}
+              className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-amber-500/20 hover:border-amber-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
+            >
+              <div className="relative h-48 w-full bg-black overflow-hidden">
+                <img src="/demo/story_chain_hero.png" alt="Story Chain" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
+              </div>
+              <div className="p-5 flex-1 flex flex-col justify-center">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center text-white shadow-lg shadow-amber-500/20">
+                    <Video size={20} />
                   </div>
-                  <p className="text-sm text-[var(--text-secondary)] font-medium">Professional headshots for LinkedIn, resumes & business cards.</p>
+                  <h3 className="text-base font-black text-[var(--text-primary)] tracking-tight">Story Chain</h3>
+                  <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase tracking-widest">New</span>
                 </div>
-              </button>
+                <p className="text-xs text-[var(--text-secondary)] font-medium leading-relaxed">Generate sequential images with consistent identity.</p>
+              </div>
+            </button>
 
-              {/* Time Machine */}
-              <button
-                onClick={() => setShowTimeMachine(true)}
-                className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-purple-500/20 hover:border-purple-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
-              >
-                <div className="relative h-48 w-full bg-black overflow-hidden">
-                  <img src="/demo/time_machine_hero.png" alt="Time Machine" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
-                </div>
-                <div className="p-6 flex-1 flex flex-col justify-center">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-violet-500 flex items-center justify-center text-white shadow-lg shadow-purple-500/20">
-                      <Settings2 size={20} />
-                    </div>
-                    <h3 className="text-lg font-black text-[var(--text-primary)] tracking-tight">Time Machine</h3>
-                    <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 uppercase tracking-widest">Fun</span>
+            {/* Pro Headshot */}
+            <button
+              onClick={() => setShowHeadshot(true)}
+              className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-blue-500/20 hover:border-blue-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
+            >
+              <div className="relative h-48 w-full bg-black overflow-hidden">
+                <img src="/demo/headshot_hero.png" alt="Pro Headshot" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
+              </div>
+              <div className="p-5 flex-1 flex flex-col justify-center">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-white shadow-lg shadow-blue-500/20">
+                    <Camera size={20} />
                   </div>
-                  <p className="text-sm text-[var(--text-secondary)] font-medium">Travel through 14 eras — 1920s to Cyberpunk 2077.</p>
+                  <h3 className="text-base font-black text-[var(--text-primary)] tracking-tight">Pro Headshot</h3>
+                  <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 uppercase tracking-widest">New</span>
                 </div>
-              </button>
+                <p className="text-xs text-[var(--text-secondary)] font-medium leading-relaxed">Professional studio headshots for business & social media.</p>
+              </div>
+            </button>
 
-              {/* Hairstyle Try-On */}
-              <button
-                onClick={() => setShowHairstyle(true)}
-                className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-pink-500/20 hover:border-pink-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
-              >
-                <div className="relative h-48 w-full bg-black overflow-hidden">
-                  <img src="/demo/hairstyle_hero.png" alt="Hairstyle Try-On" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
-                </div>
-                <div className="p-6 flex-1 flex flex-col justify-center">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 to-rose-500 flex items-center justify-center text-white shadow-lg shadow-pink-500/20">
-                      <Sparkles size={20} />
-                    </div>
-                    <h3 className="text-lg font-black text-[var(--text-primary)] tracking-tight">Hairstyle Try-On</h3>
-                    <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-300 border border-pink-500/30 uppercase tracking-widest">New</span>
+            {/* Time Machine */}
+            <button
+              onClick={() => setShowTimeMachine(true)}
+              className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-purple-500/20 hover:border-purple-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
+            >
+              <div className="relative h-48 w-full bg-black overflow-hidden">
+                <img src="/demo/time_machine_hero.png" alt="Time Machine" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
+              </div>
+              <div className="p-5 flex-1 flex flex-col justify-center">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-violet-500 flex items-center justify-center text-white shadow-lg shadow-purple-500/20">
+                    <Settings2 size={20} />
                   </div>
-                  <p className="text-sm text-[var(--text-secondary)] font-medium">Preview 144 haircut & color combos before visiting the salon.</p>
+                  <h3 className="text-base font-black text-[var(--text-primary)] tracking-tight">Time Machine</h3>
+                  <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 uppercase tracking-widest">Fun</span>
                 </div>
-              </button>
+                <p className="text-xs text-[var(--text-secondary)] font-medium leading-relaxed">Travel through 14 eras — 1920s to Cyberpunk 2077.</p>
+              </div>
+            </button>
 
-              {/* Motion Control */}
-              <button
-                onClick={() => setShowMotionControl(true)}
-                className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-violet-500/20 hover:border-violet-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
-              >
-                <div className="relative h-48 w-full bg-black overflow-hidden">
-                  <img src="https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?auto=format&fit=crop&w=800&q=80" alt="Motion Control" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
-                </div>
-                <div className="p-6 flex-1 flex flex-col justify-center">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-600 to-fuchsia-600 flex items-center justify-center text-white shadow-lg shadow-violet-500/20">
-                      <Video size={20} />
-                    </div>
-                    <h3 className="text-lg font-black text-[var(--text-primary)] tracking-tight">Motion Control</h3>
-                    <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-300 border border-violet-500/30 uppercase tracking-widest">AI Video</span>
+            {/* Hairstyle Try-On */}
+            <button
+              onClick={() => setShowHairstyle(true)}
+              className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-pink-500/20 hover:border-pink-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
+            >
+              <div className="relative h-48 w-full bg-black overflow-hidden">
+                <img src="/demo/hairstyle_hero.png" alt="Hairstyle Try-On" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
+              </div>
+              <div className="p-5 flex-1 flex flex-col justify-center">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 to-rose-500 flex items-center justify-center text-white shadow-lg shadow-pink-500/20">
+                    <Sparkles size={20} />
                   </div>
-                  <p className="text-sm text-[var(--text-secondary)] font-medium">Replicate any movement or dance. Upload a reference photo + a motion video, or select from viral dances.</p>
+                  <h3 className="text-base font-black text-[var(--text-primary)] tracking-tight">Hairstyle Try-On</h3>
+                  <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-300 border border-pink-500/30 uppercase tracking-widest">New</span>
                 </div>
-              </button>
+                <p className="text-xs text-[var(--text-secondary)] font-medium leading-relaxed">Preview 144 haircut & color combos instantly.</p>
+              </div>
+            </button>
 
-              {/* Virtual Try-On */}
-              <button
-                onClick={() => setShowVirtualTryOn(true)}
-                className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-rose-500/20 hover:border-rose-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
-              >
-                <div className="relative h-48 w-full bg-black overflow-hidden">
-                  <img src="https://images.unsplash.com/photo-1558618666-fcd25c85cd64?auto=format&fit=crop&w=800&q=80" alt="Virtual Try-On" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
-                </div>
-                <div className="p-6 flex-1 flex flex-col justify-center">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-600 to-pink-600 flex items-center justify-center text-white shadow-lg shadow-rose-500/20">
-                      <Shirt size={20} />
-                    </div>
-                    <h3 className="text-lg font-black text-[var(--text-primary)] tracking-tight">Virtual Try-On</h3>
-                    <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 uppercase tracking-widest">Fashion AI</span>
+            {/* Motion Control */}
+            <button
+              onClick={() => setShowMotionControl(true)}
+              className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-violet-500/20 hover:border-violet-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
+            >
+              <div className="relative h-48 w-full bg-black overflow-hidden">
+                <img src="https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?auto=format&fit=crop&w=800&q=80" alt="Motion Control" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
+              </div>
+              <div className="p-5 flex-1 flex flex-col justify-center">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-600 to-fuchsia-600 flex items-center justify-center text-white shadow-lg shadow-violet-500/20">
+                    <Video size={20} />
                   </div>
-                  <p className="text-sm text-[var(--text-secondary)] font-medium">Dress your persona in any outfit. Upload a reference image + garment photo to preview the look instantly.</p>
+                  <h3 className="text-base font-black text-[var(--text-primary)] tracking-tight">Motion Control</h3>
+                  <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-300 border border-violet-500/30 uppercase tracking-widest">AI Video</span>
                 </div>
-              </button>
-            </div>
-          )}
+                <p className="text-xs text-[var(--text-secondary)] font-medium leading-relaxed">Replicate any movement or dance from video templates.</p>
+              </div>
+            </button>
+
+            {/* Virtual Try-On */}
+            <button
+              onClick={() => setShowVirtualTryOn(true)}
+              className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-rose-500/20 hover:border-rose-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
+            >
+              <div className="relative h-48 w-full bg-black overflow-hidden">
+                <img src="https://images.unsplash.com/photo-1558618666-fcd25c85cd64?auto=format&fit=crop&w=800&q=80" alt="Virtual Try-On" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
+              </div>
+              <div className="p-5 flex-1 flex flex-col justify-center">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-600 to-pink-600 flex items-center justify-center text-white shadow-lg shadow-rose-500/20">
+                    <Shirt size={20} />
+                  </div>
+                  <h3 className="text-base font-black text-[var(--text-primary)] tracking-tight">Virtual Try-On</h3>
+                  <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 uppercase tracking-widest">Fashion AI</span>
+                </div>
+                <p className="text-xs text-[var(--text-secondary)] font-medium leading-relaxed">Dress your persona in any outfit instantly.</p>
+              </div>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -999,8 +1516,208 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
       </div>
 
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
-        {/* Editor sidebar */}
-        <div className="w-full lg:w-80 shrink-0 border-r border-[var(--border-subtle)] bg-[var(--bg-surface)] flex flex-col min-h-0">
+        {activeTool === 'skin-enhancer' || activeTool === 'upscaler' ? (
+          <>
+            {/* BATCH SIDEBAR */}
+            <div className="w-full lg:w-80 shrink-0 border-r border-[var(--border-subtle)] bg-[var(--bg-surface)] flex flex-col min-h-0">
+              <div className="flex-1 overflow-y-auto p-5 space-y-6">
+                <div className="space-y-4">
+                  <h3 className="text-xs font-black uppercase tracking-wider text-white">Batch Options</h3>
+                  
+                  {activeTool === 'skin-enhancer' && (
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center text-[11px] font-bold text-[var(--text-secondary)]">
+                        <span>Enhancement Strength</span>
+                        <span className="text-[var(--accent-primary)] font-mono">{Math.round(batchEnhancementStrength * 100)}%</span>
+                      </div>
+                      <input 
+                        type="range" 
+                        min="0.1" 
+                        max="1.0" 
+                        step="0.05" 
+                        value={batchEnhancementStrength} 
+                        onChange={(e) => setBatchEnhancementStrength(parseFloat(e.target.value))}
+                        className="w-full h-1.5 bg-white/5 rounded-lg appearance-none cursor-pointer accent-[var(--accent-primary)]"
+                      />
+                      <p className="text-[9px] text-[var(--text-muted)] leading-relaxed">Adjusts how strongly blemishes are softened and texture is smoothed.</p>
+                    </div>
+                  )}
+
+                  {activeTool === 'upscaler' && (
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-wider text-[var(--text-tertiary)]">Target Upscale Quality</label>
+                      <select 
+                        value={batchUpscaleResolution} 
+                        onChange={(e) => setBatchUpscaleResolution(e.target.value)}
+                        className="w-full bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-xl px-3 py-2 text-xs text-white outline-none cursor-pointer"
+                      >
+                        <option value="2k">🖥️ 2K Resolution (High Definition)</option>
+                        <option value="4k">📺 4K Resolution (Ultra High Definition)</option>
+                      </select>
+                      <p className="text-[9px] text-[var(--text-muted)] leading-relaxed">4K upscaling uses high-fidelity neural networks to reconstruct details.</p>
+                    </div>
+                  )}
+                </div>
+
+                {batchItems.length > 0 && (
+                  <div className="pt-4 border-t border-white/5 space-y-3">
+                    <div className="flex justify-between text-[11px] font-bold text-[var(--text-secondary)]">
+                      <span>Total Files:</span>
+                      <span className="text-white font-mono">{batchItems.length}</span>
+                    </div>
+                    <div className="flex justify-between text-[11px] font-bold text-[var(--text-secondary)]">
+                      <span>Processed:</span>
+                      <span className="text-white font-mono">
+                        {batchItems.filter(item => item.status === 'done').length} / {batchItems.length}
+                      </span>
+                    </div>
+                    <button 
+                      onClick={() => {
+                        batchItems.forEach(item => URL.revokeObjectURL(item.previewUrl));
+                        setBatchItems([]);
+                      }}
+                      className="w-full py-2 bg-white/5 hover:bg-white/10 text-white rounded-xl text-xs font-bold transition-all border border-white/10"
+                    >
+                      Clear Queue
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* FOOTER ACTIONS */}
+              <div className="shrink-0 p-5 border-t border-[var(--border-subtle)] bg-[var(--bg-surface)] flex flex-col gap-2">
+                <button
+                  onClick={handleBatchExecute}
+                  disabled={batchItems.length === 0 || isBatchProcessing}
+                  className={`w-full py-3 rounded-2xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${
+                    batchItems.length === 0 || isBatchProcessing
+                      ? 'bg-white/5 text-white/30 cursor-not-allowed border border-transparent'
+                      : `bg-gradient-to-r ${currentToolDetails?.color} hover:brightness-110 text-white hover:scale-[1.01] shadow-lg shadow-black/20`
+                  }`}
+                >
+                  {isBatchProcessing ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <Sparkles size={16} />
+                  )}
+                  {isBatchProcessing ? 'Batch Processing...' : `Process Batch (${batchItems.length})`}
+                </button>
+
+                {batchItems.some(item => item.status === 'done') && (
+                  <button
+                    onClick={saveBatchToLibrary}
+                    className="w-full py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white border border-zinc-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2"
+                  >
+                    <Camera size={14} />
+                    Save Finished to Library
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* BATCH VIEWPORT */}
+            <div className="flex-1 bg-black overflow-hidden relative flex flex-col min-h-0">
+              <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+                {batchItems.length === 0 ? (
+                  <div 
+                    onClick={() => batchFileInputRef.current?.click()}
+                    className="h-full border-2 border-dashed border-white/10 hover:border-[var(--accent-primary)]/40 rounded-3xl flex flex-col items-center justify-center text-center p-8 bg-white/[0.01] hover:bg-white/[0.02] transition-all cursor-pointer relative min-h-[300px]"
+                  >
+                    <input 
+                      type="file" 
+                      multiple 
+                      accept="image/*" 
+                      ref={batchFileInputRef} 
+                      onChange={handleBatchFileSelect}
+                      className="hidden" 
+                    />
+                    <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center text-zinc-400 mb-4 border border-white/5">
+                      <Upload size={32} />
+                    </div>
+                    <h3 className="text-lg font-bold text-white mb-2">Upload Batch Images</h3>
+                    <p className="text-xs text-[var(--text-secondary)] max-w-sm leading-relaxed mb-1">
+                      Drag and drop multiple low-resolution or portrait images here, or click to browse.
+                    </p>
+                    <p className="text-[10px] text-[var(--text-muted)] font-bold">Supports PNG, JPG, WebP — as many images as you want</p>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    <div className="flex justify-between items-center">
+                      <h3 className="text-sm font-black text-white uppercase tracking-widest">Batch Processing Queue</h3>
+                      <span className="text-xs text-[var(--text-muted)]">Completed images can be saved directly to vault</span>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                      {batchItems.map((item) => (
+                        <div 
+                          key={item.id} 
+                          className={`group relative rounded-2xl overflow-hidden border bg-[var(--bg-elevated)] flex flex-col transition-all duration-300 ${
+                            item.status === 'processing' ? 'border-violet-500/50 shadow-lg shadow-violet-500/5' :
+                            item.status === 'done' ? 'border-emerald-500/50' :
+                            item.status === 'failed' ? 'border-rose-500/50' : 'border-white/5'
+                          }`}
+                        >
+                          <div className="relative aspect-square w-full bg-black/45 overflow-hidden">
+                            <img 
+                              src={item.status === 'done' && item.resultUrl ? item.resultUrl : item.previewUrl} 
+                              alt="Preview" 
+                              className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-500" 
+                            />
+                            
+                            {item.status === 'processing' && (
+                              <div className="absolute inset-0 bg-black/75 backdrop-blur-[2px] flex flex-col items-center justify-center gap-2">
+                                <Loader2 size={24} className="animate-spin text-violet-400" />
+                                <span className="text-[9px] font-black text-violet-400 uppercase tracking-widest">Processing</span>
+                              </div>
+                            )}
+                            
+                            {item.status === 'done' && (
+                              <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-emerald-500/90 flex items-center justify-center text-white shadow border border-emerald-400/20">
+                                <CheckCircle2 size={14} />
+                              </div>
+                            )}
+                            
+                            {item.status === 'failed' && (
+                              <div className="absolute inset-0 bg-black/75 flex flex-col items-center justify-center p-3 text-center gap-1.5">
+                                <AlertTriangle size={20} className="text-rose-400" />
+                                <span className="text-[8px] font-bold text-rose-300 leading-tight truncate max-w-full">
+                                  {item.error || 'Failed'}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                          
+                          <div className="p-2.5 flex items-center justify-between gap-2 border-t border-white/5">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-[10px] font-bold text-zinc-300 truncate leading-none mb-1">{item.file.name}</p>
+                              <p className="text-[8px] font-mono text-zinc-500 font-bold leading-none">
+                                {(item.file.size / (1024 * 1024)).toFixed(2)} MB
+                              </p>
+                            </div>
+                            {item.status === 'idle' && !isBatchProcessing && (
+                              <button 
+                                onClick={() => {
+                                  URL.revokeObjectURL(item.previewUrl);
+                                  setBatchItems(prev => prev.filter(x => x.id !== item.id));
+                                }}
+                                className="p-1 rounded bg-white/5 hover:bg-rose-500/20 hover:text-rose-400 text-zinc-400 transition-colors"
+                              >
+                                  <X size={12} />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Editor sidebar */}
+            <div className="w-full lg:w-80 shrink-0 border-r border-[var(--border-subtle)] bg-[var(--bg-surface)] flex flex-col min-h-0">
           <div className="flex-1 overflow-y-auto p-5 space-y-6">
             
             {/* Source Image/Video Panel */}
@@ -1750,7 +2467,9 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav }:
             </div>
           )}
         </div>
-      </div>
+      </>
+    )}
+  </div>
     </div>
   );
 }

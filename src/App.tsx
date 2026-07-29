@@ -33,6 +33,8 @@ import RevenueView from './views/RevenueView';
 import AgentView from './views/AgentView';
 import OnboardingTour from './components/OnboardingTour';
 import CommandPalette from './components/CommandPalette';
+import LeftSidebar from './components/LeftSidebar';
+import TrendView from './views/TrendView';
 
 
 const EMPTY_PERSONA: Persona = {
@@ -60,6 +62,7 @@ function App() {
   const [user, setUser] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [billingInfo, setBillingInfo] = useState<any>(null);
+  const [forceLanding, setForceLanding] = useState(localStorage.getItem('force_landing') === 'true');
 
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showShortcutsModal, setShowShortcutsModal] = useState(false);
@@ -68,7 +71,7 @@ function App() {
   // Listen to Supabase authentication state
   useEffect(() => {
     // Automatically bypass authentication in local development mode
-    if (import.meta.env.DEV) {
+    if (import.meta.env.DEV && !forceLanding) {
       setUser({
         id: 'mock-user-id',
         email: 'khalilhammoudeh71@gmail.com',
@@ -156,6 +159,13 @@ function App() {
   const currentNav = navStack[navStack.length - 1];
   const activeTab = (currentNav.view === 'persona-builder' ? 'personas' : currentNav.view) as Tab;
 
+  // Clear gallery badge when visiting gallery
+  useEffect(() => {
+    if (currentNav.view === 'gallery') {
+      setNewAssetsCount(0);
+    }
+  }, [currentNav?.view]);
+
   const pushView = useCallback((entry: NavEntry) => {
     setNavStack(prev => {
       const next = [...prev, entry];
@@ -185,7 +195,7 @@ function App() {
     const saved = localStorage.getItem('ai_influencer_selected_id');
     const legacySelected = localStorage.getItem('selected_persona_id');
     const id = saved || legacySelected;
-    return (id && id.startsWith('user-')) ? id : '';
+    return (id && (id.startsWith('user-') || id === 'empty')) ? id : 'empty';
   });
 
   const hasMigrated = useRef(false);
@@ -251,8 +261,9 @@ function App() {
     init();
   }, [loadPersonas, user]);
 
-  const setPersonas = useCallback(async (newPersonas: Persona[]) => {
+  const setPersonas = useCallback(async (value: Persona[] | ((prev: Persona[]) => Persona[])) => {
     const oldPersonas = personas;
+    const newPersonas = typeof value === 'function' ? value(oldPersonas) : value;
     setPersonasLocal(newPersonas);
 
     const oldIds = new Set(oldPersonas.map(p => p.id));
@@ -278,8 +289,8 @@ function App() {
   }, [personas]);
 
   useEffect(() => {
-    if (selectedPersonaId && personas.length > 0 && !personas.find(p => p.id === selectedPersonaId)) {
-      setSelectedPersonaId(personas[0]?.id || '');
+    if (selectedPersonaId && selectedPersonaId !== 'empty' && personas.length > 0 && !personas.find(p => p.id === selectedPersonaId)) {
+      setSelectedPersonaId(personas[0]?.id || 'empty');
     }
   }, [personas, selectedPersonaId]);
 
@@ -323,8 +334,8 @@ function App() {
     );
   }
 
-  if (!user) {
-    return <LandingView onGetStarted={() => {}} />;
+  if (!user || forceLanding) {
+    return <LandingView onGetStarted={() => { localStorage.removeItem('force_landing'); setForceLanding(false); }} />;
   }
 
   // Email verification gate
@@ -423,7 +434,7 @@ function App() {
     );
   }
 
-  const activePersona = personas.find(p => p.id === selectedPersonaId) || personas[0] || EMPTY_PERSONA;
+  const activePersona = personas.find(p => p.id === selectedPersonaId) || EMPTY_PERSONA;
   const hasPersonas = personas.length > 0 && personas[0].id !== 'empty';
 
   const tabs = [
@@ -450,7 +461,6 @@ function App() {
   // Clear gallery badge when visiting gallery
   const renderContent = () => {
     const view = currentNav.view;
-    if (view === 'gallery') setNewAssetsCount(0);
     const subView = currentNav.subView;
     const params = currentNav.params;
 
@@ -474,11 +484,12 @@ function App() {
       case 'personas': return <PersonasView personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} selectedId={selectedPersonaId} navigateToTab={(t) => replaceView({ view: t })} nav={navActions} billingInfo={billingInfo} />;
       case 'create': return <CreateView persona={activePersona} personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} subView={subView} nav={navActions} billingInfo={billingInfo} />;
       case 'gallery': return <GalleryView personas={personas} activePersona={activePersona} nav={navActions} onPersonasChange={setPersonas} />;
-      case 'intelligence': return <CreatorHubView persona={activePersona} personas={personas} nav={navActions} />;
+      case 'intelligence': return <CreatorHubView persona={activePersona} personas={personas} nav={navActions} initialTool={params?.initialTool} billingInfo={billingInfo} />;
       case 'planner': return <PlannerView persona={activePersona} personas={personas} onSelectPersona={setSelectedPersonaId} nav={navActions} />;
       case 'assistant': return <AssistantView persona={activePersona} personas={personas} nav={navActions} />;
       case 'agent': return <AgentView personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} nav={navActions} />;
       case 'revenue': return <RevenueView persona={activePersona} />;
+      case 'trends': return <TrendView persona={activePersona} nav={navActions} />;
       case 'settings': return (
         <SettingsView 
           nav={navActions} 
@@ -553,8 +564,29 @@ function App() {
 
 
   return (
-    <div className="flex flex-col h-screen bg-[var(--bg-base)] text-[var(--text-primary)] overflow-hidden relative">
-      <div className="ambient-glow top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-violet-500/[0.04] blur-[100px] rounded-full" />
+    <div className="flex h-screen w-screen bg-[var(--bg-base)] text-[var(--text-primary)] overflow-hidden">
+      {/* Left Sidebar Navigation */}
+      <LeftSidebar 
+        activeTab={activeTab} 
+        onNavigate={(tab, params) => {
+          getTabDirection(activeTab, tab);
+          if (tab !== activeTab) {
+            prevTabRef.current = activeTab;
+          }
+          const { subView, ...restParams } = params || {};
+          replaceView({ 
+            view: tab, 
+            subView: subView,
+            params: Object.keys(restParams).length > 0 ? restParams : undefined
+          });
+        }}
+        activePersona={activePersona}
+        newAssetsCount={newAssetsCount}
+      />
+
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col h-full overflow-hidden relative">
+        <div className="ambient-glow top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-violet-500/[0.04] blur-[100px] rounded-full pointer-events-none" />
 
       {/* ── Top app bar ─────────────────────────────────────────── */}
       <header className="flex-none bg-[#0B0F17]/90 backdrop-blur-xl border-b border-[var(--border-subtle)]">
@@ -622,8 +654,8 @@ function App() {
                       if (el) el.classList.toggle('hidden');
                     }}
                   >
-                    <div className={`w-6 h-6 rounded-lg overflow-hidden border border-[#334155] shrink-0 avatar-ring-active`}>
-                      {activePersona.avatar || activePersona.referenceImage ? (
+                    <div className={`w-6 h-6 rounded-lg overflow-hidden border border-[#334155] shrink-0 ${activePersona.id !== 'empty' ? 'avatar-ring-active' : ''}`}>
+                      {activePersona.id !== 'empty' && (activePersona.avatar || activePersona.referenceImage) ? (
                         <img
                           src={activePersona.avatar || activePersona.referenceImage}
                           alt=""
@@ -637,7 +669,9 @@ function App() {
                     </div>
                     <div className="hidden sm:block text-left max-w-[100px]">
                       <p className="text-[10px] font-black text-[#00D4FF] uppercase tracking-widest leading-none">Active</p>
-                      <p className="text-[11px] font-bold text-white truncate leading-tight">{activePersona.name}</p>
+                      <p className="text-[11px] font-bold text-white truncate leading-tight">
+                        {activePersona.id === 'empty' ? 'No Persona' : activePersona.name}
+                      </p>
                     </div>
                     <ChevronDown size={12} className="text-[#64748B] hidden sm:block" />
                   </button>
@@ -646,8 +680,32 @@ function App() {
                     <div className="p-2 border-b border-white/5">
                       <p className="text-[9px] font-black text-[#475569] uppercase tracking-[0.15em] px-2 py-1">Switch Persona</p>
                     </div>
-                    <div className="max-h-[240px] overflow-y-auto p-1.5">
-                      {/* #19 recently-used sort */}
+                    <div className="max-h-[240px] overflow-y-auto p-1.5 space-y-1">
+                      {/* No Persona Selection */}
+                      <button
+                        onClick={() => {
+                          setSelectedPersonaId('empty');
+                          document.getElementById('persona-switcher-dropdown')?.classList.add('hidden');
+                        }}
+                        className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl transition-all ${
+                          selectedPersonaId === 'empty'
+                            ? 'bg-[#00D4FF]/10 border border-[#00D4FF]/20'
+                            : 'hover:bg-white/5 border border-transparent'
+                        }`}
+                      >
+                        <div className="w-8 h-8 rounded-lg overflow-hidden border border-[#334155] shrink-0 flex items-center justify-center bg-[#1e293b] text-[#64748b]">
+                          <Users size={16} />
+                        </div>
+                        <div className="flex-1 min-w-0 text-left">
+                          <p className={`text-xs font-bold truncate ${selectedPersonaId === 'empty' ? 'text-white' : 'text-[#CBD5E1]'}`}>No Persona</p>
+                          <p className="text-[9px] text-[#64748B] truncate">General Mode (Default)</p>
+                        </div>
+                        {selectedPersonaId === 'empty' && (
+                          <div className="w-2 h-2 rounded-full bg-[#00F5C2] shrink-0 shadow-[0_0_6px_rgba(0,245,194,0.5)]" />
+                        )}
+                      </button>
+
+                      {/* Recently-used sort */}
                       {[...personas].sort((a, b) => {
                         const ri = recentPersonaIds.current;
                         const ai = ri.indexOf(a.id), bi = ri.indexOf(b.id);
@@ -756,10 +814,12 @@ function App() {
             const viewLabels: Record<string, string> = {
               'personas': 'Personas', 'create': 'Create', 'gallery': 'Gallery',
               'assistant': 'Assistant', 'settings': 'Settings', 'persona-builder': 'Persona Builder',
+              'trends': 'Trend Radar',
             };
             const subViewLabels: Record<string, string> = {
               'ai-tools': 'AI Tools', 'planner': 'Content Planner', 'voice': 'Voice Studio',
               'visual-generator': 'Visual Studio', 'content': 'Content Writer',
+              'stitcher': 'Video Editor',
             };
             const isLast = i === deduped.length - 1;
             return (
@@ -800,69 +860,8 @@ function App() {
           {renderContent()}
         </div>
       </main>
-
-      <nav className="flex-none z-50">
-        <div className="action-bar" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
-          <div
-            className="flex items-center gap-0 px-1 pt-0 pb-0.5 overflow-x-auto scrollbar-hide"
-          >
-            {tabs.map((tab) => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
-              const isGallery = tab.id === 'gallery';
-              return (
-                <motion.button
-                  key={tab.id}
-                  onClick={() => {
-                    getTabDirection(activeTab, tab.id as Tab);
-                    prevTabRef.current = activeTab;
-                    replaceView({ view: tab.id as Tab });
-                  }}
-                  whileTap={{ scale: 0.95 }}
-                  className="flex flex-col items-center gap-0 min-w-[56px] flex-1 py-0 relative"
-                >
-                  <div className="relative p-1 rounded-xl">
-                    {isActive && (
-                      <motion.div
-                        layoutId="nav-pill"
-                        className="absolute inset-0 rounded-xl"
-                        style={{ background: 'rgba(0, 212, 255, 0.08)', border: '1px solid rgba(0, 245, 194, 0.2)' }}
-                        transition={{ type: "spring", stiffness: 500, damping: 32 }}
-                      />
-                    )}
-                    <Icon
-                      size={20}
-                      strokeWidth={isActive ? 2.2 : 1.6}
-                      className={cn("relative z-10 transition-all duration-200", isActive ? "text-[#00F5C2]" : "text-[var(--text-muted)]")}
-                    />
-                    {/* #6 Gallery badge */}
-                    {isGallery && newAssetsCount > 0 && (
-                      <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#00F5C2] flex items-center justify-center badge-bounce">
-                        <span className="text-[8px] font-black text-[#0B0F17]">{newAssetsCount > 9 ? '9+' : newAssetsCount}</span>
-                      </div>
-                    )}
-                  </div>
-                  <span className={cn(
-                    "text-[9.5px] font-bold tracking-wide transition-all duration-200 leading-none",
-                    isActive ? "text-[#00F5C2]" : "text-[var(--text-muted)]"
-                  )}>
-                    {tab.label}
-                  </span>
-                  {isActive && (
-                    <motion.div
-                      layoutId="nav-dot"
-                      className="absolute -top-0.5 left-1/2 -translate-x-1/2 w-[12px] h-0.5 rounded-full"
-                      style={{ background: '#00F5C2' }}
-                      transition={{ type: "spring", stiffness: 500, damping: 32 }}
-                    />
-                  )}
-                </motion.button>
-              );
-            })}
-          </div>
-        </div>
-      </nav>
-      <Toaster position="top-right" toastOptions={{ duration: 4000, style: { background: '#1a103c', color: '#fff', border: '1px solid rgba(139, 92, 246, 0.3)' } }} />
+    </div>
+    <Toaster position="top-right" toastOptions={{ duration: 4000, style: { background: '#1a103c', color: '#fff', border: '1px solid rgba(139, 92, 246, 0.3)' } }} />
       <CommandPalette
         isOpen={showCommandPalette}
         onClose={() => setShowCommandPalette(false)}

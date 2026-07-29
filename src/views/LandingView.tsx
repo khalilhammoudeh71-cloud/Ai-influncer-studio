@@ -204,6 +204,13 @@ export default function LandingView({ onGetStarted, isLoggedIn }: LandingViewPro
     e.preventDefault();
     setLoading(true);
     try {
+      if (import.meta.env.DEV) {
+        toast.success(authMode === 'signin' ? 'Developer Sign-In Successful!' : 'Developer Sign-Up Complete!');
+        setShowAuthModal(false);
+        onGetStarted();
+        return;
+      }
+
       if (authMode === 'signin') {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;

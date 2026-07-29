@@ -363,7 +363,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
   
   const [isSending, setIsSending] = useState(false);
   const [isListening, setIsListening] = useState(false);
-  const [canvasTab, setCanvasTab] = useState<'studio' | 'chat' | 'marketing'>('studio');
+  const [canvasTab, setCanvasTab] = useState<'studio' | 'chat' | 'marketing' | 'media' | 'downloader'>('studio');
   const [customPresets, setCustomPresets] = useState<CustomPreset[]>([]);
   
   // Clone & Talking Avatar Studio states
@@ -405,6 +405,56 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
 
   // Guided Tour Onboarding states
   const [tourStep, setTourStep] = useState<number | null>(null);
+
+  // Segment Settings interface
+  interface SegmentSetting {
+    start: number;
+    end: number;
+    speed: number;
+    transition: 'none' | 'fade' | 'slide' | 'zoom';
+  }
+
+  // Storyboard Segment Settings State
+  const [segmentSettings, setSegmentSettings] = useState<Record<number, SegmentSetting>>({});
+
+  // Copywriter Sandbox States
+  const [copywriterTopic, setCopywriterTopic] = useState('');
+  const [copywriterPlatform, setCopywriterPlatform] = useState<'onlyfans' | 'instagram' | 'tiktok'>('instagram');
+  const [isGeneratingCopy, setIsGeneratingCopy] = useState(false);
+  const [copyLogs, setCopyLogs] = useState<{ agent: string; msg: string }[]>([]);
+  const [copyOptions, setCopyOptions] = useState<{ type: string; text: string; tags: string }[] | null>(null);
+
+  const getAttachmentIcon = (mimeType: string) => {
+    if (mimeType.startsWith('image/')) return <ImageIcon className="w-5 h-5 text-pink-400" />;
+    if (mimeType.startsWith('audio/')) return <Volume2 className="w-5 h-5 text-cyan-400" />;
+    if (mimeType.startsWith('video/')) return <VideoIcon className="w-5 h-5 text-indigo-400" />;
+    return <FileText className="w-5 h-5 text-amber-400" />;
+  };
+
+  // Helper to retrieve the active model plan details for the Canvas preview
+  const getActiveDraftState = () => {
+    const activeMsg = [...messages].reverse().find(m => m.suggestedSteps);
+    if (!activeMsg || !activeMsg.execSteps) return null;
+
+    const createStep = activeMsg.execSteps.find(s => s.type === 'create_persona');
+    const planStep = activeMsg.execSteps.find(s => s.type === 'generate_content_plan');
+    const imgStep = activeMsg.execSteps.find(s => s.type === 'generate_image');
+    const videoStep = activeMsg.execSteps.find(s => s.type === 'generate_video');
+    const voiceStep = activeMsg.execSteps.find(s => s.type === 'generate_voice');
+    const revStep = activeMsg.execSteps.find(s => s.type === 'log_revenue');
+
+    return {
+      createStep,
+      planStep,
+      imgStep,
+      videoStep,
+      voiceStep,
+      revStep,
+      messageId: activeMsg.id
+    };
+  };
+
+  const activeDraft = getActiveDraftState();
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -2355,10 +2405,10 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                             <div className="min-w-0 flex-1">
                               <span className="text-[8px] font-black text-pink-400 uppercase tracking-widest block">Suggested Topic</span>
                               <div className="font-extrabold text-white mt-0.5 truncate">
-                                {activeDraft.planStep.params.days?.[day - 1]?.topic || `Day ${day} Viral Concept`}
+                                {activeDraft.planStep?.params?.days?.[day - 1]?.topic || `Day ${day} Viral Concept`}
                               </div>
                               <p className="text-[10px] text-zinc-400 font-medium leading-relaxed mt-0.5">
-                                {activeDraft.planStep.params.days?.[day - 1]?.concept || 'Aesthetic viral layout and messaging hooks.'}
+                                {activeDraft.planStep?.params?.days?.[day - 1]?.concept || 'Aesthetic viral layout and messaging hooks.'}
                               </p>
                             </div>
                           </div>

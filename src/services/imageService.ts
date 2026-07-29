@@ -49,13 +49,14 @@ export interface GenerateImageParams {
   outfitStyle?: string;
   framing?: string;
   mood?: string;
+  prompt?: string;
   additionalInstructions?: string;
   additionalImages?: string[];
   isChatContext?: boolean;
   chatPrompt?: string;
   imageWeight?: number;
   aspectRatio?: string;
-  resolution?: 'standard' | 'hd';
+  resolution?: string;
   naturalLook?: boolean;
   identityLock?: boolean;
   count?: number;
@@ -266,11 +267,11 @@ export async function editImage(sourceImage: string, prompt: string, modelId: st
   return { imageUrl: data.imageUrl, model: data.model };
 }
 
-export async function upscaleImage(sourceImage: string, modelId: string): Promise<{ imageUrl: string; model: string }> {
+export async function upscaleImage(sourceImage: string, modelId: string, targetResolution?: string): Promise<{ imageUrl: string; model: string }> {
   const response = await fetch('/api/upscale-image', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sourceImage, modelId }),
+    body: JSON.stringify({ sourceImage, modelId, targetResolution }),
   });
 
   const contentType = response.headers.get('content-type');
@@ -295,6 +296,7 @@ export async function generateVideo(
   duration?: number,
   resolution?: string,
   sourceVideo?: string,
+  generateAudio?: boolean,
   strength?: number
 ): Promise<{ videoUrl: string; model: string }> {
   const body: Record<string, unknown> = { prompt, modelId };
@@ -305,6 +307,7 @@ export async function generateVideo(
   if (duration !== undefined) body.duration = duration;
   if (resolution) body.resolution = resolution;
   if (sourceVideo) body.sourceVideo = sourceVideo;
+  if (generateAudio !== undefined) body.generateAudio = generateAudio;
   if (strength !== undefined) body.strength = strength;
   const response = await fetch('/api/generate-video', {
     method: 'POST',
@@ -571,10 +574,12 @@ export async function textToSpeech(params: {
 
 export async function generateTalkingHead(params: {
   portraitImage?: string;
+  video?: string;
+  model?: string;
   audioUrl?: string;
   script?: string;
   voiceName?: string;
-  engine?: 'wavespeed' | 'heygen';
+  engine?: string;
   heygenEngine?: 'avatar_iv' | 'avatar_v';
   heygenApiKey?: string;
   heygenAvatarId?: string;
@@ -627,6 +632,7 @@ export async function generateMotionControl(params: {
   motionVideoUrl?: string;
   motionVideoBase64?: string;
   danceId?: string;
+  model?: string;
 }): Promise<{ videoUrl: string; model: string }> {
   const compressedRef = await compressForUpload(params.refImage);
   const response = await authFetch('/api/motion-control', {
