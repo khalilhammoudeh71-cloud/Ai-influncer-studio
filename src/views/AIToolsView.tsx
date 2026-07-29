@@ -31,7 +31,8 @@ import {
   Cpu,
   Check,
   Download,
-  ChevronDown
+  ChevronDown,
+  Box
 } from 'lucide-react';
 import { Persona, NavActions } from '../types';
 import { api } from '../services/apiService';
