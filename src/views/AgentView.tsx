@@ -109,6 +109,101 @@ interface SimulatedPost {
   tips: { user: string; amount: number }[];
 }
 
+const GenerationProgressFrame: React.FC<{
+  stepType: string;
+  modelId?: string;
+  prompt?: string;
+}> = ({ stepType, modelId, prompt }) => {
+  const [percent, setPercent] = useState(5);
+
+  useEffect(() => {
+    const isVideo = stepType === 'generate_video' || stepType === 'storyboard_sequence' || stepType === 'generate_talking_head';
+    const totalDurationSeconds = isVideo ? 16 : 8;
+    const intervalMs = 200;
+    const totalTicks = (totalDurationSeconds * 1000) / intervalMs;
+    const incrementPerTick = 90 / totalTicks;
+
+    const timer = setInterval(() => {
+      setPercent(prev => {
+        if (prev >= 95) return 95;
+        return Math.min(95, Math.floor(prev + incrementPerTick));
+      });
+    }, intervalMs);
+
+    return () => clearInterval(timer);
+  }, [stepType]);
+
+  const resolvedModelName = modelId ? (
+    modelId.includes('seedream') ? 'ByteDance SeeDream 5.0 Pro' :
+    modelId.includes('gpt-image-2') || modelId.includes('gpt-image-1') ? 'GPT Image 2' :
+    modelId.includes('imagen') ? 'Google Imagen 4' :
+    modelId.includes('wan') ? 'Wan 2.2 Video' :
+    modelId.includes('veo') ? 'Google Veo Omni' :
+    modelId.includes('kling') ? 'Kling 3.0 Pro' : modelId
+  ) : 'ByteDance SeeDream 5.0 Pro';
+
+  const isVideo = stepType === 'generate_video' || stepType === 'storyboard_sequence' || stepType === 'generate_talking_head';
+
+  return (
+    <div className="mt-2.5 p-3.5 bg-black/80 border border-pink-500/40 rounded-xl space-y-3 relative overflow-hidden shadow-2xl">
+      {/* Background Animated Shimmer Glow */}
+      <div 
+        className="absolute inset-0 bg-gradient-to-r from-pink-500/10 via-purple-500/15 to-cyan-500/10 transition-all duration-300 pointer-events-none" 
+        style={{ width: `${percent}%` }}
+      />
+
+      <div className="relative z-10 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-8 h-8 rounded-lg bg-pink-500/20 border border-pink-500/40 flex items-center justify-center shrink-0">
+            {isVideo ? <Film className="w-4 h-4 text-pink-400 animate-spin" /> : <Sparkles className="w-4 h-4 text-pink-400 animate-spin" />}
+          </div>
+          <div className="min-w-0">
+            <div className="text-[11px] font-black text-white flex items-center gap-1.5">
+              <span className="truncate">{isVideo ? 'Rendering AI Video' : 'Synthesizing Visual Asset'}</span>
+              <span className="text-[9px] font-bold text-pink-300 bg-pink-500/20 border border-pink-500/30 px-2 py-0.5 rounded-full shrink-0">
+                {resolvedModelName}
+              </span>
+            </div>
+            {prompt && (
+              <p className="text-[9px] text-zinc-400 truncate max-w-xs italic">
+                "{prompt}"
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Live Percentage Badge */}
+        <div className="text-right shrink-0">
+          <div className="flex items-baseline gap-0.5 justify-end">
+            <span className="text-xl font-black text-pink-400 tracking-tight font-mono">{percent}</span>
+            <span className="text-xs font-bold text-pink-400 font-mono">%</span>
+          </div>
+          <span className="block text-[8px] font-extrabold uppercase tracking-wider text-zinc-400">
+            {percent < 95 ? `${Math.ceil((100 - percent) * (isVideo ? 0.16 : 0.08))}s remaining` : 'Finalizing output...'}
+          </span>
+        </div>
+      </div>
+
+      {/* Visual Frame Skeleton Box */}
+      <div className="relative z-10 w-full h-36 rounded-lg bg-zinc-950/90 border border-pink-500/30 flex flex-col items-center justify-center space-y-2.5 overflow-hidden shadow-inner">
+        {/* Animated Progress Bar Fill */}
+        <div className="w-56 bg-zinc-900 rounded-full h-2.5 overflow-hidden border border-white/10 p-0.5">
+          <div 
+            className="h-full bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-400 transition-all duration-300 rounded-full shadow-lg"
+            style={{ width: `${percent}%` }}
+          />
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Loader2 className="w-3.5 h-3.5 animate-spin text-pink-400" />
+          <span className="text-[10px] font-black text-zinc-300 uppercase tracking-widest">
+            Generating Matrix ({percent}%)
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const BASE_PRESETS: CustomPreset[] = [
   {
     name: "📸 Photoshoot",
@@ -2199,11 +2294,24 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                             </div>
                             <div>
                               {step.status === 'pending' && <span className="text-[8px] font-black uppercase text-zinc-500 tracking-wider">Pending</span>}
-                              {step.status === 'running' && <Loader2 className="w-3.5 h-3.5 animate-spin text-pink-400" />}
+                              {step.status === 'running' && (
+                                <span className="text-[9px] font-black uppercase tracking-wider text-pink-400 flex items-center gap-1 animate-pulse">
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin text-pink-400" /> Generating...
+                                </span>
+                              )}
                               {step.status === 'success' && <Check className="w-3.5 h-3.5 text-emerald-400" />}
                               {step.status === 'error' && <AlertCircle className="w-3.5 h-3.5 text-rose-500" />}
                             </div>
                           </div>
+
+                          {/* Live Progress Frame for Running Generation Steps */}
+                          {step.status === 'running' && (
+                            <GenerationProgressFrame 
+                              stepType={step.type} 
+                              modelId={step.params?.modelId || 'wavespeed:bytedance/seedream-v5.0-pro'} 
+                              prompt={step.params?.prompt || ''}
+                            />
+                          )}
 
                           {/* Storyboard Breakdown Card */}
                           {step.type === 'storyboard_sequence' && (
