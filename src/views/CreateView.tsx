@@ -3590,53 +3590,52 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         />
       )}
 
-      {/* Fullscreen Enlarged Image Lightbox Modal */}
+      {/* Fullscreen Enlarged Image Lightbox Modal (Edge-to-Edge True Screen Fill) */}
       {lightboxImageUrl && (
         <div 
-          className="fixed inset-0 z-[99999] bg-black/95 backdrop-blur-2xl flex items-center justify-center p-2 sm:p-6 animate-fadeIn"
+          className="fixed inset-0 z-[999999] bg-black/96 backdrop-blur-2xl w-screen h-screen flex items-center justify-center p-0 m-0 overflow-hidden animate-fadeIn"
           onClick={() => setLightboxImageUrl(null)}
         >
+          {/* Top Floating Action Bar */}
           <div 
-            className="relative w-[96vw] h-[95vh] max-w-[96vw] max-h-[95vh] flex flex-col items-center justify-between space-y-3 bg-zinc-950/98 border border-purple-500/40 rounded-3xl p-4 sm:p-6 shadow-2xl overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
+            className="absolute top-4 right-4 sm:right-6 flex items-center gap-2.5 z-[1000000] bg-zinc-950/85 backdrop-blur-xl border border-white/20 p-2 rounded-2xl shadow-2xl"
+            onClick={e => e.stopPropagation()}
           >
-            {/* Top Bar */}
-            <div className="w-full flex items-center justify-between border-b border-white/10 pb-3 shrink-0">
-              <span className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-purple-400" /> ByteDance SeeDream 5.0 Pro Visual (Full High-Res)
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => {
-                    downloadFile(lightboxImageUrl, 'png');
-                  }}
-                  className="px-4 py-2 rounded-xl bg-purple-600/30 hover:bg-purple-600/50 border border-purple-400/40 text-purple-200 font-extrabold text-xs uppercase flex items-center gap-1.5 transition-all shadow-lg cursor-pointer"
-                >
-                  <Download className="w-4 h-4" /> Download HD
-                </button>
-                <button
-                  onClick={() => setLightboxImageUrl(null)}
-                  className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-zinc-300 hover:text-white transition-all border border-white/15 cursor-pointer"
-                  title="Close (ESC)"
-                >
-                  <X className="w-6 h-6" />
-                </button>
-              </div>
-            </div>
+            <button
+              onClick={() => downloadFile(lightboxImageUrl, 'png')}
+              className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-extrabold text-xs uppercase tracking-wider flex items-center gap-2 transition-all shadow-lg cursor-pointer"
+            >
+              <Download className="w-4 h-4" /> Download HD
+            </button>
+            <button
+              onClick={() => setLightboxImageUrl(null)}
+              className="p-2 rounded-xl bg-white/10 hover:bg-white/25 text-white transition-all border border-white/15 cursor-pointer"
+              title="Close (ESC)"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
 
-            {/* Enlarged Image Box */}
-            <div className="relative flex-1 w-full overflow-hidden rounded-2xl border border-white/10 bg-black flex items-center justify-center p-2 shadow-inner">
-              <img
-                src={lightboxImageUrl}
-                alt="Enlarged Visual"
-                className="max-h-[84vh] max-w-[94vw] object-contain rounded-xl shadow-2xl"
-              />
-            </div>
+          {/* Top Left Title Badge */}
+          <div 
+            className="absolute top-4 left-4 sm:left-6 flex items-center gap-2 z-[1000000] bg-zinc-950/85 backdrop-blur-xl border border-white/20 px-4 py-2 rounded-2xl shadow-2xl pointer-events-none"
+          >
+            <Sparkles className="w-4 h-4 text-purple-400" />
+            <span className="text-xs font-black text-white uppercase tracking-wider">ByteDance SeeDream 5.0 Pro HD</span>
+          </div>
 
-            {/* Footer */}
-            <div className="text-xs font-semibold text-zinc-400 flex items-center gap-2 shrink-0 pt-1">
-              <span>Click outside or press <kbd className="px-2 py-0.5 rounded bg-white/15 text-white font-mono text-xs">ESC</kbd> to exit full screen</span>
-            </div>
+          {/* 100% Edge-to-Edge Max Display Image */}
+          <div className="w-full h-full flex items-center justify-center p-2 sm:p-4">
+            <img
+              src={lightboxImageUrl}
+              alt="Enlarged Visual"
+              className="w-full h-full max-w-[98vw] max-h-[98vh] object-contain drop-shadow-[0_0_60px_rgba(0,0,0,0.9)] select-none rounded-xl"
+            />
+          </div>
+
+          {/* Bottom Center Floating Hint Pill */}
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-5 py-2 rounded-full bg-zinc-950/85 backdrop-blur-xl border border-white/20 text-xs text-zinc-300 font-semibold shadow-2xl z-[1000000] pointer-events-none">
+            Click anywhere or press <kbd className="px-2 py-0.5 rounded bg-white/20 text-white font-mono text-xs ml-1">ESC</kbd> to exit full screen
           </div>
         </div>
       )}
