@@ -1549,123 +1549,62 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
     return (
       <div className="flex flex-col gap-4 w-full max-w-5xl mx-auto pb-10">
-        {/* ── TOP SECTION: Showcase Slideshow OR Generating State OR Canvas Results ── */}
-        <div className={`w-full relative bg-gradient-to-b from-[#0B0F17]/80 to-[#0B0F17]/50 border border-white/10 rounded-[20px] overflow-hidden shadow-2xl flex flex-col justify-center items-center font-sans transition-all duration-500 ${
-          activeVersion || isGenerating || isProcessing 
-            ? 'min-h-[460px] md:min-h-[560px] max-h-[660px] p-3' 
-            : 'h-28 md:h-32 max-h-[130px] p-1.5'
-        }`}>
-          {isGenerating || isProcessing ? (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0B0F17]/85 backdrop-blur-sm z-30 gap-2 select-none">
-              <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
-              <div className="text-center">
-                <p className="text-xs font-bold text-white tracking-wide animate-pulse">
-                  {isProcessing
-                    ? (postAction === 'upscale' ? 'Upscaling image to 4K...' : 'Editing visual canvas...')
-                    : `Creating with ${selectedModelInfo?.name || 'AI'}`}
-                </p>
-                <p className="text-[9px] text-slate-500 mt-0.5">Generating {imageCount > 1 ? `${imageCount} variations` : 'image'} - please wait</p>
+        {/* ── TOP SECTION: Generating State OR Canvas Results ── */}
+        {(activeVersion || isGenerating || isProcessing) && (
+          <div className="w-full relative min-h-[460px] md:min-h-[560px] max-h-[660px] bg-gradient-to-b from-[#0B0F17]/80 to-[#0B0F17]/50 border border-white/10 rounded-[24px] overflow-hidden shadow-2xl flex flex-col justify-center items-center p-3 font-sans transition-all duration-500">
+            {isGenerating || isProcessing ? (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0B0F17]/85 backdrop-blur-sm z-30 gap-2 select-none">
+                <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+                <div className="text-center">
+                  <p className="text-xs font-bold text-white tracking-wide animate-pulse">
+                    {isProcessing
+                      ? (postAction === 'upscale' ? 'Upscaling image to 4K...' : 'Editing visual canvas...')
+                      : `Creating with ${selectedModelInfo?.name || 'AI'}`}
+                  </p>
+                  <p className="text-[9px] text-slate-500 mt-0.5">Generating {imageCount > 1 ? `${imageCount} variations` : 'image'} - please wait</p>
+                </div>
               </div>
-            </div>
-          ) : activeVersion ? (
-            <div className="relative w-full h-full min-h-[440px] md:min-h-[540px] flex items-center justify-center select-none p-3 bg-[#070b13]/60 rounded-2xl group overflow-hidden">
-              <img 
-                src={activeVersion.imageUrl} 
-                alt="Active preview" 
-                onClick={() => setLightboxImageUrl(activeVersion.imageUrl)}
-                className="max-w-full max-h-[520px] md:max-h-[600px] object-contain rounded-2xl shadow-2xl transition-all duration-300 hover:scale-[1.015] cursor-pointer hover:ring-2 hover:ring-purple-500/50 border border-white/10" 
-                title="Click to enlarge full screen"
-              />
-              
-              {/* Quick Image Download & View Action Badges */}
-              <div className="absolute bottom-2 right-2 flex items-center gap-1.5 z-20">
-                <button
-                  onClick={e => { e.stopPropagation(); setLightboxImageUrl(activeVersion.imageUrl); }}
-                  className="px-2.5 py-1.5 bg-purple-600/90 backdrop-blur-sm rounded-lg text-white hover:bg-purple-500 transition-all border border-purple-400/30 shadow-lg flex items-center gap-1 text-[10px] font-extrabold cursor-pointer"
-                  title="Enlarge Full Screen"
-                >
-                  <Maximize2 className="w-3.5 h-3.5" /> Fullscreen
-                </button>
-                <button
-                  onClick={e => { e.stopPropagation(); downloadFile(activeVersion.imageUrl, 'png'); }}
-                  className="p-1.5 bg-black/75 backdrop-blur-sm rounded-lg text-white hover:bg-black transition-all border border-white/10 hover:border-purple-500 shadow-lg cursor-pointer"
-                  title="Download"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={e => { e.stopPropagation(); handleImageGenerate(); }}
-                  className="p-1.5 bg-black/75 backdrop-blur-sm rounded-lg text-white hover:bg-purple-650 transition-all border border-white/10 shadow-lg cursor-pointer"
-                  title="Regenerate"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                </button>
-              </div>
-              <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/75 backdrop-blur-sm border border-white/15 rounded-md text-[8px] font-bold text-slate-350">
-                {activeVersion.model}
-              </div>
-            </div>
-          ) : (
-            /* Auto-playing slideshow */
-            <div className="relative w-full h-full flex items-center justify-between overflow-hidden px-4 md:px-6 bg-[#090D16] rounded-xl">
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={activeSlideIndex}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 10 }}
-                  transition={{ duration: 0.5 }}
-                  className="w-full h-full flex items-center justify-between gap-4"
-                >
-                  {/* Left Side: Model Info */}
-                  <div className="flex-1 flex flex-col justify-center text-left py-1 select-none">
-                    <span className={`self-start text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full border mb-1 ${HERO_SLIDES[activeSlideIndex].badgeColor}`}>
-                      {HERO_SLIDES[activeSlideIndex].badge}
-                    </span>
-                    <h2 className="text-[9px] font-black uppercase text-zinc-400 tracking-wider mb-0.5 leading-none">
-                      Start Creating with
-                    </h2>
-                    <h1 className="text-sm md:text-base font-black tracking-tight mb-0.5 leading-tight">
-                      <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-fuchsia-450 to-pink-400">
-                        {HERO_SLIDES[activeSlideIndex].title}
-                      </span>
-                    </h1>
-                    <p className="text-[9px] md:text-[10px] text-slate-400 font-medium leading-tight max-w-sm truncate">
-                      {HERO_SLIDES[activeSlideIndex].desc}
-                    </p>
-                  </div>
-
-                  {/* Right Side: Showcase Actual Images as Thumbnails */}
-                  <div className="hidden sm:flex items-center gap-2 shrink-0 py-1">
-                    {HERO_SLIDES[activeSlideIndex].thumbnails.map((thumbUrl, idx) => (
-                      <div
-                        key={idx}
-                        className="relative w-14 md:w-16 h-20 md:h-22 rounded-lg overflow-hidden border border-white/10 shadow-md hover:scale-105 hover:border-purple-500/40 transition-all duration-300"
-                      >
-                        <img
-                          src={thumbUrl}
-                          alt={`Showcase ${idx + 1}`}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </motion.div>
-              </AnimatePresence>
-              
-              {/* Pagination Dots */}
-              <div className="absolute bottom-1.5 right-4 flex gap-1 z-25">
-                {HERO_SLIDES.map((_, i) => (
+            ) : (
+              <div className="relative w-full h-full min-h-[440px] md:min-h-[540px] flex items-center justify-center select-none p-3 bg-[#070b13]/60 rounded-2xl group overflow-hidden">
+                <img 
+                  src={activeVersion.imageUrl} 
+                  alt="Active preview" 
+                  onClick={() => setLightboxImageUrl(activeVersion.imageUrl)}
+                  className="max-w-full max-h-[520px] md:max-h-[600px] object-contain rounded-2xl shadow-2xl transition-all duration-300 hover:scale-[1.015] cursor-pointer hover:ring-2 hover:ring-purple-500/50 border border-white/10" 
+                  title="Click to enlarge full screen"
+                />
+                
+                {/* Quick Image Download & View Action Badges */}
+                <div className="absolute bottom-2 right-2 flex items-center gap-1.5 z-20">
                   <button
-                    key={i}
-                    onClick={() => setActiveSlideIndex(i)}
-                    className={`w-1.5 h-1.5 rounded-full transition-all duration-350 ${i === activeSlideIndex ? 'w-4 bg-purple-500' : 'bg-white/20 hover:bg-white/40'}`}
-                  />
-                ))}
+                    onClick={e => { e.stopPropagation(); setLightboxImageUrl(activeVersion.imageUrl); }}
+                    className="px-2.5 py-1.5 bg-purple-600/90 backdrop-blur-sm rounded-lg text-white hover:bg-purple-500 transition-all border border-purple-400/30 shadow-lg flex items-center gap-1 text-[10px] font-extrabold cursor-pointer"
+                    title="Enlarge Full Screen"
+                  >
+                    <Maximize2 className="w-3.5 h-3.5" /> Fullscreen
+                  </button>
+                  <button
+                    onClick={e => { e.stopPropagation(); downloadFile(activeVersion.imageUrl, 'png'); }}
+                    className="p-1.5 bg-black/75 backdrop-blur-sm rounded-lg text-white hover:bg-black transition-all border border-white/10 hover:border-purple-500 shadow-lg cursor-pointer"
+                    title="Download"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={e => { e.stopPropagation(); handleImageGenerate(); }}
+                    className="p-1.5 bg-black/75 backdrop-blur-sm rounded-lg text-white hover:bg-purple-650 transition-all border border-white/10 shadow-lg cursor-pointer"
+                    title="Regenerate"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/75 backdrop-blur-sm border border-white/15 rounded-md text-[8px] font-bold text-slate-350">
+                  {activeVersion.model}
+                </div>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
 
         {/* Post Generation Toolkit for Active Version */}
         {activeVersion && !isGenerating && !isProcessing && (
@@ -3568,32 +3507,15 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     <div className="flex-1 bg-[var(--bg-base)] text-white p-4 max-w-[1600px] mx-auto w-full selection:bg-emerald-500/30 flex flex-col overflow-y-auto custom-scrollbar">
       
       {/* ── STUDIO HEADER ── */}
-      <header className="mb-6">
-        {/* Hero gradient bar */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#0F172A] via-[#1E1B4B]/80 to-[#0F172A] border border-white/5 p-5 mb-6">
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(139,92,246,0.12),transparent_60%)]" />
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_left,rgba(6,182,212,0.08),transparent_60%)]" />
-          
-          <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="space-y-1.5">
-              <h1 className="text-3xl font-black tracking-tight flex items-center gap-3">
-                {mode === 'image' && <>Image <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-fuchsia-400 to-blue-400">Generator</span></>}
-                {mode === 'video' && <>Video <span className="text-transparent bg-clip-text bg-gradient-to-r from-pink-400 via-fuchsia-400 to-orange-400">Generator</span></>}
-                {mode === 'voice' && <>Voice <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-450 to-orange-400">Clone</span></>}
-                {mode === 'talking-avatar' && <>Avatar <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-500">Studio</span></>}
-                {mode === 'stitcher' && <>Video <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 via-fuchsia-400 to-cyan-400">Editor</span></>}
-              </h1>
-              <p className="text-sm text-[var(--text-tertiary)] font-medium max-w-md">
-                {mode === 'image' && 'Generate high-fidelity, identity-consistent persona images.'}
-                {mode === 'video' && 'Turn text prompts or reference images into cinematic videos.'}
-                {mode === 'voice' && 'Clone reference speech patterns or synthesize custom voices.'}
-                {mode === 'talking-avatar' && 'Create speaking digital avatars with voice synchronization.'}
-                {mode === 'stitcher' && 'Stitch generated images, video frames, and cloned audio voiceovers into final vertical clips.'}
-              </p>
-            </div>
-          </div>
-        </div>
-      </header>
+      <div className="mb-3 flex items-center justify-between px-1">
+        <h1 className="text-lg font-black tracking-tight flex items-center gap-2">
+          {mode === 'image' && <>Image <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-fuchsia-400 to-blue-400">Generator</span></>}
+          {mode === 'video' && <>Video <span className="text-transparent bg-clip-text bg-gradient-to-r from-pink-400 via-fuchsia-400 to-orange-400">Generator</span></>}
+          {mode === 'voice' && <>Voice <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-450 to-orange-400">Clone</span></>}
+          {mode === 'talking-avatar' && <>Avatar <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-500">Studio</span></>}
+          {mode === 'stitcher' && <>Video <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 via-fuchsia-400 to-cyan-400">Editor</span></>}
+        </h1>
+      </div>
 
       {globalError && !globalError.includes('Failed query:') && !globalError.includes('DrizzleQueryError') && (
         <div className="mb-4 bg-rose-500/10 border border-rose-500/20 rounded-xl p-3 flex items-start gap-2">
