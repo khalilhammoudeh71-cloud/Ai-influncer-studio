@@ -614,7 +614,7 @@ function App() {
         <div className="ambient-glow top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-violet-500/[0.04] blur-[100px] rounded-full pointer-events-none" />
 
       {/* ── Top app bar ─────────────────────────────────────────── */}
-      <header className="flex-none bg-[#0B0F17]/90 backdrop-blur-xl border-b border-[var(--border-subtle)]">
+      <header className="flex-none bg-[#0B0F17]/95 backdrop-blur-xl border-b border-[var(--border-subtle)] relative z-[999]">
         <div className="flex items-center justify-between px-6 py-2">
           
           {/* Back Button & Logo */}
@@ -661,66 +661,30 @@ function App() {
           {/* Right Actions */}
           {/* Right Actions */}
           <div className="flex items-center gap-3">
-            {/* 🎨 Theme Selector Dropdown */}
-            <div className="relative z-50" ref={themeDropdownRef}>
-              <button
-                type="button"
-                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/10 border border-white/15 hover:bg-white/15 hover:border-amber-400/50 transition-all cursor-pointer text-xs font-bold text-white shadow-md active:scale-95"
-                onClick={() => setShowThemeDropdown(prev => !prev)}
-              >
-                <div className={`w-2.5 h-2.5 rounded-full ${THEMES.find(t => t.id === activeTheme)?.dot || 'bg-amber-400'} shadow-sm`} />
-                <span className="hidden sm:inline font-extrabold tracking-wide text-[11px]">
-                  {THEMES.find(t => t.id === activeTheme)?.name}
-                </span>
-                <Palette size={14} className="text-zinc-300 ml-0.5" />
-                <ChevronDown size={12} className={`text-zinc-400 transition-transform duration-200 ${showThemeDropdown ? 'rotate-180' : ''}`} />
-              </button>
-
-              <AnimatePresence>
-                {showThemeDropdown && (
-                  <motion.div 
-                    initial={{ opacity: 0, y: 8, scale: 0.95 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 8, scale: 0.95 }}
-                    transition={{ duration: 0.15 }}
-                    className="absolute right-0 top-full mt-2 w-60 bg-zinc-950/98 border border-white/15 rounded-2xl shadow-2xl shadow-black/90 backdrop-blur-2xl p-2 z-[999] space-y-1"
-                  >
-                    <div className="px-2.5 py-1.5 border-b border-white/10 flex items-center justify-between">
-                      <span className="text-[10px] font-black text-zinc-300 uppercase tracking-widest">Studio Theme</span>
-                      <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">6 Presets</span>
-                    </div>
-                    <div className="space-y-1 pt-1 max-h-[300px] overflow-y-auto">
-                      {THEMES.map((theme) => (
-                        <button
-                          key={theme.id}
-                          type="button"
-                          onClick={() => {
-                            setActiveTheme(theme.id);
-                            setShowThemeDropdown(false);
-                            toast.success(`Theme set to ${theme.name}!`);
-                          }}
-                          className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-left transition-all cursor-pointer ${
-                            activeTheme === theme.id
-                              ? 'bg-white/15 border border-white/30 font-bold text-white shadow-md'
-                              : 'hover:bg-white/10 border border-transparent text-zinc-300'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2.5">
-                            <div className={`w-3.5 h-3.5 rounded-full ${theme.dot} shrink-0 shadow`} />
-                            <div>
-                              <p className="text-xs font-extrabold leading-tight text-white">{theme.name}</p>
-                              <p className="text-[9px] text-zinc-400 leading-tight">{theme.desc}</p>
-                            </div>
-                          </div>
-                          {activeTheme === theme.id && (
-                            <Check size={14} className="text-amber-400 shrink-0" />
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+            {/* 🎨 100% Reliable OS-Native Theme Selector */}
+            <div className="relative z-[9999]">
+              <div className="flex items-center gap-1.5 bg-white/10 border border-white/20 hover:border-amber-400/50 rounded-xl px-3 py-1.5 shadow-lg backdrop-blur-md transition-all">
+                <div className={`w-3 h-3 rounded-full ${THEMES.find(t => t.id === activeTheme)?.dot || 'bg-amber-400'} shrink-0 shadow-sm`} />
+                <Palette size={14} className="text-zinc-300" />
+                <select
+                  value={activeTheme}
+                  onChange={(e) => {
+                    const newTheme = e.target.value;
+                    setActiveTheme(newTheme);
+                    document.documentElement.setAttribute('data-theme', newTheme);
+                    localStorage.setItem('ai_studio_theme', newTheme);
+                    toast.success(`Theme set to ${THEMES.find(t => t.id === newTheme)?.name}!`);
+                  }}
+                  className="bg-transparent text-white font-black text-xs outline-none cursor-pointer pr-1 py-0.5"
+                  title="Choose studio color theme"
+                >
+                  {THEMES.map((theme) => (
+                    <option key={theme.id} value={theme.id} className="bg-zinc-950 text-white font-bold py-1">
+                      🎨 {theme.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             <button 
