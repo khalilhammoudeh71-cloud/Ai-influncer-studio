@@ -2568,6 +2568,43 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
 
         {/* Prompt Input bar */}
         <div className="flex-none p-4 border-t border-white/5 bg-[var(--bg-elevated)]/30 backdrop-blur-md">
+          {/* Attachment Thumbnails Preview Row */}
+          {attachments.length > 0 && (
+            <div className="flex items-center gap-2.5 overflow-x-auto pb-3 mb-2 custom-scrollbar">
+              {attachments.map((att, idx) => (
+                <div
+                  key={idx}
+                  className="relative group shrink-0 w-16 h-16 rounded-xl border border-white/10 overflow-hidden bg-black/60 shadow-lg"
+                >
+                  {/* Media Content Preview */}
+                  {att.mimeType.startsWith('image/') ? (
+                    <img src={att.dataUrl} alt={att.name} className="w-full h-full object-cover" />
+                  ) : att.mimeType.startsWith('video/') ? (
+                    <div className="w-full h-full flex flex-col items-center justify-center p-1 bg-violet-950/40 text-violet-300">
+                      <VideoIcon size={20} />
+                      <span className="text-[7px] font-black truncate w-full text-center mt-1 text-zinc-300">{att.name}</span>
+                    </div>
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center p-1 bg-pink-950/40 text-pink-300">
+                      <FileText size={20} />
+                      <span className="text-[7px] font-black truncate w-full text-center mt-1 text-zinc-300">{att.name}</span>
+                    </div>
+                  )}
+
+                  {/* Top-Left Delete "X" Button */}
+                  <button
+                    type="button"
+                    onClick={() => removeAttachment(idx)}
+                    className="absolute top-1 left-1 w-5 h-5 rounded-full bg-rose-600 hover:bg-rose-500 text-white flex items-center justify-center shadow-lg transition-all z-10 border border-white/20"
+                    title="Remove attachment"
+                  >
+                    <X size={10} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="flex items-center gap-2">
             <button
               onClick={() => fileInputRef.current?.click()}
