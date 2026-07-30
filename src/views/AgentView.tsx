@@ -1295,6 +1295,45 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
 
       const stepsList = targetMsg.execSteps || [];
 
+      const ensurePersona = async (): Promise<Persona> => {
+        if (createdPersona && createdPersona.id && createdPersona.id !== 'empty') return createdPersona;
+        const existing = personas.find(p => p.id && p.id !== 'empty');
+        if (existing) {
+          createdPersona = existing;
+          createdPersonaId = existing.id;
+          return existing;
+        }
+
+        addLocalLog(`👤 Auto-architecting default studio persona profile...`);
+        const uniqueId = `persona-${Date.now()}`;
+        const defaultP: Persona = {
+          id: uniqueId,
+          name: 'Studio Influencer',
+          niche: 'Lifestyle',
+          tone: 'Confident',
+          platform: 'Instagram',
+          status: 'Active',
+          avatar: memoryFaceImage || 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=400&q=80',
+          referenceImage: memoryFaceImage || undefined,
+          personalityTraits: ['Charming', 'Photogenic'],
+          visualStyle: 'Photorealistic',
+          audienceType: 'General',
+          contentBoundaries: 'None',
+          bio: 'Official Studio AI Influencer',
+          brandVoiceRules: '',
+          contentGoals: '',
+          personaNotes: ''
+        };
+
+        const saved = await api.personas.create(defaultP);
+        createdPersona = saved;
+        createdPersonaId = saved.id;
+        setPersonas(prev => [...prev.filter(p => p.id !== 'empty'), saved]);
+        onSelectPersona(saved.id);
+        addLocalLog(`✅ Default Persona '${saved.name}' created & activated.`);
+        return saved;
+      };
+
       for (let i = 0; i < stepsList.length; i++) {
         const step = stepsList[i];
         updateStepStatus(i, 'running');
@@ -1358,15 +1397,11 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
         }
 
         else if (step.type === 'generate_image') {
-          if (!createdPersona) {
-            createdPersona = personas[0] || null;
-            if (!createdPersona || createdPersona.id === 'empty') throw new Error('No active persona detected.');
-            createdPersonaId = createdPersona.id;
-          }
+          const activeP = await ensurePersona();
 
-          if (memoryFaceImage && createdPersona) {
+          if (memoryFaceImage) {
             addLocalLog(`🧠 [Memory System]: Syncing reference face photo for visual generation.`);
-            createdPersona.referenceImage = memoryFaceImage;
+            activeP.referenceImage = memoryFaceImage;
           }
 
           let modelId = step.params.modelId || 'google:nano-banana-pro';
@@ -1377,7 +1412,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
           let result;
           try {
             result = await generateImage({
-              persona: createdPersona,
+              persona: activeP,
               modelId,
               environment: step.params.environment,
               outfitStyle: step.params.outfit,
@@ -1391,7 +1426,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
             addLocalLog(`⚠️ [Self-Correction] Model ${modelId} failed. Fallback triggered.`);
             let fallbackModel = 'google:nano-banana-pro';
             result = await generateImage({
-              persona: createdPersona,
+              persona: activeP,
               modelId: fallbackModel,
               environment: step.params.environment,
               outfitStyle: step.params.outfit,
@@ -1423,8 +1458,8 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
           await api.images.create(createdPersonaId, imgPayload);
           addLocalLog(`✅ Visual asset generated & saved to library.`);
 
-          const updatedPersona = {
-            ...createdPersona,
+          const updatedPersona: Persona = {
+            ...activeP,
             avatar: imageUrl,
             referenceImage: imageUrl
           };
@@ -1437,14 +1472,10 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
         }
 
         else if (step.type === 'generate_video') {
-          if (!createdPersona) {
-            createdPersona = personas[0] || null;
-            if (!createdPersona || createdPersona.id === 'empty') throw new Error('No active persona detected.');
-            createdPersonaId = createdPersona.id;
-          }
+          const activeP = await ensurePersona();
 
           // Check if continuity frame requested from previous step
-          let finalSourceImage = createdPersona.avatar || null;
+          let finalSourceImage = activeP.avatar || null;
           if (step.params.sourceImageFromStepIndex !== undefined) {
             const prevIdx = step.params.sourceImageFromStepIndex;
             const prevStep = stepsList[prevIdx];
@@ -1746,14 +1777,10 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
         }
 
         else if (step.type === 'edit_image') {
-          if (!createdPersona) {
-            createdPersona = personas[0] || null;
-            if (!createdPersona || createdPersona.id === 'empty') throw new Error('No active persona detected.');
-            createdPersonaId = createdPersona.id;
-          }
+          const activeP = await ensurePersona();
 
           const editType = step.params.editType || 'upscale';
-          const srcImg = step.params.sourceImage || createdPersona.avatar || createdPersona.referenceImage;
+          const srcImg = step.params.sourceImage || activeP.avatar || activeP.referenceImage;
           if (!srcImg) throw new Error('Source image is required for image editing.');
 
           addLocalLog(`⏳ Executing AI Tool edit: ${editType}...`);
@@ -2187,12 +2214,12 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                           {/* Render step outputs inline with actions */}
                           {step.status === 'success' && step.resultUrl && (
                             <div className="pl-3 space-y-2">
-                              {step.type === 'generate_image' && (
+                              {(step.type === 'generate_image' || step.type === 'edit_image') && (
                                 <div className="space-y-2 bg-white/5 p-2 rounded-lg border border-white/5">
                                   {step.resultUrl.endsWith('.mp4') || step.resultUrl.includes('blob:') ? (
                                     <video src={step.resultUrl} controls className="w-40 rounded border border-white/10" />
                                   ) : (
-                                    <img src={step.resultUrl} alt="Visual Output" className="w-32 h-32 rounded object-cover border border-white/10" />
+                                    <img src={step.resultUrl} alt="Visual Output" className="w-48 h-48 rounded object-cover border border-white/10" />
                                   )}
                                   
                                   {/* In-Chat Action Buttons */}
