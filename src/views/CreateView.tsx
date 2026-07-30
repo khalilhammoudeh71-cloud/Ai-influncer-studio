@@ -1793,7 +1793,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 value={imagePrompt}
                 onChange={e => setImagePrompt(e.target.value)}
                 placeholder="Describe what you want the AI to create in vivid details..."
-                className="w-full bg-transparent border-0 outline-none resize-none text-sm text-white placeholder-slate-500 h-32 md:h-36 min-h-[120px] focus:ring-0 p-0"
+                className="w-full bg-transparent border-0 outline-none resize-none text-sm text-white placeholder-slate-500 h-48 md:h-56 min-h-[180px] focus:ring-0 p-0"
               />
             </div>
 
@@ -3576,18 +3576,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         {mode === 'stitcher' && <VideoStitcher persona={activePersona} personas={personas} onSelectPersona={onSelectPersona} onUpdatePersonas={setPersonas} />}
       </div>
 
-      {/* ── FOOTER TIP ── */}
-      <footer className="mt-4 border-t border-white/5 pt-3 flex flex-wrap items-center justify-between gap-3 max-w-full overflow-hidden">
-        <div className="flex items-center gap-2.5 bg-white/[0.02] border border-white/5 px-3 py-1.5 rounded-xl max-w-full min-w-0">
-           <Layout className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-           <p className="text-[10px] text-[var(--text-tertiary)] font-bold truncate">
-             <span className="text-white">Tip:</span> Shorter scripts with a clear hook in the first 5 seconds get more engagement.
-           </p>
-        </div>
-        <button className="flex items-center gap-1.5 text-emerald-400 hover:text-emerald-300 transition-colors text-[10px] font-black uppercase tracking-wider shrink-0">
-           View All Creations <ChevronRight className="w-3.5 h-3.5" />
-        </button>
-      </footer>
+
 
       {isWebcamCreatorOpen && (
         <WebcamAvatarCreator
