@@ -1512,7 +1512,11 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     return (
       <div className="flex flex-col gap-4 w-full max-w-5xl mx-auto pb-10">
         {/* ── TOP SECTION: Showcase Slideshow OR Generating State OR Canvas Results ── */}
-        <div className="w-full relative min-h-[460px] md:min-h-[560px] max-h-[660px] bg-gradient-to-b from-[#0B0F17]/80 to-[#0B0F17]/50 border border-white/10 rounded-[24px] overflow-hidden shadow-2xl flex flex-col justify-center items-center p-3 font-sans transition-all duration-300">
+        <div className={`w-full relative bg-gradient-to-b from-[#0B0F17]/80 to-[#0B0F17]/50 border border-white/10 rounded-[20px] overflow-hidden shadow-2xl flex flex-col justify-center items-center font-sans transition-all duration-500 ${
+          activeVersion || isGenerating || isProcessing 
+            ? 'min-h-[460px] md:min-h-[560px] max-h-[660px] p-3' 
+            : 'h-28 md:h-32 max-h-[130px] p-1.5'
+        }`}>
           {isGenerating || isProcessing ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0B0F17]/85 backdrop-blur-sm z-30 gap-2 select-none">
               <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
@@ -1565,7 +1569,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             </div>
           ) : (
             /* Auto-playing slideshow */
-            <div className="relative w-full h-full h-44 md:h-52 max-h-[220px] flex items-center justify-between overflow-hidden px-5 md:px-8 bg-[#090D16]">
+            <div className="relative w-full h-full flex items-center justify-between overflow-hidden px-4 md:px-6 bg-[#090D16] rounded-xl">
               <AnimatePresence mode="wait">
                 <motion.div
                   key={activeSlideIndex}
@@ -1573,32 +1577,32 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: 10 }}
                   transition={{ duration: 0.5 }}
-                  className="w-full h-full flex items-center justify-between gap-6"
+                  className="w-full h-full flex items-center justify-between gap-4"
                 >
                   {/* Left Side: Model Info */}
-                  <div className="flex-1 flex flex-col justify-center text-left py-4 select-none">
-                    <span className={`self-start text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full border mb-1.5 ${HERO_SLIDES[activeSlideIndex].badgeColor}`}>
+                  <div className="flex-1 flex flex-col justify-center text-left py-1 select-none">
+                    <span className={`self-start text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full border mb-1 ${HERO_SLIDES[activeSlideIndex].badgeColor}`}>
                       {HERO_SLIDES[activeSlideIndex].badge}
                     </span>
-                    <h2 className="text-[10px] font-black uppercase text-zinc-400 tracking-wider mb-0.5 leading-none">
+                    <h2 className="text-[9px] font-black uppercase text-zinc-400 tracking-wider mb-0.5 leading-none">
                       Start Creating with
                     </h2>
-                    <h1 className="text-xl md:text-2xl font-black tracking-tight mb-1.5 leading-tight">
+                    <h1 className="text-sm md:text-base font-black tracking-tight mb-0.5 leading-tight">
                       <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-fuchsia-450 to-pink-400">
                         {HERO_SLIDES[activeSlideIndex].title}
                       </span>
                     </h1>
-                    <p className="text-[10px] md:text-xs text-slate-400 font-medium leading-relaxed max-w-md">
+                    <p className="text-[9px] md:text-[10px] text-slate-400 font-medium leading-tight max-w-sm truncate">
                       {HERO_SLIDES[activeSlideIndex].desc}
                     </p>
                   </div>
 
                   {/* Right Side: Showcase Actual Images as Thumbnails */}
-                  <div className="hidden sm:flex items-center gap-2 md:gap-3 shrink-0 py-2">
+                  <div className="hidden sm:flex items-center gap-2 shrink-0 py-1">
                     {HERO_SLIDES[activeSlideIndex].thumbnails.map((thumbUrl, idx) => (
                       <div
                         key={idx}
-                        className="relative w-20 md:w-24 h-28 md:h-32 rounded-xl overflow-hidden border border-white/10 shadow-lg shadow-black/40 hover:scale-105 hover:border-purple-500/40 transition-all duration-300"
+                        className="relative w-14 md:w-16 h-20 md:h-22 rounded-lg overflow-hidden border border-white/10 shadow-md hover:scale-105 hover:border-purple-500/40 transition-all duration-300"
                       >
                         <img
                           src={thumbUrl}
@@ -1612,12 +1616,12 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               </AnimatePresence>
               
               {/* Pagination Dots */}
-              <div className="absolute bottom-3 right-6 flex gap-1.5 z-25">
+              <div className="absolute bottom-1.5 right-4 flex gap-1 z-25">
                 {HERO_SLIDES.map((_, i) => (
                   <button
                     key={i}
                     onClick={() => setActiveSlideIndex(i)}
-                    className={`w-2 h-2 rounded-full transition-all duration-350 ${i === activeSlideIndex ? 'w-5 bg-violet-500' : 'bg-white/20 hover:bg-white/40'}`}
+                    className={`w-1.5 h-1.5 rounded-full transition-all duration-350 ${i === activeSlideIndex ? 'w-4 bg-purple-500' : 'bg-white/20 hover:bg-white/40'}`}
                   />
                 ))}
               </div>
