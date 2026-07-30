@@ -3568,14 +3568,6 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
           </div>
         </div>
       )}
-
-      {/* Floating Tour Launch Button */}
-      <button
-        onClick={() => setTourStep(0)}
-        className="fixed bottom-6 left-6 z-40 bg-black/60 border border-white/10 hover:border-pink-500/20 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider text-pink-300 flex items-center gap-1.5 transition-all shadow-lg backdrop-blur-sm"
-      >
-        <span>💡 Guided Tour</span>
-      </button>
     </div>
   );
 }
