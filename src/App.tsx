@@ -589,7 +589,7 @@ function App() {
 
 
   return (
-    <div className="flex h-screen w-screen bg-[var(--bg-base)] text-[var(--text-primary)] overflow-hidden">
+    <div className="flex h-screen w-full max-w-full bg-[var(--bg-base)] text-[var(--text-primary)] overflow-hidden">
       {/* Left Sidebar Navigation */}
       <LeftSidebar 
         activeTab={activeTab} 
@@ -610,12 +610,12 @@ function App() {
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden relative">
+      <div className="flex-1 flex flex-col h-full max-w-full overflow-x-hidden relative">
         <div className="ambient-glow top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-violet-500/[0.04] blur-[100px] rounded-full pointer-events-none" />
 
       {/* ── Top app bar ─────────────────────────────────────────── */}
-      <header className="flex-none bg-[#0B0F17]/95 backdrop-blur-xl border-b border-[var(--border-subtle)] relative z-[999]">
-        <div className="flex items-center justify-between px-6 py-2">
+      <header className="flex-none bg-[#0B0F17]/95 backdrop-blur-xl border-b border-[var(--border-subtle)] relative z-[999] max-w-full overflow-x-hidden">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-2 max-w-full overflow-x-hidden">
           
           {/* Back Button & Logo */}
           <div className="flex items-center gap-3">
