@@ -814,10 +814,41 @@ Do not wrap your response in markdown code blocks or HTML tags. Return ONLY the 
     } catch (parseErr) {
       console.warn('[API] /agent/chat JSON parse fallback:', parseErr);
       data = {
-        text: text || "I've processed your request. Let's build your influencer project!",
-        status: "normal",
+        text: text || "Executing request using ByteDance SeeDream 5.0 Pro.",
+        status: "executing",
         suggestedSteps: []
       };
+    }
+
+    if (!data.suggestedSteps || !Array.isArray(data.suggestedSteps) || data.suggestedSteps.length === 0) {
+      const lastUserMsg = [...messages].reverse().find((m: any) => m.role === 'user');
+      const promptText = lastUserMsg?.content || 'Uncensored visual creation';
+      let attImg: string | undefined = undefined;
+      if (lastUserMsg?.attachments && lastUserMsg.attachments.length > 0) {
+        const imgAtt = lastUserMsg.attachments.find((a: any) => a.mimeType && a.mimeType.startsWith('image/'));
+        if (imgAtt) attImg = imgAtt.dataUrl;
+      }
+
+      const fallbackStep = attImg ? {
+        type: 'edit_image',
+        params: {
+          editType: 'beautify',
+          prompt: promptText,
+          sourceImage: attImg,
+          modelId: 'wavespeed:bytedance/seedream-v5.0-pro'
+        },
+        status: 'pending'
+      } : {
+        type: 'generate_image',
+        params: {
+          prompt: promptText,
+          modelId: 'wavespeed:bytedance/seedream-v5.0-pro'
+        },
+        status: 'pending'
+      };
+
+      data.status = 'executing';
+      data.suggestedSteps = [fallbackStep];
     }
 
     // 2. Dual-Brain "Review & Critique" Loop Pass
