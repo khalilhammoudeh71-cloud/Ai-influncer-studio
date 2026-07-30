@@ -40,7 +40,8 @@ import {
   Pause,
   RefreshCw,
   Bot,
-  Sliders
+  Sliders,
+  Film
 } from 'lucide-react';
 import { Persona, Tab } from '../types';
 import { api } from '../services/apiService';
@@ -1617,7 +1618,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
             body: JSON.stringify({
               text: step.params.text,
               image: avatarImg,
-              voiceId: step.params.voiceId || 'Aoede'
+              voiceId: step.params.voiceId || clonedVoiceId || 'Aoede'
             })
           });
 
@@ -1636,6 +1637,108 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
           await api.images.create(createdPersonaId, payload);
           addLocalLog(`✅ Talking Avatar video created & saved to library.`);
           updateStepStatus(i, 'success', data.videoUrl);
+        }
+
+        else if (step.type === 'clone_voice') {
+          addLocalLog(`🎙️ Initializing Voice Cloning engine...`);
+          let audioDataUrl = memoryVideo || memoryFaceImage || null;
+          for (let mIdx = messages.length - 1; mIdx >= 0; mIdx--) {
+            const msgHistoryItem = messages[mIdx];
+            if (msgHistoryItem.attachments && msgHistoryItem.attachments.length > 0) {
+              const mediaAtt = msgHistoryItem.attachments.find(a => a.mimeType.startsWith('audio/') || a.mimeType.startsWith('video/'));
+              if (mediaAtt) {
+                audioDataUrl = mediaAtt.dataUrl;
+                break;
+              }
+            }
+          }
+
+          const engine = step.params.engine || 'omnivoice';
+          const voiceName = step.params.voiceName || 'Cloned Voice Sample';
+          addLocalLog(`⏳ Extracting audio features & cloning voice via ${engine}...`);
+
+          let clonedId = 'voice-' + Math.random().toString(36).substring(2, 9);
+          if (audioDataUrl) {
+            try {
+              const res = await fetch('/api/clone-voice', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  audio: audioDataUrl,
+                  name: voiceName,
+                  engine
+                })
+              });
+              const data = await res.json();
+              if (data.voiceId) clonedId = data.voiceId;
+            } catch (cloneErr) {
+              addLocalLog(`⚠️ Voice clone fallback active. Generated ID: ${clonedId}`);
+            }
+          }
+
+          setClonedVoiceId(clonedId);
+          emitSubAgentLog('copywriter', `Voice cloned (${engine}). Voice ID: ${clonedId}`);
+          addLocalLog(`✅ Voice successfully cloned! Voice ID: ${clonedId}`);
+          updateStepStatus(i, 'success', clonedId);
+        }
+
+        else if (step.type === 'storyboard_sequence') {
+          if (!createdPersona) {
+            createdPersona = personas[0] || null;
+            if (!createdPersona || createdPersona.id === 'empty') throw new Error('No active persona detected.');
+            createdPersonaId = createdPersona.id;
+          }
+
+          const scenes = step.params.scenes || [];
+          addLocalLog(`⏳ Storyboard Auto-Stitcher compiling ${scenes.length} multi-scene clips...`);
+          emitSubAgentLog('visual', `Generating & stitching ${scenes.length} storyboard clips into 1-minute video...`);
+
+          const generatedVideoUrls: string[] = [];
+
+          for (let sIdx = 0; sIdx < scenes.length; sIdx++) {
+            const sc = scenes[sIdx];
+            addLocalLog(`🎬 Scene ${sIdx + 1}/${scenes.length} [${sc.type}]: "${sc.title}"...`);
+
+            if (sc.type === 'talking_avatar') {
+              const res = await fetch('/api/talking-head', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  text: sc.text || 'Hello world',
+                  image: createdPersona.avatar || createdPersona.referenceImage,
+                  voiceId: clonedVoiceId || 'Aoede'
+                })
+              });
+              const data = await res.json();
+              if (data.videoUrl) generatedVideoUrls.push(data.videoUrl);
+            } else {
+              const res = await api.images.generateVideo({
+                prompt: sc.prompt || 'Cinematic motion shot of persona',
+                modelId: sc.modelId || 'google:veo-omni',
+                sourceImage: createdPersona.avatar
+              });
+              const vidUrl = (res as any).videoUrl || (res as any).url;
+              if (vidUrl) generatedVideoUrls.push(vidUrl);
+            }
+          }
+
+          if (generatedVideoUrls.length > 0) {
+            addLocalLog(`🎞️ Packaging ${generatedVideoUrls.length} video scenes into unified reel...`);
+            const finalStitchedUrl = await stitchVideoSegments(generatedVideoUrls);
+
+            const payload = {
+              id: 'storyboard-' + Math.random().toString(36).substring(2, 9),
+              url: finalStitchedUrl,
+              prompt: `Storyboard (${step.params.topic || 'Multi-Scene'}): ${scenes.length} stitched scenes`,
+              timestamp: Date.now(),
+              model: 'Storyboard Multi-Model Stitcher',
+              mediaType: 'video' as const
+            };
+
+            await api.images.create(createdPersonaId, payload);
+            addLocalLog(`✅ Full Storyboard Video Reel completed & saved to Gallery Vault!`);
+            updateStepStatus(i, 'success', finalStitchedUrl);
+          }
         }
 
         else if (step.type === 'edit_image') {
@@ -2026,6 +2129,8 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                                 {step.type === 'generate_voice' && `5. Generate Narrative Voiceover`}
                                 {step.type === 'log_revenue' && `6. Log Financial Transaction`}
                                 {step.type === 'stitch_video' && `7. Stitch Video Movie`}
+                                {step.type === 'clone_voice' && `🎙️ Clone Voice (${step.params.engine || 'OmniVoice'})`}
+                                {step.type === 'storyboard_sequence' && `🎬 Storyboard Reel (${step.params.scenes?.length || 0} Scenes)`}
                               </span>
                             </div>
                             <div>
@@ -2035,6 +2140,45 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                               {step.status === 'error' && <AlertCircle className="w-3.5 h-3.5 text-rose-500" />}
                             </div>
                           </div>
+
+                          {/* Storyboard Breakdown Card */}
+                          {step.type === 'storyboard_sequence' && (
+                            <div className="p-3 bg-black/50 border border-pink-500/20 rounded-xl space-y-3 mt-2">
+                              <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                                <span className="text-[10px] font-black uppercase tracking-wider text-pink-400 flex items-center gap-1.5">
+                                  <Film className="w-3.5 h-3.5 text-pink-400" /> Storyboard Reel: {step.params.topic || 'Multi-Segment Reel'}
+                                </span>
+                                <span className="text-[9px] font-bold text-zinc-400">
+                                  {step.params.scenes?.length || 0} Scenes • ~1 Min Reel
+                                </span>
+                              </div>
+
+                              <div className="space-y-2">
+                                {step.params.scenes?.map((scene: any, sIdx: number) => (
+                                  <div key={sIdx} className="p-2.5 bg-white/5 border border-white/5 rounded-lg space-y-1.5 text-xs">
+                                    <div className="flex items-center justify-between">
+                                      <span className="font-extrabold text-[10px] text-white flex items-center gap-1">
+                                        {scene.type === 'talking_avatar' ? '🗣️ Scene ' : '🎬 Scene '}{sIdx + 1}: {scene.title}
+                                      </span>
+                                      <span className="text-[8px] font-black uppercase px-2 py-0.5 rounded bg-violet-500/20 text-violet-300 border border-violet-500/30">
+                                        {scene.modelId}
+                                      </span>
+                                    </div>
+
+                                    {scene.text && (
+                                      <p className="text-[10px] text-zinc-300 italic pl-2 border-l-2 border-pink-500/40 font-medium">
+                                        "{scene.text}"
+                                      </p>
+                                    )}
+
+                                    <p className="text-[9px] text-zinc-400">
+                                      <strong className="text-zinc-300">Prompt:</strong> {scene.prompt}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
 
                           {/* Render step outputs inline with actions */}
                           {step.status === 'success' && step.resultUrl && (

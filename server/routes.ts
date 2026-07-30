@@ -763,6 +763,14 @@ AVAILABLE STEPS inside "suggestedSteps":
 8. "stitch_video":
    Parameters: segmentIndices (number[])
 
+9. "clone_voice":
+   Parameters: engine ("omnivoice" | "elevenlabs"), voiceName (string)
+   Usage: Triggers voice cloning when the user attaches an audio or video file with speech samples.
+
+10. "storyboard_sequence":
+   Parameters: topic (string), scenes (array of objects with { type: "talking_avatar" | "cinematic_video", title: string, prompt: string, text?: string, modelId: string, duration: number })
+   Usage: Used when user asks to construct a multi-segment video (e.g., 1-minute video combining talking head avatars with cinematic motion shots). Breaks down each scene's visual prompt, script, and model choice.
+
 9. "edit_image":
    Parameters: editType ("face-swap" | "bg-remover" | "virtual-tryon" | "upscale" | "beautify" | "camera-angle"), prompt (optional string), sourceImage (string), secondImage (optional string)
 
