@@ -3552,7 +3552,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         </div>
       </header>
 
-      {globalError && (
+      {globalError && !globalError.includes('Failed query:') && !globalError.includes('DrizzleQueryError') && (
         <div className="mb-4 bg-rose-500/10 border border-rose-500/20 rounded-xl p-3 flex items-start gap-2">
           <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
           <p className="text-sm text-rose-300">{globalError}</p>

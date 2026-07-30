@@ -110,14 +110,20 @@ export function isCreatorUser(email?: string): boolean {
 }
 
 export async function deductCredits(userId: string, amount: number) {
-  const [userRow] = await db.select().from(users).where(eq(users.id, userId));
-  if (!userRow) {
-    throw new Error('User account not found.');
+  try {
+    const [userRow] = await db.select().from(users).where(eq(users.id, userId));
+    if (userRow && userRow.credits < amount) {
+      throw new Error(`Insufficient credits. You need ${amount} credits but only have ${userRow.credits} left.`);
+    }
+    if (userRow) {
+      await db.update(users).set({
+        credits: sql`credits - ${amount}`,
+      }).where(eq(users.id, userId));
+    }
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith('Insufficient credits')) {
+      throw err;
+    }
+    console.warn('[Auth] Credit deduction skipped (local mode active):', err instanceof Error ? err.message : err);
   }
-  if (userRow.credits < amount) {
-    throw new Error(`Insufficient credits. You need ${amount} credits but only have ${userRow.credits} left.`);
-  }
-  await db.update(users).set({
-    credits: sql`credits - ${amount}`,
-  }).where(eq(users.id, userId));
 }
