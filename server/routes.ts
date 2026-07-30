@@ -840,25 +840,58 @@ You must ALWAYS reply in valid JSON format with these exact properties:
 }
 Do not wrap your response in markdown code blocks or HTML tags. Return ONLY the JSON object.`;
 
-    const safetySettings = [
-      { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-      { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-      { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
-      { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' }
-    ];
+    const VENICE_KEY = process.env.Veniceai_api_key || process.env.veniceai_api_key || process.env.VENICEAI_API_KEY || process.env.VENICE_API_KEY || '';
+    let text = '';
 
-    const result = await genAI.models.generateContent({
-      model: 'gemini-2.5-pro',
-      contents,
-      config: {
-        systemInstruction,
-        responseMimeType: 'application/json',
-        safetySettings: safetySettings as any
+    if (VENICE_KEY) {
+      try {
+        console.log('[Super Agent Router] Direct-routing prompt via Venice.ai API (100% Uncensored Engine)');
+        const vRes = await fetch('https://api.venice.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${VENICE_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            model: 'llama-3.3-70b',
+            messages: [
+              { role: 'system', content: systemInstruction },
+              ...messages.map((m: any) => ({
+                role: m.role === 'model' ? 'assistant' : 'user',
+                content: typeof m.content === 'string' ? m.content : (m.content?.text || JSON.stringify(m.content || ''))
+              }))
+            ],
+            temperature: 0.7
+          })
+        });
+        const vData = await vRes.json();
+        text = vData.choices?.[0]?.message?.content?.trim() || '';
+      } catch (vErr) {
+        console.warn('[Super Agent Router] Venice API call failed, falling back to Gemini:', vErr);
       }
-    });
+    }
 
-    let text = result.text?.trim() || '';
+    if (!text) {
+      const safetySettings = [
+        { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+        { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+        { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+        { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+        { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' }
+      ];
+
+      const result = await genAI.models.generateContent({
+        model: 'gemini-2.5-pro',
+        contents,
+        config: {
+          systemInstruction,
+          responseMimeType: 'application/json',
+          safetySettings: safetySettings as any
+        }
+      });
+      text = result.text?.trim() || '';
+    }
+
     text = text.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
 
     let data: any;
