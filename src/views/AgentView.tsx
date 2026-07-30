@@ -41,7 +41,8 @@ import {
   RefreshCw,
   Bot,
   Sliders,
-  Film
+  Film,
+  Download
 } from 'lucide-react';
 import { Persona, Tab } from '../types';
 import { api } from '../services/apiService';
@@ -548,6 +549,17 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
 
   // Social Downloader States
   const [downloaderUrl, setDownloaderUrl] = useState('');
+
+  // Enlarged Fullscreen Lightbox State
+  const [expandedImageUrl, setExpandedImageUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setExpandedImageUrl(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
   const [downloaderLoading, setDownloaderLoading] = useState(false);
   const [downloaderResult, setDownloaderResult] = useState<{
     videoUrl: string;
@@ -2387,7 +2399,23 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                                   {step.resultUrl.endsWith('.mp4') || step.resultUrl.includes('blob:') ? (
                                     <video src={step.resultUrl} controls className="w-40 rounded border border-white/10" />
                                   ) : (
-                                    <img src={step.resultUrl} alt="Visual Output" className="w-48 h-48 rounded object-cover border border-white/10" />
+                                    <div className="relative group inline-block">
+                                      <img 
+                                        src={step.resultUrl} 
+                                        alt="Visual Output" 
+                                        onClick={() => setExpandedImageUrl(step.resultUrl!)}
+                                        className="w-48 h-48 rounded object-cover border border-white/10 cursor-pointer hover:scale-[1.02] hover:ring-2 hover:ring-pink-500/50 transition-all duration-200 shadow-lg" 
+                                        title="Click to enlarge image"
+                                      />
+                                      <div 
+                                        onClick={() => setExpandedImageUrl(step.resultUrl!)}
+                                        className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded cursor-pointer pointer-events-none"
+                                      >
+                                        <span className="px-2.5 py-1 rounded bg-black/70 text-white font-black text-[9px] uppercase tracking-wider border border-white/20 flex items-center gap-1 shadow">
+                                          🔍 Click to Enlarge
+                                        </span>
+                                      </div>
+                                    </div>
                                   )}
                                   
                                   {/* In-Chat Action Buttons */}
@@ -3772,6 +3800,58 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                   Finish
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Fullscreen Enlarged Image Lightbox Modal */}
+      {expandedImageUrl && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 sm:p-8 animate-fadeIn"
+          onClick={() => setExpandedImageUrl(null)}
+        >
+          <div 
+            className="relative max-w-5xl max-h-[92vh] flex flex-col items-center justify-center space-y-4 bg-zinc-950/90 border border-pink-500/30 rounded-2xl p-4 sm:p-6 shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Top Bar with Actions */}
+            <div className="w-full flex items-center justify-between border-b border-white/10 pb-3">
+              <span className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-pink-400" /> ByteDance SeeDream 5.0 Pro Visual
+              </span>
+              <div className="flex items-center gap-2">
+                <a
+                  href={expandedImageUrl}
+                  download="seedream_5_pro_output.png"
+                  className="px-3 py-1.5 rounded-lg bg-pink-500/20 hover:bg-pink-500/35 border border-pink-500/30 text-pink-300 font-extrabold text-xs uppercase flex items-center gap-1.5 transition-all shadow"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <Download className="w-3.5 h-3.5" /> Download HD
+                </a>
+                <button
+                  onClick={() => setExpandedImageUrl(null)}
+                  className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-zinc-300 hover:text-white transition-all border border-white/10"
+                  title="Close (ESC)"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Enlarged Image Container */}
+            <div className="relative overflow-hidden rounded-xl border border-white/10 bg-black max-h-[75vh] flex items-center justify-center shadow-inner">
+              <img
+                src={expandedImageUrl}
+                alt="Enlarged Visual"
+                className="max-h-[75vh] max-w-full object-contain rounded-xl shadow-2xl"
+              />
+            </div>
+
+            {/* Footer Information */}
+            <div className="text-[10px] font-semibold text-zinc-400 flex items-center gap-2">
+              <span>Click outside or press <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-white font-mono text-[9px]">ESC</kbd> to exit full screen</span>
             </div>
           </div>
         </div>
