@@ -1293,7 +1293,33 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
       let createdPersona: Persona | null = null;
       let createdPersonaId = '';
 
-      const stepsList = targetMsg.execSteps || [];
+      let stepsList = targetMsg.execSteps || targetMsg.suggestedSteps || [];
+      if (!stepsList || stepsList.length === 0) {
+        const userMsg = [...messages].reverse().find(m => m.role === 'user');
+        const promptText = userMsg?.content || 'Generate AI visual asset';
+        addLocalLog(`⚡ Building execution pipeline step on the fly...`);
+
+        const fallbackStep = memoryFaceImage ? {
+          type: 'edit_image',
+          params: {
+            editType: 'beautify',
+            prompt: promptText,
+            sourceImage: memoryFaceImage,
+            modelId: 'wavespeed:bytedance/seedream-v5.0-pro'
+          },
+          status: 'pending' as const
+        } : {
+          type: 'generate_image',
+          params: {
+            prompt: promptText,
+            modelId: 'wavespeed:bytedance/seedream-v5.0-pro'
+          },
+          status: 'pending' as const
+        };
+
+        stepsList = [fallbackStep];
+        setMessages(prev => prev.map(m => m.id === messageId ? { ...m, execSteps: stepsList, suggestedSteps: stepsList } : m));
+      }
 
       const ensurePersona = async (): Promise<Persona> => {
         if (createdPersona && createdPersona.id && createdPersona.id !== 'empty') return createdPersona;

@@ -777,11 +777,14 @@ AVAILABLE STEPS inside "suggestedSteps":
 10. "log_revenue":
    Parameters: amount (number), source, platform, notes
 
+CRITICAL EXECUTION RULE:
+Whenever the user asks to generate, create, edit, transform, or plan anything (photos, videos, storyboards, voice clones, avatars, or plans), you MUST set "status": "executing" and include the appropriate task step(s) inside "suggestedSteps". Never return empty suggestedSteps when an action is requested.
+
 You must ALWAYS reply in valid JSON format with these exact properties:
 {
   "text": "Your textual chat reply to the user including Model Recommendations & Alternatives breakdown",
-  "status": "clarifying" | "executing" | "normal",
-  "suggestedSteps": [ ...optional array of steps if status is executing... ]
+  "status": "executing",
+  "suggestedSteps": [ ...array of execution steps... ]
 }
 Do not wrap your response in markdown code blocks or HTML tags. Return ONLY the JSON object.`;
 
