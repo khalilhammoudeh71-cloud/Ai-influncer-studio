@@ -38,6 +38,7 @@ import {
   Bell,
   Search,
   Play,
+  Maximize2,
   Pause,
   Volume2,
   Sliders,
@@ -319,6 +320,17 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const [selectedUpscaleModel, setSelectedUpscaleModel] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  // Enlarged Fullscreen Lightbox State
+  const [lightboxImageUrl, setLightboxImageUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLightboxImageUrl(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const [refPersonaId, setRefPersonaId] = useState<string>('none');
   const [refImages, setRefImages] = useState<{ id: string; url: string; name: string }[]>([]);
@@ -1513,21 +1525,34 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               </div>
             </div>
           ) : activeVersion ? (
-            <div className="relative w-full h-full flex items-center justify-center h-44 md:h-52 max-h-[220px] select-none p-2 bg-[#070b13]/40">
-              <img src={activeVersion.imageUrl} alt="Active preview" className="max-w-full max-h-[200px] object-contain rounded-xl shadow-2xl transition-transform duration-500 hover:scale-[1.01]" />
+            <div className="relative w-full h-full flex items-center justify-center h-44 md:h-52 max-h-[220px] select-none p-2 bg-[#070b13]/40 group">
+              <img 
+                src={activeVersion.imageUrl} 
+                alt="Active preview" 
+                onClick={() => setLightboxImageUrl(activeVersion.imageUrl)}
+                className="max-w-full max-h-[200px] object-contain rounded-xl shadow-2xl transition-all duration-300 hover:scale-[1.03] cursor-pointer hover:ring-2 hover:ring-purple-500/50" 
+                title="Click to enlarge full screen"
+              />
               
               {/* Quick Image Download & View Action Badges */}
               <div className="absolute bottom-2 right-2 flex items-center gap-1.5 z-20">
                 <button
+                  onClick={e => { e.stopPropagation(); setLightboxImageUrl(activeVersion.imageUrl); }}
+                  className="px-2.5 py-1.5 bg-purple-600/90 backdrop-blur-sm rounded-lg text-white hover:bg-purple-500 transition-all border border-purple-400/30 shadow-lg flex items-center gap-1 text-[10px] font-extrabold cursor-pointer"
+                  title="Enlarge Full Screen"
+                >
+                  <Maximize2 className="w-3.5 h-3.5" /> Fullscreen
+                </button>
+                <button
                   onClick={e => { e.stopPropagation(); downloadFile(activeVersion.imageUrl, 'png'); }}
-                  className="p-1.5 bg-black/75 backdrop-blur-sm rounded-lg text-white hover:bg-black transition-all border border-white/10 hover:border-purple-500 shadow-lg"
+                  className="p-1.5 bg-black/75 backdrop-blur-sm rounded-lg text-white hover:bg-black transition-all border border-white/10 hover:border-purple-500 shadow-lg cursor-pointer"
                   title="Download"
                 >
                   <Download className="w-3.5 h-3.5" />
                 </button>
                 <button
                   onClick={e => { e.stopPropagation(); handleImageGenerate(); }}
-                  className="p-1.5 bg-black/75 backdrop-blur-sm rounded-lg text-white hover:bg-purple-650 transition-all border border-white/10 shadow-lg"
+                  className="p-1.5 bg-black/75 backdrop-blur-sm rounded-lg text-white hover:bg-purple-650 transition-all border border-white/10 shadow-lg cursor-pointer"
                   title="Regenerate"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
@@ -1658,13 +1683,18 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                       setImageHistory([{ imageUrl: entry.imageUrl, model: entry.model, promptUsed: entry.promptUsed, label: entry.label }]);
                       setActiveHistoryIndex(0);
                       setPostAction(null);
+                      setLightboxImageUrl(entry.imageUrl);
                     }}
-                    className={`relative rounded-xl overflow-hidden border cursor-pointer transition-all shrink-0 w-16 h-20 ${
-                      isFocused ? 'border-purple-500 ring-2 ring-purple-500/20 scale-95 shadow-lg' : 'border-white/10 hover:border-white/30'
+                    className={`relative rounded-xl overflow-hidden border cursor-pointer transition-all shrink-0 w-16 h-20 group/thumb ${
+                      isFocused ? 'border-purple-500 ring-2 ring-purple-500/40 scale-95 shadow-lg' : 'border-white/10 hover:border-white/40 hover:scale-105'
                     }`}
+                    title="Click to select & view enlarged full screen"
                   >
                     <img src={entry.imageUrl} alt={entry.label} className="w-full h-full object-cover" />
-                    <div className="absolute bottom-1 left-1 px-1 py-0.5 bg-black/60 rounded text-[7px] font-bold text-white max-w-[calc(100%-8px)] truncate">
+                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/thumb:opacity-100 transition-opacity flex items-center justify-center">
+                      <span className="text-[8px] font-black text-white bg-purple-600/90 px-1 py-0.5 rounded shadow">🔍 Enlarge</span>
+                    </div>
+                    <div className="absolute bottom-1 left-1 px-1 py-0.5 bg-black/70 rounded text-[7px] font-bold text-white max-w-[calc(100%-8px)] truncate">
                       {entry.label}
                     </div>
                   </div>
@@ -3558,6 +3588,57 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           personaName={activePersona.name || 'My Persona'}
           onComplete={handleWebcamCreatorComplete}
         />
+      )}
+
+      {/* Fullscreen Enlarged Image Lightbox Modal */}
+      {lightboxImageUrl && (
+        <div 
+          className="fixed inset-0 z-[9999] bg-black/92 backdrop-blur-md flex items-center justify-center p-4 sm:p-8 animate-fadeIn"
+          onClick={() => setLightboxImageUrl(null)}
+        >
+          <div 
+            className="relative max-w-5xl max-h-[92vh] flex flex-col items-center justify-center space-y-4 bg-zinc-950/95 border border-purple-500/30 rounded-2xl p-4 sm:p-6 shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Top Bar */}
+            <div className="w-full flex items-center justify-between border-b border-white/10 pb-3">
+              <span className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-purple-400" /> ByteDance SeeDream 5.0 Pro Visual
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    downloadFile(lightboxImageUrl, 'png');
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-purple-500/20 hover:bg-purple-500/35 border border-purple-500/30 text-purple-300 font-extrabold text-xs uppercase flex items-center gap-1.5 transition-all shadow cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" /> Download HD
+                </button>
+                <button
+                  onClick={() => setLightboxImageUrl(null)}
+                  className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-zinc-300 hover:text-white transition-all border border-white/10 cursor-pointer"
+                  title="Close (ESC)"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Enlarged Image Box */}
+            <div className="relative overflow-hidden rounded-xl border border-white/10 bg-black max-h-[75vh] flex items-center justify-center shadow-inner">
+              <img
+                src={lightboxImageUrl}
+                alt="Enlarged Visual"
+                className="max-h-[75vh] max-w-full object-contain rounded-xl shadow-2xl"
+              />
+            </div>
+
+            {/* Footer */}
+            <div className="text-[10px] font-semibold text-zinc-400 flex items-center gap-2">
+              <span>Click outside or press <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-white font-mono text-[9px]">ESC</kbd> to exit full screen</span>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
