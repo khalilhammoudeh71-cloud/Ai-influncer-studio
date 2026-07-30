@@ -111,16 +111,20 @@ interface SimulatedPost {
 
 const BASE_PRESETS: CustomPreset[] = [
   {
-    name: "🎮 Twitch Gamer Sofia",
-    prompt: "Create a gamer girl named Sofia who streams on Twitch, Minecraft niche. Schedule a 7-day flirty OnlyFans planner, a beach photo, and log $50 tips."
+    name: "📸 Photoshoot",
+    prompt: "Generate 3 photorealistic portrait photos of my AI influencer in a luxury penthouse wearing elegant evening outfit."
   },
   {
-    name: "👔 Finance Coach Marco",
-    prompt: "Create a stock trading finance motivator Marco on Twitter. Write a voice narrative about elite mindset, generate a luxury office photo, and log $150 sponsorship."
+    name: "🎬 1-Min Video Storyboard",
+    prompt: "Create a 1-minute video storyboard with 4 scenes: talking avatar intro, workout action shot, protein shake, and call to action."
   },
   {
-    name: "🏝️ Travel Blogger Elena",
-    prompt: "Create a luxury travel blogger Elena, post platform Instagram. Write a script, generate a video of her on a tropical beach at sunset, and log $200 revenue."
+    name: "🎙️ Voice Clone & Avatar",
+    prompt: "Clone the voice from my uploaded video sample and generate a talking avatar saying 'Welcome to my exclusive channel!'."
+  },
+  {
+    name: "📈 7-Day Content Plan",
+    prompt: "Architect a 7-day content schedule for Instagram with high-converting hooks, viral caption ideas, and revenue strategies."
   }
 ];
 
@@ -367,7 +371,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
     {
       id: 'welcome',
       role: 'model',
-      content: "👋 **Welcome to AI Auto-Pilot Agent!**\n\nTell me who or what you'd like to build today. I can architect new influencer personas, generate photo shoots, produce 1-minute video chains, clone voices, or log revenues.\n\nTry one of the quick actions below or type your custom prompt!",
+      content: "👋 **Welcome to Super Agent Co-Pilot!**\n\nI can build photoshoots, multi-scene video storyboards, voice clones, talking head avatars, or complete content strategies.\n\nSelect one of the primary workflows below or type your custom request:",
       status: 'normal'
     }
   ]);
@@ -470,8 +474,8 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
   // In-chat swap context
   const [activeSwapTarget, setActiveSwapTarget] = useState<{ msgId: string; stepIdx: number } | null>(null);
 
-  // Panel Collapsed state
-  const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
+  // Panel Collapsed state (Default to collapsed for clean workspace)
+  const [isPanelCollapsed, setIsPanelCollapsed] = useState(true);
 
   // Guided Tour Onboarding states
   const [tourStep, setTourStep] = useState<number | null>(null);
@@ -1902,12 +1906,12 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-sm font-extrabold tracking-tight">Super Agent Console</h1>
+                <h1 className="text-sm font-extrabold tracking-tight">Super Agent Co-Pilot</h1>
                 <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-gradient-to-r from-pink-500/20 to-violet-500/20 text-pink-300 border border-pink-500/30">
                   Parallel OS
                 </span>
               </div>
-              <p className="text-[var(--text-muted)] text-[9px] font-bold uppercase tracking-wider">Multi-Agent & Autopilot System</p>
+              <p className="text-[var(--text-muted)] text-[9px] font-bold uppercase tracking-wider">AI Assistant for Photos, Video Reels, Voice Clones & Growth</p>
             </div>
           </div>
 
@@ -2036,6 +2040,71 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                   : 'bg-[var(--bg-elevated)] border-white/5 text-[var(--text-primary)] rounded-tl-none'
               }`}>
                 <div className="whitespace-pre-wrap">{msg.content}</div>
+
+                {/* 4 Primary Quick Action Cards on Welcome Message */}
+                {msg.id === 'welcome' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4 pt-4 border-t border-white/5">
+                    <button
+                      onClick={() => setInputText("Generate 3 photorealistic portrait photos of my AI influencer in a luxury penthouse wearing elegant evening outfit.")}
+                      className="p-3.5 bg-white/5 hover:bg-pink-500/10 border border-white/5 hover:border-pink-500/30 rounded-2xl text-left transition-all group space-y-1.5"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-extrabold text-white flex items-center gap-2">
+                          <span className="text-base">📸</span> Generate Photoshoot
+                        </span>
+                        <ChevronRight size={14} className="text-zinc-500 group-hover:text-pink-400 transition-all" />
+                      </div>
+                      <p className="text-[10px] text-zinc-400 leading-snug">
+                        Create photos of your persona in any location, aesthetic, or outfit style.
+                      </p>
+                    </button>
+
+                    <button
+                      onClick={() => setInputText("Create a 1-minute video storyboard with 4 scenes: talking avatar intro, workout action shot, protein shake, and call to action.")}
+                      className="p-3.5 bg-white/5 hover:bg-violet-500/10 border border-white/5 hover:border-violet-500/30 rounded-2xl text-left transition-all group space-y-1.5"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-extrabold text-white flex items-center gap-2">
+                          <span className="text-base">🎬</span> 1-Min Video Storyboard
+                        </span>
+                        <ChevronRight size={14} className="text-zinc-500 group-hover:text-violet-400 transition-all" />
+                      </div>
+                      <p className="text-[10px] text-zinc-400 leading-snug">
+                        Break down and stitch a multi-scene vertical reel combining talking avatars & cinematic video.
+                      </p>
+                    </button>
+
+                    <button
+                      onClick={() => setInputText("Clone the voice from my uploaded video sample and generate a talking avatar saying 'Welcome to my exclusive channel!'")}
+                      className="p-3.5 bg-white/5 hover:bg-cyan-500/10 border border-white/5 hover:border-cyan-500/30 rounded-2xl text-left transition-all group space-y-1.5"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-extrabold text-white flex items-center gap-2">
+                          <span className="text-base">🎙️</span> Voice Clone & Avatar
+                        </span>
+                        <ChevronRight size={14} className="text-zinc-500 group-hover:text-cyan-400 transition-all" />
+                      </div>
+                      <p className="text-[10px] text-zinc-400 leading-snug">
+                        Upload an audio/video sample to clone a voice and create a lip-synced video avatar.
+                      </p>
+                    </button>
+
+                    <button
+                      onClick={() => setInputText("Architect a 7-day content schedule for Instagram with high-converting hooks, viral caption ideas, and revenue strategies.")}
+                      className="p-3.5 bg-white/5 hover:bg-emerald-500/10 border border-white/5 hover:border-emerald-500/30 rounded-2xl text-left transition-all group space-y-1.5"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-extrabold text-white flex items-center gap-2">
+                          <span className="text-base">📈</span> 7-Day Content Plan
+                        </span>
+                        <ChevronRight size={14} className="text-zinc-500 group-hover:text-emerald-400 transition-all" />
+                      </div>
+                      <p className="text-[10px] text-zinc-400 leading-snug">
+                        Generate a complete post schedule with hooks, content themes, and caption copy.
+                      </p>
+                    </button>
+                  </div>
+                )}
 
                 {/* Attachments rendering */}
                 {msg.attachments && msg.attachments.length > 0 && (
