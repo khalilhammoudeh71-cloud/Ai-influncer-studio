@@ -881,7 +881,7 @@ Do not wrap your response in markdown code blocks or HTML tags. Return ONLY the 
       ];
 
       const result = await genAI.models.generateContent({
-        model: 'gemini-2.5-pro',
+        model: 'gemini-2.0-flash',
         contents,
         config: {
           systemInstruction,
