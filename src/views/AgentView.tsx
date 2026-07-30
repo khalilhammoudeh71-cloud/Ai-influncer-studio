@@ -804,18 +804,60 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
     if (!files) return;
 
     Array.from(files).forEach(file => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        setAttachments(prev => [
-          ...prev,
-          {
-            name: file.name,
-            dataUrl: reader.result as string,
-            mimeType: file.type
-          }
-        ]);
-      };
-      reader.readAsDataURL(file);
+      if (file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const img = new Image();
+          img.onload = () => {
+            const maxDim = 1024;
+            let w = img.width;
+            let h = img.height;
+            if (w > maxDim || h > maxDim) {
+              if (w > h) {
+                h = Math.round((h * maxDim) / w);
+                w = maxDim;
+              } else {
+                w = Math.round((w * maxDim) / h);
+                h = maxDim;
+              }
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(img, 0, 0, w, h);
+              const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+              setAttachments(prev => [
+                ...prev,
+                { name: file.name, dataUrl: compressedDataUrl, mimeType: 'image/jpeg' }
+              ]);
+            } else {
+              setAttachments(prev => [
+                ...prev,
+                { name: file.name, dataUrl: ev.target?.result as string, mimeType: file.type }
+              ]);
+            }
+          };
+          img.onerror = () => {
+            setAttachments(prev => [
+              ...prev,
+              { name: file.name, dataUrl: ev.target?.result as string, mimeType: file.type }
+            ]);
+          };
+          img.src = ev.target?.result as string;
+        };
+        reader.readAsDataURL(file);
+      } else {
+        const reader = new FileReader();
+        reader.onload = () => {
+          setAttachments(prev => [
+            ...prev,
+            { name: file.name, dataUrl: reader.result as string, mimeType: file.type }
+          ]);
+        };
+        reader.readAsDataURL(file);
+      }
     });
 
     if (fileInputRef.current) fileInputRef.current.value = '';
