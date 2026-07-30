@@ -1814,8 +1814,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           )}
 
           {/* Bottom Row: Selection Dropdowns & CTA Generate */}
-          <div className="flex items-center justify-between gap-2 pt-2.5 border-t border-white/10 w-full overflow-x-auto scrollbar-hide">
-            <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t border-white/10 w-full overflow-x-hidden">
+            <div className="flex flex-wrap items-center gap-1.5 flex-1 min-w-0">
               
               {/* 1. Persona Selector Dropdown */}
               <div className="relative">
@@ -3504,7 +3504,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
 
   return (
-    <div className="flex-1 bg-[var(--bg-base)] text-white p-4 max-w-[1600px] mx-auto w-full selection:bg-emerald-500/30 flex flex-col overflow-y-auto custom-scrollbar">
+    <div className="flex-1 bg-[var(--bg-base)] text-white p-4 max-w-full mx-auto w-full selection:bg-emerald-500/30 flex flex-col overflow-y-auto overflow-x-hidden custom-scrollbar">
       
       {/* ── STUDIO HEADER ── */}
       <div className="mb-3 flex items-center justify-between px-1">
