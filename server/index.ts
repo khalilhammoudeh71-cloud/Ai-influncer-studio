@@ -1683,6 +1683,28 @@ app.get('/api/models', requireAuth, async (req, res) => {
         hasEditVariant: false,
         hasReferenceImage: false,
       },
+      {
+        id: 'replit:gpt-image-1',
+        name: 'GPT Image 2',
+        provider: 'OpenAI',
+        type: 'text-to-image',
+        price: 0,
+        description: 'OpenAI GPT Image 2 — photorealistic generation & editing.',
+        apiPath: '',
+        hasEditVariant: true,
+        hasReferenceImage: true,
+      },
+      {
+        id: 'openai:gpt-image-2',
+        name: 'GPT Image 2 (Direct)',
+        provider: 'OpenAI',
+        type: 'text-to-image',
+        price: 0.040,
+        description: 'OpenAI GPT Image 2 — direct API key generation.',
+        apiPath: '',
+        hasEditVariant: true,
+        hasReferenceImage: true,
+      },
     ];
 
     const editModels: ModelInfo[] = [
