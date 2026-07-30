@@ -643,29 +643,28 @@ function App() {
           </div>
 
           {/* Search Bar — opens Command Palette */}
-          <div className="hidden md:flex flex-1 max-w-xl mx-8 relative">
-            <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
-              <Search className="h-4 w-4 text-[var(--text-muted)]" />
+          <div className="hidden lg:flex flex-1 max-w-md mx-4 relative">
+            <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+              <Search className="h-3.5 w-3.5 text-[var(--text-muted)]" />
             </div>
             <button 
               onClick={() => setShowCommandPalette(true)}
-              className="w-full bg-[#111827] border border-[#334155] rounded-full py-1.5 pl-11 pr-12 text-sm text-left text-[var(--text-muted)] hover:border-[#00D4FF] focus:outline-none focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] transition-all cursor-pointer"
+              className="w-full bg-[#111827] border border-[#334155] rounded-full py-1 pl-9 pr-10 text-xs text-left text-[var(--text-muted)] hover:border-[#00D4FF] focus:outline-none focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] transition-all cursor-pointer truncate"
             >
               Search personas, tools or actions...
             </button>
-            <div className="absolute inset-y-0 right-4 flex items-center pointer-events-none">
-              <kbd className="text-[10px] font-bold text-[var(--text-muted)] bg-white/5 border border-white/10 rounded px-1.5 py-0.5">⌘K</kbd>
+            <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none">
+              <kbd className="text-[9px] font-bold text-[var(--text-muted)] bg-white/5 border border-white/10 rounded px-1 py-0.5">⌘K</kbd>
             </div>
           </div>
 
           {/* Right Actions */}
-          {/* Right Actions */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 shrink-0">
             {/* 🎨 100% Reliable OS-Native Theme Selector */}
             <div className="relative z-[9999]">
-              <div className="flex items-center gap-1.5 bg-white/10 border border-white/20 hover:border-amber-400/50 rounded-xl px-3 py-1.5 shadow-lg backdrop-blur-md transition-all">
-                <div className={`w-3 h-3 rounded-full ${THEMES.find(t => t.id === activeTheme)?.dot || 'bg-amber-400'} shrink-0 shadow-sm`} />
-                <Palette size={14} className="text-zinc-300" />
+              <div className="flex items-center gap-1 bg-white/10 border border-white/20 hover:border-amber-400/50 rounded-xl px-2.5 py-1 shadow-lg backdrop-blur-md transition-all">
+                <div className={`w-2.5 h-2.5 rounded-full ${THEMES.find(t => t.id === activeTheme)?.dot || 'bg-amber-400'} shrink-0 shadow-sm`} />
+                <Palette size={13} className="text-zinc-300" />
                 <select
                   value={activeTheme}
                   onChange={(e) => {
@@ -675,7 +674,7 @@ function App() {
                     localStorage.setItem('ai_studio_theme', newTheme);
                     toast.success(`Theme set to ${THEMES.find(t => t.id === newTheme)?.name}!`);
                   }}
-                  className="bg-transparent text-white font-black text-xs outline-none cursor-pointer pr-1 py-0.5"
+                  className="bg-transparent text-white font-black text-xs outline-none cursor-pointer pr-0 py-0.5"
                   title="Choose studio color theme"
                 >
                   {THEMES.map((theme) => (
@@ -689,9 +688,9 @@ function App() {
 
             <button 
               onClick={() => pushView({ view: 'create' })}
-              className="hidden sm:flex items-center gap-2 bg-transparent border border-[#00D4FF]/40 px-5 py-1.5 rounded-full text-sm font-bold text-white hover:bg-[#00D4FF]/10 transition-all shadow-[0_0_16px_rgba(0,212,255,0.15)] hover:shadow-[0_0_24px_rgba(0,212,255,0.3)]"
+              className="hidden xl:flex items-center gap-1.5 bg-transparent border border-[#00D4FF]/40 px-3.5 py-1 rounded-full text-xs font-bold text-white hover:bg-[#00D4FF]/10 transition-all shadow-[0_0_16px_rgba(0,212,255,0.15)]"
             >
-              <PlusCircle size={16} className="text-[#00F5C2]" /> Create
+              <PlusCircle size={14} className="text-[#00F5C2]" /> Create
             </button>
 
             {/* Persona Quick-Switcher */}
