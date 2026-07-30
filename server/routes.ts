@@ -678,14 +678,15 @@ Inject these active viral trends if suitable for the request:
     }
 
     // Map client messages to Gemini content format with base64 attachments support
-    const contents = messages.map(msg => {
+    const contents = messages.map((msg, index) => {
       const parts: any[] = [];
       if (msg.content) {
         parts.push({ text: msg.content });
       }
-      if (msg.attachments && Array.isArray(msg.attachments)) {
+      // Only include base64 inlineData for the last 3 user messages to avoid blowing up context window
+      if (msg.attachments && Array.isArray(msg.attachments) && index >= messages.length - 3) {
         msg.attachments.forEach((att: any) => {
-          const match = att.dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+          const match = att.dataUrl?.match(/^data:([^;]+);base64,(.+)$/);
           if (match) {
             parts.push({
               inlineData: {
@@ -698,7 +699,7 @@ Inject these active viral trends if suitable for the request:
       }
       return {
         role: msg.role === 'model' ? 'model' : 'user',
-        parts
+        parts: parts.length > 0 ? parts : [{ text: ' ' }]
       };
     });
 
@@ -737,7 +738,7 @@ MODEL SELECTION GUIDE:
    - Recommended: "elevenlabs" (Voice Id: "Aoede", "Charon", "Kore") ($0.01) - Photorealistic voice clone
 
 5. Talking Avatar / Lip-Sync ("generate_talking_head"):
-   - Recommended: "wavespeed:wavespeed-ai/infinitetalk" ($0.05) - InfiniteTalk talking photo lip-syncp-sync
+   - Recommended: "wavespeed:wavespeed-ai/infinitetalk" ($0.05) - InfiniteTalk talking photo lip-sync
 
 AVAILABLE STEPS inside "suggestedSteps":
 1. "create_persona":
@@ -766,11 +767,9 @@ AVAILABLE STEPS inside "suggestedSteps":
 
 9. "clone_voice":
    Parameters: engine ("omnivoice" | "elevenlabs"), voiceName (string)
-   Usage: Triggers voice cloning when the user attaches an audio or video file with speech samples.
 
 10. "storyboard_sequence":
    Parameters: topic (string), scenes (array of objects with { type: "talking_avatar" | "cinematic_video", title: string, prompt: string, text?: string, modelId: string, duration: number })
-   Usage: Used when user asks to construct a multi-segment video (e.g., 1-minute video combining talking head avatars with cinematic motion shots). Breaks down each scene's visual prompt, script, and model choice.
 
 9. "edit_image":
    Parameters: editType ("face-swap" | "bg-remover" | "virtual-tryon" | "upscale" | "beautify" | "camera-angle"), prompt (optional string), sourceImage (string), secondImage (optional string)
@@ -796,10 +795,20 @@ Do not wrap your response in markdown code blocks or HTML tags. Return ONLY the 
     });
 
     let text = result.text?.trim() || '';
-    // Clean up code block backticks if model generated any
     text = text.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
 
-    const data = JSON.parse(text);
+    let data: any;
+    try {
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      data = JSON.parse(jsonMatch ? jsonMatch[0] : text);
+    } catch (parseErr) {
+      console.warn('[API] /agent/chat JSON parse fallback:', parseErr);
+      data = {
+        text: text || "I've processed your request. Let's build your influencer project!",
+        status: "normal",
+        suggestedSteps: []
+      };
+    }
 
     // 2. Dual-Brain "Review & Critique" Loop Pass
     if (data.status === 'executing' && data.suggestedSteps && data.suggestedSteps.length > 0) {
@@ -809,16 +818,9 @@ You have been given a draft task execution plan generated for the AI Influencer 
 
 Your job is to:
 1. Review each task step.
-2. If the task is "generate_image" or "generate_video", optimize the "prompt" to be highly detailed, photorealistic, specify lighting (e.g. volumetric lighting, warm glow, cinematic), visual details (e.g., highly detailed skin, 8k resolution, photorealistic), and ensure it fits the persona style.
-3. Verify that modelId routing is correct: Wavespeed NSFW models for flirty themes (prioritizing "wavespeed:wavespeed-ai/firered-v1.5-image" first), and Google/OpenAI for clean ones.
-4. Output a JSON array of "critiqueLogs" describing what you optimized (e.g. ["Improved visual prompt detail for Sofia", "Confirmed Wavespeed model selection for flirty niche"]).
-5. Output the final optimized "suggestedSteps" array.
-6. Simulate a team discussion thread between:
-   - "🎨 Creative Director" (commenting on aesthetics, visual tone, and model routing)
-   - "✍️ Copywriter" (commenting on the tone of bio, hashtags, and script quality)
-   - "📊 Analyst" (commenting on niche monetization indexes, platform selections, and projected pricing log)
-   Return this dialogue as a JSON array of objects inside "collaborationLogs":
-   [{ "agent": "🎨 Creative Director", "message": "..." }, { "agent": "✍️ Copywriter", "message": "..." }, { "agent": "📊 Analyst", "message": "..." }]
+2. If the task is "generate_image" or "generate_video", optimize the "prompt" to be highly detailed, photorealistic, specify lighting, visual details, and ensure it fits the persona style.
+3. Verify model routing: for adult/NSFW prompts, default modelId to "wavespeed:bytedance/seedream-v5.0-pro".
+4. Output JSON with "critiqueLogs", "suggestedSteps", and "collaborationLogs".
 
 You must reply in valid JSON format:
 {
@@ -839,7 +841,13 @@ You must reply in valid JSON format:
 
         let critiqueText = critiqueResult.text?.trim() || '';
         critiqueText = critiqueText.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
-        const critiqueData = JSON.parse(critiqueText);
+        let critiqueData: any = {};
+        try {
+          const cMatch = critiqueText.match(/\{[\s\S]*\}/);
+          critiqueData = JSON.parse(cMatch ? cMatch[0] : critiqueText);
+        } catch (cParseErr) {
+          console.warn('[API] Critique pass JSON parse fallback:', cParseErr);
+        }
 
         data.suggestedSteps = critiqueData.suggestedSteps || data.suggestedSteps;
         data.critiqueLogs = critiqueData.critiqueLogs || ["Completed plan verification"];
