@@ -91,6 +91,7 @@ interface Message {
     params: any; 
     status: 'pending' | 'running' | 'success' | 'error';
     resultUrl?: string;
+    resultUrls?: string[];
     isActionLoading?: 'video' | 'upscale' | 'swap' | null;
   }[];
 }
@@ -2414,80 +2415,90 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                           )}
 
                           {/* Render step outputs inline with actions */}
-                          {step.status === 'success' && step.resultUrl && (
+                          {step.status === 'success' && (step.resultUrl || (step.resultUrls && step.resultUrls.length > 0)) && (
                             <div className="pl-3 space-y-2">
-                              {(step.type === 'generate_image' || step.type === 'edit_image') && (
-                                <div className="space-y-2 bg-white/5 p-2 rounded-lg border border-white/5">
-                                  {step.resultUrl.endsWith('.mp4') || step.resultUrl.includes('blob:') ? (
-                                    <video src={step.resultUrl} controls className="w-40 rounded border border-white/10" />
-                                  ) : (
-                                    <div className="relative group inline-block">
-                                      <img 
-                                        src={step.resultUrl} 
-                                        alt="Visual Output" 
-                                        onClick={() => setExpandedImageUrl(step.resultUrl!)}
-                                        className="w-48 h-48 rounded object-cover border border-white/10 cursor-pointer hover:scale-[1.02] hover:ring-2 hover:ring-pink-500/50 transition-all duration-200 shadow-lg" 
-                                        title="Click to enlarge image"
-                                      />
-                                      <div 
-                                        onClick={() => setExpandedImageUrl(step.resultUrl!)}
-                                        className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded cursor-pointer pointer-events-none"
-                                      >
-                                        <span className="px-2.5 py-1 rounded bg-black/70 text-white font-black text-[9px] uppercase tracking-wider border border-white/20 flex items-center gap-1 shadow">
-                                          🔍 Click to Enlarge
-                                        </span>
-                                      </div>
+                              {(step.type === 'generate_image' || step.type === 'edit_image') && (() => {
+                                const imagesToRender = step.resultUrls && step.resultUrls.length > 0
+                                  ? step.resultUrls
+                                  : [step.resultUrl!];
+
+                                return (
+                                  <div className="space-y-3 bg-white/5 p-3 rounded-xl border border-white/5">
+                                    <div className={`grid gap-3 ${imagesToRender.length > 1 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
+                                      {imagesToRender.map((imgUrl, imgIdx) => (
+                                        <div key={imgIdx} className="space-y-2 bg-black/40 p-2 rounded-lg border border-white/10">
+                                          {imgUrl.endsWith('.mp4') || imgUrl.includes('blob:') ? (
+                                            <video src={imgUrl} controls className="w-full rounded border border-white/10" />
+                                          ) : (
+                                            <div 
+                                              onClick={() => setExpandedImageUrl(imgUrl)}
+                                              className="relative group inline-block w-full overflow-hidden rounded-lg border border-white/10 cursor-pointer"
+                                            >
+                                              <img 
+                                                src={imgUrl} 
+                                                alt={`Visual Output ${imgIdx + 1}`} 
+                                                className="w-full h-52 object-cover rounded-lg transform group-hover:scale-105 transition-all duration-300 shadow-lg" 
+                                                title="Click to enlarge image"
+                                              />
+                                              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center justify-center rounded-lg">
+                                                <span className="px-3 py-1.5 rounded-lg bg-pink-500/80 text-white font-black text-[10px] uppercase tracking-wider border border-white/30 flex items-center gap-1.5 shadow-xl">
+                                                  🔍 Click to Enlarge Fullscreen
+                                                </span>
+                                              </div>
+                                            </div>
+                                          )}
+
+                                          {/* In-Chat Action Buttons for each image */}
+                                          {!imgUrl.endsWith('.mp4') && !imgUrl.includes('blob:') && (
+                                            <div className="flex flex-wrap gap-1.5 pt-1">
+                                              <button
+                                                onClick={() => setExpandedImageUrl(imgUrl)}
+                                                className="px-2.5 py-1 rounded bg-pink-500/25 hover:bg-pink-500/40 border border-pink-500/30 text-[9px] font-black uppercase text-pink-300 flex items-center gap-1 transition-all"
+                                              >
+                                                🔍 Enlarge
+                                              </button>
+                                              <button
+                                                onClick={() => handleEditImageAction(imgUrl, step.params?.prompt)}
+                                                className="px-2 py-1 rounded bg-amber-500/20 hover:bg-amber-500/35 border border-amber-500/30 text-[9px] font-black uppercase text-amber-300 flex items-center gap-1 transition-all"
+                                                title="Attach this image as a reference to prompt input for editing"
+                                              >
+                                                <Edit3 className="w-2.5 h-2.5" /> Edit Image
+                                              </button>
+                                              <button
+                                                onClick={() => handleUseAsPromptReference(imgUrl)}
+                                                className="px-2 py-1 rounded bg-purple-500/20 hover:bg-purple-500/35 border border-purple-500/30 text-[9px] font-black uppercase text-purple-300 flex items-center gap-1 transition-all"
+                                                title="Copy image to prompt input bar"
+                                              >
+                                                <Copy className="w-2.5 h-2.5" /> Use as Prompt
+                                              </button>
+                                              <button
+                                                onClick={() => handleUpscale(msg.id, idx, imgUrl)}
+                                                disabled={step.isActionLoading !== null}
+                                                className="px-2 py-1 rounded bg-pink-500/20 hover:bg-pink-500/30 text-[9px] font-black uppercase text-pink-300 flex items-center gap-0.5 disabled:opacity-50"
+                                              >
+                                                {step.isActionLoading === 'upscale' ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : '🪄 Upscale'}
+                                              </button>
+                                              <button
+                                                onClick={() => handleMakeVideo(msg.id, idx, imgUrl)}
+                                                disabled={step.isActionLoading !== null}
+                                                className="px-2 py-1 rounded bg-cyan-500/20 hover:bg-cyan-500/30 text-[9px] font-black uppercase text-cyan-300 flex items-center gap-0.5 disabled:opacity-50"
+                                              >
+                                                {step.isActionLoading === 'video' ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : '🎬 Make Video'}
+                                              </button>
+                                              <button
+                                                onClick={() => publishToFeed(imgUrl)}
+                                                className="px-2 py-1 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-[9px] font-black uppercase text-emerald-300 flex items-center gap-0.5"
+                                              >
+                                                🚀 Publish
+                                              </button>
+                                            </div>
+                                          )}
+                                        </div>
+                                      ))}
                                     </div>
-                                  )}
-                                  
-                                    {/* In-Chat Action Buttons */}
-                                    {!step.resultUrl.endsWith('.mp4') && !step.resultUrl.includes('blob:') && (
-                                      <div className="flex flex-wrap gap-1.5 pt-1">
-                                        <button
-                                          onClick={() => handleEditImageAction(step.resultUrl!, step.params?.prompt)}
-                                          className="px-2 py-1 rounded bg-amber-500/20 hover:bg-amber-500/35 border border-amber-500/30 text-[9px] font-black uppercase text-amber-300 flex items-center gap-1 transition-all"
-                                          title="Attach this image as a reference to prompt input for editing"
-                                        >
-                                          <Edit3 className="w-2.5 h-2.5" /> Edit Image
-                                        </button>
-                                        <button
-                                          onClick={() => handleUseAsPromptReference(step.resultUrl!)}
-                                          className="px-2 py-1 rounded bg-purple-500/20 hover:bg-purple-500/35 border border-purple-500/30 text-[9px] font-black uppercase text-purple-300 flex items-center gap-1 transition-all"
-                                          title="Copy image to prompt input bar"
-                                        >
-                                          <Copy className="w-2.5 h-2.5" /> Use as Prompt
-                                        </button>
-                                        <button
-                                          onClick={() => handleUpscale(msg.id, idx, step.resultUrl!)}
-                                          disabled={step.isActionLoading !== null}
-                                          className="px-2 py-1 rounded bg-pink-500/20 hover:bg-pink-500/30 text-[9px] font-black uppercase text-pink-300 flex items-center gap-0.5 disabled:opacity-50"
-                                        >
-                                          {step.isActionLoading === 'upscale' ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : '🪄 Upscale'}
-                                        </button>
-                                        <button
-                                          onClick={() => handleMakeVideo(msg.id, idx, step.resultUrl!)}
-                                          disabled={step.isActionLoading !== null}
-                                          className="px-2 py-1 rounded bg-cyan-500/20 hover:bg-cyan-500/30 text-[9px] font-black uppercase text-cyan-300 flex items-center gap-0.5 disabled:opacity-50"
-                                        >
-                                          {step.isActionLoading === 'video' ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : '🎬 Make Video'}
-                                        </button>
-                                        <button
-                                          onClick={() => triggerFaceSwap(msg.id, idx)}
-                                          disabled={step.isActionLoading !== null}
-                                          className="px-2 py-1 rounded bg-violet-500/20 hover:bg-violet-500/30 text-[9px] font-black uppercase text-violet-300 flex items-center gap-0.5 disabled:opacity-50"
-                                        >
-                                          {step.isActionLoading === 'swap' ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : '✨ Face Swap'}
-                                        </button>
-                                        <button
-                                          onClick={() => publishToFeed(step.resultUrl!)}
-                                          className="px-2 py-1 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-[9px] font-black uppercase text-emerald-300 flex items-center gap-0.5"
-                                        >
-                                          🚀 Publish
-                                        </button>
-                                      </div>
-                                    )}
-                                </div>
-                              )}
+                                  </div>
+                                );
+                              })()}
                               {step.type === 'generate_voice' && (
                                 <div className="bg-white/5 p-2 rounded-lg border border-white/5 space-y-1">
                                   <span className="text-[8px] font-black text-amber-400 uppercase tracking-wider block">Generated Voiceover Audio:</span>
