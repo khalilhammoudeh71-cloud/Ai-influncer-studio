@@ -160,7 +160,7 @@ export async function generateImage(params: GenerateImageParams): Promise<Genera
 
   let response: Response;
   try {
-    response = await fetch('/api/generate-image', {
+    response = await authFetch('/api/generate-image', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -272,7 +272,7 @@ export async function editImage(sourceImage: string, prompt: string, modelId: st
   const body: Record<string, string> = { sourceImage, prompt, modelId };
   if (additionalImage) body.additionalImage = additionalImage;
   if (maskImage) body.maskImage = maskImage;
-  const response = await fetch('/api/edit-image', {
+  const response = await authFetch('/api/edit-image', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -291,7 +291,7 @@ export async function editImage(sourceImage: string, prompt: string, modelId: st
 }
 
 export async function upscaleImage(sourceImage: string, modelId: string, targetResolution?: string): Promise<{ imageUrl: string; model: string }> {
-  const response = await fetch('/api/upscale-image', {
+  const response = await authFetch('/api/upscale-image', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sourceImage, modelId, targetResolution }),
@@ -332,7 +332,7 @@ export async function generateVideo(
   if (sourceVideo) body.sourceVideo = sourceVideo;
   if (generateAudio !== undefined) body.generateAudio = generateAudio;
   if (strength !== undefined) body.strength = strength;
-  const response = await fetch('/api/generate-video', {
+  const response = await authFetch('/api/generate-video', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -355,7 +355,7 @@ export async function createPrompts(params: {
   count: number;
   persona: { name: string; niche: string; tone: string; visualStyle?: string; platform?: string };
 }): Promise<string[]> {
-  const response = await fetch('/api/create-prompts', {
+  const response = await authFetch('/api/create-prompts', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params),
@@ -374,7 +374,7 @@ export async function createPrompts(params: {
 }
 
 export async function enhancePrompt(text: string): Promise<string> {
-  const response = await fetch('/api/enhance-prompt', {
+  const response = await authFetch('/api/enhance-prompt', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text }),
@@ -401,7 +401,7 @@ export async function generateContent(
   const body: Record<string, unknown> = { type, topic, persona };
   if (sceneCount) body.sceneCount = sceneCount;
 
-  const response = await fetch('/api/generate-content', {
+  const response = await authFetch('/api/generate-content', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -426,7 +426,7 @@ export async function generateAngleImage(params: {
   verticalAngle: string;
   distance: string;
 }): Promise<{ imageUrl: string; model: string }> {
-  const response = await fetch('/api/angle-image', {
+  const response = await authFetch('/api/angle-image', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params),
@@ -445,7 +445,7 @@ export async function generateAngleImage(params: {
 }
 
 export async function generateReferenceImage(prompt: string, modelId: string): Promise<GenerateImageResult> {
-  const response = await fetch('/api/generate-reference', {
+  const response = await authFetch('/api/generate-reference', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ prompt, modelId }),
