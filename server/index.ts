@@ -4,7 +4,6 @@ import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import fs from 'fs';
 import { exec } from 'child_process';
 import { instagramGetUrl } from 'instagram-url-direct';
 import OpenAI, { toFile } from 'openai';

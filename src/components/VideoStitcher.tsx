@@ -61,7 +61,7 @@ export default function VideoStitcher({ persona: activePersona, personas, onSele
     const newScene: StitchScene = {
       id: `scene-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       mediaUrl: item.url,
-      mediaType: item.mediaType || 'image',
+      mediaType: item.mediaType === 'video' ? 'video' : 'image',
       duration: item.mediaType === 'video' ? 5 : 4,
       caption: item.prompt.substring(0, 40) + '...',
       prompt: item.prompt

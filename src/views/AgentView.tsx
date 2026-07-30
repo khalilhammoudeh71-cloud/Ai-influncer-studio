@@ -33,7 +33,14 @@ import {
   Award,
   Users,
   ChevronRight,
-  ChevronLeft
+  ChevronLeft,
+  ThumbsUp,
+  ThumbsDown,
+  Play,
+  Pause,
+  RefreshCw,
+  Bot,
+  Sliders
 } from 'lucide-react';
 import { Persona, Tab } from '../types';
 import { api } from '../services/apiService';
@@ -368,6 +375,62 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
   const [isListening, setIsListening] = useState(false);
   const [canvasTab, setCanvasTab] = useState<'studio' | 'chat' | 'marketing' | 'media' | 'downloader'>('studio');
   const [customPresets, setCustomPresets] = useState<CustomPreset[]>([]);
+
+  // Autopilot, Sub-Agent Delegation & Approval Queue States
+  const [autopilotActive, setAutopilotActive] = useState(false);
+  const [autopilotInterval, setAutopilotInterval] = useState<'30s' | '1h' | '6h' | '12h'>('1h');
+  const [autoApprove, setAutoApprove] = useState(false);
+  const [pendingApprovals, setPendingApprovals] = useState<{
+    id: string;
+    type: 'image' | 'video' | 'voice' | 'plan' | 'revenue';
+    title: string;
+    url?: string;
+    payload: any;
+    personaId: string;
+    timestamp: number;
+  }[]>([]);
+  const [subAgentLogs, setSubAgentLogs] = useState<{
+    id: string;
+    agent: 'visual' | 'copywriter' | 'business';
+    message: string;
+    timestamp: string;
+  }[]>([]);
+
+  const emitSubAgentLog = (agent: 'visual' | 'copywriter' | 'business', message: string) => {
+    const entry = {
+      id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      agent,
+      message,
+      timestamp: new Date().toLocaleTimeString()
+    };
+    setSubAgentLogs(prev => [entry, ...prev].slice(0, 25));
+  };
+
+  const handleApproveItem = async (itemId: string) => {
+    const item = pendingApprovals.find(i => i.id === itemId);
+    if (!item) return;
+
+    try {
+      if (item.type === 'image' || item.type === 'video') {
+        await api.images.create(item.personaId, item.payload);
+        toast.success(`Approved & published ${item.type} asset to Gallery Vault!`);
+      } else if (item.type === 'plan') {
+        await api.plannedPosts.save(item.personaId, item.payload.platform, item.payload.plan);
+        toast.success('Approved & scheduled 7-day Content Plan!');
+      } else if (item.type === 'revenue') {
+        await api.revenue.create(item.payload);
+        toast.success(`Approved & logged $${item.payload.amount} revenue!`);
+      }
+      setPendingApprovals(prev => prev.filter(i => i.id !== itemId));
+    } catch (err: any) {
+      toast.error('Failed to commit approved item: ' + (err.message || 'Unknown error'));
+    }
+  };
+
+  const handleRejectItem = (itemId: string) => {
+    setPendingApprovals(prev => prev.filter(i => i.id !== itemId));
+    toast('Item rejected and discarded', { icon: '🗑️' });
+  };
   
   // Clone & Talking Avatar Studio states
   const [studioScript, setStudioScript] = useState('');
@@ -405,6 +468,9 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
 
   // In-chat swap context
   const [activeSwapTarget, setActiveSwapTarget] = useState<{ msgId: string; stepIdx: number } | null>(null);
+
+  // Panel Collapsed state
+  const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
 
   // Guided Tour Onboarding states
   const [tourStep, setTourStep] = useState<number | null>(null);
@@ -477,6 +543,29 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
       console.error('Failed to load presets:', e);
     }
   }, []);
+
+  // Background Autopilot Timer Loop
+  useEffect(() => {
+    if (!autopilotActive) return;
+
+    let ms = 3600000; // 1 hour default
+    if (autopilotInterval === '30s') ms = 30000;
+    else if (autopilotInterval === '6h') ms = 21600000;
+    else if (autopilotInterval === '12h') ms = 43200000;
+
+    const timer = setInterval(() => {
+      toast('🤖 [Autopilot Loop]: Triggering scheduled background generation...', { icon: '⚡' });
+      emitSubAgentLog('business', `Autopilot background timer fired (${autopilotInterval}). Initiating automated media cycle...`);
+
+      const randomPreset = BASE_PRESETS[Math.floor(Math.random() * BASE_PRESETS.length)];
+      if (randomPreset) {
+        emitSubAgentLog('copywriter', `Autopilot selected campaign strategy: "${randomPreset.name}"`);
+        sendMessage(randomPreset.prompt);
+      }
+    }, ms);
+
+    return () => clearInterval(timer);
+  }, [autopilotActive, autopilotInterval]);
 
   // Guided Tour Tab auto-switching handler
   useEffect(() => {
@@ -663,18 +752,19 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
     toast.success('Preset deleted.');
   };
 
-  const sendMessage = async () => {
-    if ((!inputText.trim() && attachments.length === 0) || isSending) return;
+  const sendMessage = async (overrideText?: string) => {
+    const textToSend = overrideText !== undefined ? overrideText : inputText;
+    if ((!textToSend.trim() && attachments.length === 0) || isSending) return;
 
     const userMessage: Message = {
       id: Math.random().toString(),
       role: 'user',
-      content: inputText,
+      content: textToSend,
       attachments: [...attachments]
     };
 
     setMessages(prev => [...prev, userMessage]);
-    setInputText('');
+    if (overrideText === undefined) setInputText('');
     setAttachments([]);
     setIsSending(true);
 
@@ -1701,20 +1791,129 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
 
       {/* LEFT COLUMN: Agent Conversational Console (Expanded) */}
       <div className="flex-1 flex flex-col h-full border-r border-white/5 relative min-w-0">
-        {/* Header */}
-        <div className="flex-none flex items-center justify-between border-b border-white/5 px-6 py-4 bg-[var(--bg-elevated)]/30 backdrop-blur-md">
+        {/* Header with Autopilot & Sub-Agent Controls */}
+        <div className="flex-none flex flex-col md:flex-row md:items-center justify-between border-b border-white/5 px-6 py-3.5 bg-[var(--bg-elevated)]/30 backdrop-blur-md gap-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 to-violet-500 flex items-center justify-center text-white shadow-lg shadow-pink-500/20">
               <Cpu className="w-5 h-5 animate-pulse" />
             </div>
             <div>
-              <h1 className="text-sm font-extrabold tracking-tight">Super Agent Console</h1>
-              <p className="text-[var(--text-muted)] text-[9px] font-bold uppercase tracking-wider">Multi-Agent Workspace</p>
+              <div className="flex items-center gap-2">
+                <h1 className="text-sm font-extrabold tracking-tight">Super Agent Console</h1>
+                <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-gradient-to-r from-pink-500/20 to-violet-500/20 text-pink-300 border border-pink-500/30">
+                  Parallel OS
+                </span>
+              </div>
+              <p className="text-[var(--text-muted)] text-[9px] font-bold uppercase tracking-wider">Multi-Agent & Autopilot System</p>
             </div>
           </div>
-          <div className="text-[9px] font-bold text-[var(--text-muted)] flex items-center gap-1">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Multi-API Routing
+
+          {/* Autopilot Controls */}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setAutopilotActive(!autopilotActive)}
+              className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all border ${
+                autopilotActive
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-lg shadow-emerald-500/10'
+                  : 'bg-white/5 text-zinc-400 border-white/10 hover:text-white'
+              }`}
+            >
+              {autopilotActive ? <Pause className="w-3.5 h-3.5 text-emerald-400 animate-pulse" /> : <Play className="w-3.5 h-3.5 text-pink-400" />}
+              {autopilotActive ? 'Autopilot Active' : 'Start Autopilot'}
+            </button>
+
+            {autopilotActive && (
+              <select
+                value={autopilotInterval}
+                onChange={(e: any) => setAutopilotInterval(e.target.value)}
+                className="bg-black/40 border border-white/10 text-white text-[10px] rounded-lg px-2 py-1 font-semibold outline-none"
+              >
+                <option value="30s">Every 30s (Demo)</option>
+                <option value="1h">Every 1 hr</option>
+                <option value="6h">Every 6 hrs</option>
+                <option value="12h">Every 12 hrs</option>
+              </select>
+            )}
+
+            <button
+              onClick={() => setAutoApprove(!autoApprove)}
+              className={`px-2.5 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all ${
+                autoApprove
+                  ? 'bg-violet-500/20 text-violet-300 border-violet-500/30'
+                  : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+              }`}
+              title="Toggle Human-in-the-Loop review queue vs direct publishing"
+            >
+              {autoApprove ? '⚡ Auto-Publish' : '🛡️ Approval Queue ON'}
+            </button>
           </div>
+        </div>
+
+        {/* Sub-Agent Collaboration Terminal & Pending Approval Banner */}
+        <div className="bg-black/40 border-b border-white/5 px-6 py-2.5 space-y-2">
+          {/* Sub-Agent Live Feed */}
+          {subAgentLogs.length > 0 && (
+            <div className="flex items-center gap-2 overflow-x-auto text-[10px] no-scrollbar py-1">
+              <span className="font-black text-[9px] uppercase tracking-wider text-pink-400 flex items-center gap-1 shrink-0">
+                <Bot className="w-3.5 h-3.5 animate-bounce" /> Sub-Agents:
+              </span>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
+                  subAgentLogs[0].agent === 'visual' ? 'bg-pink-500/20 text-pink-300' :
+                  subAgentLogs[0].agent === 'copywriter' ? 'bg-violet-500/20 text-violet-300' : 'bg-emerald-500/20 text-emerald-300'
+                }`}>
+                  {subAgentLogs[0].agent === 'visual' ? '🎨 Visual Artist' : subAgentLogs[0].agent === 'copywriter' ? '✍️ Copywriter' : '💼 Business'}
+                </span>
+                <span className="text-zinc-300 truncate max-w-[400px]">"{subAgentLogs[0].message}"</span>
+                <span className="text-zinc-500 text-[8px]">{subAgentLogs[0].timestamp}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Pending Approval Drawer */}
+          {pendingApprovals.length > 0 && (
+            <div className="p-3 bg-gradient-to-r from-amber-500/10 via-pink-500/10 to-violet-500/10 border border-amber-500/30 rounded-xl space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-amber-400 animate-pulse" /> Pending Approval Queue ({pendingApprovals.length})
+                </span>
+                <span className="text-[9px] text-zinc-400">Human-in-the-Loop Review</span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[140px] overflow-y-auto custom-scrollbar">
+                {pendingApprovals.map((item) => (
+                  <div key={item.id} className="p-2 bg-black/50 border border-white/10 rounded-lg flex items-center justify-between gap-2 text-xs">
+                    <div className="flex items-center gap-2 min-w-0">
+                      {item.url && (
+                        <img src={item.url} alt={item.title} className="w-8 h-8 rounded object-cover border border-white/10 shrink-0" />
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-bold text-white truncate">{item.title}</p>
+                        <p className="text-[8px] uppercase tracking-wider text-amber-400 font-semibold">{item.type}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={() => handleApproveItem(item.id)}
+                        className="px-2 py-1 rounded bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-emerald-300 text-[9px] font-bold uppercase tracking-wider flex items-center gap-1"
+                        title="Approve & Publish to Vault/Planner"
+                      >
+                        <ThumbsUp className="w-3 h-3" /> Approve
+                      </button>
+                      <button
+                        onClick={() => handleRejectItem(item.id)}
+                        className="px-2 py-1 rounded bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/30 text-rose-300 text-[9px] font-bold uppercase tracking-wider flex items-center gap-1"
+                        title="Discard from queue"
+                      >
+                        <ThumbsDown className="w-3 h-3" /> Reject
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Chat Thread */}
@@ -2266,7 +2465,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
             />
 
             <button
-              onClick={sendMessage}
+              onClick={() => sendMessage()}
               disabled={isSending || (!inputText.trim() && attachments.length === 0)}
               className="w-11 h-11 rounded-xl bg-gradient-to-r from-pink-500 to-violet-500 hover:from-pink-600 hover:to-violet-600 flex items-center justify-center text-white shadow-lg transition-all"
             >
