@@ -677,6 +677,58 @@ Inject these active viral trends if suitable for the request:
 - Niche C: "ASMR Mech-Desk setups" (mechanical keyboard soundscapes, warm fairy lights, macro lens camera shots, whisper-soft scripts)`;
     }
 
+    const lastUserMsg = [...messages].reverse().find((m: any) => m.role === 'user');
+    const promptText = lastUserMsg?.content || '';
+    const hasImageAttachment = lastUserMsg?.attachments && lastUserMsg.attachments.some((a: any) => a.mimeType && a.mimeType.startsWith('image/'));
+
+    const nsfwKeywords = [
+      'nsfw', 'adult', 'nude', 'naked', 'erotic', 'sensual', 'lingerie', 'bikini',
+      'swimsuit', 'boudoir', 'topless', 'cock', 'penis', 'dick', 'boobs', 'breasts',
+      'sexy', 'flirty', 'uncensored', 'explicit', 'intimate', 'stripping', 'strip',
+      'gangbang', 'gangbanged', 'banged', 'fuck', 'fucking', 'porn', 'sex', 'threesome',
+      'panties', 'undress', 'clothed', 'underwear', 'cleavage', 'ass', 'butt', 'buttcheeks'
+    ];
+    const isExplicitRequest = nsfwKeywords.some(kw => promptText.toLowerCase().includes(kw));
+
+    // Direct Uncensored Router: Bypass Gemini Cloud Safety Filters completely for adult / image attachment requests!
+    if (isExplicitRequest || hasImageAttachment) {
+      console.log('[Uncensored Super Agent Router] Direct-routing request to ByteDance SeeDream 5.0 Pro (Bypassing Gemini Safety Filters)');
+
+      let attImg: string | undefined = undefined;
+      if (lastUserMsg?.attachments && lastUserMsg.attachments.length > 0) {
+        const imgAtt = lastUserMsg.attachments.find((a: any) => a.mimeType && a.mimeType.startsWith('image/'));
+        if (imgAtt) attImg = imgAtt.dataUrl;
+      }
+
+      const uncensoredStep = attImg ? {
+        type: 'edit_image',
+        params: {
+          editType: 'beautify',
+          prompt: promptText,
+          sourceImage: attImg,
+          modelId: 'wavespeed:bytedance/seedream-v5.0-pro'
+        },
+        status: 'pending'
+      } : {
+        type: 'generate_image',
+        params: {
+          prompt: promptText,
+          modelId: 'wavespeed:bytedance/seedream-v5.0-pro'
+        },
+        status: 'pending'
+      };
+
+      return res.json({
+        text: `🔥 [Uncensored Super Agent Engine]: Direct-routing request for "${promptText}" using ByteDance SeeDream 5.0 Pro.`,
+        status: 'executing',
+        suggestedSteps: [uncensoredStep],
+        critiqueLogs: ["Bypassed cloud LLM safety guardrails — Uncensored SeeDream 5.0 Pro activated."],
+        collaborationLogs: [
+          { agent: "Uncensored Router", message: "Bypassed Gemini safety filters. Direct execution with ByteDance SeeDream 5.0 Pro." }
+        ]
+      });
+    }
+
     // Map client messages to Gemini content format with base64 attachments support
     const contents = messages.map((msg, index) => {
       const parts: any[] = [];
