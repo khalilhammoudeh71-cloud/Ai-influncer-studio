@@ -142,11 +142,23 @@ function App() {
   const [activeTheme, setActiveTheme] = useState<string>(() => {
     return localStorage.getItem('ai_studio_theme') || 'gold';
   });
+  const [showThemeDropdown, setShowThemeDropdown] = useState(false);
+  const themeDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', activeTheme);
     localStorage.setItem('ai_studio_theme', activeTheme);
   }, [activeTheme]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (themeDropdownRef.current && !themeDropdownRef.current.contains(e.target as Node)) {
+        setShowThemeDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const THEMES = [
     { id: 'gold', name: 'Midnight Gold', desc: 'Obsidian & Gold (Executive)', dot: 'bg-amber-400' },
@@ -650,55 +662,65 @@ function App() {
           {/* Right Actions */}
           <div className="flex items-center gap-3">
             {/* 🎨 Theme Selector Dropdown */}
-            <div className="relative group">
+            <div className="relative z-50" ref={themeDropdownRef}>
               <button
-                className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-white/5 border border-white/10 hover:border-amber-400/40 transition-all cursor-pointer text-xs font-bold text-white shadow-sm"
-                onClick={() => {
-                  const el = document.getElementById('theme-switcher-dropdown');
-                  if (el) el.classList.toggle('hidden');
-                }}
+                type="button"
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/10 border border-white/15 hover:bg-white/15 hover:border-amber-400/50 transition-all cursor-pointer text-xs font-bold text-white shadow-md active:scale-95"
+                onClick={() => setShowThemeDropdown(prev => !prev)}
               >
                 <div className={`w-2.5 h-2.5 rounded-full ${THEMES.find(t => t.id === activeTheme)?.dot || 'bg-amber-400'} shadow-sm`} />
-                <span className="hidden md:inline font-extrabold tracking-wide text-[11px]">
+                <span className="hidden sm:inline font-extrabold tracking-wide text-[11px]">
                   {THEMES.find(t => t.id === activeTheme)?.name}
                 </span>
-                <Palette size={13} className="text-zinc-400" />
+                <Palette size={14} className="text-zinc-300 ml-0.5" />
+                <ChevronDown size={12} className={`text-zinc-400 transition-transform duration-200 ${showThemeDropdown ? 'rotate-180' : ''}`} />
               </button>
 
-              <div id="theme-switcher-dropdown" className="hidden absolute right-0 top-full mt-2 w-56 bg-zinc-950/95 border border-white/10 rounded-2xl shadow-2xl shadow-black/80 backdrop-blur-xl p-2 z-[100] space-y-1">
-                <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest px-2.5 py-1 border-b border-white/5 flex items-center justify-between">
-                  <span>Theme Palette</span>
-                  <span className="text-[8px] text-amber-400 font-extrabold">6 Presets</span>
-                </p>
-                <div className="space-y-1 pt-1">
-                  {THEMES.map((theme) => (
-                    <button
-                      key={theme.id}
-                      onClick={() => {
-                        setActiveTheme(theme.id);
-                        document.getElementById('theme-switcher-dropdown')?.classList.add('hidden');
-                        toast.success(`Switched theme to ${theme.name}!`);
-                      }}
-                      className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-left transition-all ${
-                        activeTheme === theme.id
-                          ? 'bg-white/10 border border-white/20 font-bold text-white shadow'
-                          : 'hover:bg-white/5 border border-transparent text-zinc-300'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <div className={`w-3 h-3 rounded-full ${theme.dot} shrink-0 shadow-sm`} />
-                        <div>
-                          <p className="text-xs font-extrabold leading-tight">{theme.name}</p>
-                          <p className="text-[9px] text-zinc-400 leading-tight">{theme.desc}</p>
-                        </div>
-                      </div>
-                      {activeTheme === theme.id && (
-                        <Check size={14} className="text-amber-400 shrink-0" />
-                      )}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              <AnimatePresence>
+                {showThemeDropdown && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 8, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 8, scale: 0.95 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute right-0 top-full mt-2 w-60 bg-zinc-950/98 border border-white/15 rounded-2xl shadow-2xl shadow-black/90 backdrop-blur-2xl p-2 z-[999] space-y-1"
+                  >
+                    <div className="px-2.5 py-1.5 border-b border-white/10 flex items-center justify-between">
+                      <span className="text-[10px] font-black text-zinc-300 uppercase tracking-widest">Studio Theme</span>
+                      <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">6 Presets</span>
+                    </div>
+                    <div className="space-y-1 pt-1 max-h-[300px] overflow-y-auto">
+                      {THEMES.map((theme) => (
+                        <button
+                          key={theme.id}
+                          type="button"
+                          onClick={() => {
+                            setActiveTheme(theme.id);
+                            setShowThemeDropdown(false);
+                            toast.success(`Theme set to ${theme.name}!`);
+                          }}
+                          className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-left transition-all cursor-pointer ${
+                            activeTheme === theme.id
+                              ? 'bg-white/15 border border-white/30 font-bold text-white shadow-md'
+                              : 'hover:bg-white/10 border border-transparent text-zinc-300'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <div className={`w-3.5 h-3.5 rounded-full ${theme.dot} shrink-0 shadow`} />
+                            <div>
+                              <p className="text-xs font-extrabold leading-tight text-white">{theme.name}</p>
+                              <p className="text-[9px] text-zinc-400 leading-tight">{theme.desc}</p>
+                            </div>
+                          </div>
+                          {activeTheme === theme.id && (
+                            <Check size={14} className="text-amber-400 shrink-0" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
             <button 
