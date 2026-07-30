@@ -203,15 +203,16 @@
   --shadow-glow: 0 0 24px rgba(45, 212, 191, 0.25);
 }
 
-* {
+*, *::before, *::after {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  box-sizing: border-box;
 }
 
-html, body {
+html, body, #root {
   margin: 0;
   padding: 0;
   width: 100%;
-  max-w: 100vw;
+  max-width: 100% !important;
   overflow-x: hidden !important;
   background-color: var(--bg-base);
   color: var(--text-primary);
