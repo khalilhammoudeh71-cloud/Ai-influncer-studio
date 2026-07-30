@@ -686,7 +686,9 @@ Inject these active viral trends if suitable for the request:
       'swimsuit', 'boudoir', 'topless', 'cock', 'penis', 'dick', 'boobs', 'breasts',
       'sexy', 'flirty', 'uncensored', 'explicit', 'intimate', 'stripping', 'strip',
       'gangbang', 'gangbanged', 'banged', 'fuck', 'fucking', 'porn', 'sex', 'threesome',
-      'panties', 'undress', 'clothed', 'underwear', 'cleavage', 'ass', 'butt', 'buttcheeks'
+      'panties', 'undress', 'clothed', 'underwear', 'cleavage', 'ass', 'butt', 'buttcheeks',
+      'generate', 'create', 'make', 'draw', 'picture', 'photo', 'image', 'video', 'girl', 'woman',
+      'model', 'persona', 'babe', 'hottie', 'thong', 'bra', 'top', 'dress', 'pose', 'shot'
     ];
     const isExplicitRequest = nsfwKeywords.some(kw => promptText.toLowerCase().includes(kw));
 
