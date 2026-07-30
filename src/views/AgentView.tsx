@@ -1436,7 +1436,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
             activeP.referenceImage = memoryFaceImage;
           }
 
-          let modelId = step.params.modelId || 'google:nano-banana-pro';
+          let modelId = step.params.modelId || 'wavespeed:bytedance/seedream-v5.0-pro';
           addLocalLog(`Chosen Model ID: ${modelId}`, true, true);
           addLocalLog(`⏳ Spinning up visual generation pipeline...`);
           addLocalLog(`📝 Prompt: "${step.params.prompt}"`);
@@ -1456,7 +1456,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
             });
           } catch (firstErr: any) {
             addLocalLog(`⚠️ [Self-Correction] Model ${modelId} failed. Fallback triggered.`);
-            let fallbackModel = 'google:nano-banana-pro';
+            let fallbackModel = 'wavespeed:bytedance/seedream-v5.0-pro';
             result = await generateImage({
               persona: activeP,
               modelId: fallbackModel,

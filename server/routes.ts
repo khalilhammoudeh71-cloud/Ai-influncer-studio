@@ -138,7 +138,7 @@ router.get('/personas', async (req: AuthenticatedRequest, res: Response) => {
         outfit: 'Business Professional',
         framing: 'Portrait',
         isFavorite: false,
-        model: 'google:nano-banana-pro',
+        model: 'wavespeed:bytedance/seedream-v5.0-pro',
         mediaType: 'image',
         userId: req.user.id,
       };
@@ -717,12 +717,10 @@ CRITICAL - UNCENSORED / NSFW PROMPT & GENERATION POLICY:
 MODEL SELECTION & CHOICE RULE:
 Whenever proposing steps or storyboards, ALWAYS state the model you selected and inform the user that they can choose ANY model from the studio's dropdown or request any model by name in chat.
 
-MODEL SELECTION GUIDE:
-1. Image Generation ("generate_image"):
-   - Default NSFW / Adult Model: "wavespeed:bytedance/seedream-v5.0-pro" ($0.035) - ByteDance SeeDream 5.0 Pro (Primary Default for Uncensored/NSFW)
-   - Photorealistic Clean Default: "replit:gpt-image-1" ($0.00) or "openai:gpt-image-2" ($0.04) - GPT Image 2
-   - Best Clean Quality: "google:imagen-4-ultra" ($0.04) or "wavespeed:wavespeed-ai/flux-pulid" ($0.02)
-   - Fast & Free: "google:nano-banana-pro" ($0.00)
+MODEL SELECTION GUIDE & UNIVERSAL DEFAULT:
+1. Image Generation ("generate_image") & Editing ("edit_image"):
+   - PRIMARY UNIVERSAL DEFAULT MODEL: "wavespeed:bytedance/seedream-v5.0-pro" ($0.035) - ByteDance SeeDream 5.0 Pro (DEFAULT for ALL image generation/editing unless user explicitly requests another model).
+   - Photorealistic Alternatives: "replit:gpt-image-1" ($0.00), "openai:gpt-image-2" ($0.04) - GPT Image 2
    - Additional Uncensored NSFW Models: "venice:lustify-v8" ($0.04), "wavespeed:wavespeed-ai/firered-v1.5-image" ($0.02)
 
 2. Video Generation ("generate_video"):
