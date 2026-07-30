@@ -792,10 +792,11 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
 
       const data = await res.json();
       
+      const newMsgId = Math.random().toString();
       setMessages(prev => [
         ...prev,
         {
-          id: Math.random().toString(),
+          id: newMsgId,
           role: 'model',
           content: data.text || '',
           status: data.status || 'normal',
@@ -808,6 +809,11 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
           execLogs: data.suggestedSteps ? [] : undefined
         }
       ]);
+
+      // Auto-trigger pipeline execution immediately so user doesn't wait
+      setTimeout(() => {
+        runPipeline(newMsgId);
+      }, 250);
     } catch (err: any) {
       toast.error(err.message || 'Chat error');
       setMessages(prev => [
@@ -1840,10 +1846,11 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
             if (!res.ok) throw new Error(data.error || 'Virtual try-on failed');
             editedUrl = data.imageUrl;
           } else {
+            const chosenEditModel = step.params.modelId || 'wavespeed:bytedance/seedream-v5.0-pro';
             const res = await fetch('/api/edit-image', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ sourceImage: srcImg, prompt: step.params.prompt || 'Enhance image details', modelId: 'wavespeed-edit:wavespeed-ai/seededit-v3.0' })
+              body: JSON.stringify({ sourceImage: srcImg, prompt: step.params.prompt || 'Enhance image details', modelId: chosenEditModel })
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Image edit failed');
