@@ -1814,30 +1814,30 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           )}
 
           {/* Bottom Row: Selection Dropdowns & CTA Generate */}
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t border-white/10 w-full overflow-x-hidden">
-            <div className="flex flex-wrap items-center gap-1.5 flex-1 min-w-0">
+          <div className="flex flex-wrap items-center justify-between gap-1.5 pt-2.5 border-t border-white/10 w-full">
+            <div className="flex flex-wrap items-center gap-1.5 flex-1 min-w-0 max-w-full">
               
               {/* 1. Persona Selector Dropdown */}
-              <div className="relative">
+              <div className="relative shrink-0">
                 <select
                   value={refPersonaId}
                   onChange={(e) => setRefPersonaId(e.target.value)}
-                  className="bg-[#161f30] border border-white/10 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-200 outline-none appearance-none pr-6 hover:bg-white/[0.08] hover:border-white/20 transition-all cursor-pointer h-8 text-ellipsis overflow-hidden max-w-[130px]"
+                  className="bg-[#161f30] border border-white/10 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-200 outline-none appearance-none pr-5 hover:bg-white/[0.08] hover:border-white/20 transition-all cursor-pointer h-7 text-ellipsis overflow-hidden max-w-[120px]"
                 >
                   <option value="none">No Persona Reference</option>
                   {personas.map(p => (
                     <option key={p.id} value={p.id}>{p.name}</option>
                   ))}
                 </select>
-                <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                <ChevronDown className="absolute right-1 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none" />
               </div>
 
               {/* 2. Model Selection Dropdown */}
-              <div className="relative">
+              <div className="relative shrink-0">
                 <select
                   value={selectedModel}
                   onChange={e => setSelectedModel(e.target.value)}
-                  className="bg-[#161f30] border border-white/10 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-200 outline-none appearance-none pr-6 hover:bg-white/[0.08] hover:border-white/20 transition-all cursor-pointer h-8 text-ellipsis overflow-hidden max-w-[215px]"
+                  className="bg-[#161f30] border border-white/10 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-200 outline-none appearance-none pr-5 hover:bg-white/[0.08] hover:border-white/20 transition-all cursor-pointer h-7 text-ellipsis overflow-hidden max-w-[165px]"
                 >
                   {Object.entries(groupedModels).map(([provider, list]) => (
                     <optgroup key={provider} label={provider}>
@@ -1849,15 +1849,15 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                     </optgroup>
                   ))}
                 </select>
-                <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                <ChevronDown className="absolute right-1 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none" />
               </div>
 
               {/* 3. Aspect Ratio Dropdown */}
-              <div className="relative">
+              <div className="relative shrink-0">
                 <select
                   value={selectedAspectRatio}
                   onChange={e => setSelectedAspectRatio(e.target.value)}
-                  className="bg-[#161f30] border border-white/10 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-200 outline-none appearance-none pr-6 hover:bg-white/[0.08] hover:border-white/20 transition-all cursor-pointer h-8 text-ellipsis overflow-hidden max-w-[110px]"
+                  className="bg-[#161f30] border border-white/10 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-200 outline-none appearance-none pr-5 hover:bg-white/[0.08] hover:border-white/20 transition-all cursor-pointer h-7 text-ellipsis overflow-hidden max-w-[95px]"
                 >
                   <option value="1:1">1:1 Square</option>
                   <option value="16:9">16:9 Landscape</option>
@@ -1867,15 +1867,15 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                   <option value="2:3">2:3 Tall</option>
                   <option value="3:2">3:2 Classic</option>
                 </select>
-                <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                <ChevronDown className="absolute right-1 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none" />
               </div>
 
               {/* 4. Resolution Dropdown */}
-              <div className="relative">
+              <div className="relative shrink-0">
                 <select
                   value={selectedResolution}
                   onChange={e => setSelectedResolution(e.target.value)}
-                  className="bg-[#161f30] border border-white/10 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-200 outline-none appearance-none pr-6 hover:bg-white/[0.08] hover:border-white/20 transition-all cursor-pointer h-8 text-ellipsis overflow-hidden max-w-[130px]"
+                  className="bg-[#161f30] border border-white/10 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-200 outline-none appearance-none pr-5 hover:bg-white/[0.08] hover:border-white/20 transition-all cursor-pointer h-7 text-ellipsis overflow-hidden max-w-[105px]"
                 >
                   {resolutionOpts.map(o => (
                     <option key={o.value} value={o.value}>
@@ -1883,35 +1883,35 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                     </option>
                   ))}
                 </select>
-                <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                <ChevronDown className="absolute right-1 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none" />
               </div>
 
               {/* 5. Number of Generations Dropdown */}
-              <div className="relative">
+              <div className="relative shrink-0">
                 <select
                   value={imageCount}
                   onChange={e => setImageCount(Number(e.target.value))}
-                  className="bg-[#161f30] border border-white/10 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-200 outline-none appearance-none pr-6 hover:bg-white/[0.08] hover:border-white/20 transition-all cursor-pointer h-8 text-ellipsis overflow-hidden max-w-[110px]"
+                  className="bg-[#161f30] border border-white/10 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-200 outline-none appearance-none pr-5 hover:bg-white/[0.08] hover:border-white/20 transition-all cursor-pointer h-7 text-ellipsis overflow-hidden max-w-[75px]"
                 >
                   <option value={1}>1 Gen</option>
                   <option value={2}>2 Gens</option>
                   <option value={3}>3 Gens</option>
                   <option value={4}>4 Gens</option>
                 </select>
-                <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                <ChevronDown className="absolute right-1 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none" />
               </div>
 
               {/* Optional Style presets builder button */}
               <button
                 type="button"
                 onClick={() => setStyleOptionsOpen(!styleOptionsOpen)}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-all border h-8 ${
+                className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold transition-all border h-7 shrink-0 ${
                   styleOptionsOpen || activeQuickStyle || activePresetChips.length > 0 || selectedEnv !== 'None'
                     ? 'bg-fuchsia-600/10 border-fuchsia-500/30 text-fuchsia-400'
                     : 'bg-[#161f30] border-white/10 text-slate-350 hover:bg-white/[0.08]'
                 }`}
               >
-                <Wand2 size={12} />
+                <Wand2 size={11} />
                 Presets
               </button>
             </div>
@@ -1920,9 +1920,9 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             <button
               onClick={handleImageGenerate}
               disabled={isGenerating || !selectedModel || (selectedModelInfo?.isIdentityModel && !refPersonaImage && refImages.length === 0)}
-              className="px-3.5 py-1 rounded-lg font-black text-[10px] bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 disabled:opacity-40 disabled:cursor-not-allowed text-white flex items-center gap-1 transition-all shadow-md shadow-violet-500/10 group h-7 shrink-0"
+              className="px-3.5 py-1 rounded-lg font-black text-xs bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 disabled:opacity-40 disabled:cursor-not-allowed text-white flex items-center gap-1.5 transition-all shadow-md shadow-violet-500/10 group h-7 shrink-0 ml-auto cursor-pointer z-10"
             >
-              <Sparkles size={11} className="group-hover:animate-pulse" />
+              <Sparkles size={12} className="group-hover:animate-pulse" />
               Generate {imageCount > 1 ? `x${imageCount}` : ''}
             </button>
           </div>
@@ -3534,15 +3534,15 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       </div>
 
       {/* ── FOOTER TIP ── */}
-      <footer className="mt-4 border-t border-white/5 pt-4 flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="flex items-center gap-3 bg-white/[0.02] border border-white/5 px-4 py-2 rounded-xl">
-           <Layout className="w-4 h-4 text-emerald-400" />
-           <p className="text-[10px] text-[var(--text-tertiary)] font-bold">
+      <footer className="mt-4 border-t border-white/5 pt-3 flex flex-wrap items-center justify-between gap-3 max-w-full overflow-hidden">
+        <div className="flex items-center gap-2.5 bg-white/[0.02] border border-white/5 px-3 py-1.5 rounded-xl max-w-full min-w-0">
+           <Layout className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+           <p className="text-[10px] text-[var(--text-tertiary)] font-bold truncate">
              <span className="text-white">Tip:</span> Shorter scripts with a clear hook in the first 5 seconds get more engagement.
            </p>
         </div>
-        <button className="flex items-center gap-2 text-emerald-400 hover:text-emerald-300 transition-colors text-[10px] font-black uppercase tracking-widest">
-           View All Talking Avatar Creations <ChevronRight className="w-4 h-4" />
+        <button className="flex items-center gap-1.5 text-emerald-400 hover:text-emerald-300 transition-colors text-[10px] font-black uppercase tracking-wider shrink-0">
+           View All Creations <ChevronRight className="w-3.5 h-3.5" />
         </button>
       </footer>
 
