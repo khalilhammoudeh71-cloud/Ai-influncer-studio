@@ -891,9 +891,22 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
         attachments: m.attachments
       }));
 
+      let authHeader: Record<string, string> = {};
+      try {
+        const { supabase } = await import('../lib/supabase');
+        const sessionRes = await supabase.auth.getSession();
+        const token = sessionRes?.data?.session?.access_token;
+        if (token) authHeader = { 'Authorization': `Bearer ${token}` };
+      } catch (e) {
+        console.warn('Could not load auth headers for agent chat:', e);
+      }
+
       const res = await fetch('/api/agent/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeader
+        },
         body: JSON.stringify({ messages: history })
       });
 
@@ -904,27 +917,26 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
       const data = await res.json();
       
       const newMsgId = Math.random().toString();
-      setMessages(prev => [
-        ...prev,
-        {
-          id: newMsgId,
-          role: 'model',
-          content: data.text || '',
-          status: data.status || 'normal',
-          suggestedSteps: data.suggestedSteps || undefined,
-          critiqueLogs: data.critiqueLogs || undefined,
-          collaborationLogs: data.collaborationLogs || undefined,
-          execSteps: data.suggestedSteps 
-            ? data.suggestedSteps.map((s: any) => ({ ...s, status: 'pending', resultUrl: undefined, isActionLoading: null }))
-            : undefined,
-          execLogs: data.suggestedSteps ? [] : undefined
-        }
-      ]);
+      const newMsgObj: Message = {
+        id: newMsgId,
+        role: 'model',
+        content: data.text || '',
+        status: data.status || 'normal',
+        suggestedSteps: data.suggestedSteps || undefined,
+        critiqueLogs: data.critiqueLogs || undefined,
+        collaborationLogs: data.collaborationLogs || undefined,
+        execSteps: data.suggestedSteps 
+          ? data.suggestedSteps.map((s: any) => ({ ...s, status: 'pending', resultUrl: undefined, isActionLoading: null }))
+          : undefined,
+        execLogs: data.suggestedSteps ? [] : undefined
+      };
 
-      // Auto-trigger pipeline execution immediately so user doesn't wait
+      setMessages(prev => [...prev, newMsgObj]);
+
+      // Auto-trigger pipeline execution immediately with direct message object
       setTimeout(() => {
-        runPipeline(newMsgId);
-      }, 250);
+        runPipeline(newMsgId, newMsgObj);
+      }, 50);
     } catch (err: any) {
       console.warn('Agent chat error fallback triggered:', err);
       const fallbackMsgId = Math.random().toString();
@@ -947,22 +959,21 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
         status: 'pending' as const
       };
 
-      setMessages(prev => [
-        ...prev,
-        {
-          id: fallbackMsgId,
-          role: 'model',
-          content: `Drafted task execution plan using ByteDance SeeDream 5.0 Pro for request: "${userMessage.content}".`,
-          status: 'executing',
-          suggestedSteps: [fallbackStep],
-          execSteps: [{ ...fallbackStep, status: 'pending', resultUrl: undefined, isActionLoading: null }],
-          execLogs: []
-        }
-      ]);
+      const fallbackMsgObj: Message = {
+        id: fallbackMsgId,
+        role: 'model',
+        content: `Drafted task execution plan using ByteDance SeeDream 5.0 Pro for request: "${userMessage.content}".`,
+        status: 'executing',
+        suggestedSteps: [fallbackStep],
+        execSteps: [{ ...fallbackStep, status: 'pending', resultUrl: undefined, isActionLoading: null }],
+        execLogs: []
+      };
+
+      setMessages(prev => [...prev, fallbackMsgObj]);
 
       setTimeout(() => {
-        runPipeline(fallbackMsgId);
-      }, 250);
+        runPipeline(fallbackMsgId, fallbackMsgObj);
+      }, 50);
     } finally {
       setIsSending(false);
     }
@@ -1396,8 +1407,8 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
   };
 
   // ─── Pipeline runner execution ──────────────────────────────────────────────
-  const runPipeline = async (messageId: string) => {
-    const targetMsg = messages.find(m => m.id === messageId);
+  const runPipeline = async (messageId: string, directMsg?: Message) => {
+    const targetMsg = directMsg || messages.find(m => m.id === messageId);
     if (!targetMsg || !targetMsg.execSteps || targetMsg.isExecuting) return;
 
     setMessages(prev => prev.map(m => m.id === messageId ? { ...m, isExecuting: true } : m));
