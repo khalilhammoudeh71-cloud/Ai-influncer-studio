@@ -355,7 +355,44 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
         nsfw: true,
       });
     }
-    models.sort((a, b) => a.provider.localeCompare(b.provider) || a.name.localeCompare(b.name));
+
+    const hasWan7Pro = models.some(m => m.id.includes('wan-2.7') || m.id.includes('wan-7') || m.name.toLowerCase().includes('wan 7'));
+    if (!hasWan7Pro) {
+      models.push({
+        id: 'wavespeed:wavespeed-ai/wan-2.7-pro',
+        name: 'Wan 7 Pro',
+        provider: 'Alibaba / Wavespeed',
+        type: 'text-to-image',
+        price: 0.030,
+        description: 'Wan 7 Pro ultra-high fidelity photorealistic text & image generator with cinematic detail',
+        apiPath: '/api/v3/wavespeed-ai/wan-2.7-pro',
+        hasEditVariant: true,
+        hasReferenceImage: true,
+        editApiPath: '/api/v3/wavespeed-ai/wan-2.7-pro/edit',
+        editImageField: 'image',
+        editHasStrengthControl: true,
+        nsfw: true,
+      });
+    }
+
+    const hasQwen2Pro = models.some(m => m.id.includes('qwen-2.0-pro') || m.id.includes('qwen-2-pro') || m.name.toLowerCase().includes('qwen 2'));
+    if (!hasQwen2Pro) {
+      models.push({
+        id: 'wavespeed:wavespeed-ai/qwen-2.0-pro',
+        name: 'Qwen 2 Pro',
+        provider: 'Alibaba / Qwen',
+        type: 'text-to-image',
+        price: 0.025,
+        description: 'Qwen 2 Pro advanced visual intelligence and prompt alignment model',
+        apiPath: '/api/v3/wavespeed-ai/qwen-2.0-pro',
+        hasEditVariant: true,
+        hasReferenceImage: true,
+        editApiPath: '/api/v3/wavespeed-ai/qwen-2.0-pro/edit',
+        editImageField: 'image',
+        editHasStrengthControl: true,
+        nsfw: true,
+      });
+    }
 
     const editModels: ModelInfo[] = imageToImage.map((m: { model_id: string; base_price: number; description?: string; api_schema?: { api_schemas?: { api_path: string; request_schema?: { properties?: Record<string, unknown> } }[] } }) => {
       const apiPath = resolveApiPath(m);
@@ -1825,11 +1862,40 @@ app.get('/api/models', requireAuth, async (req, res) => {
       };
     };
 
+    function getModelTopPriority(m: { id: string; name: string }): number {
+      const id = (m.id || '').toLowerCase();
+      const name = (m.name || '').toLowerCase();
+
+      // 1. GPT 2
+      if (id.includes('gpt-image') || name.includes('gpt image 2') || name.includes('gpt 2')) return 1;
+
+      // 2. Nano Banana Pro
+      if (id.includes('nano-banana-pro') || name.includes('nano banana pro')) return 2;
+
+      // 3. SeeDream 5.0 Pro
+      if (id.includes('seedream-v5') || name.includes('seedream 5.0 pro') || name.includes('seedream 5')) return 3;
+
+      // 4. Wan 7 Pro
+      if (id.includes('wan-2.7-pro') || id.includes('wan-7-pro') || name.includes('wan 7 pro') || name.includes('wan 2.7 pro') || id.includes('wan-2.1') || name.includes('wan')) return 4;
+
+      // 5. Qwen 2 Pro
+      if (id.includes('qwen-2.0-pro') || id.includes('qwen-2-pro') || name.includes('qwen 2 pro') || id.includes('qwen-image') || name.includes('qwen')) return 5;
+
+      return 100;
+    }
+
     const xaiModels = await fetchXAIModels();
+    const sortedImageModels = [...googleImagenModels, ...xaiModels, ...allModels]
+      .map(mapPriceForUser)
+      .sort((a, b) => getModelTopPriority(a) - getModelTopPriority(b) || a.name.localeCompare(b.name));
+
+    const sortedEditModels = editModels
+      .map(mapPriceForUser)
+      .sort((a, b) => getModelTopPriority(a) - getModelTopPriority(b) || a.name.localeCompare(b.name));
 
     res.json({
-      models: [...googleImagenModels, ...xaiModels, ...allModels].map(mapPriceForUser),
-      editModels: editModels.map(mapPriceForUser),
+      models: sortedImageModels,
+      editModels: sortedEditModels,
       upscaleModels: (cachedUpscaleModels || []).map(mapPriceForUser),
       videoModels: [...googleVideoModels, ...wavespeedVideoModels].map(mapPriceForUser),
       threeDModels: (cachedThreeDModels || []).map(mapPriceForUser),

@@ -57,7 +57,11 @@ const PRESET_INSTRUCTIONS = [
 ];
 
 const EDIT_MODELS = [
-  { id: 'wavespeed-edit:bytedance/seedream-v5.0-pro/edit', name: 'ByteDance Seedream 5.0 Pro Edit (Recommended)' },
+  { id: 'replit:gpt-image-1', name: 'GPT Image 2 (OpenAI)' },
+  { id: 'google:nano-banana-pro', name: 'Nano Banana Pro' },
+  { id: 'wavespeed-edit:bytedance/seedream-v5.0-pro/edit', name: 'ByteDance Seedream 5.0 Pro Edit' },
+  { id: 'wavespeed-edit:wavespeed-ai/wan-2.7-pro/edit', name: 'Wan 7 Pro Edit' },
+  { id: 'wavespeed-edit:wavespeed-ai/qwen-2.0-pro/edit', name: 'Qwen 2 Pro Edit' },
   { id: 'wavespeed-edit:wavespeed-ai/seededit-v3.0', name: 'SeedEdit v3.0 (Fast Batch)' },
   { id: 'google:imagen-4-ultra', name: 'Google Imagen 4 Ultra Edit' },
 ];

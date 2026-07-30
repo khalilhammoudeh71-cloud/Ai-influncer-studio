@@ -737,27 +737,65 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   }, [selectedVideoModel, videoModels]);
 
   const sortedModels = useMemo(() => {
-    const priority = (m: ModelInfo) =>
-      m.id.startsWith('google:') ? 0
-      : (m.id.startsWith('openai:') || m.id.startsWith('replit:')) ? 1
-      : m.id.startsWith('venice:') ? 3
-      : m.id.startsWith('atlascloud:') ? 4
-      : 2;
-    return [...models].sort((a, b) => priority(a) - priority(b) || a.name.localeCompare(b.name));
+    function getModelTopPriority(m: { id: string; name: string }): number {
+      const id = (m.id || '').toLowerCase();
+      const name = (m.name || '').toLowerCase();
+
+      // 1. GPT 2
+      if (id.includes('gpt-image') || name.includes('gpt image 2') || name.includes('gpt 2')) return 1;
+
+      // 2. Nano Banana Pro
+      if (id.includes('nano-banana-pro') || name.includes('nano banana pro')) return 2;
+
+      // 3. SeeDream 5.0 Pro
+      if (id.includes('seedream-v5') || name.includes('seedream 5.0 pro') || name.includes('seedream 5')) return 3;
+
+      // 4. Wan 7 Pro
+      if (id.includes('wan-2.7-pro') || id.includes('wan-7-pro') || name.includes('wan 7 pro') || name.includes('wan 2.7 pro') || id.includes('wan-2.1') || name.includes('wan')) return 4;
+
+      // 5. Qwen 2 Pro
+      if (id.includes('qwen-2.0-pro') || id.includes('qwen-2-pro') || name.includes('qwen 2 pro') || id.includes('qwen-image') || name.includes('qwen')) return 5;
+
+      return 100;
+    }
+    return [...models].sort((a, b) => getModelTopPriority(a) - getModelTopPriority(b) || a.name.localeCompare(b.name));
   }, [models]);
 
   const groupedModels = useMemo(() => {
-    const ORDER = ['Gemini', 'OpenAI', 'Wavespeed', 'Venice AI', 'Atlas Cloud'] as const;
-    const groups: Record<string, ModelInfo[]> = { 'Gemini': [], 'OpenAI': [], 'Wavespeed': [], 'Venice AI': [], 'Atlas Cloud': [] };
+    function getModelTopPriority(m: { id: string; name: string }): number {
+      const id = (m.id || '').toLowerCase();
+      const name = (m.name || '').toLowerCase();
+
+      if (id.includes('gpt-image') || name.includes('gpt image 2') || name.includes('gpt 2')) return 1;
+      if (id.includes('nano-banana-pro') || name.includes('nano banana pro')) return 2;
+      if (id.includes('seedream-v5') || name.includes('seedream 5.0 pro') || name.includes('seedream 5')) return 3;
+      if (id.includes('wan-2.7-pro') || id.includes('wan-7-pro') || name.includes('wan 7 pro') || name.includes('wan 2.7 pro') || id.includes('wan-2.1') || name.includes('wan')) return 4;
+      if (id.includes('qwen-2.0-pro') || id.includes('qwen-2-pro') || name.includes('qwen 2 pro') || id.includes('qwen-image') || name.includes('qwen')) return 5;
+
+      return 100;
+    }
+
+    const featured: ModelInfo[] = [];
+    const rest: ModelInfo[] = [];
+
     sortedModels.forEach(m => {
-      const g = m.id.startsWith('google:') ? 'Gemini'
-        : (m.id.startsWith('openai:') || m.id.startsWith('replit:')) ? 'OpenAI'
-        : m.id.startsWith('venice:') ? 'Venice AI'
-        : m.id.startsWith('atlascloud:') ? 'Atlas Cloud'
-        : 'Wavespeed';
+      if (getModelTopPriority(m) <= 5) {
+        featured.push(m);
+      } else {
+        rest.push(m);
+      }
+    });
+
+    featured.sort((a, b) => getModelTopPriority(a) - getModelTopPriority(b));
+
+    const groups: Record<string, ModelInfo[]> = { '🔥 Featured Models': featured };
+    rest.forEach(m => {
+      const g = m.provider || 'Other';
+      if (!groups[g]) groups[g] = [];
       groups[g].push(m);
     });
-    return Object.fromEntries(ORDER.filter(g => groups[g].length > 0).map(g => [g, groups[g]]));
+
+    return groups;
   }, [sortedModels]);
 
   const groupedEditModels = useMemo(() => {
