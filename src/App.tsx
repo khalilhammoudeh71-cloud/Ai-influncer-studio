@@ -643,7 +643,7 @@ function App() {
           </div>
 
           {/* Search Bar — opens Command Palette */}
-          <div className="hidden lg:flex flex-1 max-w-md mx-4 relative">
+          <div className="hidden 2xl:flex flex-1 max-w-xs mx-4 relative">
             <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
               <Search className="h-3.5 w-3.5 text-[var(--text-muted)]" />
             </div>

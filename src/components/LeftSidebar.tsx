@@ -27,7 +27,7 @@ export default function LeftSidebar({ activeTab, onNavigate, activePersona, newA
   };
 
   return (
-    <div className="w-64 shrink-0 h-full border-r border-white/5 bg-[#0B0F17]/95 backdrop-blur-xl flex flex-col z-50">
+    <div className="w-56 md:w-60 lg:w-64 shrink-0 h-full border-r border-white/5 bg-[#0B0F17]/95 backdrop-blur-xl flex flex-col z-50">
       {/* Brand Header */}
       <div className="p-6 border-b border-white/5 flex items-center gap-3">
         <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-cyan-400 to-violet-500 flex items-center justify-center shadow-lg shadow-cyan-500/20">
