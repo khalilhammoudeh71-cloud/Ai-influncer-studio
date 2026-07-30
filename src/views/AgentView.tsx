@@ -371,7 +371,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
     {
       id: 'welcome',
       role: 'model',
-      content: "👋 **Welcome to Super Agent Co-Pilot!**\n\nI can build photoshoots, multi-scene video storyboards, voice clones, talking head avatars, or complete content strategies.\n\nSelect one of the primary workflows below or type your custom request:",
+      content: "👋 How can I help build your AI influencer today?",
       status: 'normal'
     }
   ]);
@@ -2041,71 +2041,6 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
               }`}>
                 <div className="whitespace-pre-wrap">{msg.content}</div>
 
-                {/* 4 Primary Quick Action Cards on Welcome Message */}
-                {msg.id === 'welcome' && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4 pt-4 border-t border-white/5">
-                    <button
-                      onClick={() => setInputText("Generate 3 photorealistic portrait photos of my AI influencer in a luxury penthouse wearing elegant evening outfit.")}
-                      className="p-3.5 bg-white/5 hover:bg-pink-500/10 border border-white/5 hover:border-pink-500/30 rounded-2xl text-left transition-all group space-y-1.5"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-extrabold text-white flex items-center gap-2">
-                          <span className="text-base">📸</span> Generate Photoshoot
-                        </span>
-                        <ChevronRight size={14} className="text-zinc-500 group-hover:text-pink-400 transition-all" />
-                      </div>
-                      <p className="text-[10px] text-zinc-400 leading-snug">
-                        Create photos of your persona in any location, aesthetic, or outfit style.
-                      </p>
-                    </button>
-
-                    <button
-                      onClick={() => setInputText("Create a 1-minute video storyboard with 4 scenes: talking avatar intro, workout action shot, protein shake, and call to action.")}
-                      className="p-3.5 bg-white/5 hover:bg-violet-500/10 border border-white/5 hover:border-violet-500/30 rounded-2xl text-left transition-all group space-y-1.5"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-extrabold text-white flex items-center gap-2">
-                          <span className="text-base">🎬</span> 1-Min Video Storyboard
-                        </span>
-                        <ChevronRight size={14} className="text-zinc-500 group-hover:text-violet-400 transition-all" />
-                      </div>
-                      <p className="text-[10px] text-zinc-400 leading-snug">
-                        Break down and stitch a multi-scene vertical reel combining talking avatars & cinematic video.
-                      </p>
-                    </button>
-
-                    <button
-                      onClick={() => setInputText("Clone the voice from my uploaded video sample and generate a talking avatar saying 'Welcome to my exclusive channel!'")}
-                      className="p-3.5 bg-white/5 hover:bg-cyan-500/10 border border-white/5 hover:border-cyan-500/30 rounded-2xl text-left transition-all group space-y-1.5"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-extrabold text-white flex items-center gap-2">
-                          <span className="text-base">🎙️</span> Voice Clone & Avatar
-                        </span>
-                        <ChevronRight size={14} className="text-zinc-500 group-hover:text-cyan-400 transition-all" />
-                      </div>
-                      <p className="text-[10px] text-zinc-400 leading-snug">
-                        Upload an audio/video sample to clone a voice and create a lip-synced video avatar.
-                      </p>
-                    </button>
-
-                    <button
-                      onClick={() => setInputText("Architect a 7-day content schedule for Instagram with high-converting hooks, viral caption ideas, and revenue strategies.")}
-                      className="p-3.5 bg-white/5 hover:bg-emerald-500/10 border border-white/5 hover:border-emerald-500/30 rounded-2xl text-left transition-all group space-y-1.5"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-extrabold text-white flex items-center gap-2">
-                          <span className="text-base">📈</span> 7-Day Content Plan
-                        </span>
-                        <ChevronRight size={14} className="text-zinc-500 group-hover:text-emerald-400 transition-all" />
-                      </div>
-                      <p className="text-[10px] text-zinc-400 leading-snug">
-                        Generate a complete post schedule with hooks, content themes, and caption copy.
-                      </p>
-                    </button>
-                  </div>
-                )}
-
                 {/* Attachments rendering */}
                 {msg.attachments && msg.attachments.length > 0 && (
                   <div className="flex flex-wrap gap-2 mt-2.5 pt-2.5 border-t border-white/5">
@@ -2588,52 +2523,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Suggestion & Template Preset selection Row */}
-        <div className="flex-none p-3 border-t border-white/5 bg-[var(--bg-elevated)]/15">
-          <div className="max-w-full space-y-2">
-            {/* Custom Template Presets Row */}
-            {customPresets.length > 0 && (
-              <div className="flex items-center gap-2 overflow-x-auto pb-1 custom-scrollbar">
-                <span className="text-[8px] font-black text-violet-400 uppercase tracking-widest shrink-0 flex items-center gap-0.5">
-                  <Clock size={10} /> Presets:
-                </span>
-                <div className="flex gap-1.5 shrink-0">
-                  {customPresets.map((p, idx) => (
-                    <div
-                      key={idx}
-                      onClick={() => setInputText(p.prompt)}
-                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-white/5 bg-violet-950/20 hover:border-violet-500/20 text-[10px] font-bold text-violet-300 hover:text-white cursor-pointer transition-all"
-                    >
-                      <span>{p.name}</span>
-                      <button
-                        onClick={(e) => deletePreset(idx, e)}
-                        className="w-3.5 h-3.5 rounded-full hover:bg-rose-500/30 flex items-center justify-center text-zinc-400 hover:text-white"
-                      >
-                        <X size={8} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
 
-            {/* Base Suggestions Row */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 custom-scrollbar">
-              <span className="text-[8px] font-black text-zinc-500 uppercase tracking-widest shrink-0">Base:</span>
-              <div className="flex gap-1.5">
-                {BASE_PRESETS.map((s, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => setInputText(s.prompt)}
-                    className="px-2.5 py-1 rounded-full border border-white/5 bg-white/[0.01] hover:border-pink-500/20 text-[10px] font-bold text-zinc-400 hover:text-white transition-all whitespace-nowrap"
-                  >
-                    {s.name}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
 
         {/* Prompt Input bar */}
         <div className="flex-none p-4 border-t border-white/5 bg-[var(--bg-elevated)]/30 backdrop-blur-md">
@@ -2675,6 +2565,23 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
           )}
 
           <div className="flex items-center gap-2">
+            {/* Quick Workflows Dropdown Menu */}
+            <select
+              onChange={(e) => {
+                if (e.target.value) {
+                  setInputText(e.target.value);
+                  e.target.value = "";
+                }
+              }}
+              className="h-11 px-3 rounded-xl border border-white/10 bg-[var(--bg-input)] hover:border-pink-500/30 text-xs font-bold text-pink-300 outline-none cursor-pointer transition-all shrink-0 shadow"
+            >
+              <option value="">⚡ Workflows ▾</option>
+              <option value="Generate 3 photorealistic portrait photos of my AI influencer in a luxury penthouse wearing elegant evening outfit.">📸 Photoshoot</option>
+              <option value="Create a 1-minute video storyboard with 4 scenes: talking avatar intro, workout action shot, protein shake, and call to action.">🎬 1-Min Video Storyboard</option>
+              <option value="Clone the voice from my uploaded video sample and generate a talking avatar saying 'Welcome to my exclusive channel!'">🎙️ Voice Clone & Avatar</option>
+              <option value="Architect a 7-day content schedule for Instagram with high-converting hooks, viral caption ideas, and revenue strategies.">📈 7-Day Content Plan</option>
+            </select>
+
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={isSending}
