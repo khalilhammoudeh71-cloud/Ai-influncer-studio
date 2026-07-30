@@ -2854,16 +2854,27 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
             </select>
 
             <button
-              onClick={() => fileInputRef.current?.click()}
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (fileInputRef.current) {
+                  fileInputRef.current.click();
+                } else {
+                  document.getElementById('agent-file-upload-input')?.click();
+                }
+              }}
               disabled={isSending}
-              className="w-11 h-11 rounded-xl border border-white/5 bg-[var(--bg-input)] hover:border-pink-500/20 flex items-center justify-center text-zinc-400 hover:text-white transition-all shadow"
+              className="w-11 h-11 rounded-xl border border-white/5 bg-[var(--bg-input)] hover:border-pink-500/20 flex items-center justify-center text-zinc-400 hover:text-white transition-all shadow cursor-pointer"
+              title="Upload Photo, Video, or File Attachment"
             >
               <Paperclip size={16} />
             </button>
             
             <input
+              id="agent-file-upload-input"
               type="file"
               ref={fileInputRef}
+              accept="image/*,video/*,audio/*,.pdf,.txt"
               multiple
               onChange={handleFileUpload}
               className="hidden"
