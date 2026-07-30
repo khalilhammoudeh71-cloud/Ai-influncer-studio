@@ -1511,7 +1511,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     return (
       <div className="flex flex-col gap-4 w-full max-w-5xl mx-auto pb-10">
         {/* ── TOP SECTION: Showcase Slideshow OR Generating State OR Canvas Results ── */}
-        <div className="w-full relative h-44 md:h-52 max-h-[220px] bg-gradient-to-b from-[#0B0F17]/65 to-[#0B0F17]/35 border border-white/10 rounded-[20px] overflow-hidden shadow-inner flex flex-col justify-center items-center">
+        <div className="w-full relative min-h-[460px] md:min-h-[560px] max-h-[660px] bg-gradient-to-b from-[#0B0F17]/80 to-[#0B0F17]/50 border border-white/10 rounded-[24px] overflow-hidden shadow-2xl flex flex-col justify-center items-center p-3 font-sans transition-all duration-300">
           {isGenerating || isProcessing ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0B0F17]/85 backdrop-blur-sm z-30 gap-2 select-none">
               <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
@@ -1525,12 +1525,12 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               </div>
             </div>
           ) : activeVersion ? (
-            <div className="relative w-full h-full flex items-center justify-center h-44 md:h-52 max-h-[220px] select-none p-2 bg-[#070b13]/40 group">
+            <div className="relative w-full h-full min-h-[440px] md:min-h-[540px] flex items-center justify-center select-none p-3 bg-[#070b13]/60 rounded-2xl group overflow-hidden">
               <img 
                 src={activeVersion.imageUrl} 
                 alt="Active preview" 
                 onClick={() => setLightboxImageUrl(activeVersion.imageUrl)}
-                className="max-w-full max-h-[200px] object-contain rounded-xl shadow-2xl transition-all duration-300 hover:scale-[1.03] cursor-pointer hover:ring-2 hover:ring-purple-500/50" 
+                className="max-w-full max-h-[520px] md:max-h-[600px] object-contain rounded-2xl shadow-2xl transition-all duration-300 hover:scale-[1.015] cursor-pointer hover:ring-2 hover:ring-purple-500/50 border border-white/10" 
                 title="Click to enlarge full screen"
               />
               
@@ -3593,49 +3593,49 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       {/* Fullscreen Enlarged Image Lightbox Modal */}
       {lightboxImageUrl && (
         <div 
-          className="fixed inset-0 z-[9999] bg-black/92 backdrop-blur-md flex items-center justify-center p-4 sm:p-8 animate-fadeIn"
+          className="fixed inset-0 z-[99999] bg-black/95 backdrop-blur-2xl flex items-center justify-center p-2 sm:p-6 animate-fadeIn"
           onClick={() => setLightboxImageUrl(null)}
         >
           <div 
-            className="relative max-w-5xl max-h-[92vh] flex flex-col items-center justify-center space-y-4 bg-zinc-950/95 border border-purple-500/30 rounded-2xl p-4 sm:p-6 shadow-2xl overflow-hidden"
+            className="relative w-[96vw] h-[95vh] max-w-[96vw] max-h-[95vh] flex flex-col items-center justify-between space-y-3 bg-zinc-950/98 border border-purple-500/40 rounded-3xl p-4 sm:p-6 shadow-2xl overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Top Bar */}
-            <div className="w-full flex items-center justify-between border-b border-white/10 pb-3">
+            <div className="w-full flex items-center justify-between border-b border-white/10 pb-3 shrink-0">
               <span className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-purple-400" /> ByteDance SeeDream 5.0 Pro Visual
+                <Sparkles className="w-4 h-4 text-purple-400" /> ByteDance SeeDream 5.0 Pro Visual (Full High-Res)
               </span>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => {
                     downloadFile(lightboxImageUrl, 'png');
                   }}
-                  className="px-3 py-1.5 rounded-lg bg-purple-500/20 hover:bg-purple-500/35 border border-purple-500/30 text-purple-300 font-extrabold text-xs uppercase flex items-center gap-1.5 transition-all shadow cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-purple-600/30 hover:bg-purple-600/50 border border-purple-400/40 text-purple-200 font-extrabold text-xs uppercase flex items-center gap-1.5 transition-all shadow-lg cursor-pointer"
                 >
-                  <Download className="w-3.5 h-3.5" /> Download HD
+                  <Download className="w-4 h-4" /> Download HD
                 </button>
                 <button
                   onClick={() => setLightboxImageUrl(null)}
-                  className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-zinc-300 hover:text-white transition-all border border-white/10 cursor-pointer"
+                  className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-zinc-300 hover:text-white transition-all border border-white/15 cursor-pointer"
                   title="Close (ESC)"
                 >
-                  <X className="w-5 h-5" />
+                  <X className="w-6 h-6" />
                 </button>
               </div>
             </div>
 
             {/* Enlarged Image Box */}
-            <div className="relative overflow-hidden rounded-xl border border-white/10 bg-black max-h-[75vh] flex items-center justify-center shadow-inner">
+            <div className="relative flex-1 w-full overflow-hidden rounded-2xl border border-white/10 bg-black flex items-center justify-center p-2 shadow-inner">
               <img
                 src={lightboxImageUrl}
                 alt="Enlarged Visual"
-                className="max-h-[75vh] max-w-full object-contain rounded-xl shadow-2xl"
+                className="max-h-[84vh] max-w-[94vw] object-contain rounded-xl shadow-2xl"
               />
             </div>
 
             {/* Footer */}
-            <div className="text-[10px] font-semibold text-zinc-400 flex items-center gap-2">
-              <span>Click outside or press <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-white font-mono text-[9px]">ESC</kbd> to exit full screen</span>
+            <div className="text-xs font-semibold text-zinc-400 flex items-center gap-2 shrink-0 pt-1">
+              <span>Click outside or press <kbd className="px-2 py-0.5 rounded bg-white/15 text-white font-mono text-xs">ESC</kbd> to exit full screen</span>
             </div>
           </div>
         </div>
