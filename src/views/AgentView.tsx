@@ -42,7 +42,9 @@ import {
   Bot,
   Sliders,
   Film,
-  Download
+  Download,
+  Edit3,
+  Copy
 } from 'lucide-react';
 import { Persona, Tab } from '../types';
 import { api } from '../services/apiService';
@@ -965,6 +967,26 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
   };
 
   // ─── In-Chat Visual Media Actions ──────────────────────────────────────────────
+  const handleUseAsPromptReference = (imageUrl: string, promptText?: string) => {
+    setAttachments(prev => [
+      ...prev,
+      {
+        name: `ref-${Date.now().toString().slice(-4)}.png`,
+        dataUrl: imageUrl,
+        mimeType: 'image/png'
+      }
+    ]);
+    if (promptText) {
+      setInputText(`Edit this image: ${promptText}`);
+    } else {
+      setInputText(`Edit this image: `);
+    }
+    toast.success('Attached image to prompt input bar!');
+  };
+
+  const handleEditImageAction = (imageUrl: string, promptText?: string) => {
+    handleUseAsPromptReference(imageUrl, promptText);
+  };
   const handleUpscale = async (messageId: string, stepIdx: number, imageUrl: string) => {
     setMessages(prev => prev.map(m => {
       if (m.id === messageId && m.execSteps) {
@@ -2418,38 +2440,52 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                                     </div>
                                   )}
                                   
-                                  {/* In-Chat Action Buttons */}
-                                  {!step.resultUrl.endsWith('.mp4') && !step.resultUrl.includes('blob:') && (
-                                    <div className="flex gap-1.5 pt-1">
-                                      <button
-                                        onClick={() => handleUpscale(msg.id, idx, step.resultUrl!)}
-                                        disabled={step.isActionLoading !== null}
-                                        className="px-2 py-1 rounded bg-pink-500/20 hover:bg-pink-500/30 text-[9px] font-black uppercase text-pink-300 flex items-center gap-0.5 disabled:opacity-50"
-                                      >
-                                        {step.isActionLoading === 'upscale' ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : '🪄 Upscale'}
-                                      </button>
-                                      <button
-                                        onClick={() => handleMakeVideo(msg.id, idx, step.resultUrl!)}
-                                        disabled={step.isActionLoading !== null}
-                                        className="px-2 py-1 rounded bg-cyan-500/20 hover:bg-cyan-500/30 text-[9px] font-black uppercase text-cyan-300 flex items-center gap-0.5 disabled:opacity-50"
-                                      >
-                                        {step.isActionLoading === 'video' ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : '🎬 Make Video'}
-                                      </button>
-                                      <button
-                                        onClick={() => triggerFaceSwap(msg.id, idx)}
-                                        disabled={step.isActionLoading !== null}
-                                        className="px-2 py-1 rounded bg-violet-500/20 hover:bg-violet-500/30 text-[9px] font-black uppercase text-violet-300 flex items-center gap-0.5 disabled:opacity-50"
-                                      >
-                                        {step.isActionLoading === 'swap' ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : '✨ Face Swap'}
-                                      </button>
-                                      <button
-                                        onClick={() => publishToFeed(step.resultUrl!)}
-                                        className="px-2 py-1 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-[9px] font-black uppercase text-emerald-300 flex items-center gap-0.5"
-                                      >
-                                        🚀 Publish
-                                      </button>
-                                    </div>
-                                  )}
+                                    {/* In-Chat Action Buttons */}
+                                    {!step.resultUrl.endsWith('.mp4') && !step.resultUrl.includes('blob:') && (
+                                      <div className="flex flex-wrap gap-1.5 pt-1">
+                                        <button
+                                          onClick={() => handleEditImageAction(step.resultUrl!, step.params?.prompt)}
+                                          className="px-2 py-1 rounded bg-amber-500/20 hover:bg-amber-500/35 border border-amber-500/30 text-[9px] font-black uppercase text-amber-300 flex items-center gap-1 transition-all"
+                                          title="Attach this image as a reference to prompt input for editing"
+                                        >
+                                          <Edit3 className="w-2.5 h-2.5" /> Edit Image
+                                        </button>
+                                        <button
+                                          onClick={() => handleUseAsPromptReference(step.resultUrl!)}
+                                          className="px-2 py-1 rounded bg-purple-500/20 hover:bg-purple-500/35 border border-purple-500/30 text-[9px] font-black uppercase text-purple-300 flex items-center gap-1 transition-all"
+                                          title="Copy image to prompt input bar"
+                                        >
+                                          <Copy className="w-2.5 h-2.5" /> Use as Prompt
+                                        </button>
+                                        <button
+                                          onClick={() => handleUpscale(msg.id, idx, step.resultUrl!)}
+                                          disabled={step.isActionLoading !== null}
+                                          className="px-2 py-1 rounded bg-pink-500/20 hover:bg-pink-500/30 text-[9px] font-black uppercase text-pink-300 flex items-center gap-0.5 disabled:opacity-50"
+                                        >
+                                          {step.isActionLoading === 'upscale' ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : '🪄 Upscale'}
+                                        </button>
+                                        <button
+                                          onClick={() => handleMakeVideo(msg.id, idx, step.resultUrl!)}
+                                          disabled={step.isActionLoading !== null}
+                                          className="px-2 py-1 rounded bg-cyan-500/20 hover:bg-cyan-500/30 text-[9px] font-black uppercase text-cyan-300 flex items-center gap-0.5 disabled:opacity-50"
+                                        >
+                                          {step.isActionLoading === 'video' ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : '🎬 Make Video'}
+                                        </button>
+                                        <button
+                                          onClick={() => triggerFaceSwap(msg.id, idx)}
+                                          disabled={step.isActionLoading !== null}
+                                          className="px-2 py-1 rounded bg-violet-500/20 hover:bg-violet-500/30 text-[9px] font-black uppercase text-violet-300 flex items-center gap-0.5 disabled:opacity-50"
+                                        >
+                                          {step.isActionLoading === 'swap' ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : '✨ Face Swap'}
+                                        </button>
+                                        <button
+                                          onClick={() => publishToFeed(step.resultUrl!)}
+                                          className="px-2 py-1 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-[9px] font-black uppercase text-emerald-300 flex items-center gap-0.5"
+                                        >
+                                          🚀 Publish
+                                        </button>
+                                      </div>
+                                    )}
                                 </div>
                               )}
                               {step.type === 'generate_voice' && (
@@ -3821,6 +3857,24 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                 <Sparkles className="w-4 h-4 text-pink-400" /> ByteDance SeeDream 5.0 Pro Visual
               </span>
               <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    handleEditImageAction(expandedImageUrl);
+                    setExpandedImageUrl(null);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/35 border border-amber-500/30 text-amber-300 font-extrabold text-xs uppercase flex items-center gap-1.5 transition-all shadow"
+                >
+                  <Edit3 className="w-3.5 h-3.5" /> Edit Image
+                </button>
+                <button
+                  onClick={() => {
+                    handleUseAsPromptReference(expandedImageUrl);
+                    setExpandedImageUrl(null);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-purple-500/20 hover:bg-purple-500/35 border border-purple-500/30 text-purple-300 font-extrabold text-xs uppercase flex items-center gap-1.5 transition-all shadow"
+                >
+                  <Copy className="w-3.5 h-3.5" /> Use as Prompt
+                </button>
                 <a
                   href={expandedImageUrl}
                   download="seedream_5_pro_output.png"
