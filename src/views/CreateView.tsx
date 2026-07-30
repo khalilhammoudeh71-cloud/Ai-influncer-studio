@@ -1626,15 +1626,22 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             {/* Visual Showcase Thumbnails Strip */}
             <div className="hidden sm:flex items-center gap-1.5 pr-1 shrink-0">
               {[
-                { title: 'Editorial', img: '/demo-assets/showcase-1.mp4' },
-                { title: 'Cinematic', img: '/demo-assets/showcase-2.mp4' },
-                { title: 'Portrait', img: '/demo-assets/showcase-3.mp4' },
-                { title: 'Studio', img: '/demo-assets/showcase-4.mp4' }
+                { title: 'Editorial', img: '/persona_showcase_1.png' },
+                { title: 'Cinematic', img: '/persona_showcase_2.png' },
+                { title: 'Portrait', img: '/persona_showcase_3.png' },
+                { title: 'Studio', img: '/persona_showcase_4.png' }
               ].map((item, idx) => (
-                <div key={idx} className="relative w-12 h-12 rounded-lg overflow-hidden border border-white/15 shadow-sm hover:scale-105 transition-all duration-300 group">
-                  <img src={item.img} alt={item.title} className="w-full h-full object-cover" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex items-end p-0.5">
-                    <span className="text-[6px] font-black text-white uppercase tracking-wider">{item.title}</span>
+                <div key={idx} className="relative w-11 h-11 md:w-12 md:h-12 rounded-xl overflow-hidden border border-white/20 shadow-md hover:scale-105 transition-all duration-300 group">
+                  <img
+                    src={item.img}
+                    alt={item.title}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = '/isabella_laurent_reference.png';
+                    }}
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-transparent flex items-end p-0.5">
+                    <span className="text-[6px] font-black text-white uppercase tracking-wider leading-none drop-shadow">{item.title}</span>
                   </div>
                 </div>
               ))}
