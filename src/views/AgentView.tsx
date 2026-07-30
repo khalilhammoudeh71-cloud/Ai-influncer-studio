@@ -555,6 +555,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
 
   // Enlarged Fullscreen Lightbox State
   const [expandedImageUrl, setExpandedImageUrl] = useState<string | null>(null);
+  const [agentZoomMode, setAgentZoomMode] = useState<'fit' | 'fill' | 'zoom'>('fill');
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -3855,14 +3856,38 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
       {/* Fullscreen Enlarged Image Lightbox Modal (Edge-to-Edge True Screen Fill) */}
       {expandedImageUrl && (
         <div 
-          className="fixed inset-0 z-[999999] bg-black/96 backdrop-blur-2xl w-screen h-screen flex items-center justify-center p-0 m-0 overflow-hidden animate-fadeIn"
+          className="fixed inset-0 z-[999999] bg-black/98 w-screen h-screen flex items-center justify-center p-0 m-0 overflow-hidden animate-fadeIn"
           onClick={() => setExpandedImageUrl(null)}
         >
           {/* Top Floating Action Bar */}
           <div 
-            className="absolute top-4 right-4 sm:right-6 flex items-center gap-2.5 z-[1000000] bg-zinc-950/85 backdrop-blur-xl border border-white/20 p-2 rounded-2xl shadow-2xl"
+            className="absolute top-4 right-4 sm:right-6 flex items-center gap-2.5 z-[1000000] bg-zinc-950/90 backdrop-blur-xl border border-white/20 p-2 rounded-2xl shadow-2xl"
             onClick={e => e.stopPropagation()}
           >
+            <div className="flex bg-white/10 p-1 rounded-xl border border-white/10 gap-1">
+              <button
+                onClick={() => setAgentZoomMode('fill')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase transition-all cursor-pointer ${agentZoomMode === 'fill' ? 'bg-pink-600 text-white shadow' : 'text-slate-300 hover:text-white'}`}
+                title="Fill Entire Screen"
+              >
+                🖼️ Fill Screen
+              </button>
+              <button
+                onClick={() => setAgentZoomMode('fit')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase transition-all cursor-pointer ${agentZoomMode === 'fit' ? 'bg-pink-600 text-white shadow' : 'text-slate-300 hover:text-white'}`}
+                title="Fit Aspect Ratio"
+              >
+                📐 Fit Aspect
+              </button>
+              <button
+                onClick={() => setAgentZoomMode('zoom')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase transition-all cursor-pointer ${agentZoomMode === 'zoom' ? 'bg-pink-600 text-white shadow' : 'text-slate-300 hover:text-white'}`}
+                title="150% Super Zoom"
+              >
+                🔍 150% Zoom
+              </button>
+            </div>
+
             <button
               onClick={() => {
                 handleEditImageAction(expandedImageUrl);
@@ -3901,24 +3926,30 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
 
           {/* Top Left Title Badge */}
           <div 
-            className="absolute top-4 left-4 sm:left-6 flex items-center gap-2 z-[1000000] bg-zinc-950/85 backdrop-blur-xl border border-white/20 px-4 py-2 rounded-2xl shadow-2xl pointer-events-none"
+            className="absolute top-4 left-4 sm:left-6 flex items-center gap-2 z-[1000000] bg-zinc-950/90 backdrop-blur-xl border border-white/20 px-4 py-2 rounded-2xl shadow-2xl pointer-events-none"
           >
             <Sparkles className="w-4 h-4 text-pink-400" />
             <span className="text-xs font-black text-white uppercase tracking-wider">Super Agent SeeDream 5.0 Pro HD</span>
           </div>
 
           {/* 100% Edge-to-Edge Max Display Image */}
-          <div className="w-full h-full flex items-center justify-center p-2 sm:p-4">
+          <div className="w-screen h-screen flex items-center justify-center p-0 m-0 overflow-hidden">
             <img
               src={expandedImageUrl}
               alt="Enlarged Visual"
-              className="w-full h-full max-w-[98vw] max-h-[98vh] object-contain drop-shadow-[0_0_60px_rgba(0,0,0,0.9)] select-none rounded-xl"
+              className={`select-none transition-all duration-300 ${
+                agentZoomMode === 'fill' 
+                  ? 'w-screen h-screen object-cover shadow-2xl scale-[1.02]' 
+                  : agentZoomMode === 'zoom'
+                  ? 'w-screen h-screen object-cover scale-150 cursor-grab active:cursor-grabbing shadow-2xl'
+                  : 'max-w-[98vw] max-h-[98vh] w-auto h-auto object-contain drop-shadow-[0_0_60px_rgba(0,0,0,0.9)] rounded-xl'
+              }`}
             />
           </div>
 
           {/* Bottom Center Floating Hint Pill */}
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-5 py-2 rounded-full bg-zinc-950/85 backdrop-blur-xl border border-white/20 text-xs text-zinc-300 font-semibold shadow-2xl z-[1000000] pointer-events-none">
-            Click anywhere or press <kbd className="px-2 py-0.5 rounded bg-white/20 text-white font-mono text-xs ml-1">ESC</kbd> to exit full screen
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-5 py-2 rounded-full bg-zinc-950/90 backdrop-blur-xl border border-white/20 text-xs text-zinc-300 font-semibold shadow-2xl z-[1000000] pointer-events-none">
+            Mode: <strong className="text-white uppercase">{agentZoomMode}</strong> • Click anywhere or press <kbd className="px-2 py-0.5 rounded bg-white/20 text-white font-mono text-xs ml-1">ESC</kbd> to exit full screen
           </div>
         </div>
       )}
