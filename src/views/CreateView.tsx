@@ -1549,8 +1549,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
     return (
       <div className="flex flex-col gap-4 w-full max-w-5xl mx-auto pb-10">
-        {/* ── TOP SECTION: Generating State OR Canvas Results ── */}
-        {(activeVersion || isGenerating || isProcessing) && (
+        {/* ── TOP SECTION: Thin Visual Showcase Banner (when idle) OR Generating State OR Canvas Results ── */}
+        {activeVersion || isGenerating || isProcessing ? (
           <div className="w-full relative min-h-[460px] md:min-h-[560px] max-h-[660px] bg-gradient-to-b from-[#0B0F17]/80 to-[#0B0F17]/50 border border-white/10 rounded-[24px] overflow-hidden shadow-2xl flex flex-col justify-center items-center p-3 font-sans transition-all duration-500">
             {isGenerating || isProcessing ? (
               <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0B0F17]/85 backdrop-blur-sm z-30 gap-2 select-none">
@@ -1603,6 +1603,42 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 </div>
               </div>
             )}
+          </div>
+        ) : (
+          /* Sleek Thin Visual Showcase Banner (h-16 md:h-20) */
+          <div className="w-full relative h-16 md:h-20 bg-gradient-to-r from-[#0F172A] via-[#1E1B4B]/60 to-[#0F172A] border border-white/10 rounded-2xl overflow-hidden shadow-lg p-2 flex items-center justify-between gap-3 font-sans select-none">
+            <div className="flex items-center gap-2.5 pl-1.5">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-purple-500 to-fuchsia-500 flex items-center justify-center shadow-md shadow-purple-500/20 shrink-0">
+                <Sparkles className="w-4 h-4 text-white animate-pulse" />
+              </div>
+              <div className="flex flex-col">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md bg-purple-500/20 border border-purple-500/30 text-purple-300">
+                    Featured Models
+                  </span>
+                  <span className="text-[9px] font-bold text-slate-400 truncate">GPT Image 2 • Nano Banana • Seedream 5.0 • Wan 7</span>
+                </div>
+                <h2 className="text-xs font-black text-white tracking-tight leading-tight mt-0.5">
+                  Photorealistic Persona & Studio Visual Generator
+                </h2>
+              </div>
+            </div>
+            {/* Visual Showcase Thumbnails Strip */}
+            <div className="hidden sm:flex items-center gap-1.5 pr-1 shrink-0">
+              {[
+                { title: 'Editorial', img: '/demo-assets/showcase-1.mp4' },
+                { title: 'Cinematic', img: '/demo-assets/showcase-2.mp4' },
+                { title: 'Portrait', img: '/demo-assets/showcase-3.mp4' },
+                { title: 'Studio', img: '/demo-assets/showcase-4.mp4' }
+              ].map((item, idx) => (
+                <div key={idx} className="relative w-12 h-12 rounded-lg overflow-hidden border border-white/15 shadow-sm hover:scale-105 transition-all duration-300 group">
+                  <img src={item.img} alt={item.title} className="w-full h-full object-cover" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex items-end p-0.5">
+                    <span className="text-[6px] font-black text-white uppercase tracking-wider">{item.title}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -1750,7 +1786,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 value={imagePrompt}
                 onChange={e => setImagePrompt(e.target.value)}
                 placeholder="Describe what you want the AI to create in vivid details..."
-                className="w-full bg-transparent border-0 outline-none resize-none text-sm text-white placeholder-slate-500 h-20 focus:ring-0 p-0"
+                className="w-full bg-transparent border-0 outline-none resize-none text-sm text-white placeholder-slate-500 h-32 md:h-36 min-h-[120px] focus:ring-0 p-0"
               />
             </div>
 
