@@ -14,7 +14,9 @@ import {
   Sparkles,
   ChevronDown,
   Bell,
-  Cpu
+  Cpu,
+  Palette,
+  Check
 } from 'lucide-react';
 import { cn } from './utils/cn';
 import { Persona, RevenueEntry, PlannedPost, Tab, NavEntry } from './types';
@@ -136,13 +138,24 @@ function App() {
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
-  // Restore theme on mount
+  // 🎨 Multi-Theme Engine State
+  const [activeTheme, setActiveTheme] = useState<string>(() => {
+    return localStorage.getItem('ai_studio_theme') || 'gold';
+  });
+
   useEffect(() => {
-    const savedTheme = localStorage.getItem('ai_studio_theme');
-    if (savedTheme === 'light') {
-      document.documentElement.setAttribute('data-theme', 'light');
-    }
-  }, []);
+    document.documentElement.setAttribute('data-theme', activeTheme);
+    localStorage.setItem('ai_studio_theme', activeTheme);
+  }, [activeTheme]);
+
+  const THEMES = [
+    { id: 'gold', name: 'Midnight Gold', desc: 'Obsidian & Gold (Executive)', dot: 'bg-amber-400' },
+    { id: 'emerald', name: 'Slate Emerald', desc: 'Slate & Mint Emerald (Pro)', dot: 'bg-emerald-400' },
+    { id: 'rosegold', name: 'Rose Gold Velvet', desc: 'Rose Gold & Fashion Pink', dot: 'bg-rose-400' },
+    { id: 'cyber', name: 'Electric Cyber', desc: 'Neon Cyan & Magenta', dot: 'bg-cyan-400' },
+    { id: 'violet', name: 'Imperial Violet', desc: 'Royal Purple & Indigo', dot: 'bg-purple-400' },
+    { id: 'mint', name: 'Matrix Mint', desc: 'Dark Teal & Matrix Green', dot: 'bg-teal-400' },
+  ];
   
   const [navStack, setNavStack] = useState<NavEntry[]>(() => {
     const saved = localStorage.getItem('ai_influencer_nav_stack');
@@ -636,6 +649,58 @@ function App() {
           {/* Right Actions */}
           {/* Right Actions */}
           <div className="flex items-center gap-3">
+            {/* 🎨 Theme Selector Dropdown */}
+            <div className="relative group">
+              <button
+                className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-white/5 border border-white/10 hover:border-amber-400/40 transition-all cursor-pointer text-xs font-bold text-white shadow-sm"
+                onClick={() => {
+                  const el = document.getElementById('theme-switcher-dropdown');
+                  if (el) el.classList.toggle('hidden');
+                }}
+              >
+                <div className={`w-2.5 h-2.5 rounded-full ${THEMES.find(t => t.id === activeTheme)?.dot || 'bg-amber-400'} shadow-sm`} />
+                <span className="hidden md:inline font-extrabold tracking-wide text-[11px]">
+                  {THEMES.find(t => t.id === activeTheme)?.name}
+                </span>
+                <Palette size={13} className="text-zinc-400" />
+              </button>
+
+              <div id="theme-switcher-dropdown" className="hidden absolute right-0 top-full mt-2 w-56 bg-zinc-950/95 border border-white/10 rounded-2xl shadow-2xl shadow-black/80 backdrop-blur-xl p-2 z-[100] space-y-1">
+                <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest px-2.5 py-1 border-b border-white/5 flex items-center justify-between">
+                  <span>Theme Palette</span>
+                  <span className="text-[8px] text-amber-400 font-extrabold">6 Presets</span>
+                </p>
+                <div className="space-y-1 pt-1">
+                  {THEMES.map((theme) => (
+                    <button
+                      key={theme.id}
+                      onClick={() => {
+                        setActiveTheme(theme.id);
+                        document.getElementById('theme-switcher-dropdown')?.classList.add('hidden');
+                        toast.success(`Switched theme to ${theme.name}!`);
+                      }}
+                      className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-left transition-all ${
+                        activeTheme === theme.id
+                          ? 'bg-white/10 border border-white/20 font-bold text-white shadow'
+                          : 'hover:bg-white/5 border border-transparent text-zinc-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className={`w-3 h-3 rounded-full ${theme.dot} shrink-0 shadow-sm`} />
+                        <div>
+                          <p className="text-xs font-extrabold leading-tight">{theme.name}</p>
+                          <p className="text-[9px] text-zinc-400 leading-tight">{theme.desc}</p>
+                        </div>
+                      </div>
+                      {activeTheme === theme.id && (
+                        <Check size={14} className="text-amber-400 shrink-0" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
             <button 
               onClick={() => pushView({ view: 'create' })}
               className="hidden sm:flex items-center gap-2 bg-transparent border border-[#00D4FF]/40 px-5 py-1.5 rounded-full text-sm font-bold text-white hover:bg-[#00D4FF]/10 transition-all shadow-[0_0_16px_rgba(0,212,255,0.15)] hover:shadow-[0_0_24px_rgba(0,212,255,0.3)]"
