@@ -921,13 +921,13 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
       attachments: [...attachments]
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    setMessages(prev => [...prev.slice(-25), userMessage]);
     if (overrideText === undefined) setInputText('');
     setAttachments([]);
     setIsSending(true);
 
     try {
-      const history = [...messages, userMessage].map(m => ({
+      const history = [...messages, userMessage].slice(-15).map(m => ({
         role: m.role,
         content: m.content,
         attachments: m.attachments
@@ -973,7 +973,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
         execLogs: data.suggestedSteps ? [] : undefined
       };
 
-      setMessages(prev => [...prev, newMsgObj]);
+      setMessages(prev => [...prev.slice(-25), newMsgObj]);
 
       // Auto-trigger pipeline execution immediately with direct message object
       setTimeout(() => {
@@ -1011,7 +1011,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
         execLogs: []
       };
 
-      setMessages(prev => [...prev, fallbackMsgObj]);
+      setMessages(prev => [...prev.slice(-25), fallbackMsgObj]);
 
       setTimeout(() => {
         runPipeline(fallbackMsgId, fallbackMsgObj);
@@ -1462,7 +1462,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
           const prefix = `[${new Date().toLocaleTimeString()}]`;
           const prefixType = isModel ? '🎯 Routing: ' : '';
           const line = `${prefix} ${prefixType}${msg}`;
-          return { ...m, execLogs: [...logs, line] };
+          return { ...m, execLogs: [...logs.slice(-20), line] };
         }
         return m;
       }));
