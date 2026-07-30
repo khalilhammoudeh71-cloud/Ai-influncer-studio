@@ -2892,6 +2892,14 @@ app.post('/api/edit-image', async (req, res) => {
     let modelName = modelId;
     const resolvedAdditional = additionalImage ? await resolveImageToDataUrl(additionalImage) : null;
 
+    let targetModelId = modelId;
+    if (targetModelId.includes('seedream-v5') || targetModelId.includes('seedream-v5.0-pro') || targetModelId === 'wavespeed:bytedance/seedream-v5.0-pro') {
+      targetModelId = 'wavespeed-edit:bytedance/seedream-v5.0-pro/edit';
+    } else if (targetModelId.startsWith('wavespeed:') && !targetModelId.startsWith('wavespeed-edit:')) {
+      targetModelId = targetModelId.replace('wavespeed:', 'wavespeed-edit:');
+      if (!targetModelId.endsWith('/edit')) targetModelId += '/edit';
+    }
+
     if (modelId === 'replit:gpt-image-1') {
       const resolvedSource = await resolveImageToDataUrl(sourceImage);
       const images = [resolvedSource];
@@ -2918,11 +2926,13 @@ app.post('/api/edit-image', async (req, res) => {
       } catch (geminiError) {
         console.warn('[Gemini fallback] Direct Gemini failed, falling back to Seedream via Wavespeed:', geminiError instanceof Error ? geminiError.message : geminiError);
         await fetchWavespeedModels();
-        const fallbackModel = (cachedEditModels || []).find(m => m.id.includes('seedream-v4.5/edit')) || 
-                               (cachedEditModels || []).find(m => m.id.startsWith('wavespeed-edit:'));
-        if (!fallbackModel) {
-          throw geminiError;
-        }
+        const fallbackModel = (cachedEditModels || []).find(m => m.id.includes('seedream-v5.0-pro/edit')) || 
+                               (cachedEditModels || []).find(m => m.id.includes('seedream-v4.5/edit')) || 
+                               (cachedEditModels || []).find(m => m.id.startsWith('wavespeed-edit:')) || {
+                                 id: 'wavespeed-edit:bytedance/seedream-v5.0-pro/edit',
+                                 name: 'ByteDance SeeDream 5.0 Pro Edit',
+                                 apiPath: '/api/v3/bytedance/seedream-v5.0-pro/edit'
+                               };
         modelName = fallbackModel.name;
         const b64Url = resolvedSource;
         const payload: Record<string, unknown> = {
@@ -2948,12 +2958,13 @@ app.post('/api/edit-image', async (req, res) => {
         const json = await apiRes.json();
         imageUrl = await extractWavespeedOutput(json);
       }
-    } else if (modelId.startsWith('wavespeed-edit:')) {
+    } else {
       await fetchWavespeedModels();
-      const editModel = (cachedEditModels || []).find(m => m.id === modelId);
-      if (!editModel) {
-        return res.status(400).json({ error: 'Unknown edit model ID' });
-      }
+      const editModel = (cachedEditModels || []).find(m => m.id === targetModelId || m.id === modelId) || {
+        id: 'wavespeed-edit:bytedance/seedream-v5.0-pro/edit',
+        name: 'ByteDance SeeDream 5.0 Pro Edit',
+        apiPath: '/api/v3/bytedance/seedream-v5.0-pro/edit'
+      };
       modelName = editModel.name;
 
       const b64Url = await resolveImageToDataUrl(sourceImage);
@@ -2998,8 +3009,6 @@ app.post('/api/edit-image', async (req, res) => {
       }
       const json = await apiRes.json();
       imageUrl = await extractWavespeedOutput(json);
-    } else {
-      return res.status(400).json({ error: 'Unknown model ID' });
     }
 
     return res.json({ imageUrl, model: modelName });
