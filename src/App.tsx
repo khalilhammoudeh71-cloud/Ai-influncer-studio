@@ -610,7 +610,7 @@ function App() {
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col h-full max-w-full overflow-x-hidden relative">
+      <div className="flex-1 min-w-0 flex flex-col h-full max-w-full overflow-x-hidden relative">
         <div className="ambient-glow top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-violet-500/[0.04] blur-[100px] rounded-full pointer-events-none" />
 
       {/* ── Top app bar ─────────────────────────────────────────── */}

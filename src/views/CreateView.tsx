@@ -2385,8 +2385,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           </div>
 
           {/* Lower Parameter Toolbar */}
-          <div className="flex items-center justify-between gap-2 pt-2.5 border-t border-white/10 w-full overflow-x-auto scrollbar-hide">
-            <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t border-white/10 w-full overflow-x-hidden">
+            <div className="flex flex-wrap items-center gap-1.5 flex-1 min-w-0">
               
               {/* 1. Persona Selector Dropdown */}
               <div className="relative">
