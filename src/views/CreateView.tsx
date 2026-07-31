@@ -1283,9 +1283,50 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     if (!file) return;
 
     if (file.type.startsWith('video/') || /\.(mp4|mov|webm|mkv|avi|m4v)$/i.test(file.name)) {
+      const video = document.createElement('video');
+      video.preload = 'metadata';
+      video.muted = true;
+      video.playsInline = true;
       const objectUrl = URL.createObjectURL(file);
-      setter(objectUrl);
-      nameSetter(file.name);
+      video.src = objectUrl;
+      let captured = false;
+
+      const finishCapture = (dataUrl: string) => {
+        if (captured) return;
+        captured = true;
+        setter(dataUrl);
+        nameSetter(file.name);
+      };
+
+      video.onloadeddata = () => {
+        video.currentTime = Math.min(0.5, (video.duration || 1) / 2);
+      };
+      video.onseeked = () => {
+        const canvas = document.createElement('canvas');
+        const maxDim = 1024;
+        let w = video.videoWidth || 640;
+        let h = video.videoHeight || 360;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          } else {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
+        }
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(video, 0, 0, w, h);
+          finishCapture(canvas.toDataURL('image/jpeg', 0.85));
+        } else {
+          finishCapture(objectUrl);
+        }
+      };
+      video.onerror = () => finishCapture(objectUrl);
+      setTimeout(() => finishCapture(objectUrl), 1500);
     } else if (file.type.startsWith('image/')) {
       const reader = new FileReader();
       reader.onload = (ev) => {

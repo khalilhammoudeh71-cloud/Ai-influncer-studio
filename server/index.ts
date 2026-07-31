@@ -3303,10 +3303,11 @@ async function extractWavespeedVideoOutput(json: Record<string, unknown>): Promi
 }
 
 async function resolveVideoUrlOrDataUrl(input: string): Promise<string> {
-  if (input.startsWith('data:') || input.startsWith('http://') || input.startsWith('https://')) {
+  if (!input || typeof input !== 'string') throw new Error('Invalid video input source');
+  if (input.startsWith('data:') || input.startsWith('http://') || input.startsWith('https://') || input.startsWith('blob:')) {
     return input;
   }
-  throw new Error('Invalid video input source');
+  return input;
 }
 
 app.post('/api/generate-video', async (req, res) => {
@@ -3392,11 +3393,11 @@ app.post('/api/generate-video', async (req, res) => {
     let isV2V = modelId.startsWith('wavespeed-v2v:');
     let activeModel = videoModel;
 
-    if (isI2V && !sourceImage) {
-      return res.status(400).json({ error: 'Image-to-video models require a source image' });
+    if (isI2V && !sourceImage && !sourceVideo) {
+      return res.status(400).json({ error: 'Image-to-video models require a source image or reference' });
     }
-    if (isV2V && !sourceVideo) {
-      return res.status(400).json({ error: 'Video-to-video models require a source video' });
+    if (isV2V && !sourceVideo && !sourceImage) {
+      return res.status(400).json({ error: 'Video-to-video models require a source video or reference image' });
     }
 
     if (!isI2V && sourceImage) {
@@ -3446,7 +3447,7 @@ app.post('/api/generate-video', async (req, res) => {
       payload[field] = resolution;
     }
 
-    if (sourceImage) {
+    if (sourceImage && !sourceImage.startsWith('blob:')) {
       const b64Url = await resolveImageToDataUrl(sourceImage);
       if (isI2V && activeModel.editImageField === 'images') {
         payload.images = [b64Url];
@@ -3455,11 +3456,27 @@ app.post('/api/generate-video', async (req, res) => {
       }
     }
 
-    if (sourceVideo) {
-      const videoSrc = await resolveVideoUrlOrDataUrl(sourceVideo);
-      payload.video = videoSrc;
-      if (strength !== undefined) {
-        payload.strength = Number(strength);
+    if (sourceVideo && !sourceVideo.startsWith('blob:')) {
+      if (sourceVideo.startsWith('data:') || sourceVideo.startsWith('http://') || sourceVideo.startsWith('https://')) {
+        if (sourceVideo.startsWith('data:image')) {
+          payload.image = sourceVideo;
+        } else {
+          payload.video = sourceVideo;
+        }
+        if (strength !== undefined) {
+          payload.strength = Number(strength);
+        }
+      }
+    }
+
+    if (!payload.image && !payload.video && !payload.images) {
+      const fallbackRef = [sourceImage, sourceVideo].find(s => s && typeof s === 'string' && (s.startsWith('data:') || s.startsWith('http')));
+      if (fallbackRef) {
+        if (fallbackRef.startsWith('data:image') || fallbackRef.startsWith('http')) {
+          payload.image = fallbackRef;
+        } else {
+          payload.video = fallbackRef;
+        }
       }
     }
 
