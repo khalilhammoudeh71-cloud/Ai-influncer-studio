@@ -161,12 +161,14 @@ function App() {
   }, []);
 
   const THEMES = [
-    { id: 'gold', name: 'Midnight Gold', desc: 'Obsidian & Gold (Executive)', dot: 'bg-amber-400' },
-    { id: 'emerald', name: 'Slate Emerald', desc: 'Slate & Mint Emerald (Pro)', dot: 'bg-emerald-400' },
-    { id: 'rosegold', name: 'Rose Gold Velvet', desc: 'Rose Gold & Fashion Pink', dot: 'bg-rose-400' },
-    { id: 'cyber', name: 'Electric Cyber', desc: 'Neon Cyan & Magenta', dot: 'bg-cyan-400' },
-    { id: 'violet', name: 'Imperial Violet', desc: 'Royal Purple & Indigo', dot: 'bg-purple-400' },
-    { id: 'mint', name: 'Matrix Mint', desc: 'Dark Teal & Matrix Green', dot: 'bg-teal-400' },
+    { id: 'light-luxe', name: 'Platinum Slate (Light)', desc: 'Crisp Alabaster & Indigo (Light)', dot: 'bg-indigo-500 ring-2 ring-indigo-300' },
+    { id: 'light-pearl', name: 'Champagne Pearl (Light)', desc: 'Warm Ivory & Rose Gold (Light)', dot: 'bg-amber-500 ring-2 ring-amber-300' },
+    { id: 'violet', name: 'Imperial Violet', desc: 'Royal Purple & Indigo (Dark)', dot: 'bg-purple-400' },
+    { id: 'gold', name: 'Midnight Gold', desc: 'Obsidian & Gold (Dark)', dot: 'bg-amber-400' },
+    { id: 'emerald', name: 'Slate Emerald', desc: 'Slate & Mint Emerald (Dark)', dot: 'bg-emerald-400' },
+    { id: 'rosegold', name: 'Rose Gold Velvet', desc: 'Rose Gold & Fashion Pink (Dark)', dot: 'bg-rose-400' },
+    { id: 'cyber', name: 'Electric Cyber', desc: 'Neon Cyan & Magenta (Dark)', dot: 'bg-cyan-400' },
+    { id: 'mint', name: 'Matrix Mint', desc: 'Dark Teal & Matrix Green (Dark)', dot: 'bg-teal-400' },
   ];
   
   const [navStack, setNavStack] = useState<NavEntry[]>(() => {
