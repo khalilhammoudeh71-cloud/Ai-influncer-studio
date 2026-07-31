@@ -140,7 +140,7 @@ function App() {
 
   // 🎨 Multi-Theme Engine State
   const [activeTheme, setActiveTheme] = useState<string>(() => {
-    return localStorage.getItem('ai_studio_theme') || 'gold';
+    return localStorage.getItem('ai_studio_theme') || 'violet';
   });
   const [showThemeDropdown, setShowThemeDropdown] = useState(false);
   const themeDropdownRef = useRef<HTMLDivElement>(null);

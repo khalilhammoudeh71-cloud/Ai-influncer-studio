@@ -2281,10 +2281,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                     <h2 className="text-[10px] font-black uppercase text-zinc-400 tracking-wider mb-0.5 leading-none">
                       Start Creating with
                     </h2>
-                    <h1 className="text-xl md:text-2xl font-black tracking-tight mb-1.5 leading-tight">
-                      <span className="text-transparent bg-clip-text bg-gradient-to-r from-pink-400 via-orange-400 to-amber-300">
-                        {VIDEO_HERO_SLIDES[activeVideoSlideIndex].title}
-                      </span>
+                    <h1 className="text-xl md:text-2xl font-black tracking-tight mb-1.5 leading-tight text-indigo-400">
+                      {VIDEO_HERO_SLIDES[activeVideoSlideIndex].title}
                     </h1>
                     <p className="text-[10px] md:text-xs text-slate-400 font-medium leading-relaxed max-w-md">
                       {VIDEO_HERO_SLIDES[activeVideoSlideIndex].desc}
@@ -2296,7 +2294,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                     {VIDEO_HERO_SLIDES[activeVideoSlideIndex].thumbnails.map((thumbUrl, idx) => (
                       <div
                         key={idx}
-                        className="relative w-20 md:w-24 h-28 md:h-32 rounded-xl overflow-hidden border border-white/10 bg-black shadow-lg shadow-black/40 hover:scale-105 hover:border-pink-500/40 transition-all duration-300"
+                        className="relative w-20 md:w-24 h-28 md:h-32 rounded-xl overflow-hidden border border-white/10 bg-black shadow-lg shadow-black/40 hover:scale-105 hover:border-indigo-500/40 transition-all duration-300"
                       >
                         <video
                           src={thumbUrl}
@@ -2317,7 +2315,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         </div>
 
         {/* ── BOTTOM SECTION: Curved Premium Video Prompt Box ── */}
-        <div className="relative bg-[#131b2e]/80 border border-white/20 rounded-[24px] p-4.5 space-y-3.5 focus-within:border-pink-500/50 focus-within:shadow-[0_0_30px_rgba(244,63,94,0.05)] transition-all duration-300">
+        <div className="relative bg-[#131b2e]/80 border border-white/20 rounded-[24px] p-4.5 space-y-3.5 focus-within:border-indigo-500/50 focus-within:shadow-[0_0_30px_rgba(99,102,241,0.1)] transition-all duration-300">
           
           {/* Sub-Mode Selector Tabs */}
           <div className="flex border-b border-white/5 bg-[#0F1420]/45 p-1 rounded-xl">
@@ -2334,7 +2332,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                   onClick={() => setVideoSubMode(subMode.id as any)}
                   className={`flex-1 py-1.5 px-3 rounded-lg transition-all text-center flex flex-col items-center justify-center ${
                     isActive
-                      ? 'bg-gradient-to-r from-pink-600/10 to-orange-500/10 border border-pink-500/30 text-white shadow-lg'
+                      ? 'bg-indigo-500/15 border border-indigo-500/40 text-white shadow-lg'
                       : 'border border-transparent text-slate-400 hover:text-slate-200 hover:bg-white/[0.02]'
                   }`}
                 >
@@ -2665,7 +2663,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 (videoSubMode === 'generate' && isI2V && !effectiveVideoSource) ||
                 (videoSubMode === 'edit' && !effectiveVideoSource)
               }
-              className="px-3.5 py-1 rounded-lg font-black text-[10px] bg-gradient-to-r from-pink-600 to-orange-500 hover:from-pink-500 hover:to-orange-400 disabled:opacity-40 disabled:cursor-not-allowed text-white flex items-center gap-1 transition-all shadow-md shadow-pink-500/10 group h-7 shrink-0"
+              className="px-3.5 py-1 rounded-lg font-black text-[10px] bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 disabled:opacity-40 disabled:cursor-not-allowed text-white flex items-center gap-1 transition-all shadow-md shadow-indigo-600/20 group h-7 shrink-0 cursor-pointer"
             >
               {isExtending ? (
                 <>
@@ -3652,11 +3650,11 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       {/* ── STUDIO HEADER ── */}
       <div className="mb-3 flex items-center justify-between px-1">
         <h1 className="text-lg font-black tracking-tight flex items-center gap-2">
-          {mode === 'image' && <>Image <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-fuchsia-400 to-blue-400">Generator</span></>}
-          {mode === 'video' && <>Video <span className="text-transparent bg-clip-text bg-gradient-to-r from-pink-400 via-fuchsia-400 to-orange-400">Generator</span></>}
-          {mode === 'voice' && <>Voice <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-450 to-orange-400">Clone</span></>}
-          {mode === 'talking-avatar' && <>Avatar <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-500">Studio</span></>}
-          {mode === 'stitcher' && <>Video <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 via-fuchsia-400 to-cyan-400">Editor</span></>}
+          {mode === 'image' && <>Image <span className="text-indigo-400">Generator</span></>}
+          {mode === 'video' && <>Video <span className="text-indigo-400">Generator</span></>}
+          {mode === 'voice' && <>Voice <span className="text-indigo-400">Clone</span></>}
+          {mode === 'talking-avatar' && <>Avatar <span className="text-indigo-400">Studio</span></>}
+          {mode === 'stitcher' && <>Video <span className="text-indigo-400">Editor</span></>}
         </h1>
       </div>
 
