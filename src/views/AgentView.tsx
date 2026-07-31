@@ -781,11 +781,15 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
     }
   }, []);
 
+  const prevMsgLengthRef = useRef(messages.length);
   useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    if (messages.length !== prevMsgLengthRef.current || isSending) {
+      prevMsgLengthRef.current = messages.length;
+      if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({ behavior: 'auto' });
+      }
     }
-  }, [messages, isSending]);
+  }, [messages.length, isSending]);
 
   const toggleListening = () => {
     if (isListening) {
