@@ -323,6 +323,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
   // Enlarged Fullscreen Lightbox State
   const [lightboxImageUrl, setLightboxImageUrl] = useState<string | null>(null);
+  const [lightboxVideoUrl, setLightboxVideoUrl] = useState<string | null>(null);
   const [lightboxZoomMode, setLightboxZoomMode] = useState<'fit' | 'fill' | 'zoom'>('fill');
 
   useEffect(() => {
@@ -2193,19 +2194,33 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       <div className="flex flex-col gap-4 w-full max-w-5xl mx-auto pb-10">
         
         {/* ── TOP SECTION: Alternating Hero Slideshow / Video Output Canvas ── */}
-        <div className="relative w-full h-44 md:h-52 max-h-[220px] rounded-[24px] border border-white/10 bg-[#0B0F17] overflow-hidden shadow-2xl">
+        <div className={`relative w-full ${videoResult?.videoUrl || isGenerating || isExtending ? 'min-h-[460px] md:min-h-[560px] max-h-[680px]' : 'h-44 md:h-52 max-h-[220px]'} rounded-[24px] border border-white/10 bg-[#0B0F17] overflow-hidden shadow-2xl transition-all duration-500`}>
           {isGenerating || isExtending ? (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[#0B0F19] z-10">
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[#0B0F19] z-10 select-none">
               <Loader2 className="w-8 h-8 text-pink-500 animate-spin" />
               <p className="text-xs font-black text-white/90 animate-pulse uppercase tracking-wider">
                 {isExtending ? 'Extending Cinematic Video...' : 'Generating Cinematic Video...'}
               </p>
             </div>
           ) : videoResult?.videoUrl ? (
-            <div className="relative w-full h-full flex items-center justify-center h-44 md:h-52 max-h-[220px] select-none p-2 bg-[#070b13]/40">
-              <video src={videoResult.videoUrl} controls className="max-w-full max-h-[200px] object-contain rounded-xl shadow-2xl" />
+            <div className="relative w-full h-full min-h-[440px] md:min-h-[540px] flex items-center justify-center select-none p-3 bg-[#070b13]/60 rounded-2xl group overflow-hidden">
+              <video 
+                src={videoResult.videoUrl} 
+                controls 
+                autoPlay
+                loop
+                className="max-w-full max-h-[520px] md:max-h-[600px] object-contain rounded-2xl shadow-2xl transition-all duration-300 border border-white/10 cursor-pointer hover:ring-2 hover:ring-pink-500/50" 
+                onClick={() => setLightboxVideoUrl(videoResult.videoUrl)}
+              />
               
-              <div className="absolute bottom-2 right-2 flex items-center gap-1.5 z-20">
+              <div className="absolute bottom-3 right-3 flex items-center gap-2 z-20">
+                <button
+                  onClick={e => { e.stopPropagation(); setLightboxVideoUrl(videoResult.videoUrl); }}
+                  className="px-3 py-1.5 bg-pink-600/90 backdrop-blur-sm rounded-xl text-white hover:bg-pink-500 transition-all border border-pink-400/30 shadow-lg flex items-center gap-1.5 text-xs font-black cursor-pointer"
+                  title="Enlarge Full Screen"
+                >
+                  <Maximize2 className="w-3.5 h-3.5" /> Fullscreen
+                </button>
                 <button
                   onClick={e => {
                     e.stopPropagation();
@@ -2221,28 +2236,28 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                     setSaved(true);
                     setTimeout(() => setSaved(false), 2000);
                   }}
-                  className="p-1.5 bg-black/75 backdrop-blur-sm rounded-lg text-white hover:bg-black transition-all border border-white/10 hover:border-pink-500 shadow-lg flex items-center gap-1 text-[10px] font-bold"
+                  className="px-3 py-1.5 bg-black/80 backdrop-blur-sm rounded-xl text-white hover:bg-black transition-all border border-white/10 hover:border-pink-500 shadow-lg flex items-center gap-1.5 text-xs font-bold cursor-pointer"
                   title="Save to Library"
                 >
-                  {saved ? <Check className="w-3.5 h-3.5 text-emerald-450" /> : <FolderOpen className="w-3.5 h-3.5" />}
+                  {saved ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <FolderOpen className="w-3.5 h-3.5" />}
                   <span>{saved ? 'Saved' : 'Save'}</span>
                 </button>
                 <button
                   onClick={e => { e.stopPropagation(); downloadFile(videoResult.videoUrl, 'mp4'); }}
-                  className="p-1.5 bg-black/75 backdrop-blur-sm rounded-lg text-white hover:bg-black transition-all border border-white/10 hover:border-pink-500 shadow-lg"
-                  title="Download"
+                  className="p-2 bg-black/80 backdrop-blur-sm rounded-xl text-white hover:bg-black transition-all border border-white/10 hover:border-pink-500 shadow-lg cursor-pointer"
+                  title="Download Video"
                 >
-                  <Download className="w-3.5 h-3.5" />
+                  <Download className="w-4 h-4" />
                 </button>
                 <button
                   onClick={e => { e.stopPropagation(); handleVideoGenerate(); }}
-                  className="p-1.5 bg-black/75 backdrop-blur-sm rounded-lg text-white hover:bg-pink-650 transition-all border border-white/10 shadow-lg"
+                  className="p-2 bg-black/80 backdrop-blur-sm rounded-xl text-white hover:bg-pink-600 transition-all border border-white/10 shadow-lg cursor-pointer"
                   title="Regenerate"
                 >
-                  <RefreshCw className="w-3.5 h-3.5" />
+                  <RefreshCw className="w-4 h-4" />
                 </button>
               </div>
-              <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/75 backdrop-blur-sm border border-white/15 rounded-md text-[8px] font-bold text-slate-350">
+              <div className="absolute top-3 left-3 px-3 py-1 bg-black/80 backdrop-blur-md border border-white/15 rounded-lg text-xs font-bold text-slate-200 shadow-md">
                 {videoResult.model}
               </div>
             </div>
@@ -3748,6 +3763,58 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           {/* Bottom Center Floating Hint Pill */}
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-5 py-2 rounded-full bg-zinc-950/90 backdrop-blur-xl border border-white/20 text-xs text-zinc-300 font-semibold shadow-2xl z-[1000000] pointer-events-none">
             Mode: <strong className="text-white uppercase">{lightboxZoomMode}</strong> • Click anywhere or press <kbd className="px-2 py-0.5 rounded bg-white/20 text-white font-mono text-xs ml-1">ESC</kbd> to exit full screen
+          </div>
+        </div>
+      )}
+
+      {/* Fullscreen Enlarged Video Lightbox Modal (Edge-to-Edge True Screen Fill) */}
+      {lightboxVideoUrl && (
+        <div 
+          className="fixed inset-0 z-[999999] bg-black/98 w-screen h-screen flex items-center justify-center p-0 m-0 overflow-hidden animate-fadeIn"
+          onClick={() => setLightboxVideoUrl(null)}
+        >
+          {/* Top Floating Action Bar */}
+          <div 
+            className="absolute top-4 right-4 sm:right-6 flex items-center gap-2.5 z-[1000000] bg-zinc-950/90 backdrop-blur-xl border border-white/20 p-2 rounded-2xl shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <button
+              onClick={() => downloadFile(lightboxVideoUrl, 'mp4')}
+              className="px-4 py-2 rounded-xl bg-pink-600 hover:bg-pink-500 text-white font-extrabold text-xs uppercase tracking-wider flex items-center gap-2 transition-all shadow-lg cursor-pointer"
+            >
+              <Download className="w-4 h-4" /> Download Video
+            </button>
+            <button
+              onClick={() => setLightboxVideoUrl(null)}
+              className="p-2 rounded-xl bg-white/10 hover:bg-white/25 text-white transition-all border border-white/15 cursor-pointer"
+              title="Close (ESC)"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+
+          {/* Top Left Title Badge */}
+          <div 
+            className="absolute top-4 left-4 sm:left-6 flex items-center gap-2 z-[1000000] bg-zinc-950/90 backdrop-blur-xl border border-white/20 px-4 py-2 rounded-2xl shadow-2xl pointer-events-none"
+          >
+            <Film className="w-4 h-4 text-pink-400" />
+            <span className="text-xs font-black text-white uppercase tracking-wider">Fullscreen Video Preview</span>
+          </div>
+
+          {/* 100% Edge-to-Edge Max Display Video */}
+          <div className="w-screen h-screen flex items-center justify-center p-4 m-0 overflow-hidden" onClick={e => e.stopPropagation()}>
+            <video
+              src={lightboxVideoUrl}
+              controls
+              autoPlay
+              loop
+              className="max-w-[96vw] max-h-[92vh] w-auto h-auto object-contain drop-shadow-[0_0_60px_rgba(244,63,94,0.3)] rounded-2xl border border-white/10"
+            />
+          </div>
+
+          {/* Bottom Center Floating Hint Pill */}
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-5 py-2 rounded-full bg-zinc-950/90 backdrop-blur-xl border border-white/20 text-xs text-zinc-300 font-semibold shadow-2xl z-[1000000] pointer-events-none">
+            Press <kbd className="px-2 py-0.5 rounded bg-white/20 text-white font-mono text-xs ml-1">ESC</kbd> or click outside to exit full screen
           </div>
         </div>
       )}
