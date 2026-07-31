@@ -273,6 +273,41 @@
   --shadow-elevated: 0 20px 40px rgba(28, 25, 23, 0.1);
 }
 
+[data-theme="graphite"] {
+  --bg-base: #1E2430;
+  --bg-surface: #252B37;
+  --bg-elevated: #2D3443;
+  --bg-overlay: #363E50;
+  --bg-input: #1A1F29;
+
+  --border-subtle: rgba(148, 163, 184, 0.2);
+  --border-default: rgba(203, 213, 225, 0.25);
+  --border-strong: rgba(129, 140, 248, 0.5);
+
+  --text-primary: #F8FAFC;
+  --text-secondary: #E2E8F0;
+  --text-tertiary: #CBD5E1;
+  --text-muted: #94A3B8;
+
+  --accent-teal: #6366f1;
+  --accent-cyan: #818cf8;
+  --accent-soft-cyan: #a5b4fc;
+  --accent-indigo: #4f46e5;
+
+  --accent-primary: #818cf8;
+  --accent-secondary: #a5b4fc;
+  --accent-tertiary: #6366f1;
+
+  --gradient-primary: linear-gradient(135deg, #6366f1 0%, #818cf8 45%, #4f46e5 100%);
+  --gradient-accent: linear-gradient(135deg, #818cf8 0%, #6366f1 100%);
+  --gradient-surface: linear-gradient(180deg, rgba(129, 140, 248, 0.08) 0%, transparent 60%);
+  --gradient-glow: radial-gradient(ellipse at center, rgba(129, 140, 248, 0.18) 0%, transparent 70%);
+
+  --shadow-glow: 0 0 24px rgba(129, 140, 248, 0.25);
+  --shadow-card: 0 14px 40px rgba(15, 23, 42, 0.35);
+  --shadow-elevated: 0 20px 60px rgba(15, 23, 42, 0.45);
+}
+
 /* High-Contrast Legibility Overrides for Light Themes */
 [data-theme^="light"] {
   color: var(--text-primary);
