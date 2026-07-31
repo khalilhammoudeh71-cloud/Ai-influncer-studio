@@ -2402,13 +2402,13 @@ app.post('/api/angle-image', async (req, res) => {
   const { imageBase64, modelId, horizontalAngle, verticalAngle, distance, prompt: customPrompt } = req.body as {
     imageBase64: string;
     modelId: string;
-    horizontalAngle: string;
-    verticalAngle: string;
-    distance: string;
+    horizontalAngle: string | number;
+    verticalAngle: string | number;
+    distance: string | number;
     prompt?: string;
   };
 
-  if (!imageBase64 || !modelId || !horizontalAngle || !verticalAngle || !distance) {
+  if (!imageBase64 || !modelId || horizontalAngle === undefined || verticalAngle === undefined || distance === undefined) {
     return res.status(400).json({ error: 'imageBase64, modelId, horizontalAngle, verticalAngle, and distance are required' });
   }
 
@@ -2421,19 +2421,23 @@ app.post('/api/angle-image', async (req, res) => {
     return res.status(400).json({ error: `Unknown angle model: ${modelId}` });
   }
 
+  const horizNum = parseInt(String(horizontalAngle), 10);
+  const vertNum = parseInt(String(verticalAngle), 10);
+  const distNum = parseInt(String(distance), 10);
+
   const horizLabels: Record<string, string> = { '1': 'front', '2': 'front-right', '3': 'side right', '4': 'back-right', '5': 'back', '6': 'back-left', '7': 'side left', '8': 'front-left' };
   const vertLabels: Record<string, string> = { '0': "bird's eye view", '1': 'high angle', '2': 'eye level', '3': 'low angle' };
   const distLabels: Record<string, string> = { '0': 'close-up shot', '1': 'medium shot', '2': 'wide shot' };
 
-  const prompt = customPrompt || `Change the camera angle to ${horizLabels[String(horizontalAngle)] || 'front'} perspective, ${vertLabels[String(verticalAngle)] || 'eye level'} elevation, ${distLabels[String(distance)] || 'medium shot'}. Adjust only the camera viewpoint and framing while preserving all subject details, appearance, clothing, and environment. Maintain consistent facial features, hair, and body proportions. Apply a photorealistic, high-quality rendering.`;
+  const prompt = customPrompt || `Change the camera angle to ${horizLabels[String(horizNum)] || 'front'} perspective, ${vertLabels[String(vertNum)] || 'eye level'} elevation, ${distLabels[String(distNum)] || 'medium shot'}. Adjust only the camera viewpoint and framing while preserving all subject details, appearance, clothing, and environment. Maintain consistent facial features, hair, and body proportions. Apply a photorealistic, high-quality rendering.`;
 
   try {
     const b64Image = await resolveImageToDataUrl(imageBase64);
     const payload: Record<string, unknown> = {
       prompt,
-      horizontal_angle: horizontalAngle,
-      vertical_angle: verticalAngle,
-      distance,
+      horizontal_angle: Number.isNaN(horizNum) ? 1 : horizNum,
+      vertical_angle: Number.isNaN(vertNum) ? 2 : vertNum,
+      distance: Number.isNaN(distNum) ? 1 : distNum,
       enable_sync_mode: true,
       enable_base64_output: true,
       [config.imageField]: config.imageField === 'images' ? [b64Image] : b64Image,

@@ -422,9 +422,9 @@ export async function generateContent(
 export async function generateAngleImage(params: {
   imageBase64: string;
   modelId: string;
-  horizontalAngle: string;
-  verticalAngle: string;
-  distance: string;
+  horizontalAngle: string | number;
+  verticalAngle: string | number;
+  distance: string | number;
 }): Promise<{ imageUrl: string; model: string }> {
   const response = await authFetch('/api/angle-image', {
     method: 'POST',
