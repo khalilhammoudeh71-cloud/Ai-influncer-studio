@@ -172,15 +172,21 @@ const ANGLE_MODEL_CONFIGS: Record<string, { name: string; apiPath: string; image
     imageField: 'images',
     nsfw: false,
   },
-  'angle-wan22': {
-    name: 'Wan 2.2 (Uncensored)',
-    apiPath: '/api/v3/wavespeed-ai/wan-2.2/image-to-image',
-    imageField: 'image',
+  'angle-seedream5': {
+    name: 'SeeDream 5.0 Pro (Uncensored)',
+    apiPath: '/api/v3/bytedance/seedream-v5.0-pro/edit',
+    imageField: 'images',
     nsfw: true,
   },
   'angle-seededit-v3': {
-    name: 'SeedEdit v3 (Uncensored)',
-    apiPath: '/api/v3/bytedance/seededit-v3',
+    name: 'SeedEdit v3.0 (Uncensored)',
+    apiPath: '/api/v3/wavespeed-ai/seededit-v3.0',
+    imageField: 'images',
+    nsfw: true,
+  },
+  'angle-wan22': {
+    name: 'Wan 2.1 (Uncensored)',
+    apiPath: '/api/v3/wavespeed-ai/wan-2.1/image-to-image',
     imageField: 'image',
     nsfw: true,
   },
@@ -2433,31 +2439,55 @@ app.post('/api/angle-image', async (req, res) => {
 
   try {
     const b64Image = await resolveImageToDataUrl(imageBase64);
-    const payload: Record<string, unknown> = {
-      prompt,
-      horizontal_angle: Number.isNaN(horizNum) ? 1 : horizNum,
-      vertical_angle: Number.isNaN(vertNum) ? 2 : vertNum,
-      distance: Number.isNaN(distNum) ? 1 : distNum,
-      enable_sync_mode: true,
-      enable_base64_output: true,
-      [config.imageField]: config.imageField === 'images' ? [b64Image] : b64Image,
-    };
+    const candidatePaths = [
+      config.apiPath,
+      '/api/v3/wavespeed-ai/seededit-v3.0',
+      '/api/v3/bytedance/seededit-v3',
+      '/api/v3/bytedance/seedream-v5.0-pro/edit',
+      '/api/v3/wavespeed-ai/qwen-image/edit-multiple-angles',
+    ];
 
-    const url = `https://api.wavespeed.ai${config.apiPath}`;
-    console.log('[angle-image] Calling:', url, 'model:', modelId);
+    let lastError = 'Angle generation failed';
+    for (const path of candidatePaths) {
+      try {
+        const isImagesArray = path.includes('qwen') || path.includes('seedream') || path.includes('multiple') || path.includes('seededit');
+        const payload: Record<string, unknown> = {
+          prompt,
+          horizontal_angle: Number.isNaN(horizNum) ? 1 : horizNum,
+          vertical_angle: Number.isNaN(vertNum) ? 2 : vertNum,
+          distance: Number.isNaN(distNum) ? 1 : distNum,
+          enable_sync_mode: true,
+          enable_base64_output: true,
+          [isImagesArray ? 'images' : 'image']: isImagesArray ? [b64Image] : b64Image,
+        };
 
-    const wsRes = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${WAVESPEED_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
+        const url = `https://api.wavespeed.ai${path}`;
+        console.log('[angle-image] Calling:', url, 'model:', modelId);
 
-    const json = await wsRes.json();
-    const imageUrl = await extractWavespeedOutput(json);
-    return res.json({ imageUrl, model: config.name });
+        const wsRes = await fetch(url, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${WAVESPEED_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        });
+
+        const json = await wsRes.json();
+        if (wsRes.ok && !json.error && (!json.message || !json.message.toLowerCase().includes('model not found'))) {
+          const imageUrl = await extractWavespeedOutput(json);
+          if (imageUrl) {
+            return res.json({ imageUrl, model: config.name });
+          }
+        } else {
+          lastError = json.error || json.message || `HTTP ${wsRes.status}`;
+          console.warn(`[angle-image] Path ${path} returned error:`, lastError);
+        }
+      } catch (err: any) {
+        lastError = err.message || 'Endpoint request failed';
+      }
+    }
+    throw new Error(lastError);
   } catch (err) {
     console.error('[angle-image] Error:', err instanceof Error ? err.message : err);
     return res.status(500).json({ error: err instanceof Error ? err.message : 'Angle generation failed' });
