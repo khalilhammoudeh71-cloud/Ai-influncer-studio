@@ -852,15 +852,69 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
           img.src = ev.target?.result as string;
         };
         reader.readAsDataURL(file);
-      } else {
-        const reader = new FileReader();
-        reader.onload = () => {
+      } else if (file.type.startsWith('video/')) {
+        // Extract lightweight 50KB JPEG frame thumbnail for video to prevent V8 memory crash
+        const video = document.createElement('video');
+        video.preload = 'metadata';
+        video.muted = true;
+        video.playsInline = true;
+        const objectUrl = URL.createObjectURL(file);
+        video.src = objectUrl;
+        
+        let hasCaptured = false;
+        const captureFrame = () => {
+          if (hasCaptured) return;
+          hasCaptured = true;
+          const canvas = document.createElement('canvas');
+          const maxDim = 640;
+          let w = video.videoWidth || 640;
+          let h = video.videoHeight || 360;
+          if (w > maxDim || h > maxDim) {
+            if (w > h) {
+              h = Math.round((h * maxDim) / w);
+              w = maxDim;
+            } else {
+              w = Math.round((w * maxDim) / h);
+              h = maxDim;
+            }
+          }
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(video, 0, 0, w, h);
+            const thumbDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+            setAttachments(prev => [
+              ...prev,
+              { name: file.name, dataUrl: thumbDataUrl, mimeType: 'image/jpeg' }
+            ]);
+          } else {
+            setAttachments(prev => [
+              ...prev,
+              { name: file.name, dataUrl: objectUrl, mimeType: file.type }
+            ]);
+          }
+        };
+
+        video.onloadeddata = () => {
+          video.currentTime = Math.min(0.5, (video.duration || 1) / 2);
+        };
+        video.onseeked = captureFrame;
+        video.onerror = () => {
           setAttachments(prev => [
             ...prev,
-            { name: file.name, dataUrl: reader.result as string, mimeType: file.type }
+            { name: file.name, dataUrl: objectUrl, mimeType: file.type }
           ]);
         };
-        reader.readAsDataURL(file);
+        setTimeout(() => {
+          if (!hasCaptured) captureFrame();
+        }, 1500);
+      } else {
+        const objectUrl = URL.createObjectURL(file);
+        setAttachments(prev => [
+          ...prev,
+          { name: file.name, dataUrl: objectUrl, mimeType: file.type }
+        ]);
       }
     });
 
