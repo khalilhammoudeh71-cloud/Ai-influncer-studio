@@ -273,6 +273,63 @@
   --shadow-elevated: 0 20px 40px rgba(28, 25, 23, 0.1);
 }
 
+/* High-Contrast Legibility Overrides for Light Themes */
+[data-theme^="light"] {
+  color: var(--text-primary);
+}
+
+[data-theme^="light"] .text-slate-100,
+[data-theme^="light"] .text-slate-200,
+[data-theme^="light"] .text-slate-300,
+[data-theme^="light"] .text-zinc-100,
+[data-theme^="light"] .text-zinc-200,
+[data-theme^="light"] .text-zinc-300,
+[data-theme^="light"] .text-gray-100,
+[data-theme^="light"] .text-gray-200,
+[data-theme^="light"] .text-\[\#E0E8F5\],
+[data-theme^="light"] .text-\[\#F1F5F9\],
+[data-theme^="light"] .text-white {
+  color: var(--text-primary) !important;
+}
+
+[data-theme^="light"] .text-slate-400,
+[data-theme^="light"] .text-slate-500,
+[data-theme^="light"] .text-zinc-400,
+[data-theme^="light"] .text-zinc-500,
+[data-theme^="light"] .text-gray-400,
+[data-theme^="light"] .text-gray-500 {
+  color: var(--text-secondary) !important;
+}
+
+[data-theme^="light"] .bg-\[\#0B0F17\],
+[data-theme^="light"] .bg-\[\#0F1420\],
+[data-theme^="light"] .bg-\[\#131b2e\],
+[data-theme^="light"] .bg-\[\#090D16\],
+[data-theme^="light"] .bg-\[\#0A0E17\],
+[data-theme^="light"] .bg-\[\#060911\],
+[data-theme^="light"] .bg-\[\#0B0F19\] {
+  background-color: var(--bg-surface) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme^="light"] .border-white\/5,
+[data-theme^="light"] .border-white\/10,
+[data-theme^="light"] .border-white\/15,
+[data-theme^="light"] .border-white\/20 {
+  border-color: rgba(203, 213, 225, 0.8) !important;
+}
+
+[data-theme^="light"] input,
+[data-theme^="light"] textarea,
+[data-theme^="light"] select {
+  color: var(--text-primary) !important;
+}
+
+[data-theme^="light"] input::placeholder,
+[data-theme^="light"] textarea::placeholder {
+  color: var(--text-muted) !important;
+}
+
 *, *::before, *::after {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   box-sizing: border-box;
