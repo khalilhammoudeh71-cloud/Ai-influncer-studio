@@ -32,7 +32,8 @@ import {
   Crown,
   Star,
   Film,
-  FolderOpen
+  FolderOpen,
+  Upload
 } from 'lucide-react';
 import { Persona, NavActions } from '../types';
 import { api } from '../services/apiService';
@@ -320,12 +321,19 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
     const file = e.target.files?.[0];
     if (!file) return;
     
+    setShowClonePanel(true);
+    if (!cloneName) {
+      const cleanName = file.name.replace(/\.[^/.]+$/, "").replace(/_/g, " ");
+      setCloneName(cleanName);
+    }
+
     const reader = new FileReader();
     reader.onloadend = () => {
       setCloningAudioBase64(reader.result as string);
     };
     reader.readAsDataURL(file);
     setCloningAudioUrl(URL.createObjectURL(file));
+    toast.success(`Voice sample loaded: ${file.name}`);
   };
 
   const handleOmnivoiceRefUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1155,18 +1163,26 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
               {voiceEngine === 'elevenlabs' ? (
                 <>
                   {/* Voice Cloning Studio Toggle & Save Default */}
-                  <div className="flex items-center gap-2 mb-2">
+                  <div className="flex flex-wrap items-center gap-2 mb-2">
                     <button
                       onClick={() => setShowClonePanel(!showClonePanel)}
-                      className="flex-1 py-2 px-3 bg-[#A855F7]/10 hover:bg-[#A855F7]/20 text-[#A855F7] border border-[#A855F7]/30 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5"
+                      className="flex-1 py-2 px-3 bg-[#A855F7]/10 hover:bg-[#A855F7]/20 text-[#A855F7] border border-[#A855F7]/30 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                     >
                       <Crown size={12} />
                       {showClonePanel ? 'Close Cloning Panel' : 'Voice Cloning Studio'}
                     </button>
+                    <button
+                      onClick={() => cloningAudioFilesInputRef.current?.click()}
+                      className="py-2 px-3 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/40 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                      title="Upload MP3, MP4, MOV, WAV, M4A voice or video file"
+                    >
+                      <Upload size={12} />
+                      Upload Voice File
+                    </button>
                     {selectedELVoiceId && (
                       <button
                         onClick={handleSaveDefaultVoice}
-                        className="py-2 px-3 bg-white/5 hover:bg-white/10 text-white border border-white/10 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5"
+                        className="py-2 px-3 bg-white/5 hover:bg-white/10 text-white border border-white/10 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                       >
                         <Check size={12} className="text-emerald-400" />
                         Set Default
@@ -1304,14 +1320,14 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                               <input
                                 ref={cloningAudioLibraryInputRef}
                                 type="file"
-                                accept="audio/mp3,audio/mpeg,audio/wav,audio/x-wav,audio/ogg,audio/m4a,audio/x-m4a,video/mp4,video/quicktime,video/webm,.mp3,.wav,.m4a,.ogg,.mp4,.mov,.webm"
+                                accept="audio/*,video/*,.mp3,.wav,.m4a,.ogg,.flac,.aac,.mp4,.mov,.webm,.mkv,.avi,.3gp,.m4v"
                                 className="hidden"
                                 onChange={handleCloningAudioUpload}
                               />
                               <input
                                 ref={cloningAudioFilesInputRef}
                                 type="file"
-                                accept="audio/mp3,audio/mpeg,audio/wav,audio/x-wav,audio/ogg,audio/m4a,audio/x-m4a,video/mp4,video/quicktime,video/webm,.mp3,.wav,.m4a,.ogg,.mp4,.mov,.webm"
+                                accept="audio/*,video/*,.mp3,.wav,.m4a,.ogg,.flac,.aac,.mp4,.mov,.webm,.mkv,.avi,.3gp,.m4v"
                                 className="hidden"
                                 onChange={handleCloningAudioUpload}
                               />
