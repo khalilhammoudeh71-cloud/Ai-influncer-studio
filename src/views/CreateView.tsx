@@ -1280,12 +1280,55 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const handleFileUpload = (setter: (v: string | null) => void, nameSetter: (v: string | null) => void) => (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      setter(reader.result as string);
+
+    if (file.type.startsWith('video/') || /\.(mp4|mov|webm|mkv|avi|m4v)$/i.test(file.name)) {
+      const objectUrl = URL.createObjectURL(file);
+      setter(objectUrl);
       nameSetter(file.name);
-    };
-    reader.readAsDataURL(file);
+    } else if (file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const img = new Image();
+        img.onload = () => {
+          const maxDim = 1024;
+          let w = img.width;
+          let h = img.height;
+          if (w > maxDim || h > maxDim) {
+            if (w > h) {
+              h = Math.round((h * maxDim) / w);
+              w = maxDim;
+            } else {
+              w = Math.round((w * maxDim) / h);
+              h = maxDim;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, w, h);
+            setter(canvas.toDataURL('image/jpeg', 0.85));
+          } else {
+            setter(ev.target?.result as string);
+          }
+          nameSetter(file.name);
+        };
+        img.onerror = () => {
+          setter(ev.target?.result as string);
+          nameSetter(file.name);
+        };
+        img.src = ev.target?.result as string;
+      };
+      reader.readAsDataURL(file);
+    } else {
+      const reader = new FileReader();
+      reader.onload = () => {
+        setter(reader.result as string);
+        nameSetter(file.name);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const downloadFile = (url: string, ext: string) => {
@@ -2322,7 +2365,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             <input
               ref={videoImageLibraryInputRef}
               type="file"
-              accept="image/*"
+              accept="image/*,video/*,video/mp4,video/quicktime,video/webm,video/x-matroska,.mp4,.mov,.webm,.mkv,.avi"
               className="hidden"
               onChange={e => {
                 handleFileUpload(setVideoSourceImage, setVideoSourceImageName)(e);
@@ -2333,7 +2376,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             <input
               ref={videoImageFilesInputRef}
               type="file"
-              accept="image/*"
+              accept="image/*,video/*,video/mp4,video/quicktime,video/webm,video/x-matroska,.mp4,.mov,.webm,.mkv,.avi"
               className="hidden"
               onChange={e => {
                 handleFileUpload(setVideoSourceImage, setVideoSourceImageName)(e);
@@ -2344,7 +2387,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             <input
               ref={videoVideoLibraryInputRef}
               type="file"
-              accept="video/*"
+              accept="video/*,video/mp4,video/quicktime,video/webm,video/x-matroska,video/x-msvideo,image/*,.mp4,.mov,.webm,.mkv,.avi,.m4v,.3gp"
               className="hidden"
               onChange={e => {
                 handleFileUpload(setVideoSourceVideo, setVideoSourceVideoName)(e);
@@ -2355,7 +2398,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             <input
               ref={videoVideoFilesInputRef}
               type="file"
-              accept="video/*"
+              accept="video/*,video/mp4,video/quicktime,video/webm,video/x-matroska,video/x-msvideo,image/*,.mp4,.mov,.webm,.mkv,.avi,.m4v,.3gp"
               className="hidden"
               onChange={e => {
                 handleFileUpload(setVideoSourceVideo, setVideoSourceVideoName)(e);
