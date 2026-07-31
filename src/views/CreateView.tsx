@@ -1026,14 +1026,15 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     const isV2V = selectedVideoModel.toLowerCase().includes('v2v') || selectedVideoModel.toLowerCase().includes('video-to-video') || selectedVideoModel.toLowerCase().includes('edit') || selectedVideoModel.toLowerCase().includes('pulid') || selectedVideoModel.toLowerCase().includes('consist') || selectedVideoModel.toLowerCase().includes('seedance') || selectedVideoModel.toLowerCase().includes('wan') || selectedVideoModel.toLowerCase().includes('qwen') || selectedVideoModel.toLowerCase().includes('veo-omni');
 
     try {
-      const sourceImg = effectiveVideoSourceImage || undefined;
-      const sourceVid = videoSourceVideo || undefined;
+      const effectiveRef = videoSourceVideo || videoSourceImage || (videoSourcePersonaId !== 'none' ? personas.find(p => p.id === videoSourcePersonaId)?.referenceImage : null);
+      const sourceImg = effectiveVideoSourceImage || videoSourceImage || effectiveRef || undefined;
+      const sourceVid = videoSourceVideo || (effectiveRef?.startsWith('blob:') || effectiveRef?.startsWith('data:video') ? effectiveRef : undefined) || sourceImg;
       
-      if (isI2V && !sourceImg) {
+      if (isI2V && !sourceImg && !effectiveRef) {
         throw new Error('Image-to-video models require a source image. Select a persona or upload an image.');
       }
-      if (isV2V && !sourceVid) {
-        throw new Error('Video-to-video/editing models require an uploaded source video.');
+      if (isV2V && !sourceVid && !sourceImg && !effectiveRef) {
+        throw new Error('Video-to-video/editing models require an uploaded source reference.');
       }
       
       const selectedVideoInfo = videoModels.find(m => m.id === selectedVideoModel);
@@ -2606,7 +2607,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 isGenerating || isExtending || !selectedVideoModel || !videoPrompt.trim() ||
                 (videoSubMode === 'extend' && !videoResult?.videoUrl) ||
                 (videoSubMode === 'generate' && isI2V && !effectiveVideoSource) ||
-                (videoSubMode === 'edit' && !videoSourceVideo)
+                (videoSubMode === 'edit' && !effectiveVideoSource)
               }
               className="px-3.5 py-1 rounded-lg font-black text-[10px] bg-gradient-to-r from-pink-600 to-orange-500 hover:from-pink-500 hover:to-orange-400 disabled:opacity-40 disabled:cursor-not-allowed text-white flex items-center gap-1 transition-all shadow-md shadow-pink-500/10 group h-7 shrink-0"
             >
