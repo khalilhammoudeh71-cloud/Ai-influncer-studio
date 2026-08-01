@@ -1406,26 +1406,6 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                 <p className="text-xs text-[var(--text-secondary)] font-medium leading-relaxed">Replicate any movement or dance from video templates.</p>
               </div>
             </button>
-
-            {/* Virtual Try-On */}
-            <button
-              onClick={() => setShowVirtualTryOn(true)}
-              className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-rose-500/20 hover:border-rose-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
-            >
-              <div className="relative h-48 w-full bg-black overflow-hidden">
-                <img src="https://images.unsplash.com/photo-1558618666-fcd25c85cd64?auto=format&fit=crop&w=800&q=80" alt="Virtual Try-On" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
-              </div>
-              <div className="p-5 flex-1 flex flex-col justify-center">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-600 to-pink-600 flex items-center justify-center text-white shadow-lg shadow-rose-500/20">
-                    <Shirt size={20} />
-                  </div>
-                  <h3 className="text-base font-black text-[var(--text-primary)] tracking-tight">Virtual Try-On</h3>
-                  <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 uppercase tracking-widest">Fashion AI</span>
-                </div>
-                <p className="text-xs text-[var(--text-secondary)] font-medium leading-relaxed">Dress your persona in any outfit instantly.</p>
-              </div>
-            </button>
           </div>
         </div>
       </div>
