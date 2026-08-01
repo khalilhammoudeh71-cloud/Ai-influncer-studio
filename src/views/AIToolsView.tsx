@@ -1843,12 +1843,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
               </div>
             )}
 
-            {/* Tool specific controls */}
-            {activeTool === 'beautify' && (
-              <div className="p-4 rounded-2xl bg-pink-500/10 border border-pink-500/20 text-pink-300 text-sm">
-                Automated precision workflow active. This tool will strictly optimize facial structure without damaging identity.
-              </div>
-            )}
+
 
             {/* Prompt Templates */}
             {activeTool !== 'video-edit' && (
