@@ -32,7 +32,8 @@ import {
   Check,
   Download,
   ChevronDown,
-  Box
+  Box,
+  FolderHeart
 } from 'lucide-react';
 import { Persona, NavActions } from '../types';
 import { api } from '../services/apiService';
@@ -51,6 +52,7 @@ import ThreeDStudio from '../components/ThreeDStudio';
 import BatchImageStudio from '../components/BatchImageStudio';
 import InpaintStudio from '../components/InpaintStudio';
 import BatchFaceSwapStudio from '../components/BatchFaceSwapStudio';
+import { AssetPickerModal } from '../components/AssetPickerModal';
 import toast from 'react-hot-toast';
 
 interface AIToolsViewProps {
@@ -290,6 +292,19 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
   const [garmentImage, setGarmentImage] = useState<string | null>(null);
   const [garmentDescription, setGarmentDescription] = useState('');
   const garmentFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Asset Picker Modal State
+  const [isAssetPickerOpen, setIsAssetPickerOpen] = useState(false);
+  const [assetPickerCallback, setAssetPickerCallback] = useState<((url: string) => void) | null>(null);
+  const [assetPickerTitle, setAssetPickerTitle] = useState('Select from Asset Library');
+  const [assetPickerMediaType, setAssetPickerMediaType] = useState<'image' | 'video' | 'audio' | 'all'>('image');
+
+  const openAssetPicker = (onSelect: (url: string) => void, title = 'Select from Asset Library', mediaType: 'image' | 'video' | 'audio' | 'all' = 'image') => {
+    setAssetPickerCallback(() => onSelect);
+    setAssetPickerTitle(title);
+    setAssetPickerMediaType(mediaType);
+    setIsAssetPickerOpen(true);
+  };
 
   // Video Editor specific state
   const [sourceVideo, setSourceVideo] = useState<string | null>(null);
@@ -1781,25 +1796,38 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                 {sourceImage ? (
                   <div className="relative aspect-square rounded-2xl overflow-hidden border border-[var(--border-default)] group">
                     <img src={sourceImage} alt="Source" className="w-full h-full object-cover" />
-                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                       <button onClick={() => { setSourceImage(null); setResultImage(null); }} className="p-2 bg-rose-500 rounded-full text-white"><X size={16}/></button>
+                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center gap-2 transition-opacity">
+                      <button onClick={() => openAssetPicker((url) => setSourceImage(url), 'Select Target Image')} className="px-3 py-1.5 bg-pink-500 rounded-xl text-xs font-bold text-white shadow-lg hover:brightness-110 flex items-center gap-1.5">
+                        <FolderHeart size={14} /> Change from Library
+                      </button>
+                      <button onClick={() => { setSourceImage(null); setResultImage(null); }} className="p-2 bg-rose-500 rounded-full text-white hover:bg-rose-600"><X size={16}/></button>
                     </div>
                   </div>
                 ) : (
-                  <div
-                    onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-                    onDragLeave={() => setIsDragging(false)}
-                    onDrop={handleDrop}
-                    onClick={() => fileInputRef.current?.click()}
-                    className={`w-full aspect-square rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-3 transition-all cursor-pointer ${
-                      isDragging
-                        ? 'border-[#00D4FF] bg-[#00D4FF]/10 text-[#00D4FF] scale-[1.02] shadow-[0_0_30px_rgba(0,212,255,0.15)]'
-                        : 'border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-white hover:border-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/5'
-                    }`}
-                  >
-                    <Upload size={24} className={isDragging ? 'animate-bounce' : ''} />
-                    <span className="text-xs font-bold">{isDragging ? 'Drop Image Here' : 'Upload or Drop Image'}</span>
-                    <span className="text-[10px] text-[var(--text-muted)]">PNG, JPG, WEBP supported</span>
+                  <div className="space-y-2">
+                    <div
+                      onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                      onDragLeave={() => setIsDragging(false)}
+                      onDrop={handleDrop}
+                      onClick={() => fileInputRef.current?.click()}
+                      className={`w-full aspect-square rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-3 transition-all cursor-pointer ${
+                        isDragging
+                          ? 'border-[#00D4FF] bg-[#00D4FF]/10 text-[#00D4FF] scale-[1.02] shadow-[0_0_30px_rgba(0,212,255,0.15)]'
+                          : 'border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-white hover:border-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/5'
+                      }`}
+                    >
+                      <Upload size={24} className={isDragging ? 'animate-bounce' : ''} />
+                      <span className="text-xs font-bold">{isDragging ? 'Drop Image Here' : 'Upload or Drop Image'}</span>
+                      <span className="text-[10px] text-[var(--text-muted)]">PNG, JPG, WEBP supported</span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => openAssetPicker((url) => setSourceImage(url), 'Select Target Image')}
+                      className="w-full py-2.5 px-3 rounded-xl bg-pink-500/10 hover:bg-pink-500/20 text-pink-400 border border-pink-500/30 text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-sm"
+                    >
+                      <FolderHeart size={14} /> Choose from Asset Library
+                    </button>
                   </div>
                 )}
                 <input type="file" ref={fileInputRef} hidden accept="image/*" onChange={handleFileUpload} />
@@ -2155,7 +2183,10 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                   {faceSwapFaceImage ? (
                     <div className="relative aspect-square rounded-2xl overflow-hidden border border-pink-500/30 group">
                       <img src={faceSwapFaceImage} alt="Face" className="w-full h-full object-cover" />
-                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center gap-2 transition-opacity">
+                        <button onClick={() => openAssetPicker((url) => setFaceSwapFaceImage(url), 'Select Source Face')} className="px-3 py-1.5 bg-pink-500 rounded-xl text-xs font-bold text-white shadow-lg flex items-center gap-1.5">
+                          <FolderHeart size={14} /> Change from Library
+                        </button>
                         <button onClick={() => setFaceSwapFaceImage(null)} className="p-2 bg-rose-500 rounded-full text-white"><X size={16}/></button>
                       </div>
                       <div className="absolute bottom-2 left-2 px-2 py-1 bg-pink-500/80 rounded-lg text-[9px] font-bold text-white">
@@ -2163,15 +2194,25 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                       </div>
                     </div>
                   ) : (
-                    <button 
-                      onClick={() => faceFileInputRef.current?.click()}
-                      className="w-full aspect-video rounded-2xl border-2 border-dashed border-pink-500/30 flex flex-col items-center justify-center gap-3 text-pink-300 hover:text-white hover:border-pink-500/60 hover:bg-pink-500/5 transition-all"
-                    >
-                      <Upload size={24} />
-                      <span className="text-xs font-bold">
-                        {swapMode === 'head' ? 'Upload Head & Hair Photo' : swapMode === 'body' ? 'Upload Person Photo' : 'Upload Face Photo'}
-                      </span>
-                    </button>
+                    <div className="space-y-2">
+                      <button 
+                        onClick={() => faceFileInputRef.current?.click()}
+                        className="w-full aspect-video rounded-2xl border-2 border-dashed border-pink-500/30 flex flex-col items-center justify-center gap-3 text-pink-300 hover:text-white hover:border-pink-500/60 hover:bg-pink-500/5 transition-all"
+                      >
+                        <Upload size={24} />
+                        <span className="text-xs font-bold">
+                          {swapMode === 'head' ? 'Upload Head & Hair Photo' : swapMode === 'body' ? 'Upload Person Photo' : 'Upload Face Photo'}
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => openAssetPicker((url) => setFaceSwapFaceImage(url), 'Select Source Face')}
+                        className="w-full py-2.5 px-3 rounded-xl bg-pink-500/10 hover:bg-pink-500/20 text-pink-400 border border-pink-500/30 text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-sm"
+                      >
+                        <FolderHeart size={14} /> Choose from Asset Library
+                      </button>
+                    </div>
                   )}
                   <input 
                     type="file" 
@@ -2200,19 +2241,32 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                   {garmentImage ? (
                     <div className="relative aspect-square rounded-2xl overflow-hidden border border-fuchsia-500/30 group">
                       <img src={garmentImage} alt="Garment" className="w-full h-full object-cover" />
-                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center gap-2 transition-opacity">
+                        <button onClick={() => openAssetPicker((url) => setGarmentImage(url), 'Select Garment Photo')} className="px-3 py-1.5 bg-fuchsia-500 rounded-xl text-xs font-bold text-white shadow-lg flex items-center gap-1.5">
+                          <FolderHeart size={14} /> Change from Library
+                        </button>
                         <button onClick={() => setGarmentImage(null)} className="p-2 bg-rose-500 rounded-full text-white"><X size={16}/></button>
                       </div>
                       <div className="absolute bottom-2 left-2 px-2 py-1 bg-fuchsia-500/80 rounded-lg text-[9px] font-bold text-white">Garment</div>
                     </div>
                   ) : (
-                    <button
-                      onClick={() => garmentFileInputRef.current?.click()}
-                      className="w-full aspect-video rounded-2xl border-2 border-dashed border-fuchsia-500/30 flex flex-col items-center justify-center gap-3 text-fuchsia-300 hover:text-white hover:border-fuchsia-500/60 hover:bg-fuchsia-500/5 transition-all"
-                    >
-                      <Shirt size={24} />
-                      <span className="text-xs font-bold">Upload Clothing Photo</span>
-                    </button>
+                    <div className="space-y-2">
+                      <button
+                        onClick={() => garmentFileInputRef.current?.click()}
+                        className="w-full aspect-video rounded-2xl border-2 border-dashed border-fuchsia-500/30 flex flex-col items-center justify-center gap-3 text-fuchsia-300 hover:text-white hover:border-fuchsia-500/60 hover:bg-fuchsia-500/5 transition-all"
+                      >
+                        <Shirt size={24} />
+                        <span className="text-xs font-bold">Upload Clothing Photo</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => openAssetPicker((url) => setGarmentImage(url), 'Select Garment Photo')}
+                        className="w-full py-2.5 px-3 rounded-xl bg-fuchsia-500/10 hover:bg-fuchsia-500/20 text-fuchsia-400 border border-fuchsia-500/30 text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-sm"
+                      >
+                        <FolderHeart size={14} /> Choose from Asset Library
+                      </button>
+                    </div>
                   )}
                   <input
                     type="file" ref={garmentFileInputRef} hidden accept="image/*"
@@ -2538,8 +2592,19 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
         </div>
       </>
     )}
-  </div>
+
+      <AssetPickerModal
+        isOpen={isAssetPickerOpen}
+        onClose={() => setIsAssetPickerOpen(false)}
+        onSelectAsset={(url) => {
+          if (assetPickerCallback) assetPickerCallback(url);
+        }}
+        title={assetPickerTitle}
+        acceptMediaType={assetPickerMediaType}
+        currentPersona={persona}
+      />
     </div>
+  </div>
   );
 }
 

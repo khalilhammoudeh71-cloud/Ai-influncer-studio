@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { X, Play, Pause, Download, Loader2, Upload, Mic, Camera, Video, AlertTriangle, Sparkles, UserRound, Check } from 'lucide-react';
+import { X, Play, Pause, Download, Loader2, Upload, Mic, Camera, Video, AlertTriangle, Sparkles, UserRound, Check, FolderHeart } from 'lucide-react';
 import { Persona } from '../types';
 import { generateTalkingHead, TTS_VOICES } from '../services/imageService';
 import { processImageFile } from '../utils/imageProcessing';
+import { AssetPickerModal } from './AssetPickerModal';
 import toast from 'react-hot-toast';
 import { useProMode, ProModeToggle } from '../utils/useProMode';
 
@@ -31,6 +32,7 @@ export default function TalkingHeadStudio({
 }: TalkingHeadStudioProps) {
   const [isPro, togglePro] = useProMode();
   const [portraitImage, setPortraitImage] = useState<string | null>(persona?.referenceImage || null);
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [script, setScript] = useState(initialScript || '');
   const [audioUrl, setAudioUrl] = useState<string | null>(initialAudioUrl || null);
   const [inputMode, setInputMode] = useState<'script' | 'audio'>(initialAudioUrl ? 'audio' : 'script');
@@ -291,14 +293,23 @@ export default function TalkingHeadStudio({
                   )}
                 </div>
               ) : (
-                <button
-                  onClick={() => portraitInputRef.current?.click()}
-                  className="w-full aspect-video rounded-2xl border-2 border-dashed border-pink-500/30 flex flex-col items-center justify-center gap-3 text-pink-300 hover:text-white hover:border-pink-500/60 hover:bg-pink-500/5 transition-all"
-                >
-                  <Upload size={28} />
-                  <span className="text-xs font-bold">Upload Portrait Photo</span>
-                  <span className="text-[9px] text-[var(--text-muted)]">Clear face, front-facing works best</span>
-                </button>
+                <div className="space-y-2">
+                  <button
+                    onClick={() => portraitInputRef.current?.click()}
+                    className="w-full aspect-video rounded-2xl border-2 border-dashed border-pink-500/30 flex flex-col items-center justify-center gap-3 text-pink-300 hover:text-white hover:border-pink-500/60 hover:bg-pink-500/5 transition-all"
+                  >
+                    <Upload size={28} />
+                    <span className="text-xs font-bold">Upload Portrait Photo</span>
+                    <span className="text-[9px] text-[var(--text-muted)]">Clear face, front-facing works best</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsPickerOpen(true)}
+                    className="w-full py-2.5 px-3 rounded-xl bg-pink-500/10 hover:bg-pink-500/20 text-pink-400 border border-pink-500/30 text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-sm"
+                  >
+                    <FolderHeart size={14} /> Choose from Asset Library
+                  </button>
+                </div>
               )}
               <input
                 type="file" ref={portraitInputRef} hidden accept="image/*"
@@ -617,6 +628,14 @@ export default function TalkingHeadStudio({
           </div>
         </div>
       </motion.div>
+
+      <AssetPickerModal
+        isOpen={isPickerOpen}
+        onClose={() => setIsPickerOpen(false)}
+        onSelectAsset={(url) => setPortraitImage(url)}
+        title="Select Portrait Photo from Asset Library"
+        currentPersona={persona}
+      />
     </div>
   );
 }
