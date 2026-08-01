@@ -313,7 +313,9 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     nav.push({ view: 'create', subView: newMode });
   };
 
-  const [imagePrompt, setImagePrompt] = useState('');
+  const [imagePrompt, setImagePrompt] = useState(() => {
+    try { return localStorage.getItem('ai_influencer_draft_prompt') || ''; } catch { return ''; }
+  });
   const [activePresetChips, setActivePresetChips] = useState<string[]>([]);
   const [selectedEnv, setSelectedEnv] = useState(ENVIRONMENTS[0]);
   const [selectedOutfit, setSelectedOutfit] = useState(OUTFITS[0]);
@@ -350,7 +352,9 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const [refPersonaId, setRefPersonaId] = useState<string>('none');
   const [refImages, setRefImages] = useState<{ id: string; url: string; name: string }[]>([]);
 
-  const [videoPrompt, setVideoPrompt] = useState('');
+  const [videoPrompt, setVideoPrompt] = useState(() => {
+    try { return localStorage.getItem('ai_influencer_draft_video_prompt') || ''; } catch { return ''; }
+  });
   const [videoResult, setVideoResult] = useState<{ videoUrl: string; model: string } | null>(null);
   const [isExtending, setIsExtending] = useState(false);
   const [extendResult, setExtendResult] = useState<{ videoUrl: string; model: string } | null>(null);
@@ -432,10 +436,69 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const videoVideoLibraryInputRef = useRef<HTMLInputElement | null>(null);
   const videoVideoFilesInputRef = useRef<HTMLInputElement | null>(null);
   const [uploadedAudio, setUploadedAudio] = useState<{ url: string; name: string } | null>(null);
-  const [generatedFeed, setGeneratedFeed] = useState<GeneratedEntry[]>([]);
+  const [generatedFeed, setGeneratedFeed] = useState<GeneratedEntry[]>(() => {
+    try {
+      const saved = localStorage.getItem('ai_influencer_feed_history');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
   const [focusedEntryId, setFocusedEntryId] = useState<string | null>(null);
   const [excludePersonaRef, setExcludePersonaRef] = useState(false);
   const [enhancingField, setEnhancingField] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      if (imagePrompt) localStorage.setItem('ai_influencer_draft_prompt', imagePrompt);
+    } catch (e) {}
+  }, [imagePrompt]);
+
+  useEffect(() => {
+    try {
+      if (videoPrompt) localStorage.setItem('ai_influencer_draft_video_prompt', videoPrompt);
+    } catch (e) {}
+  }, [videoPrompt]);
+
+  useEffect(() => {
+    try {
+      if (generatedFeed.length > 0) {
+        localStorage.setItem('ai_influencer_feed_history', JSON.stringify(generatedFeed.slice(0, 60)));
+      }
+    } catch (e) {}
+  }, [generatedFeed]);
+
+  useEffect(() => {
+    if (generatedFeed.length > 0 && !imageResult) {
+      const latest = generatedFeed[0];
+      setImageResult({ imageUrl: latest.imageUrl, model: latest.model, promptUsed: latest.promptUsed });
+      setImageHistory([{ imageUrl: latest.imageUrl, model: latest.model, promptUsed: latest.promptUsed, label: latest.label || 'Generated' }]);
+      setActiveHistoryIndex(0);
+      setFocusedEntryId(latest.id);
+    }
+  }, [generatedFeed]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        try {
+          const savedFeed = localStorage.getItem('ai_influencer_feed_history');
+          if (savedFeed) {
+            const parsed: GeneratedEntry[] = JSON.parse(savedFeed);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setGeneratedFeed(parsed);
+            }
+          }
+        } catch (e) {}
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleVisibilityChange);
+    };
+  }, []);
 
   // Talking Avatar specific state
   const [avatarScript, setAvatarScript] = useState('Hey everyone! Welcome back to my channel. In today\'s video, I\'m sharing my top 5 productivity tips that have completely transformed my daily routine. Let\'s dive in!');
@@ -955,6 +1018,22 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         const version: ImageVersion = { imageUrl: result[0].imageUrl, model: result[0].model, promptUsed: result[0].promptUsed || imagePrompt || '', label: 'Variation 1' };
         setImageHistory([version]);
         setActiveHistoryIndex(0);
+
+        try {
+          const raw = localStorage.getItem('ai_influencer_gallery');
+          const gallery = raw ? JSON.parse(raw) : [];
+          result.forEach((r, i) => {
+            gallery.unshift({
+              id: `img-${now}-${i}`,
+              url: r.imageUrl,
+              prompt: r.promptUsed || imagePrompt || '',
+              timestamp: now,
+              model: r.model || selectedModel,
+              mediaType: 'image'
+            });
+          });
+          localStorage.setItem('ai_influencer_gallery', JSON.stringify(gallery.slice(0, 100)));
+        } catch (e) {}
       } else {
         const entry: GeneratedEntry = {
           id: `img-${now}-0`,
@@ -970,6 +1049,20 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         const version: ImageVersion = { imageUrl: result.imageUrl, model: result.model, promptUsed: result.promptUsed || imagePrompt || '', label: 'Original' };
         setImageHistory([version]);
         setActiveHistoryIndex(0);
+
+        try {
+          const raw = localStorage.getItem('ai_influencer_gallery');
+          const gallery = raw ? JSON.parse(raw) : [];
+          gallery.unshift({
+            id: `img-${now}-0`,
+            url: result.imageUrl,
+            prompt: result.promptUsed || imagePrompt || '',
+            timestamp: now,
+            model: result.model || selectedModel,
+            mediaType: 'image'
+          });
+          localStorage.setItem('ai_influencer_gallery', JSON.stringify(gallery.slice(0, 100)));
+        } catch (e) {}
       }
     } catch (err: unknown) {
       setGlobalError(err instanceof Error ? err.message : 'Generation failed.');
