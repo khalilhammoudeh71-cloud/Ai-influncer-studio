@@ -556,9 +556,7 @@ export default function TalkingHeadStudio({
               )}
             </button>
 
-            <div className="p-3 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-default)] text-[var(--text-muted)] text-[9px] leading-relaxed">
-              <strong className="text-[var(--text-tertiary)]">How it works:</strong> Your portrait image will be animated with lip-sync movements matching the audio. For best results, use a clear front-facing photo with the mouth closed.
-            </div>
+
           </div>
 
           {/* Right: Preview */}

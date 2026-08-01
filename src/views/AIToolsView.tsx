@@ -1518,12 +1518,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
               <option value="auto">✨ Automatic (Best AI for Tool)</option>
               {editModels.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
-            {selectedModel === 'auto' && autoModelReason && (
-              <div className="flex items-center gap-1.5 mt-1">
-                <Zap size={10} className="text-amber-400" />
-                <span className="text-[9px] text-amber-400/80 font-medium">{autoModelReason}</span>
-              </div>
-            )}
+
           </div>
         )}
       </div>
@@ -2087,9 +2082,6 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
 
             {activeTool === 'face-swap' && (
               <div className="space-y-4">
-                <div className="p-3 rounded-xl bg-pink-500/10 border border-pink-500/20 text-pink-300 text-xs leading-relaxed">
-                  Upload the <strong>target image</strong> above (body to keep), then upload the <strong>face source</strong> below (face to apply).
-                </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)]">Face Source Image</label>
                   {faceSwapFaceImage ? (
@@ -2129,18 +2121,8 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
               </div>
             )}
 
-            {activeTool === 'bg-remover' && (
-              <div className="p-3 rounded-xl bg-lime-500/10 border border-lime-500/20 text-lime-300 text-xs leading-relaxed">
-                Upload an image above and click <strong>Remove Background</strong> to get a clean transparent PNG. No extra settings needed — it’s instant.
-              </div>
-            )}
-
             {activeTool === 'virtual-tryon' && (
               <div className="space-y-4">
-                <div className="p-3 rounded-xl bg-fuchsia-500/10 border border-fuchsia-500/20 text-fuchsia-300 text-xs leading-relaxed flex items-start gap-2">
-                  <AlertTriangle size={14} className="shrink-0 mt-0.5" />
-                  <span>Upload your <strong>persona photo</strong> above, then upload the <strong>clothing item</strong> below. <strong>$0.12/generation</strong></span>
-                </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)]">Garment Image</label>
                   {garmentImage ? (
