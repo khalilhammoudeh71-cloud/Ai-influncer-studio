@@ -64,7 +64,7 @@ interface AIToolsViewProps {
   billingInfo?: any;
 }
 
-type ToolType = 'beautify' | 'morph' | 'muscle' | 'ink' | 'teleport' | 'canvas' | 'face-swap' | 'bg-remover' | 'virtual-tryon' | 'video-edit' | 'skin-enhancer' | 'upscaler' | 'camera-angles' | null;
+type ToolType = 'beautify' | 'morph' | 'muscle' | 'ink' | 'teleport' | 'canvas' | 'face-swap' | 'bg-remover' | 'virtual-tryon' | 'video-edit' | 'skin-enhancer' | 'upscaler' | 'camera-angles' | 'inpaint' | '3d-studio' | 'batch-face-swap' | 'batch-edit' | null;
 
 const TOOLS = [
   { 
@@ -1269,6 +1269,36 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
 
   if (activeTool === 'camera-angles') {
     return renderAngleToolMode();
+  }
+
+  if (activeTool === 'inpaint') {
+    return (
+      <InpaintStudio
+        persona={persona}
+        onClose={() => setActiveTool(null)}
+      />
+    );
+  }
+
+  if (activeTool === '3d-studio') {
+    return (
+      <ThreeDStudio
+        persona={persona}
+        personas={personas}
+        onSelectPersona={onSelectPersona}
+        onClose={() => setActiveTool(null)}
+      />
+    );
+  }
+
+  if (activeTool === 'batch-face-swap') {
+    return (
+      <BatchFaceSwapStudio
+        personas={personas}
+        activePersona={persona}
+        onClose={() => setActiveTool(null)}
+      />
+    );
   }
 
   if (!activeTool) {

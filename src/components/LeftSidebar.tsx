@@ -4,7 +4,7 @@ import {
   Users, Sparkles, PlusCircle, Wrench, MessageSquare, 
   Calendar, Cpu, Settings, ChevronDown, ChevronRight,
   Sparkle, Image, Mic, UserSquare2, ArrowUpCircle, Eraser,
-  Camera, Zap, Video, ArrowLeftRight, TrendingUp, Film
+  Camera, Zap, Video, ArrowLeftRight, TrendingUp, Film, Wand2
 } from 'lucide-react';
 import { Persona, Tab } from '../types';
 import { cn } from '../utils/cn';
@@ -181,6 +181,7 @@ export default function LeftSidebar({ activeTab, onNavigate, activePersona, newA
                 >
                   {[
                     { id: 'camera-angles', label: 'Camera Angles', icon: Camera },
+                    { id: 'inpaint', label: 'Inpaint Brush', icon: Wand2 },
                     { id: 'face-swap', label: 'Face Swap', icon: ArrowLeftRight },
                     { id: 'bg-remover', label: 'Remove BG', icon: Eraser },
                     { id: 'skin-enhancer', label: 'Skin Enhancer', icon: Sparkle },
