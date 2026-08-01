@@ -555,7 +555,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
 
   // Enlarged Fullscreen Lightbox State
   const [expandedImageUrl, setExpandedImageUrl] = useState<string | null>(null);
-  const [agentZoomMode, setAgentZoomMode] = useState<'fit' | 'fill' | 'zoom'>('fill');
+  const [agentZoomMode, setAgentZoomMode] = useState<'fit' | 'fill' | 'zoom'>('fit');
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -2549,7 +2549,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                                               <img 
                                                 src={imgUrl} 
                                                 alt={`Visual Output ${imgIdx + 1}`} 
-                                                className="w-full h-52 object-cover rounded-lg transform group-hover:scale-105 transition-all duration-300 shadow-lg" 
+                                                className="w-full max-h-[550px] object-contain rounded-lg bg-black/40 transform group-hover:scale-[1.01] transition-all duration-300 shadow-lg" 
                                                 title="Click to enlarge image"
                                               />
                                               <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center justify-center rounded-lg">
