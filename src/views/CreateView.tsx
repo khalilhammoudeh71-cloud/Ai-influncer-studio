@@ -337,7 +337,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   // Enlarged Fullscreen Lightbox State
   const [lightboxImageUrl, setLightboxImageUrl] = useState<string | null>(null);
   const [lightboxVideoUrl, setLightboxVideoUrl] = useState<string | null>(null);
-  const [lightboxZoomMode, setLightboxZoomMode] = useState<'fit' | 'fill' | 'zoom'>('fill');
+  const [lightboxZoomMode, setLightboxZoomMode] = useState<'fit' | 'fill' | 'zoom'>('fit');
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
