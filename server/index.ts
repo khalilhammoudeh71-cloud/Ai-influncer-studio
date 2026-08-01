@@ -4082,17 +4082,13 @@ app.post('/api/face-swap', async (req, res) => {
     
     const candidates = [
       {
-        path: '/bytedance/seedream-v5.0-pro/edit',
-        body: {
-          images: [tgt, swp],
-          prompt: 'Photorealistic face swap: Replace the face of the person in the first image with the exact face, eyes, smile, and facial features from the second image while keeping the exact body, clothing, pose, hair length, lighting, and background of the first image.'
-        }
-      },
-      {
         path: '/wavespeed-ai/image-face-swap-pro',
         body: {
           image: tgt,
-          face_image: swp
+          target_image: tgt,
+          face_image: swp,
+          swap_image: swp,
+          face_enhance: faceEnhance
         }
       },
       {
@@ -4102,7 +4098,16 @@ app.post('/api/face-swap', async (req, res) => {
           target_image: tgt,
           face_image: swp,
           swap_image: swp,
-          face_enhance: faceEnhance
+          face_enhance: faceEnhance,
+          target_gender: 'all',
+          target_index: 0
+        }
+      },
+      {
+        path: '/bytedance/seedream-v5.0-pro/edit',
+        body: {
+          images: [tgt, swp],
+          prompt: 'Photorealistic face swap: Replace the face of the person in the first image with the exact face, eyes, smile, and facial features from the second image while keeping the exact body, clothing, pose, hair length, lighting, and background of the first image.'
         }
       },
       {
