@@ -1051,24 +1051,34 @@ async function generateWithReplit(prompt: string, referenceImage?: string | stri
 
   if (images.length > 0) {
     const imageFiles = await Promise.all(images.map(async (img, i) => {
-      const { mimeType, data } = stripDataPrefix(img);
-      const buffer = Buffer.from(data, 'base64');
-      const ext = mimeType.includes('png') ? 'png' : 'jpg';
-      return toFile(buffer, `reference_${i}.${ext}`, { type: mimeType });
+      try {
+        const pngBuf = await convertToSquarePngBuffer(img);
+        return toFile(pngBuf, `reference_${i}.png`, { type: 'image/png' });
+      } catch (err) {
+        const { mimeType, data } = stripDataPrefix(img);
+        const buffer = Buffer.from(data, 'base64');
+        const ext = mimeType.includes('png') ? 'png' : 'jpg';
+        return toFile(buffer, `reference_${i}.${ext}`, { type: mimeType });
+      }
     }));
 
     const editParams: any = {
       model: 'gpt-image-2',
-      image: imageFiles as any,
+      image: imageFiles[0],
       prompt,
       n: 1,
       size: aspectRatioToReplitSize(aspectRatio),
     };
 
     if (maskImage) {
-      const { mimeType, data } = stripDataPrefix(maskImage);
-      const buffer = Buffer.from(data, 'base64');
-      editParams.mask = await toFile(buffer, 'mask.png', { type: mimeType });
+      try {
+        const pngBuf = await convertToSquarePngBuffer(maskImage);
+        editParams.mask = await toFile(pngBuf, 'mask.png', { type: 'image/png' });
+      } catch (err) {
+        const { mimeType, data } = stripDataPrefix(maskImage);
+        const buffer = Buffer.from(data, 'base64');
+        editParams.mask = await toFile(buffer, 'mask.png', { type: mimeType });
+      }
     }
 
     response = await client.images.edit(editParams);
@@ -1132,7 +1142,7 @@ async function generateWithDirectOpenAI(prompt: string, referenceImage?: string 
 
     const editParams: any = {
       model: 'gpt-image-2',
-      image: imageFiles as any,
+      image: imageFiles[0],
       prompt,
       n: 1,
       size: aspectRatioToReplitSize(aspectRatio),
@@ -3000,18 +3010,49 @@ app.post('/api/edit-image', async (req, res) => {
       if (!targetModelId.endsWith('/edit')) targetModelId += '/edit';
     }
 
-    if (modelId === 'replit:gpt-image-1') {
+    if (modelId === 'replit:gpt-image-1' || modelId === 'openai:gpt-image-2') {
       const resolvedSource = await resolveImageToDataUrl(sourceImage);
       const images = [resolvedSource];
       if (resolvedAdditional) images.push(resolvedAdditional);
-      imageUrl = await generateWithReplit(prompt, images, undefined, maskImage);
-      modelName = 'GPT Image 2';
-    } else if (modelId === 'openai:gpt-image-2') {
-      const resolvedSource = await resolveImageToDataUrl(sourceImage);
-      const images = [resolvedSource];
-      if (resolvedAdditional) images.push(resolvedAdditional);
-      imageUrl = await generateWithDirectOpenAI(prompt, images, undefined, maskImage);
-      modelName = 'GPT Image 2';
+      try {
+        if (modelId === 'replit:gpt-image-1') {
+          imageUrl = await generateWithReplit(prompt, images, undefined, maskImage);
+        } else {
+          imageUrl = await generateWithDirectOpenAI(prompt, images, undefined, maskImage);
+        }
+        modelName = 'GPT Image 2';
+      } catch (gptErr) {
+        console.warn('[GPT Image 2 fallback] OpenAI inpaint failed, falling back to Seedream 5.0 Pro:', gptErr instanceof Error ? gptErr.message : gptErr);
+        await fetchWavespeedModels();
+        const fallbackModel = (cachedEditModels || []).find(m => m.id.includes('seedream-v5.0-pro/edit')) || {
+          id: 'wavespeed-edit:bytedance/seedream-v5.0-pro/edit',
+          name: 'ByteDance SeeDream 5.0 Pro Edit',
+          apiPath: '/api/v3/bytedance/seedream-v5.0-pro/edit'
+        };
+        modelName = `${fallbackModel.name} (Fallback)`;
+        const payload: Record<string, unknown> = {
+          prompt,
+          enable_sync_mode: true,
+          enable_base64_output: true,
+          image: resolvedSource,
+          images: [resolvedSource],
+        };
+        if (maskImage) {
+          payload.mask = maskImage;
+          payload.mask_image = maskImage;
+        }
+        const url = `https://api.wavespeed.ai${fallbackModel.apiPath}`;
+        const apiRes = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${WAVESPEED_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        });
+        const json = await apiRes.json();
+        imageUrl = await extractWavespeedOutput(json);
+      }
     } else if (modelId.startsWith('google:')) {
       const resolvedSource = await resolveImageToDataUrl(sourceImage);
       try {

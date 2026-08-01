@@ -239,6 +239,7 @@ export default function InpaintStudio({ persona, onClose, onSaveImage }: Inpaint
       );
 
       setResultImage(res.imageUrl);
+      setIsSaved(false);
       toast.success('Inpainting completed successfully!', { id: toastId });
     } catch (err: any) {
       toast.error(err.message || 'Inpainting failed', { id: toastId });
@@ -258,6 +259,8 @@ export default function InpaintStudio({ persona, onClose, onSaveImage }: Inpaint
     reader.readAsDataURL(file);
   };
 
+  const [isSaved, setIsSaved] = useState(false);
+
   const handleSaveToVault = async () => {
     if (!resultImage) return;
     try {
@@ -266,12 +269,30 @@ export default function InpaintStudio({ persona, onClose, onSaveImage }: Inpaint
         url: resultImage,
         prompt: `Inpaint: ${prompt}`,
         timestamp: Date.now(),
-        model: 'Seedream 5.0 Pro Inpaint',
+        model: 'Inpaint Studio',
         mediaType: 'image' as const
       };
-      await api.images.create(persona.id, payload);
+
+      if (persona?.id && persona.id !== 'none') {
+        try {
+          await api.images.create(persona.id, payload);
+        } catch (e) {
+          console.warn('[InpaintStudio] API save error:', e);
+        }
+      }
+
+      try {
+        const galleryRaw = localStorage.getItem('ai_influencer_gallery');
+        const gallery = galleryRaw ? JSON.parse(galleryRaw) : [];
+        gallery.unshift(payload);
+        localStorage.setItem('ai_influencer_gallery', JSON.stringify(gallery));
+      } catch (e) {
+        console.warn('[InpaintStudio] localStorage save error:', e);
+      }
+
       if (onSaveImage) onSaveImage(payload);
-      toast.success(`Saved to ${persona.name}'s Visual Library!`);
+      setIsSaved(true);
+      toast.success(`Saved to ${persona?.name || 'Persona'}'s Vault & Visual Library! 🎨`);
     } catch (err) {
       toast.error('Failed to save to library');
     }
@@ -488,9 +509,22 @@ export default function InpaintStudio({ persona, onClose, onSaveImage }: Inpaint
               <div className="flex gap-2">
                 <button
                   onClick={handleSaveToVault}
-                  className="flex-1 py-2.5 rounded-xl bg-pink-500/20 hover:bg-pink-500/30 text-pink-300 border border-pink-500/30 text-xs font-bold flex items-center justify-center gap-2 transition-all"
+                  className={cn(
+                    'flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all border',
+                    isSaved
+                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                      : 'bg-pink-500/20 hover:bg-pink-500/30 text-pink-300 border-pink-500/30'
+                  )}
                 >
-                  <FolderPlus size={14} /> Save to Vault
+                  {isSaved ? (
+                    <>
+                      <CheckCircle2 size={14} className="text-emerald-400" /> Saved to Vault
+                    </>
+                  ) : (
+                    <>
+                      <FolderPlus size={14} /> Save to Vault
+                    </>
+                  )}
                 </button>
                 <a
                   href={resultImage}
