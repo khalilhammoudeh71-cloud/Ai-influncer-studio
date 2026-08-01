@@ -44,7 +44,9 @@ import {
   Sliders,
   FolderOpen,
   VideoOff,
+  FolderHeart,
 } from 'lucide-react';
+import { AssetPickerModal } from '../components/AssetPickerModal';
 import { Persona, GeneratedImage, NavActions, Tab, NavEntry } from '../types';
 import PlannerView from './PlannerView';
 import VoiceView from './VoiceView';
@@ -293,6 +295,17 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     }, 5500);
     return () => clearInterval(interval);
   }, [mode]);
+
+  // Asset Picker Modal State for CreateView
+  const [isCreateAssetPickerOpen, setIsCreateAssetPickerOpen] = useState(false);
+  const [createAssetPickerCallback, setCreateAssetPickerCallback] = useState<((url: string) => void) | null>(null);
+  const [createAssetPickerTitle, setCreateAssetPickerTitle] = useState('Select from Saved Asset Library');
+
+  const openCreateAssetPicker = (onSelect: (url: string) => void, title = 'Select from Saved Asset Library') => {
+    setCreateAssetPickerCallback(() => onSelect);
+    setCreateAssetPickerTitle(title);
+    setIsCreateAssetPickerOpen(true);
+  };
 
   const updateMode = (newMode: CreateMode) => {
     if (newMode === mode) return;
@@ -2357,7 +2370,23 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               {videoUploadMenuOpen && (
                 <>
                   <div className="fixed inset-0 z-29" onClick={() => setVideoUploadMenuOpen(false)} />
-                  <div className="absolute left-0 top-full mt-2 w-52 rounded-xl border border-white/10 bg-[#0B0F17] p-1.5 shadow-2xl z-30 space-y-1 select-none">
+                  <div className="absolute left-0 top-full mt-2 w-56 rounded-xl border border-white/10 bg-[#0B0F17] p-1.5 shadow-2xl z-30 space-y-1 select-none">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setVideoUploadMenuOpen(false);
+                        openCreateAssetPicker((url) => {
+                          setVideoSourceImage(url);
+                          setVideoSourceImageName('Selected from Saved Library');
+                          setVideoSourceVideo(null);
+                        }, 'Select Asset from Saved Library');
+                      }}
+                      className="w-full text-left px-2.5 py-2 rounded-lg text-xs text-pink-400 bg-pink-500/10 hover:bg-pink-500/20 flex items-center gap-2 font-bold transition-all border border-pink-500/20 mb-1"
+                    >
+                      <FolderHeart size={14} className="text-pink-400" />
+                      Choose from Saved Library
+                    </button>
+
                     {/* Image Group */}
                     <div className="px-2.5 py-1 text-[9px] font-black text-slate-500 uppercase tracking-widest border-b border-white/5">
                       Upload Image
@@ -3816,6 +3845,16 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           </div>
         </div>
       )}
+
+      <AssetPickerModal
+        isOpen={isCreateAssetPickerOpen}
+        onClose={() => setIsCreateAssetPickerOpen(false)}
+        onSelectAsset={(url) => {
+          if (createAssetPickerCallback) createAssetPickerCallback(url);
+        }}
+        title={createAssetPickerTitle}
+        currentPersona={persona}
+      />
     </div>
   );
 }

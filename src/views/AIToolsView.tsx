@@ -1063,11 +1063,14 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                     </div>
                     <button
                       type="button"
-                      onClick={() => openAssetPicker((url) => {
-                        setAngleSourceImage(url);
-                        setAngleSourceImageName('Selected from Asset Library');
-                        setAngleSourceType('custom');
-                      }, 'Select Source Image for Camera Angles')}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openAssetPicker((url) => {
+                          setAngleSourceImage(url);
+                          setAngleSourceImageName('Selected from Asset Library');
+                          setAngleSourceType('custom');
+                        }, 'Select Source Image for Camera Angles');
+                      }}
                       className="w-full py-2.5 px-3 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-sm"
                     >
                       <FolderHeart size={14} /> Choose from Asset Library
