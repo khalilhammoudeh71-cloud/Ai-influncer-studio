@@ -4074,55 +4074,89 @@ app.post('/api/text-to-speech', handleTTS);
 // ─── Face Swap ────────────────────────────────────────────────────────────────
 app.post('/api/face-swap', async (req, res) => {
   if (!WAVESPEED_API_KEY) return res.status(503).json({ error: 'Wavespeed not configured' });
-  const { targetImage, swapImage, faceEnhance = true } = req.body as { targetImage: string; swapImage: string; faceEnhance?: boolean };
+  const { targetImage, swapImage, faceEnhance = true, swapMode = 'face' } = req.body as { 
+    targetImage: string; 
+    swapImage: string; 
+    faceEnhance?: boolean;
+    swapMode?: 'face' | 'head' | 'body';
+  };
   if (!targetImage || !swapImage) return res.status(400).json({ error: 'targetImage and swapImage are required' });
 
   try {
     const [tgt, swp] = await Promise.all([resolveImageToDataUrl(targetImage), resolveImageToDataUrl(swapImage)]);
     
-    const candidates = [
-      {
-        path: '/wavespeed-ai/image-face-swap-pro',
-        body: {
-          image: tgt,
-          target_image: tgt,
-          face_image: swp,
-          swap_image: swp,
-          face_enhance: faceEnhance
+    let candidates: { path: string; body: Record<string, unknown> }[] = [];
+
+    if (swapMode === 'head') {
+      candidates = [
+        {
+          path: '/wavespeed-ai/image-head-swap',
+          body: { image: tgt, face_image: swp, target_image: tgt, swap_image: swp }
+        },
+        {
+          path: '/wavespeed-ai/image-face-swap-pro',
+          body: { image: tgt, face_image: swp, target_image: tgt, swap_image: swp, face_enhance: faceEnhance }
+        },
+        {
+          path: '/bytedance/seedream-v5.0-pro/edit',
+          body: {
+            images: [tgt, swp],
+            prompt: 'Replace the complete head and hair of the person in the first image with the exact head, face, and hairstyle from the second image while keeping the exact body, clothing, and background of the first image.'
+          }
         }
-      },
-      {
-        path: '/wavespeed-ai/image-face-swap',
-        body: {
-          image: tgt,
-          target_image: tgt,
-          face_image: swp,
-          swap_image: swp,
-          face_enhance: faceEnhance,
-          target_gender: 'all',
-          target_index: 0
+      ];
+    } else if (swapMode === 'body') {
+      candidates = [
+        {
+          path: '/wavespeed-ai/image-body-swap',
+          body: { image: swp, body_image: tgt }
+        },
+        {
+          path: '/bytedance/seedream-v5.0-pro/edit',
+          body: {
+            images: [tgt, swp],
+            prompt: 'Replace the person in the background/scene of the first image with the complete person/character from the second image.'
+          }
         }
-      },
-      {
-        path: '/bytedance/seedream-v5.0-pro/edit',
-        body: {
-          images: [tgt, swp],
-          prompt: 'Photorealistic face swap: Replace the face of the person in the first image with the exact face, eyes, smile, and facial features from the second image while keeping the exact body, clothing, pose, hair length, lighting, and background of the first image.'
+      ];
+    } else {
+      candidates = [
+        {
+          path: '/wavespeed-ai/image-face-swap-pro',
+          body: {
+            image: tgt,
+            target_image: tgt,
+            face_image: swp,
+            swap_image: swp,
+            face_enhance: faceEnhance
+          }
+        },
+        {
+          path: '/wavespeed-ai/image-face-swap',
+          body: {
+            image: tgt,
+            target_image: tgt,
+            face_image: swp,
+            swap_image: swp,
+            face_enhance: faceEnhance,
+            target_gender: 'all',
+            target_index: 0
+          }
+        },
+        {
+          path: '/bytedance/seedream-v5.0-pro/edit',
+          body: {
+            images: [tgt, swp],
+            prompt: 'Photorealistic face swap: Replace the face of the person in the first image with the exact face, eyes, smile, and facial features from the second image while keeping the exact body, clothing, pose, hair length, lighting, and background of the first image.'
+          }
         }
-      },
-      {
-        path: '/wavespeed-ai/seededit-v3.0',
-        body: {
-          images: [tgt, swp],
-          prompt: 'Photorealistic face swap: Replace the face in the first image with the exact face from the second image while preserving body, clothing, and background.'
-        }
-      }
-    ];
+      ];
+    }
 
     let lastError: Error | null = null;
     for (const candidate of candidates) {
       try {
-        console.log(`[Face Swap] Attempting candidate endpoint: ${candidate.path}`);
+        console.log(`[Swap: ${swapMode}] Attempting candidate endpoint: ${candidate.path}`);
         const r = await fetch(`${WAVESPEED_BASE}${candidate.path}`, {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${WAVESPEED_API_KEY}`, 'Content-Type': 'application/json' },
@@ -4131,18 +4165,18 @@ app.post('/api/face-swap', async (req, res) => {
         const json = await r.json() as Record<string, unknown>;
         const imageUrl = await extractWavespeedOutput(json);
         if (imageUrl) {
-          console.log(`[Face Swap] Success via ${candidate.path}`);
+          console.log(`[Swap: ${swapMode}] Success via ${candidate.path}`);
           return res.json({ imageUrl, model: candidate.path.replace(/^\//, '') });
         }
       } catch (err: any) {
-        console.warn(`[Face Swap] Candidate ${candidate.path} failed:`, err?.message || err);
+        console.warn(`[Swap: ${swapMode}] Candidate ${candidate.path} failed:`, err?.message || err);
         lastError = err instanceof Error ? err : new Error(String(err));
       }
     }
 
-    throw lastError || new Error('All face swap endpoints failed');
+    throw lastError || new Error('All swap endpoints failed');
   } catch (err) {
-    res.status(500).json({ error: err instanceof Error ? err.message : 'Face swap failed' });
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Swap failed' });
   }
 });
 

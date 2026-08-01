@@ -270,6 +270,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
 
   // Face Swap specific state
   const [faceSwapFaceImage, setFaceSwapFaceImage] = useState<string | null>(null);
+  const [swapMode, setSwapMode] = useState<'face' | 'head' | 'body'>('face');
   const faceFileInputRef = useRef<HTMLInputElement>(null);
 
   // Camera Angles specific state
@@ -656,12 +657,12 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
     if (!sourceImage || !faceSwapFaceImage) return;
     setIsProcessing(true);
     try {
-      const data = await faceSwap(sourceImage, faceSwapFaceImage);
+      const data = await faceSwap(sourceImage, faceSwapFaceImage, true, swapMode);
       setResultImage(data.imageUrl);
       setResultHistory(prev => [...prev, { imageUrl: data.imageUrl, timestamp: Date.now(), tool: 'face-swap' }]);
-      toast.success('Face Swap complete!');
+      toast.success(`${swapMode === 'head' ? 'Head & Hair' : swapMode === 'body' ? 'Full Person' : 'Face'} Swap complete!`);
     } catch (err: any) {
-      toast.error(err.message || 'Face swap failed');
+      toast.error(err.message || 'Swap failed');
     } finally {
       setIsProcessing(false);
     }
@@ -2082,15 +2083,61 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
 
             {activeTool === 'face-swap' && (
               <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)]">Swap Mode</label>
+                  <div className="grid grid-cols-3 gap-1.5 p-1 bg-[var(--bg-elevated)] rounded-xl border border-[var(--border-default)]">
+                    <button
+                      type="button"
+                      onClick={() => setSwapMode('face')}
+                      className={`py-2 px-1 rounded-lg text-[10px] font-bold transition-all flex flex-col items-center gap-1 ${
+                        swapMode === 'face'
+                          ? 'bg-pink-500 text-white shadow-md'
+                          : 'text-[var(--text-secondary)] hover:text-white hover:bg-white/5'
+                      }`}
+                    >
+                      <span className="text-xs">👤</span>
+                      <span>Face Only</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSwapMode('head')}
+                      className={`py-2 px-1 rounded-lg text-[10px] font-bold transition-all flex flex-col items-center gap-1 ${
+                        swapMode === 'head'
+                          ? 'bg-pink-500 text-white shadow-md'
+                          : 'text-[var(--text-secondary)] hover:text-white hover:bg-white/5'
+                      }`}
+                    >
+                      <span className="text-xs">💇‍♀️</span>
+                      <span>Head & Hair</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSwapMode('body')}
+                      className={`py-2 px-1 rounded-lg text-[10px] font-bold transition-all flex flex-col items-center gap-1 ${
+                        swapMode === 'body'
+                          ? 'bg-pink-500 text-white shadow-md'
+                          : 'text-[var(--text-secondary)] hover:text-white hover:bg-white/5'
+                      }`}
+                    >
+                      <span className="text-xs">🧍‍♀️</span>
+                      <span>Full Person</span>
+                    </button>
+                  </div>
+                </div>
+
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)]">Face Source Image</label>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)]">
+                    {swapMode === 'head' ? 'Source Head & Hair Image' : swapMode === 'body' ? 'Source Person / Character Image' : 'Source Face Image'}
+                  </label>
                   {faceSwapFaceImage ? (
                     <div className="relative aspect-square rounded-2xl overflow-hidden border border-pink-500/30 group">
                       <img src={faceSwapFaceImage} alt="Face" className="w-full h-full object-cover" />
                       <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
                         <button onClick={() => setFaceSwapFaceImage(null)} className="p-2 bg-rose-500 rounded-full text-white"><X size={16}/></button>
                       </div>
-                      <div className="absolute bottom-2 left-2 px-2 py-1 bg-pink-500/80 rounded-lg text-[9px] font-bold text-white">Face Source</div>
+                      <div className="absolute bottom-2 left-2 px-2 py-1 bg-pink-500/80 rounded-lg text-[9px] font-bold text-white">
+                        {swapMode === 'head' ? 'Head Source' : swapMode === 'body' ? 'Person Source' : 'Face Source'}
+                      </div>
                     </div>
                   ) : (
                     <button 
@@ -2098,7 +2145,9 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                       className="w-full aspect-video rounded-2xl border-2 border-dashed border-pink-500/30 flex flex-col items-center justify-center gap-3 text-pink-300 hover:text-white hover:border-pink-500/60 hover:bg-pink-500/5 transition-all"
                     >
                       <Upload size={24} />
-                      <span className="text-xs font-bold">Upload Face Image</span>
+                      <span className="text-xs font-bold">
+                        {swapMode === 'head' ? 'Upload Head & Hair Photo' : swapMode === 'body' ? 'Upload Person Photo' : 'Upload Face Photo'}
+                      </span>
                     </button>
                   )}
                   <input 
@@ -2113,7 +2162,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                         const b64 = await processImageFile(file);
                         setFaceSwapFaceImage(b64);
                       } catch (err) {
-                        toast.error('Failed to process face image');
+                        toast.error('Failed to process image');
                       }
                     }} 
                   />

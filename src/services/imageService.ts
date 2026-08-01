@@ -469,13 +469,18 @@ export async function generateReferenceImage(prompt: string, modelId: string): P
   };
 }
 
-export async function faceSwap(targetImage: string, swapImage: string, faceEnhance = true): Promise<{ imageUrl: string; model: string }> {
+export async function faceSwap(
+  targetImage: string, 
+  swapImage: string, 
+  faceEnhance = true,
+  swapMode: 'face' | 'head' | 'body' = 'face'
+): Promise<{ imageUrl: string; model: string }> {
   const compressedTarget = await compressForUpload(targetImage);
   const compressedSwap = await compressForUpload(swapImage);
   const response = await authFetch('/api/face-swap', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ targetImage: compressedTarget, swapImage: compressedSwap, faceEnhance }),
+    body: JSON.stringify({ targetImage: compressedTarget, swapImage: compressedSwap, faceEnhance, swapMode }),
   });
   const contentType = response.headers.get('content-type');
   if (!contentType || !contentType.includes('application/json')) {
@@ -484,7 +489,7 @@ export async function faceSwap(targetImage: string, swapImage: string, faceEnhan
     throw new Error(text ? `Server error (${response.status}): ${text.substring(0, 150)}` : `Server error (${response.status}). Please try again.`);
   }
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || 'Face swap failed.');
+  if (!response.ok) throw new Error(data.error || 'Swap failed.');
   return { imageUrl: data.imageUrl, model: data.model };
 }
 
