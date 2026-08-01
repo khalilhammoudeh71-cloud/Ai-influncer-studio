@@ -4336,16 +4336,60 @@ app.post('/api/virtual-tryon', async (req, res) => {
   if (!WAVESPEED_API_KEY) return res.status(503).json({ error: 'Wavespeed not configured' });
   const { personImage, garmentImage, garmentDescription = '' } = req.body as { personImage: string; garmentImage: string; garmentDescription?: string };
   if (!personImage || !garmentImage) return res.status(400).json({ error: 'personImage and garmentImage are required' });
+
   try {
     const [person, garment] = await Promise.all([resolveImageToDataUrl(personImage), resolveImageToDataUrl(garmentImage)]);
-    const r = await fetch(`${WAVESPEED_BASE}/wavespeed-ai/ai-virtual-outfit-tryon`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${WAVESPEED_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image: person, clothes_images: [garment], prompt: garmentDescription }),
-    });
-    const json = await r.json() as Record<string, unknown>;
-    const imageUrl = await extractWavespeedOutput(json);
-    res.json({ imageUrl, model: 'wavespeed-ai/ai-virtual-outfit-tryon' });
+    
+    const tryonPrompt = garmentDescription 
+      ? `Photorealistic Virtual Try-On: Change the outfit of the person in the first image to match the clothing in the second image: ${garmentDescription}. Keep the exact model face, body pose, hair, skin, lighting, and background of the first image.`
+      : `Photorealistic Virtual Try-On: Seamlessly replace the outfit of the person in the first image with the exact clothing/garment shown in the second image. Keep the exact model face, body pose, hair, skin, lighting, and background of the first image.`;
+
+    const candidates = [
+      {
+        path: '/bytedance/seedream-v5.0-pro/edit',
+        body: {
+          images: [person, garment],
+          prompt: tryonPrompt
+        }
+      },
+      {
+        path: '/wavespeed-ai/ai-clothes-changer',
+        body: {
+          image: person,
+          clothes_images: [garment]
+        }
+      },
+      {
+        path: '/bytedance/seedream-v4.5/edit',
+        body: {
+          images: [person, garment],
+          prompt: tryonPrompt
+        }
+      }
+    ];
+
+    let lastError: Error | null = null;
+    for (const candidate of candidates) {
+      try {
+        console.log(`[Virtual Try-On] Attempting candidate endpoint: ${candidate.path}`);
+        const r = await fetch(`${WAVESPEED_BASE}${candidate.path}`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${WAVESPEED_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(candidate.body),
+        });
+        const json = await r.json() as Record<string, unknown>;
+        const imageUrl = await extractWavespeedOutput(json);
+        if (imageUrl) {
+          console.log(`[Virtual Try-On] Success via ${candidate.path}`);
+          return res.json({ imageUrl, model: candidate.path.replace(/^\//, '') });
+        }
+      } catch (err: any) {
+        console.warn(`[Virtual Try-On] Candidate ${candidate.path} failed:`, err?.message || err);
+        lastError = err instanceof Error ? err : new Error(String(err));
+      }
+    }
+
+    throw lastError || new Error('Virtual try-on failed');
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Virtual try-on failed' });
   }

@@ -2269,7 +2269,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                 <>
                   <div className="flex items-center gap-2">
                     <ToolIcon size={18} /> 
-                    {activeTool === 'bg-remover' ? 'Remove Background' : activeTool === 'virtual-tryon' ? 'Try On ($0.12)' : activeTool === 'video-edit' ? 'Stylize Video' : 'Apply Effect'}
+                    {activeTool === 'bg-remover' ? 'Remove Background' : activeTool === 'virtual-tryon' ? 'Try On Outfit ($0.02)' : activeTool === 'video-edit' ? 'Stylize Video' : 'Apply Effect'}
                   </div>
                   <span className="text-[9px] opacity-50 font-medium mt-0.5">⌘ Enter</span>
                 </>
