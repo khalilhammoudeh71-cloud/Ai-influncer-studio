@@ -564,6 +564,16 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
+
+  const agentTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const handleInputTextChange = (val: string) => {
+    setInputText(val);
+    if (agentTextareaRef.current) {
+      agentTextareaRef.current.style.height = 'auto';
+      agentTextareaRef.current.style.height = `${Math.min(agentTextareaRef.current.scrollHeight, 180)}px`;
+    }
+  };
   const [downloaderLoading, setDownloaderLoading] = useState(false);
   const [downloaderResult, setDownloaderResult] = useState<{
     videoUrl: string;
@@ -980,7 +990,12 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
     };
 
     setMessages(prev => [...prev.slice(-25), userMessage]);
-    if (overrideText === undefined) setInputText('');
+    if (overrideText === undefined) {
+      setInputText('');
+      if (agentTextareaRef.current) {
+        agentTextareaRef.current.style.height = 'auto';
+      }
+    }
     setAttachments([]);
     setIsSending(true);
 
@@ -2996,14 +3011,20 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
               <Mic size={16} />
             </button>
 
-            <input
-              type="text"
+            <textarea
+              ref={agentTextareaRef}
+              rows={1}
               value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
+              onChange={(e) => handleInputTextChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  sendMessage();
+                }
+              }}
               disabled={isSending}
-              placeholder={isListening ? "Listening... Speak clearly" : "Message Super Agent..."}
-              className="flex-1 h-11 bg-[var(--bg-input)] border border-white/5 rounded-xl px-3.5 text-xs text-white placeholder:text-[var(--text-muted)] focus:border-pink-500/40 outline-none transition-all"
+              placeholder={isListening ? "Listening... Speak clearly" : "Message Super Agent... (Shift+Enter for new line)"}
+              className="flex-1 min-h-[44px] max-h-[180px] py-2.5 bg-[var(--bg-input)] border border-white/10 rounded-xl px-3.5 text-xs text-white placeholder:text-[var(--text-muted)] focus:border-pink-500/40 outline-none transition-all resize-none leading-relaxed overflow-y-auto"
             />
 
             <button
