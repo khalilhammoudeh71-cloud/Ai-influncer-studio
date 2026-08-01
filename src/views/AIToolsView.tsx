@@ -816,18 +816,25 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
         mediaType: 'image' as const,
       }));
 
-      const updatedPersona = {
-        ...persona,
-        visualLibrary: [...(persona.visualLibrary || []), ...newMediaEntries]
-      };
-
-      await api.updatePersonaInVault(updatedPersona);
-      for (const media of newMediaEntries) {
-        await api.images.create(persona.id, media);
+      if (persona && persona.id && persona.id !== 'none') {
+        const updatedPersona = {
+          ...persona,
+          visualLibrary: [...(persona.visualLibrary || []), ...newMediaEntries]
+        };
+        try { await api.updatePersonaInVault(updatedPersona); } catch (e) {}
+        for (const media of newMediaEntries) {
+          try { await api.images.create(persona.id, media); } catch (e) {}
+        }
       }
+
+      try {
+        const existing = JSON.parse(localStorage.getItem('ai_influencer_gallery') || '[]');
+        localStorage.setItem('ai_influencer_gallery', JSON.stringify([...newMediaEntries, ...existing]));
+      } catch (e) {}
+
       toast.success(`Successfully saved ${finishedItems.length} images to Visual Library!`);
-    } catch (err) {
-      toast.error('Failed to save batch to library');
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to save batch to library');
     }
   };
 
@@ -844,13 +851,21 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
         mediaType: isVideo ? ('video' as const) : ('image' as const),
       };
       
-      const updatedPersona = { ...persona, visualLibrary: [...(persona.visualLibrary || []), media] };
-      
-      await api.updatePersonaInVault(updatedPersona);
-      await api.images.create(persona.id, media);
+      if (persona && persona.id && persona.id !== 'none') {
+        const updatedPersona = { ...persona, visualLibrary: [...(persona.visualLibrary || []), media] };
+        try { await api.updatePersonaInVault(updatedPersona); } catch (e) { console.warn('Vault update skip:', e); }
+        try { await api.images.create(persona.id, media); } catch (e) { console.warn('Image record skip:', e); }
+      }
+
+      try {
+        const existing = JSON.parse(localStorage.getItem('ai_influencer_gallery') || '[]');
+        localStorage.setItem('ai_influencer_gallery', JSON.stringify([media, ...existing]));
+      } catch (e) {}
+
       toast.success('Saved to Visual Library!');
-    } catch (err) {
-      toast.error('Failed to save to library');
+    } catch (err: any) {
+      console.error('Save to library error:', err);
+      toast.error(err?.message || 'Failed to save to library');
     }
   };
 
@@ -893,13 +908,21 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
         mediaType: 'image' as const,
       };
       
-      const updatedPersona = { ...persona, visualLibrary: [...(persona.visualLibrary || []), media] };
-      await api.updatePersonaInVault(updatedPersona);
-      await api.images.create(persona.id, media);
+      if (persona && persona.id && persona.id !== 'none') {
+        const updatedPersona = { ...persona, visualLibrary: [...(persona.visualLibrary || []), media] };
+        try { await api.updatePersonaInVault(updatedPersona); } catch (e) {}
+        try { await api.images.create(persona.id, media); } catch (e) {}
+      }
+
+      try {
+        const existing = JSON.parse(localStorage.getItem('ai_influencer_gallery') || '[]');
+        localStorage.setItem('ai_influencer_gallery', JSON.stringify([media, ...existing]));
+      } catch (e) {}
+
       setAngleSaved(true);
       toast.success('Saved to Visual Library!');
-    } catch (err) {
-      toast.error('Failed to save to library');
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to save to library');
     }
   };
 
