@@ -224,7 +224,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
   // Batch processing interfaces & states
   interface BatchItem {
     id: string;
-    file: File;
+    file?: File;
     previewUrl: string;
     status: 'idle' | 'processing' | 'done' | 'failed';
     resultUrl?: string;
@@ -784,12 +784,14 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
       setBatchItems(prev => prev.map(x => x.id === item.id ? { ...x, status: 'processing' } : x));
 
       try {
-        const base64Data = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = (err) => reject(err);
-          reader.readAsDataURL(item.file);
-        });
+        const base64Data = item.file
+          ? await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result as string);
+              reader.onerror = (err) => reject(err);
+              reader.readAsDataURL(item.file!);
+            })
+          : item.previewUrl;
 
         let resultUrl = '';
         if (activeTool === 'upscaler') {
@@ -1025,7 +1027,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                     </div>
                   </div>
                 ) : (
-                  <div>
+                  <div className="space-y-2">
                     <div 
                       onClick={() => angleFileInputRef.current?.click()}
                       className="flex items-center gap-3 px-3 py-3 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl cursor-pointer hover:bg-[var(--bg-overlay)]/50 transition-colors"
@@ -1059,6 +1061,17 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                         }} 
                       />
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => openAssetPicker((url) => {
+                        setAngleSourceImage(url);
+                        setAngleSourceImageName('Selected from Asset Library');
+                        setAngleSourceType('custom');
+                      }, 'Select Source Image for Camera Angles')}
+                      className="w-full py-2.5 px-3 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-sm"
+                    >
+                      <FolderHeart size={14} /> Choose from Asset Library
+                    </button>
                     {angleSourceImage && (
                       <button 
                         onClick={() => { setAngleSourceImage(null); setAngleSourceImageName(null); }} 
@@ -1685,7 +1698,27 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                     <p className="text-xs text-[var(--text-secondary)] max-w-sm leading-relaxed mb-1">
                       Drag and drop multiple low-resolution or portrait images here, or click to browse.
                     </p>
-                    <p className="text-[10px] text-[var(--text-muted)] font-bold">Supports PNG, JPG, WebP — as many images as you want</p>
+                    <p className="text-[10px] text-[var(--text-muted)] font-bold mb-4">Supports PNG, JPG, WebP — as many images as you want</p>
+
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openAssetPicker((url) => {
+                          setBatchItems((prev) => [
+                            ...prev,
+                            {
+                              id: `batch-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+                              previewUrl: url,
+                              status: 'idle',
+                            },
+                          ]);
+                        }, 'Select Asset for Batch Processing');
+                      }}
+                      className="px-5 py-2.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 text-xs font-bold flex items-center gap-2 transition-all shadow-lg"
+                    >
+                      <FolderHeart size={16} /> Choose from Asset Library
+                    </button>
                   </div>
                 ) : (
                   <div className="space-y-6">
@@ -1736,9 +1769,9 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                           
                           <div className="p-2.5 flex items-center justify-between gap-2 border-t border-white/5">
                             <div className="min-w-0 flex-1">
-                              <p className="text-[10px] font-bold text-zinc-300 truncate leading-none mb-1">{item.file.name}</p>
+                              <p className="text-[10px] font-bold text-zinc-300 truncate leading-none mb-1">{item.file?.name || 'Library Asset'}</p>
                               <p className="text-[8px] font-mono text-zinc-500 font-bold leading-none">
-                                {(item.file.size / (1024 * 1024)).toFixed(2)} MB
+                                {item.file ? `${(item.file.size / (1024 * 1024)).toFixed(2)} MB` : 'Asset Library'}
                               </p>
                             </div>
                             {item.status === 'idle' && !isBatchProcessing && (
