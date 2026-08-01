@@ -1179,23 +1179,24 @@ async function generateWithDirectOpenAI(prompt: string, referenceImage?: string 
 function veniceAspectRatioDimensions(ar?: string, resolution?: string): { width: number; height: number } {
   const MAP: Record<string, [number, number]> = {
     '1:1': [1024, 1024],
-    '16:9': [1344, 768],
-    '9:16': [768, 1344],
+    '16:9': [1280, 704],
+    '9:16': [704, 1280],
     '4:5': [896, 1120],
     '5:4': [1120, 896],
     '2:3': [832, 1248],
     '3:2': [1248, 832],
-    '21:9': [1344, 576],
+    '21:9': [1280, 544],
   };
-  const [w, h] = MAP[ar || '1:1'] || [1024, 1024];
-  if (resolution === 'hd') {
-    const scale = 1.5;
-    return {
-      width: Math.min(2048, Math.round(w * scale / 64) * 64),
-      height: Math.min(2048, Math.round(h * scale / 64) * 64),
-    };
+  let [w, h] = MAP[ar || '1:1'] || [1024, 1024];
+  if (resolution === 'hd' || resolution === '2k' || resolution === '4k') {
+    const scale = 1.2;
+    w = Math.round((w * scale) / 64) * 64;
+    h = Math.round((h * scale) / 64) * 64;
   }
-  return { width: w, height: h };
+  return {
+    width: Math.min(1280, Math.max(256, w)),
+    height: Math.min(1280, Math.max(256, h)),
+  };
 }
 
 async function generateWithVenice(rawModelId: string, prompt: string, aspectRatio?: string, nsfw = false, resolution?: string): Promise<string> {
@@ -1212,39 +1213,52 @@ async function generateWithVenice(rawModelId: string, prompt: string, aspectRati
     format: 'png',
   };
 
-  const res = await fetch(`${VENICE_BASE}/image/generate`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${VENICE_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
+  try {
+    const res = await fetch(`${VENICE_BASE}/image/generate`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${VENICE_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Venice API error (${res.status}): ${text.slice(0, 300)}`);
-  }
-
-  const data = await res.json() as {
-    images?: { url?: string; b64_json?: string }[];
-    data?: { url?: string; b64_json?: string }[];
-  };
-
-  const images = data.images || data.data || [];
-  if (images.length > 0) {
-    const img = images[0];
-    if (img.b64_json) return `data:image/png;base64,${img.b64_json}`;
-    if (img.url) {
-      const imgRes = await fetch(img.url);
-      if (!imgRes.ok) throw new Error(`Failed to fetch Venice image: ${imgRes.status}`);
-      const buf = Buffer.from(await imgRes.arrayBuffer());
-      const ct = imgRes.headers.get('content-type') || 'image/png';
-      return `data:${ct.split(';')[0].trim()};base64,${buf.toString('base64')}`;
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Venice API error (${res.status}): ${text.slice(0, 300)}`);
     }
-  }
 
-  throw new Error('Venice AI returned no image data');
+    const data = await res.json() as {
+      images?: { url?: string; b64_json?: string }[];
+      data?: { url?: string; b64_json?: string }[];
+    };
+
+    const images = data.images || data.data || [];
+    if (images.length > 0) {
+      const img = images[0];
+      if (img.b64_json) return `data:image/png;base64,${img.b64_json}`;
+      if (img.url) {
+        const imgRes = await fetch(img.url);
+        if (!imgRes.ok) throw new Error(`Failed to fetch Venice image: ${imgRes.status}`);
+        const buf = Buffer.from(await imgRes.arrayBuffer());
+        const ct = imgRes.headers.get('content-type') || 'image/png';
+        return `data:${ct.split(';')[0].trim()};base64,${buf.toString('base64')}`;
+      }
+    }
+    throw new Error('Venice AI returned no image data');
+  } catch (err) {
+    console.warn('[Venice API Error] Falling back to Seedream 5.0 Pro via Wavespeed:', err instanceof Error ? err.message : err);
+    return await generateWithWavespeed(
+      '/api/v3/bytedance/seedream-v5.0-pro',
+      undefined,
+      undefined,
+      prompt,
+      undefined,
+      undefined,
+      false,
+      aspectRatio
+    );
+  }
 }
 
 async function generateWithAtlasCloud(rawModelId: string, prompt: string, aspectRatio?: string, resolution?: string): Promise<string> {
