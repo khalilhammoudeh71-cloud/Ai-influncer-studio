@@ -698,10 +698,11 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   }, [activePersona.id, availableImages]);
 
   const refPersonaImage = refPersonaId !== 'none' ? (personas.find(p => p.id === refPersonaId)?.referenceImage ?? null) : null;
-  const allRefImages: string[] = [
+  const allRefImages: string[] = Array.from(new Set([
+    ...(uploadedAvatarImage ? [uploadedAvatarImage] : []),
     ...(!excludePersonaRef && refPersonaImage ? [refPersonaImage] : []),
     ...refImages.map(img => img.url),
-  ];
+  ])).filter(Boolean);
   const effectiveRefImage = allRefImages[0] || null;
   const hasRefImage = allRefImages.length > 0;
 
@@ -905,9 +906,11 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
     try {
       const isIdentityModel = selectedModelInfo?.isIdentityModel ?? false;
-      const allRefs = allRefImages.length > 0
-        ? allRefImages
-        : (activePersona.referenceImage ? [activePersona.referenceImage] : []);
+      const allRefs = Array.from(new Set([
+        ...(uploadedAvatarImage ? [uploadedAvatarImage] : []),
+        ...allRefImages,
+        ...(activePersona.referenceImage ? [activePersona.referenceImage] : [])
+      ])).filter(Boolean);
       const resolvedRef = allRefs[0] || undefined;
       const extraRefs = allRefs.slice(1);
 
