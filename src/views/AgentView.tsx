@@ -1055,32 +1055,81 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
     } catch (err: any) {
       console.warn('Agent chat error fallback triggered:', err);
       const fallbackMsgId = Math.random().toString();
-      const userAtt = userMessage.attachments && userMessage.attachments.length > 0 ? userMessage.attachments[0].dataUrl : null;
-      const fallbackStep = userAtt ? {
-        type: 'edit_image',
-        params: {
-          editType: 'beautify',
-          prompt: userMessage.content || 'Uncensored visual edit',
-          sourceImage: userAtt,
-          modelId: 'wavespeed:bytedance/seedream-v5.0-pro'
-        },
-        status: 'pending' as const
-      } : {
-        type: 'generate_image',
-        params: {
-          prompt: userMessage.content || 'Uncensored visual creation',
-          modelId: 'wavespeed:bytedance/seedream-v5.0-pro'
-        },
-        status: 'pending' as const
-      };
+      const imagesAtt = userMessage.attachments ? userMessage.attachments.filter(a => a.mimeType.startsWith('image/')) : [];
+      const videosAtt = userMessage.attachments ? userMessage.attachments.filter(a => a.mimeType.startsWith('video/') || a.mimeType.startsWith('audio/')) : [];
+      
+      const userAtt = imagesAtt.length > 0 ? imagesAtt[0].dataUrl : null;
+      const videoAtt = videosAtt.length > 0 ? videosAtt[0].dataUrl : null;
+      const lowerReq = (userMessage.content || '').toLowerCase();
+
+      const steps: any[] = [];
+
+      // Check if user is asking for multi-step avatar / voice / video generation
+      if (lowerReq.includes('talking') || lowerReq.includes('avatar') || lowerReq.includes('script') || lowerReq.includes('voice') || videoAtt) {
+        // Step 1: Image generation / edit
+        if (userAtt) {
+          steps.push({
+            type: 'edit_image',
+            params: {
+              editType: 'beautify',
+              prompt: userMessage.content || 'Uncensored visual edit',
+              sourceImage: userAtt,
+              modelId: 'wavespeed:bytedance/seedream-v5.0-pro'
+            },
+            status: 'pending' as const
+          });
+        }
+
+        // Step 2: Voice Clone if video or audio attached
+        if (videoAtt) {
+          steps.push({
+            type: 'clone_voice',
+            params: {
+              audio: videoAtt,
+              engine: 'omnivoice',
+              voiceName: 'Cloned Voice Sample'
+            },
+            status: 'pending' as const
+          });
+        }
+
+        // Step 3: Talking Avatar lip sync
+        steps.push({
+          type: 'generate_talking_head',
+          params: {
+            text: userMessage.content || 'Hello, welcome to my channel!',
+            image: userAtt || undefined
+          },
+          status: 'pending' as const
+        });
+      } else {
+        const fallbackStep = userAtt ? {
+          type: 'edit_image',
+          params: {
+            editType: 'beautify',
+            prompt: userMessage.content || 'Uncensored visual edit',
+            sourceImage: userAtt,
+            modelId: 'wavespeed:bytedance/seedream-v5.0-pro'
+          },
+          status: 'pending' as const
+        } : {
+          type: 'generate_image',
+          params: {
+            prompt: userMessage.content || 'Uncensored visual creation',
+            modelId: 'wavespeed:bytedance/seedream-v5.0-pro'
+          },
+          status: 'pending' as const
+        };
+        steps.push(fallbackStep);
+      }
 
       const fallbackMsgObj: Message = {
         id: fallbackMsgId,
         role: 'model',
-        content: `Drafted task execution plan using ByteDance SeeDream 5.0 Pro for request: "${userMessage.content}".`,
+        content: `Architected ${steps.length}-step multi-modal execution plan for: "${userMessage.content}".`,
         status: 'executing',
-        suggestedSteps: [fallbackStep],
-        execSteps: [{ ...fallbackStep, status: 'pending', resultUrl: undefined, isActionLoading: null }],
+        suggestedSteps: steps,
+        execSteps: steps.map(s => ({ ...s, status: 'pending', resultUrl: undefined, isActionLoading: null })),
         execLogs: []
       };
 
@@ -1958,7 +2007,18 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
             createdPersonaId = createdPersona.id;
           }
 
-          const avatarImg = step.params.image || createdPersona.avatar || createdPersona.referenceImage;
+          let avatarImg = step.params.image || createdPersona.avatar || createdPersona.referenceImage;
+
+          // Resolve starting frame from previous step (e.g. edited image) if present
+          for (let sIdx = 0; sIdx < i; sIdx++) {
+            const prev = stepsList[sIdx];
+            if (prev && prev.status === 'success' && prev.resultUrl && (prev.type === 'edit_image' || prev.type === 'generate_image')) {
+              avatarImg = prev.resultUrl;
+              addLocalLog(`🧠 [Continuity Lock]: Using generated visual from Step ${sIdx + 1} as starting frame for avatar video.`);
+              break;
+            }
+          }
+
           if (!avatarImg) throw new Error('Avatar image is required for talking head video.');
 
           addLocalLog(`⏳ Synthesizing Talking Avatar lip-sync video...`);
