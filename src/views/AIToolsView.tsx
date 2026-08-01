@@ -2292,7 +2292,14 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                <div className="absolute inset-0 flex items-center justify-center bg-black/60 z-50">
                  <div className="flex flex-col items-center text-white drop-shadow-xl">
                    <Loader2 size={40} className="animate-spin text-violet-400 mb-4" />
-                   <div className="px-4 py-2 bg-black/60 backdrop-blur-md rounded-full font-bold">Applying AI Video Effects...</div>
+                   <div className="px-4 py-2 bg-black/60 backdrop-blur-md rounded-full text-xs font-bold tracking-wide">
+                      {activeTool === 'video-edit' ? 'Applying AI Video Effects...' :
+                       activeTool === 'virtual-tryon' ? 'Fusing Garment & Stylizing Outfit...' :
+                       activeTool === 'face-swap' ? 'Swapping & Blending Identity...' :
+                       activeTool === 'beautify' || (activeTool as string) === 'skin-enhancer' ? 'Enhancing Skin & Retouching Features...' :
+                       activeTool === 'bg-remover' ? 'Isolating Subject & Removing Background...' :
+                       'Processing AI Tool Effects...'}
+                    </div>
                  </div>
                </div>
              )}
