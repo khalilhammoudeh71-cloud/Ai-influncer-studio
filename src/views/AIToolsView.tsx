@@ -1252,6 +1252,17 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
             </div>
           </div>
         </div>
+
+        <AssetPickerModal
+          isOpen={isAssetPickerOpen}
+          onClose={() => setIsAssetPickerOpen(false)}
+          onSelectAsset={(url) => {
+            if (assetPickerCallback) assetPickerCallback(url);
+          }}
+          title={assetPickerTitle}
+          acceptMediaType={assetPickerMediaType}
+          currentPersona={persona}
+        />
       </div>
     );
   };
@@ -1504,6 +1515,16 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
       {showVirtualTryOn && (
         <VirtualTryOnModal persona={persona} onClose={() => setShowVirtualTryOn(false)} />
       )}
+      <AssetPickerModal
+        isOpen={isAssetPickerOpen}
+        onClose={() => setIsAssetPickerOpen(false)}
+        onSelectAsset={(url) => {
+          if (assetPickerCallback) assetPickerCallback(url);
+        }}
+        title={assetPickerTitle}
+        acceptMediaType={assetPickerMediaType}
+        currentPersona={persona}
+      />
     </>
     );
   }
