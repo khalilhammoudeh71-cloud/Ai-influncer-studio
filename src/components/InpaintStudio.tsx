@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Paintbrush,
@@ -17,12 +18,14 @@ import {
   Glasses,
   Shirt,
   Trash2,
-  Flame
+  Flame,
+  FolderHeart
 } from 'lucide-react';
 import { Persona } from '../types';
 import { editImage } from '../services/imageService';
 import { api } from '../services/apiService';
 import { cn } from '../utils/cn';
+import { AssetPickerModal } from './AssetPickerModal';
 import toast from 'react-hot-toast';
 
 interface InpaintStudioProps {
@@ -79,6 +82,7 @@ export default function InpaintStudio({ persona, onClose, onSaveImage }: Inpaint
   const [isGenerating, setIsGenerating] = useState(false);
   const [resultImage, setResultImage] = useState<string | null>(null);
   const [mode, setMode] = useState<'paint' | 'erase'>('paint');
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
@@ -273,8 +277,8 @@ export default function InpaintStudio({ persona, onClose, onSaveImage }: Inpaint
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-[9999] bg-[#07070c] backdrop-blur-2xl flex flex-col text-white">
+  return createPortal(
+    <div className="fixed inset-0 z-[99999] bg-[#07070c] backdrop-blur-2xl flex flex-col text-white w-screen h-screen">
       <input
         type="file"
         ref={fileInputRef}
@@ -299,12 +303,21 @@ export default function InpaintStudio({ persona, onClose, onSaveImage }: Inpaint
           </div>
         </div>
 
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="px-4 py-2 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 text-white border border-white/15 flex items-center gap-2 transition-all"
-        >
-          <Upload size={14} /> Upload Custom Photo
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setIsPickerOpen(true)}
+            className="px-4 py-2 rounded-xl text-xs font-bold bg-pink-500/20 hover:bg-pink-500/30 text-pink-300 border border-pink-500/30 flex items-center gap-2 transition-all shadow-lg"
+          >
+            <FolderHeart size={14} /> Choose from Asset Library
+          </button>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="px-4 py-2 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 text-white border border-white/15 flex items-center gap-2 transition-all"
+          >
+            <Upload size={14} /> Upload Custom Photo
+          </button>
+        </div>
       </div>
 
       {/* Main Content */}
@@ -491,6 +504,18 @@ export default function InpaintStudio({ persona, onClose, onSaveImage }: Inpaint
           )}
         </div>
       </div>
-    </div>
+
+      <AssetPickerModal
+        isOpen={isPickerOpen}
+        onClose={() => setIsPickerOpen(false)}
+        onSelectAsset={(url) => {
+          setSourceImage(url);
+          setResultImage(null);
+        }}
+        title="Select Image to Inpaint from Asset Library"
+        currentPersona={persona}
+      />
+    </div>,
+    document.body
   );
 }
