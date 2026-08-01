@@ -2255,7 +2255,6 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                   Parallel OS
                 </span>
               </div>
-              <p className="text-[var(--text-muted)] text-[9px] font-bold uppercase tracking-wider">AI Assistant for Photos, Video Reels, Voice Clones & Growth</p>
             </div>
           </div>
 
@@ -3024,7 +3023,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
               }}
               disabled={isSending}
               placeholder={isListening ? "Listening... Speak clearly" : "Message Super Agent... (Shift+Enter for new line)"}
-              className="flex-1 min-h-[44px] max-h-[180px] py-2.5 bg-[var(--bg-input)] border border-white/10 rounded-xl px-3.5 text-xs text-white placeholder:text-[var(--text-muted)] focus:border-pink-500/40 outline-none transition-all resize-none leading-relaxed overflow-y-auto"
+              className="flex-1 min-h-[48px] max-h-[220px] py-3 bg-[var(--bg-input)] border border-white/10 rounded-xl px-4 text-sm font-medium text-white placeholder:text-[var(--text-muted)] focus:border-pink-500/40 outline-none transition-all resize-none leading-relaxed overflow-y-auto"
             />
 
             <button
