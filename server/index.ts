@@ -4090,37 +4090,61 @@ app.post('/api/face-swap', async (req, res) => {
     if (swapMode === 'head') {
       candidates = [
         {
-          path: '/wavespeed-ai/image-head-swap',
-          body: { image: tgt, face_image: swp, target_image: tgt, swap_image: swp }
-        },
-        {
-          path: '/wavespeed-ai/image-face-swap-pro',
-          body: { image: tgt, face_image: swp, target_image: tgt, swap_image: swp, face_enhance: faceEnhance }
-        },
-        {
           path: '/bytedance/seedream-v5.0-pro/edit',
           body: {
             images: [tgt, swp],
-            prompt: 'Replace the complete head and hair of the person in the first image with the exact head, face, and hairstyle from the second image while keeping the exact body, clothing, and background of the first image.'
+            prompt: 'Photorealistic 8k head swap: Replace the entire head, face, and hair of the person in the first image with the exact head, face, facial features, and hair/hairstyle from the second image. Keep the exact body, outfit, pose, lighting, and background of the first image.'
           }
+        },
+        {
+          path: '/bytedance/seedream-v4.5/edit',
+          body: {
+            images: [tgt, swp],
+            prompt: 'Photorealistic 8k head swap: Replace the head and hair of the person in the first image with the head, face, and hairstyle from the second image.'
+          }
+        },
+        {
+          path: '/wavespeed-ai/image-head-swap',
+          body: { image: tgt, face_image: swp, target_image: tgt, swap_image: swp }
         }
       ];
     } else if (swapMode === 'body') {
       candidates = [
         {
-          path: '/wavespeed-ai/image-body-swap',
-          body: { image: swp, body_image: tgt }
-        },
-        {
           path: '/bytedance/seedream-v5.0-pro/edit',
           body: {
             images: [tgt, swp],
-            prompt: 'Replace the person in the background/scene of the first image with the complete person/character from the second image.'
+            prompt: 'Photorealistic 8k character swap: Replace the person in the first image with the complete person/character from the second image, matching exact facial features, body structure, and outfit while placing them seamlessly into the environment and lighting of the first image.'
           }
+        },
+        {
+          path: '/bytedance/seedream-v4.5/edit',
+          body: {
+            images: [tgt, swp],
+            prompt: 'Photorealistic 8k character swap: Replace the person in the first image with the person from the second image.'
+          }
+        },
+        {
+          path: '/wavespeed-ai/image-body-swap',
+          body: { image: swp, body_image: tgt }
         }
       ];
     } else {
       candidates = [
+        {
+          path: '/bytedance/seedream-v5.0-pro/edit',
+          body: {
+            images: [tgt, swp],
+            prompt: 'Photorealistic 8k face swap: Replace the face of the person in the first image with the exact face, eyes, smile, skin texture, and facial features from the second image. Keep the exact body, clothing, pose, hair length, lighting, and background of the first image.'
+          }
+        },
+        {
+          path: '/bytedance/seedream-v4.5/edit',
+          body: {
+            images: [tgt, swp],
+            prompt: 'Photorealistic 8k face swap: Replace the face of the person in the first image with the exact face from the second image while keeping body, clothing, and background.'
+          }
+        },
         {
           path: '/wavespeed-ai/image-face-swap-pro',
           body: {
@@ -4129,25 +4153,6 @@ app.post('/api/face-swap', async (req, res) => {
             face_image: swp,
             swap_image: swp,
             face_enhance: faceEnhance
-          }
-        },
-        {
-          path: '/wavespeed-ai/image-face-swap',
-          body: {
-            image: tgt,
-            target_image: tgt,
-            face_image: swp,
-            swap_image: swp,
-            face_enhance: faceEnhance,
-            target_gender: 'all',
-            target_index: 0
-          }
-        },
-        {
-          path: '/bytedance/seedream-v5.0-pro/edit',
-          body: {
-            images: [tgt, swp],
-            prompt: 'Photorealistic face swap: Replace the face of the person in the first image with the exact face, eyes, smile, and facial features from the second image while keeping the exact body, clothing, pose, hair length, lighting, and background of the first image.'
           }
         }
       ];
