@@ -2922,8 +2922,8 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
 
 
 
-        {/* Prompt Input bar */}
-        <div className="flex-none p-4 border-t border-white/5 bg-[var(--bg-elevated)]/30 backdrop-blur-md">
+        {/* Prompt Input bar — Elevated slightly upwards for maximum visibility */}
+        <div className="flex-none px-4 pt-3.5 pb-8 sm:pb-10 border-t border-white/10 bg-[#0d1322]/90 backdrop-blur-xl shadow-[0_-10px_30px_rgba(0,0,0,0.5)] relative z-20">
           {/* Attachment Thumbnails Preview Row */}
           {attachments.length > 0 && (
             <div className="flex items-center gap-2.5 overflow-x-auto pb-3 mb-2 custom-scrollbar">
