@@ -2767,6 +2767,54 @@ function isNsfwPromptText(promptText: string, allowNsfw?: boolean): boolean {
   return nsfwKeywords.some(kw => lower.includes(kw));
 }
 
+async function performFaceSwapPass(targetImage: string, swapImage: string): Promise<string> {
+  if (!WAVESPEED_API_KEY || !targetImage || !swapImage) return targetImage;
+  try {
+    const [tgt, swp] = await Promise.all([resolveImageToDataUrl(targetImage), resolveImageToDataUrl(swapImage)]);
+    const candidates = [
+      {
+        path: '/bytedance/seedream-v5.0-pro/edit',
+        body: {
+          images: [tgt, swp],
+          prompt: 'Photorealistic 8k face swap: Replace the face of the person in the first image with the exact face, eyes, smile, skin texture, and facial features from the second image. Keep the exact body, clothing, pose, hair length, lighting, and background of the first image.'
+        }
+      },
+      {
+        path: '/wavespeed-ai/image-face-swap-pro',
+        body: {
+          image: tgt,
+          target_image: tgt,
+          face_image: swp,
+          swap_image: swp,
+          face_enhance: true
+        }
+      }
+    ];
+
+    for (const candidate of candidates) {
+      try {
+        console.log(`[AutoFaceSwapPass] Swap pass candidate: ${candidate.path}`);
+        const r = await fetch(`https://api.wavespeed.ai/api/v3${candidate.path}`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${WAVESPEED_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(candidate.body),
+        });
+        const json = await r.json() as Record<string, unknown>;
+        const imageUrl = await extractWavespeedOutput(json);
+        if (imageUrl) {
+          console.log(`[AutoFaceSwapPass] Success via ${candidate.path}`);
+          return imageUrl;
+        }
+      } catch (err: any) {
+        console.warn(`[AutoFaceSwapPass] Candidate ${candidate.path} failed:`, err?.message || err);
+      }
+    }
+  } catch (err) {
+    console.warn('[AutoFaceSwapPass] Face swap pass error, returning original image:', err);
+  }
+  return targetImage;
+}
+
 app.post('/api/generate-image', async (req, res) => {
   const { referenceImage, additionalImages, modelId: rawModelId, imageWeight, aspectRatio, resolution, count: rawCount, ...rest } = req.body as ImageGenRequest & { modelId: string; imageWeight?: number; count?: number };
   const count = Math.max(1, Math.min(4, Math.floor(Number(rawCount) || 1)));
@@ -2940,6 +2988,16 @@ app.post('/api/generate-image', async (req, res) => {
       }
     } else {
       return res.status(400).json({ error: 'Unknown model ID' });
+    }
+
+    if (referenceImage && imageUrls.length > 0) {
+      console.log('[generate-image] Reference image detected — performing automatic face-swap pass for exact persona face matching...');
+      try {
+        const swapped = await Promise.all(imageUrls.map(url => performFaceSwapPass(url, referenceImage)));
+        imageUrls = swapped;
+      } catch (err) {
+        console.warn('[generate-image] Auto face-swap pass error, using raw generated images:', err);
+      }
     }
 
     if (count === 1) {
