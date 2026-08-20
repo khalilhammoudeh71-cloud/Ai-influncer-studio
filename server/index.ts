@@ -6047,6 +6047,13 @@ async function handleTTS(req: express.Request, res: express.Response) {
     'elevenlabs:mureka-vocal': 'KLbbwrUTS6brBkjmN4Fp', // John (Smooth Male)
     'openai:tts': 'ov7JSkufAlSs386OYTaC', // Rawan Hasan (Studio Clear)
 
+    // Wiro full model IDs
+    'wiro-voice:openmoss/moss-tts-v1-5': 'jqcCZkN6Knx8BJ5TBdYR', // Zara
+    'wiro-voice:k2-fsa/omnivoice': 'NUjosfEayZAdRcDmcHM8', // Madison
+    'wiro-voice:resemble-ai/chatterbox-multilingual': '8DzKSPdgEQPaK5vKG0Rs', // Vanessa
+    'wiro-voice:openbmb/voxcpm2': 'v2cluk168jzrg0LQKNRl', // Sabrina
+    'wiro-voice:fishaudio/s2-pro': '7jFje9BJoTWzqZzouT0j', // Leen
+
     // Legacy support
     'zonos2': 'v2cluk168jzrg0LQKNRl',
     'qwen3-clone': 'jqcCZkN6Knx8BJ5TBdYR',
@@ -6070,6 +6077,34 @@ async function handleTTS(req: express.Request, res: express.Response) {
   const rawRefs: string[] = ((req.body as any).voiceReferences && Array.isArray((req.body as any).voiceReferences) && (req.body as any).voiceReferences.length > 0)
     ? (req.body as any).voiceReferences
     : (voiceReference ? [voiceReference] : ((req.body as any).voiceSample ? [(req.body as any).voiceSample] : []));
+
+  // 1. If user provided uploaded voice audio reference, perform zero-shot voice cloning!
+  if (rawRefs.length > 0 && rawRefs[0]) {
+    console.log(`[handleTTS] Zero-shot cloning voice from uploaded audio using engine/model: ${currentEngineStr || 'default'}...`);
+    try {
+      const clonedAudioUrl = await synthesizeClonedAudioWithWavespeed(
+        rawRefs[0],
+        text,
+        currentEngineStr,
+        {
+          speed: speed || (voiceSettings as any)?.speed || 1.0,
+          exaggeration: (voiceSettings as any)?.style || (req.body.voiceStyleExaggeration ? req.body.voiceStyleExaggeration / 100 : 0.3)
+        }
+      );
+
+      if (clonedAudioUrl) {
+        return res.json({
+          audioUrl: clonedAudioUrl,
+          voice: 'cloned-reference',
+          model: currentEngineStr || 'wavespeed-cloner',
+          engine: currentEngineStr || 'wavespeed:cloned',
+          isCloned: true
+        });
+      }
+    } catch (cloneErr) {
+      console.warn('[handleTTS Clone Fallback Warning]:', cloneErr);
+    }
+  }
 
   let targetVoiceId = defaultFallbackVoice;
   if (voiceId) {
@@ -6112,7 +6147,7 @@ async function handleTTS(req: express.Request, res: express.Response) {
     }
   }
 
-  // 1. Synthesize speech via ElevenLabs Turbo (Fast ~400ms)
+  // 2. Synthesize speech via ElevenLabs Turbo (Fast ~400ms)
   try {
     const computedStability = Math.min(0.70, Math.max(0.30, voiceSettings?.stability ?? (req.body.voiceStability ? req.body.voiceStability / 100 : 0.48)));
     const computedLikeness = Math.min(0.95, Math.max(0.60, voiceSettings?.similarity_boost ?? (req.body.voiceLikeness ? req.body.voiceLikeness / 100 : 0.85)));

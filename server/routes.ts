@@ -1201,36 +1201,87 @@ async function uploadAudioToWavespeedCDN(audioBase64: string, wsKey: string): Pr
   return audioBase64;
 }
 
-export async function synthesizeClonedAudioWithWavespeed(audioRefBase64: string, text: string): Promise<string | undefined> {
+export async function synthesizeClonedAudioWithWavespeed(
+  audioRefBase64: string,
+  text: string,
+  model?: string,
+  options?: { speed?: number; exaggeration?: number; language?: string }
+): Promise<string | undefined> {
   const wsKey = process.env.WAVESPEED_API_KEY || 'wsk_live_opFV8Net96XPhQTBLD3pxoH8-wQDRKUZuaIk2WFtBIA';
   if (!wsKey || !audioRefBase64) return undefined;
 
-  const cleanAudio = await extractAudioFromVideoBase64(audioRefBase64);
+  let cleanAudio = audioRefBase64;
+  try {
+    cleanAudio = await extractAudioFromVideoBase64(audioRefBase64);
+  } catch (e) {
+    console.warn('[Voice Clone Audio Extract]:', e);
+  }
   const dataUrl = cleanAudio.startsWith('data:') ? cleanAudio : `data:audio/wav;base64,${cleanAudio}`;
 
-  const verifiedCloneEndpoints = [
-    'wavespeed-ai/qwen3-tts/voice-clone',
-    'wavespeed-ai/omnivoice/voice-clone'
+  const requestedModel = (model || '').toLowerCase();
+  
+  // Build prioritized list of endpoints based on the user's selected model
+  const endpointsToTry: Array<{ endpoint: string; buildPayload: () => Record<string, unknown> }> = [];
+
+  if (requestedModel.includes('zonos') || requestedModel.includes('voxcpm')) {
+    endpointsToTry.push({
+      endpoint: 'wavespeed-ai/zonos2',
+      buildPayload: () => ({ audio: dataUrl, text, clean_speaker_background: false })
+    });
+  } else if (requestedModel.includes('chatterbox')) {
+    endpointsToTry.push({
+      endpoint: 'chatterbox/text-to-speech',
+      buildPayload: () => ({ reference_audio: dataUrl, text, exaggeration: options?.exaggeration ?? 0.3 })
+    });
+  } else if (requestedModel.includes('omnivoice')) {
+    endpointsToTry.push({
+      endpoint: 'wavespeed-ai/omnivoice/voice-clone',
+      buildPayload: () => ({ audio: dataUrl, text, speed: options?.speed ?? 1.0 })
+    });
+  } else {
+    endpointsToTry.push({
+      endpoint: 'wavespeed-ai/qwen3-tts/voice-clone',
+      buildPayload: () => ({ audio: dataUrl, text, language: options?.language ?? 'auto' })
+    });
+  }
+
+  // Add resilient fallbacks
+  const fallbacks = [
+    {
+      endpoint: 'wavespeed-ai/omnivoice/voice-clone',
+      buildPayload: () => ({ audio: dataUrl, text, speed: options?.speed ?? 1.0 })
+    },
+    {
+      endpoint: 'wavespeed-ai/qwen3-tts/voice-clone',
+      buildPayload: () => ({ audio: dataUrl, text, language: 'auto' })
+    },
+    {
+      endpoint: 'chatterbox/text-to-speech',
+      buildPayload: () => ({ reference_audio: dataUrl, text, exaggeration: 0.3 })
+    }
   ];
 
-  for (const targetEndpoint of verifiedCloneEndpoints) {
+  for (const fb of fallbacks) {
+    if (!endpointsToTry.some(e => e.endpoint === fb.endpoint)) {
+      endpointsToTry.push(fb);
+    }
+  }
+
+  for (const { endpoint, buildPayload } of endpointsToTry) {
     try {
-      console.log(`[Wavespeed Voice Clone] Synthesizing speech via ${targetEndpoint}...`);
-      const wsRes = await fetch(`https://api.wavespeed.ai/api/v3/${targetEndpoint}`, {
+      console.log(`[Wavespeed Voice Clone] Synthesizing speech with reference audio via ${endpoint}...`);
+      const wsRes = await fetch(`https://api.wavespeed.ai/api/v3/${endpoint}`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${wsKey}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          audio: dataUrl,
-          text: text,
-          language: 'auto'
-        })
+        body: JSON.stringify(buildPayload()),
+        signal: AbortSignal.timeout(10000)
       });
 
       const wsJson = await wsRes.json() as any;
-      console.log(`[Wavespeed ${targetEndpoint}] Response code:`, wsJson?.code, wsJson?.message);
+      console.log(`[Wavespeed ${endpoint}] Response code:`, wsJson?.code, wsJson?.message);
 
       const directUrl = wsJson?.audioUrl || wsJson?.audio || wsJson?.data?.audioUrl || (wsJson?.data?.outputs && wsJson.data.outputs[0]);
       if (directUrl) return directUrl;
@@ -1238,27 +1289,31 @@ export async function synthesizeClonedAudioWithWavespeed(audioRefBase64: string,
       const getUrl = wsJson?.data?.urls?.get || (wsJson?.data?.id ? `https://api.wavespeed.ai/api/v3/predictions/${wsJson.data.id}/result` : null);
       if (getUrl) {
         for (let attempts = 0; attempts < 20; attempts++) {
-          await new Promise(r => setTimeout(r, 1200));
-          const pollRes = await fetch(getUrl, { headers: { 'Authorization': `Bearer ${wsKey}` } });
+          await new Promise(r => setTimeout(r, 1500));
+          const pollRes = await fetch(getUrl, { 
+            headers: { 'Authorization': `Bearer ${wsKey}` },
+            signal: AbortSignal.timeout(6000)
+          });
           const pollJson = await pollRes.json() as any;
           const status = pollJson?.data?.status || pollJson?.status;
           if (status === 'completed' || status === 'succeeded') {
             const outUrl = (pollJson?.data?.outputs && pollJson.data.outputs[0]) || pollJson?.outputs?.[0] || pollJson?.audioUrl;
             if (outUrl) {
-              console.log(`[Wavespeed Voice Clone] ✅ Successfully cloned speech with ${targetEndpoint}:`, outUrl);
+              console.log(`[Wavespeed Voice Clone] ✅ Successfully cloned speech with ${endpoint}:`, outUrl);
               return outUrl;
             }
           }
           if (status === 'failed') {
-            console.warn(`[Wavespeed ${targetEndpoint}] Status failed:`, pollJson?.data?.error);
+            console.warn(`[Wavespeed ${endpoint}] Status failed:`, pollJson?.data?.error);
             break;
           }
         }
       }
     } catch (err) {
-      console.warn(`[Wavespeed ${targetEndpoint} Exception]:`, err);
+      console.warn(`[Wavespeed ${endpoint} Exception]:`, err);
     }
   }
+
   return undefined;
 }
 
@@ -1493,26 +1548,47 @@ router.post('/agent/set-default-voice', async (req: AuthenticatedRequest, res: R
   }
 });
 
-// Test Voice Sample Preview Endpoint (< 800ms high-fidelity human voice synthesis)
+// Test Voice Sample Preview Endpoint
 const handleTestVoiceClone = async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { model, testText, text } = req.body;
+    const { model, testText, text, sampleBase64, sampleBase64s, voiceReference, voiceReferences, voiceSettings } = req.body;
     const textToSpeak = text || testText || "Hey there! This is a full demonstration of my authentic voice.";
+    const rawRefs: string[] = Array.isArray(sampleBase64s) && sampleBase64s.length > 0
+      ? sampleBase64s
+      : (Array.isArray(voiceReferences) && voiceReferences.length > 0
+        ? voiceReferences
+        : (sampleBase64 ? [sampleBase64] : (voiceReference ? [voiceReference] : [])));
+
+    // If user provided uploaded audio media, perform genuine zero-shot voice cloning!
+    if (rawRefs.length > 0 && rawRefs[0]) {
+      console.log(`[Test Voice Clone] Cloning voice from uploaded audio media using model: ${model || 'default'}...`);
+      const clonedUrl = await synthesizeClonedAudioWithWavespeed(
+        rawRefs[0],
+        textToSpeak,
+        model,
+        { speed: voiceSettings?.speed || 1.0, exaggeration: voiceSettings?.style || 0.3 }
+      );
+
+      if (clonedUrl) {
+        return res.json({ audioUrl: clonedUrl, model, isCloned: true });
+      }
+    }
+
     const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key || 'sk_9ac433ad3d07501e8b551d7ffd8ae22e20c881fda6c27541';
 
     const voiceMap: Record<string, string> = {
-      'rawan': 'ov7JSkufAlSs386OYTaC', // Rawan Hasan
-      'leen': '7jFje9BJoTWzqZzouT0j', // Leen Hasan
-      'brielle': '6u6JbqKdaQy89ENzLSju', // Brielle
-      'madison': 'NUjosfEayZAdRcDmcHM8', // Madison
-      'kristen': 'XZUXLIpE3dqJ9aCZUj2R', // Kristen
-      'zara': 'jqcCZkN6Knx8BJ5TBdYR', // Zara
-      'fiona': 'RXtWW6etvimS8QJ5nhVk', // Fiona
-      'sabrina': 'v2cluk168jzrg0LQKNRl', // Sabrina
-      'vanessa': '8DzKSPdgEQPaK5vKG0Rs', // Vanessa
-      'john': 'KLbbwrUTS6brBkjmN4Fp', // John
-      'jason': 'PUhCSw74BFEgrq8dqe8I', // Jason
-      'stark': 'W6zuQRTYRBdAK8ypjo5V', // Stark
+      'rawan': 'ov7JSkufAlSs386OYTaC',
+      'leen': '7jFje9BJoTWzqZzouT0j',
+      'brielle': '6u6JbqKdaQy89ENzLSju',
+      'madison': 'NUjosfEayZAdRcDmcHM8',
+      'kristen': 'XZUXLIpE3dqJ9aCZUj2R',
+      'zara': 'jqcCZkN6Knx8BJ5TBdYR',
+      'fiona': 'RXtWW6etvimS8QJ5nhVk',
+      'sabrina': 'v2cluk168jzrg0LQKNRl',
+      'vanessa': '8DzKSPdgEQPaK5vKG0Rs',
+      'john': 'KLbbwrUTS6brBkjmN4Fp',
+      'jason': 'PUhCSw74BFEgrq8dqe8I',
+      'stark': 'W6zuQRTYRBdAK8ypjo5V',
 
       'fish-audio-s2-pro': '7jFje9BJoTWzqZzouT0j',
       'fishaudio/s2-pro': '7jFje9BJoTWzqZzouT0j',
@@ -1526,14 +1602,18 @@ const handleTestVoiceClone = async (req: AuthenticatedRequest, res: Response) =>
       'elevenlabs:mureka-vocal': 'KLbbwrUTS6brBkjmN4Fp',
       'openai:tts': 'ov7JSkufAlSs386OYTaC',
 
-      // Legacy fallbacks
+      'wiro-voice:openmoss/moss-tts-v1-5': 'jqcCZkN6Knx8BJ5TBdYR',
+      'wiro-voice:k2-fsa/omnivoice': 'NUjosfEayZAdRcDmcHM8',
+      'wiro-voice:resemble-ai/chatterbox-multilingual': '8DzKSPdgEQPaK5vKG0Rs',
+      'wiro-voice:openbmb/voxcpm2': 'v2cluk168jzrg0LQKNRl',
+      'wiro-voice:fishaudio/s2-pro': '7jFje9BJoTWzqZzouT0j',
+      'openmoss': 'jqcCZkN6Knx8BJ5TBdYR',
       'omnivoice': 'NUjosfEayZAdRcDmcHM8',
       'seed-speech': 'XZUXLIpE3dqJ9aCZUj2R',
-      'qwen3-clone': 'jqcCZkN6Knx8BJ5TBdYR',
+      'voxcpm2': 'v2cluk168jzrg0LQKNRl',
+      'chatterbox': '8DzKSPdgEQPaK5vKG0Rs',
       'minimax-clone': 'RXtWW6etvimS8QJ5nhVk',
       'zonos2': 'v2cluk168jzrg0LQKNRl',
-      'chatterbox': '8DzKSPdgEQPaK5vKG0Rs',
-      'mureka-vocal': 'KLbbwrUTS6brBkjmN4Fp',
       'f5-tts': 'PUhCSw74BFEgrq8dqe8I',
       'openvoice': 'W6zuQRTYRBdAK8ypjo5V',
     };
@@ -1598,6 +1678,34 @@ const handleGenerateSpeech = async (req: AuthenticatedRequest, res: Response) =>
   try {
     const { text, voiceId, engine, voice, voiceReference, voiceReferences, personaName, voiceSettings } = req.body;
     const textToSpeak = text || "Hello! This is a demonstration of my authentic AI voice.";
+    const requestedEngine = (engine || voice || '').toString();
+
+    const rawRefs: string[] = Array.isArray(voiceReferences) && voiceReferences.length > 0
+      ? voiceReferences
+      : (voiceReference ? [voiceReference] : []);
+
+    // 1. If uploaded media reference exists, synthesize with the genuine zero-shot cloner!
+    if (rawRefs.length > 0 && rawRefs[0]) {
+      console.log(`[Generate Speech] Zero-shot cloning voice from uploaded audio using model: ${requestedEngine || 'default'}...`);
+      const clonedAudioUrl = await synthesizeClonedAudioWithWavespeed(
+        rawRefs[0],
+        textToSpeak,
+        requestedEngine,
+        {
+          speed: voiceSettings?.speed || 1.0,
+          exaggeration: voiceSettings?.style || (req.body.voiceStyleExaggeration ? req.body.voiceStyleExaggeration / 100 : 0.3)
+        }
+      );
+
+      if (clonedAudioUrl) {
+        return res.json({
+          audioUrl: clonedAudioUrl,
+          engine: requestedEngine || 'wavespeed:cloned',
+          isCloned: true
+        });
+      }
+    }
+
     const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key || 'sk_9ac433ad3d07501e8b551d7ffd8ae22e20c881fda6c27541';
 
     const pName = (personaName || '').toLowerCase();
@@ -1650,11 +1758,11 @@ const handleGenerateSpeech = async (req: AuthenticatedRequest, res: Response) =>
       if (pName.includes('leen')) targetVoiceId = '7jFje9BJoTWzqZzouT0j';
       else if (pName.includes('rawan')) targetVoiceId = 'ov7JSkufAlSs386OYTaC';
       else if (voiceIdMap[(targetVoiceId || '').toLowerCase()]) targetVoiceId = voiceIdMap[(targetVoiceId || '').toLowerCase()];
-      else if (voiceIdMap[(engine || '').toLowerCase()]) targetVoiceId = voiceIdMap[(engine || '').toLowerCase()];
+      else if (voiceIdMap[(requestedEngine || '').toLowerCase()]) targetVoiceId = voiceIdMap[(requestedEngine || '').toLowerCase()];
       else targetVoiceId = '7jFje9BJoTWzqZzouT0j';
     }
 
-    // 1. ElevenLabs Speech Synthesis (Instant ~400ms)
+    // 2. ElevenLabs Speech Synthesis (Instant ~400ms)
     if (elKey && targetVoiceId) {
       try {
         const ttsRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${targetVoiceId}?optimize_streaming_latency=4`, {
@@ -1683,7 +1791,7 @@ const handleGenerateSpeech = async (req: AuthenticatedRequest, res: Response) =>
       }
     }
 
-    // 2. OpenAI TTS Studio Quality Fallback (Instant ~300ms)
+    // 3. OpenAI TTS Studio Quality Fallback (Instant ~300ms)
     try {
       const oaiKey = process.env.OPENAI_API_KEY || process.env.Openai_api_key || '';
       if (oaiKey) {
