@@ -284,21 +284,20 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
   };
 
   return (
-    <div className="p-6 max-w-7xl mx-auto min-h-full">
-      <header className="premium-header flex flex-col md:flex-row justify-between items-start md:items-center mb-8 pt-6 pb-4">
-        <div className="relative z-10">
-          <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-3">
-            <span className="gradient-text flex items-center gap-2.5">
-              <Wrench className="text-[#00F5C2]" /> AI Toolbox
-            </span>
+    <div className="p-6 max-w-7xl mx-auto min-h-full select-none">
+      <header className="mb-6 flex flex-col md:flex-row justify-between items-start md:items-center border-b border-[#E7C477]/10 pb-4">
+        <div>
+          <h1 className="text-3xl md:text-4xl font-serif text-[#F5F1E8] tracking-tight flex items-center gap-3">
+            AI Toolbox
+            <span className="text-[#E7C477] text-xl font-normal">✨</span>
           </h1>
-          <p className="text-[var(--text-tertiary)] text-sm mt-1.5 font-medium">
+          <p className="text-xs md:text-sm text-[#8C909A] mt-1 font-sans">
             Unified suite of visual creative editing and strategic marketing tools for{' '}
-            <span className="text-violet-400 font-bold">{activePersona.name || 'your persona'}</span>
+            <span className="text-[#F2D58D] font-medium">{activePersona.name || 'your persona'}</span>.
           </p>
         </div>
-        <div className="mt-4 md:mt-0 flex items-center gap-3 bg-[#111827]/75 border border-white/5 px-4 py-2 rounded-2xl backdrop-blur-md">
-          <div className="w-8 h-8 rounded-lg overflow-hidden border border-[#334155] shrink-0">
+        <div className="mt-4 md:mt-0 flex items-center gap-3 bg-[#0A101C] border border-[#E7C477]/15 px-4 py-2 rounded-2xl">
+          <div className="w-8 h-8 rounded-lg overflow-hidden border border-[#E7C477]/30 shrink-0">
             {activePersona.avatar ? (
               <img
                 src={activePersona.avatar}
@@ -306,31 +305,31 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                 className="w-full h-full object-cover"
               />
             ) : (
-              <div className="w-full h-full bg-[#1e293b] flex items-center justify-center text-[#64748b]">
+              <div className="w-full h-full bg-[#0E1523] flex items-center justify-center text-[#8C909A]">
                 <Users size={16} />
               </div>
             )}
           </div>
           <div className="text-left">
-            <p className="text-[10px] font-black text-[#00D4FF] uppercase tracking-wider leading-none">Active Persona</p>
-            <p className="text-xs font-bold text-white mt-1 leading-tight">{activePersona.name || 'Select a Persona'}</p>
+            <p className="text-[10px] font-semibold text-[#D9BA72] uppercase tracking-wider leading-none">Active Persona</p>
+            <p className="text-xs font-bold text-[#F5F1E8] mt-1 leading-tight">{activePersona.name || 'Select a Persona'}</p>
           </div>
         </div>
       </header>
 
       {/* Segment Switcher */}
       <div className="flex justify-center mb-8">
-        <div className="relative flex p-1 bg-[#111827]/80 border border-white/5 rounded-full backdrop-blur-md">
+        <div className="relative flex p-1.5 bg-[#18181B] border border-[#E7C477]/20 rounded-2xl backdrop-blur-md shadow-lg shadow-black/40">
           <button
             onClick={() => setToolboxSection('all')}
-            className={`relative px-6 py-2.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all duration-300 z-10 cursor-pointer ${
-              toolboxSection === 'all' ? 'text-white' : 'text-[var(--text-muted)] hover:text-white'
+            className={`relative px-6 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-300 z-10 cursor-pointer ${
+              toolboxSection === 'all' ? 'text-[#141416]' : 'text-[#8C909A] hover:text-[#F5F1E8]'
             }`}
           >
             {toolboxSection === 'all' && (
               <motion.div
                 layoutId="toolboxTabBg"
-                className="absolute inset-0 bg-gradient-to-r from-violet-600 to-fuchsia-600 rounded-full -z-10 shadow-lg shadow-violet-500/20"
+                className="absolute inset-0 bg-gradient-to-r from-[#F2D58D] to-[#B99655] rounded-xl -z-10 shadow-md shadow-amber-950/40"
                 transition={{ type: 'spring', stiffness: 380, damping: 30 }}
               />
             )}
@@ -340,14 +339,14 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
           </button>
           <button
             onClick={() => setToolboxSection('creative')}
-            className={`relative px-6 py-2.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all duration-300 z-10 cursor-pointer ${
-              toolboxSection === 'creative' ? 'text-white' : 'text-[var(--text-muted)] hover:text-white'
+            className={`relative px-6 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-300 z-10 cursor-pointer ${
+              toolboxSection === 'creative' ? 'text-[#141416]' : 'text-[#8C909A] hover:text-[#F5F1E8]'
             }`}
           >
             {toolboxSection === 'creative' && (
               <motion.div
                 layoutId="toolboxTabBg"
-                className="absolute inset-0 bg-gradient-to-r from-violet-600 to-fuchsia-600 rounded-full -z-10 shadow-lg shadow-violet-500/20"
+                className="absolute inset-0 bg-gradient-to-r from-[#F2D58D] to-[#B99655] rounded-xl -z-10 shadow-md shadow-amber-950/40"
                 transition={{ type: 'spring', stiffness: 380, damping: 30 }}
               />
             )}
@@ -357,14 +356,14 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
           </button>
           <button
             onClick={() => setToolboxSection('marketing')}
-            className={`relative px-6 py-2.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all duration-300 z-10 cursor-pointer ${
-              toolboxSection === 'marketing' ? 'text-white' : 'text-[var(--text-muted)] hover:text-white'
+            className={`relative px-6 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-300 z-10 cursor-pointer ${
+              toolboxSection === 'marketing' ? 'text-[#141416]' : 'text-[#8C909A] hover:text-[#F5F1E8]'
             }`}
           >
             {toolboxSection === 'marketing' && (
               <motion.div
                 layoutId="toolboxTabBg"
-                className="absolute inset-0 bg-gradient-to-r from-violet-600 to-fuchsia-600 rounded-full -z-10 shadow-lg shadow-violet-500/20"
+                className="absolute inset-0 bg-gradient-to-r from-[#F2D58D] to-[#B99655] rounded-xl -z-10 shadow-md shadow-amber-950/40"
                 transition={{ type: 'spring', stiffness: 380, damping: 30 }}
               />
             )}
@@ -379,11 +378,11 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
         <div className="space-y-12">
           {/* Creative Section */}
           <div className="space-y-4">
-            <div className="flex items-center gap-2.5 pb-2 border-b border-white/5">
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-600 to-fuchsia-600 flex items-center justify-center text-white">
+            <div className="flex items-center gap-2.5 pb-2 border-b border-[#E7C477]/10">
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#F2D58D] to-[#B99655] flex items-center justify-center text-[#141416] shadow-sm">
                 <Sparkles size={14} />
               </div>
-              <h2 className="text-sm font-bold text-white uppercase tracking-wider">Creative & Image/Video Production Suite</h2>
+              <h2 className="text-sm font-bold text-[#F5F1E8] uppercase tracking-wider">Creative & Image/Video Production Suite</h2>
             </div>
             <AIToolsView 
               persona={activePersona} 
@@ -397,11 +396,11 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
 
           {/* Marketing Section */}
           <div className="space-y-4">
-            <div className="flex items-center gap-2.5 pb-2 border-b border-white/5">
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-teal-500 to-emerald-600 flex items-center justify-center text-white">
+            <div className="flex items-center gap-2.5 pb-2 border-b border-[#E7C477]/10">
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#F2D58D] to-[#B99655] flex items-center justify-center text-[#141416] shadow-sm">
                 <Wrench size={14} />
               </div>
-              <h2 className="text-sm font-bold text-white uppercase tracking-wider">Strategic Marketing & Co-Pilot Suite</h2>
+              <h2 className="text-sm font-bold text-[#F5F1E8] uppercase tracking-wider">Strategic Marketing & Co-Pilot Suite</h2>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -412,26 +411,23 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                     key={tool.id}
                     whileHover={{ y: -3, scale: 1.01 }}
                     onClick={() => handleOpenTool(tool.id)}
-                    className="premium-card p-6 flex flex-col justify-between cursor-pointer group relative overflow-hidden h-[180px]"
-                    style={{
-                      boxShadow: `0 8px 30px rgba(0, 0, 0, 0.2), inset 0 0 0 1px rgba(255,255,255,0.02)`
-                    }}
+                    className="p-6 rounded-2xl bg-[#18181B] border border-white/10 hover:border-[#E7C477]/40 flex flex-col justify-between cursor-pointer group relative overflow-hidden h-[190px] shadow-lg transition-all duration-300"
                   >
                     <div 
                       className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"
                       style={{
-                        background: `radial-gradient(circle at 10% 10%, ${tool.glow} 0%, transparent 60%)`
+                        background: `radial-gradient(circle at 10% 10%, rgba(231,196,119,0.15) 0%, transparent 60%)`
                       }}
                     />
                     <div>
-                      <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${tool.color} p-3 text-white flex items-center justify-center mb-4`}>
-                        <Icon size={24} />
+                      <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${tool.color} p-2.5 text-white flex items-center justify-center mb-3.5 shadow-md shadow-black/40`}>
+                        <Icon size={22} />
                       </div>
-                      <h3 className="text-lg font-bold text-white group-hover:text-[#00F5C2] transition-colors">{tool.title}</h3>
-                      <p className="text-xs text-[var(--text-tertiary)] mt-1.5 line-clamp-2">{tool.desc}</p>
+                      <h3 className="text-base font-bold text-[#F5F1E8] group-hover:text-[#F2D58D] transition-colors">{tool.title}</h3>
+                      <p className="text-xs text-[#8C909A] mt-1.5 line-clamp-2 leading-relaxed">{tool.desc}</p>
                     </div>
-                    <div className="flex items-center gap-1 text-[11px] font-black text-[#00D4FF] mt-3 uppercase tracking-wider opacity-0 group-hover:opacity-100 transform translate-x-[-10px] group-hover:translate-x-0 transition-all duration-300">
-                      Launch Tool <ChevronRight size={12} className="mt-0.5 animate-pulse" />
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-[#D9BA72] mt-3 uppercase tracking-wider opacity-0 group-hover:opacity-100 transform translate-x-[-10px] group-hover:translate-x-0 transition-all duration-300">
+                      Launch Tool <ChevronRight size={13} className="mt-0.5 animate-pulse text-[#E7C477]" />
                     </div>
                   </motion.div>
                 );

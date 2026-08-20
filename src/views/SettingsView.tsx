@@ -1,14 +1,17 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   User, Bell, Shield, LogOut, Globe, Moon, Sun, Sparkles, HelpCircle, Crown,
   ChevronRight, Camera, Check, Loader2, BarChart3, Image as ImageIcon, Video,
-  Calendar, Zap, Server, RefreshCcw, Edit3, X, Key
+  Calendar, Zap, Server, RefreshCcw, Edit3, X, Key, Star, Trash2, Upload, Plus,
+  Heart, Sparkle, Eye, ShieldCheck, UserCheck
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Persona, NavActions } from '../types';
+import { Persona, NavActions, CreatorProfile } from '../types';
 import { api } from '../services/apiService';
 import { fetchAllModelTypes, ModelInfo } from '../services/imageService';
 import { supabase } from '../lib/supabase';
+import { useCreatorProfile, saveCreatorProfile } from '../utils/creatorProfile';
+import { processImageFile } from '../utils/imageProcessing';
 import toast from 'react-hot-toast';
 
 interface Props {
@@ -24,6 +27,8 @@ interface Props {
     isCreator?: boolean;
   } | null;
   onBillingUpdate: () => void;
+  activeTheme?: string;
+  setActiveTheme?: (theme: string) => void;
 }
 
 const PREF_KEY = 'ai_studio_prefs';
@@ -37,13 +42,34 @@ function savePrefs(prefs: Record<string, any>) {
 
 type ApiStatus = { openai: boolean; gemini: boolean; wavespeed: boolean; elevenlabs: boolean; database: boolean; databaseConnected: boolean; heygen: boolean };
 
-export default function SettingsView({ nav, personas, user, billingInfo, onBillingUpdate }: Props) {
+export default function SettingsView({ nav, personas, user, billingInfo, onBillingUpdate, activeTheme, setActiveTheme }: Props) {
   const [theme, setTheme] = useState<'dark' | 'light'>(() => (localStorage.getItem('ai_studio_theme') as 'dark' | 'light') || 'dark');
 
-  // Profile
-  const [profileName, setProfileName] = useState<string>(() => loadPrefs().displayName || user?.email?.split('@')[0] || 'Creator');
-  const [editingName, setEditingName] = useState(false);
-  const [nameInput, setNameInput] = useState(profileName);
+  // Creator Profile State
+  const [creatorProfile, updateCreatorProfile] = useCreatorProfile();
+  const [creatorName, setCreatorName] = useState(creatorProfile.name);
+  const [creatorRole, setCreatorRole] = useState(creatorProfile.role);
+  const [creatorAppearance, setCreatorAppearance] = useState(creatorProfile.appearance);
+  const [creatorBio, setCreatorBio] = useState(creatorProfile.bio);
+  const [creatorGender, setCreatorGender] = useState(creatorProfile.gender || 'Male');
+  const [creatorPhotos, setCreatorPhotos] = useState<string[]>(creatorProfile.photos || []);
+  const [primaryPhoto, setPrimaryPhoto] = useState<string | undefined>(creatorProfile.primaryPhoto);
+  const [customDynamic, setCustomDynamic] = useState(creatorProfile.customDynamic || '');
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [isSavingCreatorProfile, setIsSavingCreatorProfile] = useState(false);
+  const [showAppearanceGuide, setShowAppearanceGuide] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setCreatorName(creatorProfile.name);
+    setCreatorRole(creatorProfile.role);
+    setCreatorAppearance(creatorProfile.appearance);
+    setCreatorBio(creatorProfile.bio);
+    setCreatorGender(creatorProfile.gender || 'Male');
+    setCreatorPhotos(creatorProfile.photos || []);
+    setPrimaryPhoto(creatorProfile.primaryPhoto);
+    setCustomDynamic(creatorProfile.customDynamic || '');
+  }, [creatorProfile]);
 
   // Model prefs
   const [editModels, setEditModels] = useState<ModelInfo[]>([]);
@@ -136,80 +162,412 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
     document.documentElement.setAttribute('data-theme', next === 'light' ? 'light' : '');
   };
 
-  const saveName = () => {
-    const trimmed = nameInput.trim() || 'Creator';
-    setProfileName(trimmed);
-    savePrefs({ ...loadPrefs(), displayName: trimmed });
-    setEditingName(false);
-    toast.success('Name updated!');
-  };
 
   const saveModelPrefs = (imageModel: string, videoModel: string) => {
     savePrefs({ ...loadPrefs(), defaultImageModel: imageModel, defaultVideoModel: videoModel });
     toast.success('Model preferences saved');
   };
 
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setIsUploadingPhoto(true);
+    try {
+      const newPhotoUrls: string[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (!file.type.startsWith('image/')) continue;
+        const dataUrl = await processImageFile(file, 1024, 0.85);
+        newPhotoUrls.push(dataUrl);
+      }
+      if (newPhotoUrls.length > 0) {
+        const mergedPhotos = [...creatorPhotos, ...newPhotoUrls];
+        const newPrimary = primaryPhoto || mergedPhotos[0];
+        setCreatorPhotos(mergedPhotos);
+        setPrimaryPhoto(newPrimary);
+        
+        // Auto-save to backend to convert base64 into file URLs immediately
+        const saved = await updateCreatorProfile({
+          name: creatorName.trim() || 'Creator',
+          role: creatorRole.trim(),
+          appearance: creatorAppearance.trim(),
+          bio: creatorBio.trim(),
+          gender: creatorGender,
+          photos: mergedPhotos,
+          primaryPhoto: newPrimary,
+          customDynamic: customDynamic.trim(),
+        });
+        if (saved && Array.isArray(saved.photos)) {
+          setCreatorPhotos(saved.photos);
+          setPrimaryPhoto(saved.primaryPhoto);
+        }
+        toast.success(`Uploaded and saved ${newPhotoUrls.length} reference photo${newPhotoUrls.length > 1 ? 's' : ''}!`);
+      }
+    } catch (err: any) {
+      toast.error('Failed to process image: ' + (err?.message || 'Unknown error'));
+    } finally {
+      setIsUploadingPhoto(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleRemovePhoto = async (photoUrl: string) => {
+    const nextPhotos = creatorPhotos.filter(p => p !== photoUrl);
+    const nextPrimary = primaryPhoto === photoUrl ? (nextPhotos.length > 0 ? nextPhotos[0] : undefined) : primaryPhoto;
+    setCreatorPhotos(nextPhotos);
+    setPrimaryPhoto(nextPrimary);
+    await updateCreatorProfile({
+      photos: nextPhotos,
+      primaryPhoto: nextPrimary
+    });
+  };
+
+  const handleSetPrimaryPhoto = async (photoUrl: string) => {
+    setPrimaryPhoto(photoUrl);
+    await updateCreatorProfile({
+      primaryPhoto: photoUrl
+    });
+    toast.success('Set as primary reference photo for duo shoots ⭐');
+  };
+
+  const handleSaveCreatorIdentity = async () => {
+    setIsSavingCreatorProfile(true);
+    try {
+      const cleanName = creatorName.trim() || 'Creator';
+      const updated = await updateCreatorProfile({
+        name: cleanName,
+        role: creatorRole.trim(),
+        appearance: creatorAppearance.trim(),
+        bio: creatorBio.trim(),
+        gender: creatorGender,
+        photos: creatorPhotos,
+        primaryPhoto: primaryPhoto || (creatorPhotos.length > 0 ? creatorPhotos[0] : undefined),
+        customDynamic: customDynamic.trim(),
+      });
+      if (updated && Array.isArray(updated.photos)) {
+        setCreatorPhotos(updated.photos);
+        setPrimaryPhoto(updated.primaryPhoto);
+      }
+      // Also sync profile name in settings
+      savePrefs({ ...loadPrefs(), displayName: cleanName });
+      toast.success('Creator Identity & Reference Vault saved! All personas now recognize you.');
+    } catch (err: any) {
+      toast.error('Failed to save creator profile: ' + (err?.message || ''));
+    } finally {
+      setIsSavingCreatorProfile(false);
+    }
+  };
+
   const StatusDot = ({ ok }: { ok: boolean }) => (
     <div className={`w-2.5 h-2.5 rounded-full ${ok ? 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]' : 'bg-rose-400/60'}`} />
   );
 
+  const APPEARANCE_SUGGESTIONS = [
+    'Short dark hair',
+    'Athletic build',
+    'Sharp facial features',
+    'Trimmed beard',
+    'Hazel / Brown eyes',
+    'Minimalist luxury streetwear',
+    'Tailored black blazer',
+    'Clean warm lighting'
+  ];
+
+  const ROLE_PRESETS = [
+    'Creator & Creative Director',
+    'Close Intimate Partner',
+    'Best Friend & Confidante',
+    'Studio Producer & Manager',
+    'Creative Collaborator'
+  ];
+
   return (
-    <div className="h-full overflow-y-auto custom-scrollbar pb-20">
-      <div className="p-6 max-w-2xl mx-auto space-y-8">
+    <div className="h-full overflow-y-auto custom-scrollbar pb-20 select-none">
+      <div className="p-6 max-w-3xl mx-auto space-y-8">
         {/* ── Header ── */}
-        <header className="premium-header pt-6 pb-2">
-          <h1 className="text-3xl font-extrabold tracking-tight">
-            <span className="gradient-text">Settings</span>
+        <header className="border-b border-[#E7C477]/10 pb-4">
+          <h1 className="text-3xl md:text-4xl font-serif text-[#F5F1E8] tracking-tight flex items-center gap-3">
+            Settings
+            <span className="text-[#E7C477] text-xl font-normal">✨</span>
           </h1>
-          <p className="text-[var(--text-tertiary)] text-sm mt-1.5 font-medium">Manage your studio, preferences, and integrations</p>
+          <p className="text-xs md:text-sm text-[#8C909A] mt-1 font-sans">Manage your studio, creator identity, preferences, and integrations.</p>
         </header>
 
-        {/* ── Profile Card ── */}
-        <motion.div
+        {/* ── Creator Identity & Reference Vault Card ── */}
+        <motion.section
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          className="premium-card rounded-2xl p-5 flex items-center gap-4 relative overflow-hidden"
+          className="premium-card rounded-2xl p-6 relative overflow-hidden space-y-6 border border-[#E7C477]/20"
         >
-          <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse at top left, rgba(139,92,246,0.08) 0%, transparent 70%)' }} />
-          <div className="w-16 h-16 rounded-2xl flex items-center justify-center shrink-0"
-            style={{ background: 'linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%)', boxShadow: '0 4px 20px -4px rgba(139,92,246,0.5)' }}>
-            <User size={26} className="text-white" />
-          </div>
-          <div className="flex-1 min-w-0 relative z-10">
-            {editingName ? (
-              <div className="flex items-center gap-2">
-                <input
-                  autoFocus
-                  value={nameInput}
-                  onChange={e => setNameInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') saveName(); if (e.key === 'Escape') setEditingName(false); }}
-                  className="bg-[var(--bg-elevated)] border border-violet-500/50 rounded-lg px-3 py-1.5 text-sm text-white font-bold outline-none focus:ring-1 focus:ring-violet-500 w-40"
-                />
-                <button onClick={saveName} className="p-1.5 bg-emerald-500/20 text-emerald-400 rounded-lg hover:bg-emerald-500/30 transition-colors"><Check size={14} /></button>
-                <button onClick={() => setEditingName(false)} className="p-1.5 bg-white/5 text-[var(--text-muted)] rounded-lg hover:bg-white/10 transition-colors"><X size={14} /></button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <h3 className="font-bold text-base text-[var(--text-primary)]">{profileName}</h3>
-                {billingInfo && (billingInfo.subscriptionStatus === 'active' || billingInfo.subscriptionStatus === 'trialing') ? (
-                  <div className="flex items-center gap-1 bg-gradient-to-r from-amber-500/15 to-orange-500/10 border border-amber-500/20 rounded-full px-2 py-0.5">
-                    <Crown size={9} className="text-amber-400" />
-                    <span className="text-[9px] font-black text-amber-400 uppercase tracking-wider">Pro</span>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-1 bg-white/5 border border-white/10 rounded-full px-2 py-0.5">
-                    <span className="text-[9px] font-bold text-white/50 uppercase tracking-wider">Free</span>
-                  </div>
-                )}
-                <button onClick={() => { setNameInput(profileName); setEditingName(true); }} className="p-1 rounded-md text-[var(--text-muted)] hover:text-violet-400 transition-colors">
-                  <Edit3 size={12} />
+          <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse at top right, rgba(231,196,119,0.08) 0%, transparent 70%)' }} />
+          
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#E7C477]/15 pb-5">
+            <div className="flex items-center gap-4">
+              {/* Creator Avatar Preview */}
+              <div className="relative group">
+                <div className="w-16 h-16 rounded-2xl overflow-hidden bg-gradient-to-br from-[#E7C477] via-[#D4AF37] to-[#B99655] flex items-center justify-center text-zinc-950 font-bold shadow-lg shadow-amber-950/40 border-2 border-[#E7C477]/40 shrink-0">
+                  {primaryPhoto ? (
+                    <img 
+                      src={primaryPhoto} 
+                      alt="Creator" 
+                      className="w-full h-full object-cover" 
+                      onError={(e) => {
+                        const target = e.currentTarget;
+                        if (primaryPhoto.startsWith('/uploads/') && !target.dataset.retried) {
+                          target.dataset.retried = 'true';
+                          target.src = '/api' + primaryPhoto;
+                        }
+                      }}
+                    />
+                  ) : (
+                    <User size={28} className="text-zinc-950/90" />
+                  )}
+                </div>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="absolute -bottom-1 -right-1 p-1.5 rounded-full bg-[#E7C477] hover:bg-[#F2D58D] text-zinc-950 shadow-md transition-transform active:scale-90 cursor-pointer"
+                  title="Upload creator photo"
+                >
+                  <Camera size={11} />
                 </button>
               </div>
-            )}
-            <p className="text-[var(--text-tertiary)] text-xs mt-0.5">{user?.email || 'Creator'}</p>
-            <p className="text-[var(--text-tertiary)] text-[10px] mt-0.5 opacity-60">{personas.length} persona{personas.length !== 1 ? 's' : ''} · {totalAssets} assets in vault</p>
+
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                    {creatorName || 'Creator Profile'}
+                  </h2>
+                  <span className="px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-[#E7C477]/15 text-[#F2D58D] border border-[#E7C477]/30 flex items-center gap-1">
+                    <Sparkles size={10} className="text-[#E7C477]" /> Universal Sync
+                  </span>
+                </div>
+                <p className="text-xs text-[var(--text-tertiary)] mt-0.5">
+                  All personas recognize your appearance, role, and dynamic for personalized conversations & duo photo shoots.
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={handleSaveCreatorIdentity}
+              disabled={isSavingCreatorProfile}
+              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#E7C477] to-amber-500 hover:from-[#F2D58D] hover:to-amber-400 text-zinc-950 text-xs font-bold tracking-wide transition-all shadow-md shadow-amber-950/40 border border-[#E7C477]/40 flex items-center justify-center gap-1.5 shrink-0 active:scale-95 disabled:opacity-50 cursor-pointer"
+            >
+              {isSavingCreatorProfile ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+              <span>Save Creator Identity</span>
+            </button>
           </div>
-        </motion.div>
+
+          {/* Form Fields */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {/* Preferred Name */}
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-secondary)] flex items-center justify-between">
+                <span>Creator Name / Nickname</span>
+                <span className="text-[10px] text-[#E7C477] font-normal lowercase">how personas address you</span>
+              </label>
+              <input
+                type="text"
+                value={creatorName}
+                onChange={e => setCreatorName(e.target.value)}
+                placeholder="e.g., Dr. H, Alex, Chris"
+                className="w-full bg-[var(--bg-elevated)] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#E7C477]/60 focus:ring-1 focus:ring-[#E7C477]/40 transition-all font-medium"
+              />
+            </div>
+
+            {/* Role & Dynamic */}
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-secondary)] flex items-center justify-between">
+                <span>Relationship & Role</span>
+                <span className="text-[10px] text-[#E7C477] font-normal lowercase">your dynamic with personas</span>
+              </label>
+              <input
+                type="text"
+                value={creatorRole}
+                onChange={e => setCreatorRole(e.target.value)}
+                placeholder="e.g., Creator & Director, Close Partner, Best Friend"
+                className="w-full bg-[var(--bg-elevated)] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#E7C477]/60 focus:ring-1 focus:ring-[#E7C477]/40 transition-all font-medium"
+              />
+            </div>
+          </div>
+
+          {/* Quick Role Chips */}
+          <div className="flex flex-wrap gap-1.5 pt-1">
+            <span className="text-[10px] font-bold text-[var(--text-muted)] self-center mr-1">Quick Presets:</span>
+            {ROLE_PRESETS.map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                onClick={() => setCreatorRole(preset)}
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-all cursor-pointer ${
+                  creatorRole === preset
+                    ? 'bg-[#E7C477]/15 text-[#F2D58D] border border-[#E7C477]/40 shadow-sm shadow-amber-950/30'
+                    : 'bg-white/5 text-[var(--text-tertiary)] hover:bg-white/10 hover:text-white border border-white/5'
+                }`}
+              >
+                {preset}
+              </button>
+            ))}
+          </div>
+
+          {/* Physical Appearance Description */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-secondary)] flex items-center gap-1.5">
+                <Camera size={12} className="text-[#E7C477]" /> Physical Appearance & Visual Prompts
+              </label>
+              <span className="text-[10px] text-zinc-400 font-medium">Used for AI Duo Photoshoots & Solo Shots</span>
+            </div>
+            <textarea
+              rows={2}
+              value={creatorAppearance}
+              onChange={e => setCreatorAppearance(e.target.value)}
+              placeholder="Describe your physical features (e.g., Male in 30s, short textured dark hair, trimmed stubble, hazel eyes, sharp jawline, athletic build, chic streetwear style)..."
+              className="w-full bg-[var(--bg-elevated)] border border-white/10 rounded-xl p-3 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#E7C477]/60 focus:ring-1 focus:ring-[#E7C477]/40 transition-all font-medium resize-none leading-relaxed"
+            />
+            {/* Quick Appearance Chips */}
+            <div className="flex flex-wrap items-center gap-1.5 pt-1">
+              <span className="text-[10px] font-bold text-[var(--text-muted)]">Add Trait:</span>
+              {APPEARANCE_SUGGESTIONS.map((tag) => (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => {
+                    if (!creatorAppearance.includes(tag)) {
+                      setCreatorAppearance(prev => prev ? `${prev}, ${tag}` : tag);
+                    }
+                  }}
+                  className="px-2 py-0.5 rounded-md text-[10px] bg-white/5 hover:bg-[#E7C477]/15 text-zinc-300 hover:text-[#F2D58D] border border-white/5 hover:border-[#E7C477]/30 transition-all cursor-pointer"
+                >
+                  + {tag}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Bio & Aesthetic Vision */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-secondary)]">
+              Creator Bio & Lifestyle Vibe
+            </label>
+            <input
+              type="text"
+              value={creatorBio}
+              onChange={e => setCreatorBio(e.target.value)}
+              placeholder="e.g., Studio founder, visual artist, lover of architecture, travel, and high-fashion editorial aesthetics"
+              className="w-full bg-[var(--bg-elevated)] border border-white/10 rounded-xl px-3.5 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#E7C477]/60 focus:ring-1 focus:ring-[#E7C477]/40 transition-all font-medium"
+            />
+          </div>
+
+          {/* Reference Photos Vault */}
+          <div className="space-y-3 pt-2 border-t border-[#E7C477]/15">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-white flex items-center gap-1.5">
+                  <ImageIcon size={13} className="text-[#E7C477]" /> Reference Headshots & Photos Vault ({creatorPhotos.length})
+                </h3>
+                <p className="text-[10px] text-zinc-400 mt-0.5">
+                  Upload photos of yourself. Mark your favorite as <strong className="text-[#E7C477]">Primary ⭐</strong> to automatically use in Duo Shots & Crossover Shoots.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploadingPhoto}
+                className="px-3 py-1.5 rounded-lg bg-[#E7C477]/15 hover:bg-[#E7C477]/25 border border-[#E7C477]/30 text-[#F2D58D] hover:text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {isUploadingPhoto ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+                <span>Upload Photos</span>
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept="image/*"
+                onChange={handlePhotoUpload}
+                className="hidden"
+              />
+            </div>
+
+            {/* Photo Grid */}
+            {creatorPhotos.length > 0 ? (
+              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
+                {creatorPhotos.map((photoUrl, idx) => {
+                  const isPrimary = primaryPhoto === photoUrl || (!primaryPhoto && idx === 0);
+                  return (
+                    <div
+                      key={idx}
+                      className={`group relative aspect-square rounded-xl overflow-hidden border-2 transition-all ${
+                        isPrimary
+                          ? 'border-[#E7C477] shadow-md shadow-amber-950/40'
+                          : 'border-white/10 hover:border-[#E7C477]/50'
+                      }`}
+                    >
+                      <img 
+                        src={photoUrl} 
+                        alt={`Creator ref ${idx + 1}`} 
+                        className="w-full h-full object-cover" 
+                        onError={(e) => {
+                          // If /uploads/ path failed via root, retry via /api/uploads/
+                          const target = e.currentTarget;
+                          if (photoUrl.startsWith('/uploads/') && !target.dataset.retried) {
+                            target.dataset.retried = 'true';
+                            target.src = '/api' + photoUrl;
+                          }
+                        }}
+                      />
+                      
+                      {/* Overlay Controls */}
+                      <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-1.5 backdrop-blur-[2px]">
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => handleRemovePhoto(photoUrl)}
+                            className="p-1 rounded-md bg-black/70 text-zinc-300 hover:text-rose-400 hover:bg-rose-500/20 transition-all"
+                            title="Delete photo"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleSetPrimaryPhoto(photoUrl)}
+                          className={`w-full py-1 rounded text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                            isPrimary
+                              ? 'bg-[#E7C477] text-zinc-950'
+                              : 'bg-white/20 text-white hover:bg-[#E7C477] hover:text-zinc-950'
+                          }`}
+                        >
+                          <Star size={10} className={isPrimary ? 'fill-zinc-950' : ''} />
+                          {isPrimary ? 'Primary' : 'Set Primary'}
+                        </button>
+                      </div>
+
+                      {/* Primary Badge on Card */}
+                      {isPrimary && (
+                        <div className="absolute top-1 left-1 px-1.5 py-0.5 rounded-md bg-[#E7C477] text-zinc-950 text-[8px] font-black uppercase tracking-wider shadow-sm flex items-center gap-0.5 pointer-events-none">
+                          <Star size={8} className="fill-zinc-950" /> Primary
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                className="border-2 border-dashed border-white/10 hover:border-[#E7C477]/40 rounded-xl p-6 text-center cursor-pointer transition-all bg-white/[0.02] hover:bg-[#E7C477]/[0.03] space-y-2"
+              >
+                <div className="w-10 h-10 rounded-full bg-[#E7C477]/10 text-[#E7C477] mx-auto flex items-center justify-center">
+                  <Upload size={18} />
+                </div>
+                <p className="text-xs font-semibold text-zinc-300">Click to upload your headshots & portraits</p>
+                <p className="text-[10px] text-zinc-500">Supports JPG, PNG, WebP, HEIC. Upload 1 to 5 clear face/body portraits.</p>
+              </div>
+            )}
+          </div>
+        </motion.section>
 
         {/* ── Billing & Subscription Card ── */}
         <motion.section 
@@ -336,37 +694,60 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
           </div>
         </motion.section>
 
-        {/* ── Theme & Display ── */}
+        {/* ── Theme & Visual Aesthetics ── */}
         <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
-          <h3 className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-[0.15em] ml-4 mb-3">Display</h3>
-          <div className="premium-card rounded-2xl overflow-hidden">
-            <div className="flex items-center justify-between p-4 border-b border-[var(--border-subtle)]">
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 bg-gradient-to-br from-violet-500/10 to-fuchsia-500/5 border border-[var(--border-subtle)] rounded-xl flex items-center justify-center">
-                  {theme === 'dark' ? <Moon size={18} className="text-[var(--text-secondary)]" /> : <Sun size={18} className="text-amber-400" />}
-                </div>
-                <span className="font-medium text-sm text-[var(--text-primary)]">Theme</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-[var(--text-tertiary)]">{theme === 'dark' ? 'Dark' : 'Light'}</span>
-                <div
-                  onClick={toggleTheme}
-                  className={`w-11 h-6 rounded-full p-0.5 transition-colors duration-300 cursor-pointer ${theme === 'dark' ? 'bg-violet-600' : 'bg-amber-400'}`}
-                >
-                  <div className={`w-5 h-5 rounded-full bg-white shadow-md transition-transform duration-300 flex items-center justify-center ${theme === 'light' ? 'translate-x-5' : 'translate-x-0'}`}>
-                    {theme === 'dark' ? <Moon size={10} className="text-violet-600" /> : <Sun size={10} className="text-amber-500" />}
+          <h3 className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-[0.15em] ml-4 mb-3 flex items-center gap-1.5">
+            <Sparkles size={12} className="text-cyan-400" /> Studio Color Theme & Aesthetics
+          </h3>
+          <div className="premium-card rounded-2xl p-5 space-y-4">
+            <p className="text-xs text-[var(--text-tertiary)]">
+              Choose your studio workspace color palette. Theme preferences are saved to your browser automatically.
+            </p>
+
+            {/* 9 Preset Color Themes */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {[
+                { id: 'mint', name: 'Matrix Mint', desc: 'Dark Teal & Matrix Green', dot: 'bg-teal-400', border: 'border-teal-500' },
+                { id: 'cyber', name: 'Electric Cyber', desc: 'Neon Cyan & Electric Blue', dot: 'bg-cyan-400', border: 'border-cyan-500' },
+                { id: 'graphite', name: 'Graphite Slate', desc: 'Smooth Executive Gray', dot: 'bg-slate-400', border: 'border-slate-400' },
+                { id: 'emerald', name: 'Slate Emerald', desc: 'Deep Emerald & Mint', dot: 'bg-emerald-400', border: 'border-emerald-500' },
+                { id: 'violet', name: 'Imperial Violet', desc: 'Royal Purple & Indigo', dot: 'bg-purple-400', border: 'border-purple-500' },
+                { id: 'gold', name: 'Midnight Gold', desc: 'Obsidian & Gold Accents', dot: 'bg-amber-400', border: 'border-amber-500' },
+                { id: 'rosegold', name: 'Rose Gold Velvet', desc: 'Rose Gold & Fashion Pink', dot: 'bg-rose-400', border: 'border-rose-500' },
+                { id: 'light-luxe', name: 'Platinum Slate', desc: 'Crisp Alabaster (Light)', dot: 'bg-indigo-500', border: 'border-indigo-500' },
+                { id: 'light-pearl', name: 'Champagne Pearl', desc: 'Warm Ivory & Gold (Light)', dot: 'bg-amber-500', border: 'border-amber-500' },
+              ].map((t) => {
+                const isActive = (activeTheme || localStorage.getItem('ai_studio_theme') || 'mint') === t.id;
+                return (
+                  <div
+                    key={t.id}
+                    onClick={() => {
+                      if (setActiveTheme) setActiveTheme(t.id);
+                      document.documentElement.setAttribute('data-theme', t.id);
+                      localStorage.setItem('ai_studio_theme', t.id);
+                      toast.success(`Studio theme set to ${t.name}`);
+                    }}
+                    className={`p-3.5 rounded-xl border cursor-pointer transition-all flex items-start gap-3 ${
+                      isActive
+                        ? `bg-white/[0.07] ${t.border} text-white shadow-lg shadow-cyan-500/10`
+                        : 'bg-white/[0.02] border-white/10 text-zinc-400 hover:bg-white/[0.05] hover:text-white'
+                    }`}
+                  >
+                    <div className={`w-3.5 h-3.5 rounded-full ${t.dot} shrink-0 mt-0.5 shadow-md`} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-white truncate">{t.name}</span>
+                        {isActive && (
+                          <span className="px-1.5 py-0.2 rounded text-[8px] font-black uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                            Active
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-zinc-400 truncate mt-0.5">{t.desc}</p>
+                    </div>
                   </div>
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center justify-between p-4">
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 bg-gradient-to-br from-violet-500/10 to-fuchsia-500/5 border border-[var(--border-subtle)] rounded-xl flex items-center justify-center">
-                  <Globe size={18} className="text-[var(--text-secondary)]" />
-                </div>
-                <span className="font-medium text-sm text-[var(--text-primary)]">Language</span>
-              </div>
-              <span className="text-xs text-[var(--text-tertiary)]">English</span>
+                );
+              })}
             </div>
           </div>
         </motion.section>

@@ -106,7 +106,7 @@ interface Competitor {
 const COMPETITORS: Competitor[] = [
   {
     name: 'Lil Miquela',
-    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+    avatar: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=150&auto=format&fit=crop&q=80',
     followers: '2.6M',
     followersNum: 2600000,
     engagement: '3.4%',
@@ -200,15 +200,15 @@ export default function TrendView({ persona: activePersona, nav }: TrendViewProp
   };
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-8">
+    <div className="p-6 max-w-7xl mx-auto space-y-8 select-none">
       {/* Page Header */}
-      <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-[#E7C477]/10 pb-4">
         <div>
-          <h1 className="text-2xl font-black text-white flex items-center gap-2">
-            <Compass className="w-6 h-6 text-cyan-400" />
+          <h1 className="text-3xl md:text-4xl font-serif text-[#F5F1E8] tracking-tight flex items-center gap-3">
             Trend Radar
+            <span className="text-[#E7C477] text-xl font-normal">✨</span>
           </h1>
-          <p className="text-xs text-[var(--text-tertiary)] font-bold mt-1 uppercase tracking-wider">
+          <p className="text-xs md:text-sm text-[#8C909A] mt-1 font-sans">
             Monitor real-time social metrics and hijack high-virality trends automatically.
           </p>
         </div>

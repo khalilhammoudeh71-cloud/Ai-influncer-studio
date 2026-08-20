@@ -5,11 +5,12 @@ import {
   Download, Film, Image as ImageIcon, Search, X, Filter,
   AlertCircle, FolderDown, Loader2, Trash2, Heart, ChevronLeft,
   ChevronRight, ArrowUpDown, Play, SortAsc, LayoutGrid, Columns, Share2,
-  Check, Sparkles
+  Check, Sparkles, Pencil, FolderHeart
 } from 'lucide-react';
 import { api } from '../services/apiService';
 import toast from 'react-hot-toast';
 import { upscaleImage } from '../services/imageService';
+import { cn } from '../utils/cn';
 
 interface GalleryViewProps {
   personas: Persona[];
@@ -385,8 +386,55 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
           </div>
         </div>
 
+        {/* Persona Vault Tabs */}
+        <div className="flex gap-2 mt-4 flex-wrap items-center pt-2 border-t border-white/5">
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1 flex items-center gap-1.5">
+            <FolderHeart size={13} className="text-[#D9BA72]" />
+            Persona Vaults:
+          </span>
+          <button
+            onClick={() => setFilterPersonaId('all')}
+            className={cn(
+              "px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border flex items-center gap-1.5 cursor-pointer",
+              filterPersonaId === 'all'
+                ? "bg-[#E7C477] border-[#E7C477] text-[#161618] shadow-md"
+                : "bg-[#18181B] border-white/10 text-slate-300 hover:border-white/30"
+            )}
+          >
+            <span>All Personas</span>
+            <span className={cn("text-[10px] px-1.5 py-0.2 rounded-full", filterPersonaId === 'all' ? "bg-black/20" : "bg-white/10")}>
+              {allMedia.length}
+            </span>
+          </button>
+
+          {personas.map(p => {
+            const count = p.visualLibrary?.length || 0;
+            const isSelected = filterPersonaId === p.id;
+            return (
+              <button
+                key={p.id}
+                onClick={() => setFilterPersonaId(p.id)}
+                className={cn(
+                  "px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border flex items-center gap-2 cursor-pointer",
+                  isSelected
+                    ? "bg-[#E7C477] border-[#E7C477] text-[#161618] shadow-md"
+                    : "bg-[#18181B] border-white/10 text-slate-300 hover:border-white/30"
+                )}
+              >
+                {p.avatar && (
+                  <img src={p.avatar} alt="" className="w-4 h-4 rounded-full object-cover" />
+                )}
+                <span>{p.name}'s Vault</span>
+                <span className={cn("text-[10px] px-1.5 py-0.2 rounded-full", isSelected ? "bg-black/20" : "bg-white/10")}>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
         {/* Type filter tabs */}
-        <div className="flex gap-2 mt-4 flex-wrap">
+        <div className="flex gap-2 mt-3 flex-wrap">
           {[
             { id: 'all', label: 'All', count: allMedia.length },
             { id: 'image', label: 'Images', count: allMedia.filter(i => !i.mediaType || i.mediaType === 'image').length },
@@ -396,7 +444,7 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
             <button
               key={tab.id}
               onClick={() => setFilterType(tab.id as any)}
-              className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all border flex items-center gap-1.5 ${
+              className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all border flex items-center gap-1.5 cursor-pointer ${
                 filterType === tab.id
                   ? 'bg-emerald-600 border-emerald-500 text-white shadow-md'
                   : 'bg-[var(--bg-elevated)] border-[var(--border-default)] text-[var(--text-secondary)] hover:text-white hover:border-white/30'
@@ -523,7 +571,15 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
                   {isVideo ? (
                     <video src={item.url} className="w-full h-full object-cover" />
                   ) : (
-                    <img src={item.url} alt="" className="w-full h-full object-cover" loading="lazy" />
+                    <img 
+                      src={item.url} 
+                      alt="" 
+                      className="w-full h-full object-cover" 
+                      loading="lazy" 
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=600&auto=format&fit=crop';
+                      }}
+                    />
                   )}
 
                   {/* Overlay */}
@@ -700,6 +756,17 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
                   >
                     <Download className="w-4 h-4" /> Download
                   </button>
+                  {selectedItem.mediaType !== 'video' && (
+                    <button
+                      onClick={() => {
+                        nav.push({ view: 'create', subView: 'image' });
+                        toast.success('Loaded image into AI Studio Editor!');
+                      }}
+                      className="w-full py-2.5 rounded-xl font-bold text-sm bg-blue-600 hover:bg-blue-500 text-white transition-colors flex items-center justify-center gap-2"
+                    >
+                      <Pencil className="w-4 h-4" /> Edit Image in Studio
+                    </button>
+                  )}
                   <button
                     onClick={() => handleDelete(selectedItem)}
                     disabled={deletingId === selectedItem.id}

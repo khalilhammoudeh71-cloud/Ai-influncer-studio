@@ -1,4 +1,4 @@
-export const personaPreviewPlaceholder = "/isabella_laurent_reference.png";
+export const personaPreviewPlaceholder = "/sample_persona_portrait.jpg";
 
 import { premiumFeatureCardAssets } from './featureCardAssets';
 

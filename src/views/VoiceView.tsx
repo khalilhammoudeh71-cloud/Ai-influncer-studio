@@ -39,6 +39,7 @@ import { Persona, NavActions } from '../types';
 import { api } from '../services/apiService';
 import { cn } from '../utils/cn';
 import { processImageFile } from '../utils/imageProcessing';
+import { processVoiceSampleFile } from '../utils/audioUtils';
 import toast from 'react-hot-toast';
 import WebcamAvatarCreator from '../components/WebcamAvatarCreator';
 
@@ -127,7 +128,7 @@ const QWEN_VOICES = [
   { id: 'qwen-neutral', name: 'Qwen Neutral', desc: 'Clear, informative neutral voice', gender: 'Neutral' },
 ];
 
-type VoiceEngine = 'elevenlabs' | 'openai' | 'gemini' | 'omnivoice' | 'qwen-tts';
+type VoiceEngine = 'elevenlabs' | 'openai' | 'gemini' | 'omnivoice' | 'minimax-clone' | 'qwen3-clone' | 'seed-speech' | 'chatterbox' | 'mureka-vocal' | 'qwen-tts';
 
 export default function VoiceView({ persona, personas, onSelectPersona, nav, billingInfo }: VoiceViewProps) {
   const [isPro, togglePro] = useProMode();
@@ -317,7 +318,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
     }
   };
 
-  const handleCloningAudioUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCloningAudioUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     
@@ -327,26 +328,30 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
       setCloneName(cleanName);
     }
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setCloningAudioBase64(reader.result as string);
-    };
-    reader.readAsDataURL(file);
-    setCloningAudioUrl(URL.createObjectURL(file));
-    toast.success(`Voice sample loaded: ${file.name}`);
+    try {
+      const sample = await processVoiceSampleFile(file);
+      setCloningAudioBase64(sample.base64);
+      setCloningAudioUrl(URL.createObjectURL(file));
+      toast.success(`Voice sample loaded: ${file.name}`);
+    } catch (err) {
+      console.error('[Cloning Audio Upload Error]:', err);
+      toast.error('Could not process audio/video sample');
+    }
   };
 
-  const handleOmnivoiceRefUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleOmnivoiceRefUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     
     setOmnivoiceRefName(file.name);
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setOmnivoiceRefBase64(reader.result as string);
-    };
-    reader.readAsDataURL(file);
-    setOmnivoiceRefUrl(URL.createObjectURL(file));
+    try {
+      const sample = await processVoiceSampleFile(file);
+      setOmnivoiceRefBase64(sample.base64);
+      setOmnivoiceRefUrl(URL.createObjectURL(file));
+    } catch (err) {
+      console.error('[Omnivoice Ref Upload Error]:', err);
+      toast.error('Could not process reference file');
+    }
   };
 
   const handleSaveDefaultVoice = async () => {
@@ -588,47 +593,30 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
 
     setPreviewingVoice(voiceId);
 
-    if (previewUrl) {
-      // ElevenLabs voices have a preview_url — play it directly
-      try {
-        const audio = new Audio(previewUrl);
+    try {
+      const voiceList = activeVoices;
+      const v = voiceList.find(ov => ov.id === voiceId);
+      const voiceName = v?.name || 'your creator';
+      
+      const longerScript = `Hey everyone! I'm ${voiceName}, and welcome to my creator studio. I can speak naturally with authentic human inflection, ready to bring your stories to life!`;
+
+      const res = await api.voice.generateSpeech({
+        text: longerScript,
+        voiceId: voiceId,
+        voice: voiceId,
+        engine: 'elevenlabs',
+        isPreview: true
+      });
+      
+      if (res?.audioUrl) {
+        const audio = new Audio(res.audioUrl);
         previewAudioRef.current = audio;
+        audio.volume = 1.0;
         audio.onended = () => {
           setPreviewingVoice(null);
           previewAudioRef.current = null;
         };
         audio.onerror = () => {
-          setPreviewingVoice(null);
-          previewAudioRef.current = null;
-        };
-        const playPromise = audio.play();
-        if (playPromise !== undefined) {
-          playPromise.catch(() => {
-            setPreviewingVoice(null);
-            previewAudioRef.current = null;
-          });
-        }
-      } catch (e) {
-        setPreviewingVoice(null);
-        previewAudioRef.current = null;
-      }
-    } else {
-      // OpenAI/Gemini voice preview — generate a sample
-      try {
-        // Initialize synchronously to bypass browser autoplay restrictions
-        const audio = new Audio();
-        previewAudioRef.current = audio;
-
-        const voiceList = activeVoices;
-        const v = voiceList.find(ov => ov.id === voiceId);
-        const res = await api.voice.generateSpeech({
-          text: `Hello, I am ${v?.name || 'a voice'}. I am here to assist you.`,
-          voice: voiceId,
-          engine: voiceEngine === 'elevenlabs' ? 'openai' : voiceEngine,
-        });
-        
-        audio.src = res.audioUrl;
-        audio.onended = () => {
           setPreviewingVoice(null);
           previewAudioRef.current = null;
         };
@@ -640,11 +628,13 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
             previewAudioRef.current = null;
           });
         }
-      } catch (err) {
-        console.error('[Vox] Preview failed:', err);
-        window.alert('Preview Failed: ' + (err instanceof Error ? err.message : 'Missing API Key or Model Error'));
+      } else {
         setPreviewingVoice(null);
       }
+    } catch (err) {
+      console.error('[Vox] Preview failed:', err);
+      toast.error('Preview failed: ' + (err instanceof Error ? err.message : 'Voice generation issue'));
+      setPreviewingVoice(null);
     }
   };
 
@@ -799,12 +789,17 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
         className="bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-xs font-bold text-[var(--text-primary)] hover:border-violet-500/30 focus:border-violet-500/50 outline-none transition-all cursor-pointer appearance-none pr-8 min-w-[160px]"
       >
         <option value="elevenlabs" disabled={!hasElevenLabsKey} className="bg-[#0f0f12] text-white">
-          ElevenLabs {!hasElevenLabsKey ? '(Unavailable)' : ''}
+          🎙️ ElevenLabs v3 / v2 (Multilingual & English Turbo) {!hasElevenLabsKey ? '(Unavailable)' : ''}
         </option>
-        <option value="openai" className="bg-[#0f0f12] text-white">OpenAI</option>
-        <option value="gemini" className="bg-[#0f0f12] text-white">Gemini 2.5 TTS</option>
-        <option value="omnivoice" className="bg-[#0f0f12] text-white">OmniVoice</option>
-        <option value="qwen-tts" className="bg-[#0f0f12] text-white">Qwen TTS</option>
+        <option value="omnivoice" className="bg-[#0f0f12] text-white">✨ Wavespeed OmniVoice Zonos2</option>
+        <option value="minimax-clone" className="bg-[#0f0f12] text-white">⚡ MiniMax Voice Clone (Wavespeed)</option>
+        <option value="qwen3-clone" className="bg-[#0f0f12] text-white">🧠 Qwen 3.0 Voice Clone (Alibaba / Wavespeed)</option>
+        <option value="seed-speech" className="bg-[#0f0f12] text-white">🌱 ByteDance Seed-Speech 2.0 (Wavespeed)</option>
+        <option value="chatterbox" className="bg-[#0f0f12] text-white">💬 ChatterBox Voice Converter (Wavespeed)</option>
+        <option value="mureka-vocal" className="bg-[#0f0f12] text-white">🎵 Mureka Vocal & Singing Clone (Wavespeed)</option>
+        <option value="openai" className="bg-[#0f0f12] text-white">🤖 OpenAI TTS-1 HD</option>
+        <option value="gemini" className="bg-[#0f0f12] text-white">♊ Gemini 2.5 TTS</option>
+        <option value="qwen-tts" className="bg-[#0f0f12] text-white">Qwen Standard TTS</option>
       </select>
       <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-[var(--text-muted)]">
         <ChevronDown size={14} />
@@ -972,39 +967,43 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
   );
 
   return (
-    <div className="h-full overflow-y-auto pr-2 custom-scrollbar pb-20 max-w-7xl mx-auto p-4 md:p-8 space-y-8">
-      {/* Clean Toolbar */}
-      <header className="premium-header mb-8 pt-4 pb-2">
-      <div className="flex items-center justify-between relative z-10">
-        <div>
-          <h1 className="text-3xl font-extrabold tracking-tight"><span className="gradient-text">Voice Studio</span></h1>
-          <p className="text-[var(--text-tertiary)] text-sm mt-1.5 font-medium">Scripts, synthesis & talking video</p>
-        </div>
-        <div className="flex items-center gap-4">
-          <ProModeToggle isPro={isPro} onToggle={togglePro} />
-          <EngineToggle />
-          <div className="flex items-center gap-3">
-            {persona.id !== 'empty' && persona.referenceImage ? (
-              <img 
-                src={persona.referenceImage} 
-                alt={persona.name} 
-                className="w-8 h-8 rounded-lg object-cover ring-2 ring-[var(--accent-primary)]/25"
-              />
-            ) : (
-              <div className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-[var(--text-muted)] ring-2 ring-violet-500/25">
-                <Users size={14} />
-              </div>
-            )}
-            <p className="text-[var(--text-tertiary)] text-xs font-bold uppercase tracking-wider hidden md:block">
-              Active: <span className="text-[var(--text-primary)]">{persona.id === 'empty' ? 'No Persona' : persona.name}</span>
+    <div className="h-full overflow-y-auto pr-2 custom-scrollbar pb-20 max-w-7xl mx-auto p-4 md:p-8 space-y-8 select-none">
+      {/* Clean Header Bar */}
+      <header className="mb-6 pb-2 border-b border-[#E7C477]/10">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-3xl md:text-4xl font-serif text-[#F5F1E8] tracking-tight flex items-center gap-3">
+              Voice Studio
+              <span className="text-[#E7C477] text-xl font-normal">✨</span>
+            </h1>
+            <p className="text-xs md:text-sm text-[#8C909A] mt-1 font-sans">
+              Create, clone, and customize voices that sound uniquely you.
             </p>
           </div>
+          <div className="flex items-center gap-4">
+            <EngineToggle />
+            <div className="flex items-center gap-3">
+              {persona.id !== 'empty' && persona.referenceImage ? (
+                <img 
+                  src={persona.referenceImage} 
+                  alt={persona.name} 
+                  className="w-8 h-8 rounded-lg object-cover border border-[#E7C477]/30"
+                />
+              ) : (
+                <div className="w-8 h-8 rounded-lg bg-[#0A101C] border border-[#E7C477]/20 flex items-center justify-center text-[#8C909A]">
+                  <Users size={14} />
+                </div>
+              )}
+              <p className="text-[#8C909A] text-xs font-medium hidden md:block">
+                Active: <span className="text-[#F5F1E8] font-semibold">{persona.id === 'empty' ? 'No Persona' : persona.name}</span>
+              </p>
+            </div>
+          </div>
         </div>
-      </div>
       </header>
 
       {!hasStartedStudio && history.length === 0 && !script ? (
-        <div className="flex flex-col items-center justify-center py-10 md:py-20 text-center relative overflow-hidden">
+        <div className="flex flex-col items-center justify-center py-10 md:py-16 text-center relative overflow-hidden">
           {/* Rotating Hero Gallery */}
           <div className="relative flex justify-center items-center w-full max-w-full mx-auto -mt-6 mb-6">
             <RotatingHeroImages images={[
@@ -1019,31 +1018,22 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
 
           <motion.h2 
             initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}
-            className="text-3xl md:text-5xl font-black text-white uppercase tracking-tight mb-4"
+            className="text-3xl md:text-4xl font-serif text-[#F5F1E8] tracking-tight mb-3"
           >
             BRING IDENTITIES TO LIFE
           </motion.h2>
           <motion.p 
             initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}
-            className="text-[var(--text-secondary)] text-sm max-w-md mx-auto mb-4 leading-relaxed font-medium"
+            className="text-[#C3BFB8] text-xs md:text-sm max-w-md mx-auto mb-6 leading-relaxed font-sans"
           >
             Generate custom voice scripts and high-fidelity speech audio to match your AI's personality perfectly.
           </motion.p>
-          {voiceEngine === 'elevenlabs' && hasElevenLabsKey && (
-            <motion.div
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.65 }}
-              className="flex items-center gap-2 mb-6 px-4 py-2 rounded-full bg-gradient-to-r from-[#6C63FF]/10 to-[#A855F7]/10 border border-[#A855F7]/20"
-            >
-              <Crown className="w-3.5 h-3.5 text-[#A855F7]" />
-              <span className="text-[11px] font-bold text-[#A855F7]">Powered by ElevenLabs · {elevenLabsVoices.length || '100+'} Premium Voices</span>
-            </motion.div>
-          )}
           <motion.button
             initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.7, type: "spring" }}
             onClick={() => setHasStartedStudio(true)}
-            className="bg-[#D9FC50] text-[#0A0A0B] hover:bg-[#c9f032] px-8 py-3.5 rounded-xl font-black uppercase tracking-wider text-sm flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-[#D9FC50]/10 mx-auto"
+            className="btn-gold-primary px-8 py-3.5 text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer shadow-lg mx-auto"
           >
-            Start Audio Studio <Sparkles size={16} />
+            Start Voice Studio <Sparkles size={16} />
           </motion.button>
         </div>
       ) : (

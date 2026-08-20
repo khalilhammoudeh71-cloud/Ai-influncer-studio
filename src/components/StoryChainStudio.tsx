@@ -79,6 +79,8 @@ const STORY_TEMPLATES = [
 ];
 
 const VIDEO_MODELS = [
+  { id: 'wavespeed-i2v:alibaba/wan-3.0-i2v-1080p', name: 'Wan 3.0 I2V (Alibaba - Flagship 1080p Realism)' },
+  { id: 'wavespeed-i2v:bytedance/seedance-2.5', name: 'Seedance 2.5 (ByteDance - Flagship Realism)' },
   { id: 'wavespeed-i2v:wavespeed-ai/kling-3.0', name: 'Kling 3.0 (Cinematic)' },
   { id: 'wavespeed-i2v:wavespeed-ai/wan-2.2-i2v-720p', name: 'Wan 2.2 I2V (Fluid)' },
   { id: 'wavespeed-i2v:wavespeed-ai/seedance-2.0', name: 'Seedance 2.0 (High Realism)' },

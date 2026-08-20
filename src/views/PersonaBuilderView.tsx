@@ -1,4 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronLeft, Save, Sparkles, Upload, X, Info, Image as ImageIcon, Video, Mic, Volume2, MessageSquare, Plus, Check, Camera, Diamond, Dumbbell, ShoppingBag, Briefcase, Activity, Sliders, Loader2 } from 'lucide-react';
 import { Persona } from '../types';
 import { generateImage } from '../services/imageService';
@@ -23,6 +24,8 @@ const PERSONA_TYPES = [
 ];
 
 export default function PersonaBuilderView({ persona: initialPersona, onChange, onSave, onCancel }: PersonaBuilderViewProps) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const [isPro, togglePro] = useProMode();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const voiceInputRef = useRef<HTMLInputElement>(null);
@@ -41,7 +44,7 @@ export default function PersonaBuilderView({ persona: initialPersona, onChange, 
   }, [initialPersona.id]);
 
   const generateAngles = async () => {
-    const baseImage = persona.referenceImage || "/isabella_laurent_reference.png";
+    const baseImage = persona.referenceImage || "/sample_persona_portrait.jpg";
     setIsGeneratingAngles(true);
     setGeneratedCount(0);
     setGeneratingLabels(new Set([
@@ -61,19 +64,41 @@ export default function PersonaBuilderView({ persona: initialPersona, onChange, 
       { label: "Low Angle", p: "Low angle shot from below looking up at the subject. Maintain the exact same identity." }
     ];
 
-    // PHASE 1: Generate Anchor (Front Portrait) using GPT Image 2.0 (OpenAI)
+    // Helper for robust multi-model fallback cascade
+    const generateWithModelCascade = async (targetPersona: any, chatPrompt: string) => {
+      const cascadeModels = [
+        'wavespeed:bytedance/seedream-v5.0-pro',
+        'wavespeed:wavespeed-ai/qwen-3.0-pro',
+        'openai:gpt-image-2',
+        'google:nano-banana-pro'
+      ];
+      for (const modelId of cascadeModels) {
+        try {
+          const res = await generateImage({
+            persona: targetPersona,
+            modelId,
+            chatPrompt,
+            identityLock: true,
+            imageWeight: 1.0,
+            aspectRatio: '3:4',
+            isChatContext: true
+          });
+          const url = Array.isArray(res) ? res[0]?.imageUrl : res.imageUrl;
+          if (url) return url;
+        } catch (mErr) {
+          console.warn(`[IdentitySheet] Model ${modelId} failed, trying next fallback:`, mErr);
+        }
+      }
+      throw new Error('All model cascade attempts failed.');
+    };
+
+    // PHASE 1: Generate Anchor (Front Portrait) using 1. Seedream 5.0 Pro -> 2. Qwen 3.0 Pro -> 3. GPT Image 2
     let anchorImage = baseImage;
     try {
-      const anchorResult = await generateImage({
-        persona: { ...persona, referenceImage: baseImage },
-        modelId: 'openai:gpt-image-2',
-        chatPrompt: "A professional studio portrait of the woman in the attached photo. She is looking directly at the camera. PURE WHITE BACKGROUND. No seatbelt, no car. She is wearing a white top. Maintain her exact facial features and identity. High resolution.",
-        identityLock: true,
-        imageWeight: 1.0,
-        aspectRatio: '3:4',
-        isChatContext: true
-      });
-      const url = Array.isArray(anchorResult) ? anchorResult[0]?.imageUrl : anchorResult.imageUrl;
+      const url = await generateWithModelCascade(
+        { ...persona, referenceImage: baseImage },
+        "A professional studio portrait of the woman in the attached photo. She is looking directly at the camera. PURE WHITE BACKGROUND. No seatbelt, no car. She is wearing a white top. Maintain her exact facial features and identity. High resolution."
+      );
       if (url) {
         anchorImage = url;
         setRealAngles(prev => ({ ...prev, "Front Portrait": url }));
@@ -81,7 +106,7 @@ export default function PersonaBuilderView({ persona: initialPersona, onChange, 
         setGeneratedCount(prev => prev + 1);
       }
     } catch (err) {
-      console.error('[IdentitySheet] OpenAI Anchor failed:', err);
+      console.error('[IdentitySheet] Anchor generation failed:', err);
       setGeneratingLabels(prev => { const next = new Set(prev); next.delete("Front Portrait"); return next; });
       setGeneratedCount(prev => prev + 1);
     }
@@ -90,17 +115,10 @@ export default function PersonaBuilderView({ persona: initialPersona, onChange, 
     const otherAngles = targetAngles.filter(a => a.label !== "Front Portrait");
     for (const angle of otherAngles) {
       try {
-        const result = await generateImage({
-          persona: { ...persona, referenceImage: anchorImage },
-          modelId: 'google:nano-banana-pro',
-          chatPrompt: `Using the attached anchor image as the 100% identity reference: ${angle.p}. Maintain identical face, white outfit, and pure white background.`,
-          identityLock: true,
-          imageWeight: 1.0,
-          aspectRatio: '3:4',
-          isChatContext: true
-        });
-        
-        const imageUrl = Array.isArray(result) ? result[0]?.imageUrl : result.imageUrl;
+        const imageUrl = await generateWithModelCascade(
+          { ...persona, referenceImage: anchorImage },
+          `Using the attached anchor image as the 100% identity reference: ${angle.p}. Maintain identical face, white outfit, and pure white background.`
+        );
         if (imageUrl) {
           setRealAngles(prev => ({ ...prev, [angle.label]: imageUrl }));
         }
@@ -234,7 +252,7 @@ export default function PersonaBuilderView({ persona: initialPersona, onChange, 
   ];
 
   return (
-    <div className="flex-1 bg-[#0B0F17] text-white pt-6 md:pt-10 px-4 md:px-6 pb-20 font-sans selection:bg-[#00D4FF]/30 select-none animate-in fade-in duration-500 overflow-x-hidden">
+    <div className="flex-1 bg-[#0B0F17] text-white pt-6 md:pt-10 px-4 md:px-6 pb-32 font-sans selection:bg-[#00D4FF]/30 select-none animate-in fade-in duration-500 overflow-x-hidden">
       <div className="max-w-[1360px] mx-auto flex flex-col lg:flex-row items-start gap-6 relative">
         
         {/* LEFT COLUMN */}
@@ -330,6 +348,71 @@ export default function PersonaBuilderView({ persona: initialPersona, onChange, 
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+
+          {/* Persona Reference Photos Upload */}
+          <div className="bg-[#0F172A]/50 border border-[#334155]/50 backdrop-blur-xl rounded-2xl p-5 shadow-xl relative overflow-hidden group">
+            <div className="absolute inset-0 bg-gradient-to-br from-[#00D4FF]/5 via-transparent to-transparent opacity-50" />
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2 relative z-10">
+              <h3 className="flex items-center gap-2 text-[14px] font-black text-white">
+                <ImageIcon className="text-[#00D4FF]" size={16} /> Persona Reference Photos
+              </h3>
+              <div className="flex items-center gap-2 text-[#94A3B8] text-[10px] font-bold bg-[#111827]/60 px-2.5 py-1 rounded-lg border border-[#334155]/40 select-none">
+                <span className={allImages.length > 0 ? 'text-[#00F5C2]' : 'text-amber-400'}>
+                  {allImages.length > 0 ? `✓ ${allImages.length} Photo(s) Attached` : 'Upload 1-5 Face Photos'}
+                </span>
+              </div>
+            </div>
+
+            <p className="text-[10px] text-[#94A3B8] font-medium mb-3.5 relative z-10">
+              Upload clear front-facing photos or selfies of your AI influencer. These photos are used to lock in face consistency across all generated images, videos, and identity sheets.
+            </p>
+
+            <input
+              type="file"
+              ref={fileInputRef}
+              accept="image/*"
+              multiple
+              onChange={handleImageUpload}
+              className="hidden"
+            />
+
+            {/* Display Attached Photos Thumbnails if present */}
+            {allImages.length > 0 && (
+              <div className="grid grid-cols-4 sm:grid-cols-6 gap-2.5 mb-3.5 relative z-10">
+                {allImages.map((imgUrl, idx) => (
+                  <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-[#334155] group/thumb">
+                    <img src={imgUrl} className="w-full h-full object-cover" alt="" />
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeReferenceImage(idx);
+                      }}
+                      className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/80 hover:bg-rose-600 text-white flex items-center justify-center transition-all opacity-0 group-hover/thumb:opacity-100 cursor-pointer"
+                      title="Remove photo"
+                    >
+                      <X size={12} />
+                    </button>
+                    {idx === 0 && (
+                      <div className="absolute bottom-0 inset-x-0 bg-black/80 text-[7px] font-bold text-[#00F5C2] text-center py-0.5 uppercase tracking-tighter">
+                        Primary Face
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              className="border-2 border-dashed border-[#334155]/70 hover:border-[#00D4FF]/60 bg-[#0B0F17]/50 rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer transition-all duration-300 group relative z-10 hover:bg-[#111827]/50 min-h-[96px]"
+            >
+              <div className="w-10 h-10 rounded-xl bg-[#00D4FF]/10 border border-[#00D4FF]/20 flex items-center justify-center text-[#00D4FF] mb-2 group-hover:scale-110 transition-transform">
+                <Upload size={20} />
+              </div>
+              <p className="text-xs text-white font-extrabold mb-0.5">Click or drag & drop reference photos here</p>
+              <p className="text-[9px] text-[#64748B] font-bold">Supports JPG, PNG, WEBP (Upload 1 or more face photos)</p>
             </div>
           </div>
 
@@ -486,14 +569,14 @@ export default function PersonaBuilderView({ persona: initialPersona, onChange, 
             </div>
 
             <img 
-              src={persona.referenceImage || "/isabella_laurent_reference.png"} 
+              src={persona.referenceImage || "/sample_persona_portrait.jpg"} 
               alt="Preview" 
               className="absolute right-0 top-0 bottom-0 h-full w-[58%] object-cover object-center transition-transform duration-700 group-hover:scale-105" 
             />
 
             <div className="absolute inset-0 p-4 flex flex-col justify-end w-[65%] z-10 bg-gradient-to-r from-[#050811] via-[#0B132B]/95 to-transparent select-none">
               <div className="flex items-center gap-2 mb-1">
-                <h2 className="text-[22px] font-black text-white tracking-tight leading-none uppercase">{persona.name || 'Isabella Laurent'}</h2>
+                <h2 className="text-[22px] font-black text-white tracking-tight leading-none uppercase">{persona.name || 'Aria Vance'}</h2>
               </div>
               <p className="text-[10px] font-extrabold uppercase tracking-[0.15em] mb-1.5 text-[#00D4FF]">{persona.niche || 'Luxury Lifestyle Influencer'}</p>
               
@@ -557,10 +640,10 @@ export default function PersonaBuilderView({ persona: initialPersona, onChange, 
                 const displayLabel = angle.label;
 
                 const getFallbackImage = (label: string) => {
-                  const base = persona.referenceImage || "/isabella_laurent_reference.png";
+                  const base = persona.referenceImage || "/sample_persona_portrait.jpg";
                   
-                  // If default Isabella Laurent, use the high-quality pre-rendered demo assets directly
-                  const isDefaultIsabella = base === "/isabella_laurent_reference.png" || base.includes("isabella_laurent");
+                  // If default sample persona, use the high-quality pre-rendered demo assets directly
+                  const isDefaultIsabella = base === "/sample_persona_portrait.jpg" || base.includes("sample_persona");
                   if (isDefaultIsabella) {
                     const placeholder = identitySheetPlaceholders.find(p => p.label === label);
                     if (placeholder?.img) return placeholder.img;
@@ -630,28 +713,31 @@ export default function PersonaBuilderView({ persona: initialPersona, onChange, 
         </div>
       </div>
 
-      {/* Bottom Action Bar */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 bg-[#0B0F17]/75 backdrop-blur-3xl border-t border-[#334155]/30 py-1.5 px-6 shadow-2xl select-none transition-all duration-300">
-        <div className="max-w-[1360px] mx-auto flex items-center justify-between gap-4">
-          <button onClick={onCancel} className="flex items-center gap-1.5 text-[#94A3B8] hover:text-white font-bold text-xs transition-colors uppercase tracking-wider">
-            <ChevronLeft size={14} /> Back
-          </button>
-          
-          <div className="flex items-center gap-3.5">
-            <span className="hidden md:inline text-[9px] font-bold text-[#94A3B8] text-right select-none opacity-90 leading-tight">
-              Next step: create a consistent<br/>identity sheet from your references.
-            </span>
-            <div className="flex items-center gap-2.5">
-              <button onClick={() => onSave(persona)} className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border border-[#334155]/50 text-white hover:bg-[#1F2937]/80 hover:border-[#94A3B8]/40 transition-all duration-300 text-[10px] font-black uppercase tracking-wider shadow bg-[#0B0F17]/20">
-                <Save size={13} /> Save Draft
-              </button>
-              <button onClick={() => onSave(persona)} className="flex items-center gap-1.5 px-4.5 py-2 rounded-full bg-gradient-to-r from-[#00F5C2] via-[#00D4FF] to-[#6366F1] text-[#0B0F17] font-black uppercase tracking-wider text-[11px] shadow-[0_0_16px_rgba(0,212,255,0.3)] hover:shadow-[0_0_24px_rgba(0,245,194,0.5)] hover:scale-[1.015] transition-all duration-300 cursor-pointer">
-                Continue to Identity Sheet <ArrowRightIcon className="w-3.5 h-3.5 ml-0.5" />
-              </button>
+      {/* Bottom Action Bar rendered via Portal directly into document.body */}
+      {mounted && createPortal(
+        <div className="fixed bottom-0 left-0 md:left-64 right-0 z-[999] bg-[#0B0F17]/90 backdrop-blur-3xl border-t border-[#334155]/40 py-2.5 px-6 shadow-2xl select-none transition-all duration-300">
+          <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
+            <button onClick={onCancel} className="flex items-center gap-1.5 text-[#94A3B8] hover:text-white font-bold text-xs transition-colors uppercase tracking-wider cursor-pointer">
+              <ChevronLeft size={14} /> Cancel
+            </button>
+            
+            <div className="flex items-center gap-3.5">
+              <span className="hidden md:inline text-[10px] font-bold text-[#94A3B8] text-right select-none opacity-90 leading-tight">
+                Next step: create a consistent<br/>identity sheet from your references.
+              </span>
+              <div className="flex items-center gap-2.5">
+                <button onClick={() => onSave(persona)} className="flex items-center gap-1.5 px-4 py-2 rounded-full border border-[#334155]/60 text-white hover:bg-[#1F2937]/80 hover:border-[#94A3B8]/40 transition-all duration-300 text-xs font-black uppercase tracking-wider shadow bg-[#0B0F17]/40 cursor-pointer">
+                  <Save size={13} /> Save Draft
+                </button>
+                <button onClick={() => onSave(persona)} className="flex items-center gap-1.5 px-5 py-2 rounded-full bg-gradient-to-r from-[#00F5C2] via-[#00D4FF] to-[#6366F1] text-[#0B0F17] font-black uppercase tracking-wider text-xs shadow-[0_0_16px_rgba(0,212,255,0.3)] hover:shadow-[0_0_24px_rgba(0,245,194,0.5)] hover:scale-[1.015] transition-all duration-300 cursor-pointer">
+                  Continue to Identity Sheet <ArrowRightIcon className="w-3.5 h-3.5 ml-0.5" />
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

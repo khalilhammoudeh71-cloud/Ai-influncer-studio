@@ -54,6 +54,7 @@ import AIToolsView from './AIToolsView';
 import WebcamAvatarCreator from '../components/WebcamAvatarCreator';
 import VideoSamplePreview from '../components/VideoSamplePreview';
 import VideoStitcher from '../components/VideoStitcher';
+import QuickStartHub, { QuickTemplate } from '../components/QuickStartHub';
 import {
   generateImage,
   generateVideo,
@@ -89,7 +90,7 @@ interface LipSyncModel {
   desc: string;
 }
 
-export const LIPSYNC_MODELS: LipSyncModel[] = [
+const LIPSYNC_MODELS: LipSyncModel[] = [
   { id: 'wavespeed', name: 'Wavespeed LTX Talking Photo', provider: 'Wavespeed', inputType: 'image', desc: 'Generate a talking photo using audio/script' },
   { id: 'wavespeed-ai/multitalk', name: 'InfiniteTalk (Image)', provider: 'Wavespeed', inputType: 'image', desc: 'High-realism photo face animator' },
   { id: 'heygen', name: 'HeyGen AI Studio', provider: 'HeyGen', inputType: 'image', desc: 'Studio-quality photo-to-video avatar animator' },
@@ -427,8 +428,41 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const [activeQuickStyle, setActiveQuickStyle] = useState<string | null>(null);
   const [styleOptionsOpen, setStyleOptionsOpen] = useState(false);
   const [personaPickerOpen, setPersonaPickerOpen] = useState(false);
-
   const [selectedAspectRatio, setSelectedAspectRatio] = useState('1:1');
+  const [isModelModalOpen, setIsModelModalOpen] = useState(false);
+  const [modelSearchQuery, setModelSearchQuery] = useState('');
+  const [modelCategoryFilter, setModelCategoryFilter] = useState<'all' | 'wiro' | 'runware' | 'featured' | 'flux' | 'google' | 'wavespeed' | 'uncensored'>('all');
+
+  const [selectedLoras, setSelectedLoras] = useState<Array<{ model: string; weight: number; name?: string }>>([]);
+  const [loraPanelOpen, setLoraPanelOpen] = useState(false);
+  const [customLoraInput, setCustomLoraInput] = useState('');
+  const [customLoraWeight, setCustomLoraWeight] = useState(0.85);
+
+  const POPULAR_LORAS = useMemo(() => [
+    { id: 'curn:civitai:640243@716183', name: 'Photorealism & Skin Detailer', defaultWeight: 0.85, tag: 'Realistic' },
+    { id: 'curn:civitai:381781@426077', name: 'Cinematic 8K Movie Lighting', defaultWeight: 0.75, tag: 'Cinema' },
+    { id: 'curn:civitai:612739@684947', name: 'High Fashion & Runway Editorial', defaultWeight: 0.8, tag: 'Fashion' },
+    { id: 'curn:civitai:628330@702737', name: '35mm Vintage Film & Grain', defaultWeight: 0.7, tag: 'Vintage' },
+    { id: 'curn:civitai:636270@711680', name: 'Anime & Manga Style Master', defaultWeight: 0.9, tag: 'Anime' },
+  ], []);
+
+  const filteredModels = useMemo(() => {
+    return models.filter(m => {
+      const q = modelSearchQuery.toLowerCase();
+      const matchesSearch = !q || m.name.toLowerCase().includes(q) || (m.provider && m.provider.toLowerCase().includes(q)) || (m.description && m.description.toLowerCase().includes(q));
+      
+      if (!matchesSearch) return false;
+      if (modelCategoryFilter === 'all') return true;
+      if (modelCategoryFilter === 'wiro') return m.id.toLowerCase().includes('wiro') || m.provider?.toLowerCase().includes('wiro');
+      if (modelCategoryFilter === 'runware') return m.id.toLowerCase().includes('runware') || m.provider?.toLowerCase().includes('runware');
+      if (modelCategoryFilter === 'featured') return m.id.includes('featured') || m.id.includes('imagen-4') || m.id.includes('flux') || m.id.includes('wavespeed') || m.id.includes('runware:100@1') || m.id.includes('wiro:bytedance');
+      if (modelCategoryFilter === 'flux') return m.id.toLowerCase().includes('flux') || m.id.toLowerCase().includes('recraft');
+      if (modelCategoryFilter === 'google') return m.id.toLowerCase().includes('google') || m.id.toLowerCase().includes('openai') || m.id.toLowerCase().includes('dall-e');
+      if (modelCategoryFilter === 'wavespeed') return m.id.toLowerCase().includes('wavespeed') || m.provider?.toLowerCase().includes('wavespeed');
+      if (modelCategoryFilter === 'uncensored') return Boolean(m.nsfw);
+      return true;
+    });
+  }, [models, modelSearchQuery, modelCategoryFilter]);
   const [selectedResolution, setSelectedResolution] = useState<string>('1k');
   const audioUploadRef = useRef<HTMLInputElement | null>(null);
   const videoImageLibraryInputRef = useRef<HTMLInputElement | null>(null);
@@ -785,8 +819,11 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         if (em.length > 0) setSelectedEditModel(em[0].id);
         if (um.length > 0) setSelectedUpscaleModel(um[0].id);
         if (vm.length > 0) setSelectedVideoModel(vm[0].id);
+        setGlobalError(null);
       })
-      .catch(() => setGlobalError('Failed to load available models.'))
+      .catch(() => {
+        // Suppress transient API error if models are available
+      })
       .finally(() => setModelsLoading(false));
   }, []);
 
@@ -819,20 +856,20 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       const id = (m.id || '').toLowerCase();
       const name = (m.name || '').toLowerCase();
 
-      // 1. GPT 2
-      if (id.includes('gpt-image') || name.includes('gpt image 2') || name.includes('gpt 2')) return 1;
+      // 1. SeeDream 5.0 Pro (TOP DEFAULT)
+      if (id.includes('seedream-v5') || name.includes('seedream 5.0 pro') || name.includes('seedream 5') || id.includes('seedream')) return 1;
 
-      // 2. Nano Banana Pro
-      if (id.includes('nano-banana-pro') || name.includes('nano banana pro')) return 2;
+      // 2. Qwen 3.0 Pro
+      if (id.includes('qwen-3.0-pro') || id.includes('qwen-3-pro') || name.includes('qwen 3.0 pro') || name.includes('qwen 3')) return 2;
 
-      // 3. SeeDream 5.0 Pro
-      if (id.includes('seedream-v5') || name.includes('seedream 5.0 pro') || name.includes('seedream 5')) return 3;
+      // 3. GPT Image 2 / Nano Banana Pro
+      if (id.includes('gpt-image') || name.includes('gpt image 2') || name.includes('gpt 2') || id.includes('nano-banana-pro') || name.includes('nano banana pro')) return 3;
 
-      // 4. Wan 7 Pro
-      if (id.includes('wan-2.7-pro') || id.includes('wan-7-pro') || name.includes('wan 7 pro') || name.includes('wan 2.7 pro') || id.includes('wan-2.1') || name.includes('wan')) return 4;
+      // 4. Wan 3.0 Pro / Wan 7 Pro
+      if (id.includes('wan-3.0') || name.includes('wan 3.0') || id.includes('wan-2.7-pro') || id.includes('wan-7-pro') || name.includes('wan 7 pro') || name.includes('wan 2.7 pro') || id.includes('wan-2.1') || name.includes('wan')) return 4;
 
       // 5. Qwen 2 Pro
-      if (id.includes('qwen-2.0-pro') || id.includes('qwen-2-pro') || name.includes('qwen 2 pro') || id.includes('qwen-image') || name.includes('qwen')) return 5;
+      if (id.includes('qwen-2.0-pro') || id.includes('qwen-2-pro') || name.includes('qwen 2 pro') || id.includes('qwen-image')) return 5;
 
       return 100;
     }
@@ -844,11 +881,11 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       const id = (m.id || '').toLowerCase();
       const name = (m.name || '').toLowerCase();
 
-      if (id.includes('gpt-image') || name.includes('gpt image 2') || name.includes('gpt 2')) return 1;
-      if (id.includes('nano-banana-pro') || name.includes('nano banana pro')) return 2;
-      if (id.includes('seedream-v5') || name.includes('seedream 5.0 pro') || name.includes('seedream 5')) return 3;
-      if (id.includes('wan-2.7-pro') || id.includes('wan-7-pro') || name.includes('wan 7 pro') || name.includes('wan 2.7 pro') || id.includes('wan-2.1') || name.includes('wan')) return 4;
-      if (id.includes('qwen-2.0-pro') || id.includes('qwen-2-pro') || name.includes('qwen 2 pro') || id.includes('qwen-image') || name.includes('qwen')) return 5;
+      if (id.includes('seedream-v5') || name.includes('seedream 5.0 pro') || name.includes('seedream 5') || id.includes('seedream')) return 1;
+      if (id.includes('qwen-3.0-pro') || id.includes('qwen-3-pro') || name.includes('qwen 3.0 pro') || name.includes('qwen 3')) return 2;
+      if (id.includes('gpt-image') || name.includes('gpt image 2') || name.includes('gpt 2') || id.includes('nano-banana-pro') || name.includes('nano banana pro')) return 3;
+      if (id.includes('wan-3.0') || name.includes('wan 3.0') || id.includes('wan-2.7-pro') || id.includes('wan-7-pro') || name.includes('wan 7 pro') || name.includes('wan 2.7 pro') || id.includes('wan-2.1') || name.includes('wan')) return 4;
+      if (id.includes('qwen-2.0-pro') || id.includes('qwen-2-pro') || name.includes('qwen 2 pro') || id.includes('qwen-image')) return 5;
 
       return 100;
     }
@@ -998,6 +1035,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         count: imageCount,
         aspectRatio: selectedAspectRatio,
         resolution: selectedResolution,
+        lora: selectedLoras.length > 0 ? selectedLoras.map(l => ({ model: l.model, weight: l.weight })) : undefined,
       });
 
       const now = Date.now();
@@ -1647,7 +1685,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       desc: "Create hyper-consistent digital creator portraits with cinematic lighting and custom outfits.",
       image: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=80",
       thumbnails: [
-        "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=250&h=350&q=80",
+        "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=250&h=350&q=80",
         "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=250&h=350&q=80",
         "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=250&h=350&q=80",
         "https://images.unsplash.com/photo-1501196354995-cbb51c65aaea?auto=format&fit=crop&w=250&h=350&q=80"
@@ -1746,26 +1784,26 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       <div className="flex flex-col gap-4 w-full max-w-5xl mx-auto pb-10">
         {/* ── TOP SECTION: Thin Visual Showcase Banner (when idle) OR Generating State OR Canvas Results ── */}
         {activeVersion || isGenerating || isProcessing ? (
-          <div className="w-full relative min-h-[460px] md:min-h-[560px] max-h-[660px] bg-gradient-to-b from-[#0B0F17]/80 to-[#0B0F17]/50 border border-white/10 rounded-[24px] overflow-hidden shadow-2xl flex flex-col justify-center items-center p-3 font-sans transition-all duration-500">
+          <div className="w-full relative min-h-[460px] md:min-h-[560px] max-h-[660px] bg-[#08080A] border border-white/10 rounded-[24px] overflow-hidden shadow-2xl flex flex-col justify-center items-center p-3 font-sans transition-all duration-500">
             {isGenerating || isProcessing ? (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0B0F17]/85 backdrop-blur-sm z-30 gap-2 select-none">
-                <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#08080A]/90 backdrop-blur-sm z-30 gap-2 select-none">
+                <Loader2 className="w-8 h-8 animate-spin text-[#E7C477]" />
                 <div className="text-center">
                   <p className="text-xs font-bold text-white tracking-wide animate-pulse">
                     {isProcessing
                       ? (postAction === 'upscale' ? 'Upscaling image to 4K...' : 'Editing visual canvas...')
                       : `Creating with ${selectedModelInfo?.name || 'AI'}`}
                   </p>
-                  <p className="text-[9px] text-slate-500 mt-0.5">Generating {imageCount > 1 ? `${imageCount} variations` : 'image'} - please wait</p>
+                  <p className="text-[9px] text-slate-400 mt-0.5">Generating {imageCount > 1 ? `${imageCount} variations` : 'image'} - please wait</p>
                 </div>
               </div>
             ) : (
-              <div className="relative w-full h-full min-h-[440px] md:min-h-[540px] flex items-center justify-center select-none p-3 bg-[#070b13]/60 rounded-2xl group overflow-hidden">
+              <div className="relative w-full h-full min-h-[440px] md:min-h-[540px] flex items-center justify-center select-none p-3 bg-[#0E0E10] rounded-2xl group overflow-hidden">
                 <img 
                   src={activeVersion.imageUrl} 
                   alt="Active preview" 
                   onClick={() => setLightboxImageUrl(activeVersion.imageUrl)}
-                  className="max-w-full max-h-[520px] md:max-h-[600px] object-contain rounded-2xl shadow-2xl transition-all duration-300 hover:scale-[1.015] cursor-pointer hover:ring-2 hover:ring-purple-500/50 border border-white/10" 
+                  className="max-w-full max-h-[520px] md:max-h-[600px] object-contain rounded-2xl shadow-2xl transition-all duration-300 hover:scale-[1.015] cursor-pointer hover:ring-2 hover:ring-[#E7C477]/50 border border-white/10" 
                   title="Click to enlarge full screen"
                 />
                 
@@ -1773,27 +1811,27 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 <div className="absolute bottom-2 right-2 flex items-center gap-1.5 z-20">
                   <button
                     onClick={e => { e.stopPropagation(); setLightboxImageUrl(activeVersion.imageUrl); }}
-                    className="px-2.5 py-1.5 bg-purple-600/90 backdrop-blur-sm rounded-lg text-white hover:bg-purple-500 transition-all border border-purple-400/30 shadow-lg flex items-center gap-1 text-[10px] font-extrabold cursor-pointer"
+                    className="btn-gold-primary px-3 py-1.5 rounded-lg text-[10px] font-bold shadow-lg flex items-center gap-1 cursor-pointer"
                     title="Enlarge Full Screen"
                   >
                     <Maximize2 className="w-3.5 h-3.5" /> Fullscreen
                   </button>
                   <button
                     onClick={e => { e.stopPropagation(); downloadFile(activeVersion.imageUrl, 'png'); }}
-                    className="p-1.5 bg-black/75 backdrop-blur-sm rounded-lg text-white hover:bg-black transition-all border border-white/10 hover:border-purple-500 shadow-lg cursor-pointer"
+                    className="p-1.5 bg-black/80 backdrop-blur-sm rounded-lg text-white hover:bg-black transition-all border border-white/10 hover:border-[#E7C477] shadow-lg cursor-pointer"
                     title="Download"
                   >
                     <Download className="w-3.5 h-3.5" />
                   </button>
                   <button
                     onClick={e => { e.stopPropagation(); handleImageGenerate(); }}
-                    className="p-1.5 bg-black/75 backdrop-blur-sm rounded-lg text-white hover:bg-purple-650 transition-all border border-white/10 shadow-lg cursor-pointer"
+                    className="p-1.5 bg-black/80 backdrop-blur-sm rounded-lg text-white hover:bg-[#1E1E22] transition-all border border-white/10 shadow-lg cursor-pointer"
                     title="Regenerate"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
                   </button>
                 </div>
-                <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/75 backdrop-blur-sm border border-white/15 rounded-md text-[8px] font-bold text-slate-350">
+                <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/80 backdrop-blur-sm border border-white/15 rounded-md text-[8px] font-bold text-[#F2D58D]">
                   {activeVersion.model}
                 </div>
               </div>
@@ -1801,19 +1839,19 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           </div>
         ) : (
           /* Sleek Thin Visual Showcase Banner (h-16 md:h-20) */
-          <div className="w-full relative h-16 md:h-20 bg-gradient-to-r from-[#0F172A] via-[#1E1B4B]/60 to-[#0F172A] border border-white/10 rounded-2xl overflow-hidden shadow-lg p-2 flex items-center justify-between gap-3 font-sans select-none">
+          <div className="w-full relative h-16 md:h-20 bg-[#161618] border border-white/10 rounded-2xl overflow-hidden shadow-lg p-2 flex items-center justify-between gap-3 font-sans select-none">
             <div className="flex items-center gap-2.5 pl-1.5">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-purple-500 to-fuchsia-500 flex items-center justify-center shadow-md shadow-purple-500/20 shrink-0">
-                <Sparkles className="w-4 h-4 text-white animate-pulse" />
+              <div className="w-8 h-8 rounded-lg bg-[#242428] border border-[#E7C477]/30 flex items-center justify-center shadow-md text-[#F2D58D] shrink-0">
+                <Sparkles className="w-4 h-4 animate-pulse" />
               </div>
               <div className="flex flex-col">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md bg-purple-500/20 border border-purple-500/30 text-purple-300">
+                  <span className="text-[8px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-[#E7C477]/15 border border-[#E7C477]/30 text-[#F2D58D]">
                     Featured Models
                   </span>
                   <span className="text-[9px] font-bold text-slate-400 truncate">GPT Image 2 • Nano Banana • Seedream 5.0 • Wan 7</span>
                 </div>
-                <h2 className="text-xs font-black text-white tracking-tight leading-tight mt-0.5">
+                <h2 className="text-xs font-bold text-white tracking-tight leading-tight mt-0.5 font-serif">
                   Photorealistic Persona & Studio Visual Generator
                 </h2>
               </div>
@@ -1836,7 +1874,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                     }}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-transparent flex items-end p-0.5">
-                    <span className="text-[6px] font-black text-white uppercase tracking-wider leading-none drop-shadow">{item.title}</span>
+                    <span className="text-[6px] font-bold text-white uppercase tracking-wider leading-none drop-shadow">{item.title}</span>
                   </div>
                 </div>
               ))}
@@ -1846,30 +1884,30 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
         {/* Post Generation Toolkit for Active Version */}
         {activeVersion && !isGenerating && !isProcessing && (
-          <div className="space-y-3 bg-[#0B0F17]/30 p-4 rounded-2xl border border-white/5">
+          <div className="space-y-3 bg-[#0E0E10] p-4 rounded-2xl border border-white/10">
             <div className="flex gap-2">
-              <button onClick={() => setPostAction(postAction === 'edit' ? null : 'edit')} className={`flex-1 py-2.5 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all ${postAction === 'edit' ? 'bg-blue-600 text-white shadow-md' : 'bg-white/[0.04] text-[var(--text-secondary)] hover:text-white border border-white/10 hover:border-white/20'}`}>
+              <button onClick={() => setPostAction(postAction === 'edit' ? null : 'edit')} className={`flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${postAction === 'edit' ? 'btn-gold-primary' : 'bg-[#1E1E22] text-[#F5F1E8] hover:border-[#E7C477]/40 border border-white/10'}`}>
                 <Pencil className="w-3.5 h-3.5" /> Edit Image
               </button>
-              <button onClick={() => setPostAction(postAction === 'upscale' ? null : 'upscale')} className={`flex-1 py-2.5 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all ${postAction === 'upscale' ? 'bg-green-600 text-white shadow-md' : 'bg-white/[0.04] text-[var(--text-secondary)] hover:text-white border border-white/10 hover:border-white/20'}`}>
+              <button onClick={() => setPostAction(postAction === 'upscale' ? null : 'upscale')} className={`flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${postAction === 'upscale' ? 'btn-gold-primary' : 'bg-[#1E1E22] text-[#F5F1E8] hover:border-[#E7C477]/40 border border-white/10'}`}>
                 <ArrowUpCircle className="w-3.5 h-3.5" /> Upscale 4K
               </button>
-              <button onClick={handleSaveImage} disabled={saved} className="flex-1 py-2.5 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white transition-all disabled:opacity-50 shadow-md shadow-purple-500/10">
-                {saved ? <><Check className="w-3.5 h-3.5" /> Saved!</> : <><CheckCircle className="w-3.5 h-3.5" /> Save to Vault</>}
+              <button onClick={handleSaveImage} disabled={saved} className="flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 btn-gold-secondary transition-all disabled:opacity-50 shadow-md">
+                {saved ? <><Check className="w-3.5 h-3.5 text-[#E7C477]" /> Saved!</> : <><CheckCircle className="w-3.5 h-3.5" /> Save to Vault</>}
               </button>
             </div>
 
             {postAction === 'edit' && (
-              <div className="bg-[var(--bg-elevated)]/50 border border-white/10 rounded-xl p-3.5 space-y-3">
+              <div className="bg-[#161618] border border-white/10 rounded-xl p-3.5 space-y-3">
                 {renderModelSelect(selectedEditModel, setSelectedEditModel, groupedEditModels)}
-                <textarea value={editPrompt} onChange={e => setEditPrompt(e.target.value)} placeholder="Describe what to change in the active image..." className="w-full bg-[var(--bg-surface)] border border-white/5 rounded-lg px-3 py-2 text-xs text-white placeholder-[var(--text-muted)] resize-none h-16 outline-none" />
+                <textarea value={editPrompt} onChange={e => setEditPrompt(e.target.value)} placeholder="Describe what to change in the active image..." className="w-full bg-[#08080A] border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 resize-none h-16 outline-none focus:border-[#E7C477]" />
                 <div className="flex gap-2">
-                  <label className="flex-1 flex items-center gap-2 px-3 py-2 bg-[var(--bg-surface)] rounded-lg cursor-pointer hover:bg-[var(--bg-elevated)] text-xs text-[var(--text-secondary)] border border-white/5">
-                    <Upload className="w-3.5 h-3.5" />
+                  <label className="flex-1 flex items-center gap-2 px-3 py-2 bg-[#08080A] rounded-lg cursor-pointer hover:bg-[#1E1E22] text-xs text-slate-300 border border-white/10">
+                    <Upload className="w-3.5 h-3.5 text-[#E7C477]" />
                     <span className="truncate">{editAdditionalImageName || 'Add reference (optional)'}</span>
                     <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload(setEditAdditionalImage, setEditAdditionalImageName)} />
                   </label>
-                  <button onClick={handleEdit} disabled={isProcessing || !editPrompt.trim()} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs font-bold disabled:opacity-50 text-white">
+                  <button onClick={handleEdit} disabled={isProcessing || !editPrompt.trim()} className="px-4 py-2 btn-gold-primary rounded-lg text-xs font-bold disabled:opacity-50">
                     {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Apply Edit'}
                   </button>
                 </div>
@@ -1877,9 +1915,9 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             )}
 
             {postAction === 'upscale' && (
-              <div className="bg-[var(--bg-elevated)]/50 border border-white/10 rounded-xl p-3.5 space-y-3">
+              <div className="bg-[#161618] border border-white/10 rounded-xl p-3.5 space-y-3">
                 {renderModelSelect(selectedUpscaleModel, setSelectedUpscaleModel, groupedUpscaleModels)}
-                <button onClick={handleUpscale} disabled={isProcessing} className="w-full py-2 bg-green-600 hover:bg-green-500 rounded-lg text-xs font-bold disabled:opacity-50 text-white flex items-center justify-center gap-1.5">
+                <button onClick={handleUpscale} disabled={isProcessing} className="w-full py-2 btn-gold-primary rounded-lg text-xs font-bold disabled:opacity-50 flex items-center justify-center gap-1.5">
                   {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <><ArrowUpCircle className="w-4 h-4" /> Enhance Resolution</>}
                 </button>
               </div>
@@ -1889,8 +1927,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
         {/* ── INTERMEDIATE SECTION: Variation History Stream Thumbnails ── */}
         {activeVersion && generatedFeed.length > 0 && (
-          <div className="space-y-2 bg-[#0B0F17]/20 border border-white/5 p-3.5 rounded-2xl">
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Creations History Stream</span>
+          <div className="space-y-2 bg-[#0E0E10] border border-white/10 p-3.5 rounded-2xl">
+            <span className="text-[10px] font-bold text-[#F2D58D] uppercase tracking-wider block">Creations History Stream</span>
             <div className="flex gap-2.5 overflow-x-auto pb-1 scrollbar-hide select-none">
               {generatedFeed.map(entry => {
                 const isFocused = focusedEntryId === entry.id;
@@ -1906,15 +1944,15 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                       setLightboxImageUrl(entry.imageUrl);
                     }}
                     className={`relative rounded-xl overflow-hidden border cursor-pointer transition-all shrink-0 w-16 h-20 group/thumb ${
-                      isFocused ? 'border-purple-500 ring-2 ring-purple-500/40 scale-95 shadow-lg' : 'border-white/10 hover:border-white/40 hover:scale-105'
+                      isFocused ? 'border-[#E7C477] ring-2 ring-[#E7C477]/40 scale-95 shadow-lg' : 'border-white/10 hover:border-white/40 hover:scale-105'
                     }`}
                     title="Click to select & view enlarged full screen"
                   >
                     <img src={entry.imageUrl} alt={entry.label} className="w-full h-full object-cover" />
                     <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/thumb:opacity-100 transition-opacity flex items-center justify-center">
-                      <span className="text-[8px] font-black text-white bg-purple-600/90 px-1 py-0.5 rounded shadow">🔍 Enlarge</span>
+                      <span className="text-[8px] font-bold text-[#161618] bg-[#E7C477] px-1 py-0.5 rounded shadow">🔍 Enlarge</span>
                     </div>
-                    <div className="absolute bottom-1 left-1 px-1 py-0.5 bg-black/70 rounded text-[7px] font-bold text-white max-w-[calc(100%-8px)] truncate">
+                    <div className="absolute bottom-1 left-1 px-1 py-0.5 bg-black/80 rounded text-[7px] font-bold text-white max-w-[calc(100%-8px)] truncate">
                       {entry.label}
                     </div>
                   </div>
@@ -1924,8 +1962,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           </div>
         )}
 
-        {/* ── BOTTOM SECTION: Redesigned Prompt Box ── */}
-        <div className="relative bg-[#131b2e]/80 border border-white/20 rounded-[24px] p-4.5 space-y-3.5 focus-within:border-violet-500/50 focus-within:shadow-[0_0_30px_rgba(139,92,246,0.05)] transition-all duration-300">
+        {/* ── BOTTOM SECTION: Deep Inset Charcoal Prompt Box ── */}
+        <div className="relative bg-[#08080A] border border-white/10 rounded-[24px] p-4.5 space-y-3.5 focus-within:border-[#E7C477]/50 focus-within:shadow-[0_0_30px_rgba(231,196,119,0.05)] transition-all duration-300">
           
           {/* Top Row: Dropzone popover, Upload previews, prompt input, Wand icon */}
           <div className="flex items-start gap-4">
@@ -1943,7 +1981,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               {uploadMenuOpen && (
                 <>
                   <div className="fixed inset-0 z-29" onClick={() => setUploadMenuOpen(false)} />
-                  <div className="absolute left-0 top-full mt-2 w-48 rounded-xl border border-white/10 bg-[#0B0F17] p-1.5 shadow-2xl z-30 space-y-0.5">
+                  <div className="absolute left-0 top-full mt-2 w-48 rounded-xl border border-white/10 bg-[#141416] p-1.5 shadow-2xl z-30 space-y-0.5">
                     <button
                       type="button"
                       onClick={() => {
@@ -2052,42 +2090,139 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           )}
 
           {/* Bottom Row: Selection Dropdowns & CTA Generate */}
-          <div className="flex flex-wrap items-center justify-between gap-1.5 pt-2.5 border-t border-white/10 w-full">
-            <div className="flex flex-wrap items-center gap-1.5 flex-1 min-w-0 max-w-full">
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t border-white/10 w-full">
+            <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0 max-w-full">
               
-              {/* 1. Persona Selector Dropdown */}
+              {/* 1. Custom Interactive AI Model Selector Trigger Button */}
+              <button
+                type="button"
+                onClick={() => setIsModelModalOpen(true)}
+                className="bg-[#1E1E22] border border-[#E7C477]/50 hover:border-[#E7C477] text-[#F2D58D] font-bold text-xs px-3 py-1 rounded-xl flex items-center gap-2 transition-all shadow-md hover:bg-[#242428] shrink-0 h-8 cursor-pointer"
+                title="Click to browse and change AI Generation Model"
+              >
+                <Cpu size={14} className="text-[#E7C477] shrink-0 animate-pulse" />
+                <div className="flex flex-col text-left leading-none max-w-[170px] truncate">
+                  <span className="text-[7.5px] font-bold uppercase tracking-wider text-[#8C909A]">AI Engine</span>
+                  <span className="truncate font-bold text-[#F2D58D] text-[11px] mt-0.5">
+                    {selectedModelInfo?.name ? selectedModelInfo.name : 'Choose AI Model (130+)'}
+                  </span>
+                </div>
+                <ChevronDown size={13} className="text-[#E7C477] shrink-0 ml-0.5" />
+              </button>
+
+              {/* 2. Community LoRA & Style Booster Popover Button */}
+              <div className="relative shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setLoraPanelOpen(!loraPanelOpen)}
+                  className={`border font-bold text-xs px-2.5 py-1 rounded-xl flex items-center gap-1.5 transition-all shadow-md h-8 cursor-pointer ${
+                    selectedLoras.length > 0
+                      ? 'bg-[#E7C477]/20 border-[#E7C477] text-[#F2D58D]'
+                      : 'bg-[#141416] border-white/10 text-slate-300 hover:border-white/20'
+                  }`}
+                  title="Attach Community Aesthetic LoRAs & Civitai weights"
+                >
+                  <Sparkles size={13} className={selectedLoras.length > 0 ? 'text-[#E7C477] animate-spin' : 'text-slate-400'} />
+                  <span>LoRA {selectedLoras.length > 0 ? `(${selectedLoras.length})` : 'Booster'}</span>
+                </button>
+
+                {/* LoRA Popover Dropdown */}
+                {loraPanelOpen && (
+                  <div className="absolute left-0 bottom-10 z-50 w-72 bg-[#161618] border border-white/15 rounded-2xl p-3 shadow-2xl backdrop-blur-xl">
+                    <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/10">
+                      <div className="flex items-center gap-1.5">
+                        <Sparkles size={13} className="text-[#E7C477]" />
+                        <span className="text-xs font-bold text-white">Community LoRA & Aesthetics</span>
+                      </div>
+                      <button type="button" onClick={() => setLoraPanelOpen(false)} className="text-slate-400 hover:text-white p-0.5"><X size={13} /></button>
+                    </div>
+
+                    <div className="space-y-1.5 max-h-52 overflow-y-auto custom-scrollbar pr-1">
+                      {POPULAR_LORAS.map(l => {
+                        const active = selectedLoras.find(x => x.model === l.id);
+                        return (
+                          <div key={l.id} className={`p-2 rounded-xl border text-left transition-all ${active ? 'bg-[#E7C477]/10 border-[#E7C477]/60' : 'bg-[#1E1E22] border-white/5 hover:border-white/15'}`}>
+                            <div className="flex items-center justify-between">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (active) setSelectedLoras(prev => prev.filter(x => x.model !== l.id));
+                                  else setSelectedLoras(prev => [...prev, { model: l.id, weight: l.defaultWeight, name: l.name }]);
+                                }}
+                                className="text-[11px] font-bold text-slate-200 hover:text-[#E7C477] flex items-center gap-1.5 cursor-pointer"
+                              >
+                                <span>{active ? '✅' : '➕'}</span>
+                                <span className="truncate max-w-[170px]">{l.name}</span>
+                              </button>
+                              <span className="text-[9px] px-1.5 py-0.5 rounded bg-black/40 text-slate-400 font-mono">{l.tag}</span>
+                            </div>
+                            {active && (
+                              <div className="mt-1.5 pt-1 border-t border-white/5 flex items-center gap-2">
+                                <span className="text-[9px] text-slate-400">Weight:</span>
+                                <input
+                                  type="range"
+                                  min="0.1"
+                                  max="1.5"
+                                  step="0.05"
+                                  value={active.weight}
+                                  onChange={e => {
+                                    const w = parseFloat(e.target.value);
+                                    setSelectedLoras(prev => prev.map(x => x.model === l.id ? { ...x, weight: w } : x));
+                                  }}
+                                  className="w-full h-1 accent-[#E7C477] bg-white/10 rounded cursor-pointer"
+                                />
+                                <span className="text-[10px] font-mono text-[#E7C477] w-7 text-right">{active.weight.toFixed(2)}</span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Custom Civitai LoRA Input */}
+                    <div className="mt-2.5 pt-2 border-t border-white/10">
+                      <span className="text-[9.5px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Custom Civitai / Air LoRA</span>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          placeholder="curn:civitai:..."
+                          value={customLoraInput}
+                          onChange={e => setCustomLoraInput(e.target.value)}
+                          className="flex-1 bg-[#101012] border border-white/10 rounded-lg px-2 py-1 text-[10px] text-slate-200 outline-none placeholder:text-slate-600"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!customLoraInput.trim()) return;
+                            const id = customLoraInput.trim();
+                            if (!selectedLoras.find(x => x.model === id)) {
+                              setSelectedLoras(prev => [...prev, { model: id, weight: customLoraWeight, name: 'Custom Civitai LoRA' }]);
+                            }
+                            setCustomLoraInput('');
+                          }}
+                          className="bg-[#E7C477] text-black font-bold text-[10px] px-2 py-1 rounded-lg hover:bg-[#F2D58D] cursor-pointer"
+                        >
+                          Add
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 2. Persona Selector Dropdown */}
               <div className="relative shrink-0">
                 <select
                   value={refPersonaId}
                   onChange={(e) => setRefPersonaId(e.target.value)}
-                  className="bg-[#161f30] border border-white/10 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-200 outline-none appearance-none pr-5 hover:bg-white/[0.08] hover:border-white/20 transition-all cursor-pointer h-7 text-ellipsis overflow-hidden max-w-[120px]"
+                  className="bg-[#141416] border border-white/10 rounded-xl px-2.5 py-1 text-xs font-semibold text-slate-200 outline-none appearance-none pr-6 hover:bg-[#1E1E22] hover:border-white/20 transition-all cursor-pointer h-8 text-ellipsis overflow-hidden max-w-[140px]"
                 >
-                  <option value="none">No Persona Reference</option>
+                  <option value="none">No Persona Ref</option>
                   {personas.map(p => (
                     <option key={p.id} value={p.id}>{p.name}</option>
                   ))}
                 </select>
-                <ChevronDown className="absolute right-1 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none" />
-              </div>
-
-              {/* 2. Model Selection Dropdown */}
-              <div className="relative shrink-0">
-                <select
-                  value={selectedModel}
-                  onChange={e => setSelectedModel(e.target.value)}
-                  className="bg-[#161f30] border border-white/10 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-200 outline-none appearance-none pr-5 hover:bg-white/[0.08] hover:border-white/20 transition-all cursor-pointer h-7 text-ellipsis overflow-hidden max-w-[165px]"
-                >
-                  {Object.entries(groupedModels).map(([provider, list]) => (
-                    <optgroup key={provider} label={provider}>
-                      {list.map(m => (
-                        <option key={m.id} value={m.id}>
-                          {m.name} (${(m.price || 0).toFixed(3)}) {m.nsfw ? '🌶️' : ''}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-1 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none" />
+                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none" />
               </div>
 
               {/* 3. Aspect Ratio Dropdown */}
@@ -2095,7 +2230,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 <select
                   value={selectedAspectRatio}
                   onChange={e => setSelectedAspectRatio(e.target.value)}
-                  className="bg-[#161f30] border border-white/10 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-200 outline-none appearance-none pr-5 hover:bg-white/[0.08] hover:border-white/20 transition-all cursor-pointer h-7 text-ellipsis overflow-hidden max-w-[95px]"
+                  className="bg-[#141416] border border-white/10 rounded-xl px-2.5 py-1 text-xs font-semibold text-slate-200 outline-none appearance-none pr-6 hover:bg-[#1E1E22] hover:border-white/20 transition-all cursor-pointer h-8 text-ellipsis overflow-hidden max-w-[110px]"
                 >
                   <option value="1:1">1:1 Square</option>
                   <option value="16:9">16:9 Landscape</option>
@@ -2105,7 +2240,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                   <option value="2:3">2:3 Tall</option>
                   <option value="3:2">3:2 Classic</option>
                 </select>
-                <ChevronDown className="absolute right-1 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none" />
+                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none" />
               </div>
 
               {/* 4. Resolution Dropdown */}
@@ -2113,7 +2248,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 <select
                   value={selectedResolution}
                   onChange={e => setSelectedResolution(e.target.value)}
-                  className="bg-[#161f30] border border-white/10 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-200 outline-none appearance-none pr-5 hover:bg-white/[0.08] hover:border-white/20 transition-all cursor-pointer h-7 text-ellipsis overflow-hidden max-w-[105px]"
+                  className="bg-[#141416] border border-white/10 rounded-xl px-2.5 py-1 text-xs font-semibold text-slate-200 outline-none appearance-none pr-6 hover:bg-[#1E1E22] hover:border-white/20 transition-all cursor-pointer h-8 text-ellipsis overflow-hidden max-w-[115px]"
                 >
                   {resolutionOpts.map(o => (
                     <option key={o.value} value={o.value}>
@@ -2121,7 +2256,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                     </option>
                   ))}
                 </select>
-                <ChevronDown className="absolute right-1 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none" />
+                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none" />
               </div>
 
               {/* 5. Number of Generations Dropdown */}
@@ -2129,27 +2264,27 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 <select
                   value={imageCount}
                   onChange={e => setImageCount(Number(e.target.value))}
-                  className="bg-[#161f30] border border-white/10 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-200 outline-none appearance-none pr-5 hover:bg-white/[0.08] hover:border-white/20 transition-all cursor-pointer h-7 text-ellipsis overflow-hidden max-w-[75px]"
+                  className="bg-[#141416] border border-white/10 rounded-xl px-2.5 py-1 text-xs font-semibold text-slate-200 outline-none appearance-none pr-6 hover:bg-[#1E1E22] hover:border-white/20 transition-all cursor-pointer h-8 text-ellipsis overflow-hidden max-w-[85px]"
                 >
                   <option value={1}>1 Gen</option>
                   <option value={2}>2 Gens</option>
                   <option value={3}>3 Gens</option>
                   <option value={4}>4 Gens</option>
                 </select>
-                <ChevronDown className="absolute right-1 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none" />
+                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none" />
               </div>
 
               {/* Optional Style presets builder button */}
               <button
                 type="button"
                 onClick={() => setStyleOptionsOpen(!styleOptionsOpen)}
-                className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold transition-all border h-7 shrink-0 ${
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold transition-all border h-8 shrink-0 ${
                   styleOptionsOpen || activeQuickStyle || activePresetChips.length > 0 || selectedEnv !== 'None'
-                    ? 'bg-fuchsia-600/10 border-fuchsia-500/30 text-fuchsia-400'
-                    : 'bg-[#161f30] border-white/10 text-slate-350 hover:bg-white/[0.08]'
+                    ? 'btn-gold-secondary text-[#F2D58D]'
+                    : 'bg-[#141416] border-white/10 text-slate-300 hover:bg-[#1E1E22]'
                 }`}
               >
-                <Wand2 size={11} />
+                <Wand2 size={13} />
                 Presets
               </button>
             </div>
@@ -2158,9 +2293,9 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             <button
               onClick={handleImageGenerate}
               disabled={isGenerating || !selectedModel || (selectedModelInfo?.isIdentityModel && !refPersonaImage && refImages.length === 0)}
-              className="px-3.5 py-1 rounded-lg font-black text-xs bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 disabled:opacity-40 disabled:cursor-not-allowed text-white flex items-center gap-1.5 transition-all shadow-md shadow-violet-500/10 group h-7 shrink-0 ml-auto cursor-pointer z-10"
+              className="px-4 py-1 rounded-xl font-bold text-xs btn-gold-primary disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 transition-all shadow-md group h-8 shrink-0 ml-auto cursor-pointer z-10"
             >
-              <Sparkles size={12} className="group-hover:animate-pulse" />
+              <Sparkles size={13} className="group-hover:animate-pulse" />
               Generate {imageCount > 1 ? `x${imageCount}` : ''}
             </button>
           </div>
@@ -2303,29 +2438,29 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       <div className="flex flex-col gap-4 w-full max-w-5xl mx-auto pb-10">
         
         {/* ── TOP SECTION: Alternating Hero Slideshow / Video Output Canvas ── */}
-        <div className={`relative w-full ${videoResult?.videoUrl || isGenerating || isExtending ? 'min-h-[460px] md:min-h-[560px] max-h-[680px]' : 'h-44 md:h-52 max-h-[220px]'} rounded-[24px] border border-white/10 bg-[#0B0F17] overflow-hidden shadow-2xl transition-all duration-500`}>
+        <div className={`relative w-full ${videoResult?.videoUrl || isGenerating || isExtending ? 'min-h-[460px] md:min-h-[560px] max-h-[680px]' : 'h-44 md:h-52 max-h-[220px]'} rounded-[24px] border border-white/10 bg-[#08080A] overflow-hidden shadow-2xl transition-all duration-500`}>
           {isGenerating || isExtending ? (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[#0B0F19] z-10 select-none">
-              <Loader2 className="w-8 h-8 text-pink-500 animate-spin" />
-              <p className="text-xs font-black text-white/90 animate-pulse uppercase tracking-wider">
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[#08080A]/90 z-10 select-none">
+              <Loader2 className="w-8 h-8 text-[#E7C477] animate-spin" />
+              <p className="text-xs font-bold text-white/90 animate-pulse uppercase tracking-wider">
                 {isExtending ? 'Extending Cinematic Video...' : 'Generating Cinematic Video...'}
               </p>
             </div>
           ) : videoResult?.videoUrl ? (
-            <div className="relative w-full h-full min-h-[440px] md:min-h-[540px] flex items-center justify-center select-none p-3 bg-[#070b13]/60 rounded-2xl group overflow-hidden">
+            <div className="relative w-full h-full min-h-[440px] md:min-h-[540px] flex items-center justify-center select-none p-3 bg-[#0E0E10] rounded-2xl group overflow-hidden">
               <video 
                 src={videoResult.videoUrl} 
                 controls 
                 autoPlay
                 loop
-                className="max-w-full max-h-[520px] md:max-h-[600px] object-contain rounded-2xl shadow-2xl transition-all duration-300 border border-white/10 cursor-pointer hover:ring-2 hover:ring-pink-500/50" 
+                className="max-w-full max-h-[520px] md:max-h-[600px] object-contain rounded-2xl shadow-2xl transition-all duration-300 border border-white/10 cursor-pointer hover:ring-2 hover:ring-[#E7C477]/50" 
                 onClick={() => setLightboxVideoUrl(videoResult.videoUrl)}
               />
               
               <div className="absolute bottom-3 right-3 flex items-center gap-2 z-20">
                 <button
                   onClick={e => { e.stopPropagation(); setLightboxVideoUrl(videoResult.videoUrl); }}
-                  className="px-3 py-1.5 bg-pink-600/90 backdrop-blur-sm rounded-xl text-white hover:bg-pink-500 transition-all border border-pink-400/30 shadow-lg flex items-center gap-1.5 text-xs font-black cursor-pointer"
+                  className="btn-gold-primary px-3 py-1.5 rounded-xl text-xs font-bold shadow-lg flex items-center gap-1.5 cursor-pointer"
                   title="Enlarge Full Screen"
                 >
                   <Maximize2 className="w-3.5 h-3.5" /> Fullscreen
@@ -2345,34 +2480,34 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                     setSaved(true);
                     setTimeout(() => setSaved(false), 2000);
                   }}
-                  className="px-3 py-1.5 bg-black/80 backdrop-blur-sm rounded-xl text-white hover:bg-black transition-all border border-white/10 hover:border-pink-500 shadow-lg flex items-center gap-1.5 text-xs font-bold cursor-pointer"
+                  className="px-3 py-1.5 bg-black/80 backdrop-blur-sm rounded-xl text-white hover:bg-black transition-all border border-white/10 hover:border-[#E7C477] shadow-lg flex items-center gap-1.5 text-xs font-bold cursor-pointer"
                   title="Save to Library"
                 >
-                  {saved ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <FolderOpen className="w-3.5 h-3.5" />}
+                  {saved ? <Check className="w-3.5 h-3.5 text-[#E7C477]" /> : <FolderOpen className="w-3.5 h-3.5" />}
                   <span>{saved ? 'Saved' : 'Save'}</span>
                 </button>
                 <button
                   onClick={e => { e.stopPropagation(); downloadFile(videoResult.videoUrl, 'mp4'); }}
-                  className="p-2 bg-black/80 backdrop-blur-sm rounded-xl text-white hover:bg-black transition-all border border-white/10 hover:border-pink-500 shadow-lg cursor-pointer"
+                  className="p-2 bg-black/80 backdrop-blur-sm rounded-xl text-white hover:bg-black transition-all border border-white/10 hover:border-[#E7C477] shadow-lg cursor-pointer"
                   title="Download Video"
                 >
                   <Download className="w-4 h-4" />
                 </button>
                 <button
                   onClick={e => { e.stopPropagation(); handleVideoGenerate(); }}
-                  className="p-2 bg-black/80 backdrop-blur-sm rounded-xl text-white hover:bg-pink-600 transition-all border border-white/10 shadow-lg cursor-pointer"
+                  className="p-2 bg-black/80 backdrop-blur-sm rounded-xl text-white hover:bg-[#1E1E22] transition-all border border-white/10 shadow-lg cursor-pointer"
                   title="Regenerate"
                 >
                   <RefreshCw className="w-4 h-4" />
                 </button>
               </div>
-              <div className="absolute top-3 left-3 px-3 py-1 bg-black/80 backdrop-blur-md border border-white/15 rounded-lg text-xs font-bold text-slate-200 shadow-md">
+              <div className="absolute top-3 left-3 px-3 py-1 bg-black/80 backdrop-blur-md border border-white/15 rounded-lg text-xs font-bold text-[#F2D58D] shadow-md">
                 {videoResult.model}
               </div>
             </div>
           ) : (
             /* Alternating Hero Video Slideshow */
-            <div className="relative w-full h-full h-44 md:h-52 max-h-[220px] flex items-center justify-between overflow-hidden px-5 md:px-8 bg-[#090D16]">
+            <div className="relative w-full h-full h-44 md:h-52 max-h-[220px] flex items-center justify-between overflow-hidden px-5 md:px-8 bg-[#141416]">
               <AnimatePresence mode="wait">
                 <motion.div
                   key={activeVideoSlideIndex}
@@ -2384,16 +2519,16 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 >
                   {/* Left Side: Video Model Details */}
                   <div className="flex-1 flex flex-col justify-center text-left py-4 select-none">
-                    <span className={`self-start text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full border mb-1.5 ${VIDEO_HERO_SLIDES[activeVideoSlideIndex].badgeColor}`}>
+                    <span className={`self-start text-[8px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full border mb-1.5 ${VIDEO_HERO_SLIDES[activeVideoSlideIndex].badgeColor}`}>
                       {VIDEO_HERO_SLIDES[activeVideoSlideIndex].badge}
                     </span>
-                    <h2 className="text-[10px] font-black uppercase text-zinc-400 tracking-wider mb-0.5 leading-none">
+                    <h2 className="text-[10px] font-bold uppercase text-[#8C909A] tracking-wider mb-0.5 leading-none">
                       Start Creating with
                     </h2>
-                    <h1 className="text-xl md:text-2xl font-black tracking-tight mb-1.5 leading-tight text-indigo-400">
+                    <h1 className="text-xl md:text-2xl font-serif tracking-tight mb-1.5 leading-tight text-[#F5F1E8]">
                       {VIDEO_HERO_SLIDES[activeVideoSlideIndex].title}
                     </h1>
-                    <p className="text-[10px] md:text-xs text-slate-400 font-medium leading-relaxed max-w-md">
+                    <p className="text-[10px] md:text-xs text-[#8C909A] font-medium leading-relaxed max-w-md">
                       {VIDEO_HERO_SLIDES[activeVideoSlideIndex].desc}
                     </p>
                   </div>
@@ -2403,7 +2538,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                     {VIDEO_HERO_SLIDES[activeVideoSlideIndex].thumbnails.map((thumbUrl, idx) => (
                       <div
                         key={idx}
-                        className="relative w-20 md:w-24 h-28 md:h-32 rounded-xl overflow-hidden border border-white/10 bg-black shadow-lg shadow-black/40 hover:scale-105 hover:border-indigo-500/40 transition-all duration-300"
+                        className="relative w-20 md:w-24 h-28 md:h-32 rounded-xl overflow-hidden border border-white/10 bg-black shadow-lg shadow-black/40 hover:scale-105 hover:border-[#E7C477]/40 transition-all duration-300"
                       >
                         <video
                           src={thumbUrl}
@@ -2424,10 +2559,10 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         </div>
 
         {/* ── BOTTOM SECTION: Curved Premium Video Prompt Box ── */}
-        <div className="relative bg-[#131b2e]/80 border border-white/20 rounded-[24px] p-4.5 space-y-3.5 focus-within:border-indigo-500/50 focus-within:shadow-[0_0_30px_rgba(99,102,241,0.1)] transition-all duration-300">
+        <div className="relative bg-[#08080A] border border-white/10 rounded-[24px] p-4.5 space-y-3.5 focus-within:border-[#E7C477]/50 focus-within:shadow-[0_0_30px_rgba(231,196,119,0.05)] transition-all duration-300">
           
           {/* Sub-Mode Selector Tabs */}
-          <div className="flex border-b border-white/5 bg-[#0F1420]/45 p-1 rounded-xl">
+          <div className="flex border-b border-white/5 bg-[#141416] p-1 rounded-xl">
             {[
               { id: 'generate', label: 'Generate Video', desc: 'Create from text or image' },
               { id: 'edit', label: 'Edit Video / V2V', desc: 'Modify using reference video' },
@@ -2441,12 +2576,12 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                   onClick={() => setVideoSubMode(subMode.id as any)}
                   className={`flex-1 py-1.5 px-3 rounded-lg transition-all text-center flex flex-col items-center justify-center ${
                     isActive
-                      ? 'bg-indigo-500/15 border border-indigo-500/40 text-white shadow-lg'
-                      : 'border border-transparent text-slate-400 hover:text-slate-200 hover:bg-white/[0.02]'
+                      ? 'bg-[#E7C477]/15 border border-[#E7C477]/30 text-[#F2D58D] font-bold shadow-lg'
+                      : 'border border-transparent text-[#8C909A] hover:text-white hover:bg-white/[0.02]'
                   }`}
                 >
-                  <span className="text-xs font-black tracking-wide leading-none">{subMode.label}</span>
-                  <span className="text-[9px] text-slate-500 mt-0.5 hidden md:inline font-medium">{subMode.desc}</span>
+                  <span className="text-xs font-bold tracking-wide leading-none">{subMode.label}</span>
+                  <span className="text-[9px] text-[#8C909A] mt-0.5 hidden md:inline font-medium">{subMode.desc}</span>
                 </button>
               );
             })}
@@ -2466,7 +2601,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               {videoUploadMenuOpen && (
                 <>
                   <div className="fixed inset-0 z-29" onClick={() => setVideoUploadMenuOpen(false)} />
-                  <div className="absolute left-0 top-full mt-2 w-56 rounded-xl border border-white/10 bg-[#0B0F17] p-1.5 shadow-2xl z-30 space-y-1 select-none">
+                  <div className="absolute left-0 top-full mt-2 w-56 rounded-xl border border-white/10 bg-[#141416] p-1.5 shadow-2xl z-30 space-y-1 select-none">
                     <button
                       type="button"
                       onClick={() => {
@@ -3413,7 +3548,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 type="file"
                 ref={audioUploadRef}
                 onChange={handleAudioUpload}
-                accept="audio/mp3,audio/mpeg,audio/wav,audio/x-wav,audio/ogg,audio/m4a,audio/x-m4a,.mp3,.wav,.m4a,.ogg"
+                accept="audio/*,video/*,video/mp4,video/quicktime,.mp3,.wav,.m4a,.ogg,.mp4,.mov,.webm"
                 className="hidden"
               />
               <button
@@ -3768,20 +3903,48 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     );
   };
 
+  const handleSelectTemplate = (tpl: QuickTemplate) => {
+    updateMode(tpl.mode);
+    if (tpl.prompt) {
+      if (tpl.mode === 'video') setVideoPrompt(tpl.prompt);
+      else setImagePrompt(tpl.prompt);
+    }
+    if (tpl.modelId) {
+      if (tpl.mode === 'video') setSelectedVideoModel(tpl.modelId);
+      else setSelectedModel(tpl.modelId);
+    }
+    if (tpl.aspectRatio) {
+      if (tpl.mode === 'video') setSelectedVideoAspectRatio(tpl.aspectRatio);
+      else setSelectedAspectRatio(tpl.aspectRatio);
+    }
+    toast.success(`Loaded "${tpl.title}" starter workflow!`);
+  };
 
   return (
     <div className="flex-1 bg-[var(--bg-base)] text-white p-4 max-w-full mx-auto w-full selection:bg-emerald-500/30 flex flex-col overflow-y-auto overflow-x-hidden custom-scrollbar">
       
       {/* ── STUDIO HEADER ── */}
-      <div className="mb-3 flex items-center justify-between px-1">
-        <h1 className="text-lg font-black tracking-tight flex items-center gap-2">
-          {mode === 'image' && <>Image <span className="text-indigo-400">Generator</span></>}
-          {mode === 'video' && <>Video <span className="text-indigo-400">Generator</span></>}
-          {mode === 'voice' && <>Voice <span className="text-indigo-400">Clone</span></>}
-          {mode === 'talking-avatar' && <>Avatar <span className="text-indigo-400">Studio</span></>}
-          {mode === 'stitcher' && <>Video <span className="text-indigo-400">Editor</span></>}
-        </h1>
+      <div className="mb-4 flex flex-col md:flex-row md:items-center justify-between gap-3 px-1 border-b border-[#E7C477]/10 pb-3">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-serif text-[#F5F1E8] tracking-tight flex items-center gap-2">
+            {mode === 'image' && <>Image Studio <span className="text-[#E7C477] text-lg">✨</span></>}
+            {mode === 'video' && <>Video Studio <span className="text-[#E7C477] text-lg">✨</span></>}
+            {mode === 'voice' && <>Voice Studio <span className="text-[#E7C477] text-lg">✨</span></>}
+            {mode === 'talking-avatar' && <>Avatar Studio <span className="text-[#E7C477] text-lg">✨</span></>}
+            {mode === 'stitcher' && <>Video Editor <span className="text-[#E7C477] text-lg">✨</span></>}
+          </h1>
+          <p className="text-xs text-[#8C909A] mt-0.5 font-sans">
+            {mode === 'image' && 'Create stunning, on-brand images with AI. Describe, customize, and generate visuals that elevate your content.'}
+            {mode === 'video' && 'Generate high-fidelity motion videos from prompts or reference images.'}
+            {mode === 'voice' && 'Create, clone, and customize voices that sound uniquely you.'}
+            {mode === 'talking-avatar' && 'Transform photos into talking digital avatars with synchronized speech.'}
+            {mode === 'stitcher' && 'Multi-track video editor and scene stitcher.'}
+          </p>
+        </div>
       </div>
+
+      {/* 1-Click Starter Workflows Hub */}
+      <QuickStartHub onSelectTemplate={handleSelectTemplate} />
 
       {globalError && !globalError.includes('Failed query:') && !globalError.includes('DrizzleQueryError') && (
         <div className="mb-4 bg-rose-500/10 border border-rose-500/20 rounded-xl p-3 flex items-start gap-2">
@@ -3938,6 +4101,134 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           {/* Bottom Center Floating Hint Pill */}
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-5 py-2 rounded-full bg-zinc-950/90 backdrop-blur-xl border border-white/20 text-xs text-zinc-300 font-semibold shadow-2xl z-[1000000] pointer-events-none">
             Press <kbd className="px-2 py-0.5 rounded bg-white/20 text-white font-mono text-xs ml-1">ESC</kbd> or click outside to exit full screen
+          </div>
+        </div>
+      )}
+
+      {/* ── LUXURY AI MODEL SELECTION MODAL ── */}
+      {isModelModalOpen && (
+        <div className="fixed inset-0 z-[999999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+          <div className="bg-[#161618] border border-white/10 rounded-2xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl">
+            {/* Header */}
+            <div className="p-4 border-b border-white/10 flex items-center justify-between bg-[#1E1E22]">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-[#E7C477]/15 border border-[#E7C477]/30 flex items-center justify-center text-[#F2D58D] shadow-md">
+                  <Cpu size={20} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white font-serif tracking-tight">Select AI Generation Model</h3>
+                  <p className="text-[10px] text-slate-400">Choose from 130+ photorealistic, flux, and ultra-fast AI image engines</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsModelModalOpen(false)} 
+                className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-all border border-transparent hover:border-white/10 cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Search Bar & Category Filter Tabs */}
+            <div className="p-3 bg-[#08080A] border-b border-white/10 space-y-2.5">
+              <div className="relative">
+                <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#E7C477]" />
+                <input
+                  type="text"
+                  value={modelSearchQuery}
+                  onChange={e => setModelSearchQuery(e.target.value)}
+                  placeholder="Search models by name, provider, feature (e.g. Flux, Imagen, Fast, Uncensored)..."
+                  className="w-full bg-[#161618] border border-white/10 rounded-xl pl-10 pr-9 py-2 text-xs text-white placeholder-slate-500 outline-none focus:border-[#E7C477] transition-all"
+                />
+                {modelSearchQuery && (
+                  <button 
+                    onClick={() => setModelSearchQuery('')} 
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-white font-bold"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+
+              {/* Category Filters */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-hide text-[10px] font-bold">
+                {[
+                  { id: 'all', label: `All Models (${models.length})` },
+                  { id: 'wiro', label: '🌐 Wiro AI' },
+                  { id: 'runware', label: '⚡ Runware (Sub-Second)' },
+                  { id: 'featured', label: '⭐ Featured' },
+                  { id: 'flux', label: '🔥 Flux & Recraft' },
+                  { id: 'google', label: '✨ Google & OpenAI' },
+                  { id: 'wavespeed', label: '🚀 Wavespeed' },
+                  { id: 'uncensored', label: '🌶️ Uncensored' },
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setModelCategoryFilter(tab.id as any)}
+                    className={`px-3 py-1 rounded-xl transition-all border whitespace-nowrap cursor-pointer ${
+                      modelCategoryFilter === tab.id
+                        ? 'btn-gold-primary text-black font-bold shadow-md'
+                        : 'bg-[#161618] border-white/10 text-slate-400 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Model Cards Grid */}
+            <div className="p-4 overflow-y-auto custom-scrollbar flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3 bg-[#0E0E10]">
+              {modelsLoading ? (
+                <div className="col-span-2 py-12 text-center flex flex-col items-center justify-center gap-2">
+                  <Loader2 className="w-6 h-6 text-[#E7C477] animate-spin" />
+                  <span className="text-xs text-slate-400 font-medium">Loading AI Models...</span>
+                </div>
+              ) : filteredModels.length === 0 ? (
+                <div className="col-span-2 py-12 text-center flex flex-col items-center justify-center gap-2">
+                  <AlertCircle className="w-6 h-6 text-slate-500" />
+                  <span className="text-xs text-slate-400 font-medium">No models match "{modelSearchQuery}"</span>
+                  <button onClick={() => { setModelSearchQuery(''); setModelCategoryFilter('all'); }} className="text-xs text-[#E7C477] underline font-bold mt-1">Reset Filters</button>
+                </div>
+              ) : (
+                filteredModels.map(m => {
+                  const isSelected = selectedModel === m.id;
+                  return (
+                    <div
+                      key={m.id}
+                      onClick={() => {
+                        setSelectedModel(m.id);
+                        setIsModelModalOpen(false);
+                        toast.success(`Selected model: ${m.name}`);
+                      }}
+                      className={`p-3.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between gap-2.5 group ${
+                        isSelected
+                          ? 'bg-[#1E1E22] border-[#E7C477] ring-2 ring-[#E7C477]/30 shadow-xl'
+                          : 'bg-[#141416] border-white/10 hover:border-white/30 hover:bg-[#1E1E22]'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2.5">
+                          <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${isSelected ? 'border-[#E7C477] bg-[#E7C477]' : 'border-white/30 group-hover:border-white/60'}`}>
+                            {isSelected && <Check size={11} className="text-black stroke-[3]" />}
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                              {m.name}
+                              {m.nsfw && <span className="text-[9px] px-1 py-0.2 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">🔞</span>}
+                            </h4>
+                            <span className="text-[9px] text-slate-400 font-medium">{m.provider || 'AI Engine'}</span>
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-bold text-[#F2D58D] bg-[#E7C477]/10 px-2 py-0.5 rounded-lg border border-[#E7C477]/20 shrink-0">
+                          {m.price > 0 ? `$${m.price.toFixed(3)}` : 'Free'}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 line-clamp-2 leading-relaxed">{m.description || 'High-precision photorealistic AI image generation model.'}</p>
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
         </div>
       )}

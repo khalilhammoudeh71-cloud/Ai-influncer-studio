@@ -2,9 +2,14 @@ import { Persona } from '../types';
 import { supabase } from '../lib/supabase';
 import { compressForUpload } from '../utils/imageProcessing';
 
-async function authFetch(url: string, options: RequestInit = {}) {
-  const { data: { session } } = await supabase.auth.getSession();
-  const token = session?.access_token;
+export async function authFetch(url: string, options: RequestInit = {}) {
+  let token = null;
+  try {
+    const sessionPromise = supabase.auth.getSession();
+    const timeoutPromise = new Promise<any>((resolve) => setTimeout(() => resolve({ data: { session: null } }), 600));
+    const sessionRes = await Promise.race([sessionPromise, timeoutPromise]);
+    token = sessionRes?.data?.session?.access_token;
+  } catch {}
   const headers: Record<string, string> = { ...options.headers as Record<string, string> };
   if (token) headers['Authorization'] = `Bearer ${token}`;
   return fetch(url, { ...options, headers });
@@ -60,6 +65,7 @@ export interface GenerateImageParams {
   naturalLook?: boolean;
   identityLock?: boolean;
   count?: number;
+  lora?: Array<{ model: string; weight: number }>;
 }
 
 export interface GenerateImageResult {
@@ -119,12 +125,59 @@ export async function fetchAllModelTypes(): Promise<{ models: ModelInfo[]; editM
     throw new Error('Failed to fetch models');
   }
   const data = await response.json();
+  const rawModels: ModelInfo[] = data.models || [];
+  const rawEditModels: ModelInfo[] = data.editModels || [];
+
+  const sortSeedreamTop = (list: ModelInfo[]) => {
+    const nonLocal = list.filter(m => !m.id.toLowerCase().includes('local') && !m.provider.toLowerCase().includes('local'));
+    const getPriority = (m: ModelInfo): number => {
+      const id = (m.id || '').toLowerCase();
+      const name = (m.name || '').toLowerCase();
+      // 1. Seedream 5.0 Pro from Wavespeed (Specifically PRO, not Lite)
+      if ((id.includes('seedream-v5.0-pro') || id.includes('seedream-5.0-pro') || id.includes('seedream-v5-pro') || name.includes('seedream 5.0 pro') || name.includes('seedream 5 pro')) && !name.includes('lite') && !id.includes('lite')) return 1;
+      // 2. Seedream 5.0 general (non-lite)
+      if ((id.includes('seedream-v5') || name.includes('seedream 5')) && !name.includes('lite') && !id.includes('lite')) return 2;
+      // 3. Other Seedream variants
+      if (id.includes('seedream') || name.includes('seedream')) return 3;
+      // 4. Qwen 3.0 Pro
+      if (id.includes('qwen-3.0-pro') || id.includes('qwen-3-pro') || name.includes('qwen 3.0 pro') || name.includes('qwen 3')) return 4;
+      // 5. GPT Image 2 / Nano Banana Pro
+      if (id.includes('gpt-image-2') || name.includes('gpt image 2') || id.includes('nano-banana-pro') || name.includes('nano banana pro')) return 5;
+      // 6. Wan 3.0 Pro
+      if (id.includes('wan-3.0') || id.includes('wan-3-pro') || id.includes('wan-2.7-pro') || name.includes('wan')) return 6;
+      return 100;
+    };
+    return [...nonLocal].sort((a, b) => getPriority(a) - getPriority(b) || a.name.localeCompare(b.name));
+  };
+
+  const sortWavespeedVideoTop = (list: ModelInfo[]) => {
+    const nonLocal = list.filter(m => !m.id.toLowerCase().includes('local') && !m.provider.toLowerCase().includes('local'));
+    const getPriority = (m: ModelInfo): number => {
+      const id = (m.id || '').toLowerCase();
+      const name = (m.name || '').toLowerCase();
+      // 1. ByteDance Seedance 2.0 Mini / Seedance 2.0 (Wavespeed - Uncensored)
+      if (id.includes('wavespeed') && (id.includes('seedance-2-mini') || id.includes('seedance-2.0-mini') || id.includes('seedance-mini') || name.includes('seedance 2.0 mini') || name.includes('seedance 2 mini') || id.includes('seedance-2.0') || name.includes('seedance 2.0'))) return 1;
+      // 2. Wavespeed Seedance other variants
+      if (id.includes('wavespeed') && (id.includes('seedance') || name.includes('seedance'))) return 2;
+      // 3. Other Seedance models
+      if (id.includes('seedance') || name.includes('seedance')) return 3;
+      // 4. Wavespeed Wan 2.1 I2V (Uncensored / Fast)
+      if (id.includes('wavespeed') && (id.includes('wan-2.1') || id.includes('wan2.1') || name.includes('wan 2.1'))) return 4;
+      // 5. Any other Wavespeed video models
+      if (id.startsWith('wavespeed') || id.includes('wavespeed')) return 5;
+      // 6. Wan models
+      if (id.includes('wan') || name.includes('wan')) return 6;
+      return 100;
+    };
+    return [...nonLocal].sort((a, b) => getPriority(a) - getPriority(b) || a.name.localeCompare(b.name));
+  };
+
   return {
-    models: data.models || [],
-    editModels: data.editModels || [],
-    upscaleModels: data.upscaleModels || [],
-    videoModels: data.videoModels || [],
-    threeDModels: data.threeDModels || [],
+    models: sortSeedreamTop(rawModels),
+    editModels: sortSeedreamTop(rawEditModels),
+    upscaleModels: (data.upscaleModels || []).filter((m: any) => !m.id.toLowerCase().includes('local')),
+    videoModels: sortWavespeedVideoTop(data.videoModels || []),
+    threeDModels: (data.threeDModels || []).filter((m: any) => !m.id.toLowerCase().includes('local')),
   };
 }
 
@@ -151,7 +204,7 @@ export async function generateImage(params: GenerateImageParams): Promise<Genera
     niche: persona.niche,
     tone: persona.tone,
     visualStyle: persona.visualStyle || 'Realistic, highly detailed',
-    referenceImage: persona.referenceImage || null,
+    referenceImage: persona.referenceImage || persona.avatar || persona.alternateReferenceImage || null,
     faceDescriptor: persona.faceDescriptor || null,
     ...(imageWeight !== undefined ? { imageWeight } : {}),
     ...(count && count > 1 ? { count } : {}),

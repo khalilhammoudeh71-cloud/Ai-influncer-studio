@@ -33,7 +33,10 @@ import {
   Download,
   ChevronDown,
   Box,
-  FolderHeart
+  FolderHeart,
+  Pencil,
+  Users,
+  ZoomIn
 } from 'lucide-react';
 import { Persona, NavActions } from '../types';
 import { api } from '../services/apiService';
@@ -52,6 +55,7 @@ import ThreeDStudio from '../components/ThreeDStudio';
 import BatchImageStudio from '../components/BatchImageStudio';
 import InpaintStudio from '../components/InpaintStudio';
 import BatchFaceSwapStudio from '../components/BatchFaceSwapStudio';
+import GroupPhotoshootStudio from '../components/GroupPhotoshootStudio';
 import { AssetPickerModal } from '../components/AssetPickerModal';
 import toast from 'react-hot-toast';
 
@@ -64,7 +68,7 @@ interface AIToolsViewProps {
   billingInfo?: any;
 }
 
-type ToolType = 'beautify' | 'morph' | 'muscle' | 'ink' | 'teleport' | 'canvas' | 'face-swap' | 'bg-remover' | 'virtual-tryon' | 'video-edit' | 'skin-enhancer' | 'upscaler' | 'camera-angles' | 'inpaint' | '3d-studio' | 'batch-face-swap' | 'batch-edit' | null;
+type ToolType = 'beautify' | 'morph' | 'muscle' | 'ink' | 'teleport' | 'canvas' | 'face-swap' | 'bg-remover' | 'virtual-tryon' | 'video-edit' | 'skin-enhancer' | 'upscaler' | 'camera-angles' | 'inpaint' | '3d-studio' | 'batch-face-swap' | 'batch-edit' | 'group-photoshoot' | null;
 
 const TOOLS = [
   { 
@@ -91,9 +95,16 @@ const TOOLS = [
   { 
     id: 'virtual-tryon', title: 'Virtual Try-On', icon: Shirt, 
     desc: 'See any outfit on your persona — upload clothing photos.', 
-    color: 'from-fuchsia-500 to-pink-500',
+    color: 'from-emerald-500 via-teal-500 to-cyan-500',
     demoBefore: '/demo/tryon_before.png',
     demoAfter: '/demo/tryon_after.png',
+  },
+  { 
+    id: 'group-photoshoot', title: 'Group Crossover Shoot', icon: Users, 
+    desc: 'Combine 2-3 created AI Influencers in the same shot with dual face-locking.', 
+    color: 'from-emerald-500 via-teal-500 to-cyan-500',
+    demoBefore: '/demo/faceswap_before.png',
+    demoAfter: '/demo/teleport_after.png',
   },
   { 
     id: 'morph', title: 'Body Morph', icon: Weight, 
@@ -124,11 +135,11 @@ const TOOLS = [
     demoAfter: '/demo/teleport_after.png',
   },
   { 
-    id: 'canvas', title: 'Canvas (Extend)', icon: Expand, 
-    desc: 'Intelligently widen or extend the frame bounds.', 
+    id: 'canvas', title: 'Outpaint (extend)', icon: Expand, 
+    desc: 'Intelligently widen or extend the frame bounds without changing the subject.', 
     color: 'from-purple-500 to-indigo-500',
-    demoBefore: '/demo/canvas_before.png',
-    demoAfter: '/demo/canvas_after.png',
+    demoBefore: '/demo/canvas_before.png?v=2',
+    demoAfter: '/demo/canvas_after.png?v=2',
   },
   { 
     id: 'bg-remover', title: 'BG Remover', icon: Eraser, 
@@ -236,12 +247,21 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
   const batchFileInputRef = useRef<HTMLInputElement>(null);
   const [isBatchProcessing, setIsBatchProcessing] = useState(false);
   
-  // Shared Editor State
-  const [sourceImage, setSourceImage] = useState<string | null>(null);
+  // Shared Editor State with Auto-Persistence across sleep/lid close
+  const [sourceImage, setSourceImage] = useState<string | null>(() => {
+    try { return sessionStorage.getItem('ai_toolbox_source_image') || localStorage.getItem('ai_toolbox_source_image'); } catch { return null; }
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [resultImage, setResultImage] = useState<string | null>(null);
-  const [resultHistory, setResultHistory] = useState<{ imageUrl: string; timestamp: number; tool: string }[]>([]);
+  const [resultImage, setResultImage] = useState<string | null>(() => {
+    try { return sessionStorage.getItem('ai_toolbox_result_image') || localStorage.getItem('ai_toolbox_result_image'); } catch { return null; }
+  });
+  const [resultHistory, setResultHistory] = useState<{ imageUrl: string; timestamp: number; tool: string }[]>(() => {
+    try {
+      const saved = sessionStorage.getItem('ai_toolbox_result_history') || localStorage.getItem('ai_toolbox_result_history');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
   const [editModels, setEditModels] = useState<ModelInfo[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>('auto');
   const [upscaleModels, setUpscaleModels] = useState<ModelInfo[]>([]);
@@ -267,11 +287,15 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
   const [teleportPreset, setTeleportPreset] = useState('Paris, Eiffel Tower');
   const [inkDesc, setInkDesc] = useState('');
   const [inkPlacement, setInkPlacement] = useState('Left Arm');
-  const [canvasDir, setCanvasDir] = useState('Extend Downward');
   const [showInkSuggestions, setShowInkSuggestions] = useState(false);
+  const [canvasDir, setCanvasDir] = useState('Extend Downward');
+  const [outpaintDirections, setOutpaintDirections] = useState<string[]>(['down']);
+  const [outpaintZoomScale, setOutpaintZoomScale] = useState<number>(50);
 
-  // Face Swap specific state
-  const [faceSwapFaceImage, setFaceSwapFaceImage] = useState<string | null>(null);
+  // Face Swap specific state with Auto-Persistence
+  const [faceSwapFaceImage, setFaceSwapFaceImage] = useState<string | null>(() => {
+    try { return localStorage.getItem('ai_toolbox_face_image'); } catch { return null; }
+  });
   const [swapMode, setSwapMode] = useState<'face' | 'head' | 'body'>('face');
   const faceFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -288,10 +312,76 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
   const [angleGenerating, setAngleGenerating] = useState(false);
   const [angleSaved, setAngleSaved] = useState(false);
 
-  // Virtual Try-On specific state
-  const [garmentImage, setGarmentImage] = useState<string | null>(null);
-  const [garmentDescription, setGarmentDescription] = useState('');
+  // Virtual Try-On specific state with Auto-Persistence
+  const [tryOnMode, setTryOnMode] = useState<'single' | 'multiple'>(() => {
+    try { return (localStorage.getItem('ai_toolbox_tryon_mode') as any) || 'single'; } catch { return 'single'; }
+  });
+  const [garmentImage, setGarmentImage] = useState<string | null>(() => {
+    try { return localStorage.getItem('ai_toolbox_garment_image'); } catch { return null; }
+  });
+  const [garmentImages, setGarmentImages] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('ai_toolbox_garment_images');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+  const [garmentDescription, setGarmentDescription] = useState<string>(() => {
+    try { return localStorage.getItem('ai_toolbox_garment_desc') || ''; } catch { return ''; }
+  });
   const garmentFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-Persistence Sync Effects
+  useEffect(() => {
+    try {
+      if (sourceImage) {
+        sessionStorage.setItem('ai_toolbox_source_image', sourceImage);
+        localStorage.setItem('ai_toolbox_source_image', sourceImage);
+      } else {
+        sessionStorage.removeItem('ai_toolbox_source_image');
+        localStorage.removeItem('ai_toolbox_source_image');
+      }
+    } catch {}
+  }, [sourceImage]);
+
+  useEffect(() => {
+    try {
+      if (resultImage) {
+        sessionStorage.setItem('ai_toolbox_result_image', resultImage);
+        localStorage.setItem('ai_toolbox_result_image', resultImage);
+      } else {
+        sessionStorage.removeItem('ai_toolbox_result_image');
+        localStorage.removeItem('ai_toolbox_result_image');
+      }
+    } catch {}
+  }, [resultImage]);
+
+  useEffect(() => {
+    try {
+      if (resultHistory.length > 0) {
+        const payload = JSON.stringify(resultHistory.slice(0, 20));
+        sessionStorage.setItem('ai_toolbox_result_history', payload);
+        localStorage.setItem('ai_toolbox_result_history', payload);
+      }
+    } catch {}
+  }, [resultHistory]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('ai_toolbox_tryon_mode', tryOnMode);
+      if (garmentImage) localStorage.setItem('ai_toolbox_garment_image', garmentImage);
+      else localStorage.removeItem('ai_toolbox_garment_image');
+      if (garmentImages.length > 0) localStorage.setItem('ai_toolbox_garment_images', JSON.stringify(garmentImages));
+      else localStorage.removeItem('ai_toolbox_garment_images');
+      localStorage.setItem('ai_toolbox_garment_desc', garmentDescription);
+    } catch {}
+  }, [tryOnMode, garmentImage, garmentImages, garmentDescription]);
+
+  useEffect(() => {
+    try {
+      if (faceSwapFaceImage) localStorage.setItem('ai_toolbox_face_image', faceSwapFaceImage);
+      else localStorage.removeItem('ai_toolbox_face_image');
+    } catch {}
+  }, [faceSwapFaceImage]);
 
   // Asset Picker Modal State
   const [isAssetPickerOpen, setIsAssetPickerOpen] = useState(false);
@@ -582,10 +672,15 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
       case 'ink': return `Photorealistic edit, identical subject face. Apply a highly detailed tattoo matching description: "${inkDesc}" to the subject's ${inkPlacement}. The tattoo should wrap naturally with the skin topology and lighting.`;
       case 'teleport': return `Photorealistic edit, identical subject face and outfit. Flawlessly replace the background to match exact location: "${teleportLoc}". Perfect composite lighting, shadows must match the new realistic environment.`;
       case 'canvas': {
-        if (canvasDir === 'Expand All Sides (Zoom Out)') {
-          return 'Photorealistic edit, identical subject face and outfit. Zoom out and extend the scene in all directions by making the subject smaller in the center and drawing more of the surroundings.';
-        }
-        return `Photorealistic edit, identical subject face and outfit. Keep the original person completely intact. Outpaint and extend the image framing to match. Extend direction: ${canvasDir}. Make the original scene more distant and extend the background to match perfectly.`;
+        const dirs: string[] = [];
+        if (outpaintDirections.includes('left')) dirs.push('Extend Left');
+        if (outpaintDirections.includes('right')) dirs.push('Extend Right');
+        if (outpaintDirections.includes('up')) dirs.push('Extend Upward');
+        if (outpaintDirections.includes('down')) dirs.push('Extend Downward (show full body / legs)');
+        if (outpaintDirections.includes('zoom')) dirs.push(`Zoom Out by ${outpaintZoomScale}%`);
+
+        const dirString = dirs.length > 0 ? dirs.join(', ') : 'Extend Downward';
+        return `Photorealistic outpaint canvas expansion. Keep 100% of the original photo, subject face, body, clothes, and pose completely identical and pixel-locked in the center. Do NOT alter the person or their pose. Seamlessly zoom out the camera framing and draw the expanded surrounding background environment and room on sides: ${dirString}.`;
       }
       default: return '';
     }
@@ -699,14 +794,33 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
   };
 
   const handleVirtualTryOnExecute = async () => {
-    if (!sourceImage || !garmentImage) return;
+    if (!sourceImage) return;
+    const targetOutfits = tryOnMode === 'multiple' && garmentImages.length > 0 
+      ? garmentImages 
+      : (garmentImage ? [garmentImage] : []);
+
+    if (targetOutfits.length === 0) return;
     setIsProcessing(true);
     try {
-      const data = await virtualTryOn(sourceImage, garmentImage, garmentDescription || undefined);
-      setResultImage(data.imageUrl);
-      setResultHistory(prev => [...prev, { imageUrl: data.imageUrl, timestamp: Date.now(), tool: 'virtual-tryon' }]);
-      toast.success('Virtual try-on complete!');
+      if (targetOutfits.length === 1) {
+        const data = await virtualTryOn(sourceImage, targetOutfits[0], garmentDescription || undefined);
+        setResultImage(data.imageUrl);
+        setResultHistory(prev => [...prev, { imageUrl: data.imageUrl, timestamp: Date.now(), tool: 'virtual-tryon' }]);
+        toast.success('Virtual try-on complete!');
+      } else {
+        const results: { imageUrl: string; timestamp: number; tool: string }[] = [];
+        for (let i = 0; i < targetOutfits.length; i++) {
+          toast.loading(`Processing outfit ${i + 1} of ${targetOutfits.length}...`, { id: 'tryon-batch' });
+          const data = await virtualTryOn(sourceImage, targetOutfits[i], garmentDescription ? `${garmentDescription} (Outfit #${i + 1})` : undefined);
+          results.push({ imageUrl: data.imageUrl, timestamp: Date.now(), tool: 'virtual-tryon' });
+        }
+        toast.dismiss('tryon-batch');
+        setResultImage(results[0].imageUrl);
+        setResultHistory(prev => [...prev, ...results]);
+        toast.success(`Successfully generated try-ons for all ${results.length} outfits!`);
+      }
     } catch (err: any) {
+      toast.dismiss('tryon-batch');
       toast.error(err.message || 'Try-on failed');
     } finally {
       setIsProcessing(false);
@@ -800,7 +914,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
           resultUrl = res.imageUrl;
         } else {
           const beautifyPrompt = `Natural skin refinement. Subtly soften skin texture to remove blemishes and soften under-eye areas. Enhance skin glow and radiance gently. Maintain 100% of the original facial structure, bone structure, and identity. Keep the person EXACTLY the same, just with a clean skin polish.`;
-          const model = selectedModel === 'auto' ? 'google:nano-banana-pro' : selectedModel;
+          const model = selectedModel === 'auto' ? 'openai:gpt-image-2' : selectedModel;
           const res = await editImage(base64Data, beautifyPrompt, model);
           resultUrl = res.imageUrl;
         }
@@ -1304,12 +1418,14 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
   if (!activeTool) {
     return (
       <>
-      <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar pb-20 px-6 lg:px-12 py-8 bg-[var(--bg-base)]">
+      <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar pb-20 px-6 lg:px-12 py-8 bg-[#0E0E10]">
         <div className="max-w-6xl mx-auto space-y-8">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-white/5 pb-6">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-[#E7C477]/10 pb-6">
             <div>
-              <h1 className="text-3xl font-extrabold tracking-tight"><span className="gradient-text">AI Toolbox</span></h1>
-              <p className="text-[var(--text-tertiary)] text-sm mt-1.5 font-medium">Unified AI content generation and image editing suite for your personas</p>
+              <h1 className="text-3xl font-serif text-[#F5F1E8] tracking-tight flex items-center gap-3">
+                AI Studio <span className="text-[#E7C477] italic">Toolbox</span>
+              </h1>
+              <p className="text-xs md:text-sm text-[#8C909A] mt-1.5 font-medium">Unified AI visual creation and neural editing suite for your creator personas</p>
             </div>
           </div>
           
@@ -1321,17 +1437,17 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                 <button
                   key={tool.id}
                   onClick={() => setActiveTool(tool.id as ToolType)}
-                  className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-[var(--border-default)] hover:border-[var(--accent-primary)] transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
+                  className="group relative flex flex-col rounded-2xl bg-[#18181B] border border-white/10 hover:border-[#E7C477]/40 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:shadow-black/50 hover:-translate-y-1 cursor-pointer"
                 >
                   <div className="relative h-48 w-full flex bg-black overflow-hidden shrink-0">
                     {/* Before Image */}
-                    <div className="relative w-1/2 h-full border-r border-white/20 overflow-hidden">
+                    <div className="relative w-1/2 h-full border-r border-white/10 overflow-hidden">
                       {tool.demoBefore.endsWith('.mp4') ? (
                         <video src={tool.demoBefore} autoPlay loop muted playsInline className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
                       ) : (
                         <img src={tool.demoBefore} alt="Before" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
                       )}
-                      <div className="absolute top-3 left-3 px-2 py-0.5 bg-black/60 backdrop-blur-md rounded text-[8px] font-black text-white uppercase tracking-widest shadow-md border border-white/10">Before</div>
+                      <div className="absolute top-3 left-3 px-2 py-0.5 bg-black/70 backdrop-blur-md rounded text-[8px] font-black text-white uppercase tracking-widest shadow-md border border-white/10">Before</div>
                     </div>
                     {/* After Image */}
                     <div className="relative w-1/2 h-full overflow-hidden">
@@ -1340,24 +1456,23 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                       ) : (
                         <img src={tool.demoAfter} alt="After" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
                       )}
-                      <div className="absolute top-3 right-3 px-2 py-0.5 bg-gradient-to-r from-purple-600 to-blue-600 backdrop-blur-md rounded text-[8px] font-black text-white uppercase tracking-widest shadow-xl border border-white/20">After</div>
+                      <div className="absolute top-3 right-3 px-2 py-0.5 bg-[#E7C477] text-[#141416] backdrop-blur-md rounded text-[8px] font-black uppercase tracking-widest shadow-xl border border-[#E7C477]/40">After</div>
                     </div>
                     
-                    {/* Lightning Separator */}
-                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center z-10 shadow-2xl group-hover:rotate-180 transition-transform duration-700 text-white group-hover:text-[var(--accent-primary)]">
-                       <Wand2 size={14} />
+                    {/* Center Icon */}
+                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-[#18181B] border border-[#E7C477]/40 flex items-center justify-center z-10 shadow-2xl group-hover:rotate-180 transition-transform duration-700 text-[#F2D58D]">
+                       <Wand2 size={13} />
                     </div>
                   </div>
                   
                   <div className="p-5 relative flex-1 flex flex-col justify-center">
-                    <div className={`absolute top-0 right-0 w-24 h-24 bg-gradient-to-br ${tool.color} opacity-0 group-hover:opacity-10 rounded-bl-full transition-opacity`} />
                     <div className="flex items-center gap-3 mb-2">
-                      <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${tool.color} flex items-center justify-center text-white shadow-lg shadow-black/20 shrink-0`}>
-                        <Icon size={20} />
+                      <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${tool.color} flex items-center justify-center text-white shadow-lg shadow-black/40 shrink-0`}>
+                        <Icon size={18} />
                       </div>
-                      <h3 className="text-base font-black text-[var(--text-primary)] tracking-tight">{tool.title}</h3>
+                      <h3 className="text-base font-bold text-[#F5F1E8] group-hover:text-[#F2D58D] tracking-tight transition-colors">{tool.title}</h3>
                     </div>
-                    <p className="text-xs text-[var(--text-secondary)] font-medium leading-relaxed">{tool.desc}</p>
+                    <p className="text-xs text-[#8C909A] font-normal leading-relaxed">{tool.desc}</p>
                   </div>
                 </button>
               );
@@ -1366,140 +1481,140 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
             {/* Voice Studio */}
             <button
               onClick={() => setShowVoiceStudio(true)}
-              className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-cyan-500/20 hover:border-cyan-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
+              className="group relative flex flex-col rounded-2xl bg-[#18181B] border border-white/10 hover:border-[#E7C477]/40 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1 cursor-pointer"
             >
               <div className="relative h-48 w-full bg-black overflow-hidden">
                 <img src="/demo/voice_studio_hero.png" alt="Voice Studio" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
               </div>
               <div className="p-5 flex-1 flex flex-col justify-center">
                 <div className="flex items-center gap-3 mb-2">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center text-white shadow-lg shadow-cyan-500/20">
-                    <Mic size={20} />
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#F2D58D] to-[#B99655] flex items-center justify-center text-[#141416] shadow-lg">
+                    <Mic size={18} />
                   </div>
-                  <h3 className="text-base font-black text-[var(--text-primary)] tracking-tight">Voice Studio</h3>
-                  <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 uppercase tracking-widest">Free</span>
+                  <h3 className="text-base font-bold text-[#F5F1E8] group-hover:text-[#F2D58D] tracking-tight transition-colors">Voice Studio</h3>
+                  <span className="text-[8px] font-bold px-2 py-0.5 rounded bg-[#E7C477]/20 text-[#F2D58D] border border-[#E7C477]/30 uppercase tracking-widest">Included</span>
                 </div>
-                <p className="text-xs text-[var(--text-secondary)] font-medium leading-relaxed">AI Text-to-Speech script generator & multi-engine cloner.</p>
+                <p className="text-xs text-[#8C909A] font-normal leading-relaxed">AI Text-to-Speech script generator & multi-engine cloner.</p>
               </div>
             </button>
 
             {/* Talking Head */}
             <button
               onClick={() => setShowTalkingHead(true)}
-              className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-pink-500/20 hover:border-pink-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
+              className="group relative flex flex-col rounded-2xl bg-[#18181B] border border-white/10 hover:border-[#E7C477]/40 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1 cursor-pointer"
             >
               <div className="relative h-48 w-full bg-black overflow-hidden">
                 <img src="/demo/talking_head_hero.png" alt="Talking Head" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
               </div>
               <div className="p-5 flex-1 flex flex-col justify-center">
                 <div className="flex items-center gap-3 mb-2">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 to-violet-500 flex items-center justify-center text-white shadow-lg shadow-pink-500/20">
-                    <Video size={20} />
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 to-rose-600 flex items-center justify-center text-white shadow-lg">
+                    <Video size={18} />
                   </div>
-                  <h3 className="text-base font-black text-[var(--text-primary)] tracking-tight">Talking Head</h3>
-                  <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase tracking-widest">AI Video</span>
+                  <h3 className="text-base font-bold text-[#F5F1E8] group-hover:text-[#F2D58D] tracking-tight transition-colors">Talking Head</h3>
+                  <span className="text-[8px] font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase tracking-widest">AI Video</span>
                 </div>
-                <p className="text-xs text-[var(--text-secondary)] font-medium leading-relaxed">Animate any portrait image with perfectly lip-synced audio.</p>
+                <p className="text-xs text-[#8C909A] font-normal leading-relaxed">Animate any portrait image with perfectly lip-synced audio.</p>
               </div>
             </button>
 
             {/* Story Chain */}
             <button
               onClick={() => setShowStoryChain(true)}
-              className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-amber-500/20 hover:border-amber-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
+              className="group relative flex flex-col rounded-2xl bg-[#18181B] border border-white/10 hover:border-[#E7C477]/40 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1 cursor-pointer"
             >
               <div className="relative h-48 w-full bg-black overflow-hidden">
                 <img src="/demo/story_chain_hero.png" alt="Story Chain" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
               </div>
               <div className="p-5 flex-1 flex flex-col justify-center">
                 <div className="flex items-center gap-3 mb-2">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center text-white shadow-lg shadow-amber-500/20">
-                    <Video size={20} />
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center text-white shadow-lg">
+                    <Video size={18} />
                   </div>
-                  <h3 className="text-base font-black text-[var(--text-primary)] tracking-tight">Story Chain</h3>
-                  <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase tracking-widest">New</span>
+                  <h3 className="text-base font-bold text-[#F5F1E8] group-hover:text-[#F2D58D] tracking-tight transition-colors">Story Chain</h3>
+                  <span className="text-[8px] font-bold px-2 py-0.5 rounded bg-[#E7C477]/20 text-[#F2D58D] border border-[#E7C477]/30 uppercase tracking-widest">Studio</span>
                 </div>
-                <p className="text-xs text-[var(--text-secondary)] font-medium leading-relaxed">Generate sequential images with consistent identity.</p>
+                <p className="text-xs text-[#8C909A] font-normal leading-relaxed">Generate sequential images with consistent identity.</p>
               </div>
             </button>
 
             {/* Pro Headshot */}
             <button
               onClick={() => setShowHeadshot(true)}
-              className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-blue-500/20 hover:border-blue-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
+              className="group relative flex flex-col rounded-2xl bg-[#18181B] border border-white/10 hover:border-[#E7C477]/40 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1 cursor-pointer"
             >
               <div className="relative h-48 w-full bg-black overflow-hidden">
                 <img src="/demo/headshot_hero.png" alt="Pro Headshot" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
               </div>
               <div className="p-5 flex-1 flex flex-col justify-center">
                 <div className="flex items-center gap-3 mb-2">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-white shadow-lg shadow-blue-500/20">
-                    <Camera size={20} />
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-white shadow-lg">
+                    <Camera size={18} />
                   </div>
-                  <h3 className="text-base font-black text-[var(--text-primary)] tracking-tight">Pro Headshot</h3>
-                  <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 uppercase tracking-widest">New</span>
+                  <h3 className="text-base font-bold text-[#F5F1E8] group-hover:text-[#F2D58D] tracking-tight transition-colors">Pro Headshot</h3>
+                  <span className="text-[8px] font-bold px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 uppercase tracking-widest">HD</span>
                 </div>
-                <p className="text-xs text-[var(--text-secondary)] font-medium leading-relaxed">Professional studio headshots for business & social media.</p>
+                <p className="text-xs text-[#8C909A] font-normal leading-relaxed">Professional studio headshots for business & social media.</p>
               </div>
             </button>
 
             {/* Time Machine */}
             <button
               onClick={() => setShowTimeMachine(true)}
-              className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-purple-500/20 hover:border-purple-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
+              className="group relative flex flex-col rounded-2xl bg-[#18181B] border border-white/10 hover:border-[#E7C477]/40 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1 cursor-pointer"
             >
               <div className="relative h-48 w-full bg-black overflow-hidden">
                 <img src="/demo/time_machine_hero.png" alt="Time Machine" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
               </div>
               <div className="p-5 flex-1 flex flex-col justify-center">
                 <div className="flex items-center gap-3 mb-2">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-violet-500 flex items-center justify-center text-white shadow-lg shadow-purple-500/20">
-                    <Settings2 size={20} />
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-violet-500 flex items-center justify-center text-white shadow-lg">
+                    <Settings2 size={18} />
                   </div>
-                  <h3 className="text-base font-black text-[var(--text-primary)] tracking-tight">Time Machine</h3>
-                  <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 uppercase tracking-widest">Fun</span>
+                  <h3 className="text-base font-bold text-[#F5F1E8] group-hover:text-[#F2D58D] tracking-tight transition-colors">Time Machine</h3>
+                  <span className="text-[8px] font-bold px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 uppercase tracking-widest">Creative</span>
                 </div>
-                <p className="text-xs text-[var(--text-secondary)] font-medium leading-relaxed">Travel through 14 eras — 1920s to Cyberpunk 2077.</p>
+                <p className="text-xs text-[#8C909A] font-normal leading-relaxed">Travel through 14 eras — 1920s to Cyberpunk 2077.</p>
               </div>
             </button>
 
             {/* Hairstyle Try-On */}
             <button
               onClick={() => setShowHairstyle(true)}
-              className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-pink-500/20 hover:border-pink-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
+              className="group relative flex flex-col rounded-2xl bg-[#18181B] border border-white/10 hover:border-[#E7C477]/40 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1 cursor-pointer"
             >
               <div className="relative h-48 w-full bg-black overflow-hidden">
                 <img src="/demo/hairstyle_hero.png" alt="Hairstyle Try-On" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
               </div>
               <div className="p-5 flex-1 flex flex-col justify-center">
                 <div className="flex items-center gap-3 mb-2">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 to-rose-500 flex items-center justify-center text-white shadow-lg shadow-pink-500/20">
-                    <Sparkles size={20} />
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 to-rose-500 flex items-center justify-center text-white shadow-lg">
+                    <Sparkles size={18} />
                   </div>
-                  <h3 className="text-base font-black text-[var(--text-primary)] tracking-tight">Hairstyle Try-On</h3>
-                  <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-300 border border-pink-500/30 uppercase tracking-widest">New</span>
+                  <h3 className="text-base font-bold text-[#F5F1E8] group-hover:text-[#F2D58D] tracking-tight transition-colors">Hairstyle Try-On</h3>
+                  <span className="text-[8px] font-bold px-2 py-0.5 rounded bg-pink-500/20 text-pink-300 border border-pink-500/30 uppercase tracking-widest">New</span>
                 </div>
-                <p className="text-xs text-[var(--text-secondary)] font-medium leading-relaxed">Preview 144 haircut & color combos instantly.</p>
+                <p className="text-xs text-[#8C909A] font-normal leading-relaxed">Preview 144 haircut & color combos instantly.</p>
               </div>
             </button>
 
             {/* Motion Control */}
             <button
               onClick={() => setShowMotionControl(true)}
-              className="group relative flex flex-col rounded-3xl bg-[var(--bg-elevated)] border border-violet-500/20 hover:border-violet-500/50 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
+              className="group relative flex flex-col rounded-2xl bg-[#18181B] border border-white/10 hover:border-[#E7C477]/40 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:-translate-y-1 cursor-pointer"
             >
               <div className="relative h-48 w-full bg-black overflow-hidden">
                 <img src="https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?auto=format&fit=crop&w=800&q=80" alt="Motion Control" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
               </div>
               <div className="p-5 flex-1 flex flex-col justify-center">
                 <div className="flex items-center gap-3 mb-2">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-600 to-fuchsia-600 flex items-center justify-center text-white shadow-lg shadow-violet-500/20">
-                    <Video size={20} />
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-600 to-fuchsia-600 flex items-center justify-center text-white shadow-lg">
+                    <Video size={18} />
                   </div>
-                  <h3 className="text-base font-black text-[var(--text-primary)] tracking-tight">Motion Control</h3>
-                  <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-300 border border-violet-500/30 uppercase tracking-widest">AI Video</span>
+                  <h3 className="text-base font-bold text-[#F5F1E8] group-hover:text-[#F2D58D] tracking-tight transition-colors">Motion Control</h3>
+                  <span className="text-[8px] font-bold px-2 py-0.5 rounded bg-violet-500/20 text-violet-300 border border-violet-500/30 uppercase tracking-widest">AI Video</span>
                 </div>
-                <p className="text-xs text-[var(--text-secondary)] font-medium leading-relaxed">Replicate any movement or dance from video templates.</p>
+                <p className="text-xs text-[#8C909A] font-normal leading-relaxed">Replicate any movement or dance from video templates.</p>
               </div>
             </button>
           </div>
@@ -1555,7 +1670,36 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
         acceptMediaType={assetPickerMediaType}
         currentPersona={persona}
       />
-    </>
+      </>
+    );
+  }
+
+  if (activeTool === 'group-photoshoot') {
+    return (
+      <div className="flex-1 flex flex-col h-full overflow-y-auto pr-2 custom-scrollbar pb-20 bg-[var(--bg-base)]">
+        <div className="shrink-0 px-6 py-4 border-b border-[var(--border-subtle)] flex items-center justify-between bg-[var(--bg-elevated)]/50 backdrop-blur-md z-10">
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => setActiveTool(null)}
+              className="p-2 -ml-2 rounded-xl text-[var(--text-secondary)] hover:text-white hover:bg-[var(--bg-overlay)] transition-colors"
+            >
+              <ChevronLeft size={20} />
+            </button>
+            <div className="flex items-center gap-3">
+               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-500 flex items-center justify-center text-white">
+                  <Users size={16} />
+               </div>
+               <div>
+                 <h2 className="text-sm font-bold text-white leading-tight">Group Crossover Photoshoot</h2>
+                 <p className="text-[10px] text-[var(--text-muted)] mt-0.5">Combine 2-3 AI Influencers in the same shot with dual face-locking.</p>
+               </div>
+            </div>
+          </div>
+        </div>
+        <div className="p-6 max-w-6xl mx-auto w-full">
+          <GroupPhotoshootStudio personas={personas || [persona]} activePersona={persona} />
+        </div>
+      </div>
     );
   }
 
@@ -1891,30 +2035,49 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                     </div>
                   </div>
                 ) : (
-                  <div className="space-y-2">
-                    <div
-                      onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-                      onDragLeave={() => setIsDragging(false)}
-                      onDrop={handleDrop}
-                      onClick={() => fileInputRef.current?.click()}
-                      className={`w-full aspect-square rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-3 transition-all cursor-pointer ${
-                        isDragging
-                          ? 'border-[#00D4FF] bg-[#00D4FF]/10 text-[#00D4FF] scale-[1.02] shadow-[0_0_30px_rgba(0,212,255,0.15)]'
-                          : 'border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-white hover:border-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/5'
-                      }`}
-                    >
-                      <Upload size={24} className={isDragging ? 'animate-bounce' : ''} />
-                      <span className="text-xs font-bold">{isDragging ? 'Drop Image Here' : 'Upload or Drop Image'}</span>
-                      <span className="text-[10px] text-[var(--text-muted)]">PNG, JPG, WEBP supported</span>
+                  <div 
+                    onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                    onDragLeave={() => setIsDragging(false)}
+                    onDrop={handleDrop}
+                    className={`w-full rounded-2xl border-2 border-dashed p-4 transition-all ${
+                      isDragging
+                        ? 'border-cyan-400 bg-cyan-500/10 text-cyan-400 scale-[1.02] shadow-[0_0_30px_rgba(0,212,255,0.15)]'
+                        : 'border-[var(--border-strong)] bg-[var(--bg-elevated)]/40 hover:border-cyan-500/40'
+                    }`}
+                  >
+                    <div className="text-center space-y-1 mb-3">
+                      <div className="w-10 h-10 rounded-full bg-cyan-500/10 text-cyan-400 mx-auto flex items-center justify-center border border-cyan-500/20">
+                        <Upload size={20} className={isDragging ? 'animate-bounce' : ''} />
+                      </div>
+                      <div className="text-xs font-bold text-white">
+                        {isDragging ? 'Drop Image Here' : 'Select Target Image'}
+                      </div>
+                      <div className="text-[10px] text-[var(--text-muted)]">PNG, JPG, WEBP supported</div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => openAssetPicker((url) => setSourceImage(url), 'Select Target Image')}
-                      className="w-full py-2.5 px-3 rounded-xl bg-pink-500/10 hover:bg-pink-500/20 text-pink-400 border border-pink-500/30 text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-sm"
-                    >
-                      <FolderHeart size={14} /> Choose from Asset Library
-                    </button>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openAssetPicker((url) => setSourceImage(url), 'Select Target Image')}
+                        className="p-2.5 rounded-xl bg-white/5 hover:bg-cyan-500/10 border border-white/10 hover:border-cyan-500/40 text-left transition-all group flex flex-col gap-1"
+                      >
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-cyan-400 group-hover:text-cyan-300">
+                          <FolderHeart size={14} /> Choose from Assets
+                        </div>
+                        <div className="text-[9px] text-[var(--text-muted)] leading-tight">Pick persona or library photo</div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="p-2.5 rounded-xl bg-white/5 hover:bg-emerald-500/10 border border-white/10 hover:border-emerald-500/40 text-left transition-all group flex flex-col gap-1"
+                      >
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-400 group-hover:text-emerald-300">
+                          <Upload size={14} /> Upload from Device
+                        </div>
+                        <div className="text-[9px] text-[var(--text-muted)] leading-tight">Browse files from computer</div>
+                      </button>
+                    </div>
                   </div>
                 )}
                 <input type="file" ref={fileInputRef} hidden accept="image/*" onChange={handleFileUpload} />
@@ -2211,11 +2374,72 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
             )}
 
             {activeTool === 'canvas' && (
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)]">Extension Direction</label>
-                <select value={canvasDir} onChange={(e) => setCanvasDir(e.target.value)} className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-3 text-sm text-white outline-none">
-                  <option>Extend Downward</option><option>Extend Upward</option><option>Expand All Sides (Zoom Out)</option><option>Widen (Left/Right)</option>
-                </select>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)]">Outpaint Directions (Select Multiple)</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { id: 'left', label: 'Extend left', icon: '⬅️' },
+                      { id: 'right', label: 'Extend right', icon: '➡️' },
+                      { id: 'up', label: 'Extend up', icon: '⬆️' },
+                      { id: 'down', label: 'Extend down', icon: '⬇️' },
+                      { id: 'zoom', label: 'Zoom out', icon: '🔍' },
+                    ].map((dir) => {
+                      const isChecked = outpaintDirections.includes(dir.id);
+                      return (
+                        <button
+                          key={dir.id}
+                          type="button"
+                          onClick={() => {
+                            setOutpaintDirections(prev => 
+                              isChecked ? prev.filter(d => d !== dir.id) : [...prev, dir.id]
+                            );
+                          }}
+                          className={`flex items-center gap-2 p-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                            isChecked
+                              ? 'bg-pink-500/20 border-pink-500/50 text-white shadow-md shadow-pink-500/10'
+                              : 'bg-[var(--bg-elevated)] border-[var(--border-default)] text-[var(--text-secondary)] hover:text-white hover:border-white/20'
+                          }`}
+                        >
+                          <div className={`w-4 h-4 rounded flex items-center justify-center border transition-all ${
+                            isChecked ? 'bg-pink-500 border-pink-400 text-white' : 'border-zinc-600 bg-black/40'
+                          }`}>
+                            {isChecked && <Check size={10} strokeWidth={3} />}
+                          </div>
+                          <span>{dir.icon}</span>
+                          <span>{dir.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {outpaintDirections.includes('zoom') && (
+                  <div className="space-y-2 p-3.5 bg-pink-500/10 border border-pink-500/30 rounded-2xl animate-in fade-in duration-200">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-pink-300 flex items-center gap-1.5">
+                        <ZoomIn size={14} className="text-pink-400" /> Zoom Out Percentage
+                      </label>
+                      <span className="text-xs font-black text-white bg-pink-500/30 px-2.5 py-0.5 rounded-full border border-pink-500/40 font-mono">
+                        {outpaintZoomScale}%
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="10"
+                      max="200"
+                      step="5"
+                      value={outpaintZoomScale}
+                      onChange={(e) => setOutpaintZoomScale(Number(e.target.value))}
+                      className="w-full accent-pink-500 cursor-pointer"
+                    />
+                    <div className="flex justify-between text-[8px] font-bold text-zinc-400 uppercase tracking-wider">
+                      <span>10% (Close)</span>
+                      <span>100% (Standard)</span>
+                      <span>200% (Ultra Wide)</span>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -2281,24 +2505,40 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                       </div>
                     </div>
                   ) : (
-                    <div className="space-y-2">
-                      <button 
-                        onClick={() => faceFileInputRef.current?.click()}
-                        className="w-full aspect-video rounded-2xl border-2 border-dashed border-pink-500/30 flex flex-col items-center justify-center gap-3 text-pink-300 hover:text-white hover:border-pink-500/60 hover:bg-pink-500/5 transition-all"
-                      >
-                        <Upload size={24} />
-                        <span className="text-xs font-bold">
-                          {swapMode === 'head' ? 'Upload Head & Hair Photo' : swapMode === 'body' ? 'Upload Person Photo' : 'Upload Face Photo'}
-                        </span>
-                      </button>
+                    <div className="w-full rounded-2xl border-2 border-dashed border-cyan-500/30 p-4 bg-[var(--bg-elevated)]/40 hover:border-cyan-500/60 transition-all">
+                      <div className="text-center space-y-1 mb-3">
+                        <div className="w-10 h-10 rounded-full bg-cyan-500/10 text-cyan-400 mx-auto flex items-center justify-center border border-cyan-500/20">
+                          <Upload size={20} />
+                        </div>
+                        <div className="text-xs font-bold text-white">
+                          {swapMode === 'head' ? 'Select Head & Hair Source' : swapMode === 'body' ? 'Select Person Source' : 'Select Face Source'}
+                        </div>
+                        <div className="text-[10px] text-[var(--text-muted)]">PNG, JPG, WEBP supported</div>
+                      </div>
 
-                      <button
-                        type="button"
-                        onClick={() => openAssetPicker((url) => setFaceSwapFaceImage(url), 'Select Source Face')}
-                        className="w-full py-2.5 px-3 rounded-xl bg-pink-500/10 hover:bg-pink-500/20 text-pink-400 border border-pink-500/30 text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-sm"
-                      >
-                        <FolderHeart size={14} /> Choose from Asset Library
-                      </button>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openAssetPicker((url) => setFaceSwapFaceImage(url), 'Select Source Face')}
+                          className="p-2.5 rounded-xl bg-white/5 hover:bg-cyan-500/10 border border-white/10 hover:border-cyan-500/40 text-left transition-all group flex flex-col gap-1"
+                        >
+                          <div className="flex items-center gap-1.5 text-xs font-bold text-cyan-400 group-hover:text-cyan-300">
+                            <FolderHeart size={14} /> Choose from Assets
+                          </div>
+                          <div className="text-[9px] text-[var(--text-muted)] leading-tight">Pick saved face</div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => faceFileInputRef.current?.click()}
+                          className="p-2.5 rounded-xl bg-white/5 hover:bg-emerald-500/10 border border-white/10 hover:border-emerald-500/40 text-left transition-all group flex flex-col gap-1"
+                        >
+                          <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-400 group-hover:text-emerald-300">
+                            <Upload size={14} /> Upload from Device
+                          </div>
+                          <div className="text-[9px] text-[var(--text-muted)] leading-tight">Browse from computer</div>
+                        </button>
+                      </div>
                     </div>
                   )}
                   <input 
@@ -2323,48 +2563,200 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
 
             {activeTool === 'virtual-tryon' && (
               <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)]">Garment Image</label>
-                  {garmentImage ? (
-                    <div className="relative aspect-square rounded-2xl overflow-hidden border border-fuchsia-500/30 group">
-                      <img src={garmentImage} alt="Garment" className="w-full h-full object-cover" />
-                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center gap-2 transition-opacity">
-                        <button onClick={() => openAssetPicker((url) => setGarmentImage(url), 'Select Garment Photo')} className="px-3 py-1.5 bg-fuchsia-500 rounded-xl text-xs font-bold text-white shadow-lg flex items-center gap-1.5">
-                          <FolderHeart size={14} /> Change from Library
-                        </button>
-                        <button onClick={() => setGarmentImage(null)} className="p-2 bg-rose-500 rounded-full text-white"><X size={16}/></button>
-                      </div>
-                      <div className="absolute bottom-2 left-2 px-2 py-1 bg-fuchsia-500/80 rounded-lg text-[9px] font-bold text-white">Garment</div>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      <button
-                        onClick={() => garmentFileInputRef.current?.click()}
-                        className="w-full aspect-video rounded-2xl border-2 border-dashed border-fuchsia-500/30 flex flex-col items-center justify-center gap-3 text-fuchsia-300 hover:text-white hover:border-fuchsia-500/60 hover:bg-fuchsia-500/5 transition-all"
-                      >
-                        <Shirt size={24} />
-                        <span className="text-xs font-bold">Upload Clothing Photo</span>
-                      </button>
+                {/* Single vs Multiple Outfits Mode Toggle */}
+                <div className="flex bg-[var(--bg-elevated)] p-1 rounded-xl border border-white/10">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTryOnMode('single');
+                      if (garmentImages.length > 0 && !garmentImage) setGarmentImage(garmentImages[0]);
+                    }}
+                    className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                      tryOnMode === 'single' ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-md' : 'text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    Single Outfit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTryOnMode('multiple');
+                      if (garmentImage && garmentImages.length === 0) setGarmentImages([garmentImage]);
+                    }}
+                    className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                      tryOnMode === 'multiple' ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-md' : 'text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    Multiple Outfits
+                  </button>
+                </div>
 
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)] flex items-center gap-1.5">
+                      {tryOnMode === 'multiple' ? (
+                        <>
+                          <Sparkles size={11} className="text-emerald-400" />
+                          Choose up to 6 outfits ({garmentImages.length}/6)
+                        </>
+                      ) : (
+                        'Garment Image'
+                      )}
+                    </label>
+                    {tryOnMode === 'multiple' && garmentImages.length > 0 && (
                       <button
                         type="button"
-                        onClick={() => openAssetPicker((url) => setGarmentImage(url), 'Select Garment Photo')}
-                        className="w-full py-2.5 px-3 rounded-xl bg-fuchsia-500/10 hover:bg-fuchsia-500/20 text-fuchsia-400 border border-fuchsia-500/30 text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-sm"
+                        onClick={() => { setGarmentImages([]); setGarmentImage(null); }}
+                        className="text-[10px] font-bold text-rose-400 hover:text-rose-300"
                       >
-                        <FolderHeart size={14} /> Choose from Asset Library
+                        Clear All
                       </button>
+                    )}
+                  </div>
+
+                  {tryOnMode === 'single' ? (
+                    /* Single Outfit Upload Card */
+                    garmentImage ? (
+                      <div className="relative aspect-square rounded-2xl overflow-hidden border border-emerald-500/30 group">
+                        <img src={garmentImage} alt="Garment" className="w-full h-full object-cover" />
+                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center gap-2 transition-opacity">
+                          <button onClick={() => openAssetPicker((url) => { setGarmentImage(url); setGarmentImages([url]); }, 'Select Garment Photo')} className="px-3 py-1.5 bg-emerald-500 rounded-xl text-xs font-bold text-white shadow-lg flex items-center gap-1.5">
+                            <FolderHeart size={14} /> Change from Library
+                          </button>
+                          <button onClick={() => { setGarmentImage(null); setGarmentImages([]); }} className="p-2 bg-rose-500 rounded-full text-white"><X size={16}/></button>
+                        </div>
+                        <div className="absolute bottom-2 left-2 px-2 py-1 bg-emerald-500/80 rounded-lg text-[9px] font-bold text-white">Garment</div>
+                      </div>
+                    ) : (
+                      <div className="w-full rounded-2xl border-2 border-dashed border-emerald-500/30 p-4 bg-[var(--bg-elevated)]/40 hover:border-emerald-500/60 transition-all">
+                        <div className="text-center space-y-1 mb-3">
+                          <div className="w-10 h-10 rounded-full bg-emerald-500/10 text-emerald-400 mx-auto flex items-center justify-center border border-emerald-500/20">
+                            <Shirt size={20} />
+                          </div>
+                          <div className="text-xs font-bold text-white">Select Clothing Photo</div>
+                          <div className="text-[10px] text-[var(--text-muted)]">PNG, JPG, WEBP supported</div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openAssetPicker((url) => { setGarmentImage(url); setGarmentImages([url]); }, 'Select Garment Photo')}
+                            className="p-2.5 rounded-xl bg-white/5 hover:bg-emerald-500/10 border border-white/10 hover:border-emerald-500/40 text-left transition-all group flex flex-col gap-1"
+                          >
+                            <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-400 group-hover:text-emerald-300">
+                              <FolderHeart size={14} /> Choose from Assets
+                            </div>
+                            <div className="text-[9px] text-[var(--text-muted)] leading-tight">Pick saved garment</div>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => garmentFileInputRef.current?.click()}
+                            className="p-2.5 rounded-xl bg-white/5 hover:bg-teal-500/10 border border-white/10 hover:border-teal-500/40 text-left transition-all group flex flex-col gap-1"
+                          >
+                            <div className="flex items-center gap-1.5 text-xs font-bold text-teal-400 group-hover:text-teal-300">
+                              <Upload size={14} /> Upload from Device
+                            </div>
+                            <div className="text-[9px] text-[var(--text-muted)] leading-tight">Browse from computer</div>
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  ) : (
+                    /* Multiple Outfits Grid Gallery (Up to 6) */
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-3 gap-2">
+                        {garmentImages.map((img, idx) => (
+                          <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-emerald-500/30 group">
+                            <img src={img} alt={`Outfit ${idx + 1}`} className="w-full h-full object-cover" />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const next = garmentImages.filter((_, i) => i !== idx);
+                                setGarmentImages(next);
+                                if (next.length > 0) setGarmentImage(next[0]);
+                                else setGarmentImage(null);
+                              }}
+                              className="absolute top-1 right-1 p-1 bg-rose-600/90 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <X size={12} />
+                            </button>
+                            <span className="absolute bottom-1 left-1 px-1.5 py-0.5 bg-black/75 rounded text-[8px] font-bold text-emerald-300">
+                              #{idx + 1}
+                            </span>
+                          </div>
+                        ))}
+
+                        {garmentImages.length < 6 && (
+                          <button
+                            type="button"
+                            onClick={() => garmentFileInputRef.current?.click()}
+                            className="aspect-square rounded-xl border-2 border-dashed border-emerald-500/30 flex flex-col items-center justify-center gap-1 text-emerald-400 hover:text-white hover:border-emerald-500 hover:bg-emerald-500/10 transition-all p-1"
+                          >
+                            <Shirt size={18} />
+                            <span className="text-[10px] font-bold text-center leading-tight">Add Outfits</span>
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => garmentFileInputRef.current?.click()}
+                          disabled={garmentImages.length >= 6}
+                          className="flex-1 py-2 px-3 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 text-xs font-bold flex items-center justify-center gap-1.5 transition-all disabled:opacity-40"
+                        >
+                          <Upload size={14} /> Upload Multiple Files
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openAssetPicker((url) => {
+                            if (garmentImages.length < 6) {
+                              const updated = [...garmentImages, url];
+                              setGarmentImages(updated);
+                              setGarmentImage(updated[0]);
+                            }
+                          }, 'Select Garment Photo')}
+                          disabled={garmentImages.length >= 6}
+                          className="py-2 px-3 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-300 border border-white/10 text-xs font-bold flex items-center justify-center gap-1.5 transition-all disabled:opacity-40"
+                        >
+                          <FolderHeart size={14} /> Pick from Library
+                        </button>
+                      </div>
                     </div>
                   )}
+
                   <input
-                    type="file" ref={garmentFileInputRef} hidden accept="image/*"
+                    type="file" 
+                    ref={garmentFileInputRef} 
+                    hidden 
+                    accept="image/*"
+                    multiple={tryOnMode === 'multiple'}
                     onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      try { setGarmentImage(await processImageFile(file)); } catch { toast.error('Failed to process image'); }
+                      const files = Array.from(e.target.files || []);
+                      if (files.length === 0) return;
+                      try {
+                        const loaded: string[] = [];
+                        for (const file of files) {
+                          loaded.push(await processImageFile(file));
+                        }
+                        if (tryOnMode === 'multiple') {
+                          const combined = [...garmentImages, ...loaded].slice(0, 6);
+                          setGarmentImages(combined);
+                          if (combined.length > 0) setGarmentImage(combined[0]);
+                          toast.success(`Loaded ${loaded.length} outfit photo(s)!`);
+                        } else {
+                          setGarmentImage(loaded[0]);
+                          setGarmentImages([loaded[0]]);
+                        }
+                      } catch {
+                        toast.error('Failed to process uploaded outfit images');
+                      }
                       e.target.value = '';
                     }}
                   />
                 </div>
+
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)]">Description (Optional)</label>
                   <input
@@ -2393,13 +2785,13 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                 isProcessing ||
                 (activeTool === 'video-edit' ? !sourceVideo : !sourceImage) ||
                 (activeTool === 'face-swap' && !faceSwapFaceImage) ||
-                (activeTool === 'virtual-tryon' && !garmentImage)
+                (activeTool === 'virtual-tryon' && (tryOnMode === 'multiple' ? garmentImages.length === 0 : !garmentImage))
               }
               className={`w-full py-3.5 rounded-xl font-bold flex flex-col items-center justify-center transition-all shadow-lg ${
                 isProcessing ||
                 (activeTool === 'video-edit' ? !sourceVideo : !sourceImage) ||
                 (activeTool === 'face-swap' && !faceSwapFaceImage) ||
-                (activeTool === 'virtual-tryon' && !garmentImage)
+                (activeTool === 'virtual-tryon' && (tryOnMode === 'multiple' ? garmentImages.length === 0 : !garmentImage))
                   ? 'bg-white/5 text-white/30 shadow-none cursor-not-allowed' 
                   : `bg-gradient-to-r ${currentToolDetails?.color} hover:brightness-110 text-white hover:scale-[1.01]`
               }`}
@@ -2410,7 +2802,13 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                 <>
                   <div className="flex items-center gap-2">
                     <ToolIcon size={18} /> 
-                    {activeTool === 'bg-remover' ? 'Remove Background' : activeTool === 'virtual-tryon' ? 'Try On Outfit ($0.02)' : activeTool === 'video-edit' ? 'Stylize Video' : 'Apply Effect'}
+                    {activeTool === 'bg-remover' 
+                      ? 'Remove Background' 
+                      : activeTool === 'virtual-tryon' 
+                        ? (tryOnMode === 'multiple' ? `Try On ${garmentImages.length || 1} Outfits ($${((garmentImages.length || 1) * 0.02).toFixed(2)})` : 'Try On Outfit ($0.02)') 
+                        : activeTool === 'video-edit' 
+                          ? 'Stylize Video' 
+                          : 'Apply Effect'}
                   </div>
                   <span className="text-[9px] opacity-50 font-medium mt-0.5">⌘ Enter</span>
                 </>
@@ -2526,92 +2924,112 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
               )}
 
              {resultImage && sourceImage && (
-               <div className="relative max-w-3xl w-full h-full flex flex-col items-center justify-center gap-4">
-                 <BeforeAfterSlider beforeImage={sourceImage} afterImage={resultImage} />
-                 <div className="absolute bottom-4 z-30 flex gap-3">
-                   <button onClick={() => setResultImage(null)} className="px-6 py-2.5 rounded-xl bg-black/80 hover:bg-black text-white font-bold backdrop-blur-xl border border-white/10 transition-colors">Discard</button>
-                   {upscaleModels.length > 0 && (
-                     <button
-                       onClick={async () => {
-                         if (!resultImage || isUpscaling) return;
-                         setIsUpscaling(true);
-                         try {
-                           const data = await upscaleImage(resultImage, upscaleModels[0].id);
-                           setResultImage(data.imageUrl);
-                           setResultHistory(prev => [...prev, { imageUrl: data.imageUrl, timestamp: Date.now(), tool: '4k-enhance' }]);
-                           toast.success('Image upscaled to 4K!');
-                         } catch (err: any) {
-                           toast.error(err.message || 'Upscale failed');
-                         } finally {
-                           setIsUpscaling(false);
-                         }
-                       }}
-                       disabled={isUpscaling}
-                       className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white font-bold backdrop-blur-xl border border-white/20 shadow-lg hover:scale-105 transition-transform flex items-center gap-2 disabled:opacity-50"
-                     >
-                       {isUpscaling ? <Loader2 size={16} className="animate-spin" /> : <ArrowUpCircle size={16} />} {isUpscaling ? 'Enhancing...' : '4K Enhance'}
-                     </button>
-                   )}
-                   <button onClick={saveToLibrary} className={`px-6 py-2.5 rounded-xl bg-gradient-to-r ${currentToolDetails?.color} text-white font-bold backdrop-blur-xl border border-white/20 shadow-lg hover:scale-105 transition-transform flex items-center gap-2`}>
-                     <Camera size={16} /> Save to Library
-                   </button>
-                 </div>
-               </div>
-             )}
+                <div className="relative max-w-3xl w-full h-full flex flex-col items-center justify-center gap-4">
+                  <BeforeAfterSlider beforeImage={sourceImage} afterImage={resultImage} />
+                  <div className="absolute bottom-4 z-30 flex gap-3">
+                    <button onClick={() => setResultImage(null)} className="px-6 py-2.5 rounded-xl bg-black/80 hover:bg-black text-white font-bold backdrop-blur-xl border border-white/10 transition-colors">Discard</button>
+                    <button 
+                      onClick={() => {
+                        nav.push({ view: 'create', subView: 'image' });
+                        toast.success('Loaded image into AI Studio Editor!');
+                      }} 
+                      className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold backdrop-blur-xl border border-white/20 shadow-lg hover:scale-105 transition-transform flex items-center gap-2"
+                    >
+                      <Pencil size={16} /> Edit Image
+                    </button>
+                    {upscaleModels.length > 0 && (
+                      <button
+                        onClick={async () => {
+                          if (!resultImage || isUpscaling) return;
+                          setIsUpscaling(true);
+                          try {
+                            const data = await upscaleImage(resultImage, upscaleModels[0].id);
+                            setResultImage(data.imageUrl);
+                            setResultHistory(prev => [...prev, { imageUrl: data.imageUrl, timestamp: Date.now(), tool: '4k-enhance' }]);
+                            toast.success('Image upscaled to 4K!');
+                          } catch (err: any) {
+                            toast.error(err.message || 'Upscale failed');
+                          } finally {
+                            setIsUpscaling(false);
+                          }
+                        }}
+                        disabled={isUpscaling}
+                        className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white font-bold backdrop-blur-xl border border-white/20 shadow-lg hover:scale-105 transition-transform flex items-center gap-2 disabled:opacity-50"
+                      >
+                        {isUpscaling ? <Loader2 size={16} className="animate-spin" /> : <ArrowUpCircle size={16} />} {isUpscaling ? 'Enhancing...' : '4K Enhance'}
+                      </button>
+                    )}
+                    <button onClick={saveToLibrary} className={`px-6 py-2.5 rounded-xl bg-gradient-to-r ${currentToolDetails?.color} text-white font-bold backdrop-blur-xl border border-white/20 shadow-lg hover:scale-105 transition-transform flex items-center gap-2`}>
+                      <Camera size={16} /> Save to Library
+                    </button>
+                  </div>
+                </div>
+              )}
 
-             {resultImage && !sourceImage && (
-               <div className="relative max-w-3xl w-full h-full flex flex-col items-center justify-center gap-4">
-                 <div className="relative h-full w-full rounded-2xl overflow-hidden border border-white/20 shadow-2xl bg-[var(--bg-elevated)] flex items-center justify-center">
-                   {activeTool === 'video-edit' ? (
-                     <video src={resultImage} controls autoPlay loop className="max-w-full max-h-full object-contain" />
-                   ) : (
-                     <img src={resultImage} alt="Result" className="max-w-full max-h-full object-contain" />
-                   )}
-                 </div>
-                 <div className="absolute bottom-4 flex gap-3">
-                   <button onClick={() => setResultImage(null)} className="px-6 py-2.5 rounded-xl bg-black/80 hover:bg-black text-white font-bold backdrop-blur-xl border border-white/10 transition-colors">Discard</button>
-                   {activeTool === 'video-edit' && (
-                     <button
-                       onClick={() => {
-                         const a = document.createElement('a');
-                         a.href = resultImage;
-                         a.download = `stylized_video_${Date.now()}.mp4`;
-                         a.target = '_blank';
-                         a.click();
-                       }}
-                       className="px-6 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold backdrop-blur-xl border border-white/10 transition-colors flex items-center gap-2"
-                     >
-                       Download
-                     </button>
-                   )}
-                   {upscaleModels.length > 0 && activeTool !== 'video-edit' && (
-                     <button
-                       onClick={async () => {
-                         if (!resultImage || isUpscaling) return;
-                         setIsUpscaling(true);
-                         try {
-                           const data = await upscaleImage(resultImage, upscaleModels[0].id);
-                           setResultImage(data.imageUrl);
-                           setResultHistory(prev => [...prev, { imageUrl: data.imageUrl, timestamp: Date.now(), tool: '4k-enhance' }]);
-                           toast.success('Image upscaled to 4K!');
-                         } catch (err: any) {
-                           toast.error(err.message || 'Upscale failed');
-                         } finally {
-                           setIsUpscaling(false);
-                         }
-                       }}
-                       disabled={isUpscaling}
-                       className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white font-bold backdrop-blur-xl border border-white/20 shadow-lg hover:scale-105 transition-transform flex items-center gap-2 disabled:opacity-50"
-                     >
-                       {isUpscaling ? <Loader2 size={16} className="animate-spin" /> : <ArrowUpCircle size={16} />} {isUpscaling ? 'Enhancing...' : '4K Enhance'}
-                     </button>
-                   )}
-                   <button onClick={saveToLibrary} className={`px-6 py-2.5 rounded-xl bg-gradient-to-r ${currentToolDetails?.color} text-white font-bold backdrop-blur-xl border border-white/20 shadow-lg hover:scale-105 transition-transform flex items-center gap-2`}>
-                     {activeTool === 'video-edit' ? <Video size={16} /> : <Camera size={16} />} Save to Library
-                   </button>
-                 </div>
-               </div>
-             )}
+              {resultImage && !sourceImage && (
+                <div className="relative max-w-3xl w-full h-full flex flex-col items-center justify-center gap-4">
+                  <div className="relative h-full w-full rounded-2xl overflow-hidden border border-white/20 shadow-2xl bg-[var(--bg-elevated)] flex items-center justify-center">
+                    {activeTool === 'video-edit' ? (
+                      <video src={resultImage} controls autoPlay loop className="max-w-full max-h-full object-contain" />
+                    ) : (
+                      <img src={resultImage} alt="Result" className="max-w-full max-h-full object-contain" />
+                    )}
+                  </div>
+                  <div className="absolute bottom-4 flex gap-3">
+                    <button onClick={() => setResultImage(null)} className="px-6 py-2.5 rounded-xl bg-black/80 hover:bg-black text-white font-bold backdrop-blur-xl border border-white/10 transition-colors">Discard</button>
+                    {activeTool !== 'video-edit' && (
+                      <button 
+                        onClick={() => {
+                          nav.push({ view: 'create', subView: 'image' });
+                          toast.success('Loaded image into AI Studio Editor!');
+                        }} 
+                        className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold backdrop-blur-xl border border-white/20 shadow-lg hover:scale-105 transition-transform flex items-center gap-2"
+                      >
+                        <Pencil size={16} /> Edit Image
+                      </button>
+                    )}
+                    {activeTool === 'video-edit' && (
+                      <button
+                        onClick={() => {
+                          const a = document.createElement('a');
+                          a.href = resultImage;
+                          a.download = `stylized_video_${Date.now()}.mp4`;
+                          a.target = '_blank';
+                          a.click();
+                        }}
+                        className="px-6 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold backdrop-blur-xl border border-white/10 transition-colors flex items-center gap-2"
+                      >
+                        Download
+                      </button>
+                    )}
+                    {upscaleModels.length > 0 && activeTool !== 'video-edit' && (
+                      <button
+                        onClick={async () => {
+                          if (!resultImage || isUpscaling) return;
+                          setIsUpscaling(true);
+                          try {
+                            const data = await upscaleImage(resultImage, upscaleModels[0].id);
+                            setResultImage(data.imageUrl);
+                            setResultHistory(prev => [...prev, { imageUrl: data.imageUrl, timestamp: Date.now(), tool: '4k-enhance' }]);
+                            toast.success('Image upscaled to 4K!');
+                          } catch (err: any) {
+                            toast.error(err.message || 'Upscale failed');
+                          } finally {
+                            setIsUpscaling(false);
+                          }
+                        }}
+                        disabled={isUpscaling}
+                        className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white font-bold backdrop-blur-xl border border-white/20 shadow-lg hover:scale-105 transition-transform flex items-center gap-2 disabled:opacity-50"
+                      >
+                        {isUpscaling ? <Loader2 size={16} className="animate-spin" /> : <ArrowUpCircle size={16} />} {isUpscaling ? 'Enhancing...' : '4K Enhance'}
+                      </button>
+                    )}
+                    <button onClick={saveToLibrary} className={`px-6 py-2.5 rounded-xl bg-gradient-to-r ${currentToolDetails?.color} text-white font-bold backdrop-blur-xl border border-white/20 shadow-lg hover:scale-105 transition-transform flex items-center gap-2`}>
+                      {activeTool === 'video-edit' ? <Video size={16} /> : <Camera size={16} />} Save to Library
+                    </button>
+                  </div>
+                </div>
+              )}
           </div>
 
           {/* Auto-Caption Panel */}

@@ -11,6 +11,31 @@ export type GeneratedImage = {
   mediaType?: 'image' | 'video' | '3d';
 };
 
+export type WardrobeCategory = 'haute_couture' | 'lingerie' | 'streetwear' | 'swimwear' | 'luxury_evening' | 'fitness' | 'casual';
+
+export interface WardrobeItem {
+  id: string;
+  name: string;
+  category: WardrobeCategory;
+  promptDescription: string;
+  thumbnail?: string;
+  colorTheme?: string;
+  tags?: string[];
+  isCustom?: boolean;
+}
+
+export type RelationshipMood = 'playful' | 'seductive' | 'inspired' | 'teasing' | 'loving' | 'thoughtful';
+export type RelationshipStage = 'acquaintance' | 'partner' | 'confidante' | 'soulmate';
+
+export interface RelationshipState {
+  affinityScore: number; // 0 to 100
+  stage: RelationshipStage;
+  currentMood: RelationshipMood;
+  totalInteractions: number;
+  unlockedPerks: string[];
+  lastInteractionDate?: string;
+}
+
 export type Persona = {
   id: string;
   name: string;
@@ -36,8 +61,19 @@ export type Persona = {
   visualLibrary?: GeneratedImage[];
   voiceId?: string;
   voiceEngine?: string;
+  companionType?: string;
   voiceSampleUrl?: string;
   heygenAvatarId?: string;
+  clientId?: string;
+  audioSamples?: any[];
+  voicePrompt?: string;
+  voiceLikeness?: number;
+  voiceStability?: number;
+  voiceStyleExaggeration?: number;
+  voiceSpeakingSpeed?: number;
+  wardrobe?: WardrobeItem[];
+  activeOutfitId?: string;
+  relationshipState?: RelationshipState;
 };
 
 export type PlannedPost = {
@@ -58,7 +94,7 @@ export type RevenueEntry = {
   notes: string;
 };
 
-export type Tab = 'personas' | 'create' | 'gallery' | 'assistant' | 'settings' | 'intelligence' | 'revenue' | 'planner' | 'agent' | 'trends';
+export type Tab = 'personas' | 'create' | 'create-persona' | 'gallery' | 'assistant' | 'settings' | 'intelligence' | 'revenue' | 'planner' | 'agent' | 'trends';
 
 export interface NavEntry {
   view: Tab | 'persona-builder';
@@ -71,4 +107,15 @@ export interface NavActions {
   push: (entry: NavEntry) => void;
   pop: () => void;
   replace: (entry: NavEntry) => void;
+}
+
+export interface CreatorProfile {
+  name: string;
+  role: string;
+  appearance: string;
+  bio: string;
+  gender?: string;
+  photos: string[];
+  primaryPhoto?: string;
+  customDynamic?: string;
 }

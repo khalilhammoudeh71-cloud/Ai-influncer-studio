@@ -1,15 +1,34 @@
 import type { Persona, GeneratedImage, RevenueEntry, PlannedPost } from '../types';
 import { supabase } from '../lib/supabase';
 
-async function getAuthHeaders(): Promise<HeadersInit> {
+export async function getAuthHeaders(): Promise<HeadersInit> {
   try {
-    const sessionRes = await supabase.auth.getSession();
+    const sessionPromise = supabase.auth.getSession();
+    const timeoutPromise = new Promise<any>((resolve) => setTimeout(() => resolve({ data: { session: null } }), 800));
+    const sessionRes = await Promise.race([sessionPromise, timeoutPromise]);
     const token = sessionRes?.data?.session?.access_token;
     return token ? { 'Authorization': `Bearer ${token}` } : {};
   } catch (e) {
     console.error('Error fetching Supabase auth session:', e);
     return {};
   }
+}
+
+async function extractErrorMessage(res: Response): Promise<string> {
+  try {
+    const text = await res.text();
+    try {
+      const err = JSON.parse(text);
+      const raw = typeof err === 'string' ? err : (err?.error || err?.message || err?.detail || err?.msg);
+      if (raw && typeof raw === 'string' && raw.trim()) return raw;
+    } catch {
+      if (text && text.trim() && text.length < 200 && !text.includes('<!DOCTYPE')) return text;
+    }
+  } catch {}
+  if (res.status >= 500) {
+    return `Voice synthesis service temporarily unavailable (${res.status} ${res.statusText || 'Server Error'})`;
+  }
+  return res.statusText ? `${res.statusText} (${res.status})` : `Request failed with status ${res.status}`;
 }
 
 async function requestWithBody<T>(url: string, body: unknown): Promise<T> {
@@ -23,8 +42,8 @@ async function requestWithBody<T>(url: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error || res.statusText);
+    const errMsg = await extractErrorMessage(res);
+    throw new Error(errMsg);
   }
   return res.json();
 }
@@ -42,8 +61,8 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
     },
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error || res.statusText);
+    const errMsg = await extractErrorMessage(res);
+    throw new Error(errMsg);
   }
   return res.json();
 }
@@ -122,8 +141,22 @@ export const api = {
         labels: Record<string, string>;
         settings: { stability: number; similarity_boost: number; style: number };
       }> }>('/elevenlabs-voices'),
-    cloneVoice: (name: string, description: string, sampleBase64: string) =>
-      requestWithBody<{ voiceId: string; name: string }>('/elevenlabs-clone-voice', { name, description, sampleBase64 }),
+    getElevenLabsVoices: () =>
+      request<{ voices: Array<{
+        voice_id: string;
+        name: string;
+        category: string;
+        description: string;
+        preview_url: string;
+        labels: Record<string, string>;
+        settings: { stability: number; similarity_boost: number; style: number };
+      }> }>('/elevenlabs-voices'),
+    cloneVoice: (name: string, description: string, sampleBase64: string | string[]) =>
+      requestWithBody<{ voiceId: string; name: string }>('/elevenlabs-clone-voice', {
+        name,
+        description,
+        ...(Array.isArray(sampleBase64) ? { sampleBase64s: sampleBase64 } : { sampleBase64 })
+      }),
     generateScript: (params: { topic: string; persona: Persona; mode?: string; existingScript?: string; length?: string }) =>
       requestWithBody<{ script: string }>('/generate-voice-script', params),
     generateSpeech: (params: {
@@ -131,14 +164,58 @@ export const api = {
       voice?: string;
       performancePrompt?: string;
       backgroundAtmosphere?: string;
-      engine?: 'elevenlabs' | 'openai' | 'gemini' | 'omnivoice' | 'qwen-tts';
+      engine?: 'elevenlabs' | 'openai' | 'gemini' | 'omnivoice' | 'minimax-clone' | 'qwen3-clone' | 'seed-speech' | 'chatterbox' | 'mureka-vocal' | 'qwen-tts' | string;
       voiceId?: string;
       voiceSettings?: { stability?: number; similarity_boost?: number; style?: number };
       voiceReference?: string;
+      voiceReferences?: string[];
+      personaName?: string;
+      isPreview?: boolean;
+      voicePrompt?: string;
+      voiceLikeness?: number;
+      voiceStability?: number;
+      voiceStyleExaggeration?: number;
+      voiceSpeakingSpeed?: number;
     }) =>
       requestWithBody<{ audioUrl: string; engine?: string }>('/generate-speech', params),
     translateText: (params: { text: string; targetLanguage: string }) =>
       requestWithBody<{ translatedText: string }>('/translate-text', params),
+    testVoiceClone: (params: {
+      sampleBase64?: string;
+      sampleBase64s?: string[];
+      model: string;
+      voiceSettings: { stability: number; similarityBoost: number; style: number; speed: number };
+      testText?: string;
+    }) => requestWithBody<{ audioUrl: string }>('/agent/test-voice-clone', params),
+    setDefaultVoice: (params: {
+      voiceReference?: string;
+      voiceReferences?: string[];
+      voiceName: string;
+      model: string;
+      voiceSettings: { stability: number; similarityBoost: number; style: number; speed: number };
+    }) => requestWithBody<{ success: boolean; activeVoice: string; voiceId?: string; model?: string }>('/agent/set-default-voice', params),
+  },
+
+  influencer: {
+    trending: (platform: 'tiktok' | 'instagram') =>
+      request<any[]>(`/influencer/trending?platform=${platform}`),
+  },
+
+  runware: {
+    getModelsAndLoras: () =>
+      request<{
+        models: Array<{ id: string; name: string; description: string; price: number }>;
+        loras: Array<{ id: string; name: string; category: string; description: string; defaultWeight: number }>;
+      }>('/runware/models'),
+  },
+
+  wiro: {
+    getModels: () =>
+      request<{
+        models: Array<{ id: string; name: string; description: string; price: number }>;
+        videoModels: Array<{ id: string; name: string; description: string; price: number }>;
+        voiceModels?: Array<{ id: string; name: string; description: string; provider: string }>;
+      }>('/wiro/models'),
   },
 
   billing: {

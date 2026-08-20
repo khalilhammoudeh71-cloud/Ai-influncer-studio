@@ -276,11 +276,18 @@ export default function LandingView({ onGetStarted, isLoggedIn }: LandingViewPro
 
       {/* === Navigation === */}
       <nav className="relative z-20 w-full max-w-7xl mx-auto px-6 lg:px-10 py-5 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[var(--accent-primary)] to-[var(--accent-secondary)] flex items-center justify-center shadow-lg shadow-[var(--accent-primary)]/25">
-            <Sparkles className="text-white" size={20} />
+        <div className="flex items-center gap-3.5">
+          <div className="w-11 h-11 rounded-2xl overflow-hidden border border-[#E7C477]/35 shadow-xl shadow-black/50 bg-[#080C14] p-1 flex items-center justify-center">
+            <img src="/logo.png" alt="AI Influencer Studio" className="w-full h-full object-contain drop-shadow-md" />
           </div>
-          <span className="font-bold text-lg text-white tracking-tight hidden sm:block">AI Influencer Studio</span>
+          <div className="flex flex-col min-w-0 hidden sm:flex">
+            <span className="text-[15px] font-bold text-white tracking-[0.02em] font-['Cinzel',serif] leading-tight">
+              AI INFLUENCER
+            </span>
+            <span className="text-[10px] font-['Montserrat',sans-serif] text-[#D9BA72] tracking-[0.38em] uppercase font-bold mt-0.5">
+              STUDIO
+            </span>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <button

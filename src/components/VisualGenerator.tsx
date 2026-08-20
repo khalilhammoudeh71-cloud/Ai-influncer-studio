@@ -51,6 +51,7 @@ import {
 import { api } from '../services/apiService';
 import toast from 'react-hot-toast';
 import { cn } from '../utils/cn';
+import { useCreatorProfile } from '../utils/creatorProfile';
 
 interface VisualGeneratorProps {
   persona: Persona;
@@ -279,6 +280,10 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
   );
   const [selectedGoal, setSelectedGoal] = useState<GoalKey | null>(null);
 
+  // Creator Profile & Duo Shoot State
+  const [creatorProfile] = useCreatorProfile();
+  const [includeCreator, setIncludeCreator] = useState(false);
+
   const handlePickerMode = (mode: PickerMode) => {
     setPickerMode(mode);
     localStorage.setItem(PICKER_MODE_KEY, mode);
@@ -372,9 +377,13 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
         setVideoModels(vm);
         setThreeDModels(tm);
 
-        // Non-Pro Mode Default Cascade: GPT Image 2 -> Nano Banana Pro -> Nano Banana 2
+        // Default Model Cascade: 1. SeeDream 5.0 Pro -> 2. Qwen 3.0 Pro -> 3. GPT Image 2 / Nano Banana Pro
         const findDefaultNonProModel = (list: ModelInfo[]) => {
-          const cascade = ['openai:gpt-image-2', 'replit:gpt-image-1', 'google:nano-banana-pro', 'google:nano-banana-2'];
+          const seedream = list.find(x => x.id.includes('seedream-v5') || x.name.toLowerCase().includes('seedream 5') || x.id.includes('seedream'));
+          if (seedream) return seedream;
+          const qwen = list.find(x => x.id.includes('qwen-3') || x.name.toLowerCase().includes('qwen 3'));
+          if (qwen) return qwen;
+          const cascade = ['openai:gpt-image-2', 'google:nano-banana-pro', 'replit:gpt-image-1', 'google:nano-banana-2'];
           for (const candidate of cascade) {
             const found = list.find(x => x.id === candidate);
             if (found) return found;
@@ -493,10 +502,18 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
       setActionError(null);
 
       const primaryRef = allRefImages[0] || undefined;
-      const extraRefs = allRefImages.slice(1);
+      const extraRefs = [...allRefImages.slice(1)];
+      if (includeCreator && creatorProfile.primaryPhoto && !extraRefs.includes(creatorProfile.primaryPhoto)) {
+        extraRefs.push(creatorProfile.primaryPhoto);
+      }
       const personaForGen = primaryRef
         ? { ...activePersonaObj, referenceImage: primaryRef }
         : activePersonaObj;
+
+      const creatorDuoPrompt = includeCreator
+        ? ` Duo photoshoot: featuring ${persona.name} standing and posing alongside the creator (${creatorProfile.name || 'Dr. H'}, ${creatorProfile.appearance || 'stylish creator'}), interacting naturally together in frame, high aesthetic fashion shoot.`
+        : '';
+      const effectiveInstructions = `${prompt}${creatorDuoPrompt}`.trim();
 
       const params = {
         persona: (personaForGen || persona) as any,
@@ -504,7 +521,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
         outfitStyle: selectedOutfit,
         framing: selectedFraming,
         mood: selectedMood,
-        additionalInstructions: prompt,
+        additionalInstructions: effectiveInstructions,
         aspectRatio: selectedAspectRatio,
         additionalImages: extraRefs.length > 0 ? extraRefs : undefined,
         naturalLook,
@@ -560,10 +577,19 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
 
     try {
       const primaryRef = allRefImages[0] || undefined;
-      const extraRefs = allRefImages.slice(1);
+      const extraRefs = [...allRefImages.slice(1)];
+      if (includeCreator && creatorProfile.primaryPhoto && !extraRefs.includes(creatorProfile.primaryPhoto)) {
+        extraRefs.push(creatorProfile.primaryPhoto);
+      }
       const personaForGen = primaryRef
         ? { ...activePersonaObj, referenceImage: primaryRef }
         : activePersonaObj;
+
+      const creatorDuoPrompt = includeCreator
+        ? ` Duo photoshoot: featuring ${persona.name} standing and posing alongside the creator (${creatorProfile.name || 'Dr. H'}, ${creatorProfile.appearance || 'stylish creator'}), interacting naturally together in frame, high aesthetic fashion shoot.`
+        : '';
+      const effectiveInstructions = `${prompt}${creatorDuoPrompt}`.trim();
+
       const genResult = await generateImage({
         persona: (personaForGen || persona) as any,
         modelId: selectedModel,
@@ -571,7 +597,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
         outfitStyle: selectedOutfit,
         framing: selectedFraming,
         mood: selectedMood,
-        additionalInstructions: prompt,
+        additionalInstructions: effectiveInstructions,
         aspectRatio: selectedAspectRatio,
         additionalImages: extraRefs.length > 0 ? extraRefs : undefined,
         naturalLook,
@@ -1020,15 +1046,39 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
                 <span className="flex items-center gap-1.5">
                   <Type size={12} className="text-[#00D4FF]" /> Prompt
                 </span>
-                <button
-                  onClick={() => handleEnhance(prompt, setPrompt, setIsEnhancingPrompt)}
-                  disabled={isGenerating || isProcessing || !prompt.trim() || isEnhancingPrompt}
-                  className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-[#00D4FF]/10 border border-[#00D4FF]/20 text-[#00D4FF] hover:bg-[#00D4FF]/20 transition-all disabled:opacity-30 cursor-pointer select-none"
-                  title="Enhance prompt with AI"
-                >
-                  {isEnhancingPrompt ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-                  <span className="text-[8px] font-extrabold uppercase tracking-wider">Enhance</span>
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!creatorProfile.primaryPhoto && creatorProfile.photos.length === 0) {
+                        toast('Tip: Upload your photos in Settings > Creator Identity to lock your face!', { icon: '📸' });
+                      }
+                      setIncludeCreator(prev => !prev);
+                    }}
+                    className={cn(
+                      "flex items-center gap-1 px-2 py-0.5 rounded-lg border transition-all cursor-pointer select-none",
+                      includeCreator 
+                        ? "bg-[#E7C477]/20 border-[#E7C477] text-[#F2D58D] shadow-sm shadow-amber-950/30 font-bold" 
+                        : "bg-white/5 border-white/10 text-zinc-400 hover:text-[#F5F1E8] hover:bg-white/10 hover:border-[#E7C477]/30"
+                    )}
+                    title="Include Creator in Duo Shot"
+                  >
+                    <User className="w-3 h-3 text-[#E7C477]" />
+                    <span className="text-[8px] font-extrabold uppercase tracking-wider">
+                      {includeCreator ? `Duo with ${creatorProfile.name || 'Me'}` : '+ Include Creator'}
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() => handleEnhance(prompt, setPrompt, setIsEnhancingPrompt)}
+                    disabled={isGenerating || isProcessing || !prompt.trim() || isEnhancingPrompt}
+                    className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-[#00D4FF]/10 border border-[#00D4FF]/20 text-[#00D4FF] hover:bg-[#00D4FF]/20 transition-all disabled:opacity-30 cursor-pointer select-none"
+                    title="Enhance prompt with AI"
+                  >
+                    {isEnhancingPrompt ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                    <span className="text-[8px] font-extrabold uppercase tracking-wider">Enhance</span>
+                  </button>
+                </div>
               </label>
               <textarea
                 value={prompt}

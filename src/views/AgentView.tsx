@@ -21,6 +21,8 @@ import {
   Video as VideoIcon,
   FileText,
   Mic,
+  PhoneCall,
+  PhoneOff,
   DollarSign,
   Layers,
   Heart,
@@ -44,18 +46,26 @@ import {
   Film,
   Download,
   Edit3,
-  Copy
+  Copy,
+  Flame,
+  RotateCcw,
+  User,
+  Plus,
+  Link
 } from 'lucide-react';
 import { Persona, Tab } from '../types';
+import VoiceCloneStudioModal from '../components/VoiceCloneStudioModal';
 import { api } from '../services/apiService';
 import { generatePersonaPlan } from '../utils/personaEngine';
-import { generateImage, upscaleImage } from '../services/imageService';
+import { generateImage, upscaleImage, authFetch } from '../services/imageService';
 import { cn } from '../utils/cn';
+import { trimAudioBase64To10Sec } from '../utils/audioUtils';
 import toast from 'react-hot-toast';
 
 interface AgentViewProps {
   personas: Persona[];
   setPersonas: React.Dispatch<React.SetStateAction<Persona[]>>;
+  selectedPersonaId?: string;
   onSelectPersona: (id: string) => void;
   nav: {
     push: (entry: { view: Tab | 'persona-builder'; subView?: string; params?: any }) => void;
@@ -80,16 +90,17 @@ interface Message {
   role: 'user' | 'model';
   content: string;
   attachments?: Attachment[];
-  status?: 'clarifying' | 'executing' | 'normal';
+  status?: 'clarifying' | 'executing' | 'normal' | 'done';
   suggestedSteps?: any[];
   critiqueLogs?: string[];
   collaborationLogs?: CollaborationMsg[];
+  planCard?: { title: string; steps: { title: string; estimatedCost: string }[]; totalCost: string };
   isExecuting?: boolean;
   execLogs?: string[];
   execSteps?: { 
     type: string; 
     params: any; 
-    status: 'pending' | 'running' | 'success' | 'error';
+    status: 'pending' | 'running' | 'success' | 'error' | 'done' | 'executing';
     resultUrl?: string;
     resultUrls?: string[];
     isActionLoading?: 'video' | 'upscale' | 'swap' | null;
@@ -137,16 +148,28 @@ const GenerationProgressFrame: React.FC<{
     return () => clearInterval(timer);
   }, [stepType]);
 
+  const isVideo = stepType === 'generate_video' || stepType === 'storyboard_sequence' || stepType === 'generate_talking_head';
+  const isVoice = stepType === 'generate_voice' || stepType === 'clone_voice';
+  const isPersona = stepType === 'create_persona' || stepType === 'generate_content_plan';
+
   const resolvedModelName = modelId ? (
     modelId.includes('seedream') ? 'ByteDance SeeDream 5.0 Pro' :
     modelId.includes('gpt-image-2') || modelId.includes('gpt-image-1') ? 'GPT Image 2' :
-    modelId.includes('imagen') ? 'Google Imagen 4' :
+    modelId.includes('imagen') ? 'Google Imagen 3 Fast' :
     modelId.includes('wan') ? 'Wan 2.2 Video' :
     modelId.includes('veo') ? 'Google Veo Omni' :
-    modelId.includes('kling') ? 'Kling 3.0 Pro' : modelId
-  ) : 'ByteDance SeeDream 5.0 Pro';
+    modelId.includes('kling') ? 'Kling 3.0 Pro' :
+    modelId.includes('elevenlabs') ? 'ElevenLabs Audio' :
+    modelId.includes('omnivoice') ? 'Wavespeed OmniVoice' : modelId
+  ) : (isVoice ? 'ElevenLabs / OmniVoice' : isPersona ? 'Studio Persona Engine' : 'Google Imagen 3 Fast');
 
-  const isVideo = stepType === 'generate_video' || stepType === 'storyboard_sequence' || stepType === 'generate_talking_head';
+  const stepTitle = isVoice 
+    ? 'Synthesizing Voiceover Audio' 
+    : isVideo 
+      ? 'Rendering AI Video Story' 
+      : isPersona 
+        ? 'Architecting Persona Profile' 
+        : 'Synthesizing Visual Asset';
 
   return (
     <div className="mt-2.5 p-3.5 bg-black/80 border border-pink-500/40 rounded-xl space-y-3 relative overflow-hidden shadow-2xl">
@@ -159,11 +182,11 @@ const GenerationProgressFrame: React.FC<{
       <div className="relative z-10 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2.5 min-w-0">
           <div className="w-8 h-8 rounded-lg bg-pink-500/20 border border-pink-500/40 flex items-center justify-center shrink-0">
-            {isVideo ? <Film className="w-4 h-4 text-pink-400 animate-spin" /> : <Sparkles className="w-4 h-4 text-pink-400 animate-spin" />}
+            {isVoice ? <Mic className="w-4 h-4 text-cyan-400 animate-pulse" /> : isVideo ? <Film className="w-4 h-4 text-pink-400 animate-spin" /> : <Sparkles className="w-4 h-4 text-pink-400 animate-spin" />}
           </div>
           <div className="min-w-0">
             <div className="text-[11px] font-black text-white flex items-center gap-1.5">
-              <span className="truncate">{isVideo ? 'Rendering AI Video' : 'Synthesizing Visual Asset'}</span>
+              <span className="truncate">{stepTitle}</span>
               <span className="text-[9px] font-bold text-pink-300 bg-pink-500/20 border border-pink-500/30 px-2 py-0.5 rounded-full shrink-0">
                 {resolvedModelName}
               </span>
@@ -463,17 +486,11 @@ function audioBufferToWav(buffer: AudioBuffer): Blob {
 
   return new Blob([bufferArr], { type: 'audio/wav' });
 }
-export default function AgentView({ personas, setPersonas, onSelectPersona, nav }: AgentViewProps) {
+export default function AgentView({ personas, setPersonas, selectedPersonaId: propSelectedPersonaId, onSelectPersona, nav }: AgentViewProps) {
+  const effectiveSelectedPersonaId = propSelectedPersonaId ?? (typeof localStorage !== 'undefined' ? (localStorage.getItem('ai_influencer_selected_id') || localStorage.getItem('selected_persona_id')) : undefined);
   const [inputText, setInputText] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: 'welcome',
-      role: 'model',
-      content: "👋 How can I help build your AI influencer today?",
-      status: 'normal'
-    }
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
   
   const [isSending, setIsSending] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -484,6 +501,18 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
   const [autopilotActive, setAutopilotActive] = useState(false);
   const [autopilotInterval, setAutopilotInterval] = useState<'30s' | '1h' | '6h' | '12h'>('1h');
   const [autoApprove, setAutoApprove] = useState(false);
+  const [allowNsfw, setAllowNsfw] = useState(() => localStorage.getItem('agent_allow_nsfw') === 'true');
+  const [voiceLlmModel, setVoiceLlmModel] = useState<string>(() => {
+    const saved = localStorage.getItem('agent_voice_llm');
+    if (!saved || saved.includes('ollama')) return 'gemini';
+    return saved;
+  });
+  const [deepResearchActive, setDeepResearchActive] = useState(false);
+  const [socialResearchActive, setSocialResearchActive] = useState(false);
+  const [webpageResearchActive, setWebpageResearchActive] = useState(false);
+  const [webpageUrlInput, setWebpageUrlInput] = useState('');
+  const [showWebpageUrlModal, setShowWebpageUrlModal] = useState(false);
+  const [isPlusMenuOpen, setIsPlusMenuOpen] = useState(false);
   const [pendingApprovals, setPendingApprovals] = useState<{
     id: string;
     type: 'image' | 'video' | 'voice' | 'plan' | 'revenue';
@@ -545,10 +574,12 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
   const [studioResultVideoUrl, setStudioResultVideoUrl] = useState<string | null>(null);
 
   // Voice engine states
-  const [voiceEngine, setVoiceEngine] = useState<'omnivoice' | 'elevenlabs'>('omnivoice');
+  const [voiceEngine, setVoiceEngine] = useState<string>('omnivoice');
   const [voiceNameInput, setVoiceNameInput] = useState('Sofia Voice');
   const [voiceDescInput, setVoiceDescInput] = useState('Voice clone of Sofia reference clip');
-  const [clonedVoiceId, setClonedVoiceId] = useState<string | null>(null);
+  const [clonedVoiceId, setClonedVoiceId] = useState<string | null>(() => {
+    return localStorage.getItem('superagent_cloned_voice_id') || localStorage.getItem('agent_default_voice_id') || null;
+  });
 
   // Social Downloader States
   const [downloaderUrl, setDownloaderUrl] = useState('');
@@ -568,6 +599,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
   const agentTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const handleInputTextChange = (val: string) => {
+    stopAllAgentAudio();
     setInputText(val);
     if (agentTextareaRef.current) {
       agentTextareaRef.current.style.height = 'auto';
@@ -668,6 +700,19 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
     } catch (e) {
       console.error('Failed to load presets:', e);
     }
+  }, []);
+
+  // Self-healing effect: Automatically purge any legacy "hello" execution cards from state
+  useEffect(() => {
+    setMessages(prev => prev.filter(m => {
+      if (m.suggestedSteps) {
+        const contentStr = (m.content || '').toLowerCase();
+        if (contentStr.includes('request: "hello"') || contentStr.includes('seedream') || contentStr.includes('hello')) {
+          return false;
+        }
+      }
+      return true;
+    }));
   }, []);
 
   // Background Autopilot Timer Loop
@@ -790,6 +835,759 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
       recognitionRef.current = rec;
     }
   }, []);
+
+  // Global Default Cloned Voice State
+  const [clonedVoiceRef, setClonedVoiceRef] = useState<string | null>(() => localStorage.getItem('superagent_cloned_voice') || null);
+  const [isVoiceCloneModalOpen, setIsVoiceCloneModalOpen] = useState(false);
+  const [isCloningVoice, setIsCloningVoice] = useState(false);
+  const voiceUploadInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleVoiceCloneUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsCloningVoice(true);
+    const toastId = toast.loading("Analyzing media & extracting 16kHz audio sample for Voice Clone...");
+
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      const rawDataUrl = ev.target?.result as string;
+      const dataUrl = await trimAudioBase64To10Sec(rawDataUrl);
+      try {
+        const res = await fetch('/api/agent/set-default-voice', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ voiceReference: dataUrl })
+        });
+        const data = await res.json();
+        if (data.success) {
+          setClonedVoiceRef('active');
+          if (data.voiceId) {
+            setClonedVoiceId(data.voiceId);
+            localStorage.setItem('superagent_cloned_voice_id', data.voiceId);
+          }
+          try {
+            localStorage.setItem('superagent_cloned_voice', 'active');
+            localStorage.setItem('superagent_cloned_voice_audio', dataUrl);
+          } catch (e) {
+            console.warn('[LocalStorage Note]:', e);
+          }
+          toast.success("Voice Cloned & Set as Default! Super Agent will now speak using this voice.", { id: toastId });
+        } else {
+          toast.error(data.error || "Failed to process voice sample.", { id: toastId });
+        }
+      } catch (err) {
+        console.error('[Voice Upload Exception]:', err);
+        toast.error("Failed to upload voice sample to server.", { id: toastId });
+      } finally {
+        setIsCloningVoice(false);
+        if (voiceUploadInputRef.current) voiceUploadInputRef.current.value = '';
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const clearClonedVoice = async () => {
+    setClonedVoiceRef(null);
+    setClonedVoiceId(null);
+    localStorage.removeItem('superagent_cloned_voice');
+    localStorage.removeItem('superagent_cloned_voice_id');
+    localStorage.removeItem('superagent_cloned_voice_audio');
+    try {
+      await fetch('/api/agent/set-default-voice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ voiceReference: null })
+      });
+      toast('Cloned voice cleared. Returned to default studio voice.');
+    } catch {}
+  };
+
+  const [isPlayingVoiceSample, setIsPlayingVoiceSample] = useState(false);
+  const sampleAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  const handlePlayVoiceSample = async () => {
+    if (isPlayingVoiceSample && sampleAudioRef.current) {
+      sampleAudioRef.current.pause();
+      sampleAudioRef.current = null;
+      setIsPlayingVoiceSample(false);
+      return;
+    }
+
+    setIsPlayingVoiceSample(true);
+    const toastId = toast.loading("Synthesizing active voice sample...");
+    try {
+      const savedAudio = localStorage.getItem('superagent_cloned_voice_audio') || localStorage.getItem('voice_sample_1');
+      let targetAudioUrl = savedAudio;
+
+      if (!targetAudioUrl) {
+        const res = await fetch('/api/agent/test-voice-clone', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            textToSpeak: "Hey there! This is your AI agent's active voice. Everything is configured and ready to go!",
+            model: 'elevenlabs-v3'
+          })
+        });
+        const data = await res.json();
+        if (data.audioUrl) {
+          targetAudioUrl = data.audioUrl;
+        }
+      }
+
+      if (targetAudioUrl) {
+        toast.dismiss(toastId);
+        const audio = new Audio(targetAudioUrl);
+        sampleAudioRef.current = audio;
+        audio.onended = () => setIsPlayingVoiceSample(false);
+        audio.onerror = () => setIsPlayingVoiceSample(false);
+        await audio.play();
+      } else {
+        toast.error("No voice audio clip available.", { id: toastId });
+        setIsPlayingVoiceSample(false);
+      }
+    } catch (err) {
+      console.error('[Play Voice Sample Exception]:', err);
+      toast.error("Failed to play voice sample.", { id: toastId });
+      setIsPlayingVoiceSample(false);
+    }
+  };
+
+  // Hands-Free Live Voice Call State with Barge-In Interruption & Acoustic Feedback Safeguard
+  const [isLiveVoiceCallActive, setIsLiveVoiceCallActive] = useState(false);
+  const isLiveVoiceCallActiveRef = useRef(false);
+  const isAgentSpeakingRef = useRef(false);
+  const lastDispatchedTextRef = useRef('');
+  const liveVoiceAudioRef = useRef<HTMLAudioElement | null>(null);
+  const liveVoiceRecRef = useRef<any>(null);
+  const [callDuration, setCallDuration] = useState(0);
+  const [isUserSpeaking, setIsUserSpeaking] = useState(false);
+  const [isAgentSpeakingState, setIsAgentSpeakingState] = useState(false);
+  
+  // Parallel sentence-by-sentence queue states
+  const sentenceIndexRef = useRef<number>(0);
+  const playbackIndexRef = useRef<number>(0);
+  const audioSegmentsRef = useRef<Record<number, any>>({});
+  const audioPlayingRef = useRef<boolean>(false);
+  const streamActiveRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    isLiveVoiceCallActiveRef.current = isLiveVoiceCallActive;
+    if (!isLiveVoiceCallActive) {
+      setCallDuration(0);
+      setIsUserSpeaking(false);
+      setIsAgentSpeakingState(false);
+    }
+  }, [isLiveVoiceCallActive]);
+
+  // Call duration timer
+  useEffect(() => {
+    if (!isLiveVoiceCallActive) return;
+    const interval = setInterval(() => setCallDuration(d => d + 1), 1000);
+    return () => clearInterval(interval);
+  }, [isLiveVoiceCallActive]);
+
+  // Sync isAgentSpeakingRef to state for UI rendering
+  useEffect(() => {
+    if (!isLiveVoiceCallActive) return;
+    const interval = setInterval(() => {
+      setIsAgentSpeakingState(isAgentSpeakingRef.current);
+    }, 100);
+    return () => clearInterval(interval);
+  }, [isLiveVoiceCallActive]);
+
+  const lastRestartTimeRef = useRef<number>(0);
+  const restartCountRef = useRef<number>(0);
+
+  const stopAllAgentAudio = () => {
+    console.log('[Voice] 🛑 Stopping all audio playback and flushing queues');
+    if (liveVoiceAudioRef.current) {
+      try {
+        liveVoiceAudioRef.current.pause();
+        liveVoiceAudioRef.current.currentTime = 0;
+      } catch {}
+      liveVoiceAudioRef.current = null;
+    }
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      try { window.speechSynthesis.cancel(); } catch {}
+    }
+    
+    // Flush streaming voice queues and reset flags
+    sentenceIndexRef.current = 0;
+    playbackIndexRef.current = 0;
+    audioSegmentsRef.current = {};
+    audioPlayingRef.current = false;
+    streamActiveRef.current = false;
+    isAgentSpeakingRef.current = false;
+  };
+
+  const speechDebounceTimerRef = useRef<any>(null);
+  const voiceCallBusyRef = useRef(false);
+
+  // ─── REBUILT: Standalone voice message sender (separate from sendMessage) ─────
+  const sendVoiceMessage = async (spokenText: string) => {
+    if (!spokenText.trim() || !isLiveVoiceCallActiveRef.current) return;
+    if (voiceCallBusyRef.current) {
+      console.log('[Voice] ⏳ Already processing, queuing will retry after current finishes');
+      return;
+    }
+
+    voiceCallBusyRef.current = true;
+    isAgentSpeakingRef.current = true;
+    console.log('[Voice] 📤 Sending:', spokenText);
+
+    // Watchdog timer: automatically recover state if pipeline stalls >12 seconds
+    const watchdogTimer = setTimeout(() => {
+      if (voiceCallBusyRef.current) {
+        console.warn('[Voice Watchdog] ⏰ Processing timed out after 12s, auto-recovering...');
+        stopAllAgentAudio();
+        restartMic();
+      }
+    }, 12000);
+
+    // Stop mic cleanly while we process
+    if (liveVoiceRecRef.current) {
+      try {
+        liveVoiceRecRef.current.onend = null;
+        liveVoiceRecRef.current.onerror = null;
+        liveVoiceRecRef.current.onresult = null;
+        liveVoiceRecRef.current.abort();
+      } catch {}
+      liveVoiceRecRef.current = null;
+    }
+    setIsUserSpeaking(false);
+
+    // Add user message to chat
+    const userMsg: Message = {
+      id: Math.random().toString(),
+      role: 'user',
+      content: spokenText
+    };
+    setMessages(prev => [...prev.slice(-35), userMsg]);
+    setInputText('');
+
+    // Clear queues & flags
+    sentenceIndexRef.current = 0;
+    playbackIndexRef.current = 0;
+    audioSegmentsRef.current = {};
+    audioPlayingRef.current = false;
+    streamActiveRef.current = true; // Stream is starting
+
+    // Create a placeholder agent message object so we can update its content in real-time as text streams in
+    const agentMsgId = Math.random().toString();
+    const agentMsgObj: Message = {
+      id: agentMsgId,
+      role: 'model',
+      content: '',
+      status: 'normal'
+    };
+    setMessages(prev => [...prev.slice(-35), agentMsgObj]);
+
+    const restartMic = () => {
+      clearTimeout(watchdogTimer);
+      console.log('[Voice] 🎤 Restarting mic...');
+      voiceCallBusyRef.current = false;
+      isAgentSpeakingRef.current = false;
+      lastDispatchedTextRef.current = '';
+      if (isLiveVoiceCallActiveRef.current) {
+        restartSpeechRecognition();
+      }
+    };
+
+    const checkPlaybackFinished = () => {
+      const nextIdx = playbackIndexRef.current;
+      const totalSentences = sentenceIndexRef.current;
+
+      if (nextIdx < totalSentences) {
+        // There are more segments to play
+        playPlaybackQueue();
+      } else if (!streamActiveRef.current) {
+        // Stream is fully complete and all sentences have been played/processed
+        console.log('[Voice Queue] ✅ Stream completed & all parallel audio played!');
+        restartMic();
+      }
+    };
+
+    const playPlaybackQueue = async () => {
+      if (audioPlayingRef.current) return;
+
+      const nextIdx = playbackIndexRef.current;
+      const segment = audioSegmentsRef.current[nextIdx];
+
+      if (segment === undefined) {
+        // Next segment in sequence is still loading, wait for it
+        return;
+      }
+
+      // Mark that we are processing this index
+      playbackIndexRef.current++;
+
+      if (segment === 'failed') {
+        // Skip failed segment and check next / completion
+        playPlaybackQueue();
+        checkPlaybackFinished();
+        return;
+      }
+
+      audioPlayingRef.current = true;
+      liveVoiceAudioRef.current = segment;
+      isAgentSpeakingRef.current = true;
+
+      const safetyTimer = setTimeout(() => {
+        console.warn(`[Voice Playback] ⏰ Segment ${nextIdx} safety timeout`);
+        try { segment.pause(); } catch {}
+        audioPlayingRef.current = false;
+        isAgentSpeakingRef.current = false;
+        checkPlaybackFinished();
+      }, 120000); // 2 minute safety timeout to prevent long sentence cutoffs
+
+      segment.onended = () => {
+        clearTimeout(safetyTimer);
+        audioPlayingRef.current = false;
+        isAgentSpeakingRef.current = false;
+        checkPlaybackFinished();
+      };
+
+      segment.onerror = () => {
+        clearTimeout(safetyTimer);
+        console.warn(`[Voice Playback] ❌ Audio play error on segment ${nextIdx}`);
+        audioPlayingRef.current = false;
+        isAgentSpeakingRef.current = false;
+        checkPlaybackFinished();
+      };
+
+      try {
+        await segment.play();
+      } catch (err) {
+        console.warn(`[Voice Playback] ❌ segment.play() error on segment ${nextIdx}:`, err);
+        clearTimeout(safetyTimer);
+        audioPlayingRef.current = false;
+        isAgentSpeakingRef.current = false;
+        checkPlaybackFinished();
+      }
+    };
+
+    const createWebSpeechAudioSegment = (text: string) => {
+      let isCancelled = false;
+      return {
+        play: function() {
+          return new Promise<void>((resolve) => {
+            if (typeof window === 'undefined' || !window.speechSynthesis || isCancelled) {
+              if (this.onended) this.onended();
+              resolve();
+              return;
+            }
+            const synth = window.speechSynthesis;
+            if (synth.paused) {
+              try { synth.resume(); } catch {}
+            }
+
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.rate = 1.05;
+            utterance.pitch = 1.0;
+
+            const voices = synth.getVoices();
+            const preferred = voices.find(v => v.lang.startsWith('en') && (v.name.includes('Natural') || v.name.includes('Samantha') || v.name.includes('Google') || v.name.includes('Karen') || v.name.includes('Victoria')));
+            if (preferred) utterance.voice = preferred;
+
+            let finished = false;
+
+            const done = () => {
+              if (finished) return;
+              finished = true;
+              if (this.onended) this.onended();
+              resolve();
+            };
+
+            utterance.onend = () => { clearTimeout(safetyTimeout); done(); };
+            utterance.onerror = () => { clearTimeout(safetyTimeout); done(); };
+
+            // Safety timeout: 8 seconds max per sentence segment so Chrome WebSpeech never hangs the queue
+            const safetyTimeout = setTimeout(done, 8000);
+
+            try {
+              if (synth.speaking || synth.pending) {
+                try { synth.cancel(); } catch {}
+              }
+              synth.speak(utterance);
+            } catch (err) {
+              console.warn('[WebSpeech] synth.speak error:', err);
+              clearTimeout(safetyTimeout);
+              done();
+            }
+          });
+        },
+        pause: function() {
+          isCancelled = true;
+          if (typeof window !== 'undefined' && window.speechSynthesis) {
+            try { window.speechSynthesis.cancel(); } catch {}
+          }
+          if (this.onended) this.onended();
+        },
+        onended: null as (() => void) | null,
+        onerror: null as (() => void) | null,
+      };
+    };
+
+    // Split long text into short clause-sized chunks safe for Chrome WebSpeech (< 12 seconds each)
+    const splitIntoShortClauses = (text: string): string[] => {
+      // If short enough, return as-is
+      if (text.length <= 80) return [text];
+      
+      // Split on commas, semicolons, colons, dashes, "and", "but", "or", "so", "because"
+      const clauseRegex = /[^,;:\-–—]+(?:[,;:\-–—]|(?:\s+(?:and|but|or|so|because|then|which|where|when)\s+))/gi;
+      const clauses: string[] = [];
+      let lastIdx = 0;
+      let currentChunk = '';
+      let match;
+
+      while ((match = clauseRegex.exec(text)) !== null) {
+        const piece = match[0].trim();
+        if ((currentChunk + ' ' + piece).trim().length > 100 && currentChunk.length > 10) {
+          clauses.push(currentChunk.trim());
+          currentChunk = piece;
+        } else {
+          currentChunk = (currentChunk + ' ' + piece).trim();
+        }
+        lastIdx = clauseRegex.lastIndex;
+      }
+
+      // Append remainder
+      const remainder = text.substring(lastIdx).trim();
+      if (remainder) {
+        currentChunk = (currentChunk + ' ' + remainder).trim();
+      }
+      if (currentChunk.trim()) {
+        clauses.push(currentChunk.trim());
+      }
+
+      return clauses.length > 0 ? clauses : [text];
+    };
+
+    const fetchTtsSegment = async (sentence: string, index: number) => {
+      const activePersonaObj = (effectiveSelectedPersonaId && effectiveSelectedPersonaId !== 'empty')
+        ? personas.find(p => p.id === effectiveSelectedPersonaId)
+        : undefined;
+
+      const voiceIdToUse = activePersonaObj?.voiceId || localStorage.getItem('superagent_cloned_voice_id') || undefined;
+      const voiceSampleToUse = activePersonaObj?.voiceSampleUrl || localStorage.getItem('superagent_cloned_voice_audio') || undefined;
+      const engineToUse = activePersonaObj?.voiceEngine || (voiceIdToUse ? 'elevenlabs' : (voiceEngine || 'omnivoice'));
+      const voiceNameObj = activePersonaObj?.name || 'Aoede';
+
+      // Try fast Cloud TTS first (OpenAI / ElevenLabs / Wavespeed)
+      try {
+        const controller = new AbortController();
+        const ttsTimeout = setTimeout(() => controller.abort(), 30000);
+
+        const ttsRes = await authFetch('/api/generate-speech', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
+          body: JSON.stringify({
+            text: sentence,
+            voiceName: voiceNameObj,
+            voiceReference: voiceSampleToUse,
+            voiceId: voiceIdToUse,
+            engine: engineToUse,
+            allowNsfw
+          })
+        });
+
+        clearTimeout(ttsTimeout);
+
+        if (ttsRes.ok) {
+          const ttsData = await ttsRes.json();
+          if (ttsData.audioUrl) {
+            console.log(`[Voice TTS] 🎵 Cloud TTS audio ready for segment ${index} (${engineToUse})`);
+            const audio = new Audio(ttsData.audioUrl);
+            audioSegmentsRef.current[index] = audio;
+            playPlaybackQueue();
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn(`[Voice TTS] Cloud TTS timed out/failed for segment ${index}, using WebSpeech fallback`, err);
+      }
+
+      console.log(`[Voice TTS] 🔊 Using WebSpeech fallback for segment ${index}`);
+      audioSegmentsRef.current[index] = createWebSpeechAudioSegment(sentence);
+      playPlaybackQueue();
+    };
+
+    try {
+      // Build history
+      const history = [...messages, userMsg].slice(-20).map(m => ({
+        role: m.role,
+        content: m.content
+      }));
+
+      let authHeader: Record<string, string> = {};
+      try {
+        const { supabase } = await import('../lib/supabase');
+        const sessionRes = await supabase.auth.getSession();
+        const token = sessionRes?.data?.session?.access_token;
+        if (token) authHeader = { 'Authorization': `Bearer ${token}` };
+      } catch {}
+
+      const activePersonaObj = (effectiveSelectedPersonaId && effectiveSelectedPersonaId !== 'empty')
+        ? personas.find(p => p.id === effectiveSelectedPersonaId)
+        : undefined;
+
+      console.log('[Voice Stream] 🔄 Fetching /api/agent/voice-chat-stream...');
+      const response = await fetch('/api/agent/voice-chat-stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeader },
+        body: JSON.stringify({
+          messages: history,
+          allowNsfw,
+          voiceLlmModel,
+          activePersona: activePersonaObj
+        })
+      });
+
+      if (!response.ok) throw new Error(`Stream error ${response.status}`);
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('No readable stream reader');
+
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
+      let accumulatedText = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        const textChunk = decoder.decode(value, { stream: true });
+        const lines = textChunk.split('\n');
+
+        for (const line of lines) {
+          const cleanLine = line.trim();
+          if (cleanLine.startsWith('data: ')) {
+            const dataStr = cleanLine.substring(6);
+            try {
+              const parsed = JSON.parse(dataStr);
+              if (parsed.done) {
+                console.log('[Voice Stream] 🏁 Stream complete marker received');
+                break;
+              }
+              if (parsed.error) {
+                throw new Error(parsed.error);
+              }
+              if (parsed.text) {
+                const delta = parsed.text;
+                accumulatedText += delta;
+                buffer += delta;
+
+                // Update placeholder message content in chat in real-time
+                setMessages(prev => prev.map(m => m.id === agentMsgId ? { ...m, content: accumulatedText } : m));
+
+                // Regex to find complete sentences (at least 6 chars to avoid tiny "Oh," cutoffs)
+                const sentenceRegex = /[^.!?\n]+[.!?]+(?:\s+|$)/g;
+                let match;
+                let lastIndex = 0;
+
+                while ((match = sentenceRegex.exec(buffer)) !== null) {
+                  const sentence = match[0].replace(/[*_#`\\\\]/g, '').trim();
+                  if (sentence.length > 5) {
+                    const currentIdx = sentenceIndexRef.current++;
+                    fetchTtsSegment(sentence, currentIdx);
+                  }
+                  lastIndex = sentenceRegex.lastIndex;
+                }
+
+                if (lastIndex > 0) {
+                  buffer = buffer.substring(lastIndex);
+                }
+              }
+            } catch {}
+          }
+        }
+      }
+
+      // Finish remaining buffer
+      streamActiveRef.current = false; // LLM stream is finished enqueuing
+      const remaining = buffer.replace(/[*_#`\\\\]/g, '').trim();
+      if (remaining.length > 1) {
+        console.log('[Voice Stream] 🏁 Enqueuing remaining text:', remaining);
+        const currentIdx = sentenceIndexRef.current++;
+        fetchTtsSegment(remaining, currentIdx);
+      }
+
+      // Wait for a brief moment to check if playback is done/idle
+      setTimeout(() => {
+        checkPlaybackFinished();
+      }, 500);
+
+    } catch (err) {
+      console.error('[Voice Stream] ❌ Pipeline error:', err);
+      streamActiveRef.current = false;
+      setMessages(prev => prev.map(m => m.id === agentMsgId ? { ...m, content: 'Sorry, I ran into a streaming error. Please try speaking again!' } : m));
+      restartMic();
+    }
+  };
+
+  // ─── Speech Recognition ──────────────────────────────────────────────────────
+  const isStartingRecRef = useRef(false);
+
+  const restartSpeechRecognition = () => {
+    if (!isLiveVoiceCallActiveRef.current || isStartingRecRef.current || isAgentSpeakingRef.current || voiceCallBusyRef.current) return;
+    isStartingRecRef.current = true;
+
+    // Rate-limiting to prevent CPU lockups & rapid restart loops
+    const now = Date.now();
+    if (now - lastRestartTimeRef.current < 1500) {
+      restartCountRef.current++;
+      if (restartCountRef.current > 3) {
+        console.warn('[Voice] Rapid restarts detected, backing off 2.5s...');
+        isStartingRecRef.current = false;
+        setTimeout(() => {
+          restartCountRef.current = 0;
+          if (isLiveVoiceCallActiveRef.current && !voiceCallBusyRef.current) {
+            restartSpeechRecognition();
+          }
+        }, 2500);
+        return;
+      }
+    } else {
+      restartCountRef.current = 0;
+    }
+    lastRestartTimeRef.current = now;
+
+    // Detach handlers BEFORE aborting to prevent cyclic event triggers & CPU spikes
+    const prevRec = liveVoiceRecRef.current;
+    liveVoiceRecRef.current = null;
+    if (prevRec) {
+      try {
+        prevRec.onend = null;
+        prevRec.onerror = null;
+        prevRec.onresult = null;
+        prevRec.abort();
+      } catch {}
+    }
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      isStartingRecRef.current = false;
+      return;
+    }
+
+    try {
+      const rec = new SpeechRecognition();
+      rec.continuous = true;
+      rec.interimResults = true;
+      rec.lang = 'en-US';
+
+      rec.onresult = (e: any) => {
+        if (liveVoiceRecRef.current !== rec) return;
+        
+        // Acoustic Feedback Protection: Mute mic processing while agent is actively speaking
+        if (isAgentSpeakingRef.current) {
+          console.log('[Voice] 🔇 Suppressing microphone acoustic feedback while agent speaks');
+          return;
+        }
+
+        let finalText = '';
+        let interimText = '';
+        let hasFinal = false;
+
+        for (let i = e.resultIndex; i < e.results.length; ++i) {
+          if (e.results[i].isFinal) {
+            finalText += e.results[i][0].transcript;
+            hasFinal = true;
+          } else {
+            interimText += e.results[i][0].transcript;
+          }
+        }
+
+        // Live visualizer feedback for interim speech
+        if (!hasFinal || !finalText.trim() || finalText.trim().length < 2) {
+          if (interimText.trim().length > 1) {
+            setIsUserSpeaking(true);
+            setInputText(interimText.trim());
+          }
+          return;
+        }
+
+        const speech = finalText.trim();
+        setIsUserSpeaking(true);
+        setInputText(speech);
+
+        // Debounce: wait 350ms after user finishes sentence, then send complete speech
+        if (speechDebounceTimerRef.current) clearTimeout(speechDebounceTimerRef.current);
+        speechDebounceTimerRef.current = setTimeout(() => {
+          setIsUserSpeaking(false);
+          if (speech && speech !== lastDispatchedTextRef.current) {
+            lastDispatchedTextRef.current = speech;
+            sendVoiceMessage(speech);
+          }
+        }, 350);
+      };
+
+      rec.onerror = (e: any) => {
+        if (liveVoiceRecRef.current !== rec) return;
+        console.warn('[Voice] Recognition error:', e.error);
+        if (e.error !== 'no-speech' && e.error !== 'aborted') {
+          setTimeout(() => {
+            if (isLiveVoiceCallActiveRef.current && !voiceCallBusyRef.current && liveVoiceRecRef.current === rec) {
+              restartSpeechRecognition();
+            }
+          }, 1500);
+        }
+      };
+
+      rec.onend = () => {
+        setIsUserSpeaking(false);
+        if (liveVoiceRecRef.current !== rec) return; // Stale instance, do not restart
+        // Auto-restart if call is still active and we're not busy processing
+        if (isLiveVoiceCallActiveRef.current && !voiceCallBusyRef.current) {
+          setTimeout(() => {
+            if (isLiveVoiceCallActiveRef.current && !voiceCallBusyRef.current) {
+              restartSpeechRecognition();
+            }
+          }, 1000);
+        }
+      };
+
+      rec.start();
+      liveVoiceRecRef.current = rec;
+      isStartingRecRef.current = false;
+      console.log('[Voice] 🎤 Speech recognition started');
+    } catch (err) {
+      isStartingRecRef.current = false;
+      console.warn('[Voice] Failed to start recognition:', err);
+    }
+  };
+
+  const startLiveVoiceCall = () => {
+    stopAllAgentAudio();
+    voiceCallBusyRef.current = false;
+    setIsLiveVoiceCallActive(true);
+    isLiveVoiceCallActiveRef.current = true;
+    lastDispatchedTextRef.current = '';
+    toast.success('Live Voice Call Active — Speak naturally with Super Agent');
+    restartSpeechRecognition();
+  };
+
+  const stopLiveVoiceCall = () => {
+    setIsLiveVoiceCallActive(false);
+    isLiveVoiceCallActiveRef.current = false;
+    voiceCallBusyRef.current = false;
+    stopAllAgentAudio();
+    if (speechDebounceTimerRef.current) {
+      clearTimeout(speechDebounceTimerRef.current);
+      speechDebounceTimerRef.current = null;
+    }
+    if (liveVoiceRecRef.current) {
+      try {
+        liveVoiceRecRef.current.onend = null;
+        liveVoiceRecRef.current.onerror = null;
+        liveVoiceRecRef.current.onresult = null;
+        liveVoiceRecRef.current.stop();
+      } catch {}
+      liveVoiceRecRef.current = null;
+    }
+    toast('Live Voice Call Ended');
+  };
 
   const prevMsgLengthRef = useRef(messages.length);
   useEffect(() => {
@@ -982,25 +1780,42 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
     const textToSend = overrideText !== undefined ? overrideText : inputText;
     if ((!textToSend.trim() && attachments.length === 0) || isSending) return;
 
+    const isLiveCall = isLiveVoiceCallActive || isLiveVoiceCallActiveRef.current;
+
+    // Stop any debounce timer
+    if (speechDebounceTimerRef.current) {
+      clearTimeout(speechDebounceTimerRef.current);
+      speechDebounceTimerRef.current = null;
+    }
+
+    let augmentedText = textToSend;
+    if (deepResearchActive) {
+      augmentedText = `[DEEP RESEARCH ACTIVE: Use live search engine & synthesize fresh web data]\n${augmentedText}`;
+    }
+    if (socialResearchActive) {
+      augmentedText = `[SOCIAL MEDIA RESEARCH ACTIVE: Analyze trending Instagram reels, TikTok audio, and X viral hooks]\n${augmentedText}`;
+    }
+    if (webpageResearchActive) {
+      augmentedText = `[WEBPAGE RESEARCH ACTIVE: Extract & analyze website content from URL: ${webpageUrlInput || 'target URL'}]\n${augmentedText}`;
+    }
+
     const userMessage: Message = {
       id: Math.random().toString(),
       role: 'user',
-      content: textToSend,
+      content: augmentedText,
       attachments: [...attachments]
     };
 
-    setMessages(prev => [...prev.slice(-25), userMessage]);
-    if (overrideText === undefined) {
-      setInputText('');
-      if (agentTextareaRef.current) {
-        agentTextareaRef.current.style.height = 'auto';
-      }
+    setMessages(prev => [...prev.slice(-35), userMessage]);
+    setInputText('');
+    if (agentTextareaRef.current) {
+      agentTextareaRef.current.style.height = 'auto';
     }
     setAttachments([]);
     setIsSending(true);
 
     try {
-      const history = [...messages, userMessage].slice(-15).map(m => ({
+      const history = [...messages, userMessage].slice(-30).map(m => ({
         role: m.role,
         content: m.content,
         attachments: m.attachments
@@ -1016,13 +1831,21 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
         console.warn('Could not load auth headers for agent chat:', e);
       }
 
-      const res = await fetch('/api/agent/chat', {
+      // For text chat, we always call /api/agent/chat
+      const chatEndpoint = '/api/agent/chat';
+
+      const res = await fetch(chatEndpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...authHeader
         },
-        body: JSON.stringify({ messages: history })
+        body: JSON.stringify({ 
+          messages: history, 
+          allowNsfw,
+          voiceLlmModel,
+          activePersona: (effectiveSelectedPersonaId && effectiveSelectedPersonaId !== 'empty') ? personas.find(p => p.id === effectiveSelectedPersonaId) : undefined
+        })
       });
 
       if (!res.ok) {
@@ -1030,114 +1853,41 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
       }
 
       const data = await res.json();
-      
+      const finalSuggestedSteps = data.suggestedSteps || undefined;
+
       const newMsgId = Math.random().toString();
       const newMsgObj: Message = {
         id: newMsgId,
         role: 'model',
         content: data.text || '',
         status: data.status || 'normal',
-        suggestedSteps: data.suggestedSteps || undefined,
+        suggestedSteps: finalSuggestedSteps,
         critiqueLogs: data.critiqueLogs || undefined,
         collaborationLogs: data.collaborationLogs || undefined,
-        execSteps: data.suggestedSteps 
-          ? data.suggestedSteps.map((s: any) => ({ ...s, status: 'pending', resultUrl: undefined, isActionLoading: null }))
+        execSteps: finalSuggestedSteps 
+          ? finalSuggestedSteps.map((s: any) => ({ ...s, status: 'pending', resultUrl: undefined, isActionLoading: null }))
           : undefined,
-        execLogs: data.suggestedSteps ? [] : undefined
+        execLogs: finalSuggestedSteps ? [] : undefined
       };
 
-      setMessages(prev => [...prev.slice(-25), newMsgObj]);
+      setMessages(prev => [...prev.slice(-35), newMsgObj]);
 
-      // Auto-trigger pipeline execution immediately with direct message object
-      setTimeout(() => {
-        runPipeline(newMsgId, newMsgObj);
-      }, 50);
-    } catch (err: any) {
-      console.warn('Agent chat error fallback triggered:', err);
-      const fallbackMsgId = Math.random().toString();
-      const imagesAtt = userMessage.attachments ? userMessage.attachments.filter(a => a.mimeType.startsWith('image/')) : [];
-      const videosAtt = userMessage.attachments ? userMessage.attachments.filter(a => a.mimeType.startsWith('video/') || a.mimeType.startsWith('audio/')) : [];
-      
-      const userAtt = imagesAtt.length > 0 ? imagesAtt[0].dataUrl : null;
-      const videoAtt = videosAtt.length > 0 ? videosAtt[0].dataUrl : null;
-      const lowerReq = (userMessage.content || '').toLowerCase();
-
-      const steps: any[] = [];
-
-      // Check if user is asking for multi-step avatar / voice / video generation
-      if (lowerReq.includes('talking') || lowerReq.includes('avatar') || lowerReq.includes('script') || lowerReq.includes('voice') || videoAtt) {
-        // Step 1: Image generation / edit
-        if (userAtt) {
-          steps.push({
-            type: 'edit_image',
-            params: {
-              editType: 'beautify',
-              prompt: userMessage.content || 'Uncensored visual edit',
-              sourceImage: userAtt,
-              modelId: 'wavespeed:bytedance/seedream-v5.0-pro'
-            },
-            status: 'pending' as const
-          });
-        }
-
-        // Step 2: Voice Clone if video or audio attached
-        if (videoAtt) {
-          steps.push({
-            type: 'clone_voice',
-            params: {
-              audio: videoAtt,
-              engine: 'omnivoice',
-              voiceName: 'Cloned Voice Sample'
-            },
-            status: 'pending' as const
-          });
-        }
-
-        // Step 3: Talking Avatar lip sync
-        steps.push({
-          type: 'generate_talking_head',
-          params: {
-            text: userMessage.content || 'Hello, welcome to my channel!',
-            image: userAtt || undefined
-          },
-          status: 'pending' as const
-        });
-      } else {
-        const fallbackStep = userAtt ? {
-          type: 'edit_image',
-          params: {
-            editType: 'beautify',
-            prompt: userMessage.content || 'Uncensored visual edit',
-            sourceImage: userAtt,
-            modelId: 'wavespeed:bytedance/seedream-v5.0-pro'
-          },
-          status: 'pending' as const
-        } : {
-          type: 'generate_image',
-          params: {
-            prompt: userMessage.content || 'Uncensored visual creation',
-            modelId: 'wavespeed:bytedance/seedream-v5.0-pro'
-          },
-          status: 'pending' as const
-        };
-        steps.push(fallbackStep);
+      if (newMsgObj.execSteps && newMsgObj.execSteps.length > 0) {
+        setTimeout(() => {
+          runPipeline(newMsgId, newMsgObj);
+        }, 50);
       }
-
-      const fallbackMsgObj: Message = {
+    } catch (err: any) {
+      console.warn('Agent chat fallback triggered:', err);
+      const fallbackMsgId = Math.random().toString();
+      const textReply = `Hey there! How can I help you build, design, or market your AI influencer today? You can ask me to generate photos, create videos, plan content, or manage personas!`;
+      const chatMsgObj: Message = {
         id: fallbackMsgId,
         role: 'model',
-        content: `Architected ${steps.length}-step multi-modal execution plan for: "${userMessage.content}".`,
-        status: 'executing',
-        suggestedSteps: steps,
-        execSteps: steps.map(s => ({ ...s, status: 'pending', resultUrl: undefined, isActionLoading: null })),
-        execLogs: []
+        content: textReply,
+        status: 'normal'
       };
-
-      setMessages(prev => [...prev.slice(-25), fallbackMsgObj]);
-
-      setTimeout(() => {
-        runPipeline(fallbackMsgId, fallbackMsgObj);
-      }, 50);
+      setMessages(prev => [...prev.slice(-25), chatMsgObj]);
     } finally {
       setIsSending(false);
     }
@@ -1634,30 +2384,7 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
 
       let stepsList = targetMsg.execSteps || targetMsg.suggestedSteps || [];
       if (!stepsList || stepsList.length === 0) {
-        const userMsg = [...messages].reverse().find(m => m.role === 'user');
-        const promptText = userMsg?.content || 'Generate AI visual asset';
-        addLocalLog(`⚡ Building execution pipeline step on the fly...`);
-
-        const fallbackStep = memoryFaceImage ? {
-          type: 'edit_image',
-          params: {
-            editType: 'beautify',
-            prompt: promptText,
-            sourceImage: memoryFaceImage,
-            modelId: 'wavespeed:bytedance/seedream-v5.0-pro'
-          },
-          status: 'pending' as const
-        } : {
-          type: 'generate_image',
-          params: {
-            prompt: promptText,
-            modelId: 'wavespeed:bytedance/seedream-v5.0-pro'
-          },
-          status: 'pending' as const
-        };
-
-        stepsList = [fallbackStep];
-        setMessages(prev => prev.map(m => m.id === messageId ? { ...m, execSteps: stepsList, suggestedSteps: stepsList } : m));
+        return;
       }
 
       const ensurePersona = async (): Promise<Persona> => {
@@ -1690,7 +2417,12 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
           personaNotes: ''
         };
 
-        const saved = await api.personas.create(defaultP);
+        let saved = defaultP;
+        try {
+          saved = await api.personas.create(defaultP);
+        } catch (err) {
+          console.warn('[Persona DB fallback]: Using local persona instance', err);
+        }
         createdPersona = saved;
         createdPersonaId = saved.id;
         setPersonas(prev => [...prev.filter(p => p.id !== 'empty'), saved]);
@@ -1734,14 +2466,19 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
             personaNotes: ''
           };
 
-          const saved = await api.personas.create(newPersona);
+          let saved = newPersona;
+          try {
+            saved = await api.personas.create(newPersona);
+          } catch (err) {
+            console.warn('[Persona DB fallback]: Using local persona instance', err);
+          }
           createdPersona = saved;
-          createdPersonaId = uniqueId;
+          createdPersonaId = saved.id;
 
           setPersonas(prev => [...prev, saved]);
-          onSelectPersona(uniqueId);
+          onSelectPersona(saved.id);
 
-          addLocalLog(`✅ Persona '${saved.name}' created with database entry.`);
+          addLocalLog(`✅ Persona '${saved.name}' created & activated.`);
           updateStepStatus(i, 'success', fallbackAvatar);
         }
 
@@ -1774,33 +2511,39 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
           addLocalLog(`⏳ Spinning up visual generation pipeline...`);
           addLocalLog(`📝 Prompt: "${step.params.prompt}"`);
 
-          let result;
-          try {
-            result = await generateImage({
-              persona: activeP,
-              modelId,
-              environment: step.params.environment,
-              outfitStyle: step.params.outfit,
-              framing: step.params.framing,
-              prompt: step.params.prompt,
-              aspectRatio: '1:1',
-              resolution: 'standard',
-              count: 1
-            });
-          } catch (firstErr: any) {
-            addLocalLog(`⚠️ [Self-Correction] Model ${modelId} failed. Fallback triggered.`);
-            let fallbackModel = 'wavespeed:bytedance/seedream-v5.0-pro';
-            result = await generateImage({
-              persona: activeP,
-              modelId: fallbackModel,
-              environment: step.params.environment,
-              outfitStyle: step.params.outfit,
-              framing: step.params.framing,
-              prompt: step.params.prompt,
-              aspectRatio: '1:1',
-              resolution: 'standard',
-              count: 1
-            });
+          const modelCascade = [
+            modelId,
+            'wavespeed:bytedance/seedream-v5.0-pro',
+            'wavespeed:wavespeed-ai/qwen-3.0-pro',
+            'openai:gpt-image-2',
+            'google:nano-banana-pro'
+          ].filter((m, idx, arr) => arr.indexOf(m) === idx);
+
+          let result: any = null;
+          let lastError: any = null;
+
+          for (const currentModel of modelCascade) {
+            try {
+              result = await generateImage({
+                persona: activeP,
+                modelId: currentModel,
+                environment: step.params.environment,
+                outfitStyle: step.params.outfit,
+                framing: step.params.framing,
+                prompt: step.params.prompt,
+                aspectRatio: '1:1',
+                resolution: 'standard',
+                count: 1
+              });
+              if (result) break;
+            } catch (err: any) {
+              lastError = err;
+              addLocalLog(`⚠️ [Self-Correction] Model ${currentModel} failed (${err?.message || 'Error'}). Cascading to next fallback...`);
+            }
+          }
+
+          if (!result) {
+            throw new Error(`All model cascades failed for image generation. Last error: ${lastError?.message || 'Unknown'}`);
           }
 
           const imageUrl = Array.isArray(result) ? result[0].imageUrl : result.imageUrl;
@@ -2302,41 +3045,37 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
 
       {/* LEFT COLUMN: Agent Conversational Console (Expanded) */}
       <div className="flex-1 flex flex-col h-full border-r border-white/5 relative min-w-0">
-        {/* Header with Autopilot & Sub-Agent Controls */}
-        <div className="flex-none flex flex-col md:flex-row md:items-center justify-between border-b border-white/5 px-6 py-3.5 bg-[var(--bg-elevated)]/30 backdrop-blur-md gap-3">
+        {/* Header with Autopilot & Sub-Agent Controls (Unified Theme) */}
+        <div className="flex-none flex flex-col md:flex-row md:items-center justify-between border-b border-[#E7C477]/10 px-6 py-3 bg-[#050914] gap-2 select-none">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 to-violet-500 flex items-center justify-center text-white shadow-lg shadow-pink-500/20">
-              <Cpu className="w-5 h-5 animate-pulse" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-sm font-extrabold tracking-tight">Super Agent Co-Pilot</h1>
-                <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-gradient-to-r from-pink-500/20 to-violet-500/20 text-pink-300 border border-pink-500/30">
-                  Parallel OS
-                </span>
-              </div>
-            </div>
+            <h1 className="text-xl md:text-2xl font-serif text-[#F5F1E8] tracking-tight flex items-center gap-2">
+              Super Agent <span className="text-[#E7C477] text-base">✨</span>
+            </h1>
+            <span className="text-[10px] font-semibold px-2.5 py-0.5 rounded-full bg-[#E7C477]/10 text-[#F2D58D] border border-[#E7C477]/25">
+              Autonomous Co-Pilot
+            </span>
           </div>
 
-          {/* Autopilot Controls */}
+          {/* Unified Controls Toolbar */}
           <div className="flex flex-wrap items-center gap-2">
+            {/* Autopilot Button */}
             <button
               onClick={() => setAutopilotActive(!autopilotActive)}
-              className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all border ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold tracking-wide flex items-center gap-2 transition-all border cursor-pointer ${
                 autopilotActive
-                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-lg shadow-emerald-500/10'
-                  : 'bg-white/5 text-zinc-400 border-white/10 hover:text-white'
+                  ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50 shadow-md shadow-cyan-500/10'
+                  : 'bg-white/5 text-zinc-300 border-white/10 hover:border-white/20 hover:bg-white/10'
               }`}
             >
-              {autopilotActive ? <Pause className="w-3.5 h-3.5 text-emerald-400 animate-pulse" /> : <Play className="w-3.5 h-3.5 text-pink-400" />}
-              {autopilotActive ? 'Autopilot Active' : 'Start Autopilot'}
+              {autopilotActive ? <Pause className="w-3.5 h-3.5 text-cyan-400 animate-pulse" /> : <Play className="w-3.5 h-3.5 text-zinc-400" />}
+              <span>{autopilotActive ? 'Autopilot Active' : 'Start Autopilot'}</span>
             </button>
 
             {autopilotActive && (
               <select
                 value={autopilotInterval}
                 onChange={(e: any) => setAutopilotInterval(e.target.value)}
-                className="bg-black/40 border border-white/10 text-white text-[10px] rounded-lg px-2 py-1 font-semibold outline-none"
+                className="bg-black/60 border border-cyan-500/30 text-cyan-300 text-xs rounded-xl px-2.5 py-1.5 font-bold outline-none cursor-pointer"
               >
                 <option value="30s">Every 30s (Demo)</option>
                 <option value="1h">Every 1 hr</option>
@@ -2345,16 +3084,140 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
               </select>
             )}
 
+            {/* Approval Queue Toggle */}
             <button
               onClick={() => setAutoApprove(!autoApprove)}
-              className={`px-2.5 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold tracking-wide border transition-all flex items-center gap-1.5 cursor-pointer ${
                 autoApprove
-                  ? 'bg-violet-500/20 text-violet-300 border-violet-500/30'
-                  : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                  ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                  : 'bg-white/5 text-zinc-300 border-white/10 hover:border-white/20 hover:bg-white/10'
               }`}
               title="Toggle Human-in-the-Loop review queue vs direct publishing"
             >
-              {autoApprove ? '⚡ Auto-Publish' : '🛡️ Approval Queue ON'}
+              <span>{autoApprove ? '⚡ Auto-Publish' : '🛡️ Approval Queue ON'}</span>
+            </button>
+
+            {/* Uncensored NSFW Toggle */}
+            <button
+              onClick={() => {
+                const next = !allowNsfw;
+                setAllowNsfw(next);
+                localStorage.setItem('agent_allow_nsfw', String(next));
+                toast(next ? '🔥 Uncensored Mode Activated — Venice/Atlas & OmniVoice uncensored models' : '🛡️ Standard Safe Mode Active');
+              }}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold tracking-wide border transition-all flex items-center gap-1.5 cursor-pointer ${
+                allowNsfw
+                  ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50 shadow-md shadow-cyan-500/10'
+                  : 'bg-white/5 text-zinc-300 border-white/10 hover:border-white/20 hover:bg-white/10'
+              }`}
+              title="When ON, Super Agent uses fully uncensored Venice / Atlas Cloud models and OmniVoice audio directly"
+            >
+              <Flame size={13} className={allowNsfw ? 'text-cyan-400' : 'text-zinc-400'} />
+              <span>{allowNsfw ? '🔥 NSFW Mode' : '🛡️ Safe Mode'}</span>
+            </button>
+
+            {/* LLM Engine Selector (Gemini 2.5 Flash vs xAI Grok 2) */}
+            <div className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-cyan-500/40 rounded-xl px-3 py-1.5 text-xs font-bold shadow-sm transition-all">
+              <span className="text-[10px] text-zinc-400 font-extrabold uppercase tracking-wider hidden sm:inline">Engine:</span>
+              <select
+                value={voiceLlmModel}
+                onChange={(e) => {
+                  const selected = e.target.value;
+                  setVoiceLlmModel(selected);
+                  localStorage.setItem('agent_voice_llm', selected);
+                  const labels: Record<string, string> = {
+                    grok: '🚀 Switched to xAI Grok 2 (Cloud API)!',
+                    venice: '🔓 Switched to Venice AI Llama 3.3 70B (Cloud API)!',
+                    deepseek: '🧠 Switched to DeepSeek R1 Reasoner (Cloud API)!',
+                    qwen: '🔮 Switched to Qwen 2.5 72B (Cloud API)!',
+                    gemini: '🤖 Switched to Gemini 2.5 Flash (Cloud API)!',
+                    'ollama:deepseek-r1': '🦙 Switched to DeepSeek R1 (Local Mac GPU - Free)!',
+                    'ollama:qwen2.5:14b': '🦙 Switched to Qwen 2.5 14B (Local Mac GPU - Free)!',
+                    'ollama:qwen2.5:32b': '🔮 Switched to Qwen 2.5 32B (Local Mac GPU - Free)!',
+                    'ollama:dolphin-llama3': '🐬 Switched to Dolphin Llama 3 (Local Uncensored - Free)!',
+                    'ollama:dolphin-mistral': '🐬 Switched to Dolphin Mistral (Local Uncensored - Free)!',
+                    'ollama:gemma2:27b': '💎 Switched to Gemma 2 27B (Local Mac GPU - Free)!',
+                    'ollama:llama3.2': '🦙 Switched to Llama 3.2 (Local Mac GPU - Free)!',
+                    'ollama:llama3.3': '🦙 Switched to Llama 3.3 (Local Mac GPU - Free)!',
+                    ollama: '🦙 Switched to Ollama Local Auto (Free / 100% Private)!'
+                  };
+                  toast.success(labels[selected] || `Switched to ${selected}`);
+                }}
+                className="bg-transparent text-cyan-300 text-xs font-extrabold outline-none cursor-pointer"
+                title="Select Conversational Intelligence LLM Engine for Super Agent & Voice Call"
+              >
+                <optgroup label="🦙 META LLAMA MODELS">
+                  <option value="llama3.3" className="bg-zinc-900 text-white">🦙 Meta Llama 3.3 70B (Cloud API)</option>
+                </optgroup>
+                <optgroup label="☁️ CLOUD API ENGINES (HIGH-SPEED CLOUD GPU)">
+                  <option value="qwen" className="bg-zinc-900 text-white">🔮 Qwen 2.5 72B (Cloud API)</option>
+                  <option value="deepseek" className="bg-zinc-900 text-white">🧠 DeepSeek R1 Reasoner (Cloud API)</option>
+                  <option value="venice" className="bg-zinc-900 text-white">🔓 Venice AI Llama 3.3 70B (Cloud API)</option>
+                  <option value="grok" className="bg-zinc-900 text-white">🚀 xAI Grok 2 (Cloud API)</option>
+                  <option value="gemini" className="bg-zinc-900 text-white">🤖 Gemini 2.5 Flash (Cloud API)</option>
+                </optgroup>
+              </select>
+            </div>
+
+            {/* Agent's Voice Button */}
+            {clonedVoiceRef ? (
+              <div className="flex items-center gap-2 bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm">
+                <button
+                  type="button"
+                  onClick={handlePlayVoiceSample}
+                  className={`w-6 h-6 rounded-full flex items-center justify-center transition-all cursor-pointer shadow-md ${
+                    isPlayingVoiceSample 
+                      ? 'bg-cyan-400 text-black animate-pulse ring-2 ring-cyan-300' 
+                      : 'bg-cyan-500/30 hover:bg-cyan-400/50 text-cyan-200 hover:text-white border border-cyan-400/40'
+                  }`}
+                  title={isPlayingVoiceSample ? "Pause Voice Sample" : "Play Active Agent Voice Sample"}
+                >
+                  {isPlayingVoiceSample ? (
+                    <Pause size={12} className="fill-current text-black" />
+                  ) : (
+                    <Play size={12} className="fill-current text-cyan-200 ml-0.5" />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsVoiceCloneModalOpen(true)}
+                  className="hover:text-white flex items-center gap-1.5 cursor-pointer"
+                  title="Configure Agent's Voice & Vocal Parameters"
+                >
+                  <Mic size={13} className="text-cyan-400" />
+                  <span>Agent Voice (Active)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={clearClonedVoice}
+                  className="hover:text-white text-cyan-400 p-0.5 rounded transition-all ml-1 cursor-pointer"
+                  title="Remove cloned voice and return to default voice"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsVoiceCloneModalOpen(true)}
+                className="px-3 py-1.5 rounded-xl text-xs font-bold bg-white/5 hover:bg-white/10 text-zinc-300 border border-white/10 hover:border-white/20 flex items-center gap-1.5 cursor-pointer transition-all shadow-sm"
+                title="Open Voice Studio: Upload audio sample, select AI model & fine-tune vocal sliders"
+              >
+                <Mic size={13} className="text-cyan-400" />
+                <span>Agent Voice</span>
+              </button>
+            )}
+
+            {/* Clear Chat Button */}
+            <button
+              onClick={() => {
+                setMessages([]);
+                toast.success('Chat thread cleared!');
+              }}
+              className="p-2 rounded-xl bg-white/5 text-zinc-400 hover:text-white hover:bg-white/10 border border-white/10 flex items-center justify-center cursor-pointer transition-all"
+              title="Clear chat history"
+            >
+              <RotateCcw size={14} />
             </button>
           </div>
         </div>
@@ -2426,653 +3289,350 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
           )}
         </div>
 
-        {/* Chat Thread */}
-        <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6 custom-scrollbar">
-          {messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'} max-w-full`}
+        {/* Phone Call Overlay — shown during live voice calls */}
+        {isLiveVoiceCallActive ? (
+          <div style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'radial-gradient(ellipse at center, #0f1629 0%, #060810 70%)',
+            position: 'relative',
+            overflow: 'hidden',
+            gap: '24px',
+          }}>
+            {/* CSS Keyframes for pulsing */}
+            <style>{`
+              @keyframes phoneCallPulse {
+                0%, 100% { transform: scale(1); opacity: 0.7; }
+                50% { transform: scale(1.15); opacity: 1; }
+              }
+              @keyframes phoneCallRipple {
+                0% { transform: scale(0.8); opacity: 0.6; }
+                100% { transform: scale(2.5); opacity: 0; }
+              }
+              @keyframes phoneCallGlow {
+                0%, 100% { box-shadow: 0 0 30px rgba(168, 85, 247, 0.2); }
+                50% { box-shadow: 0 0 60px rgba(168, 85, 247, 0.5); }
+              }
+            `}</style>
+
+            {/* Agent Name */}
+            <div style={{ textAlign: 'center', marginTop: 24 }}>
+              <div style={{ fontSize: 22, fontWeight: 800, color: '#fff', letterSpacing: 1 }}>Super Agent</div>
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 4, fontWeight: 600 }}>
+                {Math.floor(callDuration / 60).toString().padStart(2, '0')}:{(callDuration % 60).toString().padStart(2, '0')}
+              </div>
+            </div>
+
+            {/* Pulsing Circle Indicator */}
+            <div style={{ position: 'relative', width: 160, height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {/* Ripple rings */}
+              {(isUserSpeaking || isAgentSpeakingState) && (
+                <>
+                  <div style={{
+                    position: 'absolute', width: 160, height: 160, borderRadius: '50%',
+                    border: `2px solid ${isUserSpeaking ? 'rgba(34,197,94,0.4)' : 'rgba(168,85,247,0.4)'}`,
+                    animation: 'phoneCallRipple 1.5s ease-out infinite',
+                  }} />
+                  <div style={{
+                    position: 'absolute', width: 160, height: 160, borderRadius: '50%',
+                    border: `2px solid ${isUserSpeaking ? 'rgba(34,197,94,0.3)' : 'rgba(168,85,247,0.3)'}`,
+                    animation: 'phoneCallRipple 1.5s ease-out infinite 0.5s',
+                  }} />
+                </>
+              )}
+              {/* Main circle */}
+              <div style={{
+                width: 120, height: 120, borderRadius: '50%',
+                background: isUserSpeaking
+                  ? 'radial-gradient(circle, rgba(34,197,94,0.5) 0%, rgba(34,197,94,0.15) 70%)'
+                  : isAgentSpeakingState
+                    ? 'radial-gradient(circle, rgba(168,85,247,0.5) 0%, rgba(168,85,247,0.15) 70%)'
+                    : 'radial-gradient(circle, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 70%)',
+                border: isUserSpeaking
+                  ? '2px solid rgba(34,197,94,0.6)'
+                  : isAgentSpeakingState
+                    ? '2px solid rgba(168,85,247,0.6)'
+                    : '2px solid rgba(255,255,255,0.1)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                animation: (isUserSpeaking || isAgentSpeakingState) ? 'phoneCallPulse 1.2s ease-in-out infinite' : 'none',
+                transition: 'all 0.4s ease',
+                boxShadow: isUserSpeaking
+                  ? '0 0 40px rgba(34,197,94,0.3)'
+                  : isAgentSpeakingState
+                    ? '0 0 40px rgba(168,85,247,0.3)'
+                    : '0 0 20px rgba(255,255,255,0.05)',
+              }}>
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke={isUserSpeaking ? '#22c55e' : isAgentSpeakingState ? '#a855f7' : 'rgba(255,255,255,0.3)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  {isAgentSpeakingState ? (
+                    <>{/* Speaker icon */}
+                      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                      <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                      <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+                    </>
+                  ) : (
+                    <>{/* Mic icon */}
+                      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                      <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                      <line x1="12" y1="19" x2="12" y2="23" />
+                      <line x1="8" y1="23" x2="16" y2="23" />
+                    </>
+                  )}
+                </svg>
+              </div>
+            </div>
+
+            {/* Status Text */}
+            <div style={{
+              fontSize: 14, fontWeight: 700, letterSpacing: 1.5,
+              color: isUserSpeaking ? '#22c55e' : isAgentSpeakingState ? '#a855f7' : 'rgba(255,255,255,0.35)',
+              textTransform: 'uppercase',
+            }}>
+              {isUserSpeaking ? 'Listening...' : isAgentSpeakingState ? 'Speaking...' : 'Connected'}
+            </div>
+
+            {/* End Call Button */}
+            <button
+              onClick={stopLiveVoiceCall}
+              style={{
+                width: 64, height: 64, borderRadius: '50%',
+                background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                border: 'none', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 4px 20px rgba(239,68,68,0.4)',
+                transition: 'transform 0.2s, box-shadow 0.2s',
+                marginTop: 16,
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.1)'; e.currentTarget.style.boxShadow = '0 6px 30px rgba(239,68,68,0.6)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 20px rgba(239,68,68,0.4)'; }}
             >
-              <span className="text-[8px] font-black text-[var(--text-muted)] uppercase tracking-wider mb-1 px-1">
-                {msg.role === 'model' ? '🤖 Agent' : '👤 You'}
-              </span>
-
-              <div className={`p-4 rounded-2xl relative overflow-hidden shadow-lg border text-xs leading-relaxed ${
-                msg.role === 'user' 
-                  ? 'bg-gradient-to-br from-pink-500/10 to-violet-500/10 border-pink-500/20 text-white rounded-tr-none'
-                  : 'bg-[var(--bg-elevated)] border-white/5 text-[var(--text-primary)] rounded-tl-none'
-              }`}>
-                <div className="whitespace-pre-wrap">{msg.content}</div>
-
-                {/* Attachments rendering */}
-                {msg.attachments && msg.attachments.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-2.5 pt-2.5 border-t border-white/5">
-                    {msg.attachments.map((att, idx) => (
-                      <div key={idx} className="flex items-center gap-2 p-1.5 bg-white/5 border border-white/5 rounded-lg text-[10px]">
-                        {att.mimeType.startsWith('image/') ? (
-                          <img src={att.dataUrl} alt={att.name} className="w-6 h-6 rounded object-cover" />
-                        ) : (
-                          getAttachmentIcon(att.mimeType)
-                        )}
-                        <span className="max-w-[100px] truncate text-[9px] text-[var(--text-tertiary)]">{att.name}</span>
-                      </div>
-                    ))}
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91" />
+                <line x1="23" y1="1" x2="1" y2="23" />
+              </svg>
+            </button>
+          </div>
+        ) : (
+        /* UNIFIED EXPANDING COMMAND CONSOLE CARD BOX (Extends directly below upper tabs) */
+        <div className="flex-1 flex flex-col p-4 sm:p-6 overflow-hidden">
+          <div className="w-full max-w-4xl mx-auto flex-1 flex flex-col bg-[#0a0d18]/95 backdrop-blur-2xl border border-cyan-500/30 rounded-3xl shadow-[0_15px_60px_rgba(0,0,0,0.85),0_0_40px_rgba(6,182,212,0.1)] focus-within:border-cyan-400 focus-within:shadow-[0_0_60px_rgba(6,182,212,0.25)] transition-all overflow-hidden">
+            
+            {/* Scrollable Conversation Thread INSIDE the Card */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 custom-scrollbar">
+              {messages.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-3 opacity-60">
+                  <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
+                    <Sparkles size={24} />
                   </div>
-                )}
-
-                {/* Simulated Multi-Agent Collaboration dialog inside Chat Bubble */}
-                {msg.role === 'model' && msg.collaborationLogs && msg.collaborationLogs.length > 0 && (
-                  <div className="mt-4 p-4 bg-black/30 border border-white/5 rounded-xl space-y-3 shadow-inner">
-                    <div className="flex items-center gap-1 text-[9px] font-black text-pink-400 uppercase tracking-widest pb-1 border-b border-white/5">
-                      <Layers className="w-3.5 h-3.5 text-pink-400" /> Helper Agent Group Brainstorm
-                    </div>
-                    <div className="space-y-2.5">
-                      {msg.collaborationLogs.map((cLog, cIdx) => (
-                        <div key={cIdx} className="space-y-0.5 text-[11px]">
-                          <span className={`font-black text-[9px] px-1.5 py-0.5 rounded uppercase tracking-wider ${
-                            cLog.agent.includes('Creative') ? 'bg-pink-500/20 text-pink-300' :
-                            cLog.agent.includes('Copywriter') ? 'bg-violet-500/20 text-violet-300' : 'bg-cyan-500/20 text-cyan-300'
-                          }`}>
-                            {cLog.agent}
-                          </span>
-                          <p className="text-zinc-300 italic pl-1 pt-0.5 font-medium leading-relaxed">"{cLog.message}"</p>
-                        </div>
-                      ))}
-                    </div>
+                  <div className="text-sm font-bold text-white">Super Agent Co-Pilot Studio</div>
+                  <div className="text-xs text-zinc-400 max-w-sm leading-relaxed">
+                    Message Super Agent below to generate photos, videos, plan content, or chat naturally.
                   </div>
-                )}
+                </div>
+              ) : (
+                messages.map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'} max-w-full`}
+                  >
+                    <span className="text-[9px] font-black text-zinc-400 uppercase tracking-wider mb-1 px-1">
+                      {msg.role === 'model' ? '🤖 Agent' : '👤 You'}
+                    </span>
 
-                {/* Human-in-the-Loop plan card */}
-                {msg.role === 'model' && msg.suggestedSteps && (
-                  <div className="mt-4 p-4 bg-black/40 border border-pink-500/10 rounded-xl space-y-3.5">
-                    <div className="flex items-center justify-between border-b border-white/5 pb-2.5 gap-2">
-                      <span className="text-[10px] font-black text-pink-400 uppercase tracking-widest flex items-center gap-1">
-                        <Sparkles className="w-3.5 h-3.5 animate-pulse" /> Proposed Pipeline (Editable)
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => saveAsPreset(msg.id)}
-                          className="px-2.5 py-1 rounded bg-white/5 border border-white/5 hover:border-violet-500/20 text-[9px] font-black uppercase text-zinc-300 flex items-center gap-1 transition-all"
-                          title="Save this specific layout parameter set as a quick preset blueprint"
-                        >
-                          <Save className="w-3 h-3 text-violet-400" /> Save Template
-                        </button>
-                        {!msg.isExecuting && (
-                          <button
-                            onClick={() => runPipeline(msg.id)}
-                            className="px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-pink-500 to-violet-500 hover:from-pink-600 hover:to-violet-600 font-black text-[9px] uppercase tracking-wider text-white shadow flex items-center gap-1 transition-all"
-                          >
-                            Execute <ArrowRight className="w-3 h-3" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
+                    <div className={`p-4 rounded-2xl relative overflow-hidden shadow-lg border text-xs sm:text-sm leading-relaxed ${
+                      msg.role === 'user' 
+                        ? 'bg-gradient-to-br from-cyan-500/20 to-blue-600/20 border-cyan-500/30 text-white rounded-tr-none'
+                        : 'bg-white/5 border-white/10 text-zinc-100 rounded-tl-none'
+                    }`}>
+                      <div className="whitespace-pre-wrap">{msg.content}</div>
 
-                    {/* Optimizations Critique logs */}
-                    {msg.critiqueLogs && msg.critiqueLogs.length > 0 && (
-                      <div className="bg-white/5 border border-white/5 rounded-lg p-2.5 space-y-1">
-                        <div className="flex items-center gap-1 text-[8px] font-black text-violet-400 uppercase tracking-wider">
-                          <Zap className="w-3 h-3 text-violet-400" /> Critique Upgrades applied
-                        </div>
-                        <ul className="list-disc pl-3 text-[9px] text-zinc-300 font-bold space-y-0.5">
-                          {msg.critiqueLogs.map((log, lIdx) => (
-                            <li key={lIdx}>{log}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    {/* Steps input editor cards */}
-                    <div className="space-y-3.5 divide-y divide-white/5 pt-1">
-                      {msg.execSteps?.map((step, idx) => (
-                        <div key={idx} className="pt-3.5 first:pt-0 space-y-2">
-                          <div className="flex items-center justify-between text-[11px]">
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-zinc-300">
-                                {step.type === 'create_persona' && `1. Create Profile: ${step.params.name}`}
-                                {step.type === 'generate_content_plan' && `2. Generate Post Planner: ${step.params.platform}`}
-                                {step.type === 'generate_image' && `3. Generate Starting Image`}
-                                {step.type === 'generate_video' && `4. Generate Video Segment (Step ${idx + 1})`}
-                                {step.type === 'generate_voice' && `5. Generate Narrative Voiceover`}
-                                {step.type === 'log_revenue' && `6. Log Financial Transaction`}
-                                {step.type === 'stitch_video' && `7. Stitch Video Movie`}
-                                {step.type === 'clone_voice' && `🎙️ Clone Voice (${step.params.engine || 'OmniVoice'})`}
-                                {step.type === 'storyboard_sequence' && `🎬 Storyboard Reel (${step.params.scenes?.length || 0} Scenes)`}
-                              </span>
-                            </div>
-                            <div>
-                              {step.status === 'pending' && <span className="text-[8px] font-black uppercase text-zinc-500 tracking-wider">Pending</span>}
-                              {step.status === 'running' && (
-                                <span className="text-[9px] font-black uppercase tracking-wider text-pink-400 flex items-center gap-1 animate-pulse">
-                                  <Loader2 className="w-3.5 h-3.5 animate-spin text-pink-400" /> Generating...
-                                </span>
+                      {/* Attachments rendering */}
+                      {msg.attachments && msg.attachments.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mt-2.5 pt-2.5 border-t border-white/10">
+                          {msg.attachments.map((att, idx) => (
+                            <div key={idx} className="flex items-center gap-2 p-1.5 bg-black/40 border border-white/10 rounded-lg text-xs">
+                              {att.mimeType.startsWith('image/') ? (
+                                <img src={att.dataUrl} alt={att.name} className="w-6 h-6 rounded object-cover" />
+                              ) : (
+                                getAttachmentIcon(att.mimeType)
                               )}
-                              {step.status === 'success' && <Check className="w-3.5 h-3.5 text-emerald-400" />}
-                              {step.status === 'error' && <AlertCircle className="w-3.5 h-3.5 text-rose-500" />}
+                              <span className="max-w-[120px] truncate text-xs text-zinc-300">{att.name}</span>
                             </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Simulated Multi-Agent Collaboration dialog inside Chat Bubble */}
+                      {msg.role === 'model' && msg.collaborationLogs && msg.collaborationLogs.length > 0 && (
+                        <div className="mt-4 p-4 bg-black/30 border border-white/5 rounded-xl space-y-3 shadow-inner">
+                          <div className="flex items-center gap-1 text-[9px] font-black text-pink-400 uppercase tracking-widest pb-1 border-b border-white/5">
+                            <Layers className="w-3.5 h-3.5 text-pink-400" /> Helper Agent Group Brainstorm
+                          </div>
+                          <div className="space-y-2.5">
+                            {msg.collaborationLogs.map((cLog, cIdx) => (
+                              <div key={cIdx} className="space-y-0.5 text-[11px]">
+                                <span className={`font-black text-[9px] px-1.5 py-0.5 rounded uppercase tracking-wider ${
+                                  cLog.agent.includes('Creative') ? 'bg-pink-500/20 text-pink-300' :
+                                  cLog.agent.includes('Copywriter') ? 'bg-violet-500/20 text-violet-300' : 'bg-cyan-500/20 text-cyan-300'
+                                }`}>
+                                  {cLog.agent}
+                                </span>
+                                <p className="text-zinc-300 italic pl-1 pt-0.5 font-medium leading-relaxed">"{cLog.message}"</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Human-in-the-Loop plan card */}
+                      {msg.role === 'model' && msg.planCard && (
+                        <div className="mt-4 p-4 bg-gradient-to-b from-cyan-950/40 to-slate-950/80 border border-cyan-500/30 rounded-2xl space-y-3 shadow-xl">
+                          <div className="flex items-center justify-between border-b border-cyan-500/20 pb-2">
+                            <div className="flex items-center gap-2">
+                              <Sparkles className="w-4 h-4 text-cyan-400 animate-pulse" />
+                              <span className="font-extrabold text-xs text-cyan-300 uppercase tracking-wider">{msg.planCard.title}</span>
+                            </div>
+                            <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+                              Approval Required
+                            </span>
                           </div>
 
-                          {/* Live Progress Frame for Running Generation Steps */}
-                          {step.status === 'running' && (
-                            <GenerationProgressFrame 
-                              stepType={step.type} 
-                              modelId={step.params?.modelId || 'wavespeed:bytedance/seedream-v5.0-pro'} 
-                              prompt={step.params?.prompt || ''}
-                            />
-                          )}
-
-                          {/* Storyboard Breakdown Card */}
-                          {step.type === 'storyboard_sequence' && (
-                            <div className="p-3 bg-black/50 border border-pink-500/20 rounded-xl space-y-3 mt-2">
-                              <div className="flex items-center justify-between border-b border-white/5 pb-2">
-                                <span className="text-[10px] font-black uppercase tracking-wider text-pink-400 flex items-center gap-1.5">
-                                  <Film className="w-3.5 h-3.5 text-pink-400" /> Storyboard Reel: {step.params.topic || 'Multi-Segment Reel'}
-                                </span>
-                                <span className="text-[9px] font-bold text-zinc-400">
-                                  {step.params.scenes?.length || 0} Scenes • ~1 Min Reel
-                                </span>
+                          <div className="space-y-2">
+                            {msg.planCard.steps.map((st, idx) => (
+                              <div key={idx} className="flex items-center justify-between p-2 rounded-xl bg-white/5 border border-white/5 text-xs">
+                                <span className="text-zinc-200 font-medium">{idx + 1}. {st.title}</span>
+                                <span className="text-[10px] font-bold text-cyan-400">{st.estimatedCost}</span>
                               </div>
+                            ))}
+                          </div>
 
-                              <div className="space-y-2">
-                                {step.params.scenes?.map((scene: any, sIdx: number) => (
-                                  <div key={sIdx} className="p-2.5 bg-white/5 border border-white/5 rounded-lg space-y-1.5 text-xs">
-                                    <div className="flex items-center justify-between">
-                                      <span className="font-extrabold text-[10px] text-white flex items-center gap-1">
-                                        {scene.type === 'talking_avatar' ? '🗣️ Scene ' : '🎬 Scene '}{sIdx + 1}: {scene.title}
-                                      </span>
-                                      <span className="text-[8px] font-black uppercase px-2 py-0.5 rounded bg-violet-500/20 text-violet-300 border border-violet-500/30">
-                                        {scene.modelId}
-                                      </span>
-                                    </div>
-
-                                    {scene.text && (
-                                      <p className="text-[10px] text-zinc-300 italic pl-2 border-l-2 border-pink-500/40 font-medium">
-                                        "{scene.text}"
-                                      </p>
-                                    )}
-
-                                    <p className="text-[9px] text-zinc-400">
-                                      <strong className="text-zinc-300">Prompt:</strong> {scene.prompt}
-                                    </p>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Render step outputs inline with actions */}
-                          {step.status === 'success' && (step.resultUrl || (step.resultUrls && step.resultUrls.length > 0)) && (
-                            <div className="pl-3 space-y-2">
-                              {(step.type === 'generate_image' || step.type === 'edit_image') && (() => {
-                                const imagesToRender = step.resultUrls && step.resultUrls.length > 0
-                                  ? step.resultUrls
-                                  : [step.resultUrl!];
-
-                                return (
-                                  <div className="space-y-3 bg-white/5 p-3 rounded-xl border border-white/5">
-                                    <div className={`grid gap-3 ${imagesToRender.length > 1 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
-                                      {imagesToRender.map((imgUrl, imgIdx) => (
-                                        <div key={imgIdx} className="space-y-2 bg-black/40 p-2 rounded-lg border border-white/10">
-                                          {imgUrl.endsWith('.mp4') || imgUrl.includes('blob:') ? (
-                                            <video src={imgUrl} controls className="w-full rounded border border-white/10" />
-                                          ) : (
-                                            <div 
-                                              onClick={() => setExpandedImageUrl(imgUrl)}
-                                              className="relative group inline-block w-full overflow-hidden rounded-lg border border-white/10 cursor-pointer"
-                                            >
-                                              <img 
-                                                src={imgUrl} 
-                                                alt={`Visual Output ${imgIdx + 1}`} 
-                                                className="w-full max-h-[550px] object-contain rounded-lg bg-black/40 transform group-hover:scale-[1.01] transition-all duration-300 shadow-lg" 
-                                                title="Click to enlarge image"
-                                              />
-                                              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center justify-center rounded-lg">
-                                                <span className="px-3 py-1.5 rounded-lg bg-pink-500/80 text-white font-black text-[10px] uppercase tracking-wider border border-white/30 flex items-center gap-1.5 shadow-xl">
-                                                  🔍 Click to Enlarge Fullscreen
-                                                </span>
-                                              </div>
-                                            </div>
-                                          )}
-
-                                          {/* In-Chat Action Buttons for each image */}
-                                          {!imgUrl.endsWith('.mp4') && !imgUrl.includes('blob:') && (
-                                            <div className="flex flex-wrap gap-1.5 pt-1">
-                                              <button
-                                                onClick={() => setExpandedImageUrl(imgUrl)}
-                                                className="px-2.5 py-1 rounded bg-pink-500/25 hover:bg-pink-500/40 border border-pink-500/30 text-[9px] font-black uppercase text-pink-300 flex items-center gap-1 transition-all"
-                                              >
-                                                🔍 Enlarge
-                                              </button>
-                                              <button
-                                                onClick={() => handleEditImageAction(imgUrl, step.params?.prompt)}
-                                                className="px-2 py-1 rounded bg-amber-500/20 hover:bg-amber-500/35 border border-amber-500/30 text-[9px] font-black uppercase text-amber-300 flex items-center gap-1 transition-all"
-                                                title="Attach this image as a reference to prompt input for editing"
-                                              >
-                                                <Edit3 className="w-2.5 h-2.5" /> Edit Image
-                                              </button>
-                                              <button
-                                                onClick={() => handleUseAsPromptReference(imgUrl)}
-                                                className="px-2 py-1 rounded bg-purple-500/20 hover:bg-purple-500/35 border border-purple-500/30 text-[9px] font-black uppercase text-purple-300 flex items-center gap-1 transition-all"
-                                                title="Copy image to prompt input bar"
-                                              >
-                                                <Copy className="w-2.5 h-2.5" /> Use as Prompt
-                                              </button>
-                                              <button
-                                                onClick={() => handleUpscale(msg.id, idx, imgUrl)}
-                                                disabled={step.isActionLoading !== null}
-                                                className="px-2 py-1 rounded bg-pink-500/20 hover:bg-pink-500/30 text-[9px] font-black uppercase text-pink-300 flex items-center gap-0.5 disabled:opacity-50"
-                                              >
-                                                {step.isActionLoading === 'upscale' ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : '🪄 Upscale'}
-                                              </button>
-                                              <button
-                                                onClick={() => handleMakeVideo(msg.id, idx, imgUrl)}
-                                                disabled={step.isActionLoading !== null}
-                                                className="px-2 py-1 rounded bg-cyan-500/20 hover:bg-cyan-500/30 text-[9px] font-black uppercase text-cyan-300 flex items-center gap-0.5 disabled:opacity-50"
-                                              >
-                                                {step.isActionLoading === 'video' ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : '🎬 Make Video'}
-                                              </button>
-                                              <button
-                                                onClick={() => publishToFeed(imgUrl)}
-                                                className="px-2 py-1 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-[9px] font-black uppercase text-emerald-300 flex items-center gap-0.5"
-                                              >
-                                                🚀 Publish
-                                              </button>
-                                            </div>
-                                          )}
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                );
-                              })()}
-                              {step.type === 'generate_voice' && (
-                                <div className="bg-white/5 p-2 rounded-lg border border-white/5 space-y-1">
-                                  <span className="text-[8px] font-black text-amber-400 uppercase tracking-wider block">Generated Voiceover Audio:</span>
-                                  <audio controls src={step.resultUrl} className="w-full h-8" />
-                                </div>
-                              )}
-                              {step.type === 'generate_video' && (
-                                <div className="bg-white/5 p-2 rounded-lg border border-white/5 space-y-2">
-                                  <video src={step.resultUrl} controls className="w-56 rounded border border-white/10" />
-                                  <button
-                                    onClick={() => publishToFeed(step.resultUrl!)}
-                                    className="px-2 py-1 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-[9px] font-black uppercase text-emerald-300 flex items-center gap-0.5"
-                                  >
-                                    🚀 Publish Video
-                                  </button>
-                                </div>
-                              )}
-                              {step.type === 'stitch_video' && (
-                                <div className="bg-white/5 p-3 rounded-lg border border-white/5 space-y-2">
-                                  <span className="text-[8px] font-black text-emerald-400 uppercase tracking-widest block">🎬 Stitched Movie Output</span>
-                                  <video src={step.resultUrl} controls className="w-full rounded border border-white/10 shadow" />
-                                  <a 
-                                    href={step.resultUrl} 
-                                    download="stitched_movie.webm"
-                                    className="inline-flex px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/35 border border-emerald-500/30 rounded text-[9px] text-emerald-300 font-bold uppercase transition-all"
-                                  >
-                                    📥 Download Movie
-                                  </a>
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          {/* Inline Parameters controls */}
-                          {!msg.isExecuting && step.status === 'pending' && (
-                            <div className="pl-3 space-y-2">
-                              {step.type === 'create_persona' && (
-                                <div className="grid grid-cols-2 gap-2">
-                                  <div>
-                                    <label className="text-[8px] uppercase tracking-wider text-zinc-500 font-black">Name</label>
-                                    <input
-                                      type="text"
-                                      value={step.params.name || ''}
-                                      onChange={(e) => handleParamChange(msg.id, idx, 'name', e.target.value)}
-                                      className="w-full bg-white/5 border border-white/5 rounded px-2 py-1 text-[11px] text-white outline-none focus:border-pink-500/20"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="text-[8px] uppercase tracking-wider text-zinc-500 font-black">Niche</label>
-                                    <input
-                                      type="text"
-                                      value={step.params.niche || ''}
-                                      onChange={(e) => handleParamChange(msg.id, idx, 'niche', e.target.value)}
-                                      className="w-full bg-white/5 border border-white/5 rounded px-2 py-1 text-[11px] text-white outline-none focus:border-pink-500/20"
-                                    />
-                                  </div>
-                                </div>
-                              )}
-
-                              {step.type === 'generate_content_plan' && (
-                                <div className="grid grid-cols-2 gap-2">
-                                  <div>
-                                    <label className="text-[8px] uppercase tracking-wider text-zinc-500 font-black">Platform</label>
-                                    <input
-                                      type="text"
-                                      value={step.params.platform || ''}
-                                      onChange={(e) => handleParamChange(msg.id, idx, 'platform', e.target.value)}
-                                      className="w-full bg-white/5 border border-white/5 rounded px-2 py-1 text-[11px] text-white outline-none focus:border-pink-500/20"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="text-[8px] uppercase tracking-wider text-zinc-500 font-black">Topic</label>
-                                    <input
-                                      type="text"
-                                      value={step.params.theme || ''}
-                                      onChange={(e) => handleParamChange(msg.id, idx, 'theme', e.target.value)}
-                                      className="w-full bg-white/5 border border-white/5 rounded px-2 py-1 text-[11px] text-white outline-none focus:border-pink-500/20"
-                                    />
-                                  </div>
-                                </div>
-                              )}
-
-                              {step.type === 'generate_image' && (
-                                <div className="space-y-1.5">
-                                  <div>
-                                    <label className="text-[8px] uppercase tracking-wider text-zinc-500 font-black">Visual Prompt</label>
-                                    <textarea
-                                      value={step.params.prompt || ''}
-                                      onChange={(e) => handleParamChange(msg.id, idx, 'prompt', e.target.value)}
-                                      className="w-full h-12 bg-white/5 border border-white/5 rounded p-1.5 text-[11px] text-white outline-none focus:border-pink-500/20 resize-none"
-                                    />
-                                  </div>
-                                  <div className="grid grid-cols-2 gap-2">
-                                    <div>
-                                      <label className="text-[8px] uppercase tracking-wider text-zinc-500 font-black">Model ID</label>
-                                      <input
-                                        type="text"
-                                        value={step.params.modelId || ''}
-                                        onChange={(e) => handleParamChange(msg.id, idx, 'modelId', e.target.value)}
-                                        className="w-full bg-white/5 border border-white/5 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-pink-500/20 font-mono"
-                                      />
-                                    </div>
-                                    <div>
-                                      <label className="text-[8px] uppercase tracking-wider text-zinc-500 font-black">Outfit</label>
-                                      <input
-                                        type="text"
-                                        value={step.params.outfit || ''}
-                                        onChange={(e) => handleParamChange(msg.id, idx, 'outfit', e.target.value)}
-                                        className="w-full bg-white/5 border border-white/5 rounded px-2 py-1 text-[11px] text-white outline-none focus:border-pink-500/20"
-                                      />
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-
-                              {step.type === 'generate_video' && (
-                                <div className="space-y-2">
-                                  <div>
-                                    <label className="text-[8px] uppercase tracking-wider text-zinc-500 font-black">Video Prompt</label>
-                                    <textarea
-                                      value={step.params.prompt || ''}
-                                      onChange={(e) => handleParamChange(msg.id, idx, 'prompt', e.target.value)}
-                                      className="w-full h-12 bg-white/5 border border-white/5 rounded p-1.5 text-[11px] text-white outline-none focus:border-pink-500/20 resize-none"
-                                    />
-                                  </div>
-                                  {step.params.sourceImageFromStepIndex !== undefined && (
-                                    <div className="text-[9px] text-amber-400 font-bold">
-                                      🔗 Continuity: Extracts final frame of Step {step.params.sourceImageFromStepIndex + 1}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-
-                              {step.type === 'generate_voice' && (
-                                <div>
-                                  <label className="text-[8px] uppercase tracking-wider text-zinc-500 font-black">Script Narration Text</label>
-                                  <textarea
-                                    value={step.params.text || ''}
-                                    onChange={(e) => handleParamChange(msg.id, idx, 'text', e.target.value)}
-                                    className="w-full h-12 bg-white/5 border border-white/5 rounded p-1.5 text-[11px] text-white outline-none focus:border-pink-500/20 resize-none"
-                                  />
-                                </div>
-                              )}
-
-                              {step.type === 'log_revenue' && (
-                                <div className="grid grid-cols-3 gap-2">
-                                  <div>
-                                    <label className="text-[8px] uppercase tracking-wider text-zinc-500 font-black">Amount</label>
-                                    <input
-                                      type="number"
-                                      value={step.params.amount || 0}
-                                      onChange={(e) => handleParamChange(msg.id, idx, 'amount', Number(e.target.value))}
-                                      className="w-full bg-white/5 border border-white/5 rounded px-2 py-1 text-[11px] text-white outline-none focus:border-pink-500/20 font-mono"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="text-[8px] uppercase tracking-wider text-zinc-500 font-black">Source</label>
-                                    <input
-                                      type="text"
-                                      value={step.params.source || ''}
-                                      onChange={(e) => handleParamChange(msg.id, idx, 'source', e.target.value)}
-                                      className="w-full bg-white/5 border border-white/5 rounded px-2 py-1 text-[11px] text-white outline-none focus:border-pink-500/20"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="text-[8px] uppercase tracking-wider text-zinc-500 font-black">Platform</label>
-                                    <input
-                                      type="text"
-                                      value={step.params.platform || ''}
-                                      onChange={(e) => handleParamChange(msg.id, idx, 'platform', e.target.value)}
-                                      className="w-full bg-white/5 border border-white/5 rounded px-2 py-1 text-[11px] text-white outline-none focus:border-pink-500/20"
-                                    />
-                                  </div>
-                                </div>
-                              )}
-
-                              {step.type === 'stitch_video' && (
-                                <div className="space-y-3.5 bg-black/30 border border-white/5 p-4 rounded-xl">
-                                  <div className="text-[10px] font-black uppercase text-pink-400 tracking-wider">
-                                    🎬 Video Segment Editor
-                                  </div>
-                                  <div className="space-y-3.5 divide-y divide-white/5">
-                                    {(step.params.segmentIndices || []).map((segIdx: number, sIdx: number) => {
-                                      const currentSettings = segmentSettings[segIdx] || { start: 0, end: 10, speed: 1.0, transition: 'none' };
-                                      
-                                      const updateSetting = (key: keyof SegmentSetting, val: any) => {
-                                        setSegmentSettings(prev => ({
-                                          ...prev,
-                                          [segIdx]: {
-                                            ...currentSettings,
-                                            [key]: val
-                                          }
-                                        }));
-                                      };
-
-                                      return (
-                                        <div key={segIdx} className="pt-3.5 first:pt-0 space-y-2">
-                                          <div className="flex justify-between items-center text-[10px] font-bold text-zinc-300">
-                                            <span>Segment {sIdx + 1} (From Step {segIdx + 1})</span>
-                                          </div>
-                                          <div className="grid grid-cols-2 gap-2 text-[10px]">
-                                            <div>
-                                              <label className="text-[8px] uppercase text-zinc-500 font-bold block mb-0.5">Start Trim (sec)</label>
-                                              <input
-                                                type="number"
-                                                min={0}
-                                                max={100}
-                                                step={0.5}
-                                                value={currentSettings.start}
-                                                onChange={(e) => updateSetting('start', Number(e.target.value))}
-                                                className="w-full bg-white/5 border border-white/5 rounded px-2 py-1 text-white outline-none focus:border-pink-500/25 font-mono"
-                                              />
-                                            </div>
-                                            <div>
-                                              <label className="text-[8px] uppercase text-zinc-500 font-bold block mb-0.5">End Trim (sec)</label>
-                                              <input
-                                                type="number"
-                                                min={0}
-                                                max={100}
-                                                step={0.5}
-                                                value={currentSettings.end}
-                                                onChange={(e) => updateSetting('end', Number(e.target.value))}
-                                                className="w-full bg-white/5 border border-white/5 rounded px-2 py-1 text-white outline-none focus:border-pink-500/25 font-mono"
-                                              />
-                                            </div>
-                                          </div>
-                                          <div className="grid grid-cols-2 gap-2 text-[10px]">
-                                            <div>
-                                              <label className="text-[8px] uppercase text-zinc-500 font-bold block mb-0.5">Speed Modifier</label>
-                                              <select
-                                                value={currentSettings.speed}
-                                                onChange={(e) => updateSetting('speed', Number(e.target.value))}
-                                                className="w-full bg-white/5 border border-white/5 rounded px-1.5 py-1 text-white outline-none focus:border-pink-500/25 cursor-pointer"
-                                              >
-                                                <option value="0.5">0.5x (Slow Mo)</option>
-                                                <option value="1.0">1.0x (Normal)</option>
-                                                <option value="1.5">1.5x (Fast)</option>
-                                                <option value="2.0">2.0x (Double)</option>
-                                              </select>
-                                            </div>
-                                            <div>
-                                              <label className="text-[8px] uppercase text-zinc-500 font-bold block mb-0.5">Transition effect</label>
-                                              <select
-                                                value={currentSettings.transition}
-                                                onChange={(e) => updateSetting('transition', e.target.value)}
-                                                className="w-full bg-white/5 border border-white/5 rounded px-1.5 py-1 text-white outline-none focus:border-pink-500/25 cursor-pointer"
-                                              >
-                                                <option value="none">None</option>
-                                                <option value="fade">🌀 Fade Cross</option>
-                                                <option value="slide">➡️ Slide Left</option>
-                                                <option value="zoom">🔍 Zoom Center</option>
-                                              </select>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          )}
+                          <div className="flex items-center justify-between pt-2">
+                            <span className="text-xs font-bold text-zinc-400">Total Est. Budget: <strong className="text-white">{msg.planCard.totalCost}</strong></span>
+                            <button
+                              onClick={() => {
+                                toast.success('Plan approved! Agent initiating execution sequence...');
+                                sendMessage('Approved! Please execute the plan now.');
+                              }}
+                              className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-extrabold text-xs shadow-md shadow-cyan-500/20 transition-all flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>Approve & Execute Plan</span>
+                            </button>
+                          </div>
                         </div>
-                      ))}
-                    </div>
+                      )}
 
-                    {/* execution logs inside checklist bubble */}
-                    {(msg.execLogs && msg.execLogs.length > 0) && (
-                      <div className="p-3 bg-black border border-white/5 rounded-lg h-36 overflow-y-auto font-mono text-[9px] text-zinc-400 space-y-1 custom-scrollbar shadow-inner">
-                        {msg.execLogs.map((log, idx) => (
-                          <div key={idx} className="leading-relaxed">{log}</div>
-                        ))}
+                      {/* Interactive Execution Pipeline Cards inside Chat Bubble */}
+                      {msg.role === 'model' && msg.execSteps && msg.execSteps.length > 0 && (
+                        <div className="mt-4 p-4 bg-[#0a0d18]/90 border border-cyan-500/30 rounded-2xl space-y-4 shadow-2xl">
+                          <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                            <div className="flex items-center gap-2">
+                              <Cpu className="w-4 h-4 text-cyan-400 animate-pulse" />
+                              <span className="font-extrabold text-xs text-white uppercase tracking-wider">Super Agent Task Pipeline</span>
+                            </div>
+                            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border ${
+                              msg.status === 'done' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' :
+                              msg.status === 'executing' ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 animate-pulse' :
+                              'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                            }`}>
+                              {msg.status === 'done' ? 'Completed' : msg.status === 'executing' ? 'Executing' : 'Pending'}
+                            </span>
+                          </div>
+
+                          <div className="space-y-3">
+                            {msg.execSteps.map((step, sIdx) => (
+                              <div key={sIdx} className="p-3 rounded-xl bg-white/5 border border-white/5 space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                                      step.status === 'done' || step.status === 'success' ? 'bg-emerald-500 text-white' :
+                                      step.status === 'executing' || step.status === 'running' ? 'bg-cyan-500 text-white animate-spin' :
+                                      'bg-white/10 text-zinc-400'
+                                    }`}>
+                                      {step.status === 'done' || step.status === 'success' ? <Check size={12} /> : sIdx + 1}
+                                    </div>
+                                    <span className="text-xs font-bold text-white capitalize">{step.type.replace(/_/g, ' ')}</span>
+                                  </div>
+                                </div>
+
+                                {step.resultUrl && (
+                                  <div className="mt-2 rounded-xl overflow-hidden border border-white/10 bg-black/50">
+                                    {step.type.includes('video') ? (
+                                      <video src={step.resultUrl} controls className="w-full max-h-64 object-cover" />
+                                    ) : (
+                                      <img src={step.resultUrl} alt="Result" className="w-full max-h-64 object-cover" />
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* Active Research Badges & Attachment Previews Row */}
+            {(attachments.length > 0 || deepResearchActive || socialResearchActive || webpageResearchActive) && (
+              <div className="px-4 sm:px-6 py-2 border-t border-white/10 bg-black/40 flex flex-wrap items-center gap-2">
+                {/* Active Research Mode Badges */}
+                {deepResearchActive && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm">
+                    <Globe size={13} className="text-cyan-400 animate-pulse" />
+                    <span>Deep Web Active</span>
+                    <button type="button" onClick={() => setDeepResearchActive(false)} className="hover:text-white ml-0.5"><X size={12} /></button>
+                  </span>
+                )}
+
+                {socialResearchActive && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm">
+                    <TrendingUp size={13} className="text-cyan-400 animate-pulse" />
+                    <span>Social Trends Active</span>
+                    <button type="button" onClick={() => setSocialResearchActive(false)} className="hover:text-white ml-0.5"><X size={12} /></button>
+                  </span>
+                )}
+
+                {webpageResearchActive && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm max-w-[240px]">
+                    <Link size={13} className="text-cyan-400 shrink-0" />
+                    <span className="truncate">{webpageUrlInput || 'Webpage Research'}</span>
+                    <button type="button" onClick={() => { setWebpageResearchActive(false); setWebpageUrlInput(''); }} className="hover:text-white ml-0.5 shrink-0"><X size={12} /></button>
+                  </span>
+                )}
+
+                {/* Uploaded File Attachments */}
+                {attachments.map((att, idx) => (
+                  <div key={idx} className="relative group bg-white/5 border border-white/10 rounded-xl p-1.5 flex items-center gap-2">
+                    {att.mimeType.startsWith('image/') ? (
+                      <img src={att.dataUrl} alt={att.name} className="w-8 h-8 rounded-lg object-cover" />
+                    ) : (
+                      <div className="w-8 h-8 rounded-lg bg-cyan-500/20 text-cyan-300 flex items-center justify-center font-bold text-[10px]">
+                        {att.name.split('.').pop()?.toUpperCase() || 'FILE'}
                       </div>
                     )}
+                    <span className="text-xs text-zinc-300 max-w-[120px] truncate font-medium">{att.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeAttachment(idx)}
+                      className="w-4 h-4 rounded-full bg-rose-500/80 hover:bg-rose-500 text-white flex items-center justify-center text-xs transition-all"
+                      title="Remove file"
+                    >
+                      <X size={10} />
+                    </button>
                   </div>
-                )}
+                ))}
               </div>
-            </div>
-          ))}
-
-          {isSending && (
-            <div className="flex items-start mr-auto max-w-full animate-pulse">
-              <div className="flex flex-col items-start">
-                <span className="text-[8px] font-black text-[var(--text-muted)] uppercase tracking-wider mb-1 px-1">🤖 Agent</span>
-                <div className="p-4 rounded-2xl bg-[var(--bg-elevated)] border border-white/5 rounded-tl-none flex items-center gap-2">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-pink-500" />
-                  <span className="text-xs text-[var(--text-muted)] font-medium">Agent team is collaborating...</span>
-                </div>
-              </div>
-            </div>
-          )}
-          <div ref={messagesEndRef} />
-        </div>
-
-
-
-        {/* Prompt Input bar — Elevated slightly upwards for maximum visibility */}
-        <div className="flex-none px-4 pt-3.5 pb-8 sm:pb-10 border-t border-white/10 bg-[#0d1322]/90 backdrop-blur-xl shadow-[0_-10px_30px_rgba(0,0,0,0.5)] relative z-20">
-          {/* Attachment Thumbnails Preview Row */}
-          {attachments.length > 0 && (
-            <div className="flex items-center gap-2.5 overflow-x-auto pb-3 mb-2 custom-scrollbar">
-              {attachments.map((att, idx) => (
-                <div
-                  key={idx}
-                  className="relative group shrink-0 w-16 h-16 rounded-xl border border-white/10 overflow-hidden bg-black/60 shadow-lg"
-                >
-                  {/* Media Content Preview */}
-                  {att.mimeType.startsWith('image/') ? (
-                    <img src={att.dataUrl} alt={att.name} className="w-full h-full object-cover" />
-                  ) : att.mimeType.startsWith('video/') ? (
-                    <div className="w-full h-full flex flex-col items-center justify-center p-1 bg-violet-950/40 text-violet-300">
-                      <VideoIcon size={20} />
-                      <span className="text-[7px] font-black truncate w-full text-center mt-1 text-zinc-300">{att.name}</span>
-                    </div>
-                  ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center p-1 bg-pink-950/40 text-pink-300">
-                      <FileText size={20} />
-                      <span className="text-[7px] font-black truncate w-full text-center mt-1 text-zinc-300">{att.name}</span>
-                    </div>
-                  )}
-
-                  {/* Top-Left Delete "X" Button */}
-                  <button
-                    type="button"
-                    onClick={() => removeAttachment(idx)}
-                    className="absolute top-1 left-1 w-5 h-5 rounded-full bg-rose-600 hover:bg-rose-500 text-white flex items-center justify-center shadow-lg transition-all z-10 border border-white/20"
-                    title="Remove attachment"
-                  >
-                    <X size={10} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="flex items-center gap-2">
-            {/* Quick Workflows Dropdown Menu */}
-            <select
-              onChange={(e) => {
-                if (e.target.value) {
-                  setInputText(e.target.value);
-                  e.target.value = "";
-                }
-              }}
-              className="h-11 px-3 rounded-xl border border-white/10 bg-[var(--bg-input)] hover:border-pink-500/30 text-xs font-bold text-pink-300 outline-none cursor-pointer transition-all shrink-0 shadow"
-            >
-              <option value="">⚡ Workflows ▾</option>
-              <option value="Generate 3 photorealistic portrait photos of my AI influencer in a luxury penthouse wearing elegant evening outfit.">📸 Photoshoot</option>
-              <option value="Create a 1-minute video storyboard with 4 scenes: talking avatar intro, workout action shot, protein shake, and call to action.">🎬 1-Min Video Storyboard</option>
-              <option value="Clone the voice from my uploaded video sample and generate a talking avatar saying 'Welcome to my exclusive channel!'">🎙️ Voice Clone & Avatar</option>
-              <option value="Architect a 7-day content schedule for Instagram with high-converting hooks, viral caption ideas, and revenue strategies.">📈 7-Day Content Plan</option>
-            </select>
-
-            <label
-              htmlFor="agent-file-upload-input"
-              className={`w-11 h-11 rounded-xl border border-white/5 bg-[var(--bg-input)] hover:border-pink-500/30 flex items-center justify-center text-zinc-400 hover:text-white transition-all shadow cursor-pointer select-none shrink-0 ${
-                isSending ? 'opacity-50 pointer-events-none' : ''
-              }`}
-              title="Upload Photo, Video, or File Attachment"
-            >
-              <Paperclip size={16} />
-              <input
-                id="agent-file-upload-input"
-                type="file"
-                ref={fileInputRef}
-                accept="image/*,video/*,audio/*,.pdf,.txt"
-                multiple
-                onChange={handleFileUpload}
-                className="sr-only"
-              />
-            </label>
-
-            {/* Mic trigger */}
-            <button
-              onClick={toggleListening}
-              disabled={isSending}
-              className={`w-11 h-11 rounded-xl border flex items-center justify-center transition-all shadow ${
-                isListening 
-                  ? 'bg-rose-500/20 border-rose-500 text-rose-500 animate-pulse'
-                  : 'bg-[var(--bg-input)] border-white/5 text-zinc-400 hover:text-white'
-              }`}
-            >
-              <Mic size={16} />
-            </button>
-
+            )}
+            {/* Textarea for User Input */}
             <textarea
               ref={agentTextareaRef}
-              rows={1}
+              rows={2}
               value={inputText}
               onChange={(e) => handleInputTextChange(e.target.value)}
               onKeyDown={(e) => {
@@ -3082,19 +3642,274 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                 }
               }}
               disabled={isSending}
-              placeholder={isListening ? "Listening... Speak clearly" : "Message Super Agent... (Shift+Enter for new line)"}
-              className="flex-1 min-h-[48px] max-h-[220px] py-3 bg-[var(--bg-input)] border border-white/10 rounded-xl px-4 text-sm font-medium text-white placeholder:text-[var(--text-muted)] focus:border-pink-500/40 outline-none transition-all resize-none leading-relaxed overflow-y-auto"
+              placeholder={isListening ? "Listening... Speak clearly into microphone" : "Message Super Agent..."}
+              className="w-full bg-transparent text-sm sm:text-base font-medium text-white placeholder:text-zinc-500 placeholder:text-xs sm:placeholder:text-sm outline-none resize-none leading-relaxed min-h-[60px] max-h-[220px] overflow-y-auto"
             />
 
-            <button
-              onClick={() => sendMessage()}
-              disabled={isSending || (!inputText.trim() && attachments.length === 0)}
-              className="w-11 h-11 rounded-xl bg-gradient-to-r from-pink-500 to-violet-500 hover:from-pink-600 hover:to-violet-600 flex items-center justify-center text-white shadow-lg transition-all"
-            >
-              <Send size={16} />
-            </button>
+            {/* Bottom Row Action Toolbar (Plus Menu on Left, Send on Right) */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-white/10 relative">
+              
+              {/* Left Row Controls */}
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Plus (+) Menu Trigger */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setIsPlusMenuOpen(!isPlusMenuOpen)}
+                    className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all cursor-pointer shadow-md ${
+                      isPlusMenuOpen || deepResearchActive || socialResearchActive || webpageResearchActive
+                        ? 'bg-cyan-500/25 border-cyan-400 text-cyan-300 shadow-cyan-500/20'
+                        : 'bg-white/5 border-white/10 text-zinc-300 hover:text-white hover:bg-white/10 hover:border-white/20'
+                    }`}
+                    title="Add Attachments & AI Research Tools"
+                  >
+                    <Plus size={18} className={`transition-transform duration-200 ${isPlusMenuOpen ? 'rotate-45 text-cyan-300' : ''}`} />
+                  </button>
+
+                  {/* Plus Action Popup Menu */}
+                  <AnimatePresence>
+                    {isPlusMenuOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                        transition={{ duration: 0.15 }}
+                        className="absolute bottom-12 left-0 w-72 bg-[#0d101d] border border-cyan-500/40 rounded-2xl p-2 shadow-2xl backdrop-blur-2xl z-50 space-y-1"
+                      >
+                        <div className="px-3 py-1.5 text-[10px] font-black uppercase text-zinc-500 tracking-wider">
+                          Attachments & AI Research Tools
+                        </div>
+
+                        {/* 1. Upload File */}
+                        <label
+                          htmlFor="plus-menu-file-input"
+                          onClick={() => setIsPlusMenuOpen(false)}
+                          className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-cyan-500/10 hover:text-cyan-300 text-zinc-200 text-xs font-bold cursor-pointer transition-all"
+                        >
+                          <div className="w-8 h-8 rounded-lg bg-cyan-500/15 flex items-center justify-center text-cyan-400">
+                            <Paperclip size={16} />
+                          </div>
+                          <div>
+                            <div>Upload File</div>
+                            <div className="text-[10px] font-normal text-zinc-400">Photos, videos, audio & documents</div>
+                          </div>
+                          <input
+                            id="plus-menu-file-input"
+                            type="file"
+                            ref={fileInputRef}
+                            accept="image/*,video/*,audio/*,.pdf,.txt"
+                            multiple
+                            onChange={handleFileUpload}
+                            className="sr-only"
+                          />
+                        </label>
+
+                        {/* 2. Deep Web Research */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = !deepResearchActive;
+                            setDeepResearchActive(next);
+                            setIsPlusMenuOpen(false);
+                            toast(next ? '🌐 Deep Web Research Activated' : 'Web Search Standard Mode');
+                          }}
+                          className={`w-full flex items-center justify-between p-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                            deepResearchActive
+                              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                              : 'hover:bg-white/5 text-zinc-200'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-cyan-500/15 flex items-center justify-center text-cyan-400">
+                              <Globe size={16} />
+                            </div>
+                            <div className="text-left">
+                              <div>Deep Research</div>
+                              <div className="text-[10px] font-normal text-zinc-400">Live multi-source web search</div>
+                            </div>
+                          </div>
+                          {deepResearchActive && <Check size={14} className="text-cyan-400" />}
+                        </button>
+
+                        {/* 3. Social Media Research */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = !socialResearchActive;
+                            setSocialResearchActive(next);
+                            setIsPlusMenuOpen(false);
+                            toast(next ? '📱 Social Media Research Activated' : 'Social Trend Standard Mode');
+                          }}
+                          className={`w-full flex items-center justify-between p-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                            socialResearchActive
+                              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                              : 'hover:bg-white/5 text-zinc-200'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-cyan-500/15 flex items-center justify-center text-cyan-400">
+                              <TrendingUp size={16} />
+                            </div>
+                            <div className="text-left">
+                              <div>Social Research</div>
+                              <div className="text-[10px] font-normal text-zinc-400">Instagram, TikTok & X trend scraper</div>
+                            </div>
+                          </div>
+                          {socialResearchActive && <Check size={14} className="text-cyan-400" />}
+                        </button>
+
+                        {/* 4. Webpage Research */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowWebpageUrlModal(true);
+                            setIsPlusMenuOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between p-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                            webpageResearchActive
+                              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                              : 'hover:bg-white/5 text-zinc-200'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-cyan-500/15 flex items-center justify-center text-cyan-400">
+                              <Link size={16} />
+                            </div>
+                            <div className="text-left">
+                              <div>Webpage Research</div>
+                              <div className="text-[10px] font-normal text-zinc-400">Extract content from URL</div>
+                            </div>
+                          </div>
+                          {webpageResearchActive && <Check size={14} className="text-cyan-400" />}
+                        </button>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                {/* Workflows Menu */}
+                <select
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      setInputText(e.target.value);
+                      e.target.value = "";
+                    }
+                  }}
+                  className="h-9 px-2.5 rounded-xl border border-white/10 bg-white/5 hover:border-cyan-500/30 text-xs font-bold text-cyan-300 outline-none cursor-pointer transition-all shadow"
+                >
+                  <option value="">⚡ Workflows ▾</option>
+                  <option value="Generate 3 photorealistic portrait photos of my AI influencer in a luxury penthouse wearing elegant evening outfit.">📸 Photoshoot</option>
+                  <option value="Create a 1-minute video storyboard with 4 scenes: talking avatar intro, workout action shot, protein shake, and call to action.">🎬 1-Min Video Storyboard</option>
+                  <option value="Clone the voice from my uploaded video sample and generate a talking avatar saying 'Welcome to my exclusive channel!'">🎙️ Voice Clone & Avatar</option>
+                  <option value="Architect a 7-day content schedule for Instagram with high-converting hooks, viral caption ideas, and revenue strategies.">📈 7-Day Content Plan</option>
+                </select>
+
+                {/* Mic Input Trigger */}
+                <button
+                  type="button"
+                  onClick={toggleListening}
+                  disabled={isSending}
+                  title="Dictate message with microphone"
+                  className={`p-2 rounded-xl border flex items-center justify-center transition-all cursor-pointer ${
+                    isListening 
+                      ? 'bg-rose-500/20 border-rose-500 text-rose-400 animate-pulse'
+                      : 'bg-white/5 border-white/10 text-zinc-300 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  <Mic size={15} />
+                </button>
+
+                {/* Hands-Free Live Voice Call Button */}
+                <button
+                  type="button"
+                  onClick={isLiveVoiceCallActive ? stopLiveVoiceCall : startLiveVoiceCall}
+                  title={isLiveVoiceCallActive ? "End Live Voice Call" : "Start Live Voice Call"}
+                  className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                    isLiveVoiceCallActive
+                      ? 'bg-emerald-500 text-white border-emerald-400 animate-pulse shadow-lg shadow-emerald-500/30'
+                      : 'bg-cyan-500/10 border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/20'
+                  }`}
+                >
+                  {isLiveVoiceCallActive ? <PhoneOff size={14} /> : <PhoneCall size={14} />}
+                  <span>{isLiveVoiceCallActive ? 'End Call' : 'Voice Call'}</span>
+                </button>
+              </div>
+
+              {/* Right Side: Primary Send Button */}
+              <button
+                type="button"
+                onClick={() => sendMessage()}
+                disabled={isSending || (!inputText.trim() && attachments.length === 0)}
+                className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 disabled:opacity-40 disabled:pointer-events-none flex items-center gap-2 text-white font-extrabold text-sm shadow-lg shadow-cyan-500/25 transition-all shrink-0 cursor-pointer"
+              >
+                <span>Send</span>
+                {isSending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+              </button>
+            </div>
           </div>
         </div>
+        )}
+
+        {/* Webpage Research URL Input Modal */}
+        <AnimatePresence>
+          {showWebpageUrlModal && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                className="w-full max-w-md bg-[#0d101d] border border-cyan-500/40 rounded-3xl p-6 shadow-2xl space-y-4"
+              >
+                <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                  <div className="flex items-center gap-2 text-cyan-400 font-extrabold text-base">
+                    <Link size={18} />
+                    <span>Webpage Research</span>
+                  </div>
+                  <button type="button" onClick={() => setShowWebpageUrlModal(false)} className="text-zinc-400 hover:text-white">
+                    <X size={16} />
+                  </button>
+                </div>
+
+                <p className="text-xs text-zinc-300 leading-relaxed">
+                  Enter any website or article URL for Super Agent to scrape, extract, and research before responding:
+                </p>
+
+                <input
+                  type="url"
+                  value={webpageUrlInput}
+                  onChange={(e) => setWebpageUrlInput(e.target.value)}
+                  placeholder="https://example.com/article"
+                  className="w-full bg-black/50 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white outline-none focus:border-cyan-400 font-medium"
+                />
+
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowWebpageUrlModal(false)}
+                    className="px-4 py-2 rounded-xl text-xs font-bold text-zinc-400 hover:text-white hover:bg-white/5"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!webpageUrlInput.trim()) {
+                        toast.error('Please enter a valid webpage URL');
+                        return;
+                      }
+                      setWebpageResearchActive(true);
+                      setShowWebpageUrlModal(false);
+                      toast.success(`📄 Webpage Research Enabled for ${webpageUrlInput}`);
+                    }}
+                    className="px-5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white text-xs font-extrabold shadow-md shadow-cyan-500/20"
+                  >
+                    Enable Research
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* RIGHT COLUMN: Interactive Agent Canvas Workspace (Compact & Collapsible) */}
@@ -3216,11 +4031,18 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
                         </span>
                         <select
                           value={voiceEngine}
-                          onChange={(e) => setVoiceEngine(e.target.value as 'omnivoice' | 'elevenlabs')}
-                          className="w-full bg-white/5 border border-white/5 rounded-xl px-3 py-2 text-xs text-white focus:border-violet-500/30 outline-none"
+                          onChange={(e) => setVoiceEngine(e.target.value as any)}
+                          className="w-full bg-white/5 border border-white/5 rounded-xl px-3 py-2 text-xs text-white focus:border-cyan-500/30 outline-none"
                         >
-                          <option value="omnivoice">✨ Wavespeed OmniVoice (Instant, 5s reference)</option>
-                          <option value="elevenlabs">🎙️ ElevenLabs (High-fidelity custom clone)</option>
+                          <option value="omnivoice">✨ Wavespeed OmniVoice Zonos2 (Instant, pitch/speed control)</option>
+                          <option value="minimax-clone">⚡ MiniMax Voice Clone (Wavespeed GPU)</option>
+                          <option value="qwen3-clone">🧠 Qwen 3.0 Voice Clone (Alibaba / Wavespeed)</option>
+                          <option value="seed-speech">🌱 ByteDance Seed-Speech 2.0 (Wavespeed)</option>
+                          <option value="chatterbox">💬 ChatterBox Voice Converter (Wavespeed)</option>
+                          <option value="mureka-vocal">🎵 Mureka Vocal Clone (Wavespeed)</option>
+                          <option value="zonos2">🌊 Zyphra Zonos v2 (Wavespeed)</option>
+                          <option value="elevenlabs">🎙️ ElevenLabs v3 Multilingual (Flagship Accent Clone)</option>
+                          <option value="openai-tts">🤖 OpenAI TTS-1 HD (Neural)</option>
                         </select>
                       </div>
 
@@ -4147,6 +4969,22 @@ export default function AgentView({ personas, setPersonas, onSelectPersona, nav 
           </div>
         </div>
       )}
+
+      {/* Voice Clone Studio & Model Selector Modal */}
+      <VoiceCloneStudioModal
+        isOpen={isVoiceCloneModalOpen}
+        onClose={() => setIsVoiceCloneModalOpen(false)}
+        onVoiceCloned={({ voiceId, name, model }) => {
+          setClonedVoiceRef('active');
+          if (voiceId) {
+            setClonedVoiceId(voiceId);
+            try {
+              localStorage.setItem('superagent_cloned_voice_id', voiceId);
+              localStorage.setItem('superagent_cloned_voice', 'active');
+            } catch {}
+          }
+        }}
+      />
     </div>
   );
 }

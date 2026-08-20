@@ -530,7 +530,7 @@ export default function TalkingHeadStudio({
                   </button>
                 )}
                 <input
-                  type="file" ref={audioInputRef} hidden accept="audio/*"
+                  type="file" ref={audioInputRef} hidden accept="audio/*,video/*,video/mp4,video/quicktime,.mp3,.wav,.m4a,.ogg,.flac,.aac,.mp4,.mov,.webm"
                   onChange={async (e) => {
                     const file = e.target.files?.[0];
                     if (!file) return;

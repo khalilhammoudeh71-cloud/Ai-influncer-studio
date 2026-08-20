@@ -45,6 +45,7 @@ interface MotionModel {
 }
 
 const MOTION_MODELS: MotionModel[] = [
+  { id: 'wavespeed-ai/wan-3.0-animate', name: 'WAN 3.0 Animate', desc: 'Flagship motion flow & pose transfer', badge: 'new' },
   { id: 'wavespeed-ai/scail-2', name: 'SCAIL-2', desc: 'Zero-shot high-quality motion mapping', badge: 'new' },
   { id: 'wavespeed-ai/wan-2.2-animate', name: 'WAN 2.2 Animate', desc: 'Next-gen motion flow' },
   { id: 'wavespeed-ai/kling-3.0-motion-control', name: 'Kling 3.0 Motion Control', desc: 'Premium cinematic movement' },

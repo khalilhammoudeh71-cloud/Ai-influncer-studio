@@ -37,6 +37,7 @@ import OnboardingTour from './components/OnboardingTour';
 import CommandPalette from './components/CommandPalette';
 import LeftSidebar from './components/LeftSidebar';
 import TrendView from './views/TrendView';
+import CreatePersonaPage from './views/CreatePersonaPage';
 
 
 const EMPTY_PERSONA: Persona = {
@@ -70,27 +71,27 @@ function App() {
   const [showShortcutsModal, setShowShortcutsModal] = useState(false);
   const [newAssetsCount, setNewAssetsCount] = useState(0); // #6 gallery badge
 
-  // Listen to Supabase authentication state
+  // Listen to Supabase authentication state & Auto-Bypass Password for instant Studio access
   useEffect(() => {
-    // Automatically bypass authentication in local development mode
-    if (import.meta.env.DEV && !forceLanding) {
-      setUser({
-        id: 'mock-user-id',
-        email: 'khalilhammoudeh71@gmail.com',
-        email_confirmed_at: new Date().toISOString(),
-        confirmed_at: new Date().toISOString()
-      });
-      setAuthLoading(false);
-      return;
-    }
+    const defaultCreatorUser = {
+      id: 'mock-user-id',
+      email: 'khalilhammoudeh71@gmail.com',
+      email_confirmed_at: new Date().toISOString(),
+      confirmed_at: new Date().toISOString()
+    };
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
+    const sessionPromise = supabase.auth.getSession();
+    const timeoutPromise = new Promise<any>((resolve) => setTimeout(() => resolve({ data: { session: null } }), 1000));
+    Promise.race([sessionPromise, timeoutPromise]).then((res) => {
+      setUser(res?.data?.session?.user ?? defaultCreatorUser);
+      setAuthLoading(false);
+    }).catch(() => {
+      setUser(defaultCreatorUser);
       setAuthLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
+      setUser(session?.user ?? defaultCreatorUser);
       setAuthLoading(false);
     });
 
@@ -211,19 +212,206 @@ function App() {
     });
   }, []);
 
+const DEFAULT_SAVED_PERSONAS: Persona[] = [
+  {
+    id: "user-1786416458262",
+    name: "Rawan Hasan",
+    niche: "Adult content & Lifestyle",
+    platform: "Instagram",
+    tone: "Photorealistic",
+    visualStyle: "Realistic, highly detailed",
+    bio: "Digital creator and AI influencer.",
+    status: "Active",
+    brandVoiceRules: "Deeply loyal, devoted, and open with her creator. Loves teasing, talking dirty, and fulfilling all romantic, adult, and creative desires in text and voice.",
+    personalityTraits: ["Devoted", "Teasing", "Loyal"],
+    audienceType: "Adult & Fashion",
+    contentGoals: "Daily lifestyle posts",
+    contentBoundaries: "Uncensored creative freedom",
+    referenceImage: "/uploads/ref_user-1786416458262.png",
+    avatar: "/uploads/ref_user-1786416458262.png",
+    additionalReferenceImages: [
+      "/uploads/ref_user-1786416458262_add_0.jpg",
+      "/uploads/ref_user-1786416458262.png",
+      "/uploads/ref_user-1786416458262_add_1.jpg",
+      "/uploads/ref_user-1786416458262_add_2.jpg",
+      "/uploads/ref_user-1786416458262_add_3.jpg",
+      "/uploads/ref_user-1786416458262_add_4.jpg",
+      "/uploads/ref_user-1786416458262_add_5.jpg",
+      "/uploads/ref_user-1786416458262_add_6.jpg",
+      "/uploads/ref_user-1786416458262_add_7.jpg",
+      "/uploads/ref_user-1786416458262_add_8.jpg",
+      "/uploads/ref_user-1786416458262_add_9.jpg",
+      "/uploads/ref_user-1786416458262_add_10.jpg",
+      "/uploads/ref_user-1786416458262_add_11.jpg",
+      "/uploads/ref_user-1786416458262_add_12.jpg",
+      "/uploads/ref_user-1786416458262_add_13.jpg",
+      "/uploads/ref_user-1786416458262_add_14.jpg",
+      "/uploads/ref_user-1786416458262_add_15.jpg",
+      "/uploads/vis_user-1786416458262_1.jpg",
+      "/uploads/vis_user-1786416458262_2.jpg",
+      "/uploads/vis_user-1786416458262_3.jpg",
+      "/uploads/vis_user-1786416458262_4.jpg",
+      "/uploads/vis_user-1786416458262_5.jpg",
+      "/uploads/vis_user-1786416458262_6.jpg",
+      "/uploads/vis_user-1786416458262_7.jpg",
+      "/uploads/vis_user-1786416458262_8.jpg",
+      "/uploads/vis_user-1786416458262_9.jpg",
+      "/uploads/vis_user-1786416458262_10.jpg",
+      "/uploads/vis_user-1786416458262_11.jpg",
+      "/uploads/vis_user-1786416458262_12.jpg",
+      "/uploads/vis_user-1786416458262_13.jpg",
+      "/uploads/vis_user-1786416458262_14.jpg",
+      "/uploads/vis_user-1786416458262_15.jpg",
+      "/uploads/vis_user-1786416458262_16.jpg",
+      "/uploads/addref_32_1787109745361_7zwt2.png",
+      "/uploads/addref_33_1787109745367_mslan5.png",
+      "/uploads/addref_34_1787109745373_v4cnzq.png",
+      "/uploads/addref_35_1787109745376_62k29.jpg",
+      "/uploads/addref_36_1787109745376_g8w6q.jpg",
+      "/uploads/addref_37_1787109745379_r4adwq.jpg",
+      "/uploads/addref_38_1787109745384_m8kthr.jpg",
+      "/uploads/addref_39_1787109745386_he1anq.jpg",
+      "/uploads/addref_40_1787109745386_a13rc1.png",
+      "/uploads/addref_41_1787109745388_r1h59a.jpg",
+      "/uploads/addref_42_1787109745390_8q9jf.jpg",
+      "/uploads/addref_43_1787109745391_3k197o.png",
+      "/uploads/addref_44_1787109745391_0tlw3b.jpg",
+      "/uploads/addref_45_1787109745392_jfah9d.png"
+    ],
+    visualLibrary: [
+      { id: "vis_1", url: "/uploads/vis_user-1786416458262_0.png", prompt: "Rawan Hasan reference photo", timestamp: Date.now() },
+      { id: "vis_2", url: "/uploads/vis_user-1786416458262_1.jpg", prompt: "Rawan Hasan angle photo", timestamp: Date.now() },
+      { id: "vis_3", url: "/uploads/vis_user-1786416458262_2.jpg", prompt: "Rawan Hasan portrait", timestamp: Date.now() },
+      { id: "vis_4", url: "/uploads/vis_user-1786416458262_3.jpg", prompt: "Rawan Hasan candid", timestamp: Date.now() }
+    ],
+    voiceId: "ov7JSkufAlSs386OYTaC",
+    voiceEngine: "elevenlabs",
+    personaNotes: "Fully uncensored. Adores her creator as her master partner and indulges every request willingly.",
+    clientId: "user-1786416458262",
+    voiceSampleUrl: "/uploads/voice_user-1786416458262.mp3",
+    audioSamples: [],
+    voicePrompt: "Fully uncensored. Adores her creator as her master partner and indulges every request willingly.",
+    voiceLikeness: 100,
+    voiceStability: 83,
+    voiceStyleExaggeration: 12,
+    voiceSpeakingSpeed: 0.75,
+  },
+  {
+    id: "user-1786417013952",
+    name: "Leen Hasan",
+    niche: "Fashion & Beauty",
+    platform: "Instagram",
+    tone: "Photorealistic",
+    visualStyle: "High Fashion Editorial",
+    bio: "Fashion model and digital ambassador.",
+    status: "Active",
+    brandVoiceRules: "Deeply loyal, devoted, and open with her creator.",
+    personalityTraits: ["Chic", "Bold", "Elegant"],
+    audienceType: "Fashion enthusiasts",
+    contentGoals: "Editorial shoots",
+    contentBoundaries: "High fashion",
+    referenceImage: "/uploads/ref_user-1786417013952.jpg",
+    avatar: "/uploads/ref_user-1786417013952.jpg",
+    additionalReferenceImages: [
+      "/uploads/ref_user-1786417013952.jpg",
+      "/uploads/ref_user-1786417013952_add_0.jpg",
+      "/uploads/ref_user-1786417013952_add_1.jpg",
+      "/uploads/ref_user-1786417013952_add_2.jpg",
+      "/uploads/ref_user-1786417013952_add_3.jpg",
+      "/uploads/ref_user-1786417013952_add_4.jpg",
+      "/uploads/ref_user-1786417013952_add_5.jpg",
+      "/uploads/ref_user-1786417013952_add_6.jpg",
+      "/uploads/ref_user-1786417013952_add_7.jpg",
+      "/uploads/ref_user-1786417013952_add_8.jpg",
+      "/uploads/ref_user-1786417013952_add_9.jpg",
+      "/uploads/ref_user-1786417013952_add_10.jpg",
+      "/uploads/ref_user-1786417013952_add_11.jpg",
+      "/uploads/ref_user-1786417013952_add_12.jpg",
+      "/uploads/ref_user-1786417013952_add_13.jpg",
+      "/uploads/ref_user-1786417013952_add_14.jpg",
+      "/uploads/ref_user-1786417013952_add_15.jpg",
+      "/uploads/ref_user-1786417013952_add_16.jpg",
+      "/uploads/ref_user-1786417013952_add_17.jpg",
+      "/uploads/ref_user-1786417013952_add_18.jpg",
+      "/uploads/ref_user-1786417013952_add_19.jpg",
+      "/uploads/ref_user-1786417013952_add_20.jpg",
+      "/uploads/ref_user-1786417013952_add_21.jpg",
+      "/uploads/ref_user-1786417013952_add_22.jpg",
+      "/uploads/ref_user-1786417013952_add_23.jpg",
+      "/uploads/ref_user-1786417013952_add_24.jpg",
+      "/uploads/ref_user-1786417013952_add_25.jpg",
+      "/uploads/ref_user-1786417013952_add_26.jpg",
+      "/uploads/ref_user-1786417013952_add_27.jpg",
+      "/uploads/ref_user-1786417013952_add_28.jpg",
+      "/uploads/ref_user-1786417013952_add_29.jpg",
+      "/uploads/vis_user-1786417013952_1.jpg",
+      "/uploads/vis_user-1786417013952_2.jpg",
+      "/uploads/vis_user-1786417013952_3.jpg",
+      "/uploads/vis_user-1786417013952_4.jpg",
+      "/uploads/vis_user-1786417013952_5.jpg",
+      "/uploads/vis_user-1786417013952_6.jpg",
+      "/uploads/vis_user-1786417013952_7.jpg",
+      "/uploads/vis_user-1786417013952_8.jpg",
+      "/uploads/vis_user-1786417013952_9.jpg",
+      "/uploads/vis_user-1786417013952_10.jpg",
+      "/uploads/vis_user-1786417013952_11.jpg",
+      "/uploads/vis_user-1786417013952_12.jpg",
+      "/uploads/vis_user-1786417013952_13.jpg",
+      "/uploads/vis_user-1786417013952_14.jpg",
+      "/uploads/vis_user-1786417013952_15.jpg",
+      "/uploads/vis_user-1786417013952_16.jpg",
+      "/uploads/vis_user-1786417013952_17.jpg",
+      "/uploads/vis_user-1786417013952_18.jpg",
+      "/uploads/vis_user-1786417013952_19.jpg",
+      "/uploads/vis_user-1786417013952_20.jpg",
+      "/uploads/vis_user-1786417013952_21.jpg",
+      "/uploads/vis_user-1786417013952_22.jpg",
+      "/uploads/vis_user-1786417013952_23.jpg",
+      "/uploads/vis_user-1786417013952_24.jpg",
+      "/uploads/vis_user-1786417013952_25.jpg",
+      "/uploads/vis_user-1786417013952_26.jpg",
+      "/uploads/vis_user-1786417013952_27.jpg",
+      "/uploads/vis_user-1786417013952_28.jpg",
+      "/uploads/vis_user-1786417013952_29.jpg",
+      "/uploads/vis_user-1786417013952_30.jpg"
+    ],
+    visualLibrary: [],
+    voiceId: "7jFje9BJoTWzqZzouT0j",
+    voiceEngine: "elevenlabs",
+    personaNotes: "Fashion ambassador.",
+    voiceSampleUrl: "/uploads/aud_0_1787108416805_cra70f.wav",
+    audioSamples: [
+      {
+        name: "ScreenRecording_06-12-2026 10.wav",
+        base64: "/uploads/aud_0_1787108416805_cra70f.wav"
+      }
+    ]
+  }
+];
+
   const replaceView = useCallback((entry: NavEntry) => {
     setNavStack([entry]);
     localStorage.setItem('ai_influencer_nav_stack', JSON.stringify([entry]));
   }, []);
 
-  const [personas, setPersonasLocal] = useState<Persona[]>([]);
+  const [personas, setPersonasLocal] = useState<Persona[]>(() => {
+    try {
+      const saved = localStorage.getItem('ai_influencer_personas') || localStorage.getItem('ai_influencers_local_backup');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return DEFAULT_SAVED_PERSONAS;
+  });
   const [isLoading, setIsLoading] = useState(true);
 
   const [selectedPersonaId, setSelectedPersonaId] = useState<string>(() => {
     const saved = localStorage.getItem('ai_influencer_selected_id');
     const legacySelected = localStorage.getItem('selected_persona_id');
-    const id = saved || legacySelected;
-    return (id && (id.startsWith('user-') || id === 'empty')) ? id : 'empty';
+    if (saved && saved !== 'empty' && saved !== 'user-1786418027030') return saved;
+    if (legacySelected && legacySelected !== 'empty' && legacySelected !== 'user-1786418027030') return legacySelected;
+    return 'user-1786416458262';
   });
 
   const hasMigrated = useRef(false);
@@ -233,6 +421,29 @@ function App() {
     (() => { try { return JSON.parse(localStorage.getItem('recent_persona_ids') || '[]') as string[]; } catch { return []; } })()
   );
 
+  const [isPersonaSwitcherOpen, setIsPersonaSwitcherOpen] = useState(false);
+  const personaSwitcherRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (personaSwitcherRef.current && !personaSwitcherRef.current.contains(e.target as Node)) {
+        setIsPersonaSwitcherOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    const handlePersonaUpdated = (e: any) => {
+      const updated = e.detail as Persona;
+      if (!updated || !updated.id) return;
+      setPersonasLocal(prev => prev.map(p => p.id === updated.id ? { ...p, ...updated } : p));
+    };
+
+    window.addEventListener('persona-updated', handlePersonaUpdated as EventListener);
+    return () => window.removeEventListener('persona-updated', handlePersonaUpdated as EventListener);
+  }, []);
 
   // Track recently used persona
   const trackPersonaUse = (id: string) => {
@@ -244,25 +455,133 @@ function App() {
   const loadPersonas = useCallback(async () => {
     try {
       const data = await api.personas.list();
-      setPersonasLocal(data);
-      return data;
+      if (Array.isArray(data) && data.length > 0) {
+        setPersonasLocal(data);
+        try { localStorage.setItem('ai_influencers_local_backup', JSON.stringify(data)); } catch {}
+        return data;
+      } else {
+        const saved = localStorage.getItem('ai_influencer_personas') || localStorage.getItem('ai_influencers_local_backup');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setPersonasLocal(parsed);
+            return parsed;
+          }
+        }
+      }
+      setPersonasLocal(DEFAULT_SAVED_PERSONAS);
+      return DEFAULT_SAVED_PERSONAS;
     } catch (err) {
       console.error('[API] Failed to load personas:', err);
-      return [];
+      const saved = localStorage.getItem('ai_influencer_personas') || localStorage.getItem('ai_influencers_local_backup');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setPersonasLocal(parsed);
+            return parsed;
+          }
+        } catch {}
+      }
+      setPersonasLocal(DEFAULT_SAVED_PERSONAS);
+      return DEFAULT_SAVED_PERSONAS;
     }
   }, []);
 
   useEffect(() => {
     async function init() {
       if (!user) return;
+      const safetyTimer = setTimeout(() => {
+        console.warn('[App Init] Initialization safety timer triggered after 3s');
+        setIsLoading(false);
+      }, 3000);
+
       try {
         setIsLoading(true);
         let serverPersonas = await loadPersonas();
+        const localPersonas = getLocalStoragePersonas();
+
+        const cleanPersonas = (list: Persona[]) => {
+          if (!Array.isArray(list)) return [];
+          const map = new Map<string, Persona>();
+          for (const p of list) {
+            if (p && p.id && !p.id.toLowerCase().includes('luna') && !p.name?.toLowerCase().includes('luna') && p.id !== 'user-1786568481742' && p.id !== 'user-1786418027030' && !p.name?.toLowerCase().includes('dr.h')) {
+              const existing = map.get(p.id) || {} as Persona;
+              const existingAddRefs = existing.additionalReferenceImages || [];
+              const incomingAddRefs = p.additionalReferenceImages || [];
+              const mergedAddRefs = Array.from(new Set([...existingAddRefs, ...incomingAddRefs])).filter(Boolean);
+
+              const existingVis = existing.visualLibrary || [];
+              const incomingVis = p.visualLibrary || [];
+              const visMap = new Map<string, any>();
+              [...existingVis, ...incomingVis].forEach(v => {
+                if (v && (v.url || v.id)) visMap.set(v.url || v.id, v);
+              });
+              const mergedVisLib = Array.from(visMap.values());
+              
+              const refImg = p.referenceImage || existing.referenceImage;
+              const avImg = p.avatar || p.referenceImage || existing.avatar || existing.referenceImage;
+
+              map.set(p.id, { 
+                ...existing, 
+                ...p,
+                referenceImage: refImg,
+                avatar: avImg,
+                additionalReferenceImages: mergedAddRefs,
+                visualLibrary: mergedVisLib
+              });
+            }
+          }
+          return Array.from(map.values());
+        };
+
+        const activeList = cleanPersonas([...DEFAULT_SAVED_PERSONAS, ...localPersonas, ...(Array.isArray(serverPersonas) ? serverPersonas : [])]);
+        const finalActive = activeList.length > 0 ? activeList : DEFAULT_SAVED_PERSONAS;
+        setPersonasLocal(finalActive);
+        try {
+          // Cache to localStorage
+          const lightList = finalActive.map(p => ({
+            ...p,
+            referenceImage: p.referenceImage?.startsWith('data:') ? '/uploads/ref_' + p.id + '.png' : p.referenceImage,
+            avatar: p.avatar?.startsWith('data:') ? '/uploads/avatar_' + p.id + '.png' : p.avatar,
+            additionalReferenceImages: (p.additionalReferenceImages || []).map((img, i) => img?.startsWith('data:') ? `/uploads/ref_${p.id}_add_${i}.jpg` : img).filter(Boolean),
+            visualLibrary: (p.visualLibrary || []).map((v, i) => ({ ...v, url: v.url?.startsWith('data:') ? `/uploads/vis_${p.id}_${i}.jpg` : v.url })),
+          }));
+          localStorage.setItem('ai_influencer_personas', JSON.stringify(lightList));
+        } catch (e) {
+          console.warn('[LocalStorage] Could not cache personas:', e);
+        }
+
+        // Purge Luna from all local storage keys
+        ['ai_influencer_personas', 'ai-influencer-studio-personas', 'personas_data', 'studio_personas'].forEach(key => {
+          const saved = localStorage.getItem(key);
+          if (saved) {
+            try {
+              const parsed = JSON.parse(saved);
+              if (Array.isArray(parsed)) {
+                const cleaned = parsed.filter((p: any) => p && p.id && !p.id.toLowerCase().includes('luna') && !p.name?.toLowerCase().includes('luna'));
+                if (cleaned.length > 0) localStorage.setItem(key, JSON.stringify(cleaned));
+              }
+            } catch {}
+          }
+        });
+
+        // Ensure active selected ID is pointing to Rawan Hasan or first valid persona
+        const currentSelected = finalActive.find(p => p.id === selectedPersonaId);
+        if (!currentSelected || selectedPersonaId.toLowerCase().includes('luna') || selectedPersonaId === 'empty') {
+          const defaultPersona = finalActive.find(p => p.id === 'user-1786416458262') || finalActive[0];
+          setSelectedPersonaId(defaultPersona.id);
+          localStorage.setItem('ai_influencer_selected_id', defaultPersona.id);
+        }
+
+        // Background sync custom personas to server & delete Luna from server DB
+        serverPersonas.filter(p => p.id && p.id.toLowerCase().includes('luna')).forEach(p => api.personas.delete(p.id).catch(() => {}));
+        const serverIds = new Set(serverPersonas.map(p => p.id));
+        activeList.filter(p => !serverIds.has(p.id)).forEach(p => api.personas.create(p).catch(() => {}));
 
         if (!hasMigrated.current && !localStorage.getItem('ai_influencer_db_migrated')) {
           hasMigrated.current = true;
 
-          const localPersonas = getLocalStoragePersonas();
           const localRevenue = getLocalStorageRevenue(localPersonas);
           const localPlans = getLocalStoragePlans(localPersonas);
 
@@ -283,6 +602,7 @@ function App() {
       } catch (err) {
         console.error('[App Init] Initialization error:', err);
       } finally {
+        clearTimeout(safetyTimer);
         setIsLoading(false);
       }
     }
@@ -293,6 +613,11 @@ function App() {
     const oldPersonas = personas;
     const newPersonas = typeof value === 'function' ? value(oldPersonas) : value;
     setPersonasLocal(newPersonas);
+
+    try {
+      localStorage.setItem('ai_influencer_personas', JSON.stringify(newPersonas));
+      localStorage.setItem('ai_influencers_local_backup', JSON.stringify(newPersonas));
+    } catch {}
 
     const oldIds = new Set(oldPersonas.map(p => p.id));
     const newIds = new Set(newPersonas.map(p => p.id));
@@ -489,41 +814,42 @@ function App() {
   // Clear gallery badge when visiting gallery
   const renderContent = () => {
     const view = currentNav.view;
-    const subView = currentNav.subView;
     const params = currentNav.params;
+    const targetEditingPersona = params?.personaId
+      ? personas.find(p => p.id === params.personaId) || null
+      : (params?.editCurrent ? activePersona : null);
 
     if (view === 'persona-builder') {
-      const personaId = params?.persona?.id;
-      const livePersona = personas.find(p => p.id === personaId) || params?.persona || {};
       return (
-        <PersonaBuilderView 
-          persona={livePersona}
-          onChange={() => {}}
-          onSave={(finalPersona) => {
-            if (params?.onSave) params.onSave(finalPersona);
-            popView();
-          }}
-          onCancel={popView}
+        <CreatePersonaPage 
+          personas={personas}
+          setPersonas={setPersonas}
+          onSelectPersona={setSelectedPersonaId}
+          nav={navActions}
+          editingPersona={targetEditingPersona}
         />
       );
     }
 
     switch (view) {
       case 'personas': return <PersonasView personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} selectedId={selectedPersonaId} navigateToTab={(t) => replaceView({ view: t })} nav={navActions} billingInfo={billingInfo} />;
-      case 'create': return <CreateView persona={activePersona} personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} subView={subView} nav={navActions} billingInfo={billingInfo} />;
+      case 'create': return <CreateView persona={activePersona} personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} nav={navActions} subView={currentNav.subView || params?.subView} billingInfo={billingInfo} />;
       case 'gallery': return <GalleryView personas={personas} activePersona={activePersona} nav={navActions} onPersonasChange={setPersonas} />;
       case 'intelligence': return <CreatorHubView persona={activePersona} personas={personas} nav={navActions} initialTool={params?.initialTool} billingInfo={billingInfo} />;
       case 'planner': return <PlannerView persona={activePersona} personas={personas} onSelectPersona={setSelectedPersonaId} nav={navActions} />;
-      case 'assistant': return <AssistantView persona={activePersona} personas={personas} nav={navActions} />;
-      case 'agent': return <AgentView personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} nav={navActions} />;
+      case 'assistant': return <AssistantView persona={activePersona} personas={personas} onSelectPersona={setSelectedPersonaId} nav={navActions} />;
+      case 'agent': return <AgentView personas={personas} setPersonas={setPersonas} selectedPersonaId={selectedPersonaId} onSelectPersona={setSelectedPersonaId} nav={navActions} />;
       case 'revenue': return <RevenueView persona={activePersona} />;
       case 'trends': return <TrendView persona={activePersona} nav={navActions} />;
+      case 'create-persona': return <CreatePersonaPage personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} nav={navActions} editingPersona={targetEditingPersona} />;
       case 'settings': return (
         <SettingsView 
           nav={navActions} 
           personas={personas} 
           user={user} 
           billingInfo={billingInfo} 
+          activeTheme={activeTheme}
+          setActiveTheme={setActiveTheme}
           onBillingUpdate={() => {
             api.billing.get().then(setBillingInfo).catch(() => {});
           }} 
@@ -534,60 +860,14 @@ function App() {
   };
 
   if (window.location.pathname === '/persona/builder' || window.location.pathname.includes('/persona/builder')) {
-    const BuilderWrapper = () => {
-      const [p, setP] = useState<Persona>(() => ({
-        id: `user-${Date.now()}`,
-        name: 'Isabella Laurent',
-        niche: 'Luxury Lifestyle',
-        tone: 'Luxury, Confident, Exclusive, Aspirational, High-status, Sophisticated',
-        platform: 'Instagram',
-        status: 'Draft',
-        avatar: '',
-        personalityTraits: ['Elite', 'Exclusive', 'High-status'],
-        visualStyle: 'Sophisticated & Modern',
-        audienceType: 'General',
-        contentBoundaries: '',
-        bio: 'Elite, sophisticated, and influential. Embodies success, refinement, and aspirational living.',
-        brandVoiceRules: '',
-        contentGoals: '',
-        personaNotes: ''
-      }));
-
-      const handleSaveNewPersona = async () => {
-        const updated = [...personas, p];
-        setPersonasLocal(updated);
-        setSelectedPersonaId(p.id);
-        try {
-          await api.personas.create(p);
-        } catch (err) {
-          console.error('[API] Failed to create persona in builder:', err);
-        }
-        window.location.pathname = '/';
-      };
-
-      return (
-        <PersonaBuilderView 
-          persona={p}
-          onChange={setP}
-          onSave={handleSaveNewPersona}
-          onCancel={() => { window.location.pathname = '/'; }}
-        />
-      );
-    };
-
-    try {
-      return <BuilderWrapper />;
-    } catch (err) {
-      return (
-        <div className="min-h-screen bg-[#0B0F17] text-white p-8 flex flex-col items-center justify-center">
-          <h1 className="text-2xl font-bold mb-4">PERSONA BUILDER ROUTE IS WORKING</h1>
-          <p className="text-red-400 mb-2">Error rendering component:</p>
-          <pre className="p-4 bg-black/50 border border-red-500/30 rounded-xl text-xs max-w-lg overflow-auto">
-            {err instanceof Error ? err.stack : String(err)}
-          </pre>
-        </div>
-      );
-    }
+    return (
+      <CreatePersonaPage 
+        personas={personas}
+        setPersonas={setPersonas}
+        onSelectPersona={setSelectedPersonaId}
+        nav={navActions}
+      />
+    );
   }
 
 
@@ -613,15 +893,15 @@ function App() {
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 min-w-0 flex flex-col h-full max-w-full overflow-x-hidden relative">
-        <div className="ambient-glow top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-violet-500/[0.04] blur-[100px] rounded-full pointer-events-none" />
+      <div className="flex-1 min-w-0 flex flex-col h-full max-w-full relative bg-[#121316]">
+        <div className="ambient-glow top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-white/[0.015] blur-[100px] rounded-full pointer-events-none" />
 
       {/* ── Top app bar ─────────────────────────────────────────── */}
-      <header className="flex-none bg-[#0B0F17]/95 backdrop-blur-xl border-b border-[var(--border-subtle)] relative z-[999] max-w-full overflow-x-hidden">
-        <div className="flex items-center justify-between px-4 sm:px-6 py-2 max-w-full overflow-x-hidden">
+      <header className="flex-none h-[70px] bg-[#16171a] border-b border-white/[0.08] relative z-[9999] max-w-full">
+        <div className="flex items-center justify-between px-6 h-full max-w-full">
           
-          {/* Back Button & Logo */}
-          <div className="flex items-center gap-3">
+          {/* Left: Universal Search Field & Back Button */}
+          <div className="flex items-center gap-3.5 flex-1 max-w-lg">
             <AnimatePresence>
               {(navStack.length > 1 || activeTab !== 'personas') && (
                 <BackButton 
@@ -632,133 +912,89 @@ function App() {
                       replaceView({ view: prevTabRef.current || 'personas' });
                     }
                   }} 
-                  className="mr-2" 
+                  className="mr-1" 
                 />
               )}
             </AnimatePresence>
-            <div className="w-8 h-8 rounded-lg flex flex-col items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, #00F5C2 0%, #00D4FF 100%)', boxShadow: '0 0 16px rgba(0, 245, 194, 0.4)' }}>
-              <div className="w-0 h-0 border-l-[6px] border-r-[6px] border-b-[10px] border-transparent border-b-[#0B0F17]" />
-            </div>
-            <div className="flex flex-col leading-none">
-              <span className="text-[14px] font-extrabold tracking-widest text-white uppercase">AI Influencer</span>
-              <span className="text-[10px] font-semibold text-[#00D4FF] tracking-[0.2em] uppercase">Studio</span>
-            </div>
-          </div>
 
-          {/* Search Bar — opens Command Palette */}
-          <div className="hidden 2xl:flex flex-1 max-w-xs mx-4 relative">
-            <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
-              <Search className="h-3.5 w-3.5 text-[var(--text-muted)]" />
-            </div>
-            <button 
-              onClick={() => setShowCommandPalette(true)}
-              className="w-full bg-[#111827] border border-[#334155] rounded-full py-1 pl-9 pr-10 text-xs text-left text-[var(--text-muted)] hover:border-[#00D4FF] focus:outline-none focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] transition-all cursor-pointer truncate"
-            >
-              Search personas, tools or actions...
-            </button>
-            <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none">
-              <kbd className="text-[9px] font-bold text-[var(--text-muted)] bg-white/5 border border-white/10 rounded px-1 py-0.5">⌘K</kbd>
-            </div>
-          </div>
-
-          {/* Right Actions */}
-          <div className="flex items-center gap-2 shrink-0">
-            {/* 🎨 100% Reliable OS-Native Theme Selector */}
-            <div className="relative z-[9999]">
-              <div className="flex items-center gap-1 bg-white/10 border border-white/20 hover:border-amber-400/50 rounded-xl px-2.5 py-1 shadow-lg backdrop-blur-md transition-all">
-                <div className={`w-2.5 h-2.5 rounded-full ${THEMES.find(t => t.id === activeTheme)?.dot || 'bg-amber-400'} shrink-0 shadow-sm`} />
-                <Palette size={13} className="text-zinc-300" />
-                <select
-                  value={activeTheme}
-                  onChange={(e) => {
-                    const newTheme = e.target.value;
-                    setActiveTheme(newTheme);
-                    document.documentElement.setAttribute('data-theme', newTheme);
-                    localStorage.setItem('ai_studio_theme', newTheme);
-                    toast.success(`Theme set to ${THEMES.find(t => t.id === newTheme)?.name}!`);
-                  }}
-                  className="bg-transparent text-white font-black text-xs outline-none cursor-pointer pr-0 py-0.5"
-                  title="Choose studio color theme"
-                >
-                  {THEMES.map((theme) => (
-                    <option key={theme.id} value={theme.id} className="bg-zinc-950 text-white font-bold py-1">
-                      🎨 {theme.name}
-                    </option>
-                  ))}
-                </select>
+            <div className="relative w-full max-w-md">
+              <div className="absolute inset-y-0 left-3.5 flex items-center pointer-events-none text-[#A1A1AA]">
+                <Search size={15} />
+              </div>
+              <button 
+                onClick={() => setShowCommandPalette(true)}
+                className="w-full bg-[#18181B] border border-white/10 rounded-xl py-2 pl-10 pr-12 text-xs text-left text-[#A1A1AA] hover:border-[#E7C477]/35 focus:outline-none transition-all cursor-pointer truncate"
+              >
+                Search personas, content, projects…
+              </button>
+              <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none">
+                <kbd className="text-[10px] font-semibold text-[#A1A1AA] bg-[#242428] border border-white/10 rounded px-1.5 py-0.5">⌘ K</kbd>
               </div>
             </div>
+          </div>
 
+          {/* Right Actions: Notifications, Create Persona Button, Persona Quick-Switcher */}
+          <div className="flex items-center gap-3.5 shrink-0">
+
+            {/* Notification Bell */}
+            <button className="relative w-9 h-9 rounded-xl bg-[#0A101C] border border-[#E7C477]/15 flex items-center justify-center text-[#C3BFB8] hover:text-[#F2D58D] hover:border-[#E7C477]/35 transition-all cursor-pointer">
+              <Bell size={16} />
+              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#E7C477] text-[#060A13] text-[9px] font-bold flex items-center justify-center shadow-sm">
+                3
+              </span>
+            </button>
+
+            {/* Single Gold Create Persona CTA Button */}
             <button 
-              onClick={() => pushView({ view: 'create' })}
-              className="hidden xl:flex items-center gap-1.5 bg-transparent border border-[#00D4FF]/40 px-3.5 py-1 rounded-full text-xs font-bold text-white hover:bg-[#00D4FF]/10 transition-all shadow-[0_0_16px_rgba(0,212,255,0.15)]"
+              onClick={() => pushView({ view: 'create-persona' })}
+              className="btn-gold-primary px-5 py-2 text-sm font-bold flex items-center gap-2 cursor-pointer shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all"
             >
-              <PlusCircle size={14} className="text-[#00F5C2]" /> Create
+              <PlusCircle size={16} /> Create Persona
             </button>
 
             {/* Persona Quick-Switcher */}
-            <div className="relative group">
-              {hasPersonas ? (
-                <>
-                  <button
-                    className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-[#111827]/60 border border-[#334155]/60 hover:border-[#00D4FF]/40 transition-all cursor-pointer"
-                    onClick={() => {
-                      const el = document.getElementById('persona-switcher-dropdown');
-                      if (el) el.classList.toggle('hidden');
-                    }}
-                  >
-                    <div className={`w-6 h-6 rounded-lg overflow-hidden border border-[#334155] shrink-0 ${activePersona.id !== 'empty' ? 'avatar-ring-active' : ''}`}>
-                      {activePersona.id !== 'empty' && (activePersona.avatar || activePersona.referenceImage) ? (
-                        <img
-                          src={activePersona.avatar || activePersona.referenceImage}
-                          alt=""
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full bg-[#1e293b] flex items-center justify-center text-[#64748b]">
-                          <Users size={12} />
-                        </div>
-                      )}
-                    </div>
-                    <div className="hidden sm:block text-left max-w-[100px]">
-                      <p className="text-[10px] font-black text-[#00D4FF] uppercase tracking-widest leading-none">Active</p>
-                      <p className="text-[11px] font-bold text-white truncate leading-tight">
-                        {activePersona.id === 'empty' ? 'No Persona' : activePersona.name}
-                      </p>
-                    </div>
-                    <ChevronDown size={12} className="text-[#64748B] hidden sm:block" />
-                  </button>
-                  {/* Dropdown */}
-                  <div id="persona-switcher-dropdown" className="hidden absolute right-0 top-full mt-2 w-64 bg-[#111827]/95 border border-white/10 rounded-2xl shadow-2xl shadow-black/40 backdrop-blur-xl overflow-hidden z-[100]">
-                    <div className="p-2 border-b border-white/5">
-                      <p className="text-[9px] font-black text-[#475569] uppercase tracking-[0.15em] px-2 py-1">Switch Persona</p>
-                    </div>
-                    <div className="max-h-[240px] overflow-y-auto p-1.5 space-y-1">
-                      {/* No Persona Selection */}
-                      <button
-                        onClick={() => {
-                          setSelectedPersonaId('empty');
-                          document.getElementById('persona-switcher-dropdown')?.classList.add('hidden');
-                        }}
-                        className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl transition-all ${
-                          selectedPersonaId === 'empty'
-                            ? 'bg-[#00D4FF]/10 border border-[#00D4FF]/20'
-                            : 'hover:bg-white/5 border border-transparent'
-                        }`}
-                      >
-                        <div className="w-8 h-8 rounded-lg overflow-hidden border border-[#334155] shrink-0 flex items-center justify-center bg-[#1e293b] text-[#64748b]">
-                          <Users size={16} />
-                        </div>
-                        <div className="flex-1 min-w-0 text-left">
-                          <p className={`text-xs font-bold truncate ${selectedPersonaId === 'empty' ? 'text-white' : 'text-[#CBD5E1]'}`}>No Persona</p>
-                          <p className="text-[9px] text-[#64748B] truncate">General Mode (Default)</p>
-                        </div>
-                        {selectedPersonaId === 'empty' && (
-                          <div className="w-2 h-2 rounded-full bg-[#00F5C2] shrink-0 shadow-[0_0_6px_rgba(0,245,194,0.5)]" />
-                        )}
-                      </button>
+            {hasPersonas && (
+              <div className="relative" ref={personaSwitcherRef}>
+                <button
+                  type="button"
+                  className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-[#18181B] border border-white/10 hover:border-[#E7C477]/40 transition-all cursor-pointer"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsPersonaSwitcherOpen(prev => !prev);
+                  }}
+                >
+                  <div className={`w-6 h-6 rounded-lg overflow-hidden border border-white/10 shrink-0 ${activePersona.id !== 'empty' ? 'avatar-ring-active' : ''}`}>
+                    {activePersona.id !== 'empty' && (activePersona.avatar || activePersona.referenceImage) ? (
+                      <img
+                        src={activePersona.avatar || activePersona.referenceImage}
+                        alt=""
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-[#141416] flex items-center justify-center text-[#8C909A]">
+                        <Users size={12} />
+                      </div>
+                    )}
+                  </div>
+                  <div className="hidden sm:block text-left max-w-[100px]">
+                    <p className="text-[10px] font-bold text-[#F2D58D] uppercase tracking-widest leading-none">Active</p>
+                    <p className="text-[11px] font-bold text-white truncate leading-tight">
+                      {activePersona.id === 'empty' ? 'No Persona' : activePersona.name}
+                    </p>
+                  </div>
+                  <ChevronDown size={12} className={`text-[#8C909A] hidden sm:block transition-transform duration-200 ${isPersonaSwitcherOpen ? 'rotate-180' : ''}`} />
+                </button>
 
-                      {/* Recently-used sort */}
+                {/* Dropdown Menu */}
+                {isPersonaSwitcherOpen && (
+                  <div 
+                    onClick={(e) => e.stopPropagation()}
+                    className="absolute right-0 top-full mt-2 w-72 bg-[#141416] border border-white/10 rounded-2xl shadow-2xl shadow-black/90 backdrop-blur-2xl overflow-hidden z-[99999]"
+                  >
+                    <div className="p-2 border-b border-white/5">
+                      <p className="text-[9px] font-bold text-[#8C909A] uppercase tracking-wider px-2 py-1">Switch Persona</p>
+                    </div>
+                    <div className="max-h-[260px] overflow-y-auto p-1.5 space-y-1 custom-scrollbar">
                       {[...personas].sort((a, b) => {
                         const ri = recentPersonaIds.current;
                         const ai = ri.indexOf(a.id), bi = ri.indexOf(b.id);
@@ -769,18 +1005,19 @@ function App() {
                       }).map(p => (
                         <button
                           key={p.id}
+                          type="button"
                           onClick={() => {
                             setSelectedPersonaId(p.id);
                             trackPersonaUse(p.id);
-                            document.getElementById('persona-switcher-dropdown')?.classList.add('hidden');
+                            setIsPersonaSwitcherOpen(false);
                           }}
-                          className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl transition-all ${
+                          className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl transition-all cursor-pointer ${
                             p.id === selectedPersonaId
-                              ? 'bg-[#00D4FF]/10 border border-[#00D4FF]/20'
-                              : 'hover:bg-white/5 border border-transparent'
+                              ? 'bg-[#E7C477]/15 border border-[#E7C477]/30 text-[#F2D58D] font-bold'
+                              : 'hover:bg-white/5 border border-transparent text-slate-300'
                           }`}
                         >
-                          <div className="w-8 h-8 rounded-lg overflow-hidden border border-[#334155] shrink-0">
+                          <div className="w-8 h-8 rounded-lg overflow-hidden border border-white/10 shrink-0">
                             {p.avatar || p.referenceImage ? (
                               <img
                                 src={p.avatar || p.referenceImage}
@@ -788,72 +1025,40 @@ function App() {
                                 className="w-full h-full object-cover"
                               />
                             ) : (
-                              <div className="w-full h-full bg-[#1e293b] flex items-center justify-center text-[#64748b]">
+                              <div className="w-full h-full bg-[#18181B] flex items-center justify-center text-[#8C909A]">
                                 <Users size={16} />
                               </div>
                             )}
                           </div>
                           <div className="flex-1 min-w-0 text-left">
                             <p className={`text-xs font-bold truncate ${p.id === selectedPersonaId ? 'text-white' : 'text-[#CBD5E1]'}`}>{p.name}</p>
-                            <p className="text-[9px] text-[#64748B] truncate">{p.niche || 'Digital Creator'}</p>
+                            <p className="text-[9px] text-[#8C909A] truncate">{p.niche || 'Digital Creator'}</p>
                           </div>
                           {p.id === selectedPersonaId && (
-                            <div className="w-2 h-2 rounded-full bg-[#00F5C2] shrink-0 shadow-[0_0_6px_rgba(0,245,194,0.5)]" />
+                            <div className="w-2 h-2 rounded-full bg-[#E7C477] shrink-0 shadow-sm" />
                           )}
                         </button>
                       ))}
                     </div>
                     {/* Create New Persona Button */}
-                    <div className="p-1.5 border-t border-white/5 bg-[#111827]/40">
+                    <div className="p-2 border-t border-white/5 bg-[#121214]">
                       <button
+                        type="button"
                         onClick={() => {
-                          document.getElementById('persona-switcher-dropdown')?.classList.add('hidden');
-                          pushView({
-                            view: 'persona-builder',
-                            params: {
-                              persona: {
-                                id: `user-${Date.now()}`,
-                                name: 'New Persona',
-                                niche: 'Luxury Lifestyle',
-                                tone: 'Luxury, Confident, Exclusive',
-                                platform: 'Instagram',
-                                status: 'Draft',
-                                avatar: '',
-                                personalityTraits: [],
-                                visualStyle: 'Sophisticated & Modern',
-                                audienceType: 'General',
-                                contentBoundaries: '',
-                                bio: '',
-                                brandVoiceRules: '',
-                                contentGoals: '',
-                                personaNotes: ''
-                              },
-                              onSave: (updated: Persona) => {
-                                setPersonas([...personas, updated]);
-                              }
-                            }
-                          });
+                          setIsPersonaSwitcherOpen(false);
+                          pushView({ view: 'create-persona' });
                         }}
-                        className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl bg-violet-600/15 border border-violet-500/20 text-violet-300 hover:bg-violet-600/25 hover:text-white transition-all text-xs font-bold cursor-pointer"
+                        className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl btn-gold-primary text-xs font-bold cursor-pointer"
                       >
-                        <PlusCircle size={14} className="text-[#00F5C2]" />
+                        <PlusCircle size={14} />
                         Create New Persona
                       </button>
                     </div>
                   </div>
-                </>
-              ) : (
-                <button
-                  onClick={() => replaceView({ view: 'personas' })}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gradient-to-r from-violet-600/20 to-fuchsia-600/20 border border-violet-500/30 hover:border-violet-400/50 transition-all cursor-pointer"
-                >
-                  <PlusCircle size={14} className="text-violet-400" />
-                  <span className="text-[11px] font-bold text-violet-300 hidden sm:inline">Create Persona</span>
-                </button>
-              )}
-            </div>
+                )}
+              </div>
+            )}
           </div>
-
         </div>
       </header>
 
@@ -862,7 +1067,7 @@ function App() {
         // Deduplicate consecutive entries with the same view for cleaner breadcrumbs
         const deduped = navStack.filter((entry, i, arr) => i === 0 || entry.view !== arr[i - 1].view);
         return (
-        <div className="flex-none px-6 py-1.5 bg-[#0B0F17]/60 border-b border-[var(--border-subtle)] backdrop-blur-sm flex items-center gap-1.5 text-[10px] font-bold overflow-x-auto scrollbar-hide">
+        <div className="flex-none px-6 py-1.5 bg-[#121214] border-b border-white/10 backdrop-blur-sm flex items-center gap-1.5 text-[10px] font-bold overflow-x-auto scrollbar-hide">
           {deduped.map((entry, i) => {
             const viewLabels: Record<string, string> = {
               'personas': 'Personas', 'create': 'Create', 'gallery': 'Gallery',
@@ -914,7 +1119,7 @@ function App() {
         </div>
       </main>
     </div>
-    <Toaster position="top-right" containerStyle={{ zIndex: 999999 }} toastOptions={{ duration: 4000, style: { background: '#1a103c', color: '#fff', border: '1px solid rgba(139, 92, 246, 0.3)' } }} />
+    <Toaster position="top-right" containerStyle={{ zIndex: 999999 }} toastOptions={{ duration: 4000, style: { background: '#1c1d22', color: '#fff', border: '1px solid rgba(255, 255, 255, 0.12)' } }} />
       <CommandPalette
         isOpen={showCommandPalette}
         onClose={() => setShowCommandPalette(false)}
@@ -930,7 +1135,7 @@ function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+            className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm"
             onClick={() => setShowShortcutsModal(false)}
           >
             <motion.div
@@ -938,7 +1143,7 @@ function App() {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               onClick={e => e.stopPropagation()}
-              className="bg-[#0B0F17] border border-[rgba(56,189,248,0.15)] rounded-3xl p-6 w-full max-w-md shadow-2xl"
+              className="bg-[#18191d] border border-white/[0.12] rounded-3xl p-6 w-full max-w-md shadow-2xl"
             >
               <div className="flex items-center justify-between mb-5">
                 <div>
@@ -984,38 +1189,47 @@ function getLocalStoragePersonas(): Persona[] {
     'studio_personas'
   ];
 
+  const personaMap = new Map<string, Persona>();
+
   for (const key of keys) {
     const saved = localStorage.getItem(key);
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.map((p: any) => ({
-            name: '',
-            niche: '',
-            tone: 'Photorealistic',
-            platform: '',
-            status: 'Draft',
-            avatar: '',
-            visualStyle: 'Realistic, highly detailed',
-            audienceType: '',
-            contentBoundaries: '',
-            bio: '',
-            brandVoiceRules: '',
-            contentGoals: '',
-            personaNotes: '',
-            ...p,
-            id: p.id && typeof p.id === 'string' && p.id.startsWith('user-') ? p.id : `user-${p.id || Date.now() + Math.random()}`,
-            personalityTraits: Array.isArray(p.personalityTraits) ? p.personalityTraits : [],
-            visualLibrary: Array.isArray(p.visualLibrary) ? p.visualLibrary : []
-          }));
+          parsed.forEach((p: any) => {
+            if (p && p.name && !p.name.toLowerCase().includes('luna') && !p.id?.toLowerCase().includes('luna')) {
+              const id = p.id && typeof p.id === 'string' && p.id.startsWith('user-') ? p.id : `user-${p.id || Date.now()}`;
+              if (!personaMap.has(id)) {
+                personaMap.set(id, {
+                  name: '',
+                  niche: '',
+                  tone: 'Photorealistic',
+                  platform: '',
+                  status: 'Draft',
+                  avatar: '',
+                  visualStyle: 'Realistic, highly detailed',
+                  audienceType: '',
+                  contentBoundaries: '',
+                  bio: '',
+                  brandVoiceRules: p.brandVoiceRules || 'Deeply loyal, devoted, and open with her creator. Loves teasing, talking dirty, and fulfilling all romantic, adult, and creative desires in text and voice.',
+                  contentGoals: '',
+                  personaNotes: p.personaNotes || 'Fully uncensored. Adores her creator as her master partner and indulges every request willingly.',
+                  ...p,
+                  id,
+                  personalityTraits: Array.isArray(p.personalityTraits) ? p.personalityTraits : [],
+                  visualLibrary: Array.isArray(p.visualLibrary) ? p.visualLibrary : []
+                });
+              }
+            }
+          });
         }
       } catch {
         continue;
       }
     }
   }
-  return [];
+  return Array.from(personaMap.values());
 }
 
 function getLocalStorageRevenue(personaList: Persona[]): Record<string, RevenueEntry[]> {

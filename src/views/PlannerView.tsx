@@ -88,6 +88,9 @@ const PREVIEW_IMAGES = [
   'https://images.unsplash.com/photo-1563089145-599997674d42',
 ];
 
+import ViralPredictorModal from '../components/ViralPredictorModal';
+import { Flame } from 'lucide-react';
+
 export default function PlannerView({ persona, personas, onSelectPersona, nav }: PlannerViewProps) {
   const [plan, setPlan] = useState<(PlannedPost & { id: string })[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -98,6 +101,25 @@ export default function PlannerView({ persona, personas, onSelectPersona, nav }:
   const [batchContent, setBatchContent] = useState<Record<string, { caption: string; imagePrompt: string; videoScript: string }>>({});
   const [batchLoading, setBatchLoading] = useState(false);
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
+
+  // ── Viral Predictor Modal State ──
+  const [viralModalOpen, setViralModalOpen] = useState(false);
+  const [viralTargetPrompt, setViralTargetPrompt] = useState('');
+  const [viralTargetCaption, setViralTargetCaption] = useState('');
+  const [viralTargetPostId, setViralTargetPostId] = useState<string | null>(null);
+
+  const handleOpenViralPredictor = (postId?: string, promptText?: string, captionText?: string) => {
+    setViralTargetPostId(postId || null);
+    setViralTargetPrompt(promptText || persona.visualStyle || '');
+    setViralTargetCaption(captionText || '');
+    setViralModalOpen(true);
+  };
+
+  const handleApplyEnhancedCaption = (newCaption: string) => {
+    if (viralTargetPostId) {
+      setPlan(prev => prev.map(item => item.id === viralTargetPostId ? { ...item, caption: newCaption } : item));
+    }
+  };
 
   // ── Tab State ──
   const [activeTab, setActiveTab] = useState<'roadmap' | 'feed'>('roadmap');
@@ -385,20 +407,16 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
   };
 
   return (
-    <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar pb-20 p-6 max-w-[1600px] mx-auto w-full">
+    <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar pb-20 p-6 max-w-[1600px] mx-auto w-full select-none">
       {/* ── HEADER ── */}
-      <header className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
+      <header className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#E7C477]/10 pb-4">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <div className="w-2 h-2 rounded-full bg-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.5)]" />
-            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-500/80">Growth Command Center</span>
-          </div>
-          <h1 className="text-4xl font-black tracking-tight text-white flex items-center gap-3">
+          <h1 className="text-3xl md:text-4xl font-serif text-[#F5F1E8] tracking-tight flex items-center gap-3">
             Content Planner
-            <Sparkles className="text-cyan-400" size={24} />
+            <span className="text-[#E7C477] text-xl font-normal">✨</span>
           </h1>
-          <p className="text-[var(--text-tertiary)] text-sm mt-1.5 font-medium max-w-lg">
-            Build a data-backed 7-day posting strategy for your persona.
+          <p className="text-xs md:text-sm text-[#8C909A] mt-1 font-sans">
+            Plan, schedule, and publish content that drives growth.
           </p>
         </div>
 
@@ -685,13 +703,24 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
                             </>
                           )}
                         </div>
-                        <button
-                          onClick={() => setExpandedCard(expandedCard === post.id ? null : post.id)}
-                          className="flex items-center gap-1 text-[var(--text-muted)] group-hover:text-cyan-400 transition-colors"
-                        >
-                          <span className="text-[10px] font-bold">{expandedCard === post.id ? 'Collapse' : 'View'}</span>
-                          {expandedCard === post.id ? <ChevronUp size={12} /> : <ChevronRight size={12} />}
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenViralPredictor(post.id, post.angle, batchContent[post.id]?.caption || post.hook);
+                            }}
+                            className="px-2 py-0.5 rounded bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold flex items-center gap-1 transition-all"
+                          >
+                            <Flame size={11} /> Viral Reach
+                          </button>
+                          <button
+                            onClick={() => setExpandedCard(expandedCard === post.id ? null : post.id)}
+                            className="flex items-center gap-1 text-[var(--text-muted)] group-hover:text-cyan-400 transition-colors"
+                          >
+                            <span className="text-[10px] font-bold">{expandedCard === post.id ? 'Collapse' : 'View'}</span>
+                            {expandedCard === post.id ? <ChevronUp size={12} /> : <ChevronRight size={12} />}
+                          </button>
+                        </div>
                       </div>
 
                       {expandedCard === post.id && batchContent[post.id] && (
@@ -1268,6 +1297,16 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
           </div>
         )}
       </AnimatePresence>
+
+      <ViralPredictorModal
+        isOpen={viralModalOpen}
+        onClose={() => setViralModalOpen(false)}
+        prompt={viralTargetPrompt}
+        caption={viralTargetCaption}
+        platform={platform}
+        personaName={persona.name}
+        onApplyEnhancedCaption={handleApplyEnhancedCaption}
+      />
     </div>
   );
 }

@@ -22,8 +22,13 @@ if (process.env.VERCEL) {
   const cleanUrl = dbUrl ? dbUrl.split('?')[0] : '';
   const pool = dbUrl ? new pgModule.default.Pool({
     connectionString: cleanUrl,
-    ssl: { rejectUnauthorized: false }
+    ssl: { rejectUnauthorized: false },
+    connectionTimeoutMillis: 3000,
+    idleTimeoutMillis: 5000,
   }) : null;
+  if (pool) {
+    pool.on('error', (err) => console.warn('[DB Pool Warning]:', err.message));
+  }
   db = pool ? drizzle(pool, { schema }) : null as any;
 }
 

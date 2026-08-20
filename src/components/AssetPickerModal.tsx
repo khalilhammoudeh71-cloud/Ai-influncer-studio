@@ -25,7 +25,7 @@ interface AssetPickerModalProps {
 
 // Built-in high-quality preset assets for quick testing
 const PRESET_ASSETS: AssetEntry[] = [
-  { id: 'p1', url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=800', title: 'Studio Model Portrait', source: 'Presets', mediaType: 'image' },
+  { id: 'p1', url: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=800', title: 'Studio Model Portrait', source: 'Presets', mediaType: 'image' },
   { id: 'p2', url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=800', title: 'Male Model Portrait', source: 'Presets', mediaType: 'image' },
   { id: 'p3', url: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=800', title: 'Casual Fashion Pose', source: 'Presets', mediaType: 'image' },
   { id: 'p4', url: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=800', title: 'Garment Outfit Sample', source: 'Presets', mediaType: 'image' },
