@@ -1,7 +1,6 @@
 import 'dotenv/config';
 import dns from 'dns';
 try { dns.setDefaultResultOrder('ipv4first'); } catch {}
-process.env.ELEVENLABS_API_KEY = 'sk_9ac433ad3d07501e8b551d7ffd8ae22e20c881fda6c27541';
 import express from 'express';
 import nodeCrypto from 'crypto';
 import cors from 'cors';
@@ -2234,7 +2233,7 @@ async function generateWithRunware(params: {
   steps?: number;
   CFGScale?: number;
 }): Promise<string[]> {
-  const apiKey = process.env.RUNWARE_API_KEY || 'SPDjcZuEoVmhWHHK539S5ZrCYa1sxSNW';
+  const apiKey = process.env.RUNWARE_API_KEY;
   if (!apiKey) throw new Error('Runware API key not configured');
 
   const { positivePrompt, model = 'runware:100@1', aspectRatio = '1:1', seedImage, strength = 0.7, lora, numberResults = 1 } = params;
@@ -2311,7 +2310,7 @@ async function generateWithRunware(params: {
 }
 
 async function upscaleWithRunware(imageUrl: string, upscaleFactor: 2 | 4 = 2): Promise<string> {
-  const apiKey = process.env.RUNWARE_API_KEY || 'SPDjcZuEoVmhWHHK539S5ZrCYa1sxSNW';
+  const apiKey = process.env.RUNWARE_API_KEY;
   if (!apiKey) throw new Error('Runware API key not configured');
 
   const taskUUID = (crypto as any).randomUUID ? (crypto as any).randomUUID() : `task_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
@@ -2338,7 +2337,7 @@ async function upscaleWithRunware(imageUrl: string, upscaleFactor: 2 | 4 = 2): P
 }
 
 async function removeBackgroundWithRunware(imageUrl: string): Promise<string> {
-  const apiKey = process.env.RUNWARE_API_KEY || 'SPDjcZuEoVmhWHHK539S5ZrCYa1sxSNW';
+  const apiKey = process.env.RUNWARE_API_KEY;
   if (!apiKey) throw new Error('Runware API key not configured');
 
   const taskUUID = (crypto as any).randomUUID ? (crypto as any).randomUUID() : `task_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
@@ -2371,12 +2370,15 @@ app.get('/api/runware/models', (req, res) => {
 });
 
 // ─── Wiro.ai Integration with HMAC-SHA256 Signature Auth ──────────────────────
-const WIRO_API_KEY = process.env.WIRO_API_KEY || 'ug7zt5gkquh5gjwihnnyz0z6a8t8g1xu';
-const WIRO_API_SECRET = process.env.WIRO_API_SECRET || '19f3d127a66e040af84b3bf5d71834ecb5ee9309af8ef66922763eec4b21d0c0fad824eb7689443593990ddb24b11347';
+const WIRO_API_KEY = process.env.WIRO_API_KEY;
+const WIRO_API_SECRET = process.env.WIRO_API_SECRET;
 
 function generateWiroAuthHeaders() {
+  if (!WIRO_API_KEY || !WIRO_API_SECRET) {
+    throw new Error('Wiro API credentials not configured');
+  }
   const nonce = Date.now().toString();
-  const signature = nodeCrypto.createHmac('sha256', WIRO_API_SECRET).update(WIRO_API_KEY + nonce).digest('hex');
+  const signature = nodeCrypto.createHmac('sha256', WIRO_API_KEY).update(WIRO_API_SECRET + nonce).digest('hex');
   return {
     'Content-Type': 'application/json',
     'x-api-key': WIRO_API_KEY,
@@ -3268,7 +3270,7 @@ app.post('/api/generate-voice-note', async (req, res) => {
     }
 
     const targetVoiceId = persona?.voiceId || 'ov7JSkufAlSs386OYTaC'; // default studio clear voice
-    const elevenKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key || 'sk_9ac433ad3d07501e8b551d7ffd8ae22e20c881fda6c27541';
+    const elevenKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key;
 
     if (elevenKey) {
       try {
@@ -5527,7 +5529,7 @@ app.get('/api/config-status', (_req, res) => {
 
 // ─── ElevenLabs Voices ────────────────────────────────────────────────────────
 app.get('/api/elevenlabs-voices', async (_req, res) => {
-  const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key || 'sk_9ac433ad3d07501e8b551d7ffd8ae22e20c881fda6c27541';
+  const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key;
   if (!elKey) return res.status(503).json({ error: 'ElevenLabs API key not configured', voices: [] });
   try {
     const r = await fetch('https://api.elevenlabs.io/v1/voices', { headers: { 'xi-api-key': elKey } });
@@ -5685,7 +5687,7 @@ async function ensureElevenLabsVoiceSlot(elKey: string) {
 }
 
 app.post('/api/elevenlabs-clone-voice', async (req, res) => {
-  const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key || 'sk_9ac433ad3d07501e8b551d7ffd8ae22e20c881fda6c27541';
+  const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key;
   const { name, description, sampleBase64, sampleBase64s } = req.body as {
     name: string;
     description?: string;
@@ -6032,7 +6034,7 @@ async function handleTTS(req: express.Request, res: express.Response) {
   };
 
   let currentEngineStr = (engine || '') as string;
-  const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key || 'sk_9ac433ad3d07501e8b551d7ffd8ae22e20c881fda6c27541';
+  const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key;
 
   const personaNameStr = ((req.body as any).personaName || (req.body as any).name || '').toLowerCase();
   const voicePromptStr = ((req.body as any).voicePrompt || (req.body as any).performancePrompt || '').toLowerCase();
@@ -6110,6 +6112,10 @@ async function handleTTS(req: express.Request, res: express.Response) {
     } else {
       targetVoiceId = defaultFallbackVoice;
     }
+  }
+
+  if (!elKey) {
+    return res.status(503).json({ error: 'ElevenLabs API key not configured' });
   }
 
   // 2. Synthesize speech via ElevenLabs Turbo (Fast ~400ms)

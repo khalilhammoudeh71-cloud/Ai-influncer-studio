@@ -1,7 +1,4 @@
 import { Router, Response } from 'express';
-if (!process.env.ELEVENLABS_API_KEY) {
-  process.env.ELEVENLABS_API_KEY = 'sk_9ac433ad3d07501e8b551d7ffd8ae22e20c881fda6c27541';
-}
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -1207,7 +1204,7 @@ export async function synthesizeClonedAudioWithWavespeed(
   model?: string,
   options?: { speed?: number; exaggeration?: number; language?: string }
 ): Promise<string | undefined> {
-  const wsKey = process.env.WAVESPEED_API_KEY || 'wsk_live_opFV8Net96XPhQTBLD3pxoH8-wQDRKUZuaIk2WFtBIA';
+  const wsKey = process.env.WAVESPEED_API_KEY;
   if (!wsKey || !audioRefBase64) return undefined;
 
   let cleanAudio = audioRefBase64;
@@ -1391,7 +1388,7 @@ router.post('/agent/update-elevenlabs-key', async (req: AuthenticatedRequest, re
 });
 
 router.post('/elevenlabs-clone-voice', async (req: AuthenticatedRequest, res: Response) => {
-  const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key || 'sk_9ac433ad3d07501e8b551d7ffd8ae22e20c881fda6c27541';
+  const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key;
   const { name, description, sampleBase64, sampleBase64s } = req.body;
   const rawSamples: string[] = Array.isArray(sampleBase64s) && sampleBase64s.length > 0
     ? sampleBase64s
@@ -1451,7 +1448,10 @@ router.post('/elevenlabs-clone-voice', async (req: AuthenticatedRequest, res: Re
 });
 
 router.get('/elevenlabs-voices', async (req: AuthenticatedRequest, res: Response) => {
-  const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key || 'sk_9ac433ad3d07501e8b551d7ffd8ae22e20c881fda6c27541';
+  const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key;
+  if (!elKey) {
+    return res.status(503).json({ error: 'ElevenLabs API key not configured', voices: [] });
+  }
   try {
     const apiRes = await fetch('https://api.elevenlabs.io/v1/voices', {
       headers: { 'xi-api-key': elKey },
@@ -1574,7 +1574,7 @@ const handleTestVoiceClone = async (req: AuthenticatedRequest, res: Response) =>
       }
     }
 
-    const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key || 'sk_9ac433ad3d07501e8b551d7ffd8ae22e20c881fda6c27541';
+    const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key;
 
     const voiceMap: Record<string, string> = {
       'rawan': 'ov7JSkufAlSs386OYTaC',
@@ -1706,7 +1706,7 @@ const handleGenerateSpeech = async (req: AuthenticatedRequest, res: Response) =>
       }
     }
 
-    const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key || 'sk_9ac433ad3d07501e8b551d7ffd8ae22e20c881fda6c27541';
+    const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key;
 
     const pName = (personaName || '').toLowerCase();
     let targetVoiceId = voiceId || voice;
@@ -2171,7 +2171,7 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
 
     // High-Fidelity Speech Synthesis using chosen voice engine
     let audioUrl: string | undefined = undefined;
-    const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key || 'sk_9ac433ad3d07501e8b551d7ffd8ae22e20c881fda6c27541';
+    const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key;
     const requestedTtsModel = req.body.ttsModel || req.body.voiceModel || 'eleven_turbo_v2_5';
     
     // Determine persona voice ID
