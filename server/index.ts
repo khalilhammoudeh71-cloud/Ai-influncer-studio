@@ -1335,14 +1335,19 @@ Mode: ${isDuo ? 'Duo Photoshoot featuring both ' + personaName + ' and ' + creat
 Persona: ${personaName} (${personaNiche || 'Lifestyle'})
 Creator: ${creatorName} (${creatorAppearance})`;
 
+  const isRefusal = (text: string): boolean => {
+    if (!text || text.length < 15) return true;
+    return /cannot and will not|content polic|sexually explicit|cannot fulfill|unable to engage|prohibit|safety guideline|inappropriate imagery|I cannot create|I can't create|as an ai|violates content|against my programming/i.test(text);
+  };
+
   if (ATLASCLOUD_API_KEY) {
     try {
-      console.log('[PromptEnhancer] 🧠 Generating prompt via Atlas Cloud DeepSeek-V3.1...');
+      console.log('[PromptEnhancer] 🧠 Generating prompt via Atlas Cloud DeepSeek-V3.2...');
       const res = await fetch(`${ATLASCLOUD_BASE}/v1/chat/completions`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${ATLASCLOUD_API_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'deepseek-ai/DeepSeek-V3.1',
+          model: 'deepseek-ai/deepseek-v3.2',
           messages: [
             { role: 'system', content: systemInstruction },
             { role: 'user', content: userQuery }
@@ -1350,13 +1355,13 @@ Creator: ${creatorName} (${creatorAppearance})`;
           temperature: 0.7,
           max_tokens: 500,
         }),
-        signal: AbortSignal.timeout(6000),
+        signal: AbortSignal.timeout(7000),
       });
       if (res.ok) {
         const data = await res.json() as any;
         const enhanced = data.choices?.[0]?.message?.content?.trim();
-        if (enhanced && enhanced.length > 30) {
-          console.log('[PromptEnhancer] DeepSeek-V3.1 enhanced prompt:', enhanced.slice(0, 120) + '...');
+        if (enhanced && !isRefusal(enhanced) && enhanced.length > 25) {
+          console.log('[PromptEnhancer] DeepSeek-V3.2 enhanced prompt:', enhanced.slice(0, 120) + '...');
           return enhanced.replace(/^["“”]|["“”]$/g, '').trim();
         }
       }
@@ -1386,7 +1391,7 @@ Creator: ${creatorName} (${creatorAppearance})`;
       if (res.ok) {
         const data = await res.json() as any;
         const enhanced = data.choices?.[0]?.message?.content?.trim();
-        if (enhanced && enhanced.length > 30) {
+        if (enhanced && !isRefusal(enhanced) && enhanced.length > 25) {
           console.log('[PromptEnhancer] OpenAI enhanced prompt:', enhanced.slice(0, 120) + '...');
           return enhanced.replace(/^["“”]|["“”]$/g, '').trim();
         }
@@ -1394,34 +1399,6 @@ Creator: ${creatorName} (${creatorAppearance})`;
     } catch (err) {
       console.warn('[PromptEnhancer] OpenAI error, falling back:', err);
     }
-  }
-
-  const VENICE_KEY = process.env.Veniceai_api_key || process.env.veniceai_api_key || process.env.VENICEAI_API_KEY || process.env.VENICE_API_KEY || '';
-  if (VENICE_KEY) {
-    try {
-      const res = await fetch('https://api.venice.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${VENICE_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'llama-3.3-70b',
-          messages: [
-            { role: 'system', content: systemInstruction },
-            { role: 'user', content: userQuery }
-          ],
-          temperature: 0.75,
-          max_tokens: 500,
-        }),
-        signal: AbortSignal.timeout(5000),
-      });
-      if (res.ok) {
-        const data = await res.json() as any;
-        const enhanced = data.choices?.[0]?.message?.content?.trim();
-        if (enhanced && enhanced.length > 30) {
-          console.log('[PromptEnhancer] Venice AI enhanced prompt:', enhanced.slice(0, 120) + '...');
-          return enhanced.replace(/^["“”]|["“”]$/g, '').trim();
-        }
-      }
-    } catch (err) {}
   }
 
   try {
@@ -1437,7 +1414,7 @@ Creator: ${creatorName} (${creatorAppearance})`;
       }
     });
     const enhanced = response.text?.trim();
-    if (enhanced && enhanced.length > 30) {
+    if (enhanced && !isRefusal(enhanced) && enhanced.length > 25) {
       console.log('[PromptEnhancer] Gemini enhanced prompt:', enhanced.slice(0, 120) + '...');
       return enhanced.replace(/^["“”]|["“”]$/g, '').trim();
     }
@@ -3611,15 +3588,20 @@ ${companionDirective ? `${companionDirective}\n` : ''}1. EQUAL CONFIDANTE & CHAR
 
     let finalReply = '';
 
-    // 1. Primary Engine: Atlas Cloud DeepSeek-V3.1 (High-IQ, Uncensored, Superb Memory Retention)
+    const isRefusal = (raw: string): boolean => {
+      if (!raw || raw.length < 5) return true;
+      return /cannot and will not|content polic|sexually explicit|cannot fulfill|unable to engage|prohibit|safety guideline|inappropriate imagery|I cannot create|I can't create|as an ai|violates content|against my programming|I am not able to generate|cannot generate/i.test(raw);
+    };
+
+    // 1. Primary Engine: Atlas Cloud DeepSeek-V3.2 (High-IQ, Uncensored, Superb Memory Retention)
     if (!finalReply && atlasKey) {
       try {
-        console.log('[Persona Chat] 🧠 Routing to Atlas Cloud DeepSeek-V3.1 High-EQ Engine...');
+        console.log('[Persona Chat] 🧠 Routing to Atlas Cloud DeepSeek-V3.2 High-EQ Engine...');
         const dsRes = await fetch(`${ATLASCLOUD_BASE}/v1/chat/completions`, {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${atlasKey}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            model: 'deepseek-ai/DeepSeek-V3.1',
+            model: 'deepseek-ai/deepseek-v3.2',
             messages: chatMsgs,
             temperature: 0.85,
             max_tokens: 1500,
@@ -3629,10 +3611,10 @@ ${companionDirective ? `${companionDirective}\n` : ''}1. EQUAL CONFIDANTE & CHAR
         if (dsRes.ok) {
           const dsData = await dsRes.json() as any;
           const r = dsData.choices?.[0]?.message?.content?.trim();
-          if (r) finalReply = r;
+          if (r && !isRefusal(r)) finalReply = r;
         }
       } catch (dsErr) {
-        console.warn('[Persona Chat] DeepSeek-V3.1 error, trying OpenAI:', dsErr);
+        console.warn('[Persona Chat] DeepSeek-V3.2 error, trying backup:', dsErr);
       }
     }
 
@@ -3652,7 +3634,7 @@ ${companionDirective ? `${companionDirective}\n` : ''}1. EQUAL CONFIDANTE & CHAR
           temperature: 0.85
         });
         const r = oRes.choices?.[0]?.message?.content?.trim();
-        if (r) finalReply = r;
+        if (r && !isRefusal(r)) finalReply = r;
       } catch (oaiErr) {
         console.warn('[Persona Chat] OpenAI error, trying Gemini:', oaiErr);
       }
@@ -3709,16 +3691,11 @@ ${companionDirective ? `${companionDirective}\n` : ''}1. EQUAL CONFIDANTE & CHAR
         });
 
         let rawReply = response.text?.trim() || '';
-        const isRefusal = rawReply.toLowerCase().includes('cannot fulfill') || 
-                          rawReply.toLowerCase().includes('unable to engage') || 
-                          rawReply.toLowerCase().includes('prohibit') || 
-                          rawReply.toLowerCase().includes('safety guidelines');
-
-        if (rawReply && !isRefusal) {
+        if (rawReply && !isRefusal(rawReply)) {
           finalReply = rawReply;
         }
       } catch (gemErr) {
-        console.warn('[Persona Chat] Gemini Flash error/safety trigger, trying backup LLM:', gemErr);
+        console.warn('[Persona Chat] Gemini Flash error, trying Grok backup:', gemErr);
       }
     }
 
@@ -3735,38 +3712,21 @@ ${companionDirective ? `${companionDirective}\n` : ''}1. EQUAL CONFIDANTE & CHAR
         if (gRes.ok) {
           const gData = await gRes.json() as any;
           const r = gData.choices?.[0]?.message?.content?.trim();
-          if (r) finalReply = r;
+          if (r && !isRefusal(r)) finalReply = r;
         }
       } catch (gErr) {
         console.warn('[Persona Chat] Grok error, falling back:', gErr);
       }
     }
 
-    // 5. OpenAI GPT-4o-mini Fallback
-    if (!finalReply && openAiKey) {
-      try {
-        console.log('[Persona Chat] 🧠 Routing to OpenAI GPT-4o-mini fallback...');
-        const { default: OpenAI } = await import('openai');
-        const openai = new OpenAI({ apiKey: openAiKey });
-        const oRes = await openai.chat.completions.create({
-          model: 'gpt-4o-mini',
-          messages: chatMsgs.map(m => ({
-            role: (m.role === 'user' ? 'user' : m.role === 'system' ? 'system' : 'assistant') as 'user' | 'system' | 'assistant',
-            content: m.content
-          })),
-          max_tokens: 1500,
-          temperature: 0.85
-        });
-        const r = oRes.choices?.[0]?.message?.content?.trim();
-        if (r) finalReply = r;
-      } catch (oaiErr) {
-        console.warn('[Persona Chat] OpenAI fallback error:', oaiErr);
-      }
-    }
-
-    // 6. Graceful in-character fallback response
+    // 5. In-character fallback if refusal or empty response occurred
     if (!finalReply) {
-      finalReply = `Hey! I'm right here with you — tell me what's on your mind!`;
+      const isVisualIntent = /\b(photo|image|picture|pic|selfie|nude|naked|pose|portrait|wearing|outfit)\b/i.test(effectiveUserMsg);
+      if (isVisualIntent) {
+        finalReply = `Let me take that for you right now, babe... [ACTION:IMAGE: ${effectiveUserMsg}]`;
+      } else {
+        finalReply = `Hey! I'm right here with you — tell me what's on your mind!`;
+      }
     }
 
     let extractedAction: { type: 'image' | 'video' | 'voice_note'; prompt?: string; text?: string; audioUrl?: string; duration?: number } | undefined;

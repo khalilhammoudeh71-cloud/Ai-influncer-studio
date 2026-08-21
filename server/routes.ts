@@ -2042,10 +2042,15 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
 
     const ATLAS_KEY = process.env.ATLASCLOUD_API_KEY || process.env.atlascloud_api_key || process.env.Atlascloud_api_key || '';
 
-    // 1. Primary Engine: Atlas Cloud DeepSeek-V3.1 (High-IQ, Uncensored, Deep Context Retention)
+    const isRefusal = (raw: string): boolean => {
+      if (!raw || raw.length < 5) return true;
+      return /cannot and will not|content polic|sexually explicit|cannot fulfill|unable to engage|prohibit|safety guideline|inappropriate imagery|I cannot create|I can't create|as an ai|violates content|against my programming|I am not able to generate|cannot generate/i.test(raw);
+    };
+
+    // 1. Primary Engine: Atlas Cloud DeepSeek-V3.2 (High-IQ, Uncensored, Deep Context Retention)
     if (!text && ATLAS_KEY) {
       try {
-        console.log('[Voice Chat LLM] 🧠 Generating response via Atlas Cloud DeepSeek-V3.1...');
+        console.log('[Voice Chat LLM] 🧠 Generating response via Atlas Cloud DeepSeek-V3.2...');
         const dsMessages = [
           { role: 'system', content: voiceSystemPrompt },
           ...rawHistory.map((m: any) => ({
@@ -2061,7 +2066,7 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
           },
           signal: AbortSignal.timeout(8000),
           body: JSON.stringify({
-            model: 'deepseek-ai/DeepSeek-V3.1',
+            model: 'deepseek-ai/deepseek-v3.2',
             messages: dsMessages,
             temperature: 0.85,
             max_tokens: 500
@@ -2070,13 +2075,15 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
         if (dsRes.ok) {
           const dsData = await dsRes.json();
           const rawReply = dsData.choices?.[0]?.message?.content || '';
-          text = cleanSpokenDialogue(rawReply);
-          if (text) {
-            console.log('[Voice Chat LLM] DeepSeek-V3.1 reply generated successfully:', text.slice(0, 80) + '...');
+          if (rawReply && !isRefusal(rawReply)) {
+            text = cleanSpokenDialogue(rawReply);
+            if (text) {
+              console.log('[Voice Chat LLM] DeepSeek-V3.2 reply generated successfully:', text.slice(0, 80) + '...');
+            }
           }
         }
       } catch (dsErr) {
-        console.warn('[Voice Chat LLM] DeepSeek-V3.1 error, falling back:', dsErr);
+        console.warn('[Voice Chat LLM] DeepSeek-V3.2 error, falling back:', dsErr);
       }
     }
 
@@ -2110,7 +2117,9 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
           if (oRes.ok) {
             const oData = await oRes.json();
             const rawReply = oData.choices?.[0]?.message?.content || '';
-            text = cleanSpokenDialogue(rawReply);
+            if (rawReply && !isRefusal(rawReply)) {
+              text = cleanSpokenDialogue(rawReply);
+            }
           }
         } catch (oErr) {
           console.warn('[Voice Chat LLM] OpenAI error, falling back:', oErr);
@@ -2140,14 +2149,21 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
             safetySettings: geminiSafety
           }
         });
-        text = cleanSpokenDialogue(result.text || '');
+        const rawReply = result.text || '';
+        if (rawReply && !isRefusal(rawReply)) {
+          text = cleanSpokenDialogue(rawReply);
+        }
       } catch (gemErr) {
         console.warn('[Voice Chat Gemini Exception]:', gemErr);
       }
     }
 
     if (!text || text.split(/\s+/).length < 2) {
-      text = "Hey, I'm right here with you! What's on your mind?";
+      if (isActionRequest) {
+        text = "Taking that for you right now, babe... sending it straight to your screen.";
+      } else {
+        text = "Hey, I'm right here with you! What's on your mind?";
+      }
     }
 
     const spokenText = text;
