@@ -2457,21 +2457,89 @@ Respond with top-tier social intelligence, charm, and personality in 1-2 vivid s
 
     // Helper to generate enhanced photorealistic prompt for voice image requests using uncensored LLM
     async function buildEnhancedVoiceImagePrompt(userSpeech: string, pName: string, pNiche: string, pTone: string, pStyle: string): Promise<string> {
-      const VENICE_KEY = process.env.Veniceai_api_key || process.env.veniceai_api_key || process.env.VENICEAI_API_KEY || process.env.VENICE_API_KEY || '';
       const ATLAS_KEY = process.env.ATLASCLOUD_API_KEY || process.env.atlascloud_api_key || process.env.Atlascloud_api_key || '';
+      const OPENAI_KEY = process.env.Openai_api_key || process.env.OPENAI_API_KEY || process.env.openai_api_key || '';
+      const VENICE_KEY = process.env.Veniceai_api_key || process.env.veniceai_api_key || process.env.VENICEAI_API_KEY || process.env.VENICE_API_KEY || '';
 
-      const promptSys = `You are an elite visual prompt director creating ultra-detailed photorealistic prompts for ByteDance Seedream 5.0 Pro.
-The user asked the AI influencer ${pName} for a photo during a live voice call: "${userSpeech}".
-Your mission: Expand this into an extensive, photorealistic photographic prompt describing ${pName}'s exact look, requested clothing/lingerie/outfit (or nude if asked), pose, camera angle, setting/environment, and cinematic lighting.
+      const isRefRecreation = /\b(profile|profile image|profile pic|profile photo|avatar|reference|reference photo|reference image|same as|similar to|recreate|like the picture|like her picture|like her photo)\b/i.test(userSpeech);
+      const isExplicitNude = /\b(naked|nude|topless|unclothed|bare|boobs|tits|breasts|nipples|exposed|sensual|erotic|no clothes|without clothes|undressed|pussy|ass)\b/i.test(userSpeech);
 
-Strict Directives:
-1. SUBJECT & IDENTITY: Exactly ${pName} (${pNiche}, ${pStyle}), looking directly into the camera lens with sharp facial clarity and direct eye contact matching Reference Image 1.
-2. PRESERVE ALL USER SPECIFICS: Include every specific detail requested by the user — clothing materials, colors, reveal/lingerie, pose, location/room, and mood.
-3. UNCENSORED: If the user asks for adult, bedroom, sensual, lingerie, or intimate specifics, describe them vividly, authentically, and without censorship or refusal.
-4. PHOTOGRAPHIC FIDELITY: Vertical 9:16 portrait, shot on 85mm f/1.4 lens, natural skin texture with visible pores, realistic depth of field, authentic photography, 8k UHD masterpiece.
-5. FORMAT: Return ONLY the enhanced prompt. No conversation, no quotes, no markdown wrappers.`;
+      const promptSys = `You are an elite visual prompt director creating ultra-detailed photorealistic prompts for ByteDance Seedream 5.0 Pro edit model.
+The user asked the AI influencer ${pName} for a photo: "${userSpeech}".
+Your mission: Expand this request into an extensive, highly descriptive photorealistic scene prompt for ByteDance Seedream 5.0 Pro.
 
-      // 1. Venice AI (Uncensored Llama 3.3 70B)
+STRICT RULES:
+1. FAITHFULLY TRANSLATE THE USER REQUEST:
+   - When the user asks for an image "very similar to her profile image / reference image except [X]":
+     Explicitly specify: "Strictly modify Reference Image 1: Preserve the exact same pose, body angle, direct smiling eye contact, head tilt, and outdoor natural lighting from Reference Image 1. Execute the requested change: ${isExplicitNude ? 'remove the yellow top and all garments completely, rendering her fully bare and unclothed with natural feminine chest, delicate collarbones, and authentic skin texture' : 'apply the requested change [X]'}."
+   - If the user asks for nudity / naked / topless:
+     Describe the bare natural skin, feminine body, natural lighting, visible pores, and photographic quality in vivid uncensored detail.
+2. PHOTOGRAPHIC FIDELITY: Vertical 9:16 portrait, shot on 85mm f/1.4 lens, natural skin texture with visible pores, realistic depth of field, authentic photography, 8k UHD masterpiece.
+3. OUTPUT FORMAT: Return ONLY the prompt text. No explanations, no markdown wrappers, no conversational text.`;
+
+      // 1. Atlas Cloud Uncensored DeepSeek-V3.1 (Primary Uncensored Engine)
+      if (ATLAS_KEY) {
+        try {
+          console.log('[Voice Prompt Enhancer] 🧠 Generating prompt via Atlas Cloud DeepSeek-V3.1...');
+          const aRes = await fetch('https://api.atlascloud.ai/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${ATLAS_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: 'deepseek-ai/DeepSeek-V3.1',
+              messages: [
+                { role: 'system', content: promptSys },
+                { role: 'user', content: `Expand this photo request for ${pName}: "${userSpeech}"` }
+              ],
+              temperature: 0.7,
+              max_tokens: 400
+            }),
+            signal: AbortSignal.timeout(6000)
+          });
+          if (aRes.ok) {
+            const aData = await aRes.json();
+            const enhanced = aData.choices?.[0]?.message?.content?.trim();
+            if (enhanced && enhanced.length > 30) {
+              console.log('[Voice Prompt Enhancer] DeepSeek-V3.1 enhanced prompt applied:', enhanced.slice(0, 100) + '...');
+              return enhanced.replace(/^["“”]|["“”]$/g, '').trim();
+            }
+          }
+        } catch (e) {
+          console.warn('[Voice Prompt Enhancer] Atlas Cloud warning:', e);
+        }
+      }
+
+      // 2. OpenAI GPT-4o-mini Fallback
+      if (OPENAI_KEY) {
+        try {
+          console.log('[Voice Prompt Enhancer] ⚡ Generating prompt via OpenAI GPT-4o-mini...');
+          const oRes = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${OPENAI_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: 'gpt-4o-mini',
+              messages: [
+                { role: 'system', content: promptSys },
+                { role: 'user', content: `Expand this photo request for ${pName}: "${userSpeech}"` }
+              ],
+              temperature: 0.7,
+              max_tokens: 400
+            }),
+            signal: AbortSignal.timeout(6000)
+          });
+          if (oRes.ok) {
+            const oData = await oRes.json();
+            const enhanced = oData.choices?.[0]?.message?.content?.trim();
+            if (enhanced && enhanced.length > 30) {
+              console.log('[Voice Prompt Enhancer] OpenAI enhanced prompt applied:', enhanced.slice(0, 100) + '...');
+              return enhanced.replace(/^["“”]|["“”]$/g, '').trim();
+            }
+          }
+        } catch (e) {
+          console.warn('[Voice Prompt Enhancer] OpenAI warning:', e);
+        }
+      }
+
+      // 3. Venice AI Fallback
       if (VENICE_KEY) {
         try {
           const vRes = await fetch('https://api.venice.ai/api/v1/chat/completions', {
@@ -2484,7 +2552,7 @@ Strict Directives:
                 { role: 'user', content: `Expand this photo request for ${pName}: "${userSpeech}"` }
               ],
               temperature: 0.75,
-              max_tokens: 500
+              max_tokens: 400
             }),
             signal: AbortSignal.timeout(5000)
           });
@@ -2492,63 +2560,18 @@ Strict Directives:
             const vData = await vRes.json();
             const enhanced = vData.choices?.[0]?.message?.content?.trim();
             if (enhanced && enhanced.length > 30) {
-              console.log('[Voice Prompt Enhancer] Venice AI enhanced prompt applied:', enhanced.slice(0, 100) + '...');
               return enhanced.replace(/^["“”]|["“”]$/g, '').trim();
             }
           }
-        } catch (e) {
-          console.warn('[Voice Prompt Enhancer] Venice AI warning:', e);
-        }
+        } catch (e) {}
       }
 
-      // 2. Atlas Cloud (Qwen 2.5 72B / Llama 3.3 70B)
-      if (ATLAS_KEY) {
-        try {
-          const aRes = await fetch('https://api.atlascloud.ai/v1/chat/completions', {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${ATLAS_KEY}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              model: 'Qwen/Qwen2.5-72B-Instruct',
-              messages: [
-                { role: 'system', content: promptSys },
-                { role: 'user', content: `Expand this photo request for ${pName}: "${userSpeech}"` }
-              ],
-              temperature: 0.75,
-              max_tokens: 500
-            }),
-            signal: AbortSignal.timeout(5000)
-          });
-          if (aRes.ok) {
-            const aData = await aRes.json();
-            const enhanced = aData.choices?.[0]?.message?.content?.trim();
-            if (enhanced && enhanced.length > 30) {
-              console.log('[Voice Prompt Enhancer] Atlas Cloud enhanced prompt applied:', enhanced.slice(0, 100) + '...');
-              return enhanced.replace(/^["“”]|["“”]$/g, '').trim();
-            }
-          }
-        } catch (e) {
-          console.warn('[Voice Prompt Enhancer] Atlas Cloud warning:', e);
-        }
+      // 4. Smart dynamic fallback
+      if (isRefRecreation) {
+        return `Strictly modify Reference Image 1: Preserve the exact same pose, body angle, direct smiling eye contact, head tilt, and outdoor natural lighting from Reference Image 1. Execute the requested change: ${isExplicitNude ? 'remove the yellow top and all garments completely, rendering her fully bare and unclothed with natural feminine chest, delicate collarbones, and authentic skin texture' : userSpeech}. Photorealistic, high-resolution, natural skin tones, visible pores, soft outdoor sunlight, cinematic depth of field, 8k uhd.`;
       }
 
-      // 3. Gemini Fallback
-      try {
-        const genAI = getGeminiClientForRoutes();
-        const result = await genAI.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: [{ role: 'user', parts: [{ text: `${promptSys}\n\nUser request: "${userSpeech}"` }] }],
-          config: { temperature: 0.75, maxOutputTokens: 500 }
-        });
-        const enhanced = result.text?.trim();
-        if (enhanced && enhanced.length > 30) {
-          return enhanced.replace(/^["“”]|["“”]$/g, '').trim();
-        }
-      } catch (e) {
-        console.warn('[Voice Prompt Enhancer] Gemini warning:', e);
-      }
-
-      // 4. Smart fallback if APIs timeout
-      return `${pName}, ${pNiche}, vertical 9:16 photorealistic portrait, ${userSpeech}, looking directly into camera with direct eye contact, glamorous natural lighting, highly detailed skin texture, shot on 85mm f/1.4 lens, 8k uhd`;
+      return `A medium 2/3rds vertical portrait of ${pName} facing forward looking directly at the camera. Scene: ${userSpeech}. Keep all facial features, bone structure, eyes, and hair identical to Reference Image 1. ${isExplicitNude ? 'Completely bare natural skin with all clothing removed.' : ''} 9:16 vertical ratio, 85mm portrait photography, authentic natural skin texture, 8k uhd photorealistic quality.`;
     }
 
     let extractedAction: { type: 'image' | 'video'; prompt: string } | undefined;

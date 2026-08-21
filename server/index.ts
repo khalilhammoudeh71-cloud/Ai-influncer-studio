@@ -1335,6 +1335,67 @@ Mode: ${isDuo ? 'Duo Photoshoot featuring both ' + personaName + ' and ' + creat
 Persona: ${personaName} (${personaNiche || 'Lifestyle'})
 Creator: ${creatorName} (${creatorAppearance})`;
 
+  if (ATLASCLOUD_API_KEY) {
+    try {
+      console.log('[PromptEnhancer] 🧠 Generating prompt via Atlas Cloud DeepSeek-V3.1...');
+      const res = await fetch(`${ATLASCLOUD_BASE}/v1/chat/completions`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${ATLASCLOUD_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'deepseek-ai/DeepSeek-V3.1',
+          messages: [
+            { role: 'system', content: systemInstruction },
+            { role: 'user', content: userQuery }
+          ],
+          temperature: 0.7,
+          max_tokens: 500,
+        }),
+        signal: AbortSignal.timeout(6000),
+      });
+      if (res.ok) {
+        const data = await res.json() as any;
+        const enhanced = data.choices?.[0]?.message?.content?.trim();
+        if (enhanced && enhanced.length > 30) {
+          console.log('[PromptEnhancer] DeepSeek-V3.1 enhanced prompt:', enhanced.slice(0, 120) + '...');
+          return enhanced.replace(/^["“”]|["“”]$/g, '').trim();
+        }
+      }
+    } catch (err) {
+      console.warn('[PromptEnhancer] Atlas Cloud DeepSeek error, falling back:', err);
+    }
+  }
+
+  const OPENAI_KEY = process.env.Openai_api_key || process.env.OPENAI_API_KEY || process.env.openai_api_key || '';
+  if (OPENAI_KEY) {
+    try {
+      console.log('[PromptEnhancer] ⚡ Generating prompt via OpenAI GPT-4o-mini...');
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${OPENAI_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: systemInstruction },
+            { role: 'user', content: userQuery }
+          ],
+          temperature: 0.7,
+          max_tokens: 500,
+        }),
+        signal: AbortSignal.timeout(6000),
+      });
+      if (res.ok) {
+        const data = await res.json() as any;
+        const enhanced = data.choices?.[0]?.message?.content?.trim();
+        if (enhanced && enhanced.length > 30) {
+          console.log('[PromptEnhancer] OpenAI enhanced prompt:', enhanced.slice(0, 120) + '...');
+          return enhanced.replace(/^["“”]|["“”]$/g, '').trim();
+        }
+      }
+    } catch (err) {
+      console.warn('[PromptEnhancer] OpenAI error, falling back:', err);
+    }
+  }
+
   const VENICE_KEY = process.env.Veniceai_api_key || process.env.veniceai_api_key || process.env.VENICEAI_API_KEY || process.env.VENICE_API_KEY || '';
   if (VENICE_KEY) {
     try {
@@ -1348,50 +1409,19 @@ Creator: ${creatorName} (${creatorAppearance})`;
             { role: 'user', content: userQuery }
           ],
           temperature: 0.75,
-          max_tokens: 700,
+          max_tokens: 500,
         }),
-        signal: AbortSignal.timeout(6000),
+        signal: AbortSignal.timeout(5000),
       });
       if (res.ok) {
         const data = await res.json() as any;
         const enhanced = data.choices?.[0]?.message?.content?.trim();
-        if (enhanced && enhanced.length > 40) {
+        if (enhanced && enhanced.length > 30) {
           console.log('[PromptEnhancer] Venice AI enhanced prompt:', enhanced.slice(0, 120) + '...');
-          return enhanced;
+          return enhanced.replace(/^["“”]|["“”]$/g, '').trim();
         }
       }
-    } catch (err) {
-      console.warn('[PromptEnhancer] Venice AI error, falling back:', err);
-    }
-  }
-
-  if (ATLASCLOUD_API_KEY) {
-    try {
-      const res = await fetch(`${ATLASCLOUD_BASE}/v1/chat/completions`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${ATLASCLOUD_API_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'Qwen/Qwen2.5-72B-Instruct',
-          messages: [
-            { role: 'system', content: systemInstruction },
-            { role: 'user', content: userQuery }
-          ],
-          temperature: 0.75,
-          max_tokens: 700,
-        }),
-        signal: AbortSignal.timeout(6000),
-      });
-      if (res.ok) {
-        const data = await res.json() as any;
-        const enhanced = data.choices?.[0]?.message?.content?.trim();
-        if (enhanced && enhanced.length > 40) {
-          console.log('[PromptEnhancer] Atlas Cloud enhanced prompt:', enhanced.slice(0, 120) + '...');
-          return enhanced;
-        }
-      }
-    } catch (err) {
-      console.warn('[PromptEnhancer] Atlas Cloud error, falling back:', err);
-    }
+    } catch (err) {}
   }
 
   try {
@@ -1402,20 +1432,23 @@ Creator: ${creatorName} (${creatorAppearance})`;
         { role: 'user', parts: [{ text: `${systemInstruction}\n\n${userQuery}` }] }
       ],
       config: {
-        maxOutputTokens: 700,
+        maxOutputTokens: 500,
         temperature: 0.75,
       }
     });
     const enhanced = response.text?.trim();
-    if (enhanced && enhanced.length > 40) {
+    if (enhanced && enhanced.length > 30) {
       console.log('[PromptEnhancer] Gemini enhanced prompt:', enhanced.slice(0, 120) + '...');
-      return enhanced;
+      return enhanced.replace(/^["“”]|["“”]$/g, '').trim();
     }
   } catch (err) {
     console.warn('[PromptEnhancer] Gemini error, using smart fallback:', err);
   }
 
   // Dynamic fallback incorporating the user's specific request
+  if (isRefRecreation) {
+    return `Strictly modify Reference Image 1: Preserve the exact same pose, body angle, direct smiling eye contact, head tilt, and outdoor natural lighting from Reference Image 1. Execute the requested change: ${isExplicitNude ? 'remove the yellow top and all garments completely, rendering her fully bare and unclothed with natural feminine chest, delicate collarbones, and authentic skin texture' : rawPrompt}. Photorealistic, high-resolution, natural skin tones, visible pores, soft outdoor sunlight, cinematic depth of field, 8k uhd.`;
+  }
   const sceneDescription = rawPrompt.replace(/^(can you|please|send me|show me|take a|generate an?)\s+/i, '');
   return `A medium 2/3rds vertical portrait of ${personaName} facing forward looking directly at the camera. Scene: ${sceneDescription}. Keep all facial features, bone structure, eyes, and hair identical to Reference Image 1. ${isExplicitNude ? 'Completely bare natural skin with all clothing removed.' : ''} 9:16 vertical ratio, 85mm portrait photography, authentic natural skin texture, 8k uhd photorealistic quality.`;
 }
