@@ -6,7 +6,7 @@ import {
   Sparkle, Image, Mic, UserSquare2, ArrowUpCircle, Eraser,
   Camera, Zap, Video, ArrowLeftRight, TrendingUp, Film, Wand2,
   Shirt, Droplets, Weight, Dumbbell, PenTool, Plane, Expand, Box, Layers, BarChart3,
-  Crown
+  Crown, X
 } from 'lucide-react';
 import { Persona, Tab } from '../types';
 import { cn } from '../utils/cn';
@@ -16,9 +16,11 @@ interface LeftSidebarProps {
   onNavigate: (tab: Tab, params?: any) => void;
   activePersona: Persona;
   newAssetsCount: number;
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
 }
 
-export default function LeftSidebar({ activeTab, onNavigate, activePersona, newAssetsCount }: LeftSidebarProps) {
+export default function LeftSidebar({ activeTab, onNavigate, activePersona, newAssetsCount, mobileOpen = false, onMobileClose }: LeftSidebarProps) {
   const [openAccordions, setOpenAccordions] = useState<Record<string, boolean>>({
     toolbox: false
   });
@@ -27,13 +29,17 @@ export default function LeftSidebar({ activeTab, onNavigate, activePersona, newA
     setOpenAccordions(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
+  const handleNavigate = (tab: Tab, params?: any) => {
+    onNavigate(tab, params);
+    onMobileClose?.();
+  };
+
   const navItems = [
     { id: 'personas', label: 'Dashboard', icon: LayoutDashboard, tabTarget: 'personas' },
     { id: 'persona-studio', label: 'Persona Studio', icon: Users, tabTarget: 'create-persona' },
     { id: 'chat', label: 'Persona Chat', icon: MessageSquare, tabTarget: 'assistant' },
     { id: 'image-studio', label: 'Image Studio', icon: Image, tabTarget: 'create', subView: 'image' },
     { id: 'voice-studio', label: 'Voice Studio', icon: Mic, tabTarget: 'create', subView: 'voice' },
-    { id: 'ai-tools', label: 'AI Tools', icon: Wrench, tabTarget: 'intelligence' },
     { id: 'planner', label: 'Content Planner', icon: Calendar, tabTarget: 'planner' },
     { id: 'agent', label: 'Super Agent', icon: Cpu, tabTarget: 'agent' },
     { id: 'trends', label: 'Analytics', icon: BarChart3, tabTarget: 'trends' },
@@ -52,10 +58,22 @@ export default function LeftSidebar({ activeTab, onNavigate, activePersona, newA
   ];
 
   return (
-    <div className="w-56 md:w-60 lg:w-64 shrink-0 h-full border-r border-[#E7C477]/10 bg-[#141416] flex flex-col z-50 select-none">
+    <>
+      {mobileOpen && (
+        <button
+          type="button"
+          aria-label="Close navigation menu"
+          onClick={onMobileClose}
+          className="fixed inset-0 z-[10000] bg-black/65 backdrop-blur-sm md:hidden"
+        />
+      )}
+      <aside className={cn(
+        "fixed inset-y-0 left-0 z-[10001] w-72 max-w-[85vw] shrink-0 h-full border-r border-[#E7C477]/10 bg-[#141416] flex flex-col select-none transition-transform duration-200 ease-out md:static md:z-50 md:w-60 md:max-w-none md:translate-x-0 lg:w-64",
+        mobileOpen ? "translate-x-0" : "-translate-x-full"
+      )}>
       {/* Brand Header */}
       <div 
-        onClick={() => onNavigate('personas')}
+        onClick={() => handleNavigate('personas')}
         className="p-4 border-b border-[#E7C477]/10 flex items-center gap-3.5 cursor-pointer hover:bg-white/[0.03] transition-all group"
       >
         <div className="w-11 h-11 rounded-2xl overflow-hidden border border-[#E7C477]/35 shadow-xl shadow-amber-950/20 flex-shrink-0 bg-[#080C14] p-1 flex items-center justify-center group-hover:border-[#E7C477]/60 group-hover:scale-[1.03] transition-all">
@@ -73,18 +91,29 @@ export default function LeftSidebar({ activeTab, onNavigate, activePersona, newA
             STUDIO
           </span>
         </div>
+        <button
+          type="button"
+          aria-label="Close navigation menu"
+          onClick={(event) => {
+            event.stopPropagation();
+            onMobileClose?.();
+          }}
+          className="ml-auto rounded-lg p-2 text-[#8C909A] transition-colors hover:bg-white/5 hover:text-white md:hidden"
+        >
+          <X size={18} />
+        </button>
       </div>
 
       {/* Navigation Links */}
       <div className="flex-1 overflow-y-auto p-3.5 space-y-1.5 custom-scrollbar">
         {navItems.map((item) => {
-          const isActive = (item.tabTarget === activeTab) || (item.id === 'persona-studio' && activeTab === 'create-persona') || (item.id === 'personas' && activeTab === 'personas') || (item.id === 'ai-tools' && activeTab === 'intelligence');
+          const isActive = (item.tabTarget === activeTab) || (item.id === 'persona-studio' && activeTab === 'create-persona') || (item.id === 'personas' && activeTab === 'personas');
           const ItemIcon = item.icon;
 
           return (
             <button
               key={item.id}
-              onClick={() => onNavigate(item.tabTarget as Tab, item.subView ? { subView: item.subView } : undefined)}
+              onClick={() => handleNavigate(item.tabTarget as Tab, item.subView ? { subView: item.subView } : undefined)}
               className={cn(
                 "w-full flex items-center gap-3.5 px-3.5 py-3 rounded-xl text-xs font-medium transition-all text-left group cursor-pointer",
                 isActive
@@ -103,7 +132,7 @@ export default function LeftSidebar({ activeTab, onNavigate, activePersona, newA
           <button
             type="button"
             onClick={() => {
-              onNavigate('intelligence');
+              handleNavigate('intelligence');
               toggleAccordion('toolbox');
             }}
             className={cn(
@@ -132,7 +161,7 @@ export default function LeftSidebar({ activeTab, onNavigate, activePersona, newA
                 {toolboxItems.map((sub) => (
                   <button
                     key={sub.id}
-                    onClick={() => onNavigate('intelligence', { initialTool: sub.id })}
+                    onClick={() => handleNavigate('intelligence', { initialTool: sub.id })}
                     className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-normal text-[#8C909A] hover:text-[#F5F1E8] hover:bg-white/[0.04] transition-all text-left cursor-pointer"
                   >
                     <sub.icon size={13} className="text-[#8C909A]" />
@@ -144,6 +173,7 @@ export default function LeftSidebar({ activeTab, onNavigate, activePersona, newA
           </AnimatePresence>
         </div>
       </div>
-    </div>
+      </aside>
+    </>
   );
 }

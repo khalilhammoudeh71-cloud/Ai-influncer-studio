@@ -5,6 +5,7 @@ import { cn } from '../utils/cn';
 import { Persona, GeneratedImage, NavActions, Tab } from '../types';
 import { api } from '../services/apiService';
 import toast from 'react-hot-toast';
+import PersonaAvatar from '../components/PersonaAvatar';
 
 interface PersonasViewProps {
   personas: Persona[];
@@ -225,19 +226,11 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
               >
                 <div className="w-full aspect-square rounded-xl overflow-hidden border border-white/10 relative bg-[#141416] flex items-center justify-center">
                   {p.avatar || p.referenceImage ? (
-                    <img 
+                    <PersonaAvatar
                       src={p.avatar || p.referenceImage} 
                       alt={p.name} 
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform" 
-                      onError={(e) => {
-                        const target = e.target as HTMLImageElement;
-                        const fallback = p.referenceImage && target.src !== p.referenceImage 
-                          ? p.referenceImage 
-                          : (p.additionalReferenceImages?.[0] || '/demo/ai_sample_influencer.png');
-                        if (target.src !== fallback) {
-                          target.src = fallback;
-                        }
-                      }}
+                      fallbackSrc={p.additionalReferenceImages?.[0] || '/demo/ai_sample_influencer.png'}
                     />
                   ) : (
                     <Users size={32} className="text-zinc-600" />
@@ -313,21 +306,21 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
             icon: Camera, 
             title: 'Photo Generation', 
             desc: 'Create stunning, identity-consistent photos in any setting, outfit, and style',
-            image: '/uploads/showcase_haute_couture.png?v=3',
+            image: '/examples/showcase_haute_couture.png',
             action: () => nav.replace({ view: 'create', subView: 'image' })
           },
           { 
             icon: Film, 
             title: 'Video & Avatar', 
             desc: 'Turn any photo into a talking video or animated clip with custom voice',
-            image: '/uploads/showcase_red_carpet.png?v=3',
+            image: '/examples/showcase_red_carpet.png',
             action: () => nav.replace({ view: 'create', subView: 'video' })
           },
           { 
             icon: Sparkles, 
             title: 'Content Studio', 
             desc: 'Generate scripts, plan posts, clone voices — a full content creation suite',
-            image: '/uploads/showcase_parisian_chic.png?v=3',
+            image: '/examples/showcase_parisian_chic.png',
             action: () => nav.replace({ view: 'planner' })
           },
         ].map((feature, i) => {
@@ -381,14 +374,14 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
         
         <div className="flex gap-4 overflow-x-auto custom-scrollbar pb-3 pt-1 snap-x snap-mandatory">
           {[
-            { src: '/uploads/showcase_haute_couture.png?v=3', label: 'Haute Couture Runway', category: 'High Fashion' },
-            { src: '/uploads/showcase_tokyo_cyberpunk.png?v=3', label: 'Tokyo Cyberpunk Night', category: 'Cyberpunk' },
-            { src: '/uploads/showcase_amalfi_villa.png?v=3', label: 'Amalfi Coast Villa', category: 'Luxury Travel' },
-            { src: '/uploads/showcase_aesthetic_fitness.png?v=3', label: 'Aesthetic Fitness', category: 'Fitness Luxe' },
-            { src: '/uploads/showcase_parisian_chic.png?v=3', label: 'Parisian Autumn Chic', category: 'Street Chic' },
-            { src: '/uploads/showcase_red_carpet.png?v=3', label: 'Gala Red Carpet', category: 'Celebrity Gala' },
-            { src: '/uploads/showcase_bali_oasis.png?v=3', label: 'Bali Jungle Oasis', category: 'Tropical Resort' },
-            { src: '/uploads/showcase_studio_beauty.png?v=3', label: 'Minimalist Studio', category: 'Beauty Editorial' },
+            { src: '/examples/showcase_haute_couture.png', label: 'Haute Couture Runway', category: 'High Fashion' },
+            { src: '/examples/showcase_tokyo_cyberpunk.png', label: 'Tokyo Cyberpunk Night', category: 'Cyberpunk' },
+            { src: '/examples/showcase_amalfi_villa.png', label: 'Amalfi Coast Villa', category: 'Luxury Travel' },
+            { src: '/examples/showcase_aesthetic_fitness.png', label: 'Aesthetic Fitness', category: 'Fitness Luxe' },
+            { src: '/examples/showcase_parisian_chic.png', label: 'Parisian Autumn Chic', category: 'Street Chic' },
+            { src: '/examples/showcase_red_carpet.png', label: 'Gala Red Carpet', category: 'Celebrity Gala' },
+            { src: '/examples/showcase_bali_oasis.png', label: 'Bali Jungle Oasis', category: 'Tropical Resort' },
+            { src: '/examples/showcase_studio_beauty.png', label: 'Minimalist Studio', category: 'Beauty Editorial' },
           ].map((item, i) => (
             <motion.div 
               key={i}
