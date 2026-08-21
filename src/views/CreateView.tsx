@@ -47,7 +47,7 @@ import {
   FolderHeart,
 } from 'lucide-react';
 import { AssetPickerModal } from '../components/AssetPickerModal';
-import { Persona, GeneratedImage, NavActions, Tab, NavEntry } from '../types';
+import { Persona, PersonaSetter, GeneratedImage, NavActions, Tab, NavEntry } from '../types';
 import PlannerView from './PlannerView';
 import VoiceView from './VoiceView';
 import AIToolsView from './AIToolsView';
@@ -123,7 +123,7 @@ const ANONYMOUS_PERSONA: Persona = {
 interface CreateViewProps {
   persona: Persona;
   personas: Persona[];
-  setPersonas: (personas: Persona[]) => void;
+  setPersonas: PersonaSetter;
   onSelectPersona: (id: string) => void;
   subView?: string;
   nav: NavActions;
@@ -976,7 +976,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       }
       return p;
     });
-    setPersonas(updatedPersonas);
+    setPersonas(updatedPersonas, { persist: false });
 
     try {
       await fetch(`/api/personas/${persona.id}/images`, {

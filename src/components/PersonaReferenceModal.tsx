@@ -61,7 +61,6 @@ export default function PersonaReferenceModal({
 
       try {
         await api.personas.update(updated);
-        await api.updatePersonaInVault(updated);
       } catch (err) {
         console.warn('Backend update warning:', err);
       }
@@ -110,7 +109,6 @@ export default function PersonaReferenceModal({
 
       try {
         await api.personas.update(updated);
-        await api.updatePersonaInVault(updated);
       } catch (err) {
         console.warn('Backend update warning:', err);
       }
@@ -150,7 +148,6 @@ export default function PersonaReferenceModal({
 
       try {
         await api.personas.update(updated);
-        await api.updatePersonaInVault(updated);
       } catch (err) {
         console.warn('Backend update warning:', err);
       }

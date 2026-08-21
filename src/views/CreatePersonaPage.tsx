@@ -6,7 +6,7 @@ import {
   CheckCircle2, Flame, Loader2, Music2, Plus, Volume2, VolumeX, Heart, UserCheck, Star, Trash2, Sliders, Zap, Shield, ArrowRight, Wand, Layers, ChevronRight, ChevronLeft, FolderHeart, Download, ExternalLink
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { Persona, NavActions, GeneratedImage } from '../types';
+import { Persona, PersonaSetter, NavActions, GeneratedImage } from '../types';
 import { api } from '../services/apiService';
 import { authFetch } from '../services/imageService';
 import { cn } from '../utils/cn';
@@ -14,7 +14,7 @@ import { processVoiceSampleFile } from '../utils/audioUtils';
 
 interface CreatePersonaPageProps {
   personas: Persona[];
-  setPersonas: (personas: Persona[]) => void;
+  setPersonas: PersonaSetter;
   onSelectPersona: (id: string) => void;
   nav: NavActions;
   editingPersona?: Persona | null;
@@ -620,7 +620,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
         ...editingPersona,
         visualLibrary: (editingPersona.visualLibrary || []).filter(g => (g.id || g.url) !== genIdOrUrl)
       };
-      setPersonas(personas.map(p => p.id === editingPersona.id ? updatedPersona : p));
+      setPersonas(personas.map(p => p.id === editingPersona.id ? updatedPersona : p), { persist: false });
       try {
         await api.images.delete(editingPersona.id, genIdOrUrl);
       } catch {}
@@ -1112,7 +1112,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
           personaNotes: voicePrompt ? `${voicePrompt}. ${defaultNotes}` : (editingPersona.personaNotes || defaultNotes),
         } as Persona;
 
-        setPersonas(personas.map(p => p.id === editingPersona.id ? updatedPersona : p));
+        setPersonas(personas.map(p => p.id === editingPersona.id ? updatedPersona : p), { persist: false });
         onSelectPersona(updatedPersona.id);
         toast.success(`✅ Saved ${updatedPersona.name}!`);
 
@@ -1155,7 +1155,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
           createdAt: new Date().toISOString()
         } as Persona;
 
-        setPersonas([...personas, newPersona]);
+        setPersonas([...personas, newPersona], { persist: false });
         onSelectPersona(newPersona.id);
         toast.success(`✨ Created ${newPersona.name}!`);
 

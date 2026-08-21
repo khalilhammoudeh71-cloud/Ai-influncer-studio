@@ -76,6 +76,11 @@ export type Persona = {
   relationshipState?: RelationshipState;
 };
 
+export type PersonaSetter = (
+  value: Persona[] | ((previous: Persona[]) => Persona[]),
+  options?: { persist?: boolean },
+) => void | Promise<void>;
+
 export type PlannedPost = {
   day: number;
   type: string;
