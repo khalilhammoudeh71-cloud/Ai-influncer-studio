@@ -2039,7 +2039,6 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
     if (req.body.directTTS) {
       text = cleanSpokenDialogue(String(req.body.directTTS));
     }
-
     const ATLAS_KEY = process.env.ATLASCLOUD_API_KEY || process.env.atlascloud_api_key || process.env.Atlascloud_api_key || '';
 
     const isRefusal = (raw: string): boolean => {
@@ -2047,8 +2046,9 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
       return /cannot and will not|content polic|sexually explicit|cannot fulfill|unable to engage|prohibit|safety guideline|inappropriate imagery|I cannot create|I can't create|as an ai|violates content|against my programming|I am not able to generate|cannot generate|can't assist|cannot assist|can't help with that|cannot help with that|sorry, but|sorry, i|i'm sorry|i am sorry|i apologize/i.test(raw);
     };
 
-    // 1. Primary Engine: Atlas Cloud DeepSeek-V3.2 & GLM-4.6 (High-IQ, Uncensored, Deep Context Retention)
+    // 1. Primary Engine: Atlas Cloud DeepSeek-V3.2 & Qwen 3.x & GLM-4.6 (100% Uncensored, Superb Context)
     if (!text && ATLAS_KEY) {
+      // Branch A: DeepSeek-V3.2
       try {
         console.log('[Voice Chat LLM] 🧠 Generating response via Atlas Cloud DeepSeek-V3.2...');
         const dsMessages = [
@@ -2064,7 +2064,7 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
             'Authorization': `Bearer ${ATLAS_KEY}`,
             'Content-Type': 'application/json'
           },
-          signal: AbortSignal.timeout(8000),
+          signal: AbortSignal.timeout(9000),
           body: JSON.stringify({
             model: 'deepseek-ai/deepseek-v3.2',
             messages: dsMessages,
@@ -2083,9 +2083,46 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
           }
         }
       } catch (dsErr) {
-        console.warn('[Voice Chat LLM] DeepSeek-V3.2 error, trying GLM-4.6:', dsErr);
+        console.warn('[Voice Chat LLM] DeepSeek-V3.2 error, trying Qwen 3.x:', dsErr);
       }
 
+      // Branch B: Qwen 3.6 Plus (Qwen 3.x Series)
+      if (!text) {
+        try {
+          console.log('[Voice Chat LLM] 🧠 Generating response via Atlas Cloud Qwen 3.6 Plus...');
+          const qwenRes = await fetch('https://api.atlascloud.ai/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${ATLAS_KEY}`,
+              'Content-Type': 'application/json'
+            },
+            signal: AbortSignal.timeout(9000),
+            body: JSON.stringify({
+              model: 'qwen/qwen3.6-plus',
+              messages: [
+                { role: 'system', content: voiceSystemPrompt },
+                ...rawHistory.map((m: any) => ({
+                  role: (m.role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
+                  content: String(m.content || m.parts?.[0]?.text || '').trim() || 'Hello'
+                }))
+              ],
+              temperature: 0.85,
+              max_tokens: 500
+            })
+          });
+          if (qwenRes.ok) {
+            const qwenData = await qwenRes.json();
+            const rawReply = qwenData.choices?.[0]?.message?.content || '';
+            if (rawReply && !isRefusal(rawReply)) {
+              text = cleanSpokenDialogue(rawReply);
+            }
+          }
+        } catch (qwenErr) {
+          console.warn('[Voice Chat LLM] Qwen 3.6 Plus error, trying GLM-4.6:', qwenErr);
+        }
+      }
+
+      // Branch C: GLM-4.6
       if (!text) {
         try {
           console.log('[Voice Chat LLM] 🧠 Generating response via Atlas Cloud GLM-4.6...');
@@ -2095,7 +2132,7 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
               'Authorization': `Bearer ${ATLAS_KEY}`,
               'Content-Type': 'application/json'
             },
-            signal: AbortSignal.timeout(8000),
+            signal: AbortSignal.timeout(9000),
             body: JSON.stringify({
               model: 'zai-org/GLM-4.6',
               messages: [
@@ -2117,83 +2154,12 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
             }
           }
         } catch (glmErr) {
-          console.warn('[Voice Chat LLM] GLM-4.6 error, falling back:', glmErr);
+          console.warn('[Voice Chat LLM] GLM-4.6 error:', glmErr);
         }
       }
     }
 
-    // 2. Secondary Engine: OpenAI GPT-4o-mini (Reliable, fast, high intelligence)
     if (!text) {
-      const openAiKey = process.env.Openai_api_key || process.env.openai_api_key || process.env.OPENAI_API_KEY || '';
-      if (openAiKey) {
-        try {
-          console.log('[Voice Chat LLM] ⚡ Generating response via OpenAI GPT-4o-mini...');
-          const oMessages = [
-            { role: 'system', content: voiceSystemPrompt },
-            ...rawHistory.map((m: any) => ({
-              role: (m.role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
-              content: String(m.content || m.parts?.[0]?.text || '').trim() || 'Hello'
-            }))
-          ];
-          const oRes = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${openAiKey}`,
-              'Content-Type': 'application/json'
-            },
-            signal: AbortSignal.timeout(7000),
-            body: JSON.stringify({
-              model: 'gpt-4o-mini',
-              messages: oMessages,
-              temperature: 0.85,
-              max_tokens: 450
-            })
-          });
-          if (oRes.ok) {
-            const oData = await oRes.json();
-            const rawReply = oData.choices?.[0]?.message?.content || '';
-            if (rawReply && !isRefusal(rawReply)) {
-              text = cleanSpokenDialogue(rawReply);
-            }
-          }
-        } catch (oErr) {
-          console.warn('[Voice Chat LLM] OpenAI error, falling back:', oErr);
-        }
-      }
-    }
-
-    // 3. Tertiary Engine: Gemini 2.5 Flash
-    if (!text) {
-      try {
-        console.log('[Voice Chat LLM] 🌟 Generating response via Gemini 2.5 Flash...');
-        const geminiSafety = [
-          { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' },
-        ] as any;
-
-        const result = await genAI.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: formattedContents,
-          config: {
-            systemInstruction: voiceSystemPrompt,
-            maxOutputTokens: 1000,
-            temperature: 0.85,
-            safetySettings: geminiSafety
-          }
-        });
-        const rawReply = result.text || '';
-        if (rawReply && !isRefusal(rawReply)) {
-          text = cleanSpokenDialogue(rawReply);
-        }
-      } catch (gemErr) {
-        console.warn('[Voice Chat Gemini Exception]:', gemErr);
-      }
-    }
-
-    if (!text || text.split(/\s+/).length < 2) {
       if (isActionRequest) {
         text = "Taking that for you right now, babe... sending it straight to your screen.";
       } else {

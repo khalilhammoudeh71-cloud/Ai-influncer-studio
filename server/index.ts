@@ -1341,6 +1341,7 @@ Creator: ${creatorName} (${creatorAppearance})`;
   };
 
   if (ATLASCLOUD_API_KEY) {
+    // 1. Primary Engine: Atlas Cloud DeepSeek-V3.2
     try {
       console.log('[PromptEnhancer] 🧠 Generating prompt via Atlas Cloud DeepSeek-V3.2...');
       const res = await fetch(`${ATLASCLOUD_BASE}/v1/chat/completions`, {
@@ -1366,9 +1367,39 @@ Creator: ${creatorName} (${creatorAppearance})`;
         }
       }
     } catch (err) {
-      console.warn('[PromptEnhancer] Atlas Cloud DeepSeek error, trying GLM-4.6:', err);
+      console.warn('[PromptEnhancer] Atlas Cloud DeepSeek error, trying Qwen 3.x:', err);
     }
 
+    // 2. Secondary Engine: Atlas Cloud Qwen 3.x Series
+    try {
+      console.log('[PromptEnhancer] 🧠 Generating prompt via Atlas Cloud Qwen 3.6 Plus...');
+      const res = await fetch(`${ATLASCLOUD_BASE}/v1/chat/completions`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${ATLASCLOUD_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'qwen/qwen3.6-plus',
+          messages: [
+            { role: 'system', content: systemInstruction },
+            { role: 'user', content: userQuery }
+          ],
+          temperature: 0.7,
+          max_tokens: 600,
+        }),
+        signal: AbortSignal.timeout(9000),
+      });
+      if (res.ok) {
+        const data = await res.json() as any;
+        const enhanced = data.choices?.[0]?.message?.content?.trim();
+        if (enhanced && !isRefusal(enhanced) && enhanced.length > 25) {
+          console.log('[PromptEnhancer] Qwen 3.6 Plus enhanced prompt:', enhanced.slice(0, 120) + '...');
+          return enhanced.replace(/^["“”]|["“”]$/g, '').trim();
+        }
+      }
+    } catch (err) {
+      console.warn('[PromptEnhancer] Atlas Cloud Qwen 3.6 error, trying GLM-4.6:', err);
+    }
+
+    // 3. Tertiary Engine: Atlas Cloud GLM-4.6
     try {
       console.log('[PromptEnhancer] 🧠 Generating prompt via Atlas Cloud GLM-4.6...');
       const res = await fetch(`${ATLASCLOUD_BASE}/v1/chat/completions`, {
@@ -1394,63 +1425,11 @@ Creator: ${creatorName} (${creatorAppearance})`;
         }
       }
     } catch (err) {
-      console.warn('[PromptEnhancer] Atlas Cloud GLM-4.6 error, falling back:', err);
+      console.warn('[PromptEnhancer] Atlas Cloud GLM-4.6 error, using programmatic synthesizer:', err);
     }
   }
 
-  const OPENAI_KEY = process.env.Openai_api_key || process.env.OPENAI_API_KEY || process.env.openai_api_key || '';
-  if (OPENAI_KEY) {
-    try {
-      console.log('[PromptEnhancer] ⚡ Generating prompt via OpenAI GPT-4o-mini...');
-      const res = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${OPENAI_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [
-            { role: 'system', content: systemInstruction },
-            { role: 'user', content: userQuery }
-          ],
-          temperature: 0.7,
-          max_tokens: 500,
-        }),
-        signal: AbortSignal.timeout(6000),
-      });
-      if (res.ok) {
-        const data = await res.json() as any;
-        const enhanced = data.choices?.[0]?.message?.content?.trim();
-        if (enhanced && !isRefusal(enhanced) && enhanced.length > 25) {
-          console.log('[PromptEnhancer] OpenAI enhanced prompt:', enhanced.slice(0, 120) + '...');
-          return enhanced.replace(/^["“”]|["“”]$/g, '').trim();
-        }
-      }
-    } catch (err) {
-      console.warn('[PromptEnhancer] OpenAI error, falling back:', err);
-    }
-  }
-
-  try {
-    const ai = getGeminiClient();
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: [
-        { role: 'user', parts: [{ text: `${systemInstruction}\n\n${userQuery}` }] }
-      ],
-      config: {
-        maxOutputTokens: 500,
-        temperature: 0.75,
-      }
-    });
-    const enhanced = response.text?.trim();
-    if (enhanced && !isRefusal(enhanced) && enhanced.length > 25) {
-      console.log('[PromptEnhancer] Gemini enhanced prompt:', enhanced.slice(0, 120) + '...');
-      return enhanced.replace(/^["“”]|["“”]$/g, '').trim();
-    }
-  } catch (err) {
-    console.warn('[PromptEnhancer] Gemini error, using smart fallback:', err);
-  }
-
-  // Dynamic fallback incorporating the user's specific request
+  // 4. Dynamic Programmatic Photographic Prompt Synthesizer (Zero Censorship Guarantee)
   if (isDuo) {
     return `An ultra-photorealistic vertical 9:16 duo portrait featuring ${personaName} (Reference Image 1) and ${creatorName} (${creatorAppearance}). ${personaName} is in the foreground looking towards camera with direct eye contact, natural skin textures, and ${isExplicitNude ? 'fully nude with all garments removed' : 'alluring attire'}. ${creatorName} is positioned intimately with her in the exact physical dynamic: ${rawPrompt}. 85mm prime lens, volumetric studio lighting, natural skin pores, 8k uhd photorealistic masterwork.`;
   }
@@ -3624,8 +3603,9 @@ ${companionDirective ? `${companionDirective}\n` : ''}1. EQUAL CONFIDANTE & CHAR
       return /cannot and will not|content polic|sexually explicit|cannot fulfill|unable to engage|prohibit|safety guideline|inappropriate imagery|I cannot create|I can't create|as an ai|violates content|against my programming|I am not able to generate|cannot generate|can't assist|cannot assist|can't help with that|cannot help with that|sorry, but|sorry, i|i'm sorry|i am sorry|i apologize/i.test(raw);
     };
 
-    // 1. Primary Engine: Atlas Cloud DeepSeek-V3.2 & GLM-4.6 (High-IQ, Uncensored, Superb Memory Retention)
+    // 1. Primary Engine: Atlas Cloud DeepSeek-V3.2 & Qwen 3.x & GLM-4.6 (100% Uncensored, Superb Memory)
     if (!finalReply && atlasKey) {
+      // Branch A: DeepSeek-V3.2
       try {
         console.log('[Persona Chat] 🧠 Routing to Atlas Cloud DeepSeek-V3.2 High-EQ Engine...');
         const dsRes = await fetch(`${ATLASCLOUD_BASE}/v1/chat/completions`, {
@@ -3645,9 +3625,35 @@ ${companionDirective ? `${companionDirective}\n` : ''}1. EQUAL CONFIDANTE & CHAR
           if (r && !isRefusal(r)) finalReply = r;
         }
       } catch (dsErr) {
-        console.warn('[Persona Chat] DeepSeek-V3.2 error, trying GLM-4.6:', dsErr);
+        console.warn('[Persona Chat] DeepSeek-V3.2 error, trying Qwen 3.x:', dsErr);
       }
 
+      // Branch B: Qwen 3.6 Plus (Qwen 3.x Series)
+      if (!finalReply) {
+        try {
+          console.log('[Persona Chat] 🧠 Routing to Atlas Cloud Qwen 3.6 Plus...');
+          const qwenRes = await fetch(`${ATLASCLOUD_BASE}/v1/chat/completions`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${atlasKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: 'qwen/qwen3.6-plus',
+              messages: chatMsgs,
+              temperature: 0.85,
+              max_tokens: 1500,
+            }),
+            signal: AbortSignal.timeout(9000),
+          });
+          if (qwenRes.ok) {
+            const qwenData = await qwenRes.json() as any;
+            const r = qwenData.choices?.[0]?.message?.content?.trim();
+            if (r && !isRefusal(r)) finalReply = r;
+          }
+        } catch (qwenErr) {
+          console.warn('[Persona Chat] Qwen 3.6 Plus error, trying GLM-4.6:', qwenErr);
+        }
+      }
+
+      // Branch C: GLM-4.6
       if (!finalReply) {
         try {
           console.log('[Persona Chat] 🧠 Routing to Atlas Cloud GLM-4.6...');
@@ -3668,113 +3674,12 @@ ${companionDirective ? `${companionDirective}\n` : ''}1. EQUAL CONFIDANTE & CHAR
             if (r && !isRefusal(r)) finalReply = r;
           }
         } catch (glmErr) {
-          console.warn('[Persona Chat] GLM-4.6 error, trying backup:', glmErr);
+          console.warn('[Persona Chat] GLM-4.6 error:', glmErr);
         }
       }
     }
 
-    // 2. Secondary Engine: OpenAI GPT-4o-mini (Fast, High-EQ, Reliable)
-    if (!finalReply && openAiKey) {
-      try {
-        console.log('[Persona Chat] ⚡ Routing to OpenAI GPT-4o-mini...');
-        const { default: OpenAI } = await import('openai');
-        const openai = new OpenAI({ apiKey: openAiKey });
-        const oRes = await openai.chat.completions.create({
-          model: 'gpt-4o-mini',
-          messages: chatMsgs.map(m => ({
-            role: (m.role === 'user' ? 'user' : m.role === 'system' ? 'system' : 'assistant') as 'user' | 'system' | 'assistant',
-            content: m.content
-          })),
-          max_tokens: 1500,
-          temperature: 0.85
-        });
-        const r = oRes.choices?.[0]?.message?.content?.trim();
-        if (r && !isRefusal(r)) finalReply = r;
-      } catch (oaiErr) {
-        console.warn('[Persona Chat] OpenAI error, trying Gemini:', oaiErr);
-      }
-    }
-
-    // 3. Tertiary Engine: Gemini 2.5 Flash Engine (With Multimodal Vision Attachment Support)
-    if (!finalReply) {
-      try {
-        console.log('[Persona Chat] 🌟 Routing to Gemini 2.5 Flash...');
-        const ai = getGeminiClient();
-        const geminiSafety = [
-          { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' },
-        ] as any;
-
-        const contents: any[] = [];
-        allHistory.forEach((m: any) => {
-          if ((m.type === 'text' || !m.type) && m.content) {
-            contents.push({
-              role: m.role === 'user' ? 'user' : 'model',
-              parts: [{ text: m.content }]
-            });
-          }
-        });
-
-        const userParts: any[] = [{ text: effectiveUserMsg }];
-        if (attachedImage) {
-          try {
-            const match = String(attachedImage).match(/^data:(image\/[a-zA-Z0-9.+_-]+);base64,(.+)$/);
-            if (match) {
-              userParts.push({
-                inlineData: { mimeType: match[1], data: match[2] }
-              });
-            }
-          } catch (imgErr) {
-            console.warn('[Persona Chat Multimodal Vision Warning]:', imgErr);
-          }
-        }
-
-        contents.push({ role: 'user', parts: userParts });
-
-        const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents,
-          config: {
-            systemInstruction: systemPrompt,
-            maxOutputTokens: 2048,
-            temperature: 0.90,
-            safetySettings: geminiSafety
-          },
-        });
-
-        let rawReply = response.text?.trim() || '';
-        if (rawReply && !isRefusal(rawReply)) {
-          finalReply = rawReply;
-        }
-      } catch (gemErr) {
-        console.warn('[Persona Chat] Gemini Flash error, trying Grok backup:', gemErr);
-      }
-    }
-
-    // 4. Grok Engine Fallback
-    if (!finalReply && xaiApiKey) {
-      try {
-        console.log('[Persona Chat] ⚡ Routing to Grok 2...');
-        const gRes = await fetch('https://api.x.ai/v1/chat/completions', {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${xaiApiKey}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model: 'grok-2-latest', messages: chatMsgs, temperature: 0.85 }),
-          signal: AbortSignal.timeout(8000),
-        });
-        if (gRes.ok) {
-          const gData = await gRes.json() as any;
-          const r = gData.choices?.[0]?.message?.content?.trim();
-          if (r && !isRefusal(r)) finalReply = r;
-        }
-      } catch (gErr) {
-        console.warn('[Persona Chat] Grok error, falling back:', gErr);
-      }
-    }
-
-    // 5. In-character fallback if refusal or empty response occurred
+    // 2. In-character fallback if empty or offline
     if (!finalReply) {
       const isVisualIntent = /\b(photo|image|picture|pic|selfie|nude|naked|pose|portrait|wearing|outfit)\b/i.test(effectiveUserMsg);
       if (isVisualIntent) {
