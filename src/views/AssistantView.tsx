@@ -2200,18 +2200,6 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                   <Paperclip size={16} />
                 </button>
 
-                {/* Quick Spontaneous Voice Note Trigger */}
-                <button
-                  type="button"
-                  onClick={handleSendVoiceNoteRequest}
-                  disabled={isGenerating}
-                  title="Ask for an authentic voice memo"
-                  className="px-2.5 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/20 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer flex-shrink-0"
-                >
-                  <Mic size={13} className="text-amber-400" />
-                  <span className="hidden sm:inline">Voice Note</span>
-                </button>
-
                 <textarea
                   ref={inputRef}
                   value={input}
