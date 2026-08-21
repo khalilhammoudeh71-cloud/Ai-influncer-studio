@@ -1447,6 +1447,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     }
   };
 
+  const lastCallEndedAtRef = useRef<number>(0);
+
   // Dynamic context-aware greeting generator that picks up from last conversation
   const fetchDynamicGreeting = useCallback(async (persona: Persona, mode: 'voice' | 'chat'): Promise<string> => {
     const creator = getCreatorProfile();
@@ -1457,6 +1459,17 @@ export default function AssistantView({ personas, persona: propActivePersona, on
                             (persona.tone || '').toLowerCase().includes('seductive') || 
                             (persona.tone || '').toLowerCase().includes('flirty') ||
                             (persona.tone || '').toLowerCase().includes('playful');
+
+    const timeSinceLastSec = lastCallEndedAtRef.current > 0 ? Math.floor((Date.now() - lastCallEndedAtRef.current) / 1000) : 999999;
+    const isRecentContinuation = timeSinceLastSec < 600;
+
+    const continuationPool = [
+      `Hey, we got disconnected! Where were we?`,
+      `Hey babe, you're back. What was that you were saying?`,
+      `Hey! Did the call drop? I'm right here.`,
+      `Back so soon? Tell me what's on your mind right now.`,
+      `Hey handsome, you're back. Let's pick right back up!`
+    ];
 
     const intimatePools = [
       `Hey ${cName}... good ${timeWord}. Was just hoping you'd call. Still thinking about earlier?`,
@@ -1477,7 +1490,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       `Hey ${cName}! Perfect timing. Let's pick up where we left off.`
     ];
 
-    const fallbackPool = isAdultOrFlirty ? intimatePools : luxuryPools;
+    const fallbackPool = isRecentContinuation ? continuationPool : (isAdultOrFlirty ? intimatePools : luxuryPools);
     const fallbackGreeting = fallbackPool[Math.floor(Math.random() * fallbackPool.length)];
 
     try {
@@ -1492,6 +1505,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           priorChatHistory: priorHistory.slice(-8),
           memories,
           mode,
+          timeSinceLastInteractionSeconds: timeSinceLastSec,
         }),
       });
       if (res.ok) {
@@ -1562,7 +1576,16 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     isAgentSpeakingRef.current = false;
     voiceCallBusyRef.current = false;
     currentPersonaSpeechRef.current = '';
+    lastCallEndedAtRef.current = Date.now();
     
+    // Save history immediately
+    setMessages(currentMsgs => {
+      if (currentMsgs.length > 1) {
+        saveHistory(activePersona.id, currentMsgs);
+      }
+      return currentMsgs;
+    });
+
     stopVadInterruptionMonitor();
 
     if (callTimerRef.current) {
@@ -1588,7 +1611,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         window.speechSynthesis.cancel();
       } catch {}
     }
-  }, []);
+  }, [activePersona.id]);
 
   // Cleanup on component unmount
   useEffect(() => {

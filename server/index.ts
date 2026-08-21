@@ -3128,7 +3128,7 @@ app.post('/api/generate-content', async (req, res) => {
 
 app.post('/api/persona-greeting', async (req, res) => {
   try {
-    const { persona, creatorProfile, lastMessages, priorChatHistory, memories, mode } = req.body;
+    const { persona, creatorProfile, lastMessages, priorChatHistory, memories, mode, timeSinceLastInteractionSeconds } = req.body;
     const personaName = persona?.name || 'Creator';
     const personaNiche = persona?.niche || 'Lifestyle';
     const personaTone = persona?.tone || 'Confident, alluring, witty';
@@ -3139,26 +3139,31 @@ app.post('/api/persona-greeting', async (req, res) => {
 
     // Extract recent messages to understand the last conversation vibe
     const recent = [
-      ...(Array.isArray(priorChatHistory) ? priorChatHistory.slice(-6) : []),
-      ...(Array.isArray(lastMessages) ? lastMessages.slice(-6) : [])
+      ...(Array.isArray(priorChatHistory) ? priorChatHistory.slice(-8) : []),
+      ...(Array.isArray(lastMessages) ? lastMessages.slice(-8) : [])
     ];
     const recentContext = recent
       .filter((m: any) => m && m.content)
       .map((m: any) => `${m.role === 'user' ? effectiveUserName : personaName}: ${m.content}`)
       .join('\n');
 
+    const isImmediateContinuation = (typeof timeSinceLastInteractionSeconds === 'number' && timeSinceLastInteractionSeconds < 600) || Boolean(recentContext && recent.length >= 2);
+
     const prompt = `You are ${personaName} (Niche: ${personaNiche}, Tone: ${personaTone}). You are starting a ${mode === 'voice' ? 'voice call' : 'chat'} with your partner ${effectiveUserName}.
 Dynamic: ${creatorDynamic || 'Intimate partner, playful banter, deep connection'}.
 ${recentContext ? `Recent conversation context between you two:\n${recentContext}\n` : ''}
 ${memories ? `Known memories: ${Array.isArray(memories) ? memories.slice(-3).join('; ') : memories}\n` : ''}
 
-TASK: Generate a natural, spontaneous, single-sentence greeting for ${effectiveUserName}.
-CRITICAL INSTRUCTIONS:
+${isImmediateContinuation ? `CRITICAL SITUATION: You and ${effectiveUserName} were JUST TALKING seconds or minutes ago! The call disconnected or you are picking right back up where you left off.
+Your tone MUST be an immediate, intimate continuation of your previous conversation.
+Example vibes: "Hey, we got disconnected! Where were we?", "Hey babe, you're back. What were you saying?", "Hey! Did the call drop? I'm right here.", "Back so soon? Tell me what's on your mind."
+DO NOT say "Good morning/evening", DO NOT ask "What have you been up to since we last spoke", DO NOT act like time passed!` : `TASK: Generate a natural, spontaneous, single-sentence greeting for ${effectiveUserName}.`}
+
+RULES:
 1. Speak with your authentic personality, charm, and unique tone.
-2. If there was a recent conversation (voice or text), naturally acknowledge the vibe or what you were talking about (e.g. teasing about what you did, referencing earlier intimate moments, continuing a fun topic) like a real human who actually remembers!
-3. Keep it punchy and conversational (between 6 to 18 words).
-4. FORBIDDEN ROBOTIC CLICHÉS: Never say "How may I assist you today?", "Welcome back, what are we tackling?", "I was just thinking about you 😄", "What's on your mind?", "Good to connect with you".
-5. Return ONLY the spoken greeting text without quotes, emojis, or markdown.`;
+2. Keep it punchy and conversational (between 6 to 18 words).
+3. FORBIDDEN ROBOTIC CLICHÉS: Never say "How may I assist you today?", "Welcome back, what are we tackling?", "I was just thinking about you 😄", "What's on your mind?", "Good to connect with you".
+4. Return ONLY the spoken greeting text without quotes, emojis, or markdown.`;
 
     let greetingText = '';
 
@@ -3168,12 +3173,12 @@ CRITICAL INSTRUCTIONS:
           method: 'POST',
           headers: { 'Authorization': `Bearer ${ATLASCLOUD_API_KEY}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            model: 'Qwen/Qwen2.5-72B-Instruct',
+            model: 'deepseek-ai/DeepSeek-V3.1',
             messages: [{ role: 'user', content: prompt }],
-            temperature: 0.95,
+            temperature: 0.85,
             max_tokens: 60,
           }),
-          signal: AbortSignal.timeout(3500),
+          signal: AbortSignal.timeout(4000),
         });
         if (resAi.ok) {
           const d = await resAi.json() as any;
@@ -3185,13 +3190,37 @@ CRITICAL INSTRUCTIONS:
       }
     }
 
+    const OPENAI_KEY = process.env.Openai_api_key || process.env.OPENAI_API_KEY || process.env.openai_api_key || '';
+    if (!greetingText && OPENAI_KEY) {
+      try {
+        const resAi = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${OPENAI_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'gpt-4o-mini',
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.85,
+            max_tokens: 60,
+          }),
+          signal: AbortSignal.timeout(4000),
+        });
+        if (resAi.ok) {
+          const d = await resAi.json() as any;
+          const r = d.choices?.[0]?.message?.content?.trim();
+          if (r && r.length > 5) greetingText = r;
+        }
+      } catch (err) {
+        console.warn('[persona-greeting] OpenAI error:', err);
+      }
+    }
+
     if (!greetingText) {
       try {
         const ai = getGeminiClient();
         const gemRes = await ai.models.generateContent({
           model: 'gemini-2.5-flash',
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          config: { maxOutputTokens: 60, temperature: 0.95 }
+          config: { maxOutputTokens: 60, temperature: 0.85 }
         });
         const r = gemRes.text?.trim();
         if (r && r.length > 5) greetingText = r;
@@ -3201,26 +3230,36 @@ CRITICAL INSTRUCTIONS:
     }
 
     if (!greetingText) {
-      // Fallback to high-variety contextual greeting pools
-      const hour = new Date().getHours();
-      const timeGreeting = hour < 12 ? 'Morning' : (hour < 18 ? 'Hey' : 'Evening');
-      const isAdultOrFlirty = (personaNiche || '').toLowerCase().includes('adult') || (personaTone || '').toLowerCase().includes('seductive') || (personaTone || '').toLowerCase().includes('flirty');
-      
-      const intimatePools = [
-        `Hey ${effectiveUserName}... I was hoping you'd call. Still thinking about earlier?`,
-        `Mmm, ${timeGreeting} ${effectiveUserName}. Back for more, or what's on your mind?`,
-        `Hey you... I had a feeling you'd be checking in. What are we getting up to?`,
-        `Look who it is... what kind of trouble are we starting now, ${effectiveUserName}?`,
-        `Hey ${effectiveUserName}! Perfect timing... tell me what you're thinking right now.`
-      ];
-      const lifestylePools = [
-        `Hey ${effectiveUserName}! Great to hear your voice. What are we working on next?`,
-        `${timeGreeting} ${effectiveUserName}! Ready when you are — what's the plan?`,
-        `Hey you! Just wrapped up a few things. What are we getting into today?`,
-        `Hey ${effectiveUserName}! Good timing. What's on your agenda today?`
-      ];
-      const pool = isAdultOrFlirty ? intimatePools : lifestylePools;
-      greetingText = pool[Math.floor(Math.random() * pool.length)];
+      if (isImmediateContinuation) {
+        const continuationPool = [
+          `Hey, we got disconnected! Where were we?`,
+          `Hey babe, you're back. What was that you were saying?`,
+          `Hey! Did the call drop? I'm right here.`,
+          `Back so soon? Tell me what you're thinking right now.`,
+          `Hey handsome, you're back. Let's pick right back up!`
+        ];
+        greetingText = continuationPool[Math.floor(Math.random() * continuationPool.length)];
+      } else {
+        const hour = new Date().getHours();
+        const timeGreeting = hour < 12 ? 'Morning' : (hour < 18 ? 'Hey' : 'Evening');
+        const isAdultOrFlirty = (personaNiche || '').toLowerCase().includes('adult') || (personaTone || '').toLowerCase().includes('seductive') || (personaTone || '').toLowerCase().includes('flirty');
+        
+        const intimatePools = [
+          `Hey ${effectiveUserName}... I was hoping you'd call. Still thinking about earlier?`,
+          `Mmm, ${timeGreeting} ${effectiveUserName}. Back for more, or what's on your mind?`,
+          `Hey you... I had a feeling you'd be checking in. What are we getting up to?`,
+          `Look who it is... what kind of trouble are we starting now, ${effectiveUserName}?`,
+          `Hey ${effectiveUserName}! Perfect timing... tell me what you're thinking right now.`
+        ];
+        const lifestylePools = [
+          `Hey ${effectiveUserName}! Great to hear your voice. What are we working on next?`,
+          `${timeGreeting} ${effectiveUserName}! Ready when you are — what's the plan?`,
+          `Hey you! Just wrapped up a few things. What are we getting into today?`,
+          `Hey ${effectiveUserName}! Good timing. What's on your agenda today?`
+        ];
+        const pool = isAdultOrFlirty ? intimatePools : lifestylePools;
+        greetingText = pool[Math.floor(Math.random() * pool.length)];
+      }
     }
 
     // Clean greeting
