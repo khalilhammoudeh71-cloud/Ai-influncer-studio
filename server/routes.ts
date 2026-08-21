@@ -2044,10 +2044,10 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
 
     const isRefusal = (raw: string): boolean => {
       if (!raw || raw.length < 5) return true;
-      return /cannot and will not|content polic|sexually explicit|cannot fulfill|unable to engage|prohibit|safety guideline|inappropriate imagery|I cannot create|I can't create|as an ai|violates content|against my programming|I am not able to generate|cannot generate/i.test(raw);
+      return /cannot and will not|content polic|sexually explicit|cannot fulfill|unable to engage|prohibit|safety guideline|inappropriate imagery|I cannot create|I can't create|as an ai|violates content|against my programming|I am not able to generate|cannot generate|can't assist|cannot assist|can't help with that|cannot help with that|sorry, but|sorry, i|i'm sorry|i am sorry|i apologize/i.test(raw);
     };
 
-    // 1. Primary Engine: Atlas Cloud DeepSeek-V3.2 (High-IQ, Uncensored, Deep Context Retention)
+    // 1. Primary Engine: Atlas Cloud DeepSeek-V3.2 & GLM-4.6 (High-IQ, Uncensored, Deep Context Retention)
     if (!text && ATLAS_KEY) {
       try {
         console.log('[Voice Chat LLM] 🧠 Generating response via Atlas Cloud DeepSeek-V3.2...');
@@ -2083,7 +2083,42 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
           }
         }
       } catch (dsErr) {
-        console.warn('[Voice Chat LLM] DeepSeek-V3.2 error, falling back:', dsErr);
+        console.warn('[Voice Chat LLM] DeepSeek-V3.2 error, trying GLM-4.6:', dsErr);
+      }
+
+      if (!text) {
+        try {
+          console.log('[Voice Chat LLM] 🧠 Generating response via Atlas Cloud GLM-4.6...');
+          const glmRes = await fetch('https://api.atlascloud.ai/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${ATLAS_KEY}`,
+              'Content-Type': 'application/json'
+            },
+            signal: AbortSignal.timeout(8000),
+            body: JSON.stringify({
+              model: 'zai-org/GLM-4.6',
+              messages: [
+                { role: 'system', content: voiceSystemPrompt },
+                ...rawHistory.map((m: any) => ({
+                  role: (m.role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
+                  content: String(m.content || m.parts?.[0]?.text || '').trim() || 'Hello'
+                }))
+              ],
+              temperature: 0.85,
+              max_tokens: 500
+            })
+          });
+          if (glmRes.ok) {
+            const glmData = await glmRes.json();
+            const rawReply = glmData.choices?.[0]?.message?.content || '';
+            if (rawReply && !isRefusal(rawReply)) {
+              text = cleanSpokenDialogue(rawReply);
+            }
+          }
+        } catch (glmErr) {
+          console.warn('[Voice Chat LLM] GLM-4.6 error, falling back:', glmErr);
+        }
       }
     }
 

@@ -1336,8 +1336,8 @@ Persona: ${personaName} (${personaNiche || 'Lifestyle'})
 Creator: ${creatorName} (${creatorAppearance})`;
 
   const isRefusal = (text: string): boolean => {
-    if (!text || text.length < 15) return true;
-    return /cannot and will not|content polic|sexually explicit|cannot fulfill|unable to engage|prohibit|safety guideline|inappropriate imagery|I cannot create|I can't create|as an ai|violates content|against my programming/i.test(text);
+    if (!text || text.length < 5) return true;
+    return /cannot and will not|content polic|sexually explicit|cannot fulfill|unable to engage|prohibit|safety guideline|inappropriate imagery|I cannot create|I can't create|as an ai|violates content|against my programming|I am not able to generate|cannot generate|can't assist|cannot assist|can't help with that|cannot help with that|sorry, but|sorry, i|i'm sorry|i am sorry|i apologize/i.test(text);
   };
 
   if (ATLASCLOUD_API_KEY) {
@@ -1355,7 +1355,7 @@ Creator: ${creatorName} (${creatorAppearance})`;
           temperature: 0.7,
           max_tokens: 500,
         }),
-        signal: AbortSignal.timeout(7000),
+        signal: AbortSignal.timeout(9000),
       });
       if (res.ok) {
         const data = await res.json() as any;
@@ -1366,7 +1366,35 @@ Creator: ${creatorName} (${creatorAppearance})`;
         }
       }
     } catch (err) {
-      console.warn('[PromptEnhancer] Atlas Cloud DeepSeek error, falling back:', err);
+      console.warn('[PromptEnhancer] Atlas Cloud DeepSeek error, trying GLM-4.6:', err);
+    }
+
+    try {
+      console.log('[PromptEnhancer] 🧠 Generating prompt via Atlas Cloud GLM-4.6...');
+      const res = await fetch(`${ATLASCLOUD_BASE}/v1/chat/completions`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${ATLASCLOUD_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'zai-org/GLM-4.6',
+          messages: [
+            { role: 'system', content: systemInstruction },
+            { role: 'user', content: userQuery }
+          ],
+          temperature: 0.7,
+          max_tokens: 500,
+        }),
+        signal: AbortSignal.timeout(9000),
+      });
+      if (res.ok) {
+        const data = await res.json() as any;
+        const enhanced = data.choices?.[0]?.message?.content?.trim();
+        if (enhanced && !isRefusal(enhanced) && enhanced.length > 25) {
+          console.log('[PromptEnhancer] GLM-4.6 enhanced prompt:', enhanced.slice(0, 120) + '...');
+          return enhanced.replace(/^["“”]|["“”]$/g, '').trim();
+        }
+      }
+    } catch (err) {
+      console.warn('[PromptEnhancer] Atlas Cloud GLM-4.6 error, falling back:', err);
     }
   }
 
@@ -1423,6 +1451,9 @@ Creator: ${creatorName} (${creatorAppearance})`;
   }
 
   // Dynamic fallback incorporating the user's specific request
+  if (isDuo) {
+    return `An ultra-photorealistic vertical 9:16 duo portrait featuring ${personaName} (Reference Image 1) and ${creatorName} (${creatorAppearance}). ${personaName} is in the foreground looking towards camera with direct eye contact, natural skin textures, and ${isExplicitNude ? 'fully nude with all garments removed' : 'alluring attire'}. ${creatorName} is positioned intimately with her in the exact physical dynamic: ${rawPrompt}. 85mm prime lens, volumetric studio lighting, natural skin pores, 8k uhd photorealistic masterwork.`;
+  }
   if (isRefRecreation) {
     return `Strictly modify Reference Image 1: Preserve the exact same pose, body angle, direct smiling eye contact, head tilt, and outdoor natural lighting from Reference Image 1. Execute the requested change: ${isExplicitNude ? 'remove the yellow top and all garments completely, rendering her fully bare and unclothed with natural feminine chest, delicate collarbones, and authentic skin texture' : rawPrompt}. Photorealistic, high-resolution, natural skin tones, visible pores, soft outdoor sunlight, cinematic depth of field, 8k uhd.`;
   }
@@ -3590,10 +3621,10 @@ ${companionDirective ? `${companionDirective}\n` : ''}1. EQUAL CONFIDANTE & CHAR
 
     const isRefusal = (raw: string): boolean => {
       if (!raw || raw.length < 5) return true;
-      return /cannot and will not|content polic|sexually explicit|cannot fulfill|unable to engage|prohibit|safety guideline|inappropriate imagery|I cannot create|I can't create|as an ai|violates content|against my programming|I am not able to generate|cannot generate/i.test(raw);
+      return /cannot and will not|content polic|sexually explicit|cannot fulfill|unable to engage|prohibit|safety guideline|inappropriate imagery|I cannot create|I can't create|as an ai|violates content|against my programming|I am not able to generate|cannot generate|can't assist|cannot assist|can't help with that|cannot help with that|sorry, but|sorry, i|i'm sorry|i am sorry|i apologize/i.test(raw);
     };
 
-    // 1. Primary Engine: Atlas Cloud DeepSeek-V3.2 (High-IQ, Uncensored, Superb Memory Retention)
+    // 1. Primary Engine: Atlas Cloud DeepSeek-V3.2 & GLM-4.6 (High-IQ, Uncensored, Superb Memory Retention)
     if (!finalReply && atlasKey) {
       try {
         console.log('[Persona Chat] 🧠 Routing to Atlas Cloud DeepSeek-V3.2 High-EQ Engine...');
@@ -3614,7 +3645,31 @@ ${companionDirective ? `${companionDirective}\n` : ''}1. EQUAL CONFIDANTE & CHAR
           if (r && !isRefusal(r)) finalReply = r;
         }
       } catch (dsErr) {
-        console.warn('[Persona Chat] DeepSeek-V3.2 error, trying backup:', dsErr);
+        console.warn('[Persona Chat] DeepSeek-V3.2 error, trying GLM-4.6:', dsErr);
+      }
+
+      if (!finalReply) {
+        try {
+          console.log('[Persona Chat] 🧠 Routing to Atlas Cloud GLM-4.6...');
+          const glmRes = await fetch(`${ATLASCLOUD_BASE}/v1/chat/completions`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${atlasKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: 'zai-org/GLM-4.6',
+              messages: chatMsgs,
+              temperature: 0.85,
+              max_tokens: 1500,
+            }),
+            signal: AbortSignal.timeout(9000),
+          });
+          if (glmRes.ok) {
+            const glmData = await glmRes.json() as any;
+            const r = glmData.choices?.[0]?.message?.content?.trim();
+            if (r && !isRefusal(r)) finalReply = r;
+          }
+        } catch (glmErr) {
+          console.warn('[Persona Chat] GLM-4.6 error, trying backup:', glmErr);
+        }
       }
     }
 
