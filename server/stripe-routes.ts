@@ -10,37 +10,33 @@ const stripe = process.env.STRIPE_SECRET_KEY
   : null;
 
 const router = Router();
+const isMockBillingEnabled = () =>
+  process.env.NODE_ENV !== 'production' && process.env.ALLOW_MOCK_BILLING === 'true';
 
 // GET /billing: Retrieve current user's billing and credit information
 router.get('/billing', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const userId = req.user?.id || 'mock-user-id';
-    let userRow: any = null;
-    try {
-      const rows = await db.select().from(users).where(eq(users.id, userId));
-      userRow = rows[0];
-    } catch (dbErr) {
-      console.warn('[Billing] DB lookup warning (using fallback profile):', dbErr instanceof Error ? dbErr.message : dbErr);
+    const userId = req.user.id;
+    if (!db && !isMockBillingEnabled()) {
+      return res.status(503).json({ error: 'Billing storage is not configured' });
+    }
+    const rows = db ? await db.select().from(users).where(eq(users.id, userId)) : [];
+    const userRow = rows[0];
+    if (!userRow && !isMockBillingEnabled()) {
+      return res.status(404).json({ error: 'Billing profile not found' });
     }
     
     return res.json({
-      email: userRow?.email || req.user?.email || 'khalilhammoudeh71@gmail.com',
-      subscriptionStatus: userRow?.subscriptionStatus || 'active',
-      credits: userRow?.credits ?? 99999,
+      email: userRow?.email || req.user.email,
+      subscriptionStatus: userRow?.subscriptionStatus || 'none',
+      credits: userRow?.credits ?? 50,
       stripeCustomerId: userRow?.stripeCustomerId || null,
       subscriptionPriceId: userRow?.subscriptionPriceId || null,
-      isCreator: true,
+      isCreator: isCreatorUser(req.user.email),
     });
   } catch (err) {
     console.error('[Billing] GET error:', err);
-    return res.json({
-      email: req.user?.email || 'khalilhammoudeh71@gmail.com',
-      subscriptionStatus: 'active',
-      credits: 99999,
-      stripeCustomerId: null,
-      subscriptionPriceId: null,
-      isCreator: true,
-    });
+    return res.status(503).json({ error: 'Billing service is temporarily unavailable' });
   }
 });
 
@@ -50,12 +46,13 @@ router.post('/stripe/create-checkout', requireAuth, async (req: AuthenticatedReq
   const userId = req.user.id;
   const email = req.user.email;
 
-  if (!stripe) {
+  if (!stripe && isMockBillingEnabled()) {
     console.warn('[Stripe] STRIPE_SECRET_KEY not configured. Falling back to mock checkout redirection.');
     // Return a mock redirect URL that appends query params for success immediately
     const origin = req.headers.origin || 'http://localhost:5000';
     return res.json({ url: `${origin}/?stripe_checkout=success&mock=true&type=${type}&priceId=${priceId}` });
   }
+  if (!stripe) return res.status(503).json({ error: 'Billing provider is not configured' });
 
   if (!priceId) {
     return res.status(400).json({ error: 'Price ID is required' });

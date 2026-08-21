@@ -511,7 +511,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
         : activePersonaObj;
 
       const creatorDuoPrompt = includeCreator
-        ? ` Duo photoshoot: featuring ${persona.name} standing and posing alongside the creator (${creatorProfile.name || 'Dr. H'}, ${creatorProfile.appearance || 'stylish creator'}), interacting naturally together in frame, high aesthetic fashion shoot.`
+        ? ` Duo photoshoot: featuring ${persona.name} standing and posing alongside the creator (${creatorProfile.name || 'Creator'}, ${creatorProfile.appearance || 'stylish creator'}), interacting naturally together in frame, high aesthetic fashion shoot.`
         : '';
       const effectiveInstructions = `${prompt}${creatorDuoPrompt}`.trim();
 
@@ -586,7 +586,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
         : activePersonaObj;
 
       const creatorDuoPrompt = includeCreator
-        ? ` Duo photoshoot: featuring ${persona.name} standing and posing alongside the creator (${creatorProfile.name || 'Dr. H'}, ${creatorProfile.appearance || 'stylish creator'}), interacting naturally together in frame, high aesthetic fashion shoot.`
+        ? ` Duo photoshoot: featuring ${persona.name} standing and posing alongside the creator (${creatorProfile.name || 'Creator'}, ${creatorProfile.appearance || 'stylish creator'}), interacting naturally together in frame, high aesthetic fashion shoot.`
         : '';
       const effectiveInstructions = `${prompt}${creatorDuoPrompt}`.trim();
 
@@ -1647,4 +1647,3 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
     </div>
   );
 };
-

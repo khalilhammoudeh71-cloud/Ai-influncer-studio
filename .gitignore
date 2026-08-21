@@ -9,6 +9,9 @@ local_models/
 server/temp/
 server/public/uploads/
 public/uploads/
+server/.local-data/
+server/personas_store.json
+server/creator_profile.json
 rewrite*.py
 rewrite.py
 test_db.ts

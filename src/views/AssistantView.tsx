@@ -10,7 +10,7 @@ import ImageLightboxModal from '../components/ImageLightboxModal';
 import PersonaReferenceModal from '../components/PersonaReferenceModal';
 import RelationshipProgressBadge from '../components/RelationshipProgressBadge';
 import VoiceNoteBubble from '../components/VoiceNoteBubble';
-import { getCreatorProfile } from '../utils/creatorProfile';
+import { getCreatorProfile, getScopedUserStorageKey } from '../utils/creatorProfile';
 
 // ── Typewriter hook ──────────────────────────────────────
 function useTypewriter(text: string, speed = 18) {
@@ -39,20 +39,21 @@ const MAX_STORED = 300; // Complete cross-session conversation capacity
 const INVALID_NAMES = new Set([
   'allowing', 'serious', 'asking', 'done', 'trying', 'thinking', 'looking', 
   'curious', 'wondering', 'sure', 'here', 'just', 'ready', 'happy', 'glad',
-  'user', 'khalil', 'admin', 'anonymous', 'null', 'undefined', 'not', 'no',
+  'user', 'admin', 'anonymous', 'null', 'undefined', 'not', 'no',
   'yes', 'sending', 'an', 'a', 'the', 'actually', 'playing', 'talking', 'fine',
   'right', 'wrong', 'good', 'bad', 'ok', 'okay', 'busy', 'bored', 'tired'
 ]);
 
 export function getStoredUserName(): string {
   try {
-    const stored = localStorage.getItem(USER_NAME_KEY);
+    const scopedKey = getScopedUserStorageKey(USER_NAME_KEY);
+    const stored = localStorage.getItem(scopedKey);
     if (!stored || INVALID_NAMES.has(stored.toLowerCase().trim())) {
-      localStorage.setItem(USER_NAME_KEY, 'Dr. H');
-      return 'Dr. H';
+      localStorage.setItem(scopedKey, 'Creator');
+      return 'Creator';
     }
     return stored.trim();
-  } catch { return 'Dr. H'; }
+  } catch { return 'Creator'; }
 }
 
 export function setStoredUserName(name: string) {
@@ -60,7 +61,7 @@ export function setStoredUserName(name: string) {
     if (name && name.trim()) {
       const clean = name.trim();
       if (!INVALID_NAMES.has(clean.toLowerCase())) {
-        localStorage.setItem(USER_NAME_KEY, clean);
+        localStorage.setItem(getScopedUserStorageKey(USER_NAME_KEY), clean);
       }
     }
   } catch {}
@@ -84,22 +85,8 @@ function correctSpeechPhonetics(transcript: string, activePersonaName?: string):
   // 3. Remove duplicate 2-word phrase loops (e.g. "can you can you", "send a send a")
   corrected = corrected.replace(/\b([a-zA-Z0-9']+\s+[a-zA-Z0-9']+)\s+\1\b/gi, '$1');
 
-  // 4. Creator & Persona Name homophones
-  corrected = corrected
-    .replace(/\b(?:doctor\s*(?:h|age|eight|ate|a|hate|ache)|dr\.?\s*(?:h|age|eight|ate|a|hate|ache))\b/gi, 'Dr. H')
-    .replace(/\b(?:doc\s*(?:h|age|eight))\b/gi, 'Dr. H')
-    .replace(/\b(?:row\s*one\s*hasan|raw\s*one\s*hasan|roan\s*hasan|rawan\s*hassan|rawan\s*hasen)\b/gi, 'Rawan Hasan')
-    .replace(/\b(?:lean|lien|liam|lynn|lane|lin)\s*hasan\b/gi, 'Leen Hasan')
-    .replace(/\b(?:lean\s*hassan|lean\s*hasen)\b/gi, 'Leen Hasan');
-
-  if (activePersonaName) {
-    const pFirst = activePersonaName.split(/\s+/)[0];
-    if (pFirst.toLowerCase() === 'leen') {
-      corrected = corrected.replace(/\b(?:lean|lien|lynn|lane)\b/gi, 'Leen');
-    } else if (pFirst.toLowerCase() === 'rawan') {
-      corrected = corrected.replace(/\b(?:roan|rowan|row\s*one)\b/gi, 'Rawan');
-    }
-  }
+  // 4. Persona-specific name correction can be added from user-owned settings.
+  void activePersonaName;
 
   // 5. Contextual Visual & Photoshoot ASR corrections
   corrected = corrected
@@ -167,7 +154,7 @@ function loadPersonaMemories(personaId: string): string[] {
     }
     return parsed.slice(0, 30);
   } catch { 
-    return [`User's name is Dr. H`, `Dr. H is the creator and partner`]; 
+    return [`User's name is Creator`, `Creator is the creator and partner`];
   }
 }
 
@@ -257,11 +244,6 @@ export const VOICE_CALL_ENGINES = [
 ];
 
 export const PERSONA_VOICE_CHARACTERS = [
-  { id: 'ov7JSkufAlSs386OYTaC', name: 'Rawan Hasan (Newly Cloned Voice - Latest)', gender: 'Female' },
-  { id: 'FkiPCg9ZhlwLIOml7TKM', name: 'Rawan Hasan (Multi-Sample Cloned Voice)', gender: 'Female' },
-  { id: 'W4ynDvR6NFiK8lj2I8iL', name: 'Rawan Hasan (Original Direct Clone)', gender: 'Female' },
-  { id: 'bEp1nJ6RU85e3wsylRfE', name: 'Rawan Hasan (Multi-Sample 178682133)', gender: 'Female' },
-  { id: '7jFje9BJoTWzqZzouT0j', name: 'Leen Hasan (Cloned Voice)', gender: 'Female' },
   { id: 'sabrina', name: 'Sabrina (Sweet, Flirty & Playful)', gender: 'Female' },
   { id: 'brielle', name: 'Brielle (Ultra-Natural Podcast)', gender: 'Female' },
   { id: 'madison', name: 'Madison (Cool & Conversational)', gender: 'Female' },
@@ -274,16 +256,12 @@ export const PERSONA_VOICE_CHARACTERS = [
 ];
 
 export function getActivePersonaVoice(persona?: Persona | null) {
-  if (!persona) return { voiceId: 'ov7JSkufAlSs386OYTaC', voiceReference: undefined };
+  if (!persona) return { voiceId: '21m00Tcm4TlvDq8ikWAM', voiceReference: undefined };
   const name = (persona.name || '').toLowerCase();
   let voiceId = persona.voiceId;
   
-  if (!voiceId || voiceId === 'default' || voiceId === 'female_default' || (name.includes('leen') && (voiceId === 'ov7JSkufAlSs386OYTaC' || voiceId === 'W4ynDvR6NFiK8lj2I8iL'))) {
-    if (name.includes('leen')) {
-      voiceId = '7jFje9BJoTWzqZzouT0j';
-    } else if (name.includes('rawan')) {
-      voiceId = 'ov7JSkufAlSs386OYTaC';
-    } else if (name.includes('brielle')) {
+  if (!voiceId || voiceId === 'default' || voiceId === 'female_default') {
+    if (name.includes('brielle')) {
       voiceId = '6u6JbqKdaQy89ENzLSju';
     } else if (name.includes('sabrina')) {
       voiceId = 'v2cluk168jzrg0LQKNRl';
@@ -310,7 +288,7 @@ export function getActivePersonaVoice(persona?: Persona | null) {
     } else if (name.includes('stark')) {
       voiceId = 'W6zuQRTYRBdAK8ypjo5V';
     } else {
-      voiceId = 'ov7JSkufAlSs386OYTaC';
+      voiceId = '21m00Tcm4TlvDq8ikWAM';
     }
   }
 
@@ -1379,7 +1357,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   // Dynamic context-aware greeting generator that picks up from last conversation
   const fetchDynamicGreeting = useCallback(async (persona: Persona, mode: 'voice' | 'chat'): Promise<string> => {
     const creator = getCreatorProfile();
-    const cName = creator?.name || 'Dr. H';
+    const cName = creator?.name || 'Creator';
     const hour = new Date().getHours();
     const timeWord = hour < 12 ? 'morning' : (hour < 18 ? 'afternoon' : 'evening');
     const isAdultOrFlirty = (persona.niche || '').toLowerCase().includes('adult') || 
@@ -1845,8 +1823,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           addMessage({ role: 'persona', type: 'text', content: getNoRefImageResponse('image') });
         } else {
           const loadingText = isDuoShoot 
-            ? `Generating duo photoshoot with ${activePersona.name} & ${creator?.name || 'Dr. H'}...`
-            : (isCreatorSoloShoot ? `Generating solo photo of ${creator?.name || 'Dr. H'}...` : `Generating photo of ${activePersona.name}...`);
+            ? `Generating duo photoshoot with ${activePersona.name} & ${creator?.name || 'Creator'}...`
+            : (isCreatorSoloShoot ? `Generating solo photo of ${creator?.name || 'Creator'}...` : `Generating photo of ${activePersona.name}...`);
           const mediaLoadingId = addMessage({ role: 'persona', type: 'loading', content: loadingText });
           try {
             const extraImages: string[] = [];

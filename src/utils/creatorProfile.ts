@@ -1,27 +1,53 @@
 import { useState, useEffect, useCallback } from 'react';
 import { CreatorProfile } from '../types';
+import { supabase } from '../lib/supabase';
 
 export const CREATOR_PROFILE_KEY = 'ai_studio_creator_profile';
 export const CREATOR_PROFILE_EVENT = 'ai_studio_creator_profile_updated';
+const ACTIVE_STORAGE_USER_KEY = 'ai_studio_active_user_id';
+
+export function setActiveStorageUser(userId?: string): void {
+  if (userId) localStorage.setItem(ACTIVE_STORAGE_USER_KEY, userId);
+  else localStorage.removeItem(ACTIVE_STORAGE_USER_KEY);
+}
+
+export function getScopedUserStorageKey(key: string): string {
+  const userId = localStorage.getItem(ACTIVE_STORAGE_USER_KEY);
+  return userId ? `${key}:${userId}` : `${key}:signed-out`;
+}
+
+function getCreatorProfileStorageKey(): string {
+  const scopedKey = getScopedUserStorageKey(CREATOR_PROFILE_KEY);
+  const userId = localStorage.getItem(ACTIVE_STORAGE_USER_KEY);
+  if (
+    userId &&
+    import.meta.env.VITE_LEGACY_LOCAL_DATA_OWNER_ID === userId &&
+    localStorage.getItem(scopedKey) === null
+  ) {
+    const legacyValue = localStorage.getItem(CREATOR_PROFILE_KEY);
+    if (legacyValue !== null) localStorage.setItem(scopedKey, legacyValue);
+  }
+  return scopedKey;
+}
 
 export const DEFAULT_CREATOR_PROFILE: CreatorProfile = {
-  name: 'Dr. H',
+  name: 'Creator',
   role: 'Creator & Creative Director',
-  appearance: 'Completely bald, smooth clean-shaven bald head (no hair on head), trimmed dark beard, sharp masculine facial features, athletic muscular build',
-  bio: 'Visionary digital creator, studio director, and AI influencer architect.',
-  gender: 'Male',
+  appearance: '',
+  bio: '',
+  gender: '',
   photos: [],
   primaryPhoto: undefined,
-  customDynamic: 'Close creative partners with natural banter, intellectual depth, and mutual inspiration'
+  customDynamic: 'Creative partners with natural banter, mutual respect, and shared inspiration'
 };
 
 export function getCreatorProfile(): CreatorProfile {
   try {
-    const raw = localStorage.getItem(CREATOR_PROFILE_KEY);
+    const raw = localStorage.getItem(getCreatorProfileStorageKey());
     if (!raw) {
       // Check legacy displayName if any
       const prefsRaw = localStorage.getItem('ai_studio_prefs');
-      const legacyName = localStorage.getItem('persona_user_name');
+      const legacyName = localStorage.getItem(getScopedUserStorageKey('persona_user_name'));
       let name = DEFAULT_CREATOR_PROFILE.name;
       if (legacyName && legacyName.trim()) {
         name = legacyName.trim();
@@ -69,7 +95,8 @@ function safeSetLocalStorage(key: string, value: string, fallbackWithoutBigImage
 
 export async function fetchServerCreatorProfile(): Promise<CreatorProfile | null> {
   try {
-    const token = localStorage.getItem('supabase_auth_token') || localStorage.getItem('sb-access-token') || '';
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token || '';
     const headers: Record<string, string> = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
 
@@ -83,7 +110,7 @@ export async function fetchServerCreatorProfile(): Promise<CreatorProfile | null
         photos: Array.isArray(data.profile.photos) ? data.profile.photos : [],
         primaryPhoto: data.profile.primaryPhoto || (Array.isArray(data.profile.photos) && data.profile.photos.length > 0 ? data.profile.photos[0] : undefined),
       };
-      safeSetLocalStorage(CREATOR_PROFILE_KEY, JSON.stringify(merged), merged);
+      safeSetLocalStorage(getCreatorProfileStorageKey(), JSON.stringify(merged), merged);
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent(CREATOR_PROFILE_EVENT, { detail: merged }));
       }
@@ -112,10 +139,10 @@ export async function saveCreatorProfileAsync(updates: Partial<CreatorProfile>):
   }
 
   // Save to localStorage
-  safeSetLocalStorage(CREATOR_PROFILE_KEY, JSON.stringify(updated), updated);
+  safeSetLocalStorage(getCreatorProfileStorageKey(), JSON.stringify(updated), updated);
 
   if (updated.name) {
-    localStorage.setItem('persona_user_name', updated.name);
+    localStorage.setItem(getScopedUserStorageKey('persona_user_name'), updated.name);
     try {
       const prefs = JSON.parse(localStorage.getItem('ai_studio_prefs') || '{}');
       prefs.displayName = updated.name;
@@ -130,7 +157,8 @@ export async function saveCreatorProfileAsync(updates: Partial<CreatorProfile>):
 
   // Persist to server disk store (and convert base64 to /uploads/ files)
   try {
-    const token = localStorage.getItem('supabase_auth_token') || localStorage.getItem('sb-access-token') || '';
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token || '';
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
 
@@ -149,7 +177,7 @@ export async function saveCreatorProfileAsync(updates: Partial<CreatorProfile>):
           photos: Array.isArray(data.profile.photos) ? data.profile.photos : [],
           primaryPhoto: data.profile.primaryPhoto || (Array.isArray(data.profile.photos) && data.profile.photos.length > 0 ? data.profile.photos[0] : undefined),
         };
-        safeSetLocalStorage(CREATOR_PROFILE_KEY, JSON.stringify(serverMerged), serverMerged);
+        safeSetLocalStorage(getCreatorProfileStorageKey(), JSON.stringify(serverMerged), serverMerged);
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent(CREATOR_PROFILE_EVENT, { detail: serverMerged }));
         }
@@ -179,10 +207,10 @@ export function saveCreatorProfile(updates: Partial<CreatorProfile>): CreatorPro
     updated.primaryPhoto = undefined;
   }
 
-  safeSetLocalStorage(CREATOR_PROFILE_KEY, JSON.stringify(updated), updated);
+  safeSetLocalStorage(getCreatorProfileStorageKey(), JSON.stringify(updated), updated);
 
   if (updated.name) {
-    localStorage.setItem('persona_user_name', updated.name);
+    localStorage.setItem(getScopedUserStorageKey('persona_user_name'), updated.name);
     try {
       const prefs = JSON.parse(localStorage.getItem('ai_studio_prefs') || '{}');
       prefs.displayName = updated.name;

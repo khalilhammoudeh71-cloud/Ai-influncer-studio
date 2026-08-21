@@ -5,10 +5,11 @@ import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
 import { createRequire } from 'module';
 import { db } from './db';
-import { personas, generatedImages, revenueEntries, plannedPosts } from '../shared/schema';
+import { personas, generatedImages, revenueEntries, plannedPosts, creatorProfiles } from '../shared/schema';
 import { eq, and } from 'drizzle-orm';
 import { GoogleGenAI } from '@google/genai';
 import { requireAuth, AuthenticatedRequest } from './auth';
+import { isLocalFileStorageEnabled, readLocalStore, writeLocalStore } from './local-store';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -37,208 +38,62 @@ interface RevenueEntryInput {
 
 const router = Router();
 
-function readLocalPersonasStore(): any[] {
-  const possiblePaths = [
-    path.join(__dirname, 'personas_store.json'),
-    path.join(process.cwd(), 'server', 'personas_store.json'),
-    path.join(process.cwd(), 'personas_store.json'),
-  ];
-  for (const filePath of possiblePaths) {
+function readLocalPersonasStore(userId: string): any[] {
+  const stored = readLocalStore<any[]>(userId, 'personas', []);
+  return Array.isArray(stored) ? stored : [];
+}
+
+function writeLocalPersonasStore(userId: string, personasArray: any[]): void {
+  writeLocalStore(userId, 'personas', personasArray);
+}
+
+export function readLocalCreatorProfile(userId?: string): any {
+  if (!userId) return null;
+  return readLocalStore<any | null>(userId, 'creator-profile', null);
+}
+
+export async function readCreatorProfile(userId?: string): Promise<any> {
+  if (!userId) return null;
+  if (db) {
     try {
-      if (fs.existsSync(filePath)) {
-        const data = fs.readFileSync(filePath, 'utf-8');
-        const parsed = JSON.parse(data);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
-        }
-      }
-    } catch (err) {
-      console.warn('[Local Store Warning] Error reading personas_store.json from', filePath, err);
+      const [row] = await db.select().from(creatorProfiles).where(eq(creatorProfiles.userId, userId));
+      if (row?.profileJson) return JSON.parse(row.profileJson);
+    } catch (error) {
+      console.warn('[Creator Profile] Database read failed:', error instanceof Error ? error.message : error);
+      if (!isLocalFileStorageEnabled()) throw error;
     }
   }
-  return [];
+  return readLocalCreatorProfile(userId);
 }
 
-function writeLocalPersonasStore(personasArray: any[]) {
-  const possiblePaths = [
-    path.join(__dirname, 'personas_store.json'),
-    path.join(process.cwd(), 'server', 'personas_store.json'),
-    path.join(process.cwd(), 'personas_store.json'),
-  ];
-  // Write to the first path that exists, or fall back to the first candidate
-  let targetPath = possiblePaths[0];
-  for (const p of possiblePaths) {
-    if (fs.existsSync(p)) {
-      targetPath = p;
-      break;
-    }
-  }
-  try {
-    fs.writeFileSync(targetPath, JSON.stringify(personasArray, null, 2), 'utf-8');
-  } catch (err) {
-    console.warn('[Local Store Warning] Error writing personas_store.json:', err);
-  }
-}
-
-function getCreatorProfileStorePath(): string {
-  const possiblePaths = [
-    path.join(__dirname, 'creator_profile.json'),
-    path.join(process.cwd(), 'server', 'creator_profile.json'),
-    path.join(process.cwd(), 'creator_profile.json'),
-  ];
-  for (const p of possiblePaths) {
-    if (fs.existsSync(p)) return p;
-  }
-  return path.join(process.cwd(), 'server', 'creator_profile.json');
-}
-
-export function readLocalCreatorProfile(): any {
-  const possiblePaths = [
-    path.join(__dirname, 'creator_profile.json'),
-    path.join(process.cwd(), 'server', 'creator_profile.json'),
-    path.join(process.cwd(), 'creator_profile.json'),
-  ];
-  for (const p of possiblePaths) {
-    try {
-      if (fs.existsSync(p)) {
-        const data = fs.readFileSync(p, 'utf-8');
-        const parsed = JSON.parse(data);
-        if (parsed && typeof parsed === 'object') return parsed;
-      }
-    } catch (err) {
-      console.warn('[Local Store Warning] Error reading creator_profile.json:', err);
-    }
-  }
-  return null;
-}
-
-export function writeLocalCreatorProfile(profile: any): any {
+function writeLocalCreatorProfile(userId: string, profile: any): any {
   if (!profile || typeof profile !== 'object') return profile;
-  try {
-    const cleaned = { ...profile };
-    if (Array.isArray(cleaned.photos)) {
-      cleaned.photos = cleaned.photos.map((photo: string, idx: number) => {
-        if (photo && photo.startsWith('data:')) {
-          return cleanBase64ToUploadFile(photo, `creator_${idx}`);
-        }
-        return photo;
-      });
-    }
-    if (cleaned.primaryPhoto && cleaned.primaryPhoto.startsWith('data:')) {
-      cleaned.primaryPhoto = cleanBase64ToUploadFile(cleaned.primaryPhoto, 'creator_primary');
-    } else if (!cleaned.primaryPhoto && Array.isArray(cleaned.photos) && cleaned.photos.length > 0) {
-      cleaned.primaryPhoto = cleaned.photos[0];
-    }
-
-    const targetPath = getCreatorProfileStorePath();
-    fs.writeFileSync(targetPath, JSON.stringify(cleaned, null, 2), 'utf-8');
-    return cleaned;
-  } catch (err) {
-    console.warn('[Local Store Warning] Error writing creator_profile.json:', err);
-    return profile;
-  }
+  writeLocalStore(userId, 'creator-profile', profile);
+  return profile;
 }
 
-function cleanBase64ToUploadFile(dataUrl: string, prefix: string): string {
-  if (!dataUrl || !dataUrl.startsWith('data:')) return dataUrl;
-  try {
-    const matches = dataUrl.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
-    if (!matches) return dataUrl;
-    const mime = matches[1].toLowerCase();
-    const base64Data = matches[2];
-    
-    let ext = 'jpg';
-    if (mime.includes('png')) ext = 'png';
-    else if (mime.includes('jpeg') || mime.includes('jpg')) ext = 'jpg';
-    else if (mime.includes('webp')) ext = 'webp';
-    else if (mime.includes('avif')) ext = 'avif';
-    else if (mime.includes('wav')) ext = 'wav';
-    else if (mime.includes('mp3')) ext = 'mp3';
-    else if (mime.includes('mp4')) ext = 'mp4';
-    else if (mime.includes('mov') || mime.includes('quicktime')) ext = 'mov';
-    else if (mime.includes('webm')) ext = 'webm';
-    else if (mime.includes('avi')) ext = 'avi';
-
-    const uploadsDir1 = path.join(process.cwd(), 'server', 'public', 'uploads');
-    const uploadsDir2 = path.join(process.cwd(), 'public', 'uploads');
-    if (!fs.existsSync(uploadsDir1)) fs.mkdirSync(uploadsDir1, { recursive: true });
-    if (!fs.existsSync(uploadsDir2)) fs.mkdirSync(uploadsDir2, { recursive: true });
-    
-    const fileName = `${prefix}_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
-    const buf = Buffer.from(base64Data, 'base64');
-    fs.writeFileSync(path.join(uploadsDir1, fileName), buf);
-    fs.writeFileSync(path.join(uploadsDir2, fileName), buf);
-    return `/uploads/${fileName}`;
-  } catch (err) {
-    console.warn('[Clean Base64 File Warning]:', err);
-    return dataUrl;
-  }
-}
-
-function savePersonaToLocalStore(persona: any) {
+function savePersonaToLocalStore(userId: string, persona: any): void {
   if (!persona || !persona.id) return;
-  try {
-    const cleaned = { ...persona };
-    if (cleaned.avatar && cleaned.avatar.startsWith('data:')) {
-      cleaned.avatar = cleanBase64ToUploadFile(cleaned.avatar, 'avatar');
-    }
-    if (cleaned.referenceImage && cleaned.referenceImage.startsWith('data:')) {
-      cleaned.referenceImage = cleanBase64ToUploadFile(cleaned.referenceImage, 'ref');
-    }
-    if (Array.isArray(cleaned.additionalReferenceImages)) {
-      cleaned.additionalReferenceImages = cleaned.additionalReferenceImages.map((img: string, idx: number) => 
-        img && img.startsWith('data:') ? cleanBase64ToUploadFile(img, `addref_${idx}`) : img
-      );
-    }
-    if (Array.isArray(cleaned.visualLibrary)) {
-      cleaned.visualLibrary = cleaned.visualLibrary.map((v: any, idx: number) => {
-        if (v && v.url && v.url.startsWith('data:')) {
-          return { ...v, url: cleanBase64ToUploadFile(v.url, `vis_${idx}`) };
-        }
-        return v;
-      });
-    }
-    if (Array.isArray(cleaned.audioSamples)) {
-      cleaned.audioSamples = cleaned.audioSamples.map((s: any, idx: number) => {
-        if (s && s.base64 && s.base64.startsWith('data:')) {
-          return { ...s, base64: cleanBase64ToUploadFile(s.base64, `audsample_${idx}`) };
-        }
-        return s;
-      });
-    }
+  const current = readLocalPersonasStore(userId);
+  const existingIdx = current.findIndex((item) => item?.id === persona.id || item?.clientId === persona.id);
+  const cleaned = { ...persona, id: persona.id, clientId: persona.clientId || persona.id };
+  if (existingIdx >= 0) current[existingIdx] = { ...current[existingIdx], ...cleaned };
+  else current.push(cleaned);
+  writeLocalPersonasStore(userId, current);
+}
 
-    const current = readLocalPersonasStore();
-    const existingIdx = current.findIndex(p => p.id === cleaned.id);
-    if (existingIdx >= 0) {
-      current[existingIdx] = { 
-        ...current[existingIdx], 
-        ...cleaned,
-        referenceImage: cleaned.referenceImage,
-        avatar: cleaned.avatar || cleaned.referenceImage,
-        additionalReferenceImages: cleaned.additionalReferenceImages || [],
-        visualLibrary: cleaned.visualLibrary || []
-      };
-    } else {
-      current.push(cleaned);
-    }
-    writeLocalPersonasStore(current);
-  } catch (err) {
-    console.warn('[Local Store Warning] Error saving persona to local store:', err);
-  }
+function removePersonaFromLocalStore(userId: string, clientId: string): void {
+  const current = readLocalPersonasStore(userId);
+  writeLocalPersonasStore(userId, current.filter((item) => item?.id !== clientId && item?.clientId !== clientId));
 }
 
 function mergePersonas(dbList: any[], diskList: any[]): any[] {
   const map = new Map<string, any>();
-  for (const p of diskList) {
-    if (p && p.id && !p.id.toLowerCase().includes('luna') && !p.name?.toLowerCase().includes('luna')) {
-      map.set(p.id, p);
-    }
+  for (const persona of diskList) {
+    if (persona?.id) map.set(persona.id, persona);
   }
-  for (const p of dbList) {
-    if (p && p.id && !p.id.toLowerCase().includes('luna') && !p.name?.toLowerCase().includes('luna')) {
-      const existing = map.get(p.id) || {};
-      map.set(p.id, { ...existing, ...p });
-    }
+  for (const persona of dbList) {
+    if (persona?.id) map.set(persona.id, { ...(map.get(persona.id) || {}), ...persona });
   }
   return Array.from(map.values());
 }
@@ -304,9 +159,12 @@ function revenueToClient(row: typeof revenueEntries.$inferSelect) {
 // All router endpoints are authenticated
 router.use(requireAuth);
 
-router.get('/creator-profile', async (_req: AuthenticatedRequest, res: Response) => {
+router.get('/creator-profile', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const profile = readLocalCreatorProfile();
+    if (!db && !isLocalFileStorageEnabled()) {
+      return res.status(503).json({ error: 'Creator profile storage is not configured' });
+    }
+    const profile = await readCreatorProfile(req.user.id);
     res.json({ profile: profile || null });
   } catch (err: any) {
     res.status(500).json({ error: err?.message || 'Failed to get creator profile' });
@@ -315,8 +173,24 @@ router.get('/creator-profile', async (_req: AuthenticatedRequest, res: Response)
 
 router.post('/creator-profile', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const saved = writeLocalCreatorProfile(req.body);
-    res.json({ success: true, profile: saved });
+    const userId = req.user.id;
+    const profile = req.body && typeof req.body === 'object' ? req.body : {};
+    if (db) {
+      await db.insert(creatorProfiles).values({
+        userId,
+        profileJson: JSON.stringify(profile),
+      }).onConflictDoUpdate({
+        target: creatorProfiles.userId,
+        set: {
+          profileJson: JSON.stringify(profile),
+          updatedAt: new Date(),
+        },
+      });
+    } else if (!isLocalFileStorageEnabled()) {
+      return res.status(503).json({ error: 'Creator profile storage is not configured' });
+    }
+    writeLocalCreatorProfile(userId, profile);
+    res.json({ success: true, profile });
   } catch (err: any) {
     res.status(500).json({ error: err?.message || 'Failed to save creator profile' });
   }
@@ -324,7 +198,10 @@ router.post('/creator-profile', async (req: AuthenticatedRequest, res: Response)
 
 router.get('/personas', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const userId = req.user?.id || 'mock-user-id';
+    const userId = req.user.id;
+    if (!db && !isLocalFileStorageEnabled()) {
+      return res.status(503).json({ error: 'Persona storage is not configured' });
+    }
     let dbPersonas: any[] = [];
     if (db) {
       try {
@@ -335,6 +212,9 @@ router.get('/personas', async (req: AuthenticatedRequest, res: Response) => {
         ]) as any[];
       } catch (dbErr) {
         console.warn('[DB Warning] /personas DB query timed out or unconfigured:', dbErr instanceof Error ? dbErr.message : dbErr);
+        if (!isLocalFileStorageEnabled()) {
+          return res.status(503).json({ error: 'Persona storage is temporarily unavailable' });
+        }
       }
     }
 
@@ -361,29 +241,37 @@ router.get('/personas', async (req: AuthenticatedRequest, res: Response) => {
       .filter((p: any) => p && p.clientId && !p.clientId.toLowerCase().includes('luna') && !p.name?.toLowerCase().includes('luna'))
       .map((p: any) => personaToClient(p, imagesByPersona[p.clientId] || []));
 
-    const diskPersonas = readLocalPersonasStore();
+    const diskPersonas = readLocalPersonasStore(userId);
     const finalMerged = mergePersonas(dbClientPersonas, diskPersonas);
 
     if (finalMerged.length > diskPersonas.length) {
-      writeLocalPersonasStore(finalMerged);
+      writeLocalPersonasStore(userId, finalMerged);
     }
 
     console.log('[API] GET /personas returned:', finalMerged.length, 'personas');
     res.json(finalMerged);
   } catch (err) {
     console.error('[API] GET /personas error:', err);
-    const diskFallback = readLocalPersonasStore();
-    res.json(diskFallback);
+    if (isLocalFileStorageEnabled() && req.user?.id) {
+      return res.json(readLocalPersonasStore(req.user.id));
+    }
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to load personas' });
   }
 });
 
 router.post('/personas', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const body = req.body;
-    savePersonaToLocalStore(body);
+    savePersonaToLocalStore(req.user.id, body);
 
     if (db) {
       try {
+        const [existingPersona] = await db.select({ userId: personas.userId })
+          .from(personas)
+          .where(eq(personas.clientId, body.id));
+        if (existingPersona && existingPersona.userId !== req.user.id) {
+          return res.status(409).json({ error: 'A persona with this identifier already exists' });
+        }
         const [row] = await db.insert(personas).values({
           clientId: body.id,
           name: body.name || 'Unnamed',
@@ -443,7 +331,12 @@ router.post('/personas', async (req: AuthenticatedRequest, res: Response) => {
         return res.json(personaToClient(row));
       } catch (dbErr) {
         console.warn('[DB Note] POST /personas failed to write to DB, saved to local store:', dbErr);
+        if (!isLocalFileStorageEnabled()) {
+          return res.status(503).json({ error: 'Persona storage is temporarily unavailable' });
+        }
       }
+    } else if (!isLocalFileStorageEnabled()) {
+      return res.status(503).json({ error: 'Persona storage is not configured' });
     }
     res.json(body);
   } catch (err) {
@@ -502,64 +395,19 @@ router.put('/personas/:clientId', async (req: AuthenticatedRequest, res: Respons
       }
     } catch (dbErr) {
       console.warn('[DB Note] PUT /personas failed DB write, updating local store:', dbErr);
+      if (!isLocalFileStorageEnabled()) {
+        return res.status(503).json({ error: 'Persona storage is temporarily unavailable' });
+      }
     }
 
-    // Always update local personas_store.json so changes persist 100% reliably!
-    const localPersonas = readLocalPersonasStore();
-    const existingIdx = localPersonas.findIndex((p: any) => p.id === clientId || p.clientId === clientId);
-    
-    const cleanedAvatar = body.avatar && body.avatar.startsWith('data:') ? cleanBase64ToUploadFile(body.avatar, 'avatar') : (body.avatar || body.referenceImage || '');
-    const cleanedRef = body.referenceImage && body.referenceImage.startsWith('data:') ? cleanBase64ToUploadFile(body.referenceImage, 'ref') : (body.referenceImage || body.avatar || '');
-    const cleanedAddRefs = Array.isArray(body.additionalReferenceImages)
-      ? body.additionalReferenceImages.map((img: string, idx: number) => img && img.startsWith('data:') ? cleanBase64ToUploadFile(img, `addref_${idx}`) : img)
-      : [];
-    const cleanedVisLib = Array.isArray(body.visualLibrary)
-      ? body.visualLibrary.map((v: any, idx: number) => v && v.url && v.url.startsWith('data:') ? { ...v, url: cleanBase64ToUploadFile(v.url, `vis_${idx}`) } : v)
-      : [];
-    const cleanedAudioSamples = Array.isArray(body.audioSamples)
-      ? body.audioSamples.map((s: any, idx: number) => s && s.base64 && s.base64.startsWith('data:') ? { ...s, base64: cleanBase64ToUploadFile(s.base64, `aud_${idx}`) } : s)
-      : [];
+    const localPersona = { ...body, id: clientId, clientId };
+    savePersonaToLocalStore(req.user.id, localPersona);
 
-    const updatedLocalObj = {
-      id: clientId,
-      clientId: clientId,
-      name: body.name || 'Unnamed',
-      niche: body.niche || '',
-      tone: body.tone || '',
-      platform: body.platform || '',
-      status: body.status || 'Active',
-      avatar: cleanedAvatar,
-      referenceImage: cleanedRef,
-      additionalReferenceImages: cleanedAddRefs,
-      visualLibrary: cleanedVisLib,
-      voiceId: body.voiceId || undefined,
-      voiceEngine: body.voiceEngine || 'elevenlabs',
-      voiceSampleUrl: body.voiceSampleUrl || undefined,
-      audioSamples: cleanedAudioSamples,
-      voicePrompt: body.voicePrompt || undefined,
-      voiceLikeness: body.voiceLikeness ?? 85,
-      voiceStability: body.voiceStability ?? 75,
-      voiceStyleExaggeration: body.voiceStyleExaggeration ?? 20,
-      voiceSpeakingSpeed: body.voiceSpeakingSpeed ?? 1.0,
-      personaNotes: body.personaNotes || '',
-      updatedAt: new Date().toISOString()
-    };
-
-    if (existingIdx >= 0) {
-      localPersonas[existingIdx] = { 
-        ...localPersonas[existingIdx], 
-        ...updatedLocalObj,
-        referenceImage: cleanedRef,
-        avatar: cleanedAvatar,
-        additionalReferenceImages: cleanedAddRefs,
-        visualLibrary: cleanedVisLib
-      };
-    } else {
-      localPersonas.push(updatedLocalObj);
+    if (!updatedClientObj && !isLocalFileStorageEnabled()) {
+      return res.status(404).json({ error: 'Persona not found' });
     }
-    writeLocalPersonasStore(localPersonas);
 
-    return res.json(updatedClientObj || updatedLocalObj);
+    return res.json(updatedClientObj || localPersona);
   } catch (err) {
     console.error('[API] PUT /personas error:', err);
     res.status(500).json({ error: err instanceof Error ? err.message : 'Unknown error' });
@@ -569,10 +417,15 @@ router.put('/personas/:clientId', async (req: AuthenticatedRequest, res: Respons
 router.delete('/personas/:clientId', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const clientId = req.params.clientId as string;
-    await db.delete(generatedImages).where(and(eq(generatedImages.personaClientId, clientId), eq(generatedImages.userId, req.user.id)));
-    await db.delete(revenueEntries).where(and(eq(revenueEntries.personaClientId, clientId), eq(revenueEntries.userId, req.user.id)));
-    await db.delete(plannedPosts).where(and(eq(plannedPosts.personaClientId, clientId), eq(plannedPosts.userId, req.user.id)));
-    await db.delete(personas).where(and(eq(personas.clientId, clientId), eq(personas.userId, req.user.id)));
+    if (db) {
+      await db.delete(generatedImages).where(and(eq(generatedImages.personaClientId, clientId), eq(generatedImages.userId, req.user.id)));
+      await db.delete(revenueEntries).where(and(eq(revenueEntries.personaClientId, clientId), eq(revenueEntries.userId, req.user.id)));
+      await db.delete(plannedPosts).where(and(eq(plannedPosts.personaClientId, clientId), eq(plannedPosts.userId, req.user.id)));
+      await db.delete(personas).where(and(eq(personas.clientId, clientId), eq(personas.userId, req.user.id)));
+    } else if (!isLocalFileStorageEnabled()) {
+      return res.status(503).json({ error: 'Persona storage is not configured' });
+    }
+    removePersonaFromLocalStore(req.user.id, clientId);
     res.json({ success: true });
   } catch (err) {
     console.error('[API] DELETE /personas error:', err);
@@ -597,6 +450,12 @@ router.get('/personas/:personaClientId/images', async (req: AuthenticatedRequest
 router.post('/personas/:personaClientId/images', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const body = req.body;
+    const [existingImage] = await db.select({ userId: generatedImages.userId })
+      .from(generatedImages)
+      .where(eq(generatedImages.clientId, body.id));
+    if (existingImage && existingImage.userId !== req.user.id) {
+      return res.status(409).json({ error: 'An image with this identifier already exists' });
+    }
     const [row] = await db.insert(generatedImages).values({
       clientId: body.id,
       personaClientId: req.params.personaClientId,
@@ -664,6 +523,12 @@ router.get('/revenue/:personaClientId', async (req: AuthenticatedRequest, res: R
 router.post('/revenue', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const body = req.body;
+    const [existingEntry] = await db.select({ userId: revenueEntries.userId })
+      .from(revenueEntries)
+      .where(eq(revenueEntries.clientId, body.id));
+    if (existingEntry && existingEntry.userId !== req.user.id) {
+      return res.status(409).json({ error: 'A revenue entry with this identifier already exists' });
+    }
     const [row] = await db.insert(revenueEntries).values({
       clientId: body.id,
       personaClientId: body.personaId,
@@ -1794,7 +1659,7 @@ router.post('/agent/voice-chat', async (req: AuthenticatedRequest, res: Response
 - Bio / Background: ${personaBio}
 - Lore / Lore Context: ${(activePersona as any)?.lore || (activePersona as any)?.backstory || ''}`;
 
-    const userName = creatorProfile?.name || req.body.userName || activePersona?.userProfile?.name || 'Dr. H';
+    const userName = creatorProfile?.name || req.body.userName || activePersona?.userProfile?.name || 'Creator';
     const creatorRole = creatorProfile?.role || 'Creator, close partner, and primary companion';
     const creatorAppearance = creatorProfile?.appearance || '';
     const creatorBio = creatorProfile?.bio || '';
@@ -1802,7 +1667,7 @@ router.post('/agent/voice-chat', async (req: AuthenticatedRequest, res: Response
 
     const hasCreatorPhotos = Array.isArray(creatorProfile?.photos) && creatorProfile.photos.length > 0;
 
-    let memoryContext = `\n\nCORE USER & CREATOR PROFILE (DR. H):
+    let memoryContext = `\n\nCORE USER & CREATOR PROFILE:
 • Creator Name: ${userName}
 • Relationship / Role: ${creatorRole} (Address him naturally as ${userName})
 • Physical Appearance & Styling: ${creatorAppearance || 'Charismatic male creator with sharp modern styling, short dark hair, and athletic build'}
@@ -1822,11 +1687,6 @@ ${creatorBio ? `• Creator Bio & Vibe: ${creatorBio}\n` : ''}${creatorDynamic ?
     function smartNormalizeSpokenText(text: string, _pName?: string): string {
       if (!text) return '';
       let clean = text.trim();
-      clean = clean
-        .replace(/\b(?:doctor\s*(?:h|age|eight|ate|a|hate|ache)|dr\.?\s*(?:h|age|eight|ate|a|hate|ache))\b/gi, 'Dr. H')
-        .replace(/\b(?:doc\s*(?:h|age|eight))\b/gi, 'Dr. H')
-        .replace(/\b(?:row\s*one\s*hasan|raw\s*one\s*hasan|roan\s*hasan|rawan\s*hassan|rawan\s*hasen)\b/gi, 'Rawan Hasan')
-        .replace(/\b(?:lean|lien|liam|lynn|lane|lin)\s*hasan\b/gi, 'Leen Hasan')
       return clean;
     }
 

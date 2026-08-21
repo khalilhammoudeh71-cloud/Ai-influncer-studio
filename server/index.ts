@@ -18,7 +18,7 @@ import { GoogleGenAI } from '@google/genai';
 import convert from 'heic-convert';
 import { Jimp } from 'jimp';
 // Pool is imported dynamically in pushSchema to support different environments
-import apiRoutes, { globalDefaultVoiceRef, readLocalCreatorProfile, synthesizeClonedAudioWithWavespeed } from './routes';
+import apiRoutes, { globalDefaultVoiceRef, readCreatorProfile, readLocalCreatorProfile, synthesizeClonedAudioWithWavespeed } from './routes';
 import stripeRoutes, { handleStripeWebhook } from './stripe-routes';
 import { requireAuth, deductCredits, isCreatorUser, AuthenticatedRequest } from './auth';
 
@@ -1121,7 +1121,7 @@ function cleanChatPromptToVisualScene(prompt: string, personaName: string, creat
   let cleaned = prompt.trim();
   
   const creator = creatorProfile || readLocalCreatorProfile();
-  const creatorName = creator?.name || 'Dr. H';
+  const creatorName = creator?.name || 'Creator';
   const creatorAppearance = creator?.appearance || 'Charismatic male creator with sharp modern styling, short dark hair, and athletic build';
 
   const isDuo = /\b(with me|with you|me and you|you and me|of me and you|of you and me|me and her|her and me|us together|duo|together|both of us|us at|couple|holding you|holding me|holding each other|with (?:dr\.?\s*h|creator|partner)|kissing you|kissing me|with us)\b/i.test(prompt);
@@ -1161,7 +1161,7 @@ function buildPrompt(body: ImageGenRequest, useEditInstructionStyle = false): st
   if (isChatContext) {
     const rawScene = chatPrompt || (body as any).prompt || '';
     const creator = (body as any).creatorProfile || readLocalCreatorProfile();
-    const creatorName = creator?.name || 'Dr. H';
+    const creatorName = creator?.name || 'Creator';
     const creatorAppearance = creator?.appearance || 'Charismatic male creator with sharp modern styling, short dark hair, and athletic build';
     const hasDuoOrSecondPerson = /\b(you|ur|your|her|us|together|both|with you|with her|holding|fucking|touching|kissing|riding|sucking|eating|on top of|underneath|behind|couple|duo)\b/i.test(rawScene);
     const isCreatorSolo = !hasDuoOrSecondPerson && (/\b(image of me only|photo of me only|pic of me only|just me|of me only|portrait of me only|solo photo of me|only me|portrait of dr\.?\s*h)\b/i.test(rawScene) || !!(body as any).isCreatorSolo);
@@ -3119,9 +3119,9 @@ app.post('/api/persona-greeting', async (req, res) => {
     const personaName = persona?.name || 'Creator';
     const personaNiche = persona?.niche || 'Lifestyle';
     const personaTone = persona?.tone || 'Confident, alluring, witty';
-    const storedCreator = readLocalCreatorProfile();
+    const storedCreator = await readCreatorProfile((req as AuthenticatedRequest).user?.id);
     const effectiveCreator = creatorProfile || storedCreator;
-    const effectiveUserName = effectiveCreator?.name || 'Dr. H';
+    const effectiveUserName = effectiveCreator?.name || 'Creator';
     const creatorDynamic = effectiveCreator?.customDynamic || '';
 
     // Extract recent messages to understand the last conversation vibe
@@ -3270,7 +3270,7 @@ app.post('/api/generate-voice-note', async (req, res) => {
       return res.status(400).json({ error: 'clean text is empty' });
     }
 
-    const targetVoiceId = persona?.voiceId || 'ov7JSkufAlSs386OYTaC'; // default studio clear voice
+    const targetVoiceId = persona?.voiceId || '21m00Tcm4TlvDq8ikWAM'; // standard default voice
     const elevenKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key || '';
 
     if (elevenKey) {
@@ -3409,9 +3409,9 @@ app.post('/api/chat', async (req, res) => {
     const boundaries = persona.contentBoundaries ? `\nBoundaries: ${persona.contentBoundaries}` : '';
     const visualStyle = persona?.visualStyle || 'High fashion, natural photography';
 
-    const storedCreator = readLocalCreatorProfile();
+    const storedCreator = await readCreatorProfile((req as AuthenticatedRequest).user?.id);
     const effectiveCreator = creatorProfile || storedCreator;
-    const effectiveUserName = effectiveCreator?.name || req.body.userName || persona?.userProfile?.name || 'Dr. H';
+    const effectiveUserName = effectiveCreator?.name || req.body.userName || persona?.userProfile?.name || 'Creator';
     const creatorRole = effectiveCreator?.role || 'Creator, close partner, and primary companion';
     const creatorAppearance = effectiveCreator?.appearance || '';
     const creatorBio = effectiveCreator?.bio || '';
@@ -3420,7 +3420,7 @@ app.post('/api/chat', async (req, res) => {
     const hasCreatorPhotos = Array.isArray(effectiveCreator?.photos) && effectiveCreator.photos.length > 0;
     const creatorPrimaryPhoto = effectiveCreator?.primaryPhoto || (hasCreatorPhotos ? effectiveCreator.photos[0] : '');
 
-    let memoryContext = `\n\nCORE USER & CREATOR PROFILE (DR. H):
+    let memoryContext = `\n\nCORE USER & CREATOR PROFILE:
 • Creator Name: ${effectiveUserName}
 • Relationship / Role: ${creatorRole} (Address him naturally as ${effectiveUserName})
 • Physical Appearance & Styling: ${creatorAppearance || 'Charismatic male creator with sharp modern styling, short dark hair, and athletic build'}
@@ -4363,7 +4363,7 @@ app.post('/api/generate-image', async (req, res) => {
   }
 
   try {
-    const storedCreator = readLocalCreatorProfile();
+    const storedCreator = await readCreatorProfile((req as AuthenticatedRequest).user?.id);
     const isDuo = Boolean((req.body as any).isDuoShoot);
     const isCreatorSolo = Boolean((req.body as any).isCreatorSolo);
     const creatorPhoto = (req.body as any).creatorProfile?.primaryPhoto || 
@@ -4392,7 +4392,7 @@ app.post('/api/generate-image', async (req, res) => {
           personaName: (rest as any).personaName || 'Model',
           personaNiche: (rest as any).niche,
           personaBio: (rest as any).bio,
-          creatorName: (rest as any).creatorProfile?.name || storedCreator?.name || 'Dr. H',
+          creatorName: (rest as any).creatorProfile?.name || storedCreator?.name || 'Creator',
           creatorAppearance: (rest as any).creatorProfile?.appearance || storedCreator?.appearance || 'Charismatic male creator with shaved head, trimmed dark beard, sharp masculine facial features, and athletic muscular build',
           isDuo,
           isCreatorSolo,
@@ -5973,11 +5973,11 @@ async function handleTTS(req: express.Request, res: express.Response) {
   // Voice ID Mapper for ALL models to ensure 100% distinct, realistic human voice actors
   const rawVoiceMap: Record<string, string> = {
     // Built-in verified creator presets
-    'rawan': 'ov7JSkufAlSs386OYTaC', // Rawan Hasan (Newly Cloned Creator)
+    'rawan': '21m00Tcm4TlvDq8ikWAM', // legacy alias mapped to a standard voice
     'rawan-latest': 'ov7JSkufAlSs386OYTaC',
     'rawan-clone': 'ov7JSkufAlSs386OYTaC',
     'rawan-orig': 'W4ynDvR6NFiK8lj2I8iL',
-    'leen': '7jFje9BJoTWzqZzouT0j', // Leen Hasan (Cloned Creator)
+    'leen': '21m00Tcm4TlvDq8ikWAM', // legacy alias mapped to a standard voice
     'brielle': '6u6JbqKdaQy89ENzLSju', // Brielle (Natural Podcast & Storyteller)
     'madison': 'NUjosfEayZAdRcDmcHM8', // Madison (Cool, Calm & Conversational)
     'kristen': 'XZUXLIpE3dqJ9aCZUj2R', // Kristen (Upbeat & Vibrant Social Influencer)
@@ -6013,7 +6013,7 @@ async function handleTTS(req: express.Request, res: express.Response) {
     'elevenlabs:playht': '8DzKSPdgEQPaK5vKG0Rs', // Vanessa (Cute Social)
     'elevenlabs:f5-tts': 'PUhCSw74BFEgrq8dqe8I', // Jason (Confident Male)
     'elevenlabs:mureka-vocal': 'KLbbwrUTS6brBkjmN4Fp', // John (Smooth Male)
-    'openai:tts': 'ov7JSkufAlSs386OYTaC', // Rawan Hasan (Studio Clear)
+    'openai:tts': '21m00Tcm4TlvDq8ikWAM', // standard fallback voice
 
     // Wiro full model IDs
     'wiro-voice:openmoss/moss-tts-v1-5': 'jqcCZkN6Knx8BJ5TBdYR', // Zara
@@ -7499,6 +7499,12 @@ async function pushSchema() {
         subscription_status TEXT DEFAULT 'none' NOT NULL,
         subscription_price_id TEXT,
         credits INTEGER DEFAULT 50 NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS creator_profiles (
+        user_id TEXT PRIMARY KEY,
+        profile_json TEXT NOT NULL DEFAULT '{}',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
       );

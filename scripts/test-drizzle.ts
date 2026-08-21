@@ -6,10 +6,10 @@ async function test() {
   console.log("Testing user insert...");
   try {
     await db.insert(users).values({
-      id: 'mock-user-id',
-      email: 'khalilhammoudeh71@gmail.com',
-      credits: 99999,
-      subscriptionStatus: 'active',
+      id: 'local-development-user',
+      email: 'mock@example.com',
+      credits: 50,
+      subscriptionStatus: 'none',
     }).onConflictDoNothing();
     console.log("Insert success!");
   } catch (err) {
