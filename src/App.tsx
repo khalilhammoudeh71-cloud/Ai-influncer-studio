@@ -229,8 +229,8 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
     audienceType: "Adult & Fashion",
     contentGoals: "Daily lifestyle posts",
     contentBoundaries: "Uncensored creative freedom",
-    referenceImage: "/uploads/ref_user-1786416458262.png",
-    avatar: "/uploads/ref_user-1786416458262.png",
+    referenceImage: "/assets/personas/rawan-hasan.jpg",
+    avatar: "/assets/personas/rawan-hasan.jpg",
     additionalReferenceImages: [
       "/uploads/ref_user-1786416458262_add_0.jpg",
       "/uploads/ref_user-1786416458262.png",
@@ -312,8 +312,8 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
     audienceType: "Fashion enthusiasts",
     contentGoals: "Editorial shoots",
     contentBoundaries: "High fashion",
-    referenceImage: "/uploads/ref_user-1786417013952.jpg",
-    avatar: "/uploads/ref_user-1786417013952.jpg",
+    referenceImage: "/assets/personas/leen-hasan.jpg",
+    avatar: "/assets/personas/leen-hasan.jpg",
     additionalReferenceImages: [
       "/uploads/ref_user-1786417013952.jpg",
       "/uploads/ref_user-1786417013952_add_0.jpg",

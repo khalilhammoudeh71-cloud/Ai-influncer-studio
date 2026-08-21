@@ -7,18 +7,23 @@ interface PersonaAvatarProps {
   fallbackSrc?: string;
 }
 
+const DEFAULT_FALLBACK = '/demo/ai_sample_influencer.png';
+
 export default function PersonaAvatar({
   src,
   alt,
   className,
-  fallbackSrc = '/demo/ai_sample_influencer.png',
+  fallbackSrc,
 }: PersonaAvatarProps) {
-  const [currentSrc, setCurrentSrc] = useState(src || fallbackSrc);
+  const sources = Array.from(new Set([src, fallbackSrc, DEFAULT_FALLBACK].filter(Boolean))) as string[];
+  const sourceKey = sources.join('|');
+  const [sourceIndex, setSourceIndex] = useState(0);
 
   useEffect(() => {
-    setCurrentSrc(src || fallbackSrc);
-  }, [src, fallbackSrc]);
+    setSourceIndex(0);
+  }, [sourceKey]);
 
+  const currentSrc = sources[sourceIndex];
   if (!currentSrc) return null;
 
   return (
@@ -27,7 +32,7 @@ export default function PersonaAvatar({
       alt={alt}
       className={className}
       onError={() => {
-        setCurrentSrc(currentSrc === fallbackSrc ? '' : fallbackSrc);
+        setSourceIndex(index => index + 1);
       }}
     />
   );
