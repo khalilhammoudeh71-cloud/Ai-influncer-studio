@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 
-const RUNWARE_KEY = process.env.RUNWARE_API_KEY || 'SPDjcZuEoVmhWHHK539S5ZrCYa1sxSNW';
+const RUNWARE_KEY = process.env.RUNWARE_API_KEY || '';
 
 async function generateFlawlessSheerLace() {
   console.log('Regenerating Sheer Noir French Lace Bodysuit with perfect anatomy (both arms visible)...');

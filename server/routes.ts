@@ -1,7 +1,4 @@
 import { Router, Response } from 'express';
-if (!process.env.ELEVENLABS_API_KEY) {
-  process.env.ELEVENLABS_API_KEY = 'sk_9ac433ad3d07501e8b551d7ffd8ae22e20c881fda6c27541';
-}
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -1207,7 +1204,7 @@ export async function synthesizeClonedAudioWithWavespeed(
   model?: string,
   options?: { speed?: number; exaggeration?: number; language?: string }
 ): Promise<string | undefined> {
-  const wsKey = process.env.WAVESPEED_API_KEY || 'wsk_live_opFV8Net96XPhQTBLD3pxoH8-wQDRKUZuaIk2WFtBIA';
+  const wsKey = process.env.WAVESPEED_API_KEY || '';
   if (!wsKey || !audioRefBase64) return undefined;
 
   let cleanAudio = audioRefBase64;
@@ -1331,67 +1328,23 @@ router.get('/agent/elevenlabs-status', async (req: AuthenticatedRequest, res: Re
         configured: true,
         tier: data.tier || 'free',
         canClone: !!data.can_use_instant_voice_cloning,
-        keyMasked: `${elKey.substring(0, 8)}...`
       });
     }
   } catch (e) {
     console.warn('[ElevenLabs Status Check Error]:', e);
   }
 
-  return res.json({ configured: true, tier: 'free', canClone: false, keyMasked: `${elKey.substring(0, 8)}...` });
+  return res.json({ configured: true, tier: 'free', canClone: false });
 });
 
-router.post('/agent/update-elevenlabs-key', async (req: AuthenticatedRequest, res: Response) => {
-  const { apiKey } = req.body;
-  if (!apiKey || typeof apiKey !== 'string') {
-    return res.status(400).json({ error: 'Valid ElevenLabs API Key required' });
-  }
-
-  const cleanKey = apiKey.trim();
-  process.env.ELEVENLABS_API_KEY = cleanKey;
-  process.env.Elevenlabs_api_key = cleanKey;
-
-  // Persist to .env file
-  try {
-    const fs = await import('fs');
-    const path = await import('path');
-    const envPath = path.resolve(process.cwd(), '.env');
-    let envContent = fs.readFileSync(envPath, 'utf8');
-    if (envContent.includes('ELEVENLABS_API_KEY=')) {
-      envContent = envContent.replace(/ELEVENLABS_API_KEY=.*/g, `ELEVENLABS_API_KEY=${cleanKey}`);
-    } else {
-      envContent += `\nELEVENLABS_API_KEY=${cleanKey}\n`;
-    }
-    fs.writeFileSync(envPath, envContent, 'utf8');
-  } catch (e) {
-    console.warn('[ENV Update Warning]:', e);
-  }
-
-  // Verify key subscription
-  try {
-    const subRes = await fetch('https://api.elevenlabs.io/v1/user/subscription', {
-      headers: { 'xi-api-key': cleanKey }
-    });
-    if (subRes.ok) {
-      const data = await subRes.json() as any;
-      return res.json({
-        success: true,
-        tier: data.tier || 'free',
-        canClone: !!data.can_use_instant_voice_cloning,
-        message: data.can_use_instant_voice_cloning 
-          ? `✅ ElevenLabs Paid API Key Activated! Tier: ${data.tier}. Instant Voice Cloning Ready!`
-          : `⚠️ Key saved, but this key is on Tier: ${data.tier} (Free tier does not include API Instant Voice Cloning).`
-      });
-    }
-  } catch (e) {
-    console.error('[Verify ElevenLabs Key Error]:', e);
-  }
-
-  return res.json({ success: true, tier: 'unknown', canClone: false, message: 'Key updated!' });
+router.post('/agent/update-elevenlabs-key', (_req: AuthenticatedRequest, res: Response) => {
+  return res.status(405).json({
+    error: 'Provider credentials must be configured through secure server environment variables',
+  });
 });
 
 router.post('/elevenlabs-clone-voice', async (req: AuthenticatedRequest, res: Response) => {
-  const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key || 'sk_9ac433ad3d07501e8b551d7ffd8ae22e20c881fda6c27541';
+  const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key || '';
   const { name, description, sampleBase64, sampleBase64s } = req.body;
   const rawSamples: string[] = Array.isArray(sampleBase64s) && sampleBase64s.length > 0
     ? sampleBase64s
@@ -1451,7 +1404,7 @@ router.post('/elevenlabs-clone-voice', async (req: AuthenticatedRequest, res: Re
 });
 
 router.get('/elevenlabs-voices', async (req: AuthenticatedRequest, res: Response) => {
-  const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key || 'sk_9ac433ad3d07501e8b551d7ffd8ae22e20c881fda6c27541';
+  const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key || '';
   try {
     const apiRes = await fetch('https://api.elevenlabs.io/v1/voices', {
       headers: { 'xi-api-key': elKey },
@@ -1574,7 +1527,7 @@ const handleTestVoiceClone = async (req: AuthenticatedRequest, res: Response) =>
       }
     }
 
-    const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key || 'sk_9ac433ad3d07501e8b551d7ffd8ae22e20c881fda6c27541';
+    const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key || '';
 
     const voiceMap: Record<string, string> = {
       'rawan': 'ov7JSkufAlSs386OYTaC',
@@ -1706,7 +1659,7 @@ const handleGenerateSpeech = async (req: AuthenticatedRequest, res: Response) =>
       }
     }
 
-    const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key || 'sk_9ac433ad3d07501e8b551d7ffd8ae22e20c881fda6c27541';
+    const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key || '';
 
     const pName = (personaName || '').toLowerCase();
     let targetVoiceId = voiceId || voice;
@@ -2171,7 +2124,7 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
 
     // High-Fidelity Speech Synthesis using chosen voice engine
     let audioUrl: string | undefined = undefined;
-    const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key || 'sk_9ac433ad3d07501e8b551d7ffd8ae22e20c881fda6c27541';
+    const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key || '';
     const requestedTtsModel = req.body.ttsModel || req.body.voiceModel || 'eleven_turbo_v2_5';
     
     // Determine persona voice ID

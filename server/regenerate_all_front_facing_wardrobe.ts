@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 
-const RUNWARE_KEY = process.env.RUNWARE_API_KEY || 'SPDjcZuEoVmhWHHK539S5ZrCYa1sxSNW';
+const RUNWARE_KEY = process.env.RUNWARE_API_KEY || '';
 
 const ALL_OTHER_OUTFITS = [
   {

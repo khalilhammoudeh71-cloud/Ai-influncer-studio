@@ -7,6 +7,15 @@ import { eq, sql } from 'drizzle-orm';
 const supabaseUrl = process.env.SUPABASE_URL || '';
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || '';
 
+const isDevelopmentAuthBypassEnabled = () =>
+  process.env.NODE_ENV !== 'production' && process.env.ALLOW_MOCK_AUTH === 'true';
+
+const createDevelopmentUser = () => ({
+  id: 'local-development-user',
+  email: 'mock@example.com',
+  email_confirmed_at: new Date().toISOString(),
+});
+
 // Backend admin-level Supabase client to inspect JWTs
 export const supabaseAdmin = (supabaseUrl && supabaseAnonKey)
   ? createClient(supabaseUrl, supabaseAnonKey, {
@@ -24,25 +33,35 @@ export interface AuthenticatedRequest extends Request {
 export async function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ') || authHeader.includes('undefined') || authHeader.includes('null')) {
-    req.user = { id: 'mock-user-id', email: 'khalilhammoudeh71@gmail.com', email_confirmed_at: new Date().toISOString() };
-    return next();
+    if (isDevelopmentAuthBypassEnabled()) {
+      req.user = createDevelopmentUser();
+      return next();
+    }
+    return res.status(401).json({ error: 'Unauthorized: a valid session is required' });
   }
 
   const token = authHeader.split(' ')[1];
-  if (!token || token === 'undefined' || token === 'null' || !supabaseAdmin) {
-    req.user = { id: 'mock-user-id', email: 'khalilhammoudeh71@gmail.com', email_confirmed_at: new Date().toISOString() };
-    return next();
+  if (!token || token === 'undefined' || token === 'null') {
+    return res.status(401).json({ error: 'Unauthorized: a valid session is required' });
+  }
+
+  if (!supabaseAdmin) {
+    if (isDevelopmentAuthBypassEnabled()) {
+      req.user = createDevelopmentUser();
+      return next();
+    }
+    return res.status(503).json({ error: 'Authentication service is not configured' });
   }
 
   try {
     const userPromise = supabaseAdmin.auth.getUser(token);
-    const timeoutPromise = new Promise<any>((resolve) => setTimeout(() => resolve({ data: { user: null }, error: new Error('Auth Timeout') }), 1500));
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Authentication service timed out')), 5000)
+    );
     const { data: { user }, error } = await Promise.race([userPromise, timeoutPromise]);
 
     if (error || !user) {
-      // Fallback for local development or mock sessions if token isn't recognized or times out
-      req.user = { id: 'mock-user-id', email: 'khalilhammoudeh71@gmail.com', email_confirmed_at: new Date().toISOString() };
-      return next();
+      return res.status(401).json({ error: 'Unauthorized: invalid or expired session' });
     }
 
     // Require email verification
@@ -78,16 +97,16 @@ export async function requireAuth(req: AuthenticatedRequest, res: Response, next
 
     next();
   } catch (err) {
-    console.error('[Auth] Verification error, falling back to mock user session:', err);
-    req.user = { id: 'mock-user-id', email: 'khalilhammoudeh71@gmail.com', email_confirmed_at: new Date().toISOString() };
-    return next();
+    console.error('[Auth] Verification error:', err instanceof Error ? err.message : 'Unknown authentication error');
+    return res.status(503).json({ error: 'Authentication service is temporarily unavailable' });
   }
 }
 
 export function isCreatorUser(email?: string): boolean {
   if (!email) return false;
-  const creatorEmail = (process.env.CREATOR_EMAIL || 'khalilhammoudeh71@gmail.com').toLowerCase();
-  return email.toLowerCase() === creatorEmail || email.toLowerCase() === 'mock@example.com';
+  if (isDevelopmentAuthBypassEnabled() && email.toLowerCase() === 'mock@example.com') return true;
+  const creatorEmail = process.env.CREATOR_EMAIL?.trim().toLowerCase();
+  return Boolean(creatorEmail) && email.toLowerCase() === creatorEmail;
 }
 
 export async function deductCredits(userId: string, amount: number) {
