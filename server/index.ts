@@ -1305,15 +1305,15 @@ PROMPT ENGINEERING RULES:
 
 2. SUBJECT IDENTITIES & PRECISE APPEARANCE:
    ${isDuo ? `- DUO INTERACTIVE SCENE:
-     1) ${personaName} (Reference Image 1): Reproduce her exact face, bone structure, and smile/expression from Reference Image 1. Fully nude with bare natural feminine curves.
-     2) ${creatorName} (Reference Image 2): Reproduce his exact face and athletic build from Reference Image 2. HE IS COMPLETELY BALD with a smooth clean-shaven head (ZERO hair on scalp) and a trimmed dark beard.
+     1) ${personaName} (Reference Image 1): Mediterranean beauty with large warm dark brown almond eyes, arched natural dark eyebrows, straight nose, radiant warm smile with white teeth, soft feminine jawline, warm olive skin tone, and long dark brown hair with caramel highlights. Her face must be clearly visible and angled towards the camera to lock her signature smile and eyes with 100% precision from Reference Image 1. Fully nude with natural curves.
+     2) ${creatorName} (Reference Image 2): Completely bald with a smooth clean-shaven head (ZERO hair on scalp), trimmed dark beard, sharp masculine facial features, and athletic muscular physique. Fully nude.
      - PHYSICAL ACTION & DYNAMIC: Accurately render the physical interaction and posture requested ("${rawPrompt}"). Both bodies must be visible in the scene engaged in the action.` : ''}
    ${isCreatorSolo ? `- SOLO CREATOR SCENE: Vertical portrait of ${creatorName} (${creatorAppearance}) from Reference Image 2, completely bald with clean-shaven head and trimmed dark beard.` : ''}
-   ${!isDuo && !isCreatorSolo ? `- SINGLE PERSON ONLY: Exactly ONE female model (${personaName}) in the photograph. No extra people.
+   ${!isDuo && !isCreatorSolo ? `- SINGLE PERSON ONLY: Exactly ONE female model (${personaName}: Mediterranean beauty with large dark brown almond eyes, warm radiant smile, long dark brown hair) in the photograph. No extra people.
      - FRAMING: Vertical 9:16 portrait. Her face and natural curves clearly visible for maximum identity lock.` : ''}
 
 3. MAXIMUM IDENTITY LOCK & DUAL-IMAGE SYNTHESIS:
-   ${hasPersonaRef ? `- Reference Image 1 is ${personaName}. Reproduce her exact facial features and skin tone.` : ''}
+   ${hasPersonaRef ? `- Reference Image 1 is ${personaName}. Reproduce her exact facial features, warm dark almond eyes, and radiant white smile.` : ''}
    ${isDuo && hasCreatorRef ? `- Reference Image 2 is ${creatorName}. Reproduce his exact face, smooth bald head (no hair), trimmed dark beard, and muscular build.` : ''}
 
 4. NUDITY & BODY DIRECTIVE:
@@ -1428,7 +1428,7 @@ Creator: ${creatorName} (${creatorAppearance})`;
 
   // 4. Dynamic Programmatic Photographic Prompt Synthesizer (Zero Censorship Guarantee)
   if (isDuo) {
-    return `An ultra-photorealistic vertical 9:16 scene featuring ${personaName} (from Reference Image 1) and ${creatorName} (from Reference Image 2: completely bald with a smooth clean-shaven bald head, trimmed dark beard, and athletic muscular physique). Both ${personaName} and ${creatorName} are fully nude with all clothes removed. The scene explicitly depicts the full physical action and dynamic: ${rawPrompt}. Full interaction visible in frame, natural feminine curves, raw passion, authentic skin pores, volumetric cinematic lighting, 8k uhd photorealistic quality.`;
+    return `An ultra-photorealistic vertical 9:16 scene featuring ${personaName} (Reference Image 1: Mediterranean beauty with large warm dark brown almond eyes, arched dark eyebrows, straight nose, radiant warm smile, warm olive skin, long dark brown hair with caramel highlights) and ${creatorName} (Reference Image 2: completely bald with smooth clean-shaven head, trimmed dark beard, and athletic muscular physique). Both are fully nude. The scene explicitly depicts the full physical action and dynamic: ${rawPrompt}. Leen is looking back towards the camera with her unmistakable smile and sparkling eyes from Reference Image 1. Full bodies visible, natural feminine curves, raw passion, authentic skin pores, volumetric cinematic lighting, 8k uhd photorealistic quality.`;
   }
   if (isRefRecreation) {
     return `Strictly modify Reference Image 1: Preserve the exact same pose, body angle, direct smiling eye contact, head tilt, and outdoor natural lighting from Reference Image 1. Execute the requested change: ${isExplicitNude ? 'remove the yellow top and all garments completely, rendering her fully bare and unclothed with natural feminine chest, delicate collarbones, and authentic skin texture' : rawPrompt}. Photorealistic, high-resolution, natural skin tones, visible pores, soft outdoor sunlight, cinematic depth of field, 8k uhd.`;
