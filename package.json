@@ -9,6 +9,7 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test server/*.test.ts",
+    "audit:production": "npm audit --omit=dev --audit-level=critical",
     "build:api": "esbuild scripts/api-source.ts --bundle --platform=node --format=esm --outfile=api/index.mjs --target=node20 --minify --external:@neondatabase/serverless --external:ws --external:dotenv --external:express --external:cors --external:openai --external:@google/genai --external:drizzle-orm --external:drizzle-zod --external:zod --external:p-limit --external:p-retry --external:ffmpeg-static --external:@ffmpeg-installer/ffmpeg",
     "vercel-build": "npm run build && npm run build:api",
     "preview": "vite preview",
@@ -43,7 +44,7 @@
     "react-hot-toast": "^2.6.0",
     "stripe": "^22.1.1",
     "tailwind-merge": "^3.5.0",
-    "tsx": "^4.21.0",
+    "tsx": "^4.23.12",
     "wiro-ai-sdk": "^0.1.0",
     "ws": "^8.20.0",
     "zod": "^4.3.6",
@@ -59,7 +60,6 @@
     "esbuild": "^0.28.0",
     "tailwindcss": "4.1.17",
     "typescript": "5.9.3",
-    "vite": "7.2.4",
-    "vite-plugin-singlefile": "2.3.0"
+    "vite": "^7.3.6"
   }
 }
