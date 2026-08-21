@@ -829,6 +829,39 @@ input, textarea, select {
   box-shadow: 0 0 0 2px var(--bg-base), 0 0 0 4px rgba(0, 245, 194, 0.5);
 }
 
+:where(button, a, input, textarea, select, [role="button"]):focus-visible {
+  outline: 2px solid var(--gold-bright);
+  outline-offset: 2px;
+}
+
+.skip-link {
+  position: fixed;
+  left: 1rem;
+  top: 0.75rem;
+  z-index: 1000000;
+  transform: translateY(-160%);
+  border-radius: 0.75rem;
+  background: var(--gold-primary);
+  color: #121214;
+  padding: 0.65rem 1rem;
+  font-size: 0.8rem;
+  font-weight: 800;
+  transition: transform 160ms ease;
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 .chip-gradient {
   background: linear-gradient(135deg, rgba(0, 245, 194, 0.15) 0%, rgba(0, 212, 255, 0.1) 100%);
   border: 1px solid rgba(0, 245, 194, 0.25);
@@ -1226,4 +1259,3 @@ input:focus, textarea:focus, select:focus {
     radial-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 0);
   background-size: 24px 24px;
 }
-
