@@ -380,7 +380,6 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 
       try {
         await api.personas.update(updatedPersona);
-        await api.updatePersonaInVault(updatedPersona);
       } catch (dbErr) {
         console.warn('DB update notice:', dbErr);
       }

@@ -53,7 +53,7 @@ import {
   Plus,
   Link
 } from 'lucide-react';
-import { Persona, Tab } from '../types';
+import { Persona, PersonaSetter, Tab } from '../types';
 import VoiceCloneStudioModal from '../components/VoiceCloneStudioModal';
 import { api } from '../services/apiService';
 import { generatePersonaPlan } from '../utils/personaEngine';
@@ -64,7 +64,7 @@ import toast from 'react-hot-toast';
 
 interface AgentViewProps {
   personas: Persona[];
-  setPersonas: React.Dispatch<React.SetStateAction<Persona[]>>;
+  setPersonas: PersonaSetter;
   selectedPersonaId?: string;
   onSelectPersona: (id: string) => void;
   nav: {
@@ -2425,7 +2425,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
         }
         createdPersona = saved;
         createdPersonaId = saved.id;
-        setPersonas(prev => [...prev.filter(p => p.id !== 'empty'), saved]);
+        setPersonas(prev => [...prev.filter(p => p.id !== 'empty'), saved], { persist: false });
         onSelectPersona(saved.id);
         addLocalLog(`✅ Default Persona '${saved.name}' created & activated.`);
         return saved;
@@ -2475,7 +2475,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
           createdPersona = saved;
           createdPersonaId = saved.id;
 
-          setPersonas(prev => [...prev, saved]);
+          setPersonas(prev => [...prev, saved], { persist: false });
           onSelectPersona(saved.id);
 
           addLocalLog(`✅ Persona '${saved.name}' created & activated.`);
@@ -2573,7 +2573,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
           };
           const savedPersona = await api.personas.update(updatedPersona);
           
-          setPersonas(prev => prev.map(p => p.id === createdPersonaId ? savedPersona : p));
+          setPersonas(prev => prev.map(p => p.id === createdPersonaId ? savedPersona : p), { persist: false });
 
           addLocalLog(`✅ Profile avatar fully synced!`);
           updateStepStatus(i, 'success', imageUrl);

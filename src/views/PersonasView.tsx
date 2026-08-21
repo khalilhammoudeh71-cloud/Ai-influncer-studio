@@ -2,13 +2,13 @@ import { Plus, Search, Edit2, Trash2, X, Check, Camera, Upload, Image as ImageIc
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../utils/cn';
-import { Persona, GeneratedImage, NavActions, Tab } from '../types';
+import { Persona, PersonaSetter, GeneratedImage, NavActions, Tab } from '../types';
 import { api } from '../services/apiService';
 import toast from 'react-hot-toast';
 
 interface PersonasViewProps {
   personas: Persona[];
-  setPersonas: (p: Persona[]) => void;
+  setPersonas: PersonaSetter;
   onSelectPersona: (id: string) => void;
   selectedId: string;
   navigateToTab?: (tab: Tab) => void;
@@ -32,7 +32,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
       try {
         await api.personas.delete(personaToDelete.id);
         const updated = personas.filter(p => p.id !== personaToDelete.id);
-        setPersonas(updated);
+        setPersonas(updated, { persist: false });
         toast.success(`Deleted persona "${personaToDelete.name}"`);
       } catch (err) {
         toast.error('Failed to delete persona');

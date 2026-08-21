@@ -19,7 +19,7 @@ import {
   Check
 } from 'lucide-react';
 import { cn } from './utils/cn';
-import { Persona, RevenueEntry, PlannedPost, Tab, NavEntry } from './types';
+import { Persona, PersonaSetter, RevenueEntry, PlannedPost, Tab, NavEntry } from './types';
 import BackButton from './components/BackButton';
 import { api } from './services/apiService';
 import PersonasView from './views/PersonasView';
@@ -60,6 +60,7 @@ const EMPTY_PERSONA: Persona = {
 
 import { supabase } from './lib/supabase';
 import { setActiveStorageUser } from './utils/creatorProfile';
+import { diffPersonaMutations } from './utils/personaMutations';
 import toast from 'react-hot-toast';
 
 function App() {
@@ -418,9 +419,11 @@ function App() {
         // Background sync custom personas to server & delete Luna from server DB
         serverPersonas.filter(p => p.id && p.id.toLowerCase().includes('luna')).forEach(p => api.personas.delete(p.id).catch(() => {}));
         const serverIds = new Set(serverPersonas.map(p => p.id));
-        activeList.filter(p => !serverIds.has(p.id)).forEach(p => api.personas.create(p).catch(() => {}));
-
         const migrationKey = userStorageKey('ai_influencer_db_migrated', user.id);
+        if (localStorage.getItem(migrationKey)) {
+          activeList.filter(p => !serverIds.has(p.id)).forEach(p => api.personas.create(p).catch(() => {}));
+        }
+
         if (!hasMigrated.current && !localStorage.getItem(migrationKey)) {
           hasMigrated.current = true;
 
@@ -451,7 +454,7 @@ function App() {
     init();
   }, [loadPersonas, user]);
 
-  const setPersonas = useCallback(async (value: Persona[] | ((prev: Persona[]) => Persona[])) => {
+  const setPersonas: PersonaSetter = useCallback(async (value: Persona[] | ((prev: Persona[]) => Persona[]), options) => {
     const oldPersonas = personas;
     const newPersonas = typeof value === 'function' ? value(oldPersonas) : value;
     setPersonasLocal(newPersonas);
@@ -463,16 +466,9 @@ function App() {
       }
     } catch {}
 
-    const oldIds = new Set(oldPersonas.map(p => p.id));
-    const newIds = new Set(newPersonas.map(p => p.id));
+    if (options?.persist === false) return;
 
-    const added = newPersonas.filter(p => !oldIds.has(p.id));
-    const removed = oldPersonas.filter(p => !newIds.has(p.id));
-    const updated = newPersonas.filter(p => {
-      if (!oldIds.has(p.id)) return false;
-      const old = oldPersonas.find(o => o.id === p.id);
-      return old && JSON.stringify(old) !== JSON.stringify(p);
-    });
+    const { added, removed, updated } = diffPersonaMutations(oldPersonas, newPersonas);
 
     try {
       await Promise.all([
