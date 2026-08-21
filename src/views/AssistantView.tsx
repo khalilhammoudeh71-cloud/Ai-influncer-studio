@@ -1852,8 +1852,9 @@ export default function AssistantView({ personas, persona: propActivePersona, on
             const extraImages: string[] = [];
             if (sentAttachment?.type === 'image') extraImages.push(sentAttachment.base64);
             else if (lastUploadedReference) extraImages.push(lastUploadedReference);
-            if (isDuoShoot && creator?.primaryPhoto && !extraImages.includes(creator.primaryPhoto)) {
-              extraImages.push(creator.primaryPhoto);
+            const creatorPhoto = creator?.primaryPhoto || (creator?.photos && creator.photos.length > 0 ? creator.photos[0] : undefined);
+            if (isDuoShoot && creatorPhoto && !extraImages.includes(creatorPhoto)) {
+              extraImages.push(creatorPhoto);
             }
 
             const result = await generateImage({

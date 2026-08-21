@@ -4363,6 +4363,22 @@ app.post('/api/generate-image', async (req, res) => {
   }
 
   try {
+    const storedCreator = readLocalCreatorProfile();
+    const isDuo = Boolean((req.body as any).isDuoShoot);
+    const isCreatorSolo = Boolean((req.body as any).isCreatorSolo);
+    const creatorPhoto = (req.body as any).creatorProfile?.primaryPhoto || 
+                         ((req.body as any).creatorProfile?.photos && (req.body as any).creatorProfile.photos[0]) ||
+                         storedCreator?.primaryPhoto ||
+                         (storedCreator?.photos && storedCreator.photos[0]);
+
+    if ((isDuo || isCreatorSolo) && creatorPhoto) {
+      if (!additionalImages) additionalImages = [];
+      if (!additionalImages.includes(creatorPhoto)) {
+        additionalImages.push(creatorPhoto);
+      }
+      console.log('[generate-image] 👤 Injected Creator Reference Photo for Dual Identity Lock:', creatorPhoto);
+    }
+
     let imageUrls: string[] = [];
     let modelName = modelId;
     let prompt = buildPrompt({ ...rest, referenceImage, additionalImages } as any);
@@ -4376,13 +4392,13 @@ app.post('/api/generate-image', async (req, res) => {
           personaName: (rest as any).personaName || 'Model',
           personaNiche: (rest as any).niche,
           personaBio: (rest as any).bio,
-          creatorName: (rest as any).creatorProfile?.name || 'Dr. H',
-          creatorAppearance: (rest as any).creatorProfile?.appearance || 'Charismatic male creator with sharp modern styling, short dark hair, and athletic build',
-          isDuo: Boolean((req.body as any).isDuoShoot),
-          isCreatorSolo: Boolean((req.body as any).isCreatorSolo),
+          creatorName: (rest as any).creatorProfile?.name || storedCreator?.name || 'Dr. H',
+          creatorAppearance: (rest as any).creatorProfile?.appearance || storedCreator?.appearance || 'Charismatic male creator with shaved head, trimmed dark beard, sharp masculine facial features, and athletic muscular build',
+          isDuo,
+          isCreatorSolo,
           hasPersonaRef: Boolean(referenceImage),
-          hasCreatorRef: Boolean((req.body as any).isDuoShoot || (req.body as any).isCreatorSolo),
-          hasOutfitRef: Boolean(additionalImages && additionalImages.length > 0 && !(req.body as any).isDuoShoot),
+          hasCreatorRef: Boolean(creatorPhoto),
+          hasOutfitRef: Boolean(additionalImages && additionalImages.length > 0 && !isDuo),
           equippedOutfitDescription: (req.body as any).equippedOutfitDescription || (rest as any).equippedOutfitDescription,
           allowNsfw: Boolean((req.body as any).allowNsfw),
         });
