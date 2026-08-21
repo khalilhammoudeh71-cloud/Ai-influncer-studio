@@ -71,27 +71,28 @@ function App() {
   const [showShortcutsModal, setShowShortcutsModal] = useState(false);
   const [newAssetsCount, setNewAssetsCount] = useState(0); // #6 gallery badge
 
-  // Listen to Supabase authentication state & Auto-Bypass Password for instant Studio access
+  // Listen to Supabase authentication state. A mock user is available only
+  // during local development when explicitly enabled.
   useEffect(() => {
-    const defaultCreatorUser = {
-      id: 'mock-user-id',
-      email: 'khalilhammoudeh71@gmail.com',
+    const developmentUser = import.meta.env.DEV && import.meta.env.VITE_ALLOW_MOCK_AUTH === 'true' ? {
+      id: 'local-development-user',
+      email: 'mock@example.com',
       email_confirmed_at: new Date().toISOString(),
       confirmed_at: new Date().toISOString()
-    };
+    } : null;
 
-    const sessionPromise = supabase.auth.getSession();
-    const timeoutPromise = new Promise<any>((resolve) => setTimeout(() => resolve({ data: { session: null } }), 1000));
-    Promise.race([sessionPromise, timeoutPromise]).then((res) => {
-      setUser(res?.data?.session?.user ?? defaultCreatorUser);
+    supabase.auth.getSession().then((res) => {
+      if (res.error) throw res.error;
+      setUser(res.data.session?.user ?? developmentUser);
       setAuthLoading(false);
-    }).catch(() => {
-      setUser(defaultCreatorUser);
+    }).catch((error) => {
+      console.error('[Auth] Failed to restore session:', error);
+      setUser(developmentUser);
       setAuthLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? defaultCreatorUser);
+      setUser(session?.user ?? developmentUser);
       setAuthLoading(false);
     });
 

@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 
-const RUNWARE_KEY = process.env.RUNWARE_API_KEY || 'SPDjcZuEoVmhWHHK539S5ZrCYa1sxSNW';
+const RUNWARE_KEY = process.env.RUNWARE_API_KEY || '';
 
 async function generateFlawlessBronzeBikini() {
   console.log('Regenerating Metallic Bronze Ring Bikini with flawless anatomy (full body, arms visible)...');
