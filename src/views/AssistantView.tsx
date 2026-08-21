@@ -1,13 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Send, Bot, ChevronDown, ImageIcon, Video, Loader2, AlertCircle, Camera, MessageSquareQuote, Copy, Bookmark, Check, Phone, PhoneOff, Volume2, VolumeX, Mic, MicOff, RotateCcw, Trash2, Plus, Upload, Music, Film, X, Play, Sparkles, Paperclip, FileText, SlidersHorizontal, Settings, Hand, Maximize2, Download, Shirt, Heart } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Persona, NavActions, WardrobeItem, RelationshipState } from '../types';
+import { Persona, NavActions, RelationshipState } from '../types';
 import { ModelInfo, fetchAllModelTypes, editImage, generateImage, generateVideo, textToSpeech } from '../services/imageService';
 import { cn } from '../utils/cn';
 import { api } from '../services/apiService';
 import toast from 'react-hot-toast';
 import ImageLightboxModal from '../components/ImageLightboxModal';
-import WardrobeModal, { DEFAULT_WARDROBE } from '../components/WardrobeModal';
 import PersonaReferenceModal from '../components/PersonaReferenceModal';
 import RelationshipProgressBadge from '../components/RelationshipProgressBadge';
 import VoiceNoteBubble from '../components/VoiceNoteBubble';
@@ -541,45 +540,6 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     }
   };
 
-  // ── Wardrobe & Outfit Studio State ──────────────────────
-  const [isWardrobeOpen, setIsWardrobeOpen] = useState(false);
-  const [wardrobe, setWardrobe] = useState<WardrobeItem[]>(() => {
-    try {
-      const raw = localStorage.getItem(`persona_wardrobe_${propActivePersona.id}`);
-      return raw ? JSON.parse(raw) : DEFAULT_WARDROBE;
-    } catch {
-      return DEFAULT_WARDROBE;
-    }
-  });
-  const [activeOutfit, setActiveOutfit] = useState<WardrobeItem | null>(() => {
-    try {
-      const raw = localStorage.getItem(`persona_active_outfit_${propActivePersona.id}`);
-      return raw ? JSON.parse(raw) : null;
-    } catch {
-      return null;
-    }
-  });
-
-  const handleEquipOutfit = (outfit: WardrobeItem | null) => {
-    setActiveOutfit(outfit);
-    try {
-      if (outfit) {
-        localStorage.setItem(`persona_active_outfit_${selectedPersonaId}`, JSON.stringify(outfit));
-        toast.success(`👗 Equipped "${outfit.name}" for ${activePersona.name}!`);
-      } else {
-        localStorage.removeItem(`persona_active_outfit_${selectedPersonaId}`);
-        toast('Unequipped outfit. Using default style.');
-      }
-    } catch {}
-  };
-
-  const handleUpdateWardrobe = (updated: WardrobeItem[]) => {
-    setWardrobe(updated);
-    try {
-      localStorage.setItem(`persona_wardrobe_${selectedPersonaId}`, JSON.stringify(updated));
-    } catch {}
-  };
-
   // ── Relationship & Mood State ─────────────────────────────
   const [relationshipState, setRelationshipState] = useState<RelationshipState>(() => {
     try {
@@ -591,7 +551,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       stage: 'partner',
       currentMood: 'playful',
       totalInteractions: 6,
-      unlockedPerks: ['Standard chat banter', 'Playful teasing', 'Duo photoshoots', 'Expanded wardrobe perks']
+      unlockedPerks: ['Standard chat banter', 'Playful teasing', 'Duo photoshoots']
     };
   });
 
@@ -649,7 +609,6 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           userMessage: 'Send me an intimate, playful, or teasing voice note right now',
           priorChatHistory: messages.slice(-10),
           creatorProfile: getCreatorProfile(),
-          equippedOutfit: activeOutfit,
           relationshipState,
         })
       });
@@ -683,56 +642,6 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       replaceMessage(loadingId, { type: 'error', content: 'Could not record voice note.' });
     } finally {
       setIsGenerating(false);
-    }
-  };
-
-  const handleGenerateOutfitPhotoshoot = async (outfit: WardrobeItem) => {
-    setIsWardrobeOpen(false);
-    handleEquipOutfit(outfit);
-    
-    const personaPhoto = activePersona.referenceImage || activePersona.avatar || activePersona.alternateReferenceImage;
-    if (!personaPhoto) {
-      toast.error('Please upload or set a reference photo for the persona first!');
-      return;
-    }
-
-    const creator = getCreatorProfile();
-    const promptText = `Take a photo wearing your ${outfit.name}`;
-    addMessage({ role: 'user', type: 'text', content: promptText });
-    
-    const mediaLoadingId = addMessage({ 
-      role: 'persona', 
-      type: 'loading', 
-      content: `Generating photoshoot of ${activePersona.name} in ${outfit.name}...` 
-    });
-    
-    try {
-      const result = await generateImage({
-        persona: activePersona,
-        referenceImage: personaPhoto,
-        additionalImages: outfit.thumbnail ? [outfit.thumbnail] : undefined,
-        prompt: `A medium upper-body 2/3rds vertical fashion portrait of ${activePersona.name} facing forward directly towards the camera, looking straight into the lens with direct eye contact and prominent facial clarity, wearing the upper 2/3rds of ${outfit.promptDescription}, luxurious ambient lighting, photorealistic 8k masterwork`,
-        modelId: selectedEditModelId || 'wavespeed:bytedance/seedream-v5.0-pro',
-        aspectRatio: '9:16',
-        isChatContext: true,
-        chatPrompt: `2/3rds upper-body fashion portrait of ${activePersona.name} facing forward towards camera wearing ${outfit.name}: ${outfit.promptDescription}`,
-        allowNsfw: true,
-        creatorProfile: creator,
-        equippedOutfitDescription: outfit.promptDescription,
-      } as any);
-      
-      const imgUrl = Array.isArray(result) ? result[0].imageUrl : result.imageUrl;
-      replaceMessage(mediaLoadingId, { 
-        type: 'image', 
-        content: imgUrl, 
-        prompt: `Wearing ${outfit.name}: ${outfit.promptDescription}` 
-      });
-      toast.success(`✨ Photoshoot generated in ${outfit.name}!`);
-    } catch (err: any) {
-      replaceMessage(mediaLoadingId, { 
-        type: 'error', 
-        content: err?.message || 'Failed to generate photoshoot' 
-      });
     }
   };
 
@@ -1315,8 +1224,6 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         else if (lastUploadedReference) extraImages.push(lastUploadedReference);
         if (isDuoShoot && creator?.primaryPhoto && !extraImages.includes(creator.primaryPhoto)) {
           extraImages.push(creator.primaryPhoto);
-        } else if (!isDuoShoot && !isExplicitNude && activeOutfit?.thumbnail && !extraImages.includes(activeOutfit.thumbnail)) {
-          extraImages.push(activeOutfit.thumbnail);
         }
 
         // Primary persona reference photo for exact facial identity locking
@@ -1334,7 +1241,6 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           referenceImage: personaPrimaryRef,
           additionalImages: extraImages.length > 0 ? extraImages : undefined,
           creatorProfile: isDuoShoot ? creator : undefined,
-          equippedOutfitDescription: isExplicitNude ? undefined : activeOutfit?.promptDescription,
         } as any).then(result => {
           const imgUrl = Array.isArray(result) ? result[0].imageUrl : result.imageUrl;
           setActiveCallMedia({ type: 'image', url: imgUrl, prompt: visualPrompt });
@@ -1705,17 +1611,13 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     setSavedMsgIds(new Set());
 
     try {
-      const wRaw = localStorage.getItem(`persona_wardrobe_${selectedPersonaId}`);
-      setWardrobe(wRaw ? JSON.parse(wRaw) : DEFAULT_WARDROBE);
-      const oRaw = localStorage.getItem(`persona_active_outfit_${selectedPersonaId}`);
-      setActiveOutfit(oRaw ? JSON.parse(oRaw) : null);
       const rRaw = localStorage.getItem(`persona_relationship_${selectedPersonaId}`);
       setRelationshipState(rRaw ? JSON.parse(rRaw) : {
         affinityScore: 28,
         stage: 'partner',
         currentMood: 'playful',
         totalInteractions: 6,
-        unlockedPerks: ['Standard chat banter', 'Playful teasing', 'Duo photoshoots', 'Expanded wardrobe perks']
+        unlockedPerks: ['Standard chat banter', 'Playful teasing', 'Duo photoshoots']
       });
     } catch {}
   }, [selectedPersonaId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1851,7 +1753,6 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           userMessage: effectiveText,
           voiceLlmModel,
           attachedImage: sentAttachment?.type === 'image' ? sentAttachment.base64 : undefined,
-          equippedOutfit: activeOutfit,
           relationshipState,
         }),
       });
@@ -1933,8 +1834,6 @@ export default function AssistantView({ personas, persona: propActivePersona, on
             else if (lastUploadedReference) extraImages.push(lastUploadedReference);
             if (isDuoShoot && creator?.primaryPhoto && !extraImages.includes(creator.primaryPhoto)) {
               extraImages.push(creator.primaryPhoto);
-            } else if (!isDuoShoot && !isExplicitNude && activeOutfit?.thumbnail && !extraImages.includes(activeOutfit.thumbnail)) {
-              extraImages.push(activeOutfit.thumbnail);
             }
 
             const result = await generateImage({
@@ -1950,7 +1849,6 @@ export default function AssistantView({ personas, persona: propActivePersona, on
               isDuoShoot,
               isCreatorSolo: isCreatorSoloShoot,
               creatorProfile: isDuoShoot || isCreatorSoloShoot ? creator : undefined,
-              equippedOutfitDescription: isExplicitNude ? undefined : activeOutfit?.promptDescription,
             } as any);
             const imgUrl = Array.isArray(result) ? result[0].imageUrl : result.imageUrl;
             replaceMessage(mediaLoadingId, { type: 'image', content: imgUrl, prompt: rawVisualPrompt });
@@ -2152,21 +2050,6 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                 personaName={activePersona.name} 
                 userName={getStoredUserName()} 
               />
-
-              {/* Wardrobe Closet Studio Button */}
-              <button
-                onClick={() => setIsWardrobeOpen(true)}
-                title="Open Persona Wardrobe & Outfit Closet"
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#24252b] hover:bg-[#2b2c33] border border-[#E7C477]/30 hover:border-[#E7C477]/60 text-xs font-semibold text-[#F2D58D] transition-all cursor-pointer shadow-sm"
-              >
-                <Shirt size={13} className="text-[#E7C477]" />
-                <span className="hidden sm:inline">
-                  {activeOutfit ? activeOutfit.name.split(' ')[0] : 'Wardrobe'}
-                </span>
-                {activeOutfit && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                )}
-              </button>
 
               {/* View Mode Toggle */}
               <div className="flex bg-[#141518] border border-white/[0.08] rounded-xl p-1 text-xs">
@@ -3120,18 +3003,6 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Wardrobe & Outfit Studio Modal */}
-      <WardrobeModal
-        isOpen={isWardrobeOpen}
-        onClose={() => setIsWardrobeOpen(false)}
-        persona={activePersona}
-        wardrobe={wardrobe}
-        activeOutfitId={activeOutfit?.id}
-        onEquipOutfit={handleEquipOutfit}
-        onUpdateWardrobe={handleUpdateWardrobe}
-        onGeneratePhotoshoot={handleGenerateOutfitPhotoshoot}
-      />
 
       {/* Persona Reference Photo Gallery & Primary Selector Modal */}
       <PersonaReferenceModal

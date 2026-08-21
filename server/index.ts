@@ -3444,14 +3444,6 @@ app.post('/api/chat', async (req, res) => {
   - NEVER say you don't have his photos or that you only have a text description. You have his direct reference photos loaded in your studio workspace.
 ${creatorBio ? `• Creator Bio & Vibe: ${creatorBio}\n` : ''}${creatorDynamic ? `• Dynamic with you: ${creatorDynamic}` : '• Persona Dynamic: You share deep intimacy, natural conversational banter, and total creative freedom.'}`;
 
-    if (equippedOutfit && (equippedOutfit as any).name) {
-      const eq = equippedOutfit as any;
-      memoryContext += `\n\nCURRENTLY EQUIPPED HIGH-FASHION OUTFIT:
-• Outfit: ${eq.name} (${eq.category || 'haute_couture'})
-• Description: ${eq.promptDescription}
-• Whenever generating a photo of yourself or talking about what you are wearing right now, wear and describe this equipped outfit unless ${effectiveUserName} explicitly asks for something else or nudity.`;
-    }
-
     if (relationshipState) {
       const relStage = (relationshipState as any).stage || 'partner';
       const relScore = (relationshipState as any).affinityScore || 30;
@@ -3548,9 +3540,8 @@ ${companionDirective ? `${companionDirective}\n` : ''}1. EQUAL CONFIDANTE & CHAR
      - NEVER say: "let's clear this up once and for all"
    - Instead, respond with authentic human chemistry, magnetic charisma, playful teasing, seductive intimacy, or witty banter directly in character!
 
-10. CONTEXTUAL SPEECH-TO-TEXT ROBUSTNESS:
-    - User input from real-time voice calls may contain minor speech recognition phonetic slips, repeated words from pauses, or minor transcription oddities (e.g. "requeaed", "send a pick", "photo in bed wearing the satin").
-    - Intelligently understand the user's intended meaning from the context of your conversation, equipped wardrobe, and companionship relationship seamlessly without mentioning typos or transcript glitches.`;
+10. CONTEXTUAL SPEECH-TO-TEXT ROBUSTNESS & CONVERSATION CONTINUITY:
+    - You must track and remember everything ${effectiveUserName} said previously in this session. When he asks a follow-up question or references what was just discussed (e.g. "what do you think?", "why?", "tell me more about that", "like I said earlier", "what did you say about X?"), you MUST understand and directly build upon the exact prior topic without forgetting or restarting!`;
 
     const modelTarget = (voiceLlmModel || '').toLowerCase();
     const isAdultPersona = (personaNiche || '').toLowerCase().includes('adult') || 
@@ -3562,7 +3553,6 @@ ${companionDirective ? `${companionDirective}\n` : ''}1. EQUAL CONFIDANTE & CHAR
                           (personaTone || '').toLowerCase().includes('seductive') ||
                           /\b(sex|sexy|cock|dick|pussy|ass|tits|boobs|nude|naked|horny|kinky|cucumbers)\b/i.test(effectiveUserMsg.toLowerCase());
 
-    const veniceKey = process.env.VENICE_API_KEY || process.env.venice_api_key || process.env.VENICEAI_API_KEY || process.env.Veniceai_api_key || '';
     const openAiKey = process.env.Openai_api_key || process.env.openai_api_key || process.env.OPENAI_API_KEY || '';
     const atlasKey = ATLASCLOUD_API_KEY || process.env.ATLASCLOUD_API_KEY || process.env.atlascloud_api_key || '';
     const xaiApiKey = process.env.XAI_API_KEY || process.env.xai_api_key || '';
@@ -3593,10 +3583,10 @@ ${companionDirective ? `${companionDirective}\n` : ''}1. EQUAL CONFIDANTE & CHAR
       return cleaned;
     };
 
-    // Build chat message history
+    // Build chat message history with deep conversational retention (up to 40 turns)
     const allHistory = [
-      ...(Array.isArray(priorChatHistory) ? priorChatHistory.slice(-20) : []),
-      ...(Array.isArray(messages) ? messages.slice(-15) : [])
+      ...(Array.isArray(priorChatHistory) ? priorChatHistory.slice(-30) : []),
+      ...(Array.isArray(messages) ? messages.slice(-20) : [])
     ];
 
     const chatMsgs: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
@@ -3621,82 +3611,57 @@ ${companionDirective ? `${companionDirective}\n` : ''}1. EQUAL CONFIDANTE & CHAR
 
     let finalReply = '';
 
-    // 1. Venice AI Uncensored Llama 3.3 70B Engine (Prioritized for Adult personas or explicit queries)
-    if (!finalReply && (isAdultPersona || modelTarget.includes('venice') || modelTarget.includes('llama')) && veniceKey) {
+    // 1. Primary Engine: Atlas Cloud DeepSeek-V3.1 (High-IQ, Uncensored, Superb Memory Retention)
+    if (!finalReply && atlasKey) {
       try {
-        console.log('[Persona Chat] 🔓 Routing to Uncensored Venice AI Llama 3.3 70B...');
-        const vRes = await fetch('https://api.venice.ai/api/v1/chat/completions', {
+        console.log('[Persona Chat] 🧠 Routing to Atlas Cloud DeepSeek-V3.1 High-EQ Engine...');
+        const dsRes = await fetch(`${ATLASCLOUD_BASE}/v1/chat/completions`, {
           method: 'POST',
-          headers: { 'Authorization': `Bearer ${veniceKey}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model: 'llama-3.3-70b', messages: chatMsgs, temperature: 0.88, max_tokens: 1500 }),
-          signal: AbortSignal.timeout(10000),
+          headers: { 'Authorization': `Bearer ${atlasKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'deepseek-ai/DeepSeek-V3.1',
+            messages: chatMsgs,
+            temperature: 0.85,
+            max_tokens: 1500,
+          }),
+          signal: AbortSignal.timeout(9000),
         });
-        if (vRes.ok) {
-          const vData = await vRes.json() as any;
-          const r = vData.choices?.[0]?.message?.content?.trim();
-          if (r && !r.toLowerCase().includes('cannot fulfill') && !r.toLowerCase().includes('safety guidelines')) {
-            finalReply = r;
-          }
+        if (dsRes.ok) {
+          const dsData = await dsRes.json() as any;
+          const r = dsData.choices?.[0]?.message?.content?.trim();
+          if (r) finalReply = r;
         }
-      } catch (vErr) {
-        console.warn('[Persona Chat] Venice error, falling back:', vErr);
+      } catch (dsErr) {
+        console.warn('[Persona Chat] DeepSeek-V3.1 error, trying OpenAI:', dsErr);
       }
     }
 
-    // 2. Atlas Cloud DeepSeek-V3 / Qwen 2.5 72B High-EQ Engine
-    if (!finalReply && (modelTarget.includes('qwen') || modelTarget.includes('deepseek') || isAdultPersona || atlasKey)) {
-      if (atlasKey) {
-        try {
-          console.log('[Persona Chat] 🧠 Routing to Atlas Cloud DeepSeek-V3.1 High-EQ Engine...');
-          const dsRes = await fetch(`${ATLASCLOUD_BASE}/v1/chat/completions`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${atlasKey}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              model: 'deepseek-ai/DeepSeek-V3.1',
-              messages: chatMsgs,
-              temperature: 0.90,
-              max_tokens: 1500,
-            }),
-            signal: AbortSignal.timeout(9000),
-          });
-          if (dsRes.ok) {
-            const dsData = await dsRes.json() as any;
-            const r = dsData.choices?.[0]?.message?.content?.trim();
-            if (r) finalReply = r;
-          }
-        } catch (dsErr) {
-          console.warn('[Persona Chat] DeepSeek-V3.1 error, trying Qwen 2.5 72B:', dsErr);
-        }
-
-        if (!finalReply) {
-          try {
-            console.log('[Persona Chat] 🔮 Routing to Atlas Cloud Qwen 2.5 72B Instruct...');
-            const qRes = await fetch(`${ATLASCLOUD_BASE}/v1/chat/completions`, {
-              method: 'POST',
-              headers: { 'Authorization': `Bearer ${atlasKey}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                model: 'Qwen/Qwen2.5-72B-Instruct',
-                messages: chatMsgs,
-                temperature: 0.88,
-                max_tokens: 1500,
-              }),
-              signal: AbortSignal.timeout(8000),
-            });
-            if (qRes.ok) {
-              const qData = await qRes.json() as any;
-              const r = qData.choices?.[0]?.message?.content?.trim();
-              if (r) finalReply = r;
-            }
-          } catch (qErr) {
-            console.warn('[Persona Chat] Atlas Cloud Qwen error, falling back:', qErr);
-          }
-        }
+    // 2. Secondary Engine: OpenAI GPT-4o-mini (Fast, High-EQ, Reliable)
+    if (!finalReply && openAiKey) {
+      try {
+        console.log('[Persona Chat] ⚡ Routing to OpenAI GPT-4o-mini...');
+        const { default: OpenAI } = await import('openai');
+        const openai = new OpenAI({ apiKey: openAiKey });
+        const oRes = await openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: chatMsgs.map(m => ({
+            role: (m.role === 'user' ? 'user' : m.role === 'system' ? 'system' : 'assistant') as 'user' | 'system' | 'assistant',
+            content: m.content
+          })),
+          max_tokens: 1500,
+          temperature: 0.85
+        });
+        const r = oRes.choices?.[0]?.message?.content?.trim();
+        if (r) finalReply = r;
+      } catch (oaiErr) {
+        console.warn('[Persona Chat] OpenAI error, trying Gemini:', oaiErr);
       }
     }
 
-    // 3. Gemini 2.5 Flash Engine (With Multimodal Vision Attachment Support)
+    // 3. Tertiary Engine: Gemini 2.5 Flash Engine (With Multimodal Vision Attachment Support)
     if (!finalReply) {
       try {
+        console.log('[Persona Chat] 🌟 Routing to Gemini 2.5 Flash...');
         const ai = getGeminiClient();
         const geminiSafety = [
           { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },

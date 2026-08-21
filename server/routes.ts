@@ -2040,226 +2040,109 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
       text = cleanSpokenDialogue(String(req.body.directTTS));
     }
 
-    const VENICE_KEY = process.env.Veniceai_api_key || process.env.veniceai_api_key || process.env.VENICEAI_API_KEY || process.env.VENICE_API_KEY || '';
     const ATLAS_KEY = process.env.ATLASCLOUD_API_KEY || process.env.atlascloud_api_key || process.env.Atlascloud_api_key || '';
 
-    // If Adult context or explicit model selected, prioritize Venice AI / AtlasCloud for uncensored responses
-    if (!text && (isAdultContext || voiceLlmModel === 'venice' || voiceLlmModel?.includes('venice')) && VENICE_KEY) {
+    // 1. Primary Engine: Atlas Cloud DeepSeek-V3.1 (High-IQ, Uncensored, Deep Context Retention)
+    if (!text && ATLAS_KEY) {
       try {
-        console.log('[Venice AI Engine] Generating uncensored conversation response via Venice Llama 3.3 70B...');
-        const vMessages = [
+        console.log('[Voice Chat LLM] 🧠 Generating response via Atlas Cloud DeepSeek-V3.1...');
+        const dsMessages = [
           { role: 'system', content: voiceSystemPrompt },
           ...rawHistory.map((m: any) => ({
-            role: m.role === 'user' ? 'user' : 'assistant',
-            content: (m.content || m.parts?.[0]?.text || '').trim() || 'Hello'
+            role: (m.role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
+            content: String(m.content || m.parts?.[0]?.text || '').trim() || 'Hello'
           }))
         ];
-        const vRes = await fetch('https://api.venice.ai/api/v1/chat/completions', {
+        const dsRes = await fetch('https://api.atlascloud.ai/v1/chat/completions', {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${VENICE_KEY}`,
+            'Authorization': `Bearer ${ATLAS_KEY}`,
             'Content-Type': 'application/json'
           },
-          signal: AbortSignal.timeout(10000),
+          signal: AbortSignal.timeout(8000),
           body: JSON.stringify({
-            model: 'llama-3.3-70b',
-            messages: vMessages,
+            model: 'deepseek-ai/DeepSeek-V3.1',
+            messages: dsMessages,
             temperature: 0.85,
             max_tokens: 500
           })
         });
-        if (vRes.ok) {
-          const vData = await vRes.json();
-          const rawReply = vData.choices?.[0]?.message?.content || '';
-          text = cleanSpokenDialogue(rawReply);
-        }
-      } catch (vErr) {
-        console.warn('[Venice AI Voice Chat Exception]:', vErr);
-      }
-    }
-
-    // Support DeepSeek R1 Uncensored Reasoner
-    if (!text && (voiceLlmModel === 'deepseek' || voiceLlmModel?.includes('deepseek')) && (ATLAS_KEY || VENICE_KEY)) {
-      try {
-        console.log('[DeepSeek R1 Engine] Generating response via DeepSeek R1 Reasoner...');
-        const endpoint = ATLAS_KEY ? 'https://api.atlascloud.ai/v1/chat/completions' : 'https://api.venice.ai/api/v1/chat/completions';
-        const apiKey = ATLAS_KEY || VENICE_KEY;
-        const targetModel = ATLAS_KEY ? 'deepseek-ai/DeepSeek-R1' : 'deepseek-r1';
-
-        const dsRes = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Content-Type': 'application/json'
-          },
-          signal: AbortSignal.timeout(15000),
-          body: JSON.stringify({
-            model: targetModel,
-            messages: [
-              { role: 'system', content: voiceSystemPrompt },
-              ...rawHistory.map((m: any) => ({
-                role: m.role === 'user' ? 'user' : 'assistant',
-                content: (m.content || m.parts?.[0]?.text || '').trim() || 'Hello'
-              }))
-            ],
-            temperature: 0.7,
-            max_tokens: 600
-          })
-        });
-
         if (dsRes.ok) {
           const dsData = await dsRes.json();
           const rawReply = dsData.choices?.[0]?.message?.content || '';
           text = cleanSpokenDialogue(rawReply);
+          if (text) {
+            console.log('[Voice Chat LLM] DeepSeek-V3.1 reply generated successfully:', text.slice(0, 80) + '...');
+          }
         }
       } catch (dsErr) {
-        console.warn('[DeepSeek R1 Exception, fallback to Gemini]:', dsErr);
+        console.warn('[Voice Chat LLM] DeepSeek-V3.1 error, falling back:', dsErr);
       }
     }
 
-    // Support Qwen 2.5 72B Uncensored
-    if (!text && (voiceLlmModel === 'qwen' || voiceLlmModel?.includes('qwen')) && (ATLAS_KEY || VENICE_KEY)) {
-      try {
-        console.log('[Qwen 2.5 72B Engine] Generating response via Qwen 2.5 72B Instruct...');
-        const endpoint = ATLAS_KEY ? 'https://api.atlascloud.ai/v1/chat/completions' : 'https://api.venice.ai/api/v1/chat/completions';
-        const apiKey = ATLAS_KEY || VENICE_KEY;
-        const targetModel = ATLAS_KEY ? 'Qwen/Qwen2.5-72B-Instruct' : 'qwen-2.5-72b';
-
-        const qRes = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Content-Type': 'application/json'
-          },
-          signal: AbortSignal.timeout(15000),
-          body: JSON.stringify({
-            model: targetModel,
-            messages: [
-              { role: 'system', content: voiceSystemPrompt },
-              ...rawHistory.map((m: any) => ({
-                role: m.role === 'user' ? 'user' : 'assistant',
-                content: (m.content || m.parts?.[0]?.text || '').trim() || 'Hello'
-              }))
-            ],
-            temperature: 0.8,
-            max_tokens: 500
-          })
-        });
-
-        if (qRes.ok) {
-          const qData = await qRes.json();
-          const rawReply = qData.choices?.[0]?.message?.content || '';
-          text = cleanSpokenDialogue(rawReply);
-        }
-      } catch (qErr) {
-        console.warn('[Qwen 2.5 72B Exception, fallback to Gemini]:', qErr);
-      }
-    }
-
-    // Gemini 2.5 Flash Generation
-    const geminiSafety = [
-      { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-      { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-      { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
-      { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' },
-    ] as any;
-
-    if (isActionRequest && !text) {
-      const mediaTypeDesc = isExplicitImageCommand ? 'photo/look' : 'video clip';
-      const actionInstruction = `${voiceSystemPrompt}
-
-ACTION REQUEST: The user just requested that you take, generate, or share a ${mediaTypeDesc} for them: "${lastUserMsg}".
-Respond with top-tier social intelligence, charm, and personality in 1-2 vivid spoken sentences directly commenting on their specific request or outfit, playfully telling them you're taking/creating it right now and sending it to their screen! (Strictly NO generic canned phrases like 'Sure thing, I am creating a photo for you').`;
-      try {
-        const result = await genAI.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: formattedContents,
-          config: {
-            systemInstruction: actionInstruction,
-            maxOutputTokens: 1500,
-            temperature: 0.90,
-            safetySettings: geminiSafety
+    // 2. Secondary Engine: OpenAI GPT-4o-mini (Reliable, fast, high intelligence)
+    if (!text) {
+      const openAiKey = process.env.Openai_api_key || process.env.openai_api_key || process.env.OPENAI_API_KEY || '';
+      if (openAiKey) {
+        try {
+          console.log('[Voice Chat LLM] ⚡ Generating response via OpenAI GPT-4o-mini...');
+          const oMessages = [
+            { role: 'system', content: voiceSystemPrompt },
+            ...rawHistory.map((m: any) => ({
+              role: (m.role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
+              content: String(m.content || m.parts?.[0]?.text || '').trim() || 'Hello'
+            }))
+          ];
+          const oRes = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${openAiKey}`,
+              'Content-Type': 'application/json'
+            },
+            signal: AbortSignal.timeout(7000),
+            body: JSON.stringify({
+              model: 'gpt-4o-mini',
+              messages: oMessages,
+              temperature: 0.85,
+              max_tokens: 450
+            })
+          });
+          if (oRes.ok) {
+            const oData = await oRes.json();
+            const rawReply = oData.choices?.[0]?.message?.content || '';
+            text = cleanSpokenDialogue(rawReply);
           }
-        });
-        text = cleanSpokenDialogue(result.text || '');
-      } catch (err) {
-        console.warn('[Voice Chat Action Parse Error]:', err);
+        } catch (oErr) {
+          console.warn('[Voice Chat LLM] OpenAI error, falling back:', oErr);
+        }
       }
     }
 
+    // 3. Tertiary Engine: Gemini 2.5 Flash
     if (!text) {
       try {
+        console.log('[Voice Chat LLM] 🌟 Generating response via Gemini 2.5 Flash...');
+        const geminiSafety = [
+          { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' },
+        ] as any;
+
         const result = await genAI.models.generateContent({
           model: 'gemini-2.5-flash',
           contents: formattedContents,
           config: {
             systemInstruction: voiceSystemPrompt,
-            maxOutputTokens: 1500,
+            maxOutputTokens: 1000,
             temperature: 0.85,
             safetySettings: geminiSafety
           }
         });
         text = cleanSpokenDialogue(result.text || '');
       } catch (gemErr) {
-        console.warn('[Voice Chat Gemini Exception, attempting fallback]:', gemErr);
-      }
-    }
-
-    // Fallback 2: AtlasCloud or Venice AI
-    if (!text && (ATLAS_KEY || VENICE_KEY)) {
-      try {
-        const endpoint = ATLAS_KEY ? 'https://api.atlascloud.ai/v1/chat/completions' : 'https://api.venice.ai/api/v1/chat/completions';
-        const apiKey = ATLAS_KEY || VENICE_KEY;
-        const targetModel = ATLAS_KEY ? 'meta-llama/Llama-3.3-70B-Instruct' : 'llama-3.3-70b';
-        const fRes = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-          signal: AbortSignal.timeout(8000),
-          body: JSON.stringify({
-            model: targetModel,
-            messages: [
-              { role: 'system', content: voiceSystemPrompt },
-              ...rawHistory.map((m: any) => ({
-                role: m.role === 'user' ? 'user' : 'assistant',
-                content: (m.content || m.parts?.[0]?.text || '').trim() || 'Hello'
-              }))
-            ],
-            temperature: 0.85,
-            max_tokens: 500
-          })
-        });
-        if (fRes.ok) {
-          const fData = await fRes.json();
-          text = cleanSpokenDialogue(fData.choices?.[0]?.message?.content || '');
-        }
-      } catch (fErr) {
-        console.warn('[Voice Chat Atlas/Venice Fallback Exception]:', fErr);
-      }
-    }
-
-    // Fallback 3: OpenAI
-    if (!text) {
-      const openAiKey = process.env.Openai_api_key || process.env.openai_api_key || process.env.OPENAI_API_KEY || '';
-      if (openAiKey) {
-        try {
-          const { default: OpenAI } = await import('openai');
-          const openai = new OpenAI({ apiKey: openAiKey });
-          const oRes = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
-            messages: [
-              { role: 'system' as const, content: voiceSystemPrompt },
-              ...rawHistory.map((m: any) => ({
-                role: (m.role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
-                content: String(m.content || m.parts?.[0]?.text || '').trim() || 'Hello'
-              }))
-            ],
-            max_tokens: 450
-          });
-          text = cleanSpokenDialogue(oRes.choices?.[0]?.message?.content || '');
-        } catch (oErr) {
-          console.warn('[Voice Chat OpenAI Fallback Exception]:', oErr);
-        }
+        console.warn('[Voice Chat Gemini Exception]:', gemErr);
       }
     }
 
