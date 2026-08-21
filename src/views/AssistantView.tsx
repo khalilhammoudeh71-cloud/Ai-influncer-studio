@@ -10,6 +10,7 @@ import ImageLightboxModal from '../components/ImageLightboxModal';
 import PersonaReferenceModal from '../components/PersonaReferenceModal';
 import RelationshipProgressBadge from '../components/RelationshipProgressBadge';
 import VoiceNoteBubble from '../components/VoiceNoteBubble';
+import PersonaAvatar from '../components/PersonaAvatar';
 import { getCreatorProfile } from '../utils/creatorProfile';
 
 // ── Typewriter hook ──────────────────────────────────────
@@ -2001,7 +2002,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                 title={`Click to view all ${activePersona.name}'s reference photos and change primary image`}
               >
                 {activePersona.referenceImage || activePersona.avatar ? (
-                  <img 
+                  <PersonaAvatar
                     src={activePersona.referenceImage || activePersona.avatar} 
                     alt={activePersona.name} 
                     className="w-10 h-10 rounded-xl object-cover ring-1 ring-white/20 shadow-md transition-transform duration-300 group-hover:scale-105" 
@@ -3148,7 +3149,7 @@ function MessageBubble({ msg, persona, isLatest, onSaveToVault, isSaving, isSave
     >
       <div className="flex-shrink-0 w-7 h-7 rounded-lg overflow-hidden bg-white/[0.06] border border-white/10 flex items-center justify-center shadow-sm mt-0.5">
         {persona.referenceImage || persona.avatar ? (
-          <img src={persona.referenceImage || persona.avatar} alt="" className="w-full h-full object-cover" />
+          <PersonaAvatar src={persona.referenceImage || persona.avatar} alt={persona.name} className="w-full h-full object-cover" />
         ) : (
           <Bot size={13} className="text-zinc-400" />
         )}

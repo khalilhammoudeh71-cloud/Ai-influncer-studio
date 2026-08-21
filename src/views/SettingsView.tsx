@@ -316,6 +316,9 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
                         if (primaryPhoto.startsWith('/uploads/') && !target.dataset.retried) {
                           target.dataset.retried = 'true';
                           target.src = '/api' + primaryPhoto;
+                        } else if (!target.dataset.fallback) {
+                          target.dataset.fallback = 'true';
+                          target.src = '/logo.png';
                         }
                       }}
                     />
@@ -513,6 +516,9 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
                           if (photoUrl.startsWith('/uploads/') && !target.dataset.retried) {
                             target.dataset.retried = 'true';
                             target.src = '/api' + photoUrl;
+                          } else if (!target.dataset.fallback) {
+                            target.dataset.fallback = 'true';
+                            target.src = '/logo.png';
                           }
                         }}
                       />

@@ -284,7 +284,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
   };
 
   return (
-    <div className="p-6 max-w-7xl mx-auto min-h-full select-none">
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto min-h-full select-none">
       <header className="mb-6 flex flex-col md:flex-row justify-between items-start md:items-center border-b border-[#E7C477]/10 pb-4">
         <div>
           <h1 className="text-3xl md:text-4xl font-serif text-[#F5F1E8] tracking-tight flex items-center gap-3">
@@ -318,11 +318,11 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
       </header>
 
       {/* Segment Switcher */}
-      <div className="flex justify-center mb-8">
-        <div className="relative flex p-1.5 bg-[#18181B] border border-[#E7C477]/20 rounded-2xl backdrop-blur-md shadow-lg shadow-black/40">
+      <div className="flex w-full max-w-full justify-start overflow-x-auto pb-2 mb-6 sm:justify-center sm:mb-8">
+        <div className="relative flex min-w-max p-1.5 bg-[#18181B] border border-[#E7C477]/20 rounded-2xl backdrop-blur-md shadow-lg shadow-black/40">
           <button
             onClick={() => setToolboxSection('all')}
-            className={`relative px-6 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-300 z-10 cursor-pointer ${
+            className={`relative px-4 sm:px-6 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-300 z-10 cursor-pointer ${
               toolboxSection === 'all' ? 'text-[#141416]' : 'text-[#8C909A] hover:text-[#F5F1E8]'
             }`}
           >
@@ -339,7 +339,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
           </button>
           <button
             onClick={() => setToolboxSection('creative')}
-            className={`relative px-6 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-300 z-10 cursor-pointer ${
+            className={`relative px-4 sm:px-6 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-300 z-10 cursor-pointer ${
               toolboxSection === 'creative' ? 'text-[#141416]' : 'text-[#8C909A] hover:text-[#F5F1E8]'
             }`}
           >
@@ -356,7 +356,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
           </button>
           <button
             onClick={() => setToolboxSection('marketing')}
-            className={`relative px-6 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-300 z-10 cursor-pointer ${
+            className={`relative px-4 sm:px-6 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-300 z-10 cursor-pointer ${
               toolboxSection === 'marketing' ? 'text-[#141416]' : 'text-[#8C909A] hover:text-[#F5F1E8]'
             }`}
           >

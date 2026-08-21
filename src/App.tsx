@@ -16,7 +16,8 @@ import {
   Bell,
   Cpu,
   Palette,
-  Check
+  Check,
+  Menu
 } from 'lucide-react';
 import { cn } from './utils/cn';
 import { Persona, RevenueEntry, PlannedPost, Tab, NavEntry } from './types';
@@ -38,6 +39,7 @@ import CommandPalette from './components/CommandPalette';
 import LeftSidebar from './components/LeftSidebar';
 import TrendView from './views/TrendView';
 import CreatePersonaPage from './views/CreatePersonaPage';
+import PersonaAvatar from './components/PersonaAvatar';
 
 
 const EMPTY_PERSONA: Persona = {
@@ -227,8 +229,8 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
     audienceType: "Adult & Fashion",
     contentGoals: "Daily lifestyle posts",
     contentBoundaries: "Uncensored creative freedom",
-    referenceImage: "/uploads/ref_user-1786416458262.png",
-    avatar: "/uploads/ref_user-1786416458262.png",
+    referenceImage: "/assets/personas/rawan-hasan.jpg",
+    avatar: "/assets/personas/rawan-hasan.jpg",
     additionalReferenceImages: [
       "/uploads/ref_user-1786416458262_add_0.jpg",
       "/uploads/ref_user-1786416458262.png",
@@ -310,8 +312,8 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
     audienceType: "Fashion enthusiasts",
     contentGoals: "Editorial shoots",
     contentBoundaries: "High fashion",
-    referenceImage: "/uploads/ref_user-1786417013952.jpg",
-    avatar: "/uploads/ref_user-1786417013952.jpg",
+    referenceImage: "/assets/personas/leen-hasan.jpg",
+    avatar: "/assets/personas/leen-hasan.jpg",
     additionalReferenceImages: [
       "/uploads/ref_user-1786417013952.jpg",
       "/uploads/ref_user-1786417013952_add_0.jpg",
@@ -422,6 +424,7 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
   );
 
   const [isPersonaSwitcherOpen, setIsPersonaSwitcherOpen] = useState(false);
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const personaSwitcherRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -890,6 +893,8 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
         }}
         activePersona={activePersona}
         newAssetsCount={newAssetsCount}
+        mobileOpen={isMobileNavOpen}
+        onMobileClose={() => setIsMobileNavOpen(false)}
       />
 
       {/* Main Content Area */}
@@ -898,10 +903,18 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
 
       {/* ── Top app bar ─────────────────────────────────────────── */}
       <header className="flex-none h-[70px] bg-[#16171a] border-b border-white/[0.08] relative z-[9999] max-w-full">
-        <div className="flex items-center justify-between px-6 h-full max-w-full">
+        <div className="flex items-center justify-between gap-2 px-3 sm:px-4 md:px-6 h-full max-w-full">
           
           {/* Left: Universal Search Field & Back Button */}
-          <div className="flex items-center gap-3.5 flex-1 max-w-lg">
+          <div className="flex items-center gap-2 sm:gap-3.5 flex-1 min-w-0 max-w-lg">
+            <button
+              type="button"
+              aria-label="Open navigation menu"
+              onClick={() => setIsMobileNavOpen(true)}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-[#18181B] text-[#C3BFB8] transition-colors hover:border-[#E7C477]/35 hover:text-[#F2D58D] lg:hidden"
+            >
+              <Menu size={18} />
+            </button>
             <AnimatePresence>
               {(navStack.length > 1 || activeTab !== 'personas') && (
                 <BackButton 
@@ -917,7 +930,7 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
               )}
             </AnimatePresence>
 
-            <div className="relative w-full max-w-md">
+            <div className="relative hidden w-full max-w-md lg:block">
               <div className="absolute inset-y-0 left-3.5 flex items-center pointer-events-none text-[#A1A1AA]">
                 <Search size={15} />
               </div>
@@ -934,10 +947,10 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
           </div>
 
           {/* Right Actions: Notifications, Create Persona Button, Persona Quick-Switcher */}
-          <div className="flex items-center gap-3.5 shrink-0">
+          <div className="flex items-center gap-2 sm:gap-3.5 shrink-0">
 
             {/* Notification Bell */}
-            <button className="relative w-9 h-9 rounded-xl bg-[#0A101C] border border-[#E7C477]/15 flex items-center justify-center text-[#C3BFB8] hover:text-[#F2D58D] hover:border-[#E7C477]/35 transition-all cursor-pointer">
+            <button className="relative hidden sm:flex w-9 h-9 rounded-xl bg-[#0A101C] border border-[#E7C477]/15 items-center justify-center text-[#C3BFB8] hover:text-[#F2D58D] hover:border-[#E7C477]/35 transition-all cursor-pointer">
               <Bell size={16} />
               <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#E7C477] text-[#060A13] text-[9px] font-bold flex items-center justify-center shadow-sm">
                 3
@@ -947,9 +960,9 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
             {/* Single Gold Create Persona CTA Button */}
             <button 
               onClick={() => pushView({ view: 'create-persona' })}
-              className="btn-gold-primary px-5 py-2 text-sm font-bold flex items-center gap-2 cursor-pointer shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all"
+              className="btn-gold-primary px-3 sm:px-5 py-2 text-sm font-bold flex items-center gap-2 cursor-pointer shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all"
             >
-              <PlusCircle size={16} /> Create Persona
+              <PlusCircle size={16} /> <span className="hidden sm:inline">Create Persona</span>
             </button>
 
             {/* Persona Quick-Switcher */}
@@ -965,9 +978,9 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
                 >
                   <div className={`w-6 h-6 rounded-lg overflow-hidden border border-white/10 shrink-0 ${activePersona.id !== 'empty' ? 'avatar-ring-active' : ''}`}>
                     {activePersona.id !== 'empty' && (activePersona.avatar || activePersona.referenceImage) ? (
-                      <img
+                      <PersonaAvatar
                         src={activePersona.avatar || activePersona.referenceImage}
-                        alt=""
+                        alt={activePersona.name}
                         className="w-full h-full object-cover"
                       />
                     ) : (
@@ -1019,9 +1032,9 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
                         >
                           <div className="w-8 h-8 rounded-lg overflow-hidden border border-white/10 shrink-0">
                             {p.avatar || p.referenceImage ? (
-                              <img
+                              <PersonaAvatar
                                 src={p.avatar || p.referenceImage}
-                                alt=""
+                                alt={p.name}
                                 className="w-full h-full object-cover"
                               />
                             ) : (

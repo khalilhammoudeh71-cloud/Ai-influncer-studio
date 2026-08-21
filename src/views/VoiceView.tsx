@@ -775,7 +775,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
   }
 
   const EngineToggle = () => (
-    <div className="relative">
+    <div className="relative w-full min-w-0 sm:w-auto">
       <select
         value={voiceEngine}
         onChange={(e) => {
@@ -786,7 +786,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
           }
           setVoiceEngine(val);
         }}
-        className="bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-xs font-bold text-[var(--text-primary)] hover:border-violet-500/30 focus:border-violet-500/50 outline-none transition-all cursor-pointer appearance-none pr-8 min-w-[160px]"
+        className="w-full max-w-full min-w-0 bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-xs font-bold text-[var(--text-primary)] hover:border-violet-500/30 focus:border-violet-500/50 outline-none transition-all cursor-pointer appearance-none pr-8 sm:w-auto sm:min-w-[160px]"
       >
         <option value="elevenlabs" disabled={!hasElevenLabsKey} className="bg-[#0f0f12] text-white">
           🎙️ ElevenLabs v3 / v2 (Multilingual & English Turbo) {!hasElevenLabsKey ? '(Unavailable)' : ''}
@@ -967,7 +967,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
   );
 
   return (
-    <div className="h-full overflow-y-auto pr-2 custom-scrollbar pb-20 max-w-7xl mx-auto p-4 md:p-8 space-y-8 select-none">
+    <div className="h-full w-full min-w-0 overflow-y-auto custom-scrollbar pb-20 max-w-7xl mx-auto p-3 sm:p-4 md:p-8 space-y-8 select-none">
       {/* Clean Header Bar */}
       <header className="mb-6 pb-2 border-b border-[#E7C477]/10">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -980,9 +980,9 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
               Create, clone, and customize voices that sound uniquely you.
             </p>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex w-full min-w-0 flex-col items-stretch gap-3 sm:w-auto sm:flex-row sm:items-center sm:gap-4">
             <EngineToggle />
-            <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center gap-3 sm:justify-start">
               {persona.id !== 'empty' && persona.referenceImage ? (
                 <img 
                   src={persona.referenceImage} 

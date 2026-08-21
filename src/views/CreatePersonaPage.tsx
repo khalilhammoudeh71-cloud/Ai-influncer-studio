@@ -1185,13 +1185,13 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   const currentWizardStep = WIZARD_STEPS[wizardStepIdx];
 
   return (
-    <div className="relative min-h-screen bg-[#050914] text-[#F5F1E8] p-6 lg:p-10 pb-20 overflow-y-auto select-none">
+    <div className="relative min-h-screen bg-[#050914] text-[#F5F1E8] p-4 sm:p-6 lg:p-10 pb-20 overflow-y-auto select-none">
       <div className="relative z-10 max-w-[1300px] mx-auto space-y-8">
         
         {/* ── HEADER BAR ── */}
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 luxury-card p-6 md:p-8">
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 sm:gap-6 luxury-card p-4 sm:p-6 md:p-8">
           <div>
-            <h1 className="text-3xl md:text-4xl font-serif text-[#F5F1E8] tracking-tight flex items-center gap-3">
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-serif text-[#F5F1E8] tracking-tight flex items-center gap-3">
               {editingPersona ? `Edit ${editingPersona.name}` : 'Persona Studio'}
               <span className="text-[#E7C477] text-xl font-normal">✨</span>
             </h1>
@@ -1200,8 +1200,8 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-[#70C98B] flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#70C98B]/10 border border-[#70C98B]/20">
+          <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:items-center sm:gap-3">
+            <span className="text-xs text-[#70C98B] flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#70C98B]/10 border border-[#70C98B]/20">
               <Check size={13} />
               All changes saved
             </span>
@@ -1209,7 +1209,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
             <button
               onClick={handleGeneratePersonaConcept}
               disabled={isGeneratingConcept}
-              className="btn-gold-secondary px-4 py-2.5 text-xs font-semibold flex items-center gap-2 cursor-pointer"
+              className="btn-gold-secondary px-3 sm:px-4 py-2.5 text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer"
             >
               {isGeneratingConcept ? <Loader2 size={15} className="animate-spin text-[#F2D58D]" /> : <Wand2 size={15} className="text-[#D9BA72]" />}
               <span>Auto-Fill Idea</span>
@@ -1218,7 +1218,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
             <button
               onClick={handleSave}
               disabled={isSaving}
-              className="btn-gold-primary px-6 py-2.5 text-xs font-semibold flex items-center gap-2 cursor-pointer shadow-lg"
+              className="btn-gold-primary col-span-2 sm:col-span-1 px-4 sm:px-6 py-2.5 text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer shadow-lg"
             >
               {isSaving ? <Loader2 size={15} className="animate-spin text-[#161108]" /> : <Check size={15} />}
               <span>{editingPersona ? 'Save Changes' : 'Publish Persona'}</span>
@@ -1282,7 +1282,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
         </div>
 
         {/* ── STEP 1: PERSONA PHOTOS ── */}
-        <div className="luxury-card p-7 space-y-6">
+        <div className="luxury-card p-4 sm:p-7 space-y-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
             <div>
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
@@ -1294,7 +1294,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
               </p>
             </div>
 
-            <div className="flex items-center gap-1 bg-[#18181B] p-1 rounded-xl border border-white/10 flex-nowrap shrink-0 overflow-x-auto">
+            <div className="flex w-full sm:w-auto max-w-full min-w-0 items-center gap-1 bg-[#18181B] p-1 rounded-xl border border-white/10 flex-nowrap overflow-x-auto">
               <button
                 type="button"
                 onClick={() => setImageTab('upload')}
@@ -1556,7 +1556,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
         </div>
 
         {/* ── STEP 2: PERSONA VOICE ── */}
-        <div className="luxury-card p-7 space-y-6">
+        <div className="luxury-card p-4 sm:p-7 space-y-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
             <div>
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
@@ -1568,7 +1568,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
               </p>
             </div>
 
-            <div className="flex items-center gap-1.5 bg-[#18181B] p-1 rounded-xl border border-white/10">
+            <div className="flex w-full sm:w-auto max-w-full min-w-0 items-center gap-1.5 bg-[#18181B] p-1 rounded-xl border border-white/10 overflow-x-auto">
               <button
                 type="button"
                 onClick={() => setVoiceTab('preset')}
