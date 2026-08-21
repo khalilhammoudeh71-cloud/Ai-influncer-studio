@@ -1,0 +1,16 @@
+{
+  "name": "Dr.H",
+  "role": "Creator & Creative Director",
+  "appearance": "Charismatic male creator with sharp modern styling, short dark hair, and athletic build",
+  "bio": "Visionary digital creator, studio director, and AI influencer architect.",
+  "gender": "Male",
+  "photos": [
+    "/uploads/creator_0_1787098072763_pc9r9.jpg",
+    "/uploads/creator_1_1787098072764_ti4p7e.jpg",
+    "/uploads/creator_2_1787098072764_vbruwr.jpg",
+    "/uploads/creator_3_1787098072765_l4ne6p.jpg",
+    "/uploads/creator_4_1787098072765_9gu1e.jpg"
+  ],
+  "primaryPhoto": "/uploads/creator_0_1787098072763_pc9r9.jpg",
+  "customDynamic": "Close creative partners with natural banter, intellectual depth, and mutual inspiration"
+}

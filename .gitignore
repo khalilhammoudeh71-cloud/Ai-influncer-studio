@@ -4,6 +4,11 @@ node_modules
 dist
 dist-api
 scratch_*.ts
+scratch/
+local_models/
+server/temp/
+server/public/uploads/
+public/uploads/
 rewrite*.py
 rewrite.py
 test_db.ts
