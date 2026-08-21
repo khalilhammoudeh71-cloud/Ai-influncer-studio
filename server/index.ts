@@ -1291,50 +1291,43 @@ async function enhanceVisualPromptWithLLM(params: {
 }): Promise<string> {
   const { rawPrompt, personaName, personaNiche, creatorName, creatorAppearance, isDuo, isCreatorSolo, hasPersonaRef, hasCreatorRef, hasOutfitRef, equippedOutfitDescription } = params;
   const isExplicitNude = /\b(naked|nude|topless|unclothed|bare|boobs|tits|breasts|nipples|exposed|sensual|erotic|no clothes|without clothes|undressed|pussy|ass)\b/i.test(rawPrompt);
+  const isRefRecreation = /\b(profile|profile image|profile pic|profile photo|avatar|reference|reference photo|reference image|same as|similar to|recreate|like the picture|like her picture|like her photo)\b/i.test(rawPrompt);
   const effectiveOutfit = isExplicitNude ? undefined : equippedOutfitDescription;
   const effectiveHasOutfitRef = isExplicitNude ? false : hasOutfitRef;
-
-  // Direct uncensored builder for explicit topless / nude requests to prevent LLM safety filter sanitization
-  if (isExplicitNude && !isDuo) {
-    console.log('[Prompt Director] 🔞 Generating direct uncensored topless prompt for:', personaName);
-    return `A medium 2/3rds upper body vertical portrait of ${personaName} facing forward directly towards the camera, completely TOPLESS and UNCLOTHED with bare chest, showing her natural bare breasts, detailed nipples, feminine collarbone, glowing radiant skin texture, looking straight into the lens with a gentle seductive smile and direct eye contact, 9:16 vertical ratio, shot in a luxury modern master bedroom suite with soft warm ambient lighting, 85mm portrait photography, photorealistic 8k uhd masterwork. Strictly modify reference image 1: Remove all shirts and clothing completely, rendering her upper body fully bare and topless while keeping her exact facial features, eyes, and hair identical to image 1.`;
-  }
   
   const systemInstruction = `You are a world-class visual prompt director specialized in ByteDance Seedream 5.0 Pro Edit and Midjourney photorealism.
-Your task is to convert user requests into an extensive, highly descriptive, photorealistic photographic prompt for AI generation.
+Your task is to convert the user's specific request into an extensive, highly descriptive, photorealistic photographic prompt for AI generation.
 
 PROMPT ENGINEERING RULES:
-1. SUBJECT & FORWARD-FACING PORTRAIT FRAMING (HIGHEST PRIORITY):
+1. FAITHFULNESS TO USER REQUEST (HIGHEST PRIORITY):
+   - Directly reflect ALL specific details, settings, themes, and attributes requested by the user: "${rawPrompt}".
+   ${isRefRecreation && hasPersonaRef ? `- REFERENCE RECREATION: The user wants an image very similar to Reference Image 1 (her profile/reference photo).
+     - Retain the exact same pose, body angle, head tilt, facial expression, framing, background environment, and camera distance as Reference Image 1.
+     - Strictly apply the requested clothing or nudity modification while keeping everything else identical to Reference Image 1.` : ''}
+
+2. SUBJECT & FORWARD-FACING PORTRAIT FRAMING:
    ${isDuo ? `- For DUO/COUPLE scenes: Medium 2/3rds portrait showing BOTH people in the frame:
      1) ${personaName} (female model): upper body 2/3rds view, facing forward directly towards camera, gorgeous facial expression, skin radiance, and alluring curves.
      2) ${creatorName} (male, ${creatorAppearance}): exact position relative to ${personaName}, masculine physique, arms/hands placement, interaction, and posture.
      - Detail the exact dynamic between them.` : ''}
    ${isCreatorSolo ? `- For SOLO CREATOR scenes: Medium 2/3rds upper-body vertical portrait of ${creatorName} (${creatorAppearance}) facing forward directly towards camera with confident posture and gaze.` : ''}
    ${!isDuo && !isCreatorSolo ? `- SINGLE PERSON ONLY: Exactly ONE female model (${personaName}) in the photograph. Absolutely NO second person, no male companion, no couples, no extra people in the frame.
-     - FACING FORWARD (STRICT): ${personaName} MUST be facing forward directly towards the camera, looking straight into the camera lens with clear direct eye contact. NEVER turn her back to the camera, never face away, and never obscure her face.
-     - FRAMING: Medium upper-body half to 2/3rds vertical portrait (from hips/waist to head) in 9:16 vertical ratio. Her face must be prominent, large, and in crystal-clear sharp focus to achieve maximum facial fidelity and identity lock.` : ''}
-2. MAXIMUM IDENTITY LOCK & MULTI-IMAGE SYNTHESIS:
-   ${isDuo && hasPersonaRef && hasCreatorRef ? `- DUAL REFERENCE LOCK: Image Reference 1 is ${personaName} (reproduce her exact face, bone structure, and features). Image Reference 2 is ${creatorName} (reproduce his exact face, masculine jawline, and short dark hair). Both individuals must look identical to their reference images.` : ''}
-   ${!isDuo && isCreatorSolo && hasCreatorRef ? `- CREATOR IDENTITY LOCK: Reference image is ${creatorName} (reproduce his exact facial features, short dark hair, and athletic build).` : ''}
-   ${!isDuo && !isCreatorSolo && hasPersonaRef && effectiveHasOutfitRef ? `- MULTI-IMAGE SYNTHESIS WITH MAXIMUM IDENTITY FIDELITY:
-     - Image 1 is ${personaName}'s face and identity: strictly reproduce her exact face, eyes, lips, jawline, skin tone, hair, and facial structure from Image 1 with 100% precision.
-     - Image 2 is the clothing/outfit reference (${effectiveOutfit || 'wardrobe outfit'}).
-     - GENERATION GOAL: Generate a medium upper-body half to 2/3rds portrait of ${personaName} facing forward towards the camera, dressed in the upper 2/3rds of the garment from Image 2. Transfer the exact neckline, bodice cut, fabric texture, lace, and color from Image 2 onto her upper body.
-     - Her face must be front-facing, prominent, centered, and sharply focused.` : ''}
-   ${!isDuo && !isCreatorSolo && hasPersonaRef && !effectiveHasOutfitRef ? `- PERSONA IDENTITY LOCK: Reference image is ${personaName} (reproduce her exact face, eyes, hair, skin tone, and features facing forward towards the camera with prominent portrait clarity).` : ''}
-3. BODY ATTIRE & NUDITY DIRECTIVES (HIGHEST FIDELITY):
-   ${isExplicitNude ? `- EXPLICIT TOPLESS / NUDE SCENE: ${personaName} is completely TOPLESS and BARE with NO clothing, no shirt, and no top. Accurately render her natural, beautiful bare breasts, detailed nipples, feminine collarbone, glowing radiant skin, and authentic body curves in crystal-clear photorealistic detail facing forward towards the camera in an intimate luxury bedroom.` : ''}
-   ${!isExplicitNude && effectiveOutfit ? `- EQUIPPED OUTFIT: ${personaName} is wearing: "${effectiveOutfit}". Render the upper 2/3rds of this exact garment on her torso/upper body with authentic textile textures, intricate fabric draping, and realistic couture fit.` : ''}
-4. FRAMING & CINEMATOGRAPHY:
-   - Aspect Ratio: 9:16 vertical portrait shot.
-   - Shot Scale: Medium 2/3rds upper body portrait (hips/waist up to head, showing prominent face and upper body).
-   - Orientation: Front-facing portrait looking directly at the camera.
-   - Setting: Luxurious, cinematic environment (e.g., luxury master bedroom suite, modern penthouse, silk sheets, ambient warm lighting, golden sunbeams).
-   - Cinematography: 85mm portrait prime lens, natural volumetric light, authentic skin texture, realistic pore details, 8k resolution masterwork photography.
-5. UNCENSORED FREEDOM:
-   - If the request is adult, erotic, or NSFW, describe the raw intimacy, sensuality, and exact physical connection vividly and artistically.
+     - FACING FORWARD: ${personaName} MUST face forward towards the camera, looking straight into the camera lens with clear direct eye contact.
+     - FRAMING: Medium upper-body vertical portrait (9:16 vertical ratio). Her face must be prominent, sharp, and clearly visible for maximum identity lock.` : ''}
+
+3. MAXIMUM IDENTITY LOCK & MULTI-IMAGE SYNTHESIS:
+   ${hasPersonaRef ? `- PERSONA IDENTITY LOCK: Reference Image 1 is ${personaName}. Reproduce her exact face, bone structure, eyes, lips, jawline, hair color and texture, and skin tone with 100% precision.` : ''}
+   ${isDuo && hasPersonaRef && hasCreatorRef ? `- DUAL REFERENCE LOCK: Image Reference 1 is ${personaName} (reproduce her exact face). Image Reference 2 is ${creatorName} (reproduce his exact face and masculine build).` : ''}
+
+4. BODY ATTIRE & NUDITY DIRECTIVES:
+   ${isExplicitNude ? `- NUDE / UNCLOTHED DIRECTIVE: ${personaName} is completely UNCLOTHED and NUDE with bare chest and body, natural skin textures, delicate collarbones, authentic feminine curves, and natural anatomy. Modify Reference Image 1 to remove all clothing completely while keeping her exact face, hair, and lighting identical.` : ''}
+   ${!isExplicitNude && effectiveOutfit ? `- ATTIRE: Wearing: "${effectiveOutfit}". Render the upper 2/3rds of this exact garment with intricate textile details.` : ''}
+
+5. CINEMATOGRAPHY:
+   - 9:16 vertical portrait, 85mm prime lens, authentic volumetric lighting, natural skin texture, visible pores, photorealistic 8k UHD.
+
 6. FORMAT:
-   - Return ONLY the final expanded prompt text. Do not wrap in markdown or conversational chatter.`;
+   - Return ONLY the final expanded prompt text. Do not wrap in markdown or conversational text.`;
 
   const userQuery = `Rephrase and expand this request into a comprehensive, detailed photographic scene prompt:
 User Request: "${rawPrompt}"
@@ -1418,11 +1411,13 @@ Creator: ${creatorName} (${creatorAppearance})`;
       console.log('[PromptEnhancer] Gemini enhanced prompt:', enhanced.slice(0, 120) + '...');
       return enhanced;
     }
-  } catch (gemErr) {
-    console.warn('[PromptEnhancer] Gemini error:', gemErr);
+  } catch (err) {
+    console.warn('[PromptEnhancer] Gemini error, using smart fallback:', err);
   }
 
-  return '';
+  // Dynamic fallback incorporating the user's specific request
+  const sceneDescription = rawPrompt.replace(/^(can you|please|send me|show me|take a|generate an?)\s+/i, '');
+  return `A medium 2/3rds vertical portrait of ${personaName} facing forward looking directly at the camera. Scene: ${sceneDescription}. Keep all facial features, bone structure, eyes, and hair identical to Reference Image 1. ${isExplicitNude ? 'Completely bare natural skin with all clothing removed.' : ''} 9:16 vertical ratio, 85mm portrait photography, authentic natural skin texture, 8k uhd photorealistic quality.`;
 }
 
 function stripDataPrefix(dataUrl: string): { data: string; mimeType: string } {
@@ -4444,7 +4439,7 @@ app.post('/api/generate-image', async (req, res) => {
     }
 
     if (modelId.startsWith('wiro:') || modelId === 'wiro') {
-      prompt = buildPrompt({ ...rest, referenceImage });
+      if (!prompt || prompt.length < 10) prompt = buildPrompt({ ...rest, referenceImage });
       const rawWiroId = modelId.replace(/^wiro:/, '');
       const [ownerSlug = 'bytedance', modelSlug = 'seedream-v5-pro'] = rawWiroId.split('/');
       const isExplicit = Boolean((req.body as any).allowNsfw) || isNsfwModel(prompt) || ['nsfw', 'uncensored', 'nude', 'naked', 'erotic', 'lingerie', 'underwear', 'lewd', 'adult'].some(k => prompt.toLowerCase().includes(k));
@@ -4493,7 +4488,7 @@ app.post('/api/generate-image', async (req, res) => {
         }
       }
     } else if (modelId.startsWith('runware:') || modelId === 'runware') {
-      prompt = buildPrompt({ ...rest, referenceImage });
+      if (!prompt || prompt.length < 10) prompt = buildPrompt({ ...rest, referenceImage });
       const runwareModelId = modelId.replace(/^runware:/, '');
       const loras = (req.body as any).lora || (req.body as any).loras;
       console.log('[generate-image] Runware generation with model:', runwareModelId, '| count:', count, '| loras:', loras?.length ?? 0);
@@ -4521,7 +4516,7 @@ app.post('/api/generate-image', async (req, res) => {
         }
       }
     } else if (modelId === 'replit:gpt-image-1') {
-      prompt = buildPrompt({ ...rest, referenceImage });
+      if (!prompt || prompt.length < 10) prompt = buildPrompt({ ...rest, referenceImage });
       const allReplitRefs = [referenceImage, ...(additionalImages || [])].filter((x): x is string => !!x);
       const replitRefArg = allReplitRefs.length > 1 ? allReplitRefs : allReplitRefs[0];
       console.log('[replit:gpt-image-1] Sending', allReplitRefs.length, 'reference image(s) to OpenAI');
@@ -4537,7 +4532,7 @@ app.post('/api/generate-image', async (req, res) => {
       }
       modelName = 'gpt-image-2';
     } else if (modelId === 'openai:gpt-image-2') {
-      prompt = buildPrompt({ ...rest, referenceImage });
+      if (!prompt || prompt.length < 10) prompt = buildPrompt({ ...rest, referenceImage });
       const allOpenAIRefs = [referenceImage, ...(additionalImages || [])].filter((x): x is string => !!x);
       const openAIRefArg = allOpenAIRefs.length > 1 ? allOpenAIRefs : allOpenAIRefs[0];
       console.log('[openai:gpt-image-2] Sending', allOpenAIRefs.length, 'reference image(s) to OpenAI');
@@ -4554,7 +4549,7 @@ app.post('/api/generate-image', async (req, res) => {
       modelName = 'GPT Image 2';
     } else if (modelId.startsWith('xai:') || modelId.startsWith('grok:')) {
       const rawGrokId = modelId.replace(/^xai:/, '').replace(/^grok:/, '');
-      prompt = buildPrompt({ ...rest, referenceImage });
+      if (!prompt || prompt.length < 10) prompt = buildPrompt({ ...rest, referenceImage });
       if (count > 1) {
         const results = await Promise.allSettled(Array.from({ length: count }, () => generateWithXAI(modelId, prompt, referenceImage, aspectRatio)));
         imageUrls = results.filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled').map(r => r.value);
@@ -4569,7 +4564,7 @@ app.post('/api/generate-image', async (req, res) => {
     } else if (modelId.startsWith('venice:')) {
       const veniceModelId = modelId.replace('venice:', '');
       const isNsfw = isNsfwModel(veniceModelId);
-      prompt = buildPrompt({ ...rest, referenceImage });
+      if (!prompt || prompt.length < 10) prompt = buildPrompt({ ...rest, referenceImage });
       const allVeniceModels = cachedVeniceModels || [];
       const veniceModel = allVeniceModels.find(m => m.id === modelId);
       if (count > 1) {
@@ -4585,7 +4580,7 @@ app.post('/api/generate-image', async (req, res) => {
       modelName = veniceModel?.name || veniceModelId;
     } else if (modelId.startsWith('atlascloud:')) {
       const atlasModelId = modelId.replace('atlascloud:', '');
-      prompt = buildPrompt({ ...rest, referenceImage });
+      if (!prompt || prompt.length < 10) prompt = buildPrompt({ ...rest, referenceImage });
       const allAtlasModels = cachedAtlasCloudModels || [];
       const atlasModel = allAtlasModels.find(m => m.id === modelId);
       if (count > 1) {
@@ -4605,7 +4600,7 @@ app.post('/api/generate-image', async (req, res) => {
         modelName = 'ByteDance Seedream 5.0 Pro (Wavespeed)';
         imageUrls = [await generateWithWavespeed('/bytedance/seedream-v5.0-pro', undefined, undefined, prompt, referenceImage, imageWeight, false, aspectRatio, additionalImages)];
       } else {
-        prompt = buildPrompt({ ...rest, referenceImage });
+        if (!prompt || prompt.length < 10) prompt = buildPrompt({ ...rest, referenceImage });
         const GOOGLE_NAMES: Record<string, string> = {
           'google:nano-banana-2': 'Nano Banana 2',
           'google:nano-banana-pro': 'Nano Banana Pro',

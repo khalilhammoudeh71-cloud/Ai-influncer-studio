@@ -1331,20 +1331,18 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         const visualPrompt = data.action?.prompt || text || `${activePersona.name}, ${activePersona.niche}, glamorous photorealistic portrait, intimate, natural lighting, ultra high resolution 8k`;
         
         const isDuoShoot = /\b(with me|with (?:dr\.?\s*h|alex|chris|creator)|duo|together|both of us|us at|with you)\b/i.test(visualPrompt) || /\b(with me|with (?:dr\.?\s*h|alex|chris|creator)|duo|together|both of us|us at)\b/i.test(text);
+        const isExplicitNude = /\b(naked|nude|topless|unclothed|bare|boobs|tits|breasts|nipples|exposed|sensual|erotic|no clothes|without clothes|undressed|pussy|ass)\b/i.test(visualPrompt) || /\b(naked|nude|topless|unclothed|bare|boobs|tits|breasts|nipples|exposed|sensual|erotic|no clothes|without clothes|undressed|pussy|ass)\b/i.test(text);
         const extraImages: string[] = [];
         if (sentCallAttachment?.type === 'image') extraImages.push(sentCallAttachment.base64);
         else if (lastUploadedReference) extraImages.push(lastUploadedReference);
         if (isDuoShoot && creator?.primaryPhoto && !extraImages.includes(creator.primaryPhoto)) {
           extraImages.push(creator.primaryPhoto);
-        } else if (!isDuoShoot && activeOutfit?.thumbnail && !extraImages.includes(activeOutfit.thumbnail)) {
+        } else if (!isDuoShoot && !isExplicitNude && activeOutfit?.thumbnail && !extraImages.includes(activeOutfit.thumbnail)) {
           extraImages.push(activeOutfit.thumbnail);
         }
 
         // Primary persona reference photo for exact facial identity locking
         const personaPrimaryRef = activePersona.referenceImage || activePersona.avatar || activePersona.alternateReferenceImage;
-        if (personaPrimaryRef && !extraImages.includes(personaPrimaryRef)) {
-          extraImages.unshift(personaPrimaryRef);
-        }
 
         // Generate high-fidelity photorealistic image using ByteDance Seedream 5.0 Pro
         generateImage({
@@ -1357,8 +1355,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           allowNsfw: true,
           referenceImage: personaPrimaryRef,
           additionalImages: extraImages.length > 0 ? extraImages : undefined,
-          creatorProfile: creator,
-          equippedOutfitDescription: activeOutfit?.promptDescription,
+          creatorProfile: isDuoShoot ? creator : undefined,
+          equippedOutfitDescription: isExplicitNude ? undefined : activeOutfit?.promptDescription,
         } as any).then(result => {
           const imgUrl = Array.isArray(result) ? result[0].imageUrl : result.imageUrl;
           setActiveCallMedia({ type: 'image', url: imgUrl, prompt: visualPrompt });
