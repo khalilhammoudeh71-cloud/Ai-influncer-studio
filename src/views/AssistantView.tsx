@@ -130,13 +130,15 @@ function loadHistory(personaId: string): ChatMessage[] {
     const raw = localStorage.getItem(HISTORY_KEY(personaId));
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return parsed.map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) }));
+    return parsed
+      .filter((m: any) => m && m.type !== 'loading')
+      .map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) }));
   } catch { return []; }
 }
 
 function saveHistory(personaId: string, msgs: ChatMessage[]) {
   try {
-    const toStore = msgs.slice(-MAX_STORED);
+    const toStore = msgs.filter(m => m && m.type !== 'loading').slice(-MAX_STORED);
     localStorage.setItem(HISTORY_KEY(personaId), JSON.stringify(toStore));
   } catch { /* quota */ }
 }
