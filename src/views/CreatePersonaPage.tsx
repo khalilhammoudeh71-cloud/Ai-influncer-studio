@@ -21,8 +21,6 @@ interface CreatePersonaPageProps {
 }
 
 const PRESET_VOICES = [
-  { id: 'rawan', name: 'Rawan Hasan (Clone)', description: 'Female • Authentic Cloned Creator Voice', gender: 'Female', preview_url: 'https://storage.googleapis.com/eleven-public-prod/database/workspace/a71f6253bad14eebb9b202d33ae5e862/voices/W4ynDvR6NFiK8lj2I8iL/2dc5e6cf-9ef2-4556-b48a-89c9ae9aa81f.mp3' },
-  { id: 'leen', name: 'Leen Hasan (Clone)', description: 'Female • Authentic Cloned Creator Voice', gender: 'Female', preview_url: 'https://api.us.elevenlabs.io/v1/voices/7jFje9BJoTWzqZzouT0j/previews/audio?payload=eyJ2b2ljZV9zb3VyY2UiOiJjdXN0b20iLCJ3b3Jrc3BhY2VfaWQiOiJhNzFmNjI1M2JhZDE0ZWViYjliMjAyZDMzYWU1ZTg2MiIsImZpbGVuYW1lIjoiMTlhNWY3ZTgtNzk0NS00MmM3LWE0NTEtY2FmYzkxOGZjYWIwLm1wMyIsInRpbWVzdGFtcCI6MTc4Njc2NjQwMDAwMDAwMH0%3D' },
   { id: 'brielle', name: 'Brielle', description: 'Female • Ultra-Natural Podcast & Storyteller', gender: 'Female', preview_url: 'https://storage.googleapis.com/eleven-public-prod/database/user/UtY8SzQcynWj6pnllKYZlJLRAaI3/voices/6u6JbqKdaQy89ENzLSju/3xgkujlukdHHhcsdsQsY.mp3' },
   { id: 'madison', name: 'Madison', description: 'Female • Cool, Calm & Conversational Social Media', gender: 'Female', preview_url: 'https://api.us.elevenlabs.io/v1/voices/NUjosfEayZAdRcDmcHM8/previews/audio?payload=eyJ2b2ljZV9zb3VyY2UiOiJjdXN0b20iLCJ3b3Jrc3BhY2VfaWQiOiJiYWM4YmEwZWI5ZGY0OWFlYjNiMDA5YzljYjk3MGQ1NCIsImZpbGVuYW1lIjoiVWs1NVVCNFF1UjdVbEpsc09KVmkubXAzIiwidGltZXN0YW1wIjoxNzg2NzY2NDAwMDAwMDAwfQ%3D%3D' },
   { id: 'kristen', name: 'Kristen', description: 'Female • Upbeat & Vibrant Social Influencer', gender: 'Female', preview_url: 'https://api.us.elevenlabs.io/v1/voices/XZUXLIpE3dqJ9aCZUj2R/previews/audio?payload=eyJ2b2ljZV9zb3VyY2UiOiJjdXN0b20iLCJ1c2VyX2lkIjoiVXViam9oV1pkT1BGRFJBWWFpa3BFYk5PdHU3MiIsImZpbGVuYW1lIjoiWHlZSHFVa2VzblRRbWVkU0ZwMFkubXAzIiwidGltZXN0YW1wIjoxNzg2NzY2NDAwMDAwMDAwfQ%3D%3D' },
@@ -784,11 +782,6 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
         activeVoiceId = selectedVoiceId;
       } else if (!hasUploadedSamples && isExplicitElevenLabsId) {
         activeVoiceId = selectedVoiceId;
-      } else if (!hasUploadedSamples) {
-        // Only if NO samples are uploaded at all, fallback to preset defaults
-        const pName = (name || '').toLowerCase();
-        if (pName.includes('leen')) activeVoiceId = '7jFje9BJoTWzqZzouT0j';
-        else if (pName.includes('rawan')) activeVoiceId = 'ov7JSkufAlSs386OYTaC';
       }
 
       const res = await api.voice.generateSpeech({
@@ -2207,7 +2200,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                 type="text"
                 value={name}
                 onChange={e => setName(e.target.value)}
-                placeholder="e.g. Rawan Hasan"
+                placeholder="e.g. Maya Chen"
                 className="luxury-input w-full px-4 py-2.5 text-xs font-bold"
               />
             </div>

@@ -861,7 +861,7 @@ export default function VoiceCloneStudioModal({
                       type="text"
                       value={voiceName}
                       onChange={(e) => setVoiceName(e.target.value)}
-                      placeholder="e.g. Dr. H Dentist Voice"
+                      placeholder="e.g. Studio Narrator Voice"
                       className="w-full px-3 py-2 bg-black/50 border border-white/10 rounded-lg text-xs font-medium text-white placeholder:text-zinc-600 focus:outline-none focus:border-cyan-500/50"
                     />
                   </div>

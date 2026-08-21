@@ -369,7 +369,7 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
                 type="text"
                 value={creatorName}
                 onChange={e => setCreatorName(e.target.value)}
-                placeholder="e.g., Dr. H, Alex, Chris"
+                placeholder="e.g., Alex, Chris, Taylor"
                 className="w-full bg-[var(--bg-elevated)] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#E7C477]/60 focus:ring-1 focus:ring-[#E7C477]/40 transition-all font-medium"
               />
             </div>

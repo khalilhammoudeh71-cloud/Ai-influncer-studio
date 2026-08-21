@@ -12,6 +12,13 @@ export const users = pgTable("users", {
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
+export const creatorProfiles = pgTable("creator_profiles", {
+  userId: text("user_id").primaryKey(),
+  profileJson: text("profile_json").notNull().default("{}"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
 export const conversations = pgTable("conversations", {
   id: serial("id").primaryKey(),
   title: text("title").notNull(),
