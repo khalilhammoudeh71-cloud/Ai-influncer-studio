@@ -64,11 +64,11 @@ export default function LeftSidebar({ activeTab, onNavigate, activePersona, newA
           type="button"
           aria-label="Close navigation menu"
           onClick={onMobileClose}
-          className="fixed inset-0 z-[10000] bg-black/65 backdrop-blur-sm md:hidden"
+          className="fixed inset-0 z-[10000] bg-black/65 backdrop-blur-sm lg:hidden"
         />
       )}
       <aside className={cn(
-        "fixed inset-y-0 left-0 z-[10001] w-72 max-w-[85vw] shrink-0 h-full border-r border-[#E7C477]/10 bg-[#141416] flex flex-col select-none transition-transform duration-200 ease-out md:static md:z-50 md:w-60 md:max-w-none md:translate-x-0 lg:w-64",
+        "fixed inset-y-0 left-0 z-[10001] w-72 max-w-[85vw] shrink-0 h-full border-r border-[#E7C477]/10 bg-[#141416] flex flex-col select-none transition-transform duration-200 ease-out lg:static lg:z-50 lg:w-64 lg:max-w-none lg:translate-x-0",
         mobileOpen ? "translate-x-0" : "-translate-x-full"
       )}>
       {/* Brand Header */}
@@ -98,7 +98,7 @@ export default function LeftSidebar({ activeTab, onNavigate, activePersona, newA
             event.stopPropagation();
             onMobileClose?.();
           }}
-          className="ml-auto rounded-lg p-2 text-[#8C909A] transition-colors hover:bg-white/5 hover:text-white md:hidden"
+          className="ml-auto rounded-lg p-2 text-[#8C909A] transition-colors hover:bg-white/5 hover:text-white lg:hidden"
         >
           <X size={18} />
         </button>

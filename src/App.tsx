@@ -911,7 +911,7 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
               type="button"
               aria-label="Open navigation menu"
               onClick={() => setIsMobileNavOpen(true)}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-[#18181B] text-[#C3BFB8] transition-colors hover:border-[#E7C477]/35 hover:text-[#F2D58D] md:hidden"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-[#18181B] text-[#C3BFB8] transition-colors hover:border-[#E7C477]/35 hover:text-[#F2D58D] lg:hidden"
             >
               <Menu size={18} />
             </button>
@@ -930,7 +930,7 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
               )}
             </AnimatePresence>
 
-            <div className="relative hidden w-full max-w-md md:block">
+            <div className="relative hidden w-full max-w-md lg:block">
               <div className="absolute inset-y-0 left-3.5 flex items-center pointer-events-none text-[#A1A1AA]">
                 <Search size={15} />
               </div>
