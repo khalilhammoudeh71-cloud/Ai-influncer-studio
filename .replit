@@ -60,10 +60,6 @@ externalPort = 3000
 
 [userenv]
 
-[userenv.shared]
-GEMINI_API_KEY = "AIzaSyCWmLGZGd8Puk2PEvlGK1XOUMw2XcX-2qM"
-WAVESPEED_API_KEY = "wsk_live_opFV8Net96XPhQTBLD3pxoH8-wQDRKUZuaIk2WFtBIA"
-
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 60000
