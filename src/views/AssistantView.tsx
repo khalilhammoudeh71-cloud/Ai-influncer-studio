@@ -336,6 +336,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   }, [propActivePersona?.id]);
 
   const [localPersonaOverrides, setLocalPersonaOverrides] = useState<Record<string, Persona>>({});
+  const activePersona = localPersonaOverrides[selectedPersonaId] || personas.find(p => p.id === selectedPersonaId) || propActivePersona;
 
   useEffect(() => {
     const handlePersonaUpdated = (e: any) => {
@@ -1642,8 +1643,6 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       callTranscriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [callTranscript, isCallActive]);
-
-  const activePersona = localPersonaOverrides[selectedPersonaId] || personas.find(p => p.id === selectedPersonaId) || propActivePersona;
 
   const selectedEditModel = editModels.find(m => m.id === selectedEditModelId);
   const selectedVideoModel = videoModels.find(m => m.id === selectedVideoModelId);
