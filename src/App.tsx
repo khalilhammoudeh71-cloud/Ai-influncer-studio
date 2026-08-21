@@ -16,7 +16,9 @@ import {
   Bell,
   Cpu,
   Palette,
-  Check
+  Check,
+  Menu,
+  X
 } from 'lucide-react';
 import { cn } from './utils/cn';
 import { Persona, PersonaSetter, RevenueEntry, PlannedPost, Tab, NavEntry } from './types';
@@ -70,6 +72,7 @@ function App() {
   const [forceLanding, setForceLanding] = useState(localStorage.getItem('force_landing') === 'true');
 
   const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [showShortcutsModal, setShowShortcutsModal] = useState(false);
   const [newAssetsCount, setNewAssetsCount] = useState(0); // #6 gallery badge
 
@@ -713,8 +716,10 @@ function App() {
 
   return (
     <div className="flex h-screen w-full max-w-full bg-[var(--bg-base)] text-[var(--text-primary)] overflow-hidden">
+      <a href="#main-content" className="skip-link">Skip to main content</a>
       {/* Left Sidebar Navigation */}
-      <LeftSidebar 
+      <div className="hidden md:flex h-full">
+        <LeftSidebar
         activeTab={activeTab} 
         onNavigate={(tab, params) => {
           getTabDirection(activeTab, tab);
@@ -731,6 +736,51 @@ function App() {
         activePersona={activePersona}
         newAssetsCount={newAssetsCount}
       />
+      </div>
+
+      <AnimatePresence>
+        {isMobileSidebarOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[10000] bg-black/70 backdrop-blur-sm md:hidden"
+            onClick={() => setIsMobileSidebarOpen(false)}
+          >
+            <motion.div
+              initial={{ x: '-100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              transition={{ type: 'spring', stiffness: 320, damping: 32 }}
+              className="h-full w-64 max-w-[86vw] relative"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={() => setIsMobileSidebarOpen(false)}
+                className="absolute right-3 top-3 z-10 rounded-lg p-2 text-[#A1A1AA] hover:bg-white/10 hover:text-white"
+                aria-label="Close navigation"
+              >
+                <X size={18} />
+              </button>
+              <LeftSidebar
+                activeTab={activeTab}
+                onNavigate={(tab, params) => {
+                  setIsMobileSidebarOpen(false);
+                  getTabDirection(activeTab, tab);
+                  if (tab !== activeTab) {
+                    prevTabRef.current = activeTab;
+                  }
+                  const { subView, ...restParams } = params || {};
+                  replaceView({ view: tab, subView, params: Object.keys(restParams).length ? restParams : undefined });
+                }}
+                activePersona={activePersona}
+                newAssetsCount={newAssetsCount}
+              />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Main Content Area */}
       <div className="flex-1 min-w-0 flex flex-col h-full max-w-full relative bg-[#121316]">
@@ -738,10 +788,18 @@ function App() {
 
       {/* ── Top app bar ─────────────────────────────────────────── */}
       <header className="flex-none h-[70px] bg-[#16171a] border-b border-white/[0.08] relative z-[9999] max-w-full">
-        <div className="flex items-center justify-between px-6 h-full max-w-full">
+        <div className="flex items-center justify-between px-3 sm:px-4 lg:px-6 h-full max-w-full gap-2">
           
           {/* Left: Universal Search Field & Back Button */}
-          <div className="flex items-center gap-3.5 flex-1 max-w-lg">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3.5 flex-1 max-w-lg">
+            <button
+              type="button"
+              onClick={() => setIsMobileSidebarOpen(true)}
+              className="md:hidden w-9 h-9 shrink-0 rounded-xl border border-white/10 bg-[#18181B] text-[#D4D4D8] flex items-center justify-center"
+              aria-label="Open navigation"
+            >
+              <Menu size={18} />
+            </button>
             <AnimatePresence>
               {(navStack.length > 1 || activeTab !== 'personas') && (
                 <BackButton 
@@ -757,39 +815,44 @@ function App() {
               )}
             </AnimatePresence>
 
-            <div className="relative w-full max-w-md">
+            <div className="relative min-w-0 w-full max-w-md">
               <div className="absolute inset-y-0 left-3.5 flex items-center pointer-events-none text-[#A1A1AA]">
                 <Search size={15} />
               </div>
               <button 
                 onClick={() => setShowCommandPalette(true)}
-                className="w-full bg-[#18181B] border border-white/10 rounded-xl py-2 pl-10 pr-12 text-xs text-left text-[#A1A1AA] hover:border-[#E7C477]/35 focus:outline-none transition-all cursor-pointer truncate"
+                className="w-full min-w-0 bg-[#18181B] border border-white/10 rounded-xl py-2 pl-10 pr-3 sm:pr-12 text-xs text-left text-[#A1A1AA] hover:border-[#E7C477]/35 focus:outline-none transition-all cursor-pointer truncate"
+                aria-label="Open global search"
               >
                 Search personas, content, projects…
               </button>
-              <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none">
+              <div className="absolute inset-y-0 right-3 hidden sm:flex items-center pointer-events-none">
                 <kbd className="text-[10px] font-semibold text-[#A1A1AA] bg-[#242428] border border-white/10 rounded px-1.5 py-0.5">⌘ K</kbd>
               </div>
             </div>
           </div>
 
           {/* Right Actions: Notifications, Create Persona Button, Persona Quick-Switcher */}
-          <div className="flex items-center gap-3.5 shrink-0">
+          <div className="flex items-center gap-2 sm:gap-3.5 shrink-0">
 
             {/* Notification Bell */}
-            <button className="relative w-9 h-9 rounded-xl bg-[#0A101C] border border-[#E7C477]/15 flex items-center justify-center text-[#C3BFB8] hover:text-[#F2D58D] hover:border-[#E7C477]/35 transition-all cursor-pointer">
+            <button
+              type="button"
+              disabled
+              aria-label="Notifications are not available yet"
+              title="Notifications coming soon"
+              className="relative hidden sm:flex w-9 h-9 rounded-xl bg-[#0A101C] border border-[#E7C477]/15 items-center justify-center text-[#777B84] cursor-not-allowed"
+            >
               <Bell size={16} />
-              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#E7C477] text-[#060A13] text-[9px] font-bold flex items-center justify-center shadow-sm">
-                3
-              </span>
             </button>
 
             {/* Single Gold Create Persona CTA Button */}
             <button 
               onClick={() => pushView({ view: 'create-persona' })}
-              className="btn-gold-primary px-5 py-2 text-sm font-bold flex items-center gap-2 cursor-pointer shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all"
+              className="btn-gold-primary shrink-0 px-3 sm:px-5 py-2 text-sm font-bold hidden sm:flex items-center gap-2 cursor-pointer shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all"
+              aria-label="Create persona"
             >
-              <PlusCircle size={16} /> Create Persona
+              <PlusCircle size={16} /> <span className="hidden sm:inline">Create Persona</span>
             </button>
 
             {/* Persona Quick-Switcher */}
@@ -802,6 +865,9 @@ function App() {
                     e.stopPropagation();
                     setIsPersonaSwitcherOpen(prev => !prev);
                   }}
+                  aria-expanded={isPersonaSwitcherOpen}
+                  aria-haspopup="menu"
+                  aria-label={`Switch active persona. Current: ${activePersona.name || 'none'}`}
                 >
                   <div className={`w-6 h-6 rounded-lg overflow-hidden border border-white/10 shrink-0 ${activePersona.id !== 'empty' ? 'avatar-ring-active' : ''}`}>
                     {activePersona.id !== 'empty' && (activePersona.avatar || activePersona.referenceImage) ? (
@@ -953,7 +1019,7 @@ function App() {
       })()}
 
       {/* ── Content ─────────────────────────────────────────────── */}
-      <main className="flex-1 overflow-y-auto relative z-10">
+      <main id="main-content" tabIndex={-1} className="flex-1 overflow-y-auto relative z-10 focus:outline-none">
         <div className={`w-full h-full ${tabDirectionRef.current === 'right' ? 'tab-enter-right' : 'tab-enter-left'}`} key={activeTab}>
           {renderContent()}
         </div>

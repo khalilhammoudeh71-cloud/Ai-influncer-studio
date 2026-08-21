@@ -139,13 +139,15 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
               ];
 
               return displayPersonas.map((p: any, i: number) => (
-                <motion.div
+                <motion.button
+                  type="button"
                   key={p.id || i}
                   initial={anims[i % 3].initial}
                   animate={anims[i % 3].animate}
                   transition={{ duration: 0.7, delay: anims[i % 3].delay }}
                   className={cardStyles[i % 3]}
                   onClick={handleAddPersona}
+                  aria-label={`Create a persona inspired by ${p.name}`}
                 >
                   <img 
                     src={p.avatar} 
@@ -161,7 +163,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                     <p className="text-[10px] font-serif text-[#F5F1E8] truncate">{p.name}</p>
                     <p className="text-[8px] text-[#A1A1AA] truncate">{p.niche}</p>
                   </div>
-                </motion.div>
+                </motion.button>
               ));
             })()}
 
@@ -212,18 +214,45 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
 
         {/* Persona Cards Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          {filteredPersonas.length === 0 && (
+            <div className="sm:col-span-2 md:col-span-3 lg:col-span-4 rounded-2xl border border-dashed border-[#E7C477]/25 bg-[#161618] px-6 py-12 text-center" role="status">
+              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#E7C477]/10 text-[#F2D58D]">
+                <Users size={22} />
+              </div>
+              <h3 className="text-lg font-serif text-[#F5F1E8]">
+                {activePersonas.length === 0 ? 'Create your first persona' : 'No personas match that search'}
+              </h3>
+              <p className="mx-auto mt-2 max-w-md text-xs leading-relaxed text-[#A1A1AA]">
+                {activePersonas.length === 0
+                  ? 'Start with a name and reference image. You can add voice, content, and advanced identity settings later.'
+                  : 'Try a different name or niche, or clear the search to see your full roster.'}
+              </p>
+              <button
+                type="button"
+                onClick={activePersonas.length === 0 ? handleAddPersona : () => setSearchQuery('')}
+                className="btn-gold-primary mt-5 inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold"
+              >
+                {activePersonas.length === 0 ? <><Plus size={14} /> Create Persona</> : 'Clear Search'}
+              </button>
+            </div>
+          )}
           {filteredPersonas.map(p => {
             const isSelected = p.id === selectedId;
             return (
               <div
                 key={p.id}
-                onClick={() => onSelectPersona(p.id)}
                 className={cn(
-                  "luxury-card p-4 space-y-3 cursor-pointer transition-all hover:-translate-y-1 group relative",
+                  "luxury-card p-4 space-y-3 transition-all hover:-translate-y-1 group relative",
                   isSelected ? "border-[#E7C477] bg-[#242428] shadow-lg shadow-amber-950/40" : "hover:border-[#E7C477]/40"
                 )}
               >
-                <div className="w-full aspect-square rounded-xl overflow-hidden border border-white/10 relative bg-[#141416] flex items-center justify-center">
+                <button
+                  type="button"
+                  onClick={() => onSelectPersona(p.id)}
+                  aria-pressed={isSelected}
+                  aria-label={`Select ${p.name || 'unnamed persona'}`}
+                  className="w-full aspect-square rounded-xl overflow-hidden border border-white/10 relative bg-[#141416] flex items-center justify-center text-left"
+                >
                   {p.avatar || p.referenceImage ? (
                     <img 
                       src={p.avatar || p.referenceImage} 
@@ -247,7 +276,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                       Active
                     </span>
                   )}
-                </div>
+                </button>
                 <div className="space-y-2">
                   <div>
                     <p className="text-xs font-bold text-[#F5F1E8] truncate font-serif">{p.name || 'Unnamed Persona'}</p>
@@ -313,32 +342,33 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
             icon: Camera, 
             title: 'Photo Generation', 
             desc: 'Create stunning, identity-consistent photos in any setting, outfit, and style',
-            image: '/uploads/showcase_haute_couture.png?v=3',
+            image: '/examples/showcase_haute_couture.png',
             action: () => nav.replace({ view: 'create', subView: 'image' })
           },
           { 
             icon: Film, 
             title: 'Video & Avatar', 
             desc: 'Turn any photo into a talking video or animated clip with custom voice',
-            image: '/uploads/showcase_red_carpet.png?v=3',
+            image: '/examples/showcase_red_carpet.png',
             action: () => nav.replace({ view: 'create', subView: 'video' })
           },
           { 
             icon: Sparkles, 
             title: 'Content Studio', 
             desc: 'Generate scripts, plan posts, clone voices — a full content creation suite',
-            image: '/uploads/showcase_parisian_chic.png?v=3',
+            image: '/examples/showcase_parisian_chic.png',
             action: () => nav.replace({ view: 'planner' })
           },
         ].map((feature, i) => {
           const FIcon = feature.icon;
           return (
-            <motion.div
+            <motion.button
+              type="button"
               key={feature.title}
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 + i * 0.1, duration: 0.4 }}
-              className="luxury-card group overflow-hidden hover:border-[#E7C477]/35 transition-all duration-300 cursor-pointer flex flex-col justify-between"
+              className="luxury-card group overflow-hidden hover:border-[#E7C477]/35 transition-all duration-300 cursor-pointer flex flex-col justify-between text-left"
               onClick={feature.action}
             >
               {/* Preview Image Header */}
@@ -354,7 +384,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                 <h4 className="text-base font-serif text-[#F5F1E8] mb-1">{feature.title}</h4>
                 <p className="text-xs text-[#A1A1AA] leading-relaxed font-sans">{feature.desc}</p>
               </div>
-            </motion.div>
+            </motion.button>
           );
         })}
       </div>
@@ -381,21 +411,22 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
         
         <div className="flex gap-4 overflow-x-auto custom-scrollbar pb-3 pt-1 snap-x snap-mandatory">
           {[
-            { src: '/uploads/showcase_haute_couture.png?v=3', label: 'Haute Couture Runway', category: 'High Fashion' },
-            { src: '/uploads/showcase_tokyo_cyberpunk.png?v=3', label: 'Tokyo Cyberpunk Night', category: 'Cyberpunk' },
-            { src: '/uploads/showcase_amalfi_villa.png?v=3', label: 'Amalfi Coast Villa', category: 'Luxury Travel' },
-            { src: '/uploads/showcase_aesthetic_fitness.png?v=3', label: 'Aesthetic Fitness', category: 'Fitness Luxe' },
-            { src: '/uploads/showcase_parisian_chic.png?v=3', label: 'Parisian Autumn Chic', category: 'Street Chic' },
-            { src: '/uploads/showcase_red_carpet.png?v=3', label: 'Gala Red Carpet', category: 'Celebrity Gala' },
-            { src: '/uploads/showcase_bali_oasis.png?v=3', label: 'Bali Jungle Oasis', category: 'Tropical Resort' },
-            { src: '/uploads/showcase_studio_beauty.png?v=3', label: 'Minimalist Studio', category: 'Beauty Editorial' },
+            { src: '/examples/showcase_haute_couture.png', label: 'Haute Couture Runway', category: 'High Fashion' },
+            { src: '/examples/showcase_tokyo_cyberpunk.png', label: 'Tokyo Cyberpunk Night', category: 'Cyberpunk' },
+            { src: '/examples/showcase_amalfi_villa.png', label: 'Amalfi Coast Villa', category: 'Luxury Travel' },
+            { src: '/examples/showcase_aesthetic_fitness.png', label: 'Aesthetic Fitness', category: 'Fitness Luxe' },
+            { src: '/examples/showcase_parisian_chic.png', label: 'Parisian Autumn Chic', category: 'Street Chic' },
+            { src: '/examples/showcase_red_carpet.png', label: 'Gala Red Carpet', category: 'Celebrity Gala' },
+            { src: '/examples/showcase_bali_oasis.png', label: 'Bali Jungle Oasis', category: 'Tropical Resort' },
+            { src: '/examples/showcase_studio_beauty.png', label: 'Minimalist Studio', category: 'Beauty Editorial' },
           ].map((item, i) => (
-            <motion.div 
+            <motion.button
+              type="button"
               key={i}
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.6 + i * 0.04 }}
-              className="relative group rounded-xl overflow-hidden w-[180px] md:w-[210px] shrink-0 aspect-[3/4] cursor-pointer border border-white/10 hover:border-[#E7C477]/40 transition-all snap-start shadow-md bg-[#161618]"
+              className="relative group rounded-xl overflow-hidden w-[180px] md:w-[210px] shrink-0 aspect-[3/4] cursor-pointer border border-white/10 hover:border-[#E7C477]/40 transition-all snap-start shadow-md bg-[#161618] text-left"
               onClick={() => nav.replace({ view: 'create', subView: 'image' })}
             >
               <img src={item.src} alt={item.label} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
@@ -408,7 +439,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
               <div className="absolute top-2 right-2 px-1.5 py-0.5 bg-[#121214]/80 backdrop-blur-sm rounded border border-[#E7C477]/30">
                 <span className="text-[8px] font-bold text-[#F2D58D]">AI</span>
               </div>
-            </motion.div>
+            </motion.button>
           ))}
         </div>
       </motion.div>

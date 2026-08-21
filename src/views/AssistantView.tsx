@@ -503,8 +503,10 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 
   // ── Voice Call States & Refs ──────────────────────────────
   const [isCallActive, setIsCallActive] = useState(false);
-  const [callStatus, setCallStatus] = useState<'connecting' | 'connected' | 'speaking' | 'listening' | 'disconnected'>('disconnected');
+  const [callStatus, setCallStatus] = useState<'connecting' | 'connected' | 'thinking' | 'speaking' | 'listening' | 'disconnected'>('disconnected');
   const [callDuration, setCallDuration] = useState(0);
+  const [lastTurnLatencyMs, setLastTurnLatencyMs] = useState<number | null>(null);
+  const [callError, setCallError] = useState<string | null>(null);
   const [isMuted, setIsMuted] = useState(false);
   const [speakerOn, setSpeakerOn] = useState(true);
   const [callTranscript, setCallTranscript] = useState<Array<{ id: string; role: 'user' | 'persona'; type?: 'text' | 'image' | 'video' | 'loading' | 'error'; content: string; prompt?: string }>>([]);
@@ -760,6 +762,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     currentPersonaSpeechRef.current = '';
     isAgentSpeakingRef.current = false;
     voiceCallBusyRef.current = false;
+    setCallError(null);
     setLiveUserSpeech('');
     if (isCallActiveRef.current) {
       setCallStatus('listening');
@@ -925,7 +928,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if (!isCallActive) return;
-      if (e.code === 'Space' && e.target === document.body && callStatus === 'speaking') {
+      if (e.code === 'Space' && e.target === document.body && (callStatus === 'speaking' || callStatus === 'thinking')) {
         e.preventDefault();
         console.log('[Spacebar] Interrupted persona playback');
         interruptPersona();
@@ -1101,15 +1104,19 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     }
 
     voiceCallBusyRef.current = true;
-    isAgentSpeakingRef.current = true;
-    personaSpeakingStartTimeRef.current = Date.now();
+    isAgentSpeakingRef.current = false;
+    const turnStartedAt = performance.now();
+    setCallError(null);
     restartSpeechRecognition();
 
     const watchdogTimer = setTimeout(() => {
       if (voiceCallBusyRef.current) {
         console.warn('[Call Watchdog] ⏰ Request timed out, auto-recovering...');
+        activeCallAbortControllerRef.current?.abort();
+        activeCallAbortControllerRef.current = null;
         isAgentSpeakingRef.current = false;
         voiceCallBusyRef.current = false;
+        setCallError('The voice response timed out. You can try again now.');
         if (isCallActiveRef.current) {
           setCallStatus('listening');
           restartSpeechRecognition();
@@ -1138,7 +1145,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     const updatedHistory = [...callTranscript.filter(t => t.content.indexOf('Calling') !== 0), userMsg];
     setCallTranscript(updatedHistory);
     
-    setCallStatus('speaking');
+    setCallStatus('thinking');
 
     try {
       const priorHistory = loadHistory(activePersona.id);
@@ -1176,6 +1183,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed call dialogue response');
+      setLastTurnLatencyMs(Math.round(performance.now() - turnStartedAt));
       
       clearTimeout(watchdogTimer);
 
@@ -1340,6 +1348,9 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     } catch (err) {
       clearTimeout(watchdogTimer);
       console.error('[Call Voice Network Error, recovering]:', err);
+      if ((err as Error)?.name !== 'AbortError') {
+        setCallError(err instanceof Error ? err.message : 'Voice response failed. Please try again.');
+      }
       isAgentSpeakingRef.current = false;
       voiceCallBusyRef.current = false;
       if (isCallActiveRef.current) {
@@ -1430,6 +1441,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     isCallActiveRef.current = true;
     setCallStatus('connecting');
     setCallDuration(0);
+    setLastTurnLatencyMs(null);
+    setCallError(null);
     isAgentSpeakingRef.current = true;
     voiceCallBusyRef.current = true;
     
@@ -2262,7 +2275,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
         </div>
       )}
 
-      {/* Voice Call Simulator Overlay */}
+      {/* Voice Call Overlay */}
       <AnimatePresence>
         {isCallActive && (
           <motion.div
@@ -2270,6 +2283,9 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="absolute inset-0 z-50 bg-[#121316]/98 backdrop-blur-2xl flex flex-col justify-between p-4 sm:p-6 overflow-y-auto custom-scrollbar rounded-2xl sm:rounded-3xl border border-white/[0.12] shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Voice call with ${activePersona.name}`}
           >
             {/* Header */}
             <div className="flex items-center justify-between flex-shrink-0 mb-2">
@@ -2299,7 +2315,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
               </div>
               
               {/* Voice Status & Voice Engine Selector & Call Duration */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap justify-end">
                 <div 
                   className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/25 text-emerald-300 text-[11px] font-semibold rounded-lg px-2.5 py-1 backdrop-blur-md transition-all shadow-sm max-w-[150px] truncate"
                   title={`Voice strictly locked to ${activePersona.name}'s cloned voice`}
@@ -2326,13 +2342,18 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                     {formatDuration(callDuration)}
                   </div>
                 )}
+                {lastTurnLatencyMs !== null && (
+                  <div className="bg-white/5 border border-white/10 rounded-full px-3 py-1 text-[10px] font-mono text-zinc-400" title="Last complete request and audio-generation round trip">
+                    Last turn {(lastTurnLatencyMs / 1000).toFixed(1)}s
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Visualizer Area */}
             <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-3 my-2 relative">
               {/* Status Indicator */}
-              <div className="text-center z-10 min-h-[38px] flex flex-col items-center justify-center px-4">
+              <div className="text-center z-10 min-h-[38px] flex flex-col items-center justify-center px-4" aria-live="polite" aria-atomic="true">
                 {liveUserSpeech ? (
                   <motion.div 
                     initial={{ opacity: 0, scale: 0.96 }}
@@ -2345,11 +2366,13 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                   <>
                     <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest block mb-1">
                       {callStatus === 'connecting' ? 'Calling...' : 
+                       callStatus === 'thinking' ? 'Preparing Response' :
                        callStatus === 'speaking' ? `${activePersona?.name || 'Persona'} Speaking` :
                        callStatus === 'listening' ? 'Listening to You' : 'Connected'}
                     </span>
                     <p className="text-xs text-zinc-400 font-medium">
                       {callStatus === 'connecting' ? 'Establishing secure connection...' : 
+                       callStatus === 'thinking' ? 'Generating the reply and voice audio...' :
                        callStatus === 'speaking' ? `${activePersona?.name || 'Persona'} is speaking...` :
                        callStatus === 'listening' ? 'Speak now or type below...' : 'Call in progress'}
                     </p>
@@ -2617,9 +2640,15 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
               </div>
 
               {/* Call Controls Bar */}
+              {callError && (
+                <div className="w-full max-w-xl sm:max-w-2xl rounded-xl border border-rose-500/25 bg-rose-500/10 px-3 py-2 text-center text-xs text-rose-300" role="alert">
+                  {callError}
+                </div>
+              )}
               <div className="w-full max-w-xl sm:max-w-2xl bg-[#16171b]/95 border border-white/[0.12] rounded-2xl p-2.5 sm:p-3 shadow-2xl backdrop-blur-xl flex items-center justify-between gap-2 z-20">
                 {/* Mute Button */}
                 <button
+                  type="button"
                   onClick={() => setIsMuted(!isMuted)}
                   className={cn(
                     "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer",
@@ -2627,10 +2656,24 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                       ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
                       : "bg-white/[0.06] hover:bg-white/[0.12] text-zinc-200 border border-white/10"
                   )}
+                  aria-label={isMuted ? 'Unmute microphone' : 'Mute microphone'}
                 >
                   {isMuted ? <MicOff size={14} /> : <Mic size={14} />}
                   <span className="hidden sm:inline">{isMuted ? "Unmute" : "Mute"}</span>
                 </button>
+
+                {(callStatus === 'speaking' || callStatus === 'thinking') && (
+                  <button
+                    type="button"
+                    onClick={interruptPersona}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/35 text-amber-200 text-xs font-bold transition-all"
+                    aria-label={callStatus === 'speaking' ? 'Interrupt persona speech' : 'Cancel response generation'}
+                    title="Interrupt now (Space)"
+                  >
+                    <Hand size={14} />
+                    <span className="hidden sm:inline">{callStatus === 'speaking' ? 'Interrupt' : 'Cancel'}</span>
+                  </button>
+                )}
 
                 {/* Call Input / Quick Chat */}
                 <div className="flex-1 flex items-center gap-1.5 bg-[#101114] border border-white/10 rounded-xl px-2.5 py-1">
@@ -2645,9 +2688,11 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                     className="w-full bg-transparent text-xs text-white placeholder-zinc-500 outline-none"
                   />
                   <button
+                    type="button"
                     onClick={() => handleSendCallMessage()}
                     disabled={!callInput.trim()}
                     className="p-1 rounded-lg bg-[#E7C477] text-zinc-950 disabled:opacity-40 font-bold transition-opacity cursor-pointer"
+                    aria-label="Send voice call message"
                   >
                     <Send size={12} />
                   </button>
@@ -2655,8 +2700,10 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
 
                 {/* End Call Button */}
                 <button
+                  type="button"
                   onClick={handleEndCall}
                   className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-all shadow-lg active:scale-95 cursor-pointer"
+                  aria-label="End voice call"
                 >
                   <PhoneOff size={14} />
                   <span className="hidden sm:inline">End</span>

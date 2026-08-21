@@ -54,9 +54,11 @@ export default function LeftSidebar({ activeTab, onNavigate, activePersona, newA
   return (
     <div className="w-56 md:w-60 lg:w-64 shrink-0 h-full border-r border-[#E7C477]/10 bg-[#141416] flex flex-col z-50 select-none">
       {/* Brand Header */}
-      <div 
+      <button
+        type="button"
         onClick={() => onNavigate('personas')}
-        className="p-4 border-b border-[#E7C477]/10 flex items-center gap-3.5 cursor-pointer hover:bg-white/[0.03] transition-all group"
+        className="w-full p-4 border-b border-[#E7C477]/10 flex items-center gap-3.5 cursor-pointer hover:bg-white/[0.03] transition-all group text-left"
+        aria-label="Go to dashboard"
       >
         <div className="w-11 h-11 rounded-2xl overflow-hidden border border-[#E7C477]/35 shadow-xl shadow-amber-950/20 flex-shrink-0 bg-[#080C14] p-1 flex items-center justify-center group-hover:border-[#E7C477]/60 group-hover:scale-[1.03] transition-all">
           <img 
@@ -73,7 +75,7 @@ export default function LeftSidebar({ activeTab, onNavigate, activePersona, newA
             STUDIO
           </span>
         </div>
-      </div>
+      </button>
 
       {/* Navigation Links */}
       <div className="flex-1 overflow-y-auto p-3.5 space-y-1.5 custom-scrollbar">
@@ -91,6 +93,7 @@ export default function LeftSidebar({ activeTab, onNavigate, activePersona, newA
                   ? "bg-[#E7C477]/10 border border-[#E7C477]/30 text-[#F2D58D] shadow-sm shadow-amber-950/30 font-semibold"
                   : "text-[#C3BFB8] hover:text-[#F5F1E8] hover:bg-white/[0.03] border border-transparent"
               )}
+              aria-current={isActive ? 'page' : undefined}
             >
               <ItemIcon size={16} className={isActive ? "text-[#F2D58D]" : "text-[#8C909A] group-hover:text-[#F5F1E8] transition-colors"} />
               <span className="flex-1 truncate">{item.label}</span>
@@ -112,6 +115,8 @@ export default function LeftSidebar({ activeTab, onNavigate, activePersona, newA
                 ? "bg-[#E7C477]/10 border border-[#E7C477]/30 text-[#F2D58D] font-semibold"
                 : "text-[#8C909A] hover:text-[#F5F1E8] hover:bg-white/[0.02] border border-transparent"
             )}
+            aria-expanded={openAccordions.toolbox}
+            aria-controls="ai-toolbox-navigation"
           >
             <div className="flex items-center gap-3.5">
               <Wrench size={16} className={activeTab === 'intelligence' ? "text-[#F2D58D]" : "text-[#8C909A]"} />
@@ -123,6 +128,7 @@ export default function LeftSidebar({ activeTab, onNavigate, activePersona, newA
           <AnimatePresence initial={false}>
             {openAccordions.toolbox && (
               <motion.div
+                id="ai-toolbox-navigation"
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: 'auto', opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
