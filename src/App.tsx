@@ -526,7 +526,7 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
                 ...existing, 
                 ...p,
                 referenceImage: refImg,
-                avatar: avImg,
+                avatar: avImg || '',
                 additionalReferenceImages: mergedAddRefs,
                 visualLibrary: mergedVisLib
               });

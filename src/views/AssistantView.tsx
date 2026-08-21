@@ -734,8 +734,10 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       });
     }
   };
+
   const [callInput, setCallInput] = useState('');
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const activeCallAbortControllerRef = useRef<AbortController | null>(null);
   const callTimerRef = useRef<any>(null);
   const callRecRef = useRef<any>(null);
   const isAgentSpeakingRef = useRef<boolean>(false);
@@ -774,12 +776,12 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       const source = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 512;
-      analyser.smoothingTimeConstant = 0.3;
+      analyser.smoothingTimeConstant = 0.25;
       source.connect(analyser);
 
       const buffer = new Uint8Array(analyser.frequencyBinCount);
       let sustainedSpeechFrames = 0;
-      let dynamicNoiseFloor = 0.04;
+      let dynamicNoiseFloor = 0.10;
 
       const checkAudioEnergy = () => {
         if (!isCallActiveRef.current || !vadAudioCtxRef.current) return;
@@ -798,21 +800,20 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 
         const avgEnergy = binCount > 0 ? (sum / binCount) / 255 : 0;
 
-        // If the persona is actively speaking, monitor for human voice breaking through
+        // If the persona is actively speaking, monitor for intentional human voice breaking through
         if (isAgentSpeakingRef.current) {
           // Adapt slowly to background/speaker room volume
-          dynamicNoiseFloor = dynamicNoiseFloor * 0.94 + avgEnergy * 0.06;
+          dynamicNoiseFloor = dynamicNoiseFloor * 0.95 + avgEnergy * 0.05;
 
-          // Threshold for intentional speech over speaker audio (require higher energy and refractory period)
-          const speechThreshold = Math.max(0.35, dynamicNoiseFloor + 0.22);
+          // Higher threshold to prevent speaker output from false-triggering interruption
+          const speechThreshold = Math.max(0.48, dynamicNoiseFloor + 0.28);
           const timeSinceStart = Date.now() - personaSpeakingStartTimeRef.current;
 
-          // Don't interrupt within the first 1200ms of persona speaking to prevent acoustic pop/echo triggering interruption
-          if (timeSinceStart > 1200 && avgEnergy > speechThreshold) {
+          // Require 1800ms initial refractory period and ~500ms of sustained talking (30 animation frames at 60fps)
+          if (timeSinceStart > 1800 && avgEnergy > speechThreshold) {
             sustainedSpeechFrames++;
-            // If energy sustained for ~300ms (approx 18 animation frames at 60fps)
-            if (sustainedSpeechFrames >= 18) {
-              console.log('[VAD] ⚡ Voice interruption detected! Halting persona playback...');
+            if (sustainedSpeechFrames >= 30) {
+              console.log('[VAD] ⚡ Intentional user interruption detected! Halting persona playback...');
               sustainedSpeechFrames = 0;
               interruptPersona();
             }
@@ -850,27 +851,12 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     }
   };
 
-  useEffect(() => {
-    isCallActiveRef.current = isCallActive;
-  }, [isCallActive]);
-
-  const stopSpeechRecognition = () => {
-    const rec = callRecRef.current;
-    callRecRef.current = null;
-    if (rec) {
-      try {
-        rec.onend = null;
-        rec.onerror = null;
-        rec.onresult = null;
-        rec.abort();
-      } catch {}
-    }
-  };
-
-  const [liveUserSpeech, setLiveUserSpeech] = useState<string>('');
-
   const interruptPersona = useCallback(() => {
-    console.log('[Interrupt] 🛑 Halting persona audio playback...');
+    console.log('[Interrupt] 🛑 Halting persona audio playback and cancelling in-flight request...');
+    if (activeCallAbortControllerRef.current) {
+      try { activeCallAbortControllerRef.current.abort(); } catch {}
+      activeCallAbortControllerRef.current = null;
+    }
     if (audioRef.current) {
       try {
         audioRef.current.pause();
@@ -891,6 +877,25 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       restartSpeechRecognition();
     }
   }, []);
+
+  useEffect(() => {
+    isCallActiveRef.current = isCallActive;
+  }, [isCallActive]);
+
+  const stopSpeechRecognition = () => {
+    const rec = callRecRef.current;
+    callRecRef.current = null;
+    if (rec) {
+      try {
+        rec.onend = null;
+        rec.onerror = null;
+        rec.onresult = null;
+        rec.abort();
+      } catch {}
+    }
+  };
+
+  const [liveUserSpeech, setLiveUserSpeech] = useState<string>('');
 
   const restartSpeechRecognition = () => {
     if (isMutedRef.current || !isCallActiveRef.current) return;
@@ -936,15 +941,15 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         // Reset silence timer on any newly recognized speech chunk
         if (interimSilenceTimer) clearTimeout(interimSilenceTimer);
 
-        // Intelligent Conversational Pause Buffer:
+        // Intelligent Conversational Pause Buffer (Generous breathing room so user is never interrupted):
         const lastWord = trimmed.split(/\s+/).pop()?.toLowerCase().replace(/[^a-z]/g, '') || '';
         const isTrailingThought = /^(and|or|but|so|because|like|um|uh|then|when|if|that|which|to|with|for|about|my|your|the|a|i|we|you|he|she|it|they|got|had|was|is)$/i.test(lastWord);
 
-        let pauseDelay = 1300;
+        let pauseDelay = 2200;
         if (isTrailingThought) {
-          pauseDelay = 1900;
+          pauseDelay = 3000;
         } else if (hasFinalResult && /[.?!]$/.test(trimmed)) {
-          pauseDelay = 900;
+          pauseDelay = 1500;
         }
 
         interimSilenceTimer = setTimeout(() => {
@@ -1011,18 +1016,31 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 
   // Global keydown for instant Spacebar interruption during active call
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if (!isCallActive) return;
-      if ((e.code === 'Space' || e.key === 'Escape') && document.activeElement?.tagName !== 'INPUT') {
-        if (callStatus === 'speaking' || isAgentSpeakingRef.current) {
-          e.preventDefault();
-          interruptPersona();
-        }
+      if (e.code === 'Space' && e.target === document.body && callStatus === 'speaking') {
+        e.preventDefault();
+        console.log('[Spacebar] Interrupted persona playback');
+        interruptPersona();
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, [isCallActive, callStatus, interruptPersona]);
+
+  // Quick space key on window
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code === 'Space' && isCallActive && isAgentSpeakingRef.current) {
+        const tag = (e.target as HTMLElement)?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+        e.preventDefault();
+        interruptPersona();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isCallActive, interruptPersona]);
 
   // ── Auto-Recovery Watchdog for Live Voice Calls ──────────
   useEffect(() => {
@@ -1048,52 +1066,10 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // ── Web Speech Fallback Engine (Guaranteed Zero-Silence Playback) ──
+  // ── Web Speech Fallback Engine (Robotic Voice Suppressed) ──
   const speakWithWebSpeech = (text: string, onStart?: () => void, onEnd?: () => void) => {
-    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
-      onStart?.();
-      onEnd?.();
-      return;
-    }
-    try {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      const isMale = (activePersona?.name || '').toLowerCase().includes('john') || 
-                     (activePersona?.name || '').toLowerCase().includes('jason') || 
-                     (activePersona?.name || '').toLowerCase().includes('stark');
-      
-      const voices = window.speechSynthesis.getVoices();
-      const matchingVoice = voices.find(v => 
-        isMale 
-          ? /male|david|daniel|george|alex|fred/i.test(v.name)
-          : /female|samantha|karen|victoria|moira|tessa|zira|google us english|natural/i.test(v.name)
-      ) || voices.find(v => v.lang.startsWith('en')) || voices[0];
-
-      if (matchingVoice) {
-        utterance.voice = matchingVoice;
-      }
-      utterance.rate = 1.0;
-      utterance.pitch = isMale ? 0.95 : 1.05;
-
-      utterance.onstart = () => {
-        stopSpeechRecognition();
-        personaSpeakingStartTimeRef.current = Date.now();
-        onStart?.();
-      };
-      utterance.onend = () => {
-        onEnd?.();
-      };
-      utterance.onerror = (e) => {
-        console.warn('[Web Speech Synthesis Warning]:', e);
-        onEnd?.();
-      };
-
-      window.speechSynthesis.speak(utterance);
-    } catch (e) {
-      console.warn('[Web Speech Error]:', e);
-      onStart?.();
-      onEnd?.();
-    }
+    console.log('[Web Speech] Robotic synthesis suppressed to preserve cloned voice identity');
+    onEnd?.();
   };
 
   // ── Play TTS Helper ─────────────────────────────────────
@@ -1129,6 +1105,9 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 
     try {
       const { voiceId: targetVoiceId, voiceReference: targetVoiceRef } = getActivePersonaVoice(activePersona);
+      const controller = new AbortController();
+      activeCallAbortControllerRef.current = controller;
+
       const ttsRes = await fetch('/api/agent/voice-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1140,18 +1119,12 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           voiceModel: selectedVoiceEngine,
           ttsModel: selectedVoiceEngine,
         }),
+        signal: controller.signal,
       });
       const ttsData = await ttsRes.json().catch(() => ({}));
       const audioUrl = ttsData.audioUrl;
       
-      if (!audioUrl) {
-        console.log('[PlayTTS] No audio URL from server, falling back to Web Speech Synthesis...');
-        speakWithWebSpeech(text, onStart, onPlaybackComplete);
-        return;
-      }
-
-      // Check if call was ended while we were fetching TTS
-      if (!isCallActiveRef.current) {
+      if (!audioUrl || !isCallActiveRef.current) {
         onPlaybackComplete();
         return;
       }
@@ -1182,22 +1155,22 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       };
       
       audio.onerror = () => {
-        console.warn('[Audio Error] Playback failed, falling back to Web Speech Synthesis');
         if (audioRef.current === audio) {
           audioRef.current = null;
         }
-        speakWithWebSpeech(text, onStart, onPlaybackComplete);
+        onPlaybackComplete();
       };
       
       if (isCallActiveRef.current) {
         try {
           await audio.play();
-        } catch (playErr) {
-          console.warn('[Audio Play Error], falling back to Web Speech Synthesis:', playErr);
+        } catch (playErr: any) {
+          if (playErr?.name !== 'AbortError') {
+            console.warn('[Audio Play Error]:', playErr);
+          }
           if (audioRef.current === audio) {
             audioRef.current = null;
           }
-          speakWithWebSpeech(text, onStart, onPlaybackComplete);
         }
       } else {
         if (audioRef.current === audio) {
@@ -1263,8 +1236,11 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     try {
       const priorHistory = loadHistory(activePersona.id);
       const personaMemories = loadPersonaMemories(activePersona.id);
-
       const creator = getCreatorProfile();
+
+      const controller = new AbortController();
+      activeCallAbortControllerRef.current = controller;
+
       // Single-hop Unified Real-Time Voice Endpoint (LLM generation + ElevenLabs Turbo in ONE parallel round-trip)
       const res = await fetch('/api/agent/voice-chat', {
         method: 'POST',
@@ -1289,6 +1265,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           voiceModel: selectedVoiceEngine,
           ttsModel: selectedVoiceEngine,
         }),
+        signal: controller.signal,
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed call dialogue response');
@@ -1425,9 +1402,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         audio.onended = onCallAudioEnded;
 
         audio.onerror = () => {
-          console.warn('[Voice Chat Audio Error] Playback failed, falling back to Web Speech Synthesis');
           if (audioRef.current === audio) audioRef.current = null;
-          speakWithWebSpeech(reply, undefined, onCallAudioEnded);
+          onCallAudioEnded();
         };
         
         setCallTranscript(prev => {
@@ -1438,10 +1414,12 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         if (isCallActiveRef.current) {
           try {
             await audio.play();
-          } catch (pErr) {
-            console.warn('[Audio Play Error], falling back to Web Speech Synthesis:', pErr);
+          } catch (pErr: any) {
+            if (pErr?.name !== 'AbortError') {
+              console.warn('[Audio Play Error]:', pErr);
+            }
             if (audioRef.current === audio) audioRef.current = null;
-            speakWithWebSpeech(reply, undefined, onCallAudioEnded);
+            onCallAudioEnded();
           }
         }
       } else if (isCallActiveRef.current) {
