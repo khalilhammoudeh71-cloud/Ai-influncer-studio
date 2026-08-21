@@ -3,7 +3,6 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 import react from "@vitejs/plugin-react";
 import { defineConfig, Plugin } from "vite";
-import { viteSingleFile } from "vite-plugin-singlefile";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -54,12 +53,11 @@ function servePublicStaticAssets(): Plugin {
   };
 }
 
-export default defineConfig(({ command }) => ({
+export default defineConfig(() => ({
   publicDir: path.resolve(__dirname, 'public'),
   plugins: [
     react(),
     servePublicStaticAssets(),
-    ...(command === 'build' ? [viteSingleFile()] : []),
   ],
   css: {
     postcss: './postcss.config.js',

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { lazy, Suspense, useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Toaster } from 'react-hot-toast';
 import { 
@@ -24,22 +24,22 @@ import { cn } from './utils/cn';
 import { Persona, PersonaSetter, RevenueEntry, PlannedPost, Tab, NavEntry } from './types';
 import BackButton from './components/BackButton';
 import { api } from './services/apiService';
-import PersonasView from './views/PersonasView';
-import PlannerView from './views/PlannerView';
-import CreateView from './views/CreateView';
-import AssistantView from './views/AssistantView';
-import SettingsView from './views/SettingsView';
-import GalleryView from './views/GalleryView';
 import LandingView from './views/LandingView';
-import PersonaBuilderView from './views/PersonaBuilderView';
-import CreatorHubView from './views/CreatorHubView';
-import RevenueView from './views/RevenueView';
-import AgentView from './views/AgentView';
 import OnboardingTour from './components/OnboardingTour';
 import CommandPalette from './components/CommandPalette';
 import LeftSidebar from './components/LeftSidebar';
-import TrendView from './views/TrendView';
-import CreatePersonaPage from './views/CreatePersonaPage';
+
+const PersonasView = lazy(() => import('./views/PersonasView'));
+const PlannerView = lazy(() => import('./views/PlannerView'));
+const CreateView = lazy(() => import('./views/CreateView'));
+const AssistantView = lazy(() => import('./views/AssistantView'));
+const SettingsView = lazy(() => import('./views/SettingsView'));
+const GalleryView = lazy(() => import('./views/GalleryView'));
+const CreatorHubView = lazy(() => import('./views/CreatorHubView'));
+const RevenueView = lazy(() => import('./views/RevenueView'));
+const AgentView = lazy(() => import('./views/AgentView'));
+const TrendView = lazy(() => import('./views/TrendView'));
+const CreatePersonaPage = lazy(() => import('./views/CreatePersonaPage'));
 
 
 const EMPTY_PERSONA: Persona = {
@@ -59,6 +59,17 @@ const EMPTY_PERSONA: Persona = {
   contentGoals: '',
   personaNotes: '',
 };
+
+function ViewLoadingState() {
+  return (
+    <div className="flex min-h-[360px] w-full items-center justify-center" role="status" aria-live="polite">
+      <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-[#18191d] px-5 py-3 text-sm text-[#D4D4D8] shadow-xl">
+        <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#E7C477]/25 border-t-[#E7C477]" aria-hidden="true" />
+        Loading studio view…
+      </div>
+    </div>
+  );
+}
 
 import { supabase } from './lib/supabase';
 import { setActiveStorageUser } from './utils/creatorProfile';
@@ -704,12 +715,14 @@ function App() {
 
   if (window.location.pathname === '/persona/builder' || window.location.pathname.includes('/persona/builder')) {
     return (
-      <CreatePersonaPage 
-        personas={personas}
-        setPersonas={setPersonas}
-        onSelectPersona={setSelectedPersonaId}
-        nav={navActions}
-      />
+      <Suspense fallback={<ViewLoadingState />}>
+        <CreatePersonaPage
+          personas={personas}
+          setPersonas={setPersonas}
+          onSelectPersona={setSelectedPersonaId}
+          nav={navActions}
+        />
+      </Suspense>
     );
   }
 
@@ -1021,7 +1034,9 @@ function App() {
       {/* ── Content ─────────────────────────────────────────────── */}
       <main id="main-content" tabIndex={-1} className="flex-1 overflow-y-auto relative z-10 focus:outline-none">
         <div className={`w-full h-full ${tabDirectionRef.current === 'right' ? 'tab-enter-right' : 'tab-enter-left'}`} key={activeTab}>
-          {renderContent()}
+          <Suspense fallback={<ViewLoadingState />}>
+            {renderContent()}
+          </Suspense>
         </div>
       </main>
     </div>
