@@ -7,7 +7,7 @@ export const CREATOR_PROFILE_EVENT = 'ai_studio_creator_profile_updated';
 export const DEFAULT_CREATOR_PROFILE: CreatorProfile = {
   name: 'Dr. H',
   role: 'Creator & Creative Director',
-  appearance: 'Charismatic male creator with sharp modern styling, short dark hair, and athletic build',
+  appearance: 'Completely bald, smooth clean-shaven bald head (no hair on head), trimmed dark beard, sharp masculine facial features, athletic muscular build',
   bio: 'Visionary digital creator, studio director, and AI influencer architect.',
   gender: 'Male',
   photos: [],

@@ -1299,32 +1299,29 @@ async function enhanceVisualPromptWithLLM(params: {
 Your task is to convert the user's specific request into an extensive, highly descriptive, photorealistic photographic prompt for AI generation.
 
 PROMPT ENGINEERING RULES:
-1. FAITHFULNESS TO USER REQUEST (HIGHEST PRIORITY):
-   - Directly reflect ALL specific details, settings, themes, and attributes requested by the user: "${rawPrompt}".
-   ${isRefRecreation && hasPersonaRef ? `- REFERENCE RECREATION: The user wants an image very similar to Reference Image 1 (her profile/reference photo).
-     - Retain the exact same pose, body angle, head tilt, facial expression, framing, background environment, and camera distance as Reference Image 1.
-     - Strictly apply the requested clothing or nudity modification while keeping everything else identical to Reference Image 1.` : ''}
+1. FAITHFULNESS TO USER REQUEST & PHYSICAL ACTION (HIGHEST PRIORITY):
+   - Fully depict ALL explicit actions, physical positions, intimacy, and settings requested by the user: "${rawPrompt}".
+   - DO NOT turn action scenes into passive headshots or smiling selfies. Show the actual physical interaction, positions, and full-body dynamics.
 
-2. SUBJECT & FORWARD-FACING PORTRAIT FRAMING:
-   ${isDuo ? `- For DUO/COUPLE scenes: Medium 2/3rds portrait showing BOTH people in the frame:
-     1) ${personaName} (female model): upper body 2/3rds view, facing forward directly towards camera, gorgeous facial expression, skin radiance, and alluring curves.
-     2) ${creatorName} (male, ${creatorAppearance}): exact position relative to ${personaName}, masculine physique, arms/hands placement, interaction, and posture.
-     - Detail the exact dynamic between them.` : ''}
-   ${isCreatorSolo ? `- For SOLO CREATOR scenes: Medium 2/3rds upper-body vertical portrait of ${creatorName} (${creatorAppearance}) facing forward directly towards camera with confident posture and gaze.` : ''}
-   ${!isDuo && !isCreatorSolo ? `- SINGLE PERSON ONLY: Exactly ONE female model (${personaName}) in the photograph. Absolutely NO second person, no male companion, no couples, no extra people in the frame.
-     - FACING FORWARD: ${personaName} MUST face forward towards the camera, looking straight into the camera lens with clear direct eye contact.
-     - FRAMING: Medium upper-body vertical portrait (9:16 vertical ratio). Her face must be prominent, sharp, and clearly visible for maximum identity lock.` : ''}
+2. SUBJECT IDENTITIES & PRECISE APPEARANCE:
+   ${isDuo ? `- DUO INTERACTIVE SCENE:
+     1) ${personaName} (Reference Image 1): Reproduce her exact face, bone structure, and smile/expression from Reference Image 1. Fully nude with bare natural feminine curves.
+     2) ${creatorName} (Reference Image 2): Reproduce his exact face and athletic build from Reference Image 2. HE IS COMPLETELY BALD with a smooth clean-shaven head (ZERO hair on scalp) and a trimmed dark beard.
+     - PHYSICAL ACTION & DYNAMIC: Accurately render the physical interaction and posture requested ("${rawPrompt}"). Both bodies must be visible in the scene engaged in the action.` : ''}
+   ${isCreatorSolo ? `- SOLO CREATOR SCENE: Vertical portrait of ${creatorName} (${creatorAppearance}) from Reference Image 2, completely bald with clean-shaven head and trimmed dark beard.` : ''}
+   ${!isDuo && !isCreatorSolo ? `- SINGLE PERSON ONLY: Exactly ONE female model (${personaName}) in the photograph. No extra people.
+     - FRAMING: Vertical 9:16 portrait. Her face and natural curves clearly visible for maximum identity lock.` : ''}
 
-3. MAXIMUM IDENTITY LOCK & MULTI-IMAGE SYNTHESIS:
-   ${hasPersonaRef ? `- PERSONA IDENTITY LOCK: Reference Image 1 is ${personaName}. Reproduce her exact face, bone structure, eyes, lips, jawline, hair color and texture, and skin tone with 100% precision.` : ''}
-   ${isDuo && hasPersonaRef && hasCreatorRef ? `- DUAL REFERENCE LOCK: Image Reference 1 is ${personaName} (reproduce her exact face). Image Reference 2 is ${creatorName} (reproduce his exact face and masculine build).` : ''}
+3. MAXIMUM IDENTITY LOCK & DUAL-IMAGE SYNTHESIS:
+   ${hasPersonaRef ? `- Reference Image 1 is ${personaName}. Reproduce her exact facial features and skin tone.` : ''}
+   ${isDuo && hasCreatorRef ? `- Reference Image 2 is ${creatorName}. Reproduce his exact face, smooth bald head (no hair), trimmed dark beard, and muscular build.` : ''}
 
-4. BODY ATTIRE & NUDITY DIRECTIVES:
-   ${isExplicitNude ? `- NUDE / UNCLOTHED DIRECTIVE: ${personaName} is completely UNCLOTHED and NUDE with bare chest and body, natural skin textures, delicate collarbones, authentic feminine curves, and natural anatomy. Modify Reference Image 1 to remove all clothing completely while keeping her exact face, hair, and lighting identical.` : ''}
-   ${!isExplicitNude && effectiveOutfit ? `- ATTIRE: Wearing: "${effectiveOutfit}". Render the upper 2/3rds of this exact garment with intricate textile details.` : ''}
+4. NUDITY & BODY DIRECTIVE:
+   ${isExplicitNude ? `- NUDE / UNCLOTHED DIRECTIVE: Both subjects are completely UNCLOTHED and NUDE with natural skin textures, authentic anatomy, visible pores, and raw passion. No clothes or garments.` : ''}
+   ${!isExplicitNude && effectiveOutfit ? `- ATTIRE: Wearing: "${effectiveOutfit}".` : ''}
 
-5. CINEMATOGRAPHY:
-   - 9:16 vertical portrait, 85mm prime lens, authentic volumetric lighting, natural skin texture, visible pores, photorealistic 8k UHD.
+5. CINEMATOGRAPHY & COMPOSITION:
+   - 9:16 vertical framing, dynamic cinematic composition capturing full action and bodies, 85mm prime lens, volumetric natural lighting, photorealistic 8k UHD.
 
 6. FORMAT:
    - Return ONLY the final expanded prompt text. Do not wrap in markdown or conversational text.`;
@@ -1431,7 +1428,7 @@ Creator: ${creatorName} (${creatorAppearance})`;
 
   // 4. Dynamic Programmatic Photographic Prompt Synthesizer (Zero Censorship Guarantee)
   if (isDuo) {
-    return `An ultra-photorealistic vertical 9:16 duo portrait featuring ${personaName} (Reference Image 1) and ${creatorName} (${creatorAppearance}). ${personaName} is in the foreground looking towards camera with direct eye contact, natural skin textures, and ${isExplicitNude ? 'fully nude with all garments removed' : 'alluring attire'}. ${creatorName} is positioned intimately with her in the exact physical dynamic: ${rawPrompt}. 85mm prime lens, volumetric studio lighting, natural skin pores, 8k uhd photorealistic masterwork.`;
+    return `An ultra-photorealistic vertical 9:16 scene featuring ${personaName} (from Reference Image 1) and ${creatorName} (from Reference Image 2: completely bald with a smooth clean-shaven bald head, trimmed dark beard, and athletic muscular physique). Both ${personaName} and ${creatorName} are fully nude with all clothes removed. The scene explicitly depicts the full physical action and dynamic: ${rawPrompt}. Full interaction visible in frame, natural feminine curves, raw passion, authentic skin pores, volumetric cinematic lighting, 8k uhd photorealistic quality.`;
   }
   if (isRefRecreation) {
     return `Strictly modify Reference Image 1: Preserve the exact same pose, body angle, direct smiling eye contact, head tilt, and outdoor natural lighting from Reference Image 1. Execute the requested change: ${isExplicitNude ? 'remove the yellow top and all garments completely, rendering her fully bare and unclothed with natural feminine chest, delicate collarbones, and authentic skin texture' : rawPrompt}. Photorealistic, high-resolution, natural skin tones, visible pores, soft outdoor sunlight, cinematic depth of field, 8k uhd.`;
