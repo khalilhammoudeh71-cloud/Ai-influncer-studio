@@ -279,6 +279,14 @@ const WIZARD_STEPS = [
   }
 ];
 
+const STUDIO_STEPS = [
+  { id: 'identity', title: 'Identity', description: 'Name, niche, platform, and story' },
+  { id: 'appearance', title: 'Appearance', description: 'Choose a look and reference photos' },
+  { id: 'personality', title: 'Personality', description: 'Set traits, behavior, and boundaries' },
+  { id: 'voice', title: 'Voice', description: 'Choose or clone the persona voice' },
+  { id: 'review', title: 'Review', description: 'Confirm everything and publish' },
+] as const;
+
 export default function CreatePersonaPage({ personas, setPersonas, onSelectPersona, nav, editingPersona }: CreatePersonaPageProps) {
   // Form State
   const [name, setName] = useState('');
@@ -293,6 +301,10 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   const [audienceType, setAudienceType] = useState('');
   const [contentGoals, setContentGoals] = useState('');
   const [contentBoundaries, setContentBoundaries] = useState('');
+  const [studioStep, setStudioStep] = useState(0);
+  const [draftStatus, setDraftStatus] = useState<'Saving…' | 'Saved locally'>('Saved locally');
+  const studioTopRef = useRef<HTMLDivElement>(null);
+  const hasRestoredDraftRef = useRef(false);
 
   // Image State
   const [imageTab, setImageTab] = useState<'upload' | 'ai' | 'wizard'>('upload');
@@ -720,6 +732,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       } else if ((editingPersona as any).voiceSampleUrl) {
         setAudioSampleList([{ name: 'voice_sample.wav', base64: (editingPersona as any).voiceSampleUrl }]);
       }
+      setStudioStep(0);
     } else {
       setName('');
       setNiche('');
@@ -728,6 +741,8 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       setVisualStyle('');
       setBio('');
       setPersonalityTraits('');
+      setCompanionType('intimate');
+      setCreatorVoiceRule('');
       setAudienceType('');
       setContentGoals('');
       setContentBoundaries('');
@@ -742,9 +757,70 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       setSelectedVoiceModel('elevenlabs');
       setAudioSampleBase64('');
       setAudioSampleList([]);
-      localStorage.removeItem('persona_form_draft');
+
+      try {
+        const savedDraft = localStorage.getItem('persona_form_draft');
+        if (savedDraft) {
+          const draft = JSON.parse(savedDraft);
+          setName(draft.name || '');
+          setNiche(draft.niche || '');
+          setPlatform(draft.platform || 'Instagram');
+          setTone(draft.tone || '');
+          setVisualStyle(draft.visualStyle || '');
+          setBio(draft.bio || '');
+          setPersonalityTraits(draft.personalityTraits || '');
+          setCompanionType(draft.companionType || 'intimate');
+          setCreatorVoiceRule(draft.creatorVoiceRule || '');
+          setContentBoundaries(draft.contentBoundaries || '');
+          setStudioStep(Math.min(Math.max(Number(draft.studioStep) || 0, 0), STUDIO_STEPS.length - 1));
+        } else {
+          setStudioStep(0);
+        }
+      } catch {
+        localStorage.removeItem('persona_form_draft');
+        setStudioStep(0);
+      }
     }
+
+    hasRestoredDraftRef.current = true;
   }, [editingPersona]);
+
+  useEffect(() => {
+    if (editingPersona || !hasRestoredDraftRef.current) return;
+
+    setDraftStatus('Saving…');
+    const timeoutId = window.setTimeout(() => {
+      localStorage.setItem('persona_form_draft', JSON.stringify({
+        name,
+        niche,
+        platform,
+        tone,
+        visualStyle,
+        bio,
+        personalityTraits,
+        companionType,
+        creatorVoiceRule,
+        contentBoundaries,
+        studioStep,
+      }));
+      setDraftStatus('Saved locally');
+    }, 500);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    editingPersona,
+    name,
+    niche,
+    platform,
+    tone,
+    visualStyle,
+    bio,
+    personalityTraits,
+    companionType,
+    creatorVoiceRule,
+    contentBoundaries,
+    studioStep,
+  ]);
 
   const handleTestVoiceSample = async () => {
     if (isPlayingSample) {
@@ -1173,6 +1249,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
         ]).catch(apiErr => console.warn('[Persona API Create Warning]:', apiErr));
       }
 
+      localStorage.removeItem('persona_form_draft');
       nav.replace({ view: 'personas' });
     } catch (error) {
       console.error('[Save Persona Error]:', error);
@@ -1183,9 +1260,31 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   };
 
   const currentWizardStep = WIZARD_STEPS[wizardStepIdx];
+  const selectedVoiceName = accountVoices.find(voice => voice.voice_id === selectedVoiceId)?.name
+    || PRESET_VOICES.find(voice => voice.id === selectedVoiceId)?.name
+    || (audioSampleList.length > 0 ? 'Cloned voice' : 'Studio voice');
+  const completedStudioSteps = [
+    Boolean(name.trim()),
+    referenceImages.length > 0,
+    Boolean(companionType && (personalityTraits.trim() || tone.trim() || bio.trim())),
+    Boolean(selectedVoiceId || audioSampleList.length > 0),
+    false,
+  ];
+
+  const goToStudioStep = (nextStep: number) => {
+    if (nextStep > studioStep && studioStep === 0 && !name.trim()) {
+      toast.error('Add a persona name before continuing');
+      return;
+    }
+
+    setStudioStep(Math.min(Math.max(nextStep, 0), STUDIO_STEPS.length - 1));
+    window.requestAnimationFrame(() => {
+      studioTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
 
   return (
-    <div className="relative min-h-screen bg-[#050914] text-[#F5F1E8] p-4 sm:p-6 lg:p-10 pb-20 overflow-y-auto select-none">
+    <div ref={studioTopRef} className="relative min-h-screen bg-[#050914] text-[#F5F1E8] p-4 sm:p-6 lg:p-10 !pb-36 overflow-y-auto select-none">
       <div className="relative z-10 max-w-[1300px] mx-auto space-y-8">
         
         {/* ── HEADER BAR ── */}
@@ -1200,32 +1299,72 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
             </p>
           </div>
 
-          <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:items-center sm:gap-3">
-            <span className="text-xs text-[#70C98B] flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#70C98B]/10 border border-[#70C98B]/20">
-              <Check size={13} />
-              All changes saved
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+            <span className="text-xs text-[#70C98B] flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-[#70C98B]/10 border border-[#70C98B]/20">
+              {draftStatus === 'Saving…' ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+              {editingPersona ? 'Editing existing persona' : draftStatus}
             </span>
 
-            <button
-              onClick={handleGeneratePersonaConcept}
-              disabled={isGeneratingConcept}
-              className="btn-gold-secondary px-3 sm:px-4 py-2.5 text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer"
-            >
-              {isGeneratingConcept ? <Loader2 size={15} className="animate-spin text-[#F2D58D]" /> : <Wand2 size={15} className="text-[#D9BA72]" />}
-              <span>Auto-Fill Idea</span>
-            </button>
-
-            <button
-              onClick={handleSave}
-              disabled={isSaving}
-              className="btn-gold-primary col-span-2 sm:col-span-1 px-4 sm:px-6 py-2.5 text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer shadow-lg"
-            >
-              {isSaving ? <Loader2 size={15} className="animate-spin text-[#161108]" /> : <Check size={15} />}
-              <span>{editingPersona ? 'Save Changes' : 'Publish Persona'}</span>
-            </button>
+            {studioStep === 0 && (
+              <button
+                onClick={handleGeneratePersonaConcept}
+                disabled={isGeneratingConcept}
+                className="btn-gold-secondary flex-1 sm:flex-none px-3 sm:px-4 py-2.5 text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer"
+              >
+                {isGeneratingConcept ? <Loader2 size={15} className="animate-spin text-[#F2D58D]" /> : <Wand2 size={15} className="text-[#D9BA72]" />}
+                <span>Auto-Fill Idea</span>
+              </button>
+            )}
           </div>
         </div>
 
+        {/* ── GUIDED STUDIO PROGRESS ── */}
+        <div className="luxury-card p-3 sm:p-4">
+          <div className="overflow-x-auto no-scrollbar">
+            <div className="grid min-w-[680px] grid-cols-5 gap-2" aria-label="Persona creation progress">
+              {STUDIO_STEPS.map((step, index) => {
+                const isActive = studioStep === index;
+                const isComplete = completedStudioSteps[index] || studioStep > index;
+                return (
+                  <button
+                    key={step.id}
+                    type="button"
+                    onClick={() => goToStudioStep(index)}
+                    aria-current={isActive ? 'step' : undefined}
+                    className={cn(
+                      'group flex min-w-0 items-center gap-3 rounded-xl border px-3 py-3 text-left transition-all',
+                      isActive
+                        ? 'border-[#E7C477] bg-[#E7C477]/10 shadow-[0_0_24px_rgba(231,196,119,0.08)]'
+                        : 'border-white/10 bg-[#0E0E10] hover:border-white/20 hover:bg-[#141416]'
+                    )}
+                  >
+                    <span className={cn(
+                      'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-xs font-bold',
+                      isComplete
+                        ? 'border-[#70C98B]/40 bg-[#70C98B]/15 text-[#70C98B]'
+                        : isActive
+                          ? 'border-[#E7C477] bg-[#E7C477] text-[#161108]'
+                          : 'border-white/15 bg-white/5 text-slate-400'
+                    )}>
+                      {isComplete ? <Check size={14} strokeWidth={3} /> : index + 1}
+                    </span>
+                    <span className="min-w-0">
+                      <span className={cn('block text-xs font-bold', isActive ? 'text-[#F2D58D]' : 'text-white')}>
+                        {step.title}
+                      </span>
+                      <span className="mt-0.5 block truncate text-[10px] text-slate-500">
+                        {step.description}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {studioStep === 1 && (
+          <>
         {/* ── QUICK PRESETS WITH REALISTIC PORTRAIT VISUALS ── */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
@@ -1554,8 +1693,10 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
             </div>
           )}
         </div>
+          </>
+        )}
 
-        {/* ── STEP 2: PERSONA VOICE ── */}
+        {studioStep === 3 && (
         <div className="luxury-card p-4 sm:p-7 space-y-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
             <div>
@@ -2027,8 +2168,70 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
           )}
 
         </div>
+        )}
 
-        {/* ── STEP 3: PERSONA GENERATIONS VAULT ── */}
+        {studioStep === 4 && (
+          <>
+        {/* ── REVIEW SUMMARY ── */}
+        <div className="luxury-card overflow-hidden">
+          <div className="border-b border-white/10 bg-gradient-to-r from-[#E7C477]/10 to-transparent p-5 sm:p-7">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-[#D9BA72]">Ready to publish</p>
+                <h2 className="mt-1 text-2xl font-serif text-white">Review your persona</h2>
+                <p className="mt-1 text-xs text-slate-400">Check the essentials below. You can jump back to any step without losing your work.</p>
+              </div>
+              <span className="rounded-full border border-[#70C98B]/30 bg-[#70C98B]/10 px-3 py-1.5 text-xs font-semibold text-[#70C98B]">
+                {editingPersona ? 'Ready to save' : 'Ready to publish'}
+              </span>
+            </div>
+          </div>
+
+          <div className="grid gap-6 p-5 sm:p-7 lg:grid-cols-[220px_1fr]">
+            <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#0E0E10]">
+              {referenceImages[0] ? (
+                <img src={referenceImages[0]} alt={name || 'Persona preview'} className="aspect-[3/4] h-full w-full object-cover" />
+              ) : (
+                <div className="flex aspect-[3/4] items-center justify-center text-slate-600">
+                  <User size={42} />
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-5">
+              <div>
+                <h3 className="text-2xl font-bold text-white">{name || 'Unnamed persona'}</h3>
+                <p className="mt-1 text-sm text-slate-400">{niche || 'No niche selected'} · {platform}</p>
+                {bio && <p className="mt-3 max-w-2xl text-sm leading-relaxed text-slate-300">{bio}</p>}
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <button type="button" onClick={() => goToStudioStep(1)} className="rounded-xl border border-white/10 bg-[#0E0E10] p-3 text-left hover:border-[#E7C477]/40">
+                  <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Appearance</span>
+                  <span className="mt-1 block text-xs font-semibold text-white">{referenceImages.length} reference photo{referenceImages.length === 1 ? '' : 's'}</span>
+                </button>
+                <button type="button" onClick={() => goToStudioStep(2)} className="rounded-xl border border-white/10 bg-[#0E0E10] p-3 text-left hover:border-[#E7C477]/40">
+                  <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Personality</span>
+                  <span className="mt-1 block text-xs font-semibold text-white">{COMPANION_TYPES.find(type => type.id === companionType)?.title || 'Not selected'}</span>
+                </button>
+                <button type="button" onClick={() => goToStudioStep(3)} className="rounded-xl border border-white/10 bg-[#0E0E10] p-3 text-left hover:border-[#E7C477]/40">
+                  <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Voice</span>
+                  <span className="mt-1 block text-xs font-semibold text-white">{selectedVoiceName}</span>
+                </button>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {personalityTraits.split(',').map(trait => trait.trim()).filter(Boolean).slice(0, 8).map(trait => (
+                  <span key={trait} className="rounded-full border border-[#E7C477]/20 bg-[#E7C477]/10 px-2.5 py-1 text-[11px] font-semibold text-[#F2D58D]">
+                    {trait}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── PERSONA GENERATIONS VAULT ── */}
         <div className="luxury-card p-7 space-y-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
             <div>
@@ -2145,16 +2348,18 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
             </div>
           )}
         </div>
+          </>
+        )}
 
-        {/* ── STEP 4: PERSONA IDENTITY ── */}
+        {(studioStep === 0 || studioStep === 2) && (
         <div className="luxury-card p-7 space-y-6">
           <h3 className="text-lg font-bold text-white flex items-center gap-2 border-b border-slate-800 pb-4">
-            <User className="text-cyan-400" size={20} />
-            4. Persona Identity & Companion Type
+            {studioStep === 0 ? <User className="text-[#D9BA72]" size={20} /> : <Heart className="text-[#D9BA72]" size={20} />}
+            {studioStep === 0 ? 'Tell us who this persona is' : 'Shape their personality and behavior'}
           </h3>
 
           {/* 4 Persona Companion Type Options */}
-          <div className="space-y-3 border-b border-slate-800 pb-5">
+          <div className={cn('space-y-3 border-b border-slate-800 pb-5', studioStep !== 2 && 'hidden')}>
             <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
               <Heart size={15} className="text-rose-400" />
               What Kind of Companion is Your Persona? (4 Companion Modes)
@@ -2201,7 +2406,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            <div>
+            <div className={cn(studioStep !== 0 && 'hidden')}>
               <label className="block text-xs font-bold text-[#A1A1AA] uppercase tracking-wider mb-2">Name *</label>
               <input
                 type="text"
@@ -2212,7 +2417,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
               />
             </div>
 
-            <div>
+            <div className={cn(studioStep !== 0 && 'hidden')}>
               <label className="block text-xs font-bold text-[#A1A1AA] uppercase tracking-wider mb-2">Niche / Category</label>
               <input
                 type="text"
@@ -2223,7 +2428,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
               />
             </div>
 
-            <div>
+            <div className={cn(studioStep !== 0 && 'hidden')}>
               <label className="block text-xs font-bold text-[#A1A1AA] uppercase tracking-wider mb-2">Social Platform</label>
               <select
                 value={platform}
@@ -2237,7 +2442,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
               </select>
             </div>
 
-            <div>
+            <div className={cn(studioStep !== 2 && 'hidden')}>
               <label className="block text-xs font-bold text-[#A1A1AA] uppercase tracking-wider mb-2">Tone of Voice</label>
               <input
                 type="text"
@@ -2248,7 +2453,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
               />
             </div>
 
-            <div className="md:col-span-2">
+            <div className={cn('md:col-span-2', studioStep !== 0 && 'hidden')}>
               <label className="block text-xs font-bold text-[#A1A1AA] uppercase tracking-wider mb-2">Bio & Story</label>
               <textarea
                 value={bio}
@@ -2260,7 +2465,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
             </div>
 
             {/* Interactive Personality Trait Badges Selector */}
-            <div className="md:col-span-2 space-y-3 border-t border-white/10 pt-4">
+            <div className={cn('md:col-span-2 space-y-3 border-t border-white/10 pt-4', studioStep !== 2 && 'hidden')}>
               <div className="flex items-center justify-between">
                 <label className="block text-xs font-bold text-[#F5F1E8] uppercase tracking-wider flex items-center gap-1.5">
                   <Sparkles size={14} className="text-[#D9BA72]" />
@@ -2307,7 +2512,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
             </div>
 
             {/* Brand Voice Rules & Companion Behavioral Directives */}
-            <div className="md:col-span-2 space-y-2 border-t border-white/10 pt-4">
+            <div className={cn('md:col-span-2 space-y-2 border-t border-white/10 pt-4', studioStep !== 2 && 'hidden')}>
               <label className="block text-xs font-bold text-[#F5F1E8] uppercase tracking-wider flex items-center gap-1.5">
                 <Flame size={14} className="text-[#D9BA72]" />
                 Brand Voice Rules & Companion Directives (Chat & Live Phone Call Behavior)
@@ -2325,7 +2530,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
             </div>
 
             {/* Content Boundaries */}
-            <div className="md:col-span-2 space-y-2">
+            <div className={cn('md:col-span-2 space-y-2', studioStep !== 2 && 'hidden')}>
               <label className="block text-xs font-bold text-[#A1A1AA] uppercase tracking-wider">Content Boundaries & Guidelines</label>
               <input
                 type="text"
@@ -2337,22 +2542,49 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
             </div>
           </div>
         </div>
+        )}
 
-        {/* ── NATURAL INLINE SAVE PERSONA SECTION AT END OF FORM ── */}
-        <div className="pt-4 flex items-center justify-between border-t border-slate-800">
-          <div className="text-xs text-slate-400 font-medium">
-            {referenceImages.length > 0 ? `📸 ${referenceImages.length} reference photo(s) attached` : 'Upload photos, use text prompt, or run wizard above to save'}
+        {/* ── GUIDED FLOW NAVIGATION ── */}
+        <div className="fixed bottom-3 left-3 right-3 z-40 flex flex-col gap-3 rounded-2xl border border-white/10 bg-[#0B0B0E]/95 p-3 shadow-2xl backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between sm:p-4">
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#D9BA72]">
+              Step {studioStep + 1} of {STUDIO_STEPS.length}
+            </p>
+            <p className="mt-0.5 truncate text-xs text-slate-400">{STUDIO_STEPS[studioStep].description}</p>
           </div>
 
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={isSaving}
-            className="btn-gold-primary px-8 py-3 text-xs font-bold flex items-center gap-2 cursor-pointer shadow-lg"
-          >
-            {isSaving ? <Loader2 size={16} className="animate-spin text-[#161108]" /> : <Check size={16} />}
-            <span>Save Persona</span>
-          </button>
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+            <button
+              type="button"
+              onClick={() => goToStudioStep(studioStep - 1)}
+              disabled={studioStep === 0}
+              className="btn-gold-secondary px-5 py-2.5 text-xs font-bold flex items-center justify-center gap-2 disabled:pointer-events-none disabled:opacity-0"
+            >
+              <ChevronLeft size={15} />
+              Back
+            </button>
+
+            {studioStep < STUDIO_STEPS.length - 1 ? (
+              <button
+                type="button"
+                onClick={() => goToStudioStep(studioStep + 1)}
+                className="btn-gold-primary px-6 py-2.5 text-xs font-bold flex items-center justify-center gap-2 shadow-lg"
+              >
+                Continue
+                <ArrowRight size={15} />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={isSaving}
+                className="btn-gold-primary px-6 py-2.5 text-xs font-bold flex items-center justify-center gap-2 shadow-lg"
+              >
+                {isSaving ? <Loader2 size={16} className="animate-spin text-[#161108]" /> : <Check size={16} />}
+                <span>{editingPersona ? 'Save Changes' : 'Publish Persona'}</span>
+              </button>
+            )}
+          </div>
         </div>
 
       </div>
