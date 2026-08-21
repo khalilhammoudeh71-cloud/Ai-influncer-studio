@@ -4314,7 +4314,7 @@ async function performFaceSwapPass(targetImage: string, swapImage: string): Prom
 }
 
 app.post('/api/generate-image', async (req, res) => {
-  const { referenceImage, additionalImages, modelId: rawModelId, imageWeight, aspectRatio, resolution, count: rawCount, ...rest } = req.body as ImageGenRequest & { modelId: string; imageWeight?: number; count?: number };
+  const { referenceImage, additionalImages: rawAdditionalImages, modelId: rawModelId, imageWeight, aspectRatio, resolution, count: rawCount, ...rest } = req.body as ImageGenRequest & { modelId: string; imageWeight?: number; count?: number };
   const count = Math.max(1, Math.min(4, Math.floor(Number(rawCount) || 1)));
 
   if (!rawModelId) {
@@ -4368,8 +4368,8 @@ app.post('/api/generate-image', async (req, res) => {
                          storedCreator?.primaryPhoto ||
                          (storedCreator?.photos && storedCreator.photos[0]);
 
+    const additionalImages: string[] = Array.isArray(rawAdditionalImages) ? [...rawAdditionalImages] : [];
     if ((isDuo || isCreatorSolo) && creatorPhoto) {
-      if (!additionalImages) additionalImages = [];
       if (!additionalImages.includes(creatorPhoto)) {
         additionalImages.push(creatorPhoto);
       }
