@@ -686,21 +686,21 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       const source = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 512;
-      analyser.smoothingTimeConstant = 0.25;
+      analyser.smoothingTimeConstant = 0.20;
       source.connect(analyser);
 
       const buffer = new Uint8Array(analyser.frequencyBinCount);
       let sustainedSpeechFrames = 0;
-      let dynamicNoiseFloor = 0.10;
+      let dynamicNoiseFloor = 0.08;
 
       const checkAudioEnergy = () => {
         if (!isCallActiveRef.current || !vadAudioCtxRef.current) return;
 
         analyser.getByteFrequencyData(buffer);
         let sum = 0;
-        // Focus on primary human speech vocal frequencies (150Hz - 3400Hz)
-        const minBin = Math.floor((150 / (ctx.sampleRate / 2)) * buffer.length);
-        const maxBin = Math.min(buffer.length - 1, Math.floor((3400 / (ctx.sampleRate / 2)) * buffer.length));
+        // Focus on primary human vocal speech frequencies (180Hz - 3200Hz)
+        const minBin = Math.floor((180 / (ctx.sampleRate / 2)) * buffer.length);
+        const maxBin = Math.min(buffer.length - 1, Math.floor((3200 / (ctx.sampleRate / 2)) * buffer.length));
         let binCount = 0;
 
         for (let i = minBin; i <= maxBin; i++) {
@@ -710,25 +710,25 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 
         const avgEnergy = binCount > 0 ? (sum / binCount) / 255 : 0;
 
-        // If the persona is actively speaking, monitor for intentional human voice breaking through
+        // If the persona is actively speaking, detect user vocal barge-in immediately
         if (isAgentSpeakingRef.current) {
-          // Adapt slowly to background/speaker room volume
-          dynamicNoiseFloor = dynamicNoiseFloor * 0.95 + avgEnergy * 0.05;
+          // Adapt smoothly to ambient room noise
+          dynamicNoiseFloor = dynamicNoiseFloor * 0.92 + avgEnergy * 0.08;
 
-          // Higher threshold to prevent speaker output from false-triggering interruption
-          const speechThreshold = Math.max(0.48, dynamicNoiseFloor + 0.28);
+          // Sensitive vocal threshold with hardware echoCancellation
+          const speechThreshold = Math.max(0.11, dynamicNoiseFloor + 0.06);
           const timeSinceStart = Date.now() - personaSpeakingStartTimeRef.current;
 
-          // Require 1800ms initial refractory period and ~500ms of sustained talking (30 animation frames at 60fps)
-          if (timeSinceStart > 1800 && avgEnergy > speechThreshold) {
+          // After minimal 200ms startup buffer, detect user voice within ~60ms (4 frames at 60fps)
+          if (timeSinceStart > 200 && avgEnergy > speechThreshold) {
             sustainedSpeechFrames++;
-            if (sustainedSpeechFrames >= 30) {
-              console.log('[VAD] ⚡ Intentional user interruption detected! Halting persona playback...');
+            if (sustainedSpeechFrames >= 4) {
+              console.log('[Vocal Barge-In] 🎙️ User voice detected over speaker! Instantly halting persona...');
               sustainedSpeechFrames = 0;
               interruptPersona();
             }
           } else {
-            sustainedSpeechFrames = Math.max(0, sustainedSpeechFrames - 2);
+            sustainedSpeechFrames = Math.max(0, sustainedSpeechFrames - 1);
           }
         } else {
           sustainedSpeechFrames = 0;
@@ -826,8 +826,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       let interimSilenceTimer: any = null;
 
       rec.onresult = (e: any) => {
-        // Strictly ignore any microphone input while the persona is speaking to prevent speaker echo
-        if (callRecRef.current !== rec || !isCallActiveRef.current || isAgentSpeakingRef.current) return;
+        if (callRecRef.current !== rec || !isCallActiveRef.current) return;
 
         // Build entire utterance across all results from index 0
         let fullTranscript = '';
@@ -844,7 +843,27 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         }
 
         const trimmed = fullTranscript.trim();
-        if (!trimmed || trimmed.length < 2) return;
+        if (!trimmed || trimmed.length < 1) return;
+
+        // Instant Vocal Barge-in: If the persona is speaking, immediately halt speech on any incoming user voice
+        if (isAgentSpeakingRef.current) {
+          console.log('[Vocal Barge-In] ⚡ Spoken words recognized while persona was speaking! Halting playback immediately...');
+          if (audioRef.current) {
+            try {
+              audioRef.current.pause();
+              audioRef.current.currentTime = 0;
+              audioRef.current.src = '';
+            } catch {}
+            audioRef.current = null;
+          }
+          if (activeCallAbortControllerRef.current) {
+            try { activeCallAbortControllerRef.current.abort(); } catch {}
+            activeCallAbortControllerRef.current = null;
+          }
+          isAgentSpeakingRef.current = false;
+          voiceCallBusyRef.current = false;
+          setCallStatus('listening');
+        }
 
         setLiveUserSpeech(trimmed);
 
@@ -866,7 +885,6 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           if (trimmed && trimmed.length >= 2 && isCallActiveRef.current) {
             console.log('[Call Voice] 🎤 Captured complete user utterance:', trimmed);
             setLiveUserSpeech('');
-            stopSpeechRecognition();
             handleSendCallMessage(correctSpeechPhonetics(trimmed, activePersona?.name));
           }
         }, pauseDelay);
@@ -1272,7 +1290,11 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         isAgentSpeakingRef.current = true;
         voiceCallBusyRef.current = false;
         personaSpeakingStartTimeRef.current = Date.now();
-        stopSpeechRecognition();
+        
+        // Ensure recognition is actively listening for vocal barge-in
+        if (!isMutedRef.current) {
+          restartSpeechRecognition();
+        }
         
         // Stop any currently playing audio instance to prevent overlapping voices
         const existingAudio = audioRef.current as HTMLAudioElement | null;
@@ -1289,10 +1311,6 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         audioRef.current = audio;
         audio.src = data.audioUrl;
         audio.volume = 1.0;
-
-        audio.onplay = () => {
-          stopSpeechRecognition();
-        };
 
         const onCallAudioEnded = () => {
           if (audioRef.current === audio) audioRef.current = null;
@@ -2645,19 +2663,6 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                   {isMuted ? <MicOff size={14} /> : <Mic size={14} />}
                   <span className="hidden sm:inline">{isMuted ? "Unmute" : "Mute"}</span>
                 </button>
-
-                {/* Interrupt Button */}
-                {callStatus === 'speaking' && (
-                  <motion.button
-                    initial={{ scale: 0.9, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    onClick={interruptPersona}
-                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-bold transition-all animate-pulse cursor-pointer"
-                  >
-                    <Hand size={14} />
-                    <span>Interrupt</span>
-                  </motion.button>
-                )}
 
                 {/* Call Input / Quick Chat */}
                 <div className="flex-1 flex items-center gap-1.5 bg-[#101114] border border-white/10 rounded-xl px-2.5 py-1">
