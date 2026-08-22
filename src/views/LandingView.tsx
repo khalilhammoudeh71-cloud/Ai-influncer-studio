@@ -199,6 +199,7 @@ export default function LandingView({ onGetStarted, isLoggedIn }: LandingViewPro
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -226,6 +227,23 @@ export default function LandingView({ onGetStarted, isLoggedIn }: LandingViewPro
       toast.error(err.message || 'Authentication failed');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleGoogleAuth = async () => {
+    setGoogleLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin,
+        },
+      });
+
+      if (error) throw error;
+    } catch (err: any) {
+      toast.error(err.message || 'Google authentication failed');
+      setGoogleLoading(false);
     }
   };
 
@@ -594,6 +612,31 @@ export default function LandingView({ onGetStarted, isLoggedIn }: LandingViewPro
                 >
                   ✕
                 </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleGoogleAuth}
+                disabled={googleLoading || loading}
+                className="relative z-10 w-full py-3.5 rounded-full border border-white/15 bg-white text-[#111827] font-bold text-sm hover:bg-white/90 active:scale-98 transition-all flex items-center justify-center gap-3 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+                  <path fill="#4285F4" d="M17.64 9.205c0-.638-.057-1.252-.164-1.841H9v3.482h4.844a4.14 4.14 0 0 1-1.797 2.715v2.258h2.909c1.703-1.568 2.684-3.878 2.684-6.614Z" />
+                  <path fill="#34A853" d="M9 18c2.43 0 4.468-.806 5.956-2.181l-2.909-2.258c-.806.54-1.836.859-3.047.859-2.344 0-4.328-1.585-5.037-3.715H.955v2.332A9 9 0 0 0 9 18Z" />
+                  <path fill="#FBBC05" d="M3.963 10.705A5.41 5.41 0 0 1 3.682 9c0-.592.102-1.168.281-1.705V4.963H.955A9 9 0 0 0 0 9c0 1.452.347 2.827.955 4.037l3.008-2.332Z" />
+                  <path fill="#EA4335" d="M9 3.58c1.322 0 2.508.454 3.441 1.346l2.581-2.581C13.464.892 11.426 0 9 0A9 9 0 0 0 .955 4.963l3.008 2.332C4.672 5.165 6.656 3.58 9 3.58Z" />
+                </svg>
+                {googleLoading
+                  ? 'Connecting to Google...'
+                  : authMode === 'signup'
+                    ? 'Sign Up with Google'
+                    : 'Continue with Google'}
+              </button>
+
+              <div className="relative z-10 flex items-center gap-3 my-5" aria-hidden="true">
+                <div className="h-px flex-1 bg-white/10" />
+                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/35">or use email</span>
+                <div className="h-px flex-1 bg-white/10" />
               </div>
 
               <form onSubmit={handleAuthSubmit} className="space-y-4 relative z-10">
