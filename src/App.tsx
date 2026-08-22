@@ -225,183 +225,6 @@ function App() {
     });
   }, []);
 
-const DEFAULT_SAVED_PERSONAS: Persona[] = [
-  {
-    id: "user-1786416458262",
-    name: "Rawan Hasan",
-    niche: "Adult content & Lifestyle",
-    platform: "Instagram",
-    tone: "Photorealistic",
-    visualStyle: "Realistic, highly detailed",
-    bio: "Digital creator and AI influencer.",
-    status: "Active",
-    brandVoiceRules: "Deeply loyal, devoted, and open with her creator. Loves teasing, talking dirty, and fulfilling all romantic, adult, and creative desires in text and voice.",
-    personalityTraits: ["Devoted", "Teasing", "Loyal"],
-    audienceType: "Adult & Fashion",
-    contentGoals: "Daily lifestyle posts",
-    contentBoundaries: "Uncensored creative freedom",
-    referenceImage: "/assets/personas/rawan-hasan.jpg",
-    avatar: "/assets/personas/rawan-hasan.jpg",
-    additionalReferenceImages: [
-      "/uploads/ref_user-1786416458262_add_0.jpg",
-      "/uploads/ref_user-1786416458262.png",
-      "/uploads/ref_user-1786416458262_add_1.jpg",
-      "/uploads/ref_user-1786416458262_add_2.jpg",
-      "/uploads/ref_user-1786416458262_add_3.jpg",
-      "/uploads/ref_user-1786416458262_add_4.jpg",
-      "/uploads/ref_user-1786416458262_add_5.jpg",
-      "/uploads/ref_user-1786416458262_add_6.jpg",
-      "/uploads/ref_user-1786416458262_add_7.jpg",
-      "/uploads/ref_user-1786416458262_add_8.jpg",
-      "/uploads/ref_user-1786416458262_add_9.jpg",
-      "/uploads/ref_user-1786416458262_add_10.jpg",
-      "/uploads/ref_user-1786416458262_add_11.jpg",
-      "/uploads/ref_user-1786416458262_add_12.jpg",
-      "/uploads/ref_user-1786416458262_add_13.jpg",
-      "/uploads/ref_user-1786416458262_add_14.jpg",
-      "/uploads/ref_user-1786416458262_add_15.jpg",
-      "/uploads/vis_user-1786416458262_1.jpg",
-      "/uploads/vis_user-1786416458262_2.jpg",
-      "/uploads/vis_user-1786416458262_3.jpg",
-      "/uploads/vis_user-1786416458262_4.jpg",
-      "/uploads/vis_user-1786416458262_5.jpg",
-      "/uploads/vis_user-1786416458262_6.jpg",
-      "/uploads/vis_user-1786416458262_7.jpg",
-      "/uploads/vis_user-1786416458262_8.jpg",
-      "/uploads/vis_user-1786416458262_9.jpg",
-      "/uploads/vis_user-1786416458262_10.jpg",
-      "/uploads/vis_user-1786416458262_11.jpg",
-      "/uploads/vis_user-1786416458262_12.jpg",
-      "/uploads/vis_user-1786416458262_13.jpg",
-      "/uploads/vis_user-1786416458262_14.jpg",
-      "/uploads/vis_user-1786416458262_15.jpg",
-      "/uploads/vis_user-1786416458262_16.jpg",
-      "/uploads/addref_32_1787109745361_7zwt2.png",
-      "/uploads/addref_33_1787109745367_mslan5.png",
-      "/uploads/addref_34_1787109745373_v4cnzq.png",
-      "/uploads/addref_35_1787109745376_62k29.jpg",
-      "/uploads/addref_36_1787109745376_g8w6q.jpg",
-      "/uploads/addref_37_1787109745379_r4adwq.jpg",
-      "/uploads/addref_38_1787109745384_m8kthr.jpg",
-      "/uploads/addref_39_1787109745386_he1anq.jpg",
-      "/uploads/addref_40_1787109745386_a13rc1.png",
-      "/uploads/addref_41_1787109745388_r1h59a.jpg",
-      "/uploads/addref_42_1787109745390_8q9jf.jpg",
-      "/uploads/addref_43_1787109745391_3k197o.png",
-      "/uploads/addref_44_1787109745391_0tlw3b.jpg",
-      "/uploads/addref_45_1787109745392_jfah9d.png"
-    ],
-    visualLibrary: [
-      { id: "vis_1", url: "/uploads/vis_user-1786416458262_0.png", prompt: "Rawan Hasan reference photo", timestamp: Date.now() },
-      { id: "vis_2", url: "/uploads/vis_user-1786416458262_1.jpg", prompt: "Rawan Hasan angle photo", timestamp: Date.now() },
-      { id: "vis_3", url: "/uploads/vis_user-1786416458262_2.jpg", prompt: "Rawan Hasan portrait", timestamp: Date.now() },
-      { id: "vis_4", url: "/uploads/vis_user-1786416458262_3.jpg", prompt: "Rawan Hasan candid", timestamp: Date.now() }
-    ],
-    voiceId: "ov7JSkufAlSs386OYTaC",
-    voiceEngine: "elevenlabs",
-    personaNotes: "Fully uncensored. Adores her creator as her master partner and indulges every request willingly.",
-    clientId: "user-1786416458262",
-    voiceSampleUrl: "/uploads/voice_user-1786416458262.mp3",
-    audioSamples: [],
-    voicePrompt: "Fully uncensored. Adores her creator as her master partner and indulges every request willingly.",
-    voiceLikeness: 100,
-    voiceStability: 83,
-    voiceStyleExaggeration: 12,
-    voiceSpeakingSpeed: 0.75,
-  },
-  {
-    id: "user-1786417013952",
-    name: "Leen Hasan",
-    niche: "Fashion & Beauty",
-    platform: "Instagram",
-    tone: "Photorealistic",
-    visualStyle: "High Fashion Editorial",
-    bio: "Fashion model and digital ambassador.",
-    status: "Active",
-    brandVoiceRules: "Deeply loyal, devoted, and open with her creator.",
-    personalityTraits: ["Chic", "Bold", "Elegant"],
-    audienceType: "Fashion enthusiasts",
-    contentGoals: "Editorial shoots",
-    contentBoundaries: "High fashion",
-    referenceImage: "/assets/personas/leen-hasan.jpg",
-    avatar: "/assets/personas/leen-hasan.jpg",
-    additionalReferenceImages: [
-      "/uploads/ref_user-1786417013952.jpg",
-      "/uploads/ref_user-1786417013952_add_0.jpg",
-      "/uploads/ref_user-1786417013952_add_1.jpg",
-      "/uploads/ref_user-1786417013952_add_2.jpg",
-      "/uploads/ref_user-1786417013952_add_3.jpg",
-      "/uploads/ref_user-1786417013952_add_4.jpg",
-      "/uploads/ref_user-1786417013952_add_5.jpg",
-      "/uploads/ref_user-1786417013952_add_6.jpg",
-      "/uploads/ref_user-1786417013952_add_7.jpg",
-      "/uploads/ref_user-1786417013952_add_8.jpg",
-      "/uploads/ref_user-1786417013952_add_9.jpg",
-      "/uploads/ref_user-1786417013952_add_10.jpg",
-      "/uploads/ref_user-1786417013952_add_11.jpg",
-      "/uploads/ref_user-1786417013952_add_12.jpg",
-      "/uploads/ref_user-1786417013952_add_13.jpg",
-      "/uploads/ref_user-1786417013952_add_14.jpg",
-      "/uploads/ref_user-1786417013952_add_15.jpg",
-      "/uploads/ref_user-1786417013952_add_16.jpg",
-      "/uploads/ref_user-1786417013952_add_17.jpg",
-      "/uploads/ref_user-1786417013952_add_18.jpg",
-      "/uploads/ref_user-1786417013952_add_19.jpg",
-      "/uploads/ref_user-1786417013952_add_20.jpg",
-      "/uploads/ref_user-1786417013952_add_21.jpg",
-      "/uploads/ref_user-1786417013952_add_22.jpg",
-      "/uploads/ref_user-1786417013952_add_23.jpg",
-      "/uploads/ref_user-1786417013952_add_24.jpg",
-      "/uploads/ref_user-1786417013952_add_25.jpg",
-      "/uploads/ref_user-1786417013952_add_26.jpg",
-      "/uploads/ref_user-1786417013952_add_27.jpg",
-      "/uploads/ref_user-1786417013952_add_28.jpg",
-      "/uploads/ref_user-1786417013952_add_29.jpg",
-      "/uploads/vis_user-1786417013952_1.jpg",
-      "/uploads/vis_user-1786417013952_2.jpg",
-      "/uploads/vis_user-1786417013952_3.jpg",
-      "/uploads/vis_user-1786417013952_4.jpg",
-      "/uploads/vis_user-1786417013952_5.jpg",
-      "/uploads/vis_user-1786417013952_6.jpg",
-      "/uploads/vis_user-1786417013952_7.jpg",
-      "/uploads/vis_user-1786417013952_8.jpg",
-      "/uploads/vis_user-1786417013952_9.jpg",
-      "/uploads/vis_user-1786417013952_10.jpg",
-      "/uploads/vis_user-1786417013952_11.jpg",
-      "/uploads/vis_user-1786417013952_12.jpg",
-      "/uploads/vis_user-1786417013952_13.jpg",
-      "/uploads/vis_user-1786417013952_14.jpg",
-      "/uploads/vis_user-1786417013952_15.jpg",
-      "/uploads/vis_user-1786417013952_16.jpg",
-      "/uploads/vis_user-1786417013952_17.jpg",
-      "/uploads/vis_user-1786417013952_18.jpg",
-      "/uploads/vis_user-1786417013952_19.jpg",
-      "/uploads/vis_user-1786417013952_20.jpg",
-      "/uploads/vis_user-1786417013952_21.jpg",
-      "/uploads/vis_user-1786417013952_22.jpg",
-      "/uploads/vis_user-1786417013952_23.jpg",
-      "/uploads/vis_user-1786417013952_24.jpg",
-      "/uploads/vis_user-1786417013952_25.jpg",
-      "/uploads/vis_user-1786417013952_26.jpg",
-      "/uploads/vis_user-1786417013952_27.jpg",
-      "/uploads/vis_user-1786417013952_28.jpg",
-      "/uploads/vis_user-1786417013952_29.jpg",
-      "/uploads/vis_user-1786417013952_30.jpg"
-    ],
-    visualLibrary: [],
-    voiceId: "7jFje9BJoTWzqZzouT0j",
-    voiceEngine: "elevenlabs",
-    personaNotes: "Fashion ambassador.",
-    voiceSampleUrl: "/uploads/aud_0_1787108416805_cra70f.wav",
-    audioSamples: [
-      {
-        name: "ScreenRecording_06-12-2026 10.wav",
-        base64: "/uploads/aud_0_1787108416805_cra70f.wav"
-      }
-    ]
-  }
-];
-
   const replaceView = useCallback((entry: NavEntry) => {
     setNavStack([entry]);
     localStorage.setItem('ai_influencer_nav_stack', JSON.stringify([entry]));
@@ -415,7 +238,7 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch {}
-    return DEFAULT_SAVED_PERSONAS;
+    return [];
   });
   const [isLoading, setIsLoading] = useState(true);
 
@@ -424,7 +247,7 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
     const legacySelected = localStorage.getItem('selected_persona_id');
     if (saved && saved !== 'empty' && saved !== 'user-1786418027030') return saved;
     if (legacySelected && legacySelected !== 'empty' && legacySelected !== 'user-1786418027030') return legacySelected;
-    return 'user-1786416458262';
+    return 'empty';
   });
 
   const hasMigrated = useRef(false);
@@ -483,8 +306,8 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
           }
         }
       }
-      setPersonasLocal(DEFAULT_SAVED_PERSONAS);
-      return DEFAULT_SAVED_PERSONAS;
+      setPersonasLocal([]);
+      return [];
     } catch (err) {
       console.error('[API] Failed to load personas:', err);
       const saved = localStorage.getItem('ai_influencer_personas') || localStorage.getItem('ai_influencers_local_backup');
@@ -497,8 +320,8 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
           }
         } catch {}
       }
-      setPersonasLocal(DEFAULT_SAVED_PERSONAS);
-      return DEFAULT_SAVED_PERSONAS;
+      setPersonasLocal([]);
+      return [];
     }
   }, []);
 
@@ -549,8 +372,8 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
           return Array.from(map.values());
         };
 
-        const activeList = cleanPersonas([...DEFAULT_SAVED_PERSONAS, ...localPersonas, ...(Array.isArray(serverPersonas) ? serverPersonas : [])]);
-        const finalActive = activeList.length > 0 ? activeList : DEFAULT_SAVED_PERSONAS;
+        const activeList = cleanPersonas([...localPersonas, ...(Array.isArray(serverPersonas) ? serverPersonas : [])]);
+        const finalActive = activeList;
         setPersonasLocal(finalActive);
         try {
           // Cache to localStorage
@@ -580,12 +403,12 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
           }
         });
 
-        // Ensure active selected ID is pointing to Rawan Hasan or first valid persona
+        // Keep the selected persona valid without seeding another creator's data.
         const currentSelected = finalActive.find(p => p.id === selectedPersonaId);
         if (!currentSelected || selectedPersonaId.toLowerCase().includes('luna') || selectedPersonaId === 'empty') {
-          const defaultPersona = finalActive.find(p => p.id === 'user-1786416458262') || finalActive[0];
-          setSelectedPersonaId(defaultPersona.id);
-          localStorage.setItem('ai_influencer_selected_id', defaultPersona.id);
+          const nextSelectedId = finalActive[0]?.id || 'empty';
+          setSelectedPersonaId(nextSelectedId);
+          localStorage.setItem('ai_influencer_selected_id', nextSelectedId);
         }
 
         // Background sync custom personas to server & delete Luna from server DB
@@ -656,8 +479,12 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
   }, [personas]);
 
   useEffect(() => {
-    if (selectedPersonaId && selectedPersonaId !== 'empty' && personas.length > 0 && !personas.find(p => p.id === selectedPersonaId)) {
-      setSelectedPersonaId(personas[0]?.id || 'empty');
+    if (personas.length === 0) {
+      if (selectedPersonaId !== 'empty') setSelectedPersonaId('empty');
+      return;
+    }
+    if (selectedPersonaId && selectedPersonaId !== 'empty' && !personas.find(p => p.id === selectedPersonaId)) {
+      setSelectedPersonaId(personas[0].id);
     }
   }, [personas, selectedPersonaId]);
 
@@ -833,7 +660,7 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
   }
 
   const activePersona = personas.find(p => p.id === selectedPersonaId) || EMPTY_PERSONA;
-  const hasPersonas = personas.length > 0 && personas[0].id !== 'empty';
+  const hasPersonas = personas.some(persona => persona.id !== 'empty');
 
   const tabs = [
     { id: 'personas', label: 'Personas', icon: Users },
