@@ -2451,6 +2451,8 @@ CRITICAL RULES FOR LIVE VOICE CALL:
     }))
   ];
 
+  let streamEndedByLimit = false;
+
   // Parse OpenAI-compatible streams without losing JSON split across network chunks.
   const handleOpenAIStream = async (url: string, key: string, modelName: string, customHeaders = {}) => {
     const controller = new AbortController();
@@ -2485,26 +2487,33 @@ CRITICAL RULES FOR LIVE VOICE CALL:
 
       const decoder = new TextDecoder('utf-8');
       let pending = '';
+      const processLine = (line: string) => {
+        const cleanLine = line.trim();
+        if (!cleanLine.startsWith('data: ')) return;
+        const dataStr = cleanLine.substring(6);
+        if (dataStr === '[DONE]') return;
+        try {
+          const parsed = JSON.parse(dataStr);
+          const choice = parsed.choices?.[0];
+          if (choice?.finish_reason === 'length' || choice?.finish_reason === 'max_tokens') {
+            streamEndedByLimit = true;
+          }
+          const delta = choice?.delta?.content || '';
+          if (delta) {
+            fullText += delta;
+            res.write(`data: ${JSON.stringify({ text: delta })}\n\n`);
+          }
+        } catch {}
+      };
+
       for await (const chunk of reader as any) {
         pending += decoder.decode(chunk, { stream: true });
         const lines = pending.split('\n');
         pending = lines.pop() || '';
-        for (const line of lines) {
-          const cleanLine = line.trim();
-          if (cleanLine.startsWith('data: ')) {
-            const dataStr = cleanLine.substring(6);
-            if (dataStr === '[DONE]') continue;
-            try {
-              const parsed = JSON.parse(dataStr);
-              const delta = parsed.choices?.[0]?.delta?.content || '';
-              if (delta) {
-                fullText += delta;
-                res.write(`data: ${JSON.stringify({ text: delta })}\n\n`);
-              }
-            } catch {}
-          }
-        }
+        for (const line of lines) processLine(line);
       }
+      pending += decoder.decode();
+      if (pending.trim()) processLine(pending);
       return fullText;
     } catch (err) {
       clearTimeout(timeout);
@@ -2547,6 +2556,8 @@ CRITICAL RULES FOR LIVE VOICE CALL:
       });
       for await (const chunk of responseStream) {
         const chunkText = chunk.text || '';
+        const finishReason = (chunk as any)?.candidates?.[0]?.finishReason;
+        if (finishReason === 'MAX_TOKENS') streamEndedByLimit = true;
         if (chunkText) {
           streamedText += chunkText;
           res.write(`data: ${JSON.stringify({ text: chunkText })}\n\n`);
@@ -2611,6 +2622,8 @@ CRITICAL RULES FOR LIVE VOICE CALL:
       });
       for await (const chunk of responseStream) {
         const chunkText = chunk.text || '';
+        const finishReason = (chunk as any)?.candidates?.[0]?.finishReason;
+        if (finishReason === 'MAX_TOKENS') streamEndedByLimit = true;
         if (chunkText) {
           streamedText += chunkText;
           res.write(`data: ${JSON.stringify({ text: chunkText })}\n\n`);
@@ -2620,6 +2633,43 @@ CRITICAL RULES FOR LIVE VOICE CALL:
     } catch (err) {
       console.error('[Stream] Gemini failed:', err);
       res.write(`data: ${JSON.stringify({ error: 'All models failed to stream' })}\n\n`);
+    }
+  }
+
+  // Providers occasionally close a successful stream on a token boundary or
+  // without the final words. Repair only incomplete endings, preserving the
+  // already-streamed text and keeping the continuation short for live speech.
+  const cleanStreamedText = streamedText.trim();
+  const hasCompleteEnding = /[.!?][)\]}'\"]*$/.test(cleanStreamedText);
+  if (streamedSuccessfully && cleanStreamedText.length >= 20 && (streamEndedByLimit || !hasCompleteEnding)) {
+    try {
+      const repairResult = await genAI.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [
+          ...formattedContents,
+          { role: 'model', parts: [{ text: cleanStreamedText }] },
+          {
+            role: 'user',
+            parts: [{
+              text: 'The preceding live-call reply was cut off. Continue exactly after its final word, without repeating any existing words. Output only the missing continuation, finish the thought naturally, and use no more than two short sentences.'
+            }]
+          }
+        ],
+        config: {
+          systemInstruction: voiceSystemPrompt,
+          maxOutputTokens: 320,
+          temperature: 0.55
+        }
+      });
+      const continuation = (repairResult.text || '').replace(/[*_#`\\]/g, '').trim();
+      if (continuation) {
+        const separator = /\s$/.test(streamedText) ? '' : ' ';
+        const appended = `${separator}${continuation}`;
+        streamedText += appended;
+        res.write(`data: ${JSON.stringify({ text: appended })}\n\n`);
+      }
+    } catch (repairError) {
+      console.warn('[Voice Stream] Could not repair an incomplete final sentence:', repairError);
     }
   }
 

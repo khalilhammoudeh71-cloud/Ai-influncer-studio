@@ -1180,9 +1180,10 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       if (isCallActiveRef.current && !isMutedRef.current && !callRecRef.current && !isStartingRecRef.current && !isAgentSpeakingRef.current && !voiceCallBusyRef.current) {
         restartSpeechRecognition();
       }
-      // If agent has been "speaking" for >60s without ending, force recover
-      if (isAgentSpeakingRef.current && (Date.now() - personaSpeakingStartTimeRef.current > 60000)) {
-        console.warn('[Voice Watchdog] ⏰ Agent stuck >60s. Force recovering...');
+      // Leave enough room for a complete multi-segment spoken answer. This is
+      // only a last-resort recovery for genuinely stuck playback.
+      if (isAgentSpeakingRef.current && (Date.now() - personaSpeakingStartTimeRef.current > 120000)) {
+        console.warn('[Voice Watchdog] ⏰ Agent stuck >120s. Force recovering...');
         interruptPersona();
       }
     }, 1500);
@@ -1340,7 +1341,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           restartSpeechRecognition();
         }
       }
-    }, 40000);
+    }, 75000);
 
     // Stop any currently playing persona audio
     if (audioRef.current) {
@@ -1382,46 +1383,58 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       const { voiceId: targetVoiceId, voiceReference: targetVoiceRef } = getActivePersonaVoice(activePersona);
 
       const synthesizeSpeechSegment = async (segment: string): Promise<string | undefined> => {
-        const ttsResponse = await authFetch('/api/agent/voice-chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            activePersona,
-            directTTS: segment,
-            voiceId: targetVoiceId,
-            voiceReference: targetVoiceRef,
-            voiceModel: selectedVoiceEngine,
-            ttsModel: selectedVoiceEngine,
-          }),
-          signal: controller.signal,
-        });
-        if (!ttsResponse.ok) return undefined;
-        const ttsData = await ttsResponse.json().catch(() => ({}));
-        return ttsData.audioUrl;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            const ttsResponse = await authFetch('/api/agent/voice-chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                activePersona,
+                directTTS: segment,
+                voiceId: targetVoiceId,
+                voiceReference: targetVoiceRef,
+                voiceModel: selectedVoiceEngine,
+                ttsModel: selectedVoiceEngine,
+              }),
+              signal: controller.signal,
+            });
+            if (ttsResponse.ok) {
+              const ttsData = await ttsResponse.json().catch(() => ({}));
+              if (ttsData.audioUrl) return ttsData.audioUrl;
+            }
+          } catch (error: any) {
+            if (error?.name === 'AbortError') throw error;
+          }
+          if (attempt === 0 && !controller.signal.aborted) {
+            await new Promise(resolve => setTimeout(resolve, 250));
+          }
+        }
+        return undefined;
       };
 
-      const playPreparedSegment = async (audioPromise: Promise<string | undefined>) => {
+      const playPreparedSegment = async (segment: string, audioPromise: Promise<string | undefined>, playbackAttempt = 0): Promise<void> => {
         const audioUrl = await audioPromise.catch(() => undefined);
         if (!audioUrl || controller.signal.aborted || callTurnId !== callTurnIdRef.current || !isCallActiveRef.current) return;
 
-        await new Promise<void>((resolve) => {
+        const playedToEnd = await new Promise<boolean>((resolve) => {
           const audio = new Audio();
           audioRef.current = audio;
           audio.src = audioUrl;
           audio.volume = 1;
           let settled = false;
 
-          const finish = () => {
+          const finish = (completed = false) => {
             if (settled) return;
             settled = true;
-            controller.signal.removeEventListener('abort', finish);
+            controller.signal.removeEventListener('abort', onAbort);
             if (audioRef.current === audio) audioRef.current = null;
-            resolve();
+            resolve(completed);
           };
+          const onAbort = () => finish(false);
 
-          controller.signal.addEventListener('abort', finish, { once: true });
-          audio.onended = finish;
-          audio.onerror = finish;
+          controller.signal.addEventListener('abort', onAbort, { once: true });
+          audio.onended = () => finish(true);
+          audio.onerror = () => finish(false);
           audio.onplay = () => {
             streamingAudioPlayed = true;
             personaSpeakingStartTimeRef.current = Date.now();
@@ -1432,8 +1445,14 @@ export default function AssistantView({ personas, persona: propActivePersona, on
             if (!isMutedRef.current) restartSpeechRecognition();
           };
 
-          audio.play().catch(finish);
+          audio.play().catch(() => finish(false));
         });
+
+        // A temporary CDN/audio-element failure should not silently remove the
+        // final phrase. Re-synthesize and replay that phrase once.
+        if (!playedToEnd && playbackAttempt === 0 && !controller.signal.aborted && callTurnId === callTurnIdRef.current) {
+          await playPreparedSegment(segment, synthesizeSpeechSegment(segment), 1);
+        }
       };
 
       const queueSpeechSegment = (segment: string) => {
@@ -1441,7 +1460,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         if (!speakerOn || cleanSegment.length < 2) return;
         streamingSpeechQueued = true;
         const audioPromise = synthesizeSpeechSegment(cleanSegment);
-        streamingPlayback = streamingPlayback.then(() => playPreparedSegment(audioPromise));
+        streamingPlayback = streamingPlayback.then(() => playPreparedSegment(cleanSegment, audioPromise));
       };
 
       const flushSpeechBuffer = (force = false) => {
