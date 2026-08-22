@@ -154,7 +154,7 @@ function App() {
 
   // 🎨 Multi-Theme Engine State
   const [activeTheme, setActiveTheme] = useState<string>(() => {
-    return localStorage.getItem('ai_studio_theme') || 'violet';
+    return localStorage.getItem('ai_studio_theme') || 'gold';
   });
   const [showThemeDropdown, setShowThemeDropdown] = useState(false);
   const themeDropdownRef = useRef<HTMLDivElement>(null);
@@ -678,7 +678,7 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
 
   if (authLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[var(--bg-base)]">
+      <div className="studio-public-theme flex items-center justify-center min-h-screen bg-[var(--bg-base)]">
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -687,11 +687,11 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
         >
           <div className="relative">
             <div className="w-16 h-16 rounded-2xl flex items-center justify-center"
-              style={{ background: 'linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%)', boxShadow: '0 8px 40px -8px rgba(139,92,246,0.6)' }}
+              style={{ background: 'var(--gradient-primary)', boxShadow: '0 8px 40px -8px rgba(231, 196, 119, 0.45)' }}
             >
-              <Sparkles size={28} className="text-white" />
+              <Sparkles size={28} className="text-[#161108]" />
             </div>
-            <div className="absolute -inset-1 rounded-2xl border border-violet-500/20 animate-pulse" />
+            <div className="absolute -inset-1 rounded-2xl border border-[var(--border-strong)] animate-pulse" />
           </div>
           <div className="flex flex-col items-center gap-2">
             <p className="text-[var(--text-primary)] text-sm font-semibold">Loading your studio</p>
@@ -731,12 +731,12 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
   const isConfirmed = !!user.email_confirmed_at || !!user.confirmed_at;
   if (!isConfirmed) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-[#06080d] text-white p-6 relative">
+      <div className="studio-public-theme flex flex-col items-center justify-center min-h-screen bg-[var(--bg-base)] text-[var(--text-primary)] p-6 relative">
         <div className="absolute inset-0 pointer-events-none z-0">
-          <div className="absolute top-[20%] left-[20%] w-[50%] h-[50%] rounded-full bg-violet-600/[0.08] blur-[150px]" />
+          <div className="absolute top-[20%] left-[20%] w-[50%] h-[50%] rounded-full bg-[#E7C477]/[0.08] blur-[150px]" />
         </div>
-        <div className="premium-card max-w-md w-full rounded-3xl p-8 border border-white/10 bg-[#0B0F17]/80 backdrop-blur-xl relative z-10 text-center shadow-2xl">
-          <div className="w-16 h-16 rounded-2xl mx-auto flex items-center justify-center bg-violet-500/10 border border-violet-500/20 text-violet-400 mb-6 animate-pulse">
+        <div className="max-w-md w-full rounded-3xl p-8 border border-[var(--border-default)] bg-[var(--bg-elevated)]/95 backdrop-blur-xl relative z-10 text-center shadow-2xl">
+          <div className="w-16 h-16 rounded-2xl mx-auto flex items-center justify-center bg-[#E7C477]/10 border border-[#E7C477]/25 text-[#E7C477] mb-6 animate-pulse">
             <Bell size={28} />
           </div>
           <h2 className="text-2xl font-black text-white mb-2">Verify your email</h2>
@@ -758,7 +758,7 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
                   }
                 });
               }}
-              className="w-full py-3 bg-gradient-to-r from-violet-600 to-fuchsia-600 rounded-full text-white font-bold text-sm hover:brightness-110 active:scale-98 transition-all shadow-lg shadow-violet-500/20 cursor-pointer"
+              className="btn-gold-primary w-full py-3 rounded-full text-sm cursor-pointer"
             >
               I Have Verified My Email
             </button>
@@ -802,7 +802,7 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[var(--bg-base)]">
+      <div className="studio-public-theme flex items-center justify-center min-h-screen bg-[var(--bg-base)]">
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -811,17 +811,17 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
         >
           <div className="relative">
             <div className="w-16 h-16 rounded-2xl flex items-center justify-center"
-              style={{ background: 'linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%)', boxShadow: '0 8px 40px -8px rgba(139,92,246,0.6)' }}
+              style={{ background: 'var(--gradient-primary)', boxShadow: '0 8px 40px -8px rgba(231, 196, 119, 0.45)' }}
             >
-              <Sparkles size={28} className="text-white" />
+              <Sparkles size={28} className="text-[#161108]" />
             </div>
-            <div className="absolute -inset-1 rounded-2xl border border-violet-500/20 animate-pulse" />
+            <div className="absolute -inset-1 rounded-2xl border border-[var(--border-strong)] animate-pulse" />
           </div>
           <div className="flex flex-col items-center gap-2">
             <p className="text-[var(--text-primary)] text-sm font-semibold">Loading your studio</p>
             <div className="flex gap-1.5">
               {[0,1,2].map(i => (
-                <div key={i} className="w-1.5 h-1.5 rounded-full bg-violet-400/60 animate-bounce"
+                <div key={i} className="w-1.5 h-1.5 rounded-full bg-[#E7C477]/70 animate-bounce"
                   style={{ animationDelay: `${i * 0.15}s` }}
                 />
               ))}

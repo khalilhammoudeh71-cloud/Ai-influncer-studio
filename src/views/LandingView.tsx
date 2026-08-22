@@ -46,7 +46,7 @@ function HeroBackground() {
       {/* ── Large morphing gradient blobs ── */}
       <motion.div
         className="absolute rounded-full"
-        style={{ width: 600, height: 600, background: 'radial-gradient(circle, rgba(139,92,246,0.35) 0%, rgba(139,92,246,0.08) 50%, transparent 70%)', filter: 'blur(60px)' }}
+        style={{ width: 600, height: 600, background: 'radial-gradient(circle, rgba(231,196,119,0.24) 0%, rgba(231,196,119,0.06) 50%, transparent 70%)', filter: 'blur(60px)' }}
         animate={{
           x: ['-5%', '12%', '-8%', '-5%'],
           y: ['-8%', '10%', '5%', '-8%'],
@@ -57,7 +57,7 @@ function HeroBackground() {
       />
       <motion.div
         className="absolute rounded-full"
-        style={{ width: 500, height: 500, background: 'radial-gradient(circle, rgba(59,130,246,0.3) 0%, rgba(59,130,246,0.06) 50%, transparent 70%)', filter: 'blur(50px)' }}
+        style={{ width: 500, height: 500, background: 'radial-gradient(circle, rgba(242,213,141,0.18) 0%, rgba(242,213,141,0.04) 50%, transparent 70%)', filter: 'blur(50px)' }}
         animate={{
           x: ['8%', '-15%', '5%', '8%'],
           y: ['5%', '-8%', '12%', '5%'],
@@ -68,7 +68,7 @@ function HeroBackground() {
       />
       <motion.div
         className="absolute rounded-full"
-        style={{ width: 450, height: 450, background: 'radial-gradient(circle, rgba(236,72,153,0.22) 0%, rgba(168,85,247,0.06) 50%, transparent 70%)', filter: 'blur(55px)' }}
+        style={{ width: 450, height: 450, background: 'radial-gradient(circle, rgba(185,150,85,0.16) 0%, rgba(185,150,85,0.04) 50%, transparent 70%)', filter: 'blur(55px)' }}
         animate={{
           x: ['0%', '18%', '-10%', '0%'],
           y: ['0%', '-12%', '8%', '0%'],
@@ -79,7 +79,7 @@ function HeroBackground() {
       />
       <motion.div
         className="absolute rounded-full"
-        style={{ width: 350, height: 350, background: 'radial-gradient(circle, rgba(139,92,246,0.2) 0%, transparent 60%)', filter: 'blur(40px)' }}
+        style={{ width: 350, height: 350, background: 'radial-gradient(circle, rgba(231,196,119,0.14) 0%, transparent 60%)', filter: 'blur(40px)' }}
         animate={{
           x: ['10%', '-8%', '15%', '10%'],
           y: ['-5%', '15%', '-3%', '-5%'],
@@ -97,13 +97,13 @@ function HeroBackground() {
         transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
       />
       <motion.div
-        className="absolute rounded-full border border-blue-400/15"
+        className="absolute rounded-full border border-[var(--accent-secondary)]/15"
         style={{ width: 250, height: 250, bottom: '20%', right: '15%' }}
         animate={{ scale: [1, 1.8, 1], opacity: [0.12, 0, 0.12] }}
         transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut', delay: 2 }}
       />
       <motion.div
-        className="absolute rounded-full border border-pink-400/10"
+        className="absolute rounded-full border border-[var(--accent-tertiary)]/15"
         style={{ width: 200, height: 200, top: '50%', left: '35%' }}
         animate={{ scale: [1, 2, 1], opacity: [0.1, 0, 0.1] }}
         transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut', delay: 4 }}
@@ -115,7 +115,7 @@ function HeroBackground() {
         style={{
           width: '120%',
           height: 2,
-          background: 'linear-gradient(90deg, transparent 0%, rgba(139,92,246,0.4) 30%, rgba(59,130,246,0.3) 70%, transparent 100%)',
+          background: 'linear-gradient(90deg, transparent 0%, rgba(231,196,119,0.32) 30%, rgba(242,213,141,0.22) 70%, transparent 100%)',
           top: '30%',
           left: '-10%',
           filter: 'blur(1px)',
@@ -128,7 +128,7 @@ function HeroBackground() {
         style={{
           width: '100%',
           height: 1.5,
-          background: 'linear-gradient(90deg, transparent 0%, rgba(236,72,153,0.3) 40%, rgba(139,92,246,0.25) 60%, transparent 100%)',
+          background: 'linear-gradient(90deg, transparent 0%, rgba(185,150,85,0.25) 40%, rgba(231,196,119,0.2) 60%, transparent 100%)',
           top: '65%',
           left: '0%',
           filter: 'blur(1px)',
@@ -141,11 +141,11 @@ function HeroBackground() {
       {Array.from({ length: 35 }).map((_, i) => {
         const size = Math.random() * 5 + 2;
         const colors = [
-          'rgba(139,92,246,0.7)',
-          'rgba(59,130,246,0.6)',
-          'rgba(236,72,153,0.5)',
-          'rgba(168,85,247,0.6)',
-          'rgba(96,165,250,0.5)',
+          'rgba(231,196,119,0.7)',
+          'rgba(242,213,141,0.6)',
+          'rgba(185,150,85,0.55)',
+          'rgba(217,186,114,0.6)',
+          'rgba(161,161,170,0.4)',
         ];
         return (
           <motion.div
@@ -179,7 +179,7 @@ function HeroBackground() {
       <div
         className="absolute inset-0 opacity-[0.04]"
         style={{
-          backgroundImage: `linear-gradient(rgba(139,92,246,0.4) 1px, transparent 1px), linear-gradient(90deg, rgba(139,92,246,0.4) 1px, transparent 1px)`,
+          backgroundImage: `linear-gradient(rgba(231,196,119,0.32) 1px, transparent 1px), linear-gradient(90deg, rgba(231,196,119,0.32) 1px, transparent 1px)`,
           backgroundSize: '60px 60px',
         }}
       />
@@ -192,7 +192,7 @@ function HeroBackground() {
           height: '200%',
           top: '-50%',
           left: '-50%',
-          background: 'linear-gradient(135deg, transparent 42%, rgba(139,92,246,0.06) 48%, rgba(59,130,246,0.04) 52%, transparent 58%)',
+          background: 'linear-gradient(135deg, transparent 42%, rgba(231,196,119,0.05) 48%, rgba(242,213,141,0.03) 52%, transparent 58%)',
         }}
         animate={{ x: ['-30%', '30%'], y: ['-30%', '30%'] }}
         transition={{ duration: 12, repeat: Infinity, ease: 'linear' }}
@@ -340,7 +340,7 @@ export default function LandingView({ onGetStarted }: LandingViewProps) {
   };
 
   return (
-    <div className="min-h-screen w-screen overflow-x-hidden bg-[#06080d] flex flex-col relative selection:bg-[var(--accent-primary)] selection:text-white">
+    <div className="studio-public-theme min-h-screen w-screen overflow-x-hidden bg-[var(--bg-base)] text-[var(--text-primary)] flex flex-col relative selection:bg-[var(--accent-primary)] selection:text-[#161108]">
 
       {/* === Fixed Background Ambience === */}
       <div className="fixed inset-0 pointer-events-none z-0">
@@ -366,13 +366,13 @@ export default function LandingView({ onGetStarted }: LandingViewProps) {
         <div className="flex items-center gap-3">
           <button
             onClick={() => openAuth('signin')}
-            className="px-5 py-2 rounded-full text-sm font-semibold text-white/70 hover:text-white transition-colors cursor-pointer"
+            className="px-5 py-2 rounded-full text-sm font-semibold text-[var(--text-secondary)] hover:text-[var(--accent-primary)] transition-colors cursor-pointer"
           >
             Sign In
           </button>
           <button
             onClick={() => openAuth('signup')}
-            className="px-5 py-2.5 rounded-full text-sm font-bold bg-white text-[#0a0c12] hover:bg-white/90 transition-all hover:scale-[1.03] active:scale-95 shadow-xl shadow-white/10 cursor-pointer"
+            className="btn-gold-primary px-5 py-2.5 text-sm hover:scale-[1.03] active:scale-95 cursor-pointer"
           >
             Sign Up
           </button>
@@ -400,7 +400,7 @@ export default function LandingView({ onGetStarted }: LandingViewProps) {
 
             <motion.h1 variants={itemVariants} className="text-4xl sm:text-5xl lg:text-6xl font-black text-white leading-[1.08] tracking-[-0.02em] mb-6">
               Build your own
-              <span className="block text-transparent bg-clip-text bg-gradient-to-r from-[var(--accent-primary)] via-violet-400 to-[var(--accent-secondary)]">
+              <span className="block text-transparent bg-clip-text bg-gradient-to-r from-[var(--accent-primary)] via-[var(--accent-secondary)] to-[var(--accent-tertiary)]">
                 AI influencer empire.
               </span>
             </motion.h1>
@@ -412,7 +412,7 @@ export default function LandingView({ onGetStarted }: LandingViewProps) {
             <motion.div variants={itemVariants} className="flex flex-wrap items-center gap-4">
               <button
                 onClick={() => openAuth('signup')}
-                className="group flex items-center gap-3 px-7 py-3.5 bg-gradient-to-r from-[var(--accent-primary)] to-[var(--accent-secondary)] rounded-full text-white font-bold text-base hover:shadow-[0_0_50px_rgba(139,92,246,0.35)] transition-all hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
+                className="btn-gold-primary group flex items-center gap-3 px-7 py-3.5 text-base hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
               >
                 Enter the Studio
                 <ChevronRight size={18} className="group-hover:translate-x-1 transition-transform" />
@@ -613,14 +613,14 @@ export default function LandingView({ onGetStarted }: LandingViewProps) {
           viewport={{ once: true, margin: "-80px" }}
           transition={{ duration: 0.6 }}
           className="relative overflow-hidden rounded-3xl border border-white/[0.08] p-12 md:p-16 text-center"
-          style={{ background: 'linear-gradient(135deg, rgba(139,92,246,0.12) 0%, rgba(88,28,135,0.08) 50%, rgba(30,10,60,0.15) 100%)' }}
+          style={{ background: 'linear-gradient(135deg, rgba(231,196,119,0.12) 0%, rgba(36,36,40,0.88) 50%, rgba(18,18,20,0.96) 100%)' }}
         >
           <div className="absolute top-[-40%] right-[-20%] w-[60%] h-[60%] rounded-full bg-[var(--accent-primary)]/[0.08] blur-[120px] pointer-events-none" />
           <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight mb-4 relative z-10">Ready to create your first persona?</h2>
           <p className="text-[var(--text-muted)] max-w-lg mx-auto mb-8 relative z-10">Join the studio and start generating photorealistic content in under 60 seconds.</p>
           <button
             onClick={() => openAuth('signup')}
-            className="group inline-flex items-center gap-3 px-8 py-4 bg-white text-[#0a0c12] rounded-full font-bold text-lg hover:shadow-[0_0_50px_rgba(255,255,255,0.15)] transition-all hover:-translate-y-0.5 relative z-10 cursor-pointer"
+            className="btn-gold-primary group inline-flex items-center gap-3 px-8 py-4 text-lg hover:-translate-y-0.5 relative z-10 cursor-pointer"
           >
             Get Started Now
             <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
@@ -655,11 +655,11 @@ export default function LandingView({ onGetStarted }: LandingViewProps) {
               role="dialog"
               aria-modal="true"
               aria-labelledby="auth-dialog-title"
-              className="w-full max-w-md bg-[#0B0F17]/90 border border-white/10 rounded-3xl p-8 shadow-2xl relative overflow-hidden backdrop-blur-xl"
+              className="w-full max-w-md bg-[var(--bg-modal)]/95 border border-[var(--border-default)] rounded-3xl p-8 shadow-2xl relative overflow-hidden backdrop-blur-xl"
             >
               {/* Glow Orbs inside Modal */}
-              <div className="absolute -top-10 -left-10 w-24 h-24 bg-violet-600/10 blur-xl rounded-full" />
-              <div className="absolute -bottom-10 -right-10 w-24 h-24 bg-cyan-600/10 blur-xl rounded-full" />
+              <div className="absolute -top-10 -left-10 w-24 h-24 bg-[var(--accent-primary)]/10 blur-xl rounded-full" />
+              <div className="absolute -bottom-10 -right-10 w-24 h-24 bg-[var(--accent-secondary)]/10 blur-xl rounded-full" />
               
               <div className="flex items-center justify-between mb-6 relative z-10">
                 <h3 id="auth-dialog-title" className="text-2xl font-black text-white">
@@ -698,7 +698,7 @@ export default function LandingView({ onGetStarted }: LandingViewProps) {
                     type="button"
                     onClick={handleResendConfirmation}
                     disabled={resendLoading}
-                    className="w-full py-3.5 bg-gradient-to-r from-violet-600 to-fuchsia-600 rounded-full text-white font-bold text-sm hover:brightness-110 active:scale-[0.98] transition-all shadow-lg shadow-violet-500/20 cursor-pointer disabled:opacity-50"
+                    className="btn-gold-primary w-full py-3.5 text-sm active:scale-[0.98] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {resendLoading ? 'Sending...' : 'Resend Confirmation Email'}
                   </button>
@@ -712,7 +712,7 @@ export default function LandingView({ onGetStarted }: LandingViewProps) {
                 </div>
               ) : recoverySent ? (
                 <div className="relative z-10 text-center">
-                  <div className="w-16 h-16 rounded-2xl mx-auto flex items-center justify-center bg-violet-500/10 border border-violet-500/25 text-violet-400 mb-5">
+                  <div className="w-16 h-16 rounded-2xl mx-auto flex items-center justify-center bg-[var(--accent-primary)]/10 border border-[var(--accent-primary)]/25 text-[var(--accent-primary)] mb-5">
                     <CheckCircle2 size={30} />
                   </div>
                   <p className="text-sm text-white/65 leading-relaxed">
@@ -724,7 +724,7 @@ export default function LandingView({ onGetStarted }: LandingViewProps) {
                   <button
                     type="button"
                     onClick={() => switchAuthMode('signin')}
-                    className="w-full py-3.5 bg-white/5 border border-white/10 rounded-full text-white font-bold text-sm hover:bg-white/10 transition-all cursor-pointer"
+                    className="btn-gold-secondary w-full py-3.5 text-sm cursor-pointer"
                   >
                     Back to Sign In
                   </button>
@@ -761,15 +761,15 @@ export default function LandingView({ onGetStarted }: LandingViewProps) {
                   )}
 
                   {authMode === 'forgot' && (
-                    <div className="relative z-10 flex items-start gap-3 rounded-2xl border border-violet-500/15 bg-violet-500/[0.06] p-4 mb-5">
-                      <KeyRound size={18} className="text-violet-400 mt-0.5 shrink-0" />
+                    <div className="relative z-10 flex items-start gap-3 rounded-2xl border border-[var(--accent-primary)]/20 bg-[var(--accent-primary)]/[0.07] p-4 mb-5">
+                      <KeyRound size={18} className="text-[var(--accent-primary)] mt-0.5 shrink-0" />
                       <p className="text-xs text-white/55 leading-relaxed">Enter your account email and we will send you a secure password-reset link.</p>
                     </div>
                   )}
 
                   <form onSubmit={handleAuthSubmit} className="space-y-4 relative z-10">
                     <div>
-                      <label htmlFor="auth-email" className="text-[10px] font-bold text-violet-400 uppercase tracking-wider block mb-1.5">Email Address</label>
+                      <label htmlFor="auth-email" className="text-[10px] font-bold text-[var(--accent-primary)] uppercase tracking-wider block mb-1.5">Email Address</label>
                       <input
                         id="auth-email"
                         type="email"
@@ -778,19 +778,19 @@ export default function LandingView({ onGetStarted }: LandingViewProps) {
                         placeholder="name@example.com"
                         value={email}
                         onChange={event => setEmail(event.target.value)}
-                        className="w-full bg-[#111827] border border-white/10 rounded-xl px-4 py-3.5 text-sm text-white outline-none focus:border-violet-500/50 transition-colors"
+                        className="luxury-input w-full px-4 py-3.5 text-sm"
                       />
                     </div>
 
                     {authMode !== 'forgot' && (
                       <div>
                         <div className="flex items-center justify-between mb-1.5">
-                          <label htmlFor="auth-password" className="text-[10px] font-bold text-violet-400 uppercase tracking-wider">Password</label>
+                          <label htmlFor="auth-password" className="text-[10px] font-bold text-[var(--accent-primary)] uppercase tracking-wider">Password</label>
                           {authMode === 'signin' && (
                             <button
                               type="button"
                               onClick={() => switchAuthMode('forgot')}
-                              className="text-[10px] font-bold text-[#00D4FF] hover:underline cursor-pointer"
+                              className="text-[10px] font-bold text-[var(--accent-primary)] hover:text-[var(--accent-secondary)] hover:underline cursor-pointer"
                             >
                               Forgot password?
                             </button>
@@ -805,7 +805,7 @@ export default function LandingView({ onGetStarted }: LandingViewProps) {
                           placeholder="••••••••"
                           value={password}
                           onChange={event => setPassword(event.target.value)}
-                          className="w-full bg-[#111827] border border-white/10 rounded-xl px-4 py-3.5 text-sm text-white outline-none focus:border-violet-500/50 transition-colors"
+                          className="luxury-input w-full px-4 py-3.5 text-sm"
                         />
                         {authMode === 'signup' && <p className="text-[10px] text-white/35 mt-1.5">Use at least 8 characters.</p>}
                       </div>
@@ -814,7 +814,7 @@ export default function LandingView({ onGetStarted }: LandingViewProps) {
                     <button
                       type="submit"
                       disabled={loading}
-                      className="w-full py-3.5 bg-gradient-to-r from-violet-600 to-fuchsia-600 rounded-full text-white font-bold text-sm hover:brightness-110 active:scale-[0.98] transition-all shadow-lg shadow-violet-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 mt-2"
+                      className="btn-gold-primary w-full py-3.5 text-sm active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed mt-2"
                     >
                       {loading
                         ? 'Processing...'
@@ -833,7 +833,7 @@ export default function LandingView({ onGetStarted }: LandingViewProps) {
                         <button
                           type="button"
                           onClick={() => switchAuthMode('signup')}
-                          className="text-[#00D4FF] font-bold hover:underline cursor-pointer bg-transparent border-0"
+                          className="text-[var(--accent-primary)] font-bold hover:text-[var(--accent-secondary)] hover:underline cursor-pointer bg-transparent border-0"
                         >
                           Sign Up
                         </button>
@@ -844,7 +844,7 @@ export default function LandingView({ onGetStarted }: LandingViewProps) {
                         <button
                           type="button"
                           onClick={() => switchAuthMode('signin')}
-                          className="text-[#00D4FF] font-bold hover:underline cursor-pointer bg-transparent border-0"
+                          className="text-[var(--accent-primary)] font-bold hover:text-[var(--accent-secondary)] hover:underline cursor-pointer bg-transparent border-0"
                         >
                           Sign In
                         </button>

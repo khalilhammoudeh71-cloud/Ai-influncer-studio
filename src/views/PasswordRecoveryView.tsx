@@ -42,13 +42,13 @@ export default function PasswordRecoveryView({ onComplete, onCancel }: PasswordR
   };
 
   return (
-    <div className="min-h-screen bg-[#06080d] text-white flex items-center justify-center p-4 sm:p-6 relative overflow-hidden">
+    <div className="studio-public-theme min-h-screen bg-[var(--bg-base)] text-[var(--text-primary)] flex items-center justify-center p-4 sm:p-6 relative overflow-hidden">
       <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
-        <div className="absolute top-[-20%] left-[-10%] w-[65%] h-[65%] rounded-full bg-violet-600/[0.09] blur-[160px]" />
-        <div className="absolute bottom-[-25%] right-[-10%] w-[60%] h-[60%] rounded-full bg-cyan-500/[0.06] blur-[160px]" />
+        <div className="absolute top-[-20%] left-[-10%] w-[65%] h-[65%] rounded-full bg-[var(--accent-primary)]/[0.09] blur-[160px]" />
+        <div className="absolute bottom-[-25%] right-[-10%] w-[60%] h-[60%] rounded-full bg-[var(--accent-secondary)]/[0.06] blur-[160px]" />
       </div>
 
-      <main className="w-full max-w-md rounded-3xl border border-white/10 bg-[#0B0F17]/90 p-6 sm:p-8 shadow-2xl backdrop-blur-xl relative z-10">
+      <main className="w-full max-w-md rounded-3xl border border-[var(--border-default)] bg-[var(--bg-modal)]/95 p-6 sm:p-8 shadow-2xl backdrop-blur-xl relative z-10">
         {isComplete ? (
           <div className="text-center">
             <div className="w-16 h-16 rounded-2xl mx-auto flex items-center justify-center bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 mb-6">
@@ -62,17 +62,17 @@ export default function PasswordRecoveryView({ onComplete, onCancel }: PasswordR
             <button
               type="button"
               onClick={onComplete}
-              className="w-full py-3.5 bg-gradient-to-r from-violet-600 to-fuchsia-600 rounded-full text-white font-bold text-sm hover:brightness-110 active:scale-[0.98] transition-all shadow-lg shadow-violet-500/20 cursor-pointer"
+              className="btn-gold-primary w-full py-3.5 text-sm active:scale-[0.98] cursor-pointer"
             >
               Continue to Studio
             </button>
           </div>
         ) : (
           <>
-            <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-violet-500/10 border border-violet-500/25 text-violet-400 mb-6">
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-[var(--accent-primary)]/10 border border-[var(--accent-primary)]/25 text-[var(--accent-primary)] mb-6">
               <KeyRound size={26} />
             </div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-violet-400 mb-3">Account recovery</p>
+            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[var(--accent-primary)] mb-3">Account recovery</p>
             <h1 className="text-2xl font-black mb-2">Create a new password</h1>
             <p className="text-sm text-white/60 leading-relaxed mb-7">
               Choose a password you have not used before. It must contain at least 8 characters.
@@ -80,7 +80,7 @@ export default function PasswordRecoveryView({ onComplete, onCancel }: PasswordR
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label htmlFor="new-password" className="text-[10px] font-bold text-violet-400 uppercase tracking-wider block mb-1.5">
+                <label htmlFor="new-password" className="text-[10px] font-bold text-[var(--accent-primary)] uppercase tracking-wider block mb-1.5">
                   New password
                 </label>
                 <input
@@ -91,11 +91,11 @@ export default function PasswordRecoveryView({ onComplete, onCancel }: PasswordR
                   minLength={8}
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
-                  className="w-full bg-[#111827] border border-white/10 rounded-xl px-4 py-3.5 text-sm text-white outline-none focus:border-violet-500/60 transition-colors"
+                  className="luxury-input w-full px-4 py-3.5 text-sm"
                 />
               </div>
               <div>
-                <label htmlFor="confirm-password" className="text-[10px] font-bold text-violet-400 uppercase tracking-wider block mb-1.5">
+                <label htmlFor="confirm-password" className="text-[10px] font-bold text-[var(--accent-primary)] uppercase tracking-wider block mb-1.5">
                   Confirm new password
                 </label>
                 <input
@@ -106,7 +106,7 @@ export default function PasswordRecoveryView({ onComplete, onCancel }: PasswordR
                   minLength={8}
                   value={confirmPassword}
                   onChange={(event) => setConfirmPassword(event.target.value)}
-                  className="w-full bg-[#111827] border border-white/10 rounded-xl px-4 py-3.5 text-sm text-white outline-none focus:border-violet-500/60 transition-colors"
+                  className="luxury-input w-full px-4 py-3.5 text-sm"
                 />
               </div>
               <div className="flex items-center gap-2 text-xs text-white/45 pt-1">
@@ -116,7 +116,7 @@ export default function PasswordRecoveryView({ onComplete, onCancel }: PasswordR
               <button
                 type="submit"
                 disabled={isSaving}
-                className="w-full py-3.5 bg-gradient-to-r from-violet-600 to-fuchsia-600 rounded-full text-white font-bold text-sm hover:brightness-110 active:scale-[0.98] transition-all shadow-lg shadow-violet-500/20 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                className="btn-gold-primary w-full py-3.5 text-sm active:scale-[0.98] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isSaving ? 'Updating Password...' : 'Update Password'}
               </button>
