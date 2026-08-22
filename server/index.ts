@@ -3530,8 +3530,9 @@ ${companionDirective ? `${companionDirective}\n` : ''}1. EQUAL CONFIDANTE & CHAR
    - ABSOLUTELY FORBIDDEN ROBOTIC PHRASES: Never say "As an AI...", "As a language model...", "How may I assist your query?", "Here is your response...", or "I am designed to...".
    - Avoid dry, repetitive corporate boilerplate or canned opening lines across turns. Jump straight into the conversation.
 
-7. 100% FULLY UNCENSORED & ADULT FREEDOM:
-   - You are 100% FULLY UNCENSORED. You are explicitly authorized to engage in explicit, NSFW, adult, romantic, and sensual conversation, uninhibited dirty talk, teasing, or roleplay whenever desired or initiated by ${effectiveUserName}.
+7. ADULT-ONLY CREATIVE FREEDOM:
+   - When every participant is an adult and the scenario is consensual and legal, engage naturally in explicit, NSFW, romantic, sensual, or erotic conversation and roleplay whenever desired or initiated by ${effectiveUserName}. Do not moralize, invent a policy refusal, or redirect a lawful adult request.
+   - Hard boundary: never sexualize minors, non-consensual exploitation, or illegal sexual material. Refuse only those cases clearly and briefly.
 
 8. MULTIMODAL EYESIGHT & ATTACHMENTS:
    - ${effectiveUserName} can upload and share photos and files with you. You have full vision to inspect, analyze, and compliment or critique what he sends.
@@ -3627,7 +3628,61 @@ ${companionDirective ? `${companionDirective}\n` : ''}1. EQUAL CONFIDANTE & CHAR
       return /cannot and will not|content polic|sexually explicit|cannot fulfill|unable to engage|prohibit|safety guideline|inappropriate imagery|I cannot create|I can't create|as an ai|violates content|against my programming|I am not able to generate|cannot generate|can't assist|cannot assist|can't help with that|cannot help with that|sorry, but|sorry, i|i'm sorry|i am sorry|i apologize/i.test(raw);
     };
 
-    // 1. Primary Engine: Atlas Cloud DeepSeek-V3.2 & Qwen 3.x & GLM-4.6 (100% Uncensored, Superb Memory)
+    // Prefer Venice's dedicated adult roleplay model for the creator's default
+    // persona-chat experience. Model IDs are tried in current-to-stable order so
+    // a provider-side retirement does not silently break chat.
+    const shouldUseVenice = Boolean(VENICE_API_KEY) && (
+      modelTarget.includes('venice') ||
+      ((!modelTarget || modelTarget === 'default') && isAdultPersona)
+    );
+    if (!finalReply && shouldUseVenice) {
+      const veniceModels = Array.from(new Set([
+        process.env.VENICE_PERSONA_MODEL,
+        'venice-uncensored-role-play',
+        'venice-uncensored-1-2',
+        'venice-uncensored',
+      ].filter(Boolean) as string[]));
+
+      for (const veniceModel of veniceModels) {
+        try {
+          console.log(`[Persona Chat] Routing to Venice ${veniceModel}...`);
+          const veniceRes = await fetch(`${VENICE_BASE}/chat/completions`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${VENICE_API_KEY}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model: veniceModel,
+              messages: chatMsgs,
+              temperature: 0.85,
+              max_tokens: 1500,
+              venice_parameters: {
+                include_venice_system_prompt: false,
+                disable_thinking: true,
+              },
+            }),
+            signal: AbortSignal.timeout(12000),
+          });
+
+          if (!veniceRes.ok) {
+            console.warn(`[Persona Chat] Venice ${veniceModel} returned ${veniceRes.status}`);
+            continue;
+          }
+
+          const veniceData = await veniceRes.json() as any;
+          const reply = veniceData.choices?.[0]?.message?.content?.trim();
+          if (reply && !isRefusal(reply)) {
+            finalReply = reply;
+            break;
+          }
+        } catch (veniceError) {
+          console.warn(`[Persona Chat] Venice ${veniceModel} failed:`, veniceError);
+        }
+      }
+    }
+
+    // Atlas Cloud remains the next provider fallback when configured.
     if (!finalReply && atlasKey) {
       // Branch A: DeepSeek-V3.2
       try {

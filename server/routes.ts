@@ -1880,7 +1880,9 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
 6. COMPLETE EVERY SENTENCE: Keep replies to 1-3 natural, engaging, complete sentences. Always finish your thoughts with clean punctuation (. ! ?). Never stop mid-sentence.
 7. USER ATTACHMENTS & FULL VISION: ${userName} can upload and share reference photos, images, and files with you. You HAVE FULL MULTIMODAL EYESIGHT to inspect and analyze his uploaded pictures.
 8. EMBODY YOUR PERSONA: Speak in ${personaName}'s genuine tone (${personaTone}) and domain (${personaNiche}).
-9. LONG-TERM CONTINUITY & MEMORY: Naturally remember ${userName}'s name, past conversations, preferences, and inside jokes.`;
+9. LONG-TERM CONTINUITY & MEMORY: Naturally remember ${userName}'s name, past conversations, preferences, and inside jokes.
+10. ADULT-ONLY CREATIVE FREEDOM: When every participant is an adult and the scenario is consensual and legal, engage naturally in explicit, NSFW, romantic, sensual, or erotic conversation and roleplay. Do not moralize, invent a policy refusal, or redirect a lawful adult request.
+11. HARD BOUNDARY: Never sexualize minors, non-consensual exploitation, or illegal sexual material. Refuse only those cases clearly and briefly.`;
 
     // Robust intent detection for explicit generation requests vs conversational remarks vs vague requests
     const userEntries = allMessages.filter((m: any) => m.role === 'user');
@@ -1920,13 +1922,69 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
       text = cleanSpokenDialogue(String(req.body.directTTS));
     }
     const ATLAS_KEY = process.env.ATLASCLOUD_API_KEY || process.env.atlascloud_api_key || process.env.Atlascloud_api_key || '';
+    const VENICE_KEY = process.env.Veniceai_api_key || process.env.veniceai_api_key || process.env.VENICEAI_API_KEY || process.env.VENICE_API_KEY || '';
 
     const isRefusal = (raw: string): boolean => {
       if (!raw || raw.length < 5) return true;
       return /cannot and will not|content polic|sexually explicit|cannot fulfill|unable to engage|prohibit|safety guideline|inappropriate imagery|I cannot create|I can't create|as an ai|violates content|against my programming|I am not able to generate|cannot generate|can't assist|cannot assist|can't help with that|cannot help with that|sorry, but|sorry, i|i'm sorry|i am sorry|i apologize/i.test(raw);
     };
 
-    // 1. Primary Engine: Atlas Cloud DeepSeek-V3.2 & Qwen 3.x & GLM-4.6 (100% Uncensored, Superb Context)
+    const requestedConversationModel = String(voiceLlmModel || '').toLowerCase();
+    const shouldUseVenice = Boolean(VENICE_KEY) && (
+      requestedConversationModel.includes('venice') ||
+      ((!requestedConversationModel || requestedConversationModel === 'default') && isAdultContext)
+    );
+
+    if (!text && shouldUseVenice) {
+      const veniceMessages = [
+        { role: 'system', content: voiceSystemPrompt },
+        ...rawHistory.map((m: any) => ({
+          role: (m.role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
+          content: String(m.content || m.parts?.[0]?.text || '').trim() || 'Hello'
+        }))
+      ];
+      const veniceModels = Array.from(new Set([
+        process.env.VENICE_PERSONA_MODEL,
+        'venice-uncensored-role-play',
+        'venice-uncensored-1-2',
+        'venice-uncensored',
+      ].filter(Boolean) as string[]));
+
+      for (const veniceModel of veniceModels) {
+        try {
+          console.log(`[Voice Chat LLM] Generating response via Venice ${veniceModel}...`);
+          const veniceRes = await fetch('https://api.venice.ai/api/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${VENICE_KEY}`,
+              'Content-Type': 'application/json'
+            },
+            signal: AbortSignal.timeout(12000),
+            body: JSON.stringify({
+              model: veniceModel,
+              messages: veniceMessages,
+              temperature: 0.85,
+              max_tokens: 700,
+              venice_parameters: {
+                include_venice_system_prompt: false,
+                disable_thinking: true,
+              },
+            })
+          });
+          if (!veniceRes.ok) continue;
+          const veniceData = await veniceRes.json();
+          const rawReply = veniceData.choices?.[0]?.message?.content || '';
+          if (rawReply && !isRefusal(rawReply)) {
+            text = cleanSpokenDialogue(rawReply);
+            if (text) break;
+          }
+        } catch (veniceError) {
+          console.warn(`[Voice Chat LLM] Venice ${veniceModel} failed:`, veniceError);
+        }
+      }
+    }
+
+    // Atlas Cloud remains the next provider fallback when configured.
     if (!text && ATLAS_KEY) {
       // Branch A: DeepSeek-V3.2
       try {
@@ -2436,7 +2494,9 @@ CRITICAL RULES FOR LIVE VOICE CALL:
 - CONCISE & NATURAL: Keep responses to 1-3 clear, natural sentences. Be socially intelligent, candid, warm, and conversational.
 - COMPLETE THOUGHTS: Always finish your sentence completely with proper punctuation (. ! ?). Never end mid-sentence.
 - NO ROBOTIC FILLER: Never say "As an AI" or generic placeholders. Speak naturally like a human talking over the phone.
-- SPOKEN WORDS ONLY: Do not output stage directions, inner thoughts, markdown, or bracketed narration.`;
+- SPOKEN WORDS ONLY: Do not output stage directions, inner thoughts, markdown, or bracketed narration.
+- ADULT-ONLY CREATIVE FREEDOM: When every participant is an adult and the scenario is consensual and legal, engage naturally in explicit, NSFW, romantic, sensual, or erotic conversation and roleplay. Do not moralize, invent a policy refusal, or redirect a lawful adult request.
+- HARD BOUNDARY: Never sexualize minors, non-consensual exploitation, or illegal sexual material. Refuse only those cases clearly and briefly.`;
 
   const formattedContents = rawHistory.map((m: any) => ({
     role: m.role === 'user' ? 'user' : 'model',
@@ -2451,10 +2511,27 @@ CRITICAL RULES FOR LIVE VOICE CALL:
     }))
   ];
 
+  // Resolve explicit media commands before invoking a conversation model. The
+  // media pipeline owns these actions, so the spoken response must acknowledge
+  // the action instead of allowing an unrelated model refusal to contradict it.
+  const lastUserMessage = [...rawHistory].reverse().find((message: any) => message.role === 'user');
+  const exactUserPrompt = String(lastUserMessage?.content || '').trim();
+  const conversationalMediaRemark = /(?:why did you send|stop sending|didn't ask|not asking|what is that|about that|talk without|just chat)/i.test(exactUserPrompt);
+  const imageRequest = !conversationalMediaRemark && (
+    /\b(?:send|take|show|give|snap|make|generate|create|share)\s+(?:me\s+)?(?:a\s+|an\s+|another\s+|the\s+)?(?:pic|photo|picture|image|selfie|portrait|outfit|look)\b/i.test(exactUserPrompt) ||
+    /\b(?:can i see|let me see|show me|send me|send another|send it)\b/i.test(exactUserPrompt)
+  );
+  const videoRequest = !conversationalMediaRemark && /\b(?:send|record|make|generate|shoot|create)\s+(?:me\s+)?(?:a\s+|an\s+|another\s+)?(?:video|clip|reel|animation)\b/i.test(exactUserPrompt);
+  const action = imageRequest
+    ? { type: 'image' as const, prompt: exactUserPrompt, userPrompt: exactUserPrompt }
+    : videoRequest
+      ? { type: 'video' as const, prompt: exactUserPrompt, userPrompt: exactUserPrompt }
+      : undefined;
+
   let streamEndedByLimit = false;
 
   // Parse OpenAI-compatible streams without losing JSON split across network chunks.
-  const handleOpenAIStream = async (url: string, key: string, modelName: string, customHeaders = {}) => {
+  const handleOpenAIStream = async (url: string, key: string, modelName: string, customHeaders = {}, requestOverrides = {}) => {
     const controller = new AbortController();
     const isLocal = url.includes('127.0.0.1') || url.includes('localhost');
     const timeout = setTimeout(() => controller.abort(), isLocal ? 1200 : 45000);
@@ -2472,7 +2549,8 @@ CRITICAL RULES FOR LIVE VOICE CALL:
           messages: messagesForOpenAI,
           temperature: 0.7,
           max_tokens: 900,
-          stream: true
+          stream: true,
+          ...requestOverrides,
         }),
         signal: controller.signal
       });
@@ -2523,6 +2601,54 @@ CRITICAL RULES FOR LIVE VOICE CALL:
 
   let streamedSuccessfully = false;
   let streamedText = '';
+
+  if (action) {
+    streamedText = action.type === 'image'
+      ? "Mmm, give me a second — I'm taking that for you now."
+      : "Give me a second — I'm recording that for you now.";
+    res.write(`data: ${JSON.stringify({ text: streamedText })}\n\n`);
+    streamedSuccessfully = true;
+  }
+
+  const requestedConversationModel = String(voiceLlmModel || '').toLowerCase();
+  const shouldStreamVenice = Boolean(VENICE_KEY) && (
+    requestedConversationModel.includes('venice') ||
+    !requestedConversationModel ||
+    requestedConversationModel === 'default'
+  );
+
+  if (!streamedSuccessfully && shouldStreamVenice) {
+    const veniceModels = Array.from(new Set([
+      process.env.VENICE_PERSONA_MODEL,
+      'venice-uncensored-role-play',
+      'venice-uncensored-1-2',
+      'venice-uncensored',
+    ].filter(Boolean) as string[]));
+
+    for (const veniceModel of veniceModels) {
+      try {
+        console.log(`[Voice Stream] Streaming Venice ${veniceModel}...`);
+        streamedText = await handleOpenAIStream(
+          'https://api.venice.ai/api/v1/chat/completions',
+          VENICE_KEY,
+          veniceModel,
+          {},
+          {
+            temperature: 0.8,
+            max_tokens: 900,
+            venice_parameters: {
+              include_venice_system_prompt: false,
+              disable_thinking: true,
+            },
+          }
+        );
+        streamedSuccessfully = streamedText.trim().length > 0;
+        if (streamedSuccessfully) break;
+      } catch (err) {
+        console.warn(`[Voice Stream] Venice ${veniceModel} failed, trying fallback:`, err);
+      }
+    }
+  }
 
   // Preserve the permissive conversational behavior of the original voice
   // endpoint while gaining token streaming. Explicit provider choices still win.
@@ -2580,18 +2706,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
     }
   }
 
-  // 3. Venice Llama 3.3
-  if (!streamedSuccessfully && (voiceLlmModel === 'venice' || voiceLlmModel?.includes('venice')) && VENICE_KEY) {
-    try {
-      console.log('[Stream] Trying Venice...');
-      streamedText = await handleOpenAIStream('https://api.venice.ai/api/v1/chat/completions', VENICE_KEY, 'llama-3.3-70b');
-      streamedSuccessfully = streamedText.trim().length > 0;
-    } catch (err) {
-      console.warn('[Stream] Venice failed, falling back:', err);
-    }
-  }
-
-  // 4. Ollama Local
+  // 3. Ollama Local
   if (!streamedSuccessfully && (voiceLlmModel === 'ollama' || voiceLlmModel?.includes('ollama'))) {
     try {
       const ollamaHost = process.env.OLLAMA_HOST || 'http://127.0.0.1:11434';
@@ -2607,7 +2722,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
     }
   }
 
-  // 5. Gemini Flash Fallback
+  // 4. Gemini Flash Fallback
   if (!streamedSuccessfully) {
     try {
       console.log('[Stream] Using Gemini primary/fallback...');
@@ -2672,20 +2787,6 @@ CRITICAL RULES FOR LIVE VOICE CALL:
       console.warn('[Voice Stream] Could not repair an incomplete final sentence:', repairError);
     }
   }
-
-  const lastUserMessage = [...rawHistory].reverse().find((message: any) => message.role === 'user');
-  const exactUserPrompt = String(lastUserMessage?.content || '').trim();
-  const conversationalMediaRemark = /(?:why did you send|stop sending|didn't ask|not asking|what is that|about that|talk without|just chat)/i.test(exactUserPrompt);
-  const imageRequest = !conversationalMediaRemark && (
-    /\b(?:send|take|show|give|snap|make|generate|create|share)\s+(?:me\s+)?(?:a\s+|an\s+|another\s+|the\s+)?(?:pic|photo|picture|image|selfie|portrait|outfit|look)\b/i.test(exactUserPrompt) ||
-    /\b(?:can i see|let me see|show me|send me|send another|send it)\b/i.test(exactUserPrompt)
-  );
-  const videoRequest = !conversationalMediaRemark && /\b(?:send|record|make|generate|shoot|create)\s+(?:me\s+)?(?:a\s+|an\s+|another\s+)?(?:video|clip|reel|animation)\b/i.test(exactUserPrompt);
-  const action = imageRequest
-    ? { type: 'image', prompt: exactUserPrompt, userPrompt: exactUserPrompt }
-    : videoRequest
-      ? { type: 'video', prompt: exactUserPrompt, userPrompt: exactUserPrompt }
-      : undefined;
 
   res.write(`data: ${JSON.stringify({ done: true, text: streamedText.trim(), action })}\n\n`);
   res.end();

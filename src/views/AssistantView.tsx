@@ -361,7 +361,20 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     window.addEventListener('persona-updated', handlePersonaUpdated as EventListener);
     return () => window.removeEventListener('persona-updated', handlePersonaUpdated as EventListener);
   }, []);
-  const [voiceLlmModel, setVoiceLlmModel] = useState<string>(() => localStorage.getItem('agent_voice_llm') || 'gemini');
+  const [voiceLlmModel, setVoiceLlmModel] = useState<string>(() => {
+    const savedModel = localStorage.getItem('agent_voice_llm');
+    const userSelectedModel = localStorage.getItem('agent_voice_llm_user_selected') === '1';
+
+    // Existing installs defaulted to Gemini. Migrate that inherited default once
+    // so persona chat uses the adult-friendly roleplay engine without overriding
+    // a model the creator deliberately selected.
+    if (!userSelectedModel && (!savedModel || savedModel === 'gemini')) {
+      localStorage.setItem('agent_voice_llm', 'venice');
+      return 'venice';
+    }
+
+    return savedModel || 'venice';
+  });
   const [selectedVoiceEngine, setSelectedVoiceEngine] = useState<string>(() => localStorage.getItem('agent_voice_engine') || 'eleven_flash_v2_5');
 
   const handleVoiceEngineChange = (engineId: string) => {
@@ -3239,10 +3252,11 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                         const selected = e.target.value;
                         setVoiceLlmModel(selected);
                         localStorage.setItem('agent_voice_llm', selected);
+                        localStorage.setItem('agent_voice_llm_user_selected', '1');
                         const labels: Record<string, string> = {
                           'llama3.3': 'Meta Llama 3.3 70B (Cloud API)',
                           'ollama:llama3.3': 'Meta Llama 3.3 70B (Local GPU)',
-                          venice: 'Venice AI Llama 3.3 70B (Uncensored)',
+                          venice: 'Venice Adult Roleplay (Uncensored)',
                           grok: 'xAI Grok 2',
                           deepseek: 'DeepSeek R1 Reasoner',
                           qwen: 'Qwen 2.5 72B Instruct',
@@ -3254,7 +3268,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                     >
                       <option value="gemini" className="bg-[#1c1d22] text-white">⚡ Gemini 2.5 Flash (Ultra Fast & Conversational)</option>
                       <option value="qwen" className="bg-[#1c1d22] text-white">🔮 Qwen 2.5 72B Instruct (Deep Roleplay & Creative)</option>
-                      <option value="venice" className="bg-[#1c1d22] text-white">🔓 Venice AI Llama 3.3 70B (Fully Uncensored)</option>
+                      <option value="venice" className="bg-[#1c1d22] text-white">🔓 Venice Adult Roleplay (Uncensored)</option>
                       <option value="deepseek" className="bg-[#1c1d22] text-white">🧠 DeepSeek R1 Reasoner (Complex Logic & Analysis)</option>
                       <option value="grok" className="bg-[#1c1d22] text-white">🚀 xAI Grok 2 (Direct & Unfiltered)</option>
                       <option value="llama3.3" className="bg-[#1c1d22] text-white">🦙 Meta Llama 3.3 70B (Cloud API)</option>
