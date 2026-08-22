@@ -66,6 +66,12 @@ export interface GenerateImageParams {
   identityLock?: boolean;
   count?: number;
   lora?: Array<{ model: string; weight: number }>;
+  referenceImage?: string;
+  allowNsfw?: boolean;
+  creatorProfile?: unknown;
+  isDuoShoot?: boolean;
+  isCreatorSolo?: boolean;
+  preservePromptVerbatim?: boolean;
 }
 
 export interface GenerateImageResult {
@@ -801,5 +807,4 @@ export async function extendVideo(params: {
     model: genRes.model
   };
 }
-
 

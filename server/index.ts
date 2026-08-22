@@ -1114,6 +1114,11 @@ interface ImageGenRequest {
   faceDescriptor?: string;
   naturalLook?: boolean;
   identityLock?: boolean;
+  allowNsfw?: boolean;
+  creatorProfile?: any;
+  isDuoShoot?: boolean;
+  isCreatorSolo?: boolean;
+  preservePromptVerbatim?: boolean;
 }
 
 function cleanChatPromptToVisualScene(prompt: string, personaName: string, creatorProfile?: any): string {
@@ -1163,12 +1168,32 @@ function buildPrompt(body: ImageGenRequest, useEditInstructionStyle = false): st
     const creator = (body as any).creatorProfile || null;
     const creatorName = creator?.name || 'Creator';
     const creatorAppearance = creator?.appearance || "the creator's configured appearance";
-    const hasDuoOrSecondPerson = /\b(you|ur|your|her|us|together|both|with you|with her|holding|fucking|touching|kissing|riding|sucking|eating|on top of|underneath|behind|couple|duo)\b/i.test(rawScene);
-    const isCreatorSolo = !hasDuoOrSecondPerson && (/\b(image of me only|photo of me only|pic of me only|just me|of me only|portrait of me only|solo photo of me|only me|portrait of dr\.?\s*h)\b/i.test(rawScene) || !!(body as any).isCreatorSolo);
-    const isDuo = hasDuoOrSecondPerson || /\b(with me|with you|me and you|you and me|of me and you|of you and me|me and her|her and me|us together|duo|together|both of us|us at|couple|holding you|holding me|holding each other|with (?:dr\.?\s*h|creator|partner)|kissing you|kissing me|with us)\b/i.test(rawScene) || !!(body as any).isDuoShoot;
+    const explicitlyIncludesCreator = /\b(with me|me and you|you and me|of me and you|of you and me|me and her|her and me|us together|both of us|us at|holding me|holding each other|with (?:dr\.?\s*h|creator|partner)|kissing me|with us|together with me)\b/i.test(rawScene) || !!(body as any).isDuoShoot;
+    const isCreatorSolo = !explicitlyIncludesCreator && (/\b(image of me only|photo of me only|pic of me only|just me|of me only|portrait of me only|solo photo of me|only me|portrait of dr\.?\s*h)\b/i.test(rawScene) || !!(body as any).isCreatorSolo);
+    const isDuo = explicitlyIncludesCreator;
 
     const visualScene = cleanChatPromptToVisualScene(rawScene, personaName, creator);
     const isAdultOrExplicit = isNsfwPromptText(visualScene, (body as any).allowNsfw) || (niche || '').toLowerCase().includes('adult');
+
+    if ((body as any).preservePromptVerbatim) {
+      const subjectDirective = isCreatorSolo
+        ? `The only subject is ${creatorName} (${creatorAppearance}). Use the supplied creator reference image for identity.`
+        : isDuo
+          ? `The scene contains exactly ${personaName} and ${creatorName} (${creatorAppearance}). Use each supplied reference image for the corresponding identity.`
+          : `The subject is ${personaName}. In the request, "you" and "your" refer to ${personaName}; use the persona reference image for identity.`;
+      const exactParts = [
+        'AUTHORITATIVE USER REQUEST — preserve every requested subject, action, pose, outfit, setting, camera detail, and relationship exactly as written.',
+        `USER REQUEST (VERBATIM): ${rawScene}`,
+        subjectDirective,
+        hasRef ? `IDENTITY: Keep the supplied reference identity exact; do not replace the requested person with a generic model.` : '',
+        faceDescriptor && !isCreatorSolo ? `Persona appearance: ${faceDescriptor}.` : '',
+        'Do not invent, remove, soften, reverse, or substitute any requested visual detail. Add only neutral photographic quality terms that do not alter the scene.',
+        'Photorealistic, coherent anatomy, natural skin texture, accurate composition, high-resolution professional photograph.',
+      ];
+      if (identityLock) exactParts.push(identityLockTerms);
+      if (naturalLook) exactParts.push(realismTerms);
+      return exactParts.filter(Boolean).join('\n').trim();
+    }
 
     if (isCreatorSolo) {
       const creatorRefNote = hasRef
@@ -4383,7 +4408,7 @@ app.post('/api/generate-image', async (req, res) => {
     let prompt = buildPrompt({ ...rest, creatorProfile: (rest as any).creatorProfile || storedCreator, referenceImage, additionalImages } as any);
 
     // Automatic LLM Visual Prompt Rephraser & Scene Enhancer (Wavespeed-style detailed prompt expander)
-    if ((rest as any).isChatContext || (rest as any).chatPrompt || (rest as any).prompt) {
+    if (((rest as any).isChatContext || (rest as any).chatPrompt || (rest as any).prompt) && !(rest as any).preservePromptVerbatim) {
       const rawVisualText = (rest as any).chatPrompt || (rest as any).prompt || prompt;
       try {
         const enhanced = await enhanceVisualPromptWithLLM({
