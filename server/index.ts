@@ -18,7 +18,7 @@ import { GoogleGenAI } from '@google/genai';
 import convert from 'heic-convert';
 import { Jimp } from 'jimp';
 // Pool is imported dynamically in pushSchema to support different environments
-import apiRoutes, { globalDefaultVoiceRef, readLocalCreatorProfile, synthesizeClonedAudioWithWavespeed } from './routes';
+import apiRoutes, { globalDefaultVoiceRef, readCreatorProfileForUser, synthesizeClonedAudioWithWavespeed } from './routes';
 import stripeRoutes, { handleStripeWebhook } from './stripe-routes';
 import { requireAuth, deductCredits, isCreatorUser, AuthenticatedRequest } from './auth';
 
@@ -1120,9 +1120,9 @@ function cleanChatPromptToVisualScene(prompt: string, personaName: string, creat
   if (!prompt) return '';
   let cleaned = prompt.trim();
   
-  const creator = creatorProfile || readLocalCreatorProfile();
-  const creatorName = creator?.name || 'Dr. H';
-  const creatorAppearance = creator?.appearance || 'Charismatic male creator with sharp modern styling, short dark hair, and athletic build';
+  const creator = creatorProfile || null;
+  const creatorName = creator?.name || 'Creator';
+  const creatorAppearance = creator?.appearance || "the creator's configured appearance";
 
   const isDuo = /\b(with me|with you|me and you|you and me|of me and you|of you and me|me and her|her and me|us together|duo|together|both of us|us at|couple|holding you|holding me|holding each other|with (?:dr\.?\s*h|creator|partner)|kissing you|kissing me|with us)\b/i.test(prompt);
 
@@ -1160,9 +1160,9 @@ function buildPrompt(body: ImageGenRequest, useEditInstructionStyle = false): st
 
   if (isChatContext) {
     const rawScene = chatPrompt || (body as any).prompt || '';
-    const creator = (body as any).creatorProfile || readLocalCreatorProfile();
-    const creatorName = creator?.name || 'Dr. H';
-    const creatorAppearance = creator?.appearance || 'Charismatic male creator with sharp modern styling, short dark hair, and athletic build';
+    const creator = (body as any).creatorProfile || null;
+    const creatorName = creator?.name || 'Creator';
+    const creatorAppearance = creator?.appearance || "the creator's configured appearance";
     const hasDuoOrSecondPerson = /\b(you|ur|your|her|us|together|both|with you|with her|holding|fucking|touching|kissing|riding|sucking|eating|on top of|underneath|behind|couple|duo)\b/i.test(rawScene);
     const isCreatorSolo = !hasDuoOrSecondPerson && (/\b(image of me only|photo of me only|pic of me only|just me|of me only|portrait of me only|solo photo of me|only me|portrait of dr\.?\s*h)\b/i.test(rawScene) || !!(body as any).isCreatorSolo);
     const isDuo = hasDuoOrSecondPerson || /\b(with me|with you|me and you|you and me|of me and you|of you and me|me and her|her and me|us together|duo|together|both of us|us at|couple|holding you|holding me|holding each other|with (?:dr\.?\s*h|creator|partner)|kissing you|kissing me|with us)\b/i.test(rawScene) || !!(body as any).isDuoShoot;
@@ -3118,9 +3118,9 @@ app.post('/api/persona-greeting', async (req, res) => {
     const personaName = persona?.name || 'Creator';
     const personaNiche = persona?.niche || 'Lifestyle';
     const personaTone = persona?.tone || 'Confident, alluring, witty';
-    const storedCreator = readLocalCreatorProfile();
+    const storedCreator = await readCreatorProfileForUser((req as AuthenticatedRequest).user.id);
     const effectiveCreator = creatorProfile || storedCreator;
-    const effectiveUserName = effectiveCreator?.name || 'Dr. H';
+    const effectiveUserName = effectiveCreator?.name || 'Creator';
     const creatorDynamic = effectiveCreator?.customDynamic || '';
 
     // Extract recent messages to understand the last conversation vibe
@@ -3408,9 +3408,9 @@ app.post('/api/chat', async (req, res) => {
     const boundaries = persona.contentBoundaries ? `\nBoundaries: ${persona.contentBoundaries}` : '';
     const visualStyle = persona?.visualStyle || 'High fashion, natural photography';
 
-    const storedCreator = readLocalCreatorProfile();
+    const storedCreator = await readCreatorProfileForUser((req as AuthenticatedRequest).user.id);
     const effectiveCreator = creatorProfile || storedCreator;
-    const effectiveUserName = effectiveCreator?.name || req.body.userName || persona?.userProfile?.name || 'Dr. H';
+    const effectiveUserName = effectiveCreator?.name || req.body.userName || persona?.userProfile?.name || 'Creator';
     const creatorRole = effectiveCreator?.role || 'Creator, close partner, and primary companion';
     const creatorAppearance = effectiveCreator?.appearance || '';
     const creatorBio = effectiveCreator?.bio || '';
@@ -3419,7 +3419,7 @@ app.post('/api/chat', async (req, res) => {
     const hasCreatorPhotos = Array.isArray(effectiveCreator?.photos) && effectiveCreator.photos.length > 0;
     const creatorPrimaryPhoto = effectiveCreator?.primaryPhoto || (hasCreatorPhotos ? effectiveCreator.photos[0] : '');
 
-    let memoryContext = `\n\nCORE USER & CREATOR PROFILE (DR. H):
+    let memoryContext = `\n\nCORE USER & CREATOR PROFILE (${effectiveUserName.toUpperCase()}):
 • Creator Name: ${effectiveUserName}
 • Relationship / Role: ${creatorRole} (Address him naturally as ${effectiveUserName})
 • Physical Appearance & Styling: ${creatorAppearance || 'Charismatic male creator with sharp modern styling, short dark hair, and athletic build'}
@@ -4362,7 +4362,7 @@ app.post('/api/generate-image', async (req, res) => {
   }
 
   try {
-    const storedCreator = readLocalCreatorProfile();
+    const storedCreator = await readCreatorProfileForUser(authReq.user.id);
     const isDuo = Boolean((req.body as any).isDuoShoot);
     const isCreatorSolo = Boolean((req.body as any).isCreatorSolo);
     const creatorPhoto = (req.body as any).creatorProfile?.primaryPhoto || 
@@ -4380,7 +4380,7 @@ app.post('/api/generate-image', async (req, res) => {
 
     let imageUrls: string[] = [];
     let modelName = modelId;
-    let prompt = buildPrompt({ ...rest, referenceImage, additionalImages } as any);
+    let prompt = buildPrompt({ ...rest, creatorProfile: (rest as any).creatorProfile || storedCreator, referenceImage, additionalImages } as any);
 
     // Automatic LLM Visual Prompt Rephraser & Scene Enhancer (Wavespeed-style detailed prompt expander)
     if ((rest as any).isChatContext || (rest as any).chatPrompt || (rest as any).prompt) {
@@ -4391,8 +4391,8 @@ app.post('/api/generate-image', async (req, res) => {
           personaName: (rest as any).personaName || 'Model',
           personaNiche: (rest as any).niche,
           personaBio: (rest as any).bio,
-          creatorName: (rest as any).creatorProfile?.name || storedCreator?.name || 'Dr. H',
-          creatorAppearance: (rest as any).creatorProfile?.appearance || storedCreator?.appearance || 'Charismatic male creator with shaved head, trimmed dark beard, sharp masculine facial features, and athletic muscular build',
+          creatorName: (rest as any).creatorProfile?.name || storedCreator?.name || 'Creator',
+          creatorAppearance: (rest as any).creatorProfile?.appearance || storedCreator?.appearance || "the creator's configured appearance",
           isDuo,
           isCreatorSolo,
           hasPersonaRef: Boolean(referenceImage),
@@ -7677,7 +7677,7 @@ async function pushSchema() {
       $workspace_policies$;
       CREATE TABLE IF NOT EXISTS personas (
         id SERIAL PRIMARY KEY,
-        client_id TEXT NOT NULL UNIQUE,
+        client_id TEXT NOT NULL,
         name TEXT NOT NULL DEFAULT '',
         niche TEXT NOT NULL DEFAULT '',
         tone TEXT NOT NULL DEFAULT '',
@@ -7700,7 +7700,7 @@ async function pushSchema() {
       );
       CREATE TABLE IF NOT EXISTS generated_images (
         id SERIAL PRIMARY KEY,
-        client_id TEXT NOT NULL UNIQUE,
+        client_id TEXT NOT NULL,
         persona_client_id TEXT NOT NULL,
         url TEXT NOT NULL,
         prompt TEXT NOT NULL DEFAULT '',
@@ -7732,7 +7732,7 @@ async function pushSchema() {
       
       CREATE TABLE IF NOT EXISTS revenue_entries (
         id SERIAL PRIMARY KEY,
-        client_id TEXT NOT NULL UNIQUE,
+        client_id TEXT NOT NULL,
         persona_client_id TEXT NOT NULL,
         date TEXT NOT NULL,
         amount REAL NOT NULL,
@@ -7755,6 +7755,65 @@ async function pushSchema() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
       );
       ALTER TABLE planned_posts ADD COLUMN IF NOT EXISTS user_id TEXT;
+
+      -- Account ownership is mandatory. Legacy unowned rows remain inaccessible.
+      UPDATE personas SET user_id = 'legacy-unowned' WHERE user_id IS NULL;
+      UPDATE generated_images SET user_id = 'legacy-unowned' WHERE user_id IS NULL;
+      UPDATE revenue_entries SET user_id = 'legacy-unowned' WHERE user_id IS NULL;
+      UPDATE planned_posts SET user_id = 'legacy-unowned' WHERE user_id IS NULL;
+      ALTER TABLE personas ALTER COLUMN user_id SET NOT NULL;
+      ALTER TABLE generated_images ALTER COLUMN user_id SET NOT NULL;
+      ALTER TABLE revenue_entries ALTER COLUMN user_id SET NOT NULL;
+      ALTER TABLE planned_posts ALTER COLUMN user_id SET NOT NULL;
+
+      -- Client-generated IDs only need to be unique inside their owning account.
+      DO $account_constraints$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'personas'::regclass AND conname = 'personas_user_client_id_unique') THEN
+          ALTER TABLE personas ADD CONSTRAINT personas_user_client_id_unique UNIQUE (user_id, client_id);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'generated_images'::regclass AND conname = 'generated_images_user_client_id_unique') THEN
+          ALTER TABLE generated_images ADD CONSTRAINT generated_images_user_client_id_unique UNIQUE (user_id, client_id);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'revenue_entries'::regclass AND conname = 'revenue_entries_user_client_id_unique') THEN
+          ALTER TABLE revenue_entries ADD CONSTRAINT revenue_entries_user_client_id_unique UNIQUE (user_id, client_id);
+        END IF;
+      END
+      $account_constraints$;
+
+      CREATE INDEX IF NOT EXISTS planned_posts_user_id_idx ON planned_posts (user_id);
+
+      ALTER TABLE personas ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE generated_images ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE revenue_entries ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE planned_posts ENABLE ROW LEVEL SECURITY;
+      REVOKE ALL ON TABLE personas, generated_images, revenue_entries, planned_posts FROM anon;
+      GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE personas, generated_images, revenue_entries, planned_posts TO authenticated;
+      REVOKE ALL ON SEQUENCE personas_id_seq, generated_images_id_seq, revenue_entries_id_seq, planned_posts_id_seq FROM anon;
+      GRANT USAGE, SELECT ON SEQUENCE personas_id_seq, generated_images_id_seq, revenue_entries_id_seq, planned_posts_id_seq TO authenticated;
+      DO $account_policies$
+      DECLARE
+        target_table text;
+        policy_prefix text;
+      BEGIN
+        FOREACH target_table IN ARRAY ARRAY['personas', 'generated_images', 'revenue_entries', 'planned_posts']
+        LOOP
+          policy_prefix := target_table || '_own';
+          IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = target_table AND policyname = policy_prefix || '_select') THEN
+            EXECUTE format('CREATE POLICY %I ON %I FOR SELECT TO authenticated USING ((SELECT auth.uid())::text = user_id)', policy_prefix || '_select', target_table);
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = target_table AND policyname = policy_prefix || '_insert') THEN
+            EXECUTE format('CREATE POLICY %I ON %I FOR INSERT TO authenticated WITH CHECK ((SELECT auth.uid())::text = user_id)', policy_prefix || '_insert', target_table);
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = target_table AND policyname = policy_prefix || '_update') THEN
+            EXECUTE format('CREATE POLICY %I ON %I FOR UPDATE TO authenticated USING ((SELECT auth.uid())::text = user_id) WITH CHECK ((SELECT auth.uid())::text = user_id)', policy_prefix || '_update', target_table);
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = target_table AND policyname = policy_prefix || '_delete') THEN
+            EXECUTE format('CREATE POLICY %I ON %I FOR DELETE TO authenticated USING ((SELECT auth.uid())::text = user_id)', policy_prefix || '_delete', target_table);
+          END IF;
+        END LOOP;
+      END
+      $account_policies$;
 
       CREATE TABLE IF NOT EXISTS conversations (
         id SERIAL PRIMARY KEY,

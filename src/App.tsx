@@ -354,19 +354,18 @@ function App() {
     localStorage.setItem(getAccountStorageKeys(userId).recentPersonas, JSON.stringify(list));
   };
 
-  const loadPersonas = useCallback(async () => {
-    if (!userId) return [];
-    const storageKeys = getAccountStorageKeys(userId);
+  const loadPersonas = useCallback(async (): Promise<{ personas: Persona[]; source: 'database' | 'cache' }> => {
+    if (!userId) return { personas: [], source: 'cache' };
     try {
       const data = await api.personas.list();
-      if (Array.isArray(data) && data.length > 0) {
-        try { localStorage.setItem(storageKeys.backup, JSON.stringify(data)); } catch {}
-        return data;
-      }
-      return readStoredArray<Persona>([storageKeys.personas, storageKeys.backup]);
+      return { personas: Array.isArray(data) ? data : [], source: 'database' };
     } catch (err) {
       console.error('[API] Failed to load personas:', err);
-      return readStoredArray<Persona>([storageKeys.personas, storageKeys.backup]);
+      const storageKeys = getAccountStorageKeys(userId);
+      return {
+        personas: readStoredArray<Persona>([storageKeys.personas, storageKeys.backup]),
+        source: 'cache',
+      };
     }
   }, [userId]);
 
@@ -397,16 +396,17 @@ function App() {
 
       try {
         setIsLoading(true);
-        const [loadedPersonas] = await Promise.all([
+        const [loadResult] = await Promise.all([
           loadPersonas(),
           hydrateAccountLocalStorage(userId).catch(error => {
             console.warn('[Workspace Sync] Using the local cache for this session:', error);
           }),
         ]);
-        let serverPersonas = loadedPersonas;
+        let serverPersonas = loadResult.personas;
+        const databaseAvailable = loadResult.source === 'database';
         if (cancelled) return;
 
-        migrateMatchingLegacyPersonaCache(userId, serverPersonas);
+        if (databaseAvailable) migrateMatchingLegacyPersonaCache(userId, serverPersonas);
         serverPersonas.forEach(persona => {
           [
             `chat_history_${persona.id}`,
@@ -454,20 +454,33 @@ function App() {
           return Array.from(map.values());
         };
 
-        const activeList = cleanPersonas([...localPersonas, ...(Array.isArray(serverPersonas) ? serverPersonas : [])]);
+        if (databaseAvailable && !migratedAccountIdsRef.current.has(userId) && !localStorage.getItem(storageKeys.databaseMigrated)) {
+          migratedAccountIdsRef.current.add(userId);
+          const serverIds = new Set(serverPersonas.map(persona => persona.id));
+          const migrationCandidates = localPersonas.filter(persona => !serverIds.has(persona.id));
+
+          if (migrationCandidates.length > 0) {
+            console.log(`[Migration] Moving ${migrationCandidates.length} account personas to the database...`);
+            const localRevenue = getLocalStorageRevenue(migrationCandidates, userId);
+            const localPlans = getLocalStoragePlans(migrationCandidates, userId);
+            await api.migrate({ personas: migrationCandidates, revenueEntries: localRevenue, plannedPosts: localPlans });
+            if (cancelled) return;
+            const refreshed = await loadPersonas();
+            if (refreshed.source !== 'database') throw new Error('Database became unavailable during migration');
+            serverPersonas = refreshed.personas;
+          }
+          localStorage.setItem(storageKeys.databaseMigrated, 'true');
+        }
+
+        const activeList = cleanPersonas(databaseAvailable ? serverPersonas : localPersonas);
         const finalActive = activeList;
         if (cancelled) return;
         setPersonasLocal(finalActive);
         try {
-          // Cache to localStorage
-          const lightList = finalActive.map(p => ({
-            ...p,
-            referenceImage: p.referenceImage?.startsWith('data:') ? '/uploads/ref_' + p.id + '.png' : p.referenceImage,
-            avatar: p.avatar?.startsWith('data:') ? '/uploads/avatar_' + p.id + '.png' : p.avatar,
-            additionalReferenceImages: (p.additionalReferenceImages || []).map((img, i) => img?.startsWith('data:') ? `/uploads/ref_${p.id}_add_${i}.jpg` : img).filter(Boolean),
-            visualLibrary: (p.visualLibrary || []).map((v, i) => ({ ...v, url: v.url?.startsWith('data:') ? `/uploads/vis_${p.id}_${i}.jpg` : v.url })),
-          }));
-          localStorage.setItem(storageKeys.personas, JSON.stringify(lightList));
+          if (databaseAvailable) {
+            localStorage.setItem(storageKeys.personas, JSON.stringify(finalActive));
+            localStorage.setItem(storageKeys.backup, JSON.stringify(finalActive));
+          }
         } catch (e) {
           console.warn('[LocalStorage] Could not cache personas:', e);
         }
@@ -480,7 +493,7 @@ function App() {
               const parsed = JSON.parse(saved);
               if (Array.isArray(parsed)) {
                 const cleaned = parsed.filter((p: any) => p && p.id && !p.id.toLowerCase().includes('luna') && !p.name?.toLowerCase().includes('luna'));
-                if (cleaned.length > 0) localStorage.setItem(key, JSON.stringify(cleaned));
+                localStorage.setItem(key, JSON.stringify(cleaned));
               }
             } catch {}
           }
@@ -497,33 +510,6 @@ function App() {
         setSelectedPersonaId(nextSelectedId);
         localStorage.setItem(storageKeys.selectedPersona, nextSelectedId);
 
-        // Background sync custom personas to server & delete Luna from server DB
-        serverPersonas.filter(p => p.id && p.id.toLowerCase().includes('luna')).forEach(p => api.personas.delete(p.id).catch(() => {}));
-        const serverIds = new Set(serverPersonas.map(p => p.id));
-        activeList.filter(p => !serverIds.has(p.id)).forEach(p => api.personas.create(p).catch(() => {}));
-
-        if (!migratedAccountIdsRef.current.has(userId) && !localStorage.getItem(storageKeys.databaseMigrated)) {
-          migratedAccountIdsRef.current.add(userId);
-
-          const localRevenue = getLocalStorageRevenue(localPersonas, userId);
-          const localPlans = getLocalStoragePlans(localPersonas, userId);
-
-          if (localPersonas.length > 0) {
-            console.log(`[Migration] Migrating ${localPersonas.length} personas to server...`);
-            try {
-              await api.migrate({ personas: localPersonas, revenueEntries: localRevenue, plannedPosts: localPlans });
-              if (cancelled) return;
-              serverPersonas = await loadPersonas();
-              if (cancelled) return;
-              localStorage.setItem(storageKeys.databaseMigrated, 'true');
-              console.log('[Migration] Complete');
-            } catch (err) {
-              console.error('[Migration] Failed, will retry on next load:', err);
-            }
-          } else {
-            localStorage.setItem(storageKeys.databaseMigrated, 'true');
-          }
-        }
       } catch (err) {
         console.error('[App Init] Initialization error:', err);
       } finally {

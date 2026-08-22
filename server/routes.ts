@@ -1,7 +1,6 @@
 import { Router, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
 import { createRequire } from 'module';
 import { db } from './db';
@@ -9,9 +8,6 @@ import { personas, generatedImages, revenueEntries, plannedPosts, workspaceState
 import { eq, and } from 'drizzle-orm';
 import { GoogleGenAI } from '@google/genai';
 import { requireAuth, AuthenticatedRequest } from './auth';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const require = createRequire(import.meta.url);
 let ffmpegPath: string | null = null;
@@ -37,215 +33,18 @@ interface RevenueEntryInput {
 
 const router = Router();
 
-function readLocalPersonasStore(): any[] {
-  const possiblePaths = [
-    path.join(__dirname, 'personas_store.json'),
-    path.join(process.cwd(), 'server', 'personas_store.json'),
-    path.join(process.cwd(), 'personas_store.json'),
-  ];
-  for (const filePath of possiblePaths) {
-    try {
-      if (fs.existsSync(filePath)) {
-        const data = fs.readFileSync(filePath, 'utf-8');
-        const parsed = JSON.parse(data);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
-        }
-      }
-    } catch (err) {
-      console.warn('[Local Store Warning] Error reading personas_store.json from', filePath, err);
-    }
-  }
-  return [];
-}
-
-function writeLocalPersonasStore(personasArray: any[]) {
-  const possiblePaths = [
-    path.join(__dirname, 'personas_store.json'),
-    path.join(process.cwd(), 'server', 'personas_store.json'),
-    path.join(process.cwd(), 'personas_store.json'),
-  ];
-  // Write to the first path that exists, or fall back to the first candidate
-  let targetPath = possiblePaths[0];
-  for (const p of possiblePaths) {
-    if (fs.existsSync(p)) {
-      targetPath = p;
-      break;
-    }
-  }
+export async function readCreatorProfileForUser(userId: string): Promise<any | null> {
+  if (!userId) return null;
+  const [row] = await db.select().from(workspaceStates).where(and(
+    eq(workspaceStates.userId, userId),
+    eq(workspaceStates.stateKey, 'ai_studio_creator_profile'),
+  ));
+  if (!row) return null;
   try {
-    fs.writeFileSync(targetPath, JSON.stringify(personasArray, null, 2), 'utf-8');
-  } catch (err) {
-    console.warn('[Local Store Warning] Error writing personas_store.json:', err);
+    return JSON.parse(row.value);
+  } catch {
+    return null;
   }
-}
-
-function getCreatorProfileStorePath(): string {
-  const possiblePaths = [
-    path.join(__dirname, 'creator_profile.json'),
-    path.join(process.cwd(), 'server', 'creator_profile.json'),
-    path.join(process.cwd(), 'creator_profile.json'),
-  ];
-  for (const p of possiblePaths) {
-    if (fs.existsSync(p)) return p;
-  }
-  return path.join(process.cwd(), 'server', 'creator_profile.json');
-}
-
-export function readLocalCreatorProfile(): any {
-  const possiblePaths = [
-    path.join(__dirname, 'creator_profile.json'),
-    path.join(process.cwd(), 'server', 'creator_profile.json'),
-    path.join(process.cwd(), 'creator_profile.json'),
-  ];
-  for (const p of possiblePaths) {
-    try {
-      if (fs.existsSync(p)) {
-        const data = fs.readFileSync(p, 'utf-8');
-        const parsed = JSON.parse(data);
-        if (parsed && typeof parsed === 'object') return parsed;
-      }
-    } catch (err) {
-      console.warn('[Local Store Warning] Error reading creator_profile.json:', err);
-    }
-  }
-  return null;
-}
-
-export function writeLocalCreatorProfile(profile: any): any {
-  if (!profile || typeof profile !== 'object') return profile;
-  try {
-    const cleaned = { ...profile };
-    if (Array.isArray(cleaned.photos)) {
-      cleaned.photos = cleaned.photos.map((photo: string, idx: number) => {
-        if (photo && photo.startsWith('data:')) {
-          return cleanBase64ToUploadFile(photo, `creator_${idx}`);
-        }
-        return photo;
-      });
-    }
-    if (cleaned.primaryPhoto && cleaned.primaryPhoto.startsWith('data:')) {
-      cleaned.primaryPhoto = cleanBase64ToUploadFile(cleaned.primaryPhoto, 'creator_primary');
-    } else if (!cleaned.primaryPhoto && Array.isArray(cleaned.photos) && cleaned.photos.length > 0) {
-      cleaned.primaryPhoto = cleaned.photos[0];
-    }
-
-    const targetPath = getCreatorProfileStorePath();
-    fs.writeFileSync(targetPath, JSON.stringify(cleaned, null, 2), 'utf-8');
-    return cleaned;
-  } catch (err) {
-    console.warn('[Local Store Warning] Error writing creator_profile.json:', err);
-    return profile;
-  }
-}
-
-function cleanBase64ToUploadFile(dataUrl: string, prefix: string): string {
-  if (!dataUrl || !dataUrl.startsWith('data:')) return dataUrl;
-  try {
-    const matches = dataUrl.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
-    if (!matches) return dataUrl;
-    const mime = matches[1].toLowerCase();
-    const base64Data = matches[2];
-    
-    let ext = 'jpg';
-    if (mime.includes('png')) ext = 'png';
-    else if (mime.includes('jpeg') || mime.includes('jpg')) ext = 'jpg';
-    else if (mime.includes('webp')) ext = 'webp';
-    else if (mime.includes('avif')) ext = 'avif';
-    else if (mime.includes('wav')) ext = 'wav';
-    else if (mime.includes('mp3')) ext = 'mp3';
-    else if (mime.includes('mp4')) ext = 'mp4';
-    else if (mime.includes('mov') || mime.includes('quicktime')) ext = 'mov';
-    else if (mime.includes('webm')) ext = 'webm';
-    else if (mime.includes('avi')) ext = 'avi';
-
-    const uploadsDir1 = path.join(process.cwd(), 'server', 'public', 'uploads');
-    const uploadsDir2 = path.join(process.cwd(), 'public', 'uploads');
-    if (!fs.existsSync(uploadsDir1)) fs.mkdirSync(uploadsDir1, { recursive: true });
-    if (!fs.existsSync(uploadsDir2)) fs.mkdirSync(uploadsDir2, { recursive: true });
-    
-    const fileName = `${prefix}_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
-    const buf = Buffer.from(base64Data, 'base64');
-    fs.writeFileSync(path.join(uploadsDir1, fileName), buf);
-    fs.writeFileSync(path.join(uploadsDir2, fileName), buf);
-    return `/uploads/${fileName}`;
-  } catch (err) {
-    console.warn('[Clean Base64 File Warning]:', err);
-    return dataUrl;
-  }
-}
-
-function savePersonaToLocalStore(persona: any) {
-  if (!persona || !persona.id) return;
-  try {
-    const cleaned = { ...persona };
-    if (cleaned.avatar && cleaned.avatar.startsWith('data:')) {
-      cleaned.avatar = cleanBase64ToUploadFile(cleaned.avatar, 'avatar');
-    }
-    if (cleaned.referenceImage && cleaned.referenceImage.startsWith('data:')) {
-      cleaned.referenceImage = cleanBase64ToUploadFile(cleaned.referenceImage, 'ref');
-    }
-    if (Array.isArray(cleaned.additionalReferenceImages)) {
-      cleaned.additionalReferenceImages = cleaned.additionalReferenceImages.map((img: string, idx: number) => 
-        img && img.startsWith('data:') ? cleanBase64ToUploadFile(img, `addref_${idx}`) : img
-      );
-    }
-    if (Array.isArray(cleaned.visualLibrary)) {
-      cleaned.visualLibrary = cleaned.visualLibrary.map((v: any, idx: number) => {
-        if (v && v.url && v.url.startsWith('data:')) {
-          return { ...v, url: cleanBase64ToUploadFile(v.url, `vis_${idx}`) };
-        }
-        return v;
-      });
-    }
-    if (Array.isArray(cleaned.audioSamples)) {
-      cleaned.audioSamples = cleaned.audioSamples.map((s: any, idx: number) => {
-        if (s && s.base64 && s.base64.startsWith('data:')) {
-          return { ...s, base64: cleanBase64ToUploadFile(s.base64, `audsample_${idx}`) };
-        }
-        return s;
-      });
-    }
-
-    const current = readLocalPersonasStore();
-    const existingIdx = current.findIndex(p => p.id === cleaned.id);
-    if (existingIdx >= 0) {
-      current[existingIdx] = { 
-        ...current[existingIdx], 
-        ...cleaned,
-        referenceImage: cleaned.referenceImage,
-        avatar: cleaned.avatar || cleaned.referenceImage,
-        additionalReferenceImages: cleaned.additionalReferenceImages || [],
-        visualLibrary: cleaned.visualLibrary || []
-      };
-    } else {
-      current.push(cleaned);
-    }
-    writeLocalPersonasStore(current);
-  } catch (err) {
-    console.warn('[Local Store Warning] Error saving persona to local store:', err);
-  }
-}
-
-function mergePersonas(dbList: any[], diskList: any[]): any[] {
-  const map = new Map<string, any>();
-  for (const p of diskList) {
-    if (p && p.id && !p.id.toLowerCase().includes('luna') && !p.name?.toLowerCase().includes('luna')) {
-      map.set(p.id, p);
-    }
-  }
-  for (const p of dbList) {
-    if (p && p.id && !p.id.toLowerCase().includes('luna') && !p.name?.toLowerCase().includes('luna')) {
-      const existing = map.get(p.id) || {};
-      const merged = { ...existing, ...p };
-      if (!p.voiceSampleUrl && existing.voiceSampleUrl) merged.voiceSampleUrl = existing.voiceSampleUrl;
-      if ((!Array.isArray(p.audioSamples) || p.audioSamples.length === 0) && Array.isArray(existing.audioSamples)) {
-        merged.audioSamples = existing.audioSamples;
-      }
-      map.set(p.id, merged);
-    }
-  }
-  return Array.from(map.values());
 }
 
 function personaToClient(row: typeof personas.$inferSelect, images: typeof generatedImages.$inferSelect[] = []) {
@@ -387,16 +186,7 @@ router.delete('/workspace-state/:stateKey', async (req: AuthenticatedRequest, re
 
 router.get('/creator-profile', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const [row] = await db.select().from(workspaceStates).where(and(
-      eq(workspaceStates.userId, req.user.id),
-      eq(workspaceStates.stateKey, 'ai_studio_creator_profile'),
-    ));
-    if (!row) return res.json({ profile: null });
-    try {
-      return res.json({ profile: JSON.parse(row.value) });
-    } catch {
-      return res.json({ profile: null });
-    }
+    return res.json({ profile: await readCreatorProfileForUser(req.user.id) });
   } catch (err: any) {
     res.status(500).json({ error: err?.message || 'Failed to get creator profile' });
   }
@@ -427,31 +217,11 @@ router.post('/creator-profile', async (req: AuthenticatedRequest, res: Response)
 router.get('/personas', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user.id;
-    let dbPersonas: any[] = [];
-    if (db) {
-      try {
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('DB Timeout')), 2500));
-        dbPersonas = await Promise.race([
-          db.select().from(personas).where(eq(personas.userId, userId)),
-          timeoutPromise
-        ]) as any[];
-      } catch (dbErr) {
-        console.warn('[DB Warning] /personas DB query timed out or unconfigured:', dbErr instanceof Error ? dbErr.message : dbErr);
-      }
-    }
-
-    if (!dbPersonas) dbPersonas = [];
-
-    let allImages: any[] = [];
-    if (db) {
-      try {
-        const imgTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Images DB Timeout')), 2500));
-        allImages = await Promise.race([
-          db.select().from(generatedImages).where(eq(generatedImages.userId, userId)),
-          imgTimeout
-        ]) as any[];
-      } catch {}
-    }
+    if (!db) return res.status(503).json({ error: 'Database persistence is unavailable' });
+    const [dbPersonas, allImages] = await Promise.all([
+      db.select().from(personas).where(eq(personas.userId, userId)),
+      db.select().from(generatedImages).where(eq(generatedImages.userId, userId)),
+    ]);
 
     const imagesByPersona: Record<string, typeof generatedImages.$inferSelect[]> = {};
     for (const img of allImages) {
@@ -459,34 +229,26 @@ router.get('/personas', async (req: AuthenticatedRequest, res: Response) => {
       imagesByPersona[img.personaClientId].push(img);
     }
 
-    const dbClientPersonas = dbPersonas
+    const result = dbPersonas
       .filter((p: any) => p && p.clientId && !p.clientId.toLowerCase().includes('luna') && !p.name?.toLowerCase().includes('luna'))
       .map((p: any) => personaToClient(p, imagesByPersona[p.clientId] || []));
-
-    const diskPersonas = readLocalPersonasStore();
-    const finalMerged = mergePersonas(dbClientPersonas, diskPersonas);
-
-    if (finalMerged.length > diskPersonas.length) {
-      writeLocalPersonasStore(finalMerged);
-    }
-
-    console.log('[API] GET /personas returned:', finalMerged.length, 'personas');
-    res.json(finalMerged);
+    console.log('[API] GET /personas returned:', result.length, 'account-owned personas');
+    res.json(result);
   } catch (err) {
     console.error('[API] GET /personas error:', err);
-    const diskFallback = readLocalPersonasStore();
-    res.json(diskFallback);
+    res.status(503).json({ error: 'Could not load your personas from the database' });
   }
 });
 
 router.post('/personas', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const body = req.body;
-    savePersonaToLocalStore(body);
+    if (!body?.id || typeof body.id !== 'string') {
+      return res.status(400).json({ error: 'Persona id is required' });
+    }
+    if (!db) return res.status(503).json({ error: 'Database persistence is unavailable' });
 
-    if (db) {
-      try {
-        const [row] = await db.insert(personas).values({
+    const [row] = await db.insert(personas).values({
           clientId: body.id,
           name: body.name || 'Unnamed',
           niche: body.niche || '',
@@ -516,7 +278,7 @@ router.post('/personas', async (req: AuthenticatedRequest, res: Response) => {
           companionType: body.companionType || 'intimate',
           heygenAvatarId: body.heygenAvatarId || null,
         }).onConflictDoUpdate({
-          target: personas.clientId,
+          target: [personas.userId, personas.clientId],
           set: {
             name: body.name || 'Unnamed',
             niche: body.niche || '',
@@ -544,14 +306,10 @@ router.post('/personas', async (req: AuthenticatedRequest, res: Response) => {
             audioSamples: JSON.stringify(body.audioSamples || []),
             companionType: body.companionType || 'intimate',
             heygenAvatarId: body.heygenAvatarId || null,
+            updatedAt: new Date(),
           },
         }).returning();
-        return res.json(personaToClient(row));
-      } catch (dbErr) {
-        console.warn('[DB Note] POST /personas failed to write to DB, saved to local store:', dbErr);
-      }
-    }
-    res.json(body);
+    return res.json(personaToClient(row));
   } catch (err) {
     console.error('[API] POST /personas error:', err);
     res.status(500).json({ error: err instanceof Error ? err.message : 'Unknown error' });
@@ -563,10 +321,8 @@ router.put('/personas/:clientId', async (req: AuthenticatedRequest, res: Respons
     const clientId = req.params.clientId as string;
     const body = req.body;
 
-    let updatedClientObj: any = null;
-
-    try {
-      const [row] = await db.update(personas).set({
+    if (!db) return res.status(503).json({ error: 'Database persistence is unavailable' });
+    const [row] = await db.update(personas).set({
         name: body.name || 'Unnamed',
         niche: body.niche || '',
         tone: body.tone || '',
@@ -592,6 +348,7 @@ router.put('/personas/:clientId', async (req: AuthenticatedRequest, res: Respons
         voiceSampleUrl: body.voiceSampleUrl || null,
         audioSamples: JSON.stringify(body.audioSamples || []),
         heygenAvatarId: body.heygenAvatarId || null,
+        updatedAt: new Date(),
       }).where(
         and(
           eq(personas.clientId, clientId),
@@ -599,75 +356,14 @@ router.put('/personas/:clientId', async (req: AuthenticatedRequest, res: Respons
         )
       ).returning();
       
-      if (row) {
-        const imgs = await db.select().from(generatedImages).where(
-          and(
-            eq(generatedImages.personaClientId, clientId),
-            eq(generatedImages.userId, req.user.id)
-          )
-        );
-        updatedClientObj = personaToClient(row, imgs);
-      }
-    } catch (dbErr) {
-      console.warn('[DB Note] PUT /personas failed DB write, updating local store:', dbErr);
+    if (!row) {
+      return res.status(404).json({ error: 'Persona not found for this account' });
     }
-
-    // Always update local personas_store.json so changes persist 100% reliably!
-    const localPersonas = readLocalPersonasStore();
-    const existingIdx = localPersonas.findIndex((p: any) => p.id === clientId || p.clientId === clientId);
-    
-    const cleanedAvatar = body.avatar && body.avatar.startsWith('data:') ? cleanBase64ToUploadFile(body.avatar, 'avatar') : (body.avatar || body.referenceImage || '');
-    const cleanedRef = body.referenceImage && body.referenceImage.startsWith('data:') ? cleanBase64ToUploadFile(body.referenceImage, 'ref') : (body.referenceImage || body.avatar || '');
-    const cleanedAddRefs = Array.isArray(body.additionalReferenceImages)
-      ? body.additionalReferenceImages.map((img: string, idx: number) => img && img.startsWith('data:') ? cleanBase64ToUploadFile(img, `addref_${idx}`) : img)
-      : [];
-    const cleanedVisLib = Array.isArray(body.visualLibrary)
-      ? body.visualLibrary.map((v: any, idx: number) => v && v.url && v.url.startsWith('data:') ? { ...v, url: cleanBase64ToUploadFile(v.url, `vis_${idx}`) } : v)
-      : [];
-    const cleanedAudioSamples = Array.isArray(body.audioSamples)
-      ? body.audioSamples.map((s: any, idx: number) => s && s.base64 && s.base64.startsWith('data:') ? { ...s, base64: cleanBase64ToUploadFile(s.base64, `aud_${idx}`) } : s)
-      : [];
-
-    const updatedLocalObj = {
-      id: clientId,
-      clientId: clientId,
-      name: body.name || 'Unnamed',
-      niche: body.niche || '',
-      tone: body.tone || '',
-      platform: body.platform || '',
-      status: body.status || 'Active',
-      avatar: cleanedAvatar,
-      referenceImage: cleanedRef,
-      additionalReferenceImages: cleanedAddRefs,
-      visualLibrary: cleanedVisLib,
-      voiceId: body.voiceId || undefined,
-      voiceEngine: body.voiceEngine || 'elevenlabs',
-      voiceSampleUrl: body.voiceSampleUrl || undefined,
-      audioSamples: cleanedAudioSamples,
-      voicePrompt: body.voicePrompt || undefined,
-      voiceLikeness: body.voiceLikeness ?? 85,
-      voiceStability: body.voiceStability ?? 75,
-      voiceStyleExaggeration: body.voiceStyleExaggeration ?? 20,
-      voiceSpeakingSpeed: body.voiceSpeakingSpeed ?? 1.0,
-      personaNotes: body.personaNotes || '',
-      updatedAt: new Date().toISOString()
-    };
-
-    if (existingIdx >= 0) {
-      localPersonas[existingIdx] = { 
-        ...localPersonas[existingIdx], 
-        ...updatedLocalObj,
-        referenceImage: cleanedRef,
-        avatar: cleanedAvatar,
-        additionalReferenceImages: cleanedAddRefs,
-        visualLibrary: cleanedVisLib
-      };
-    } else {
-      localPersonas.push(updatedLocalObj);
-    }
-    writeLocalPersonasStore(localPersonas);
-
-    return res.json(updatedClientObj || updatedLocalObj);
+    const imgs = await db.select().from(generatedImages).where(and(
+      eq(generatedImages.personaClientId, clientId),
+      eq(generatedImages.userId, req.user.id),
+    ));
+    return res.json(personaToClient(row, imgs));
   } catch (err) {
     console.error('[API] PUT /personas error:', err);
     res.status(500).json({ error: err instanceof Error ? err.message : 'Unknown error' });
@@ -719,7 +415,7 @@ router.post('/personas/:personaClientId/images', async (req: AuthenticatedReques
       mediaType: body.mediaType || 'image',
       userId: req.user.id,
     }).onConflictDoUpdate({
-      target: generatedImages.clientId,
+      target: [generatedImages.userId, generatedImages.clientId],
       set: {
         url: body.url,
         prompt: body.prompt || '',
@@ -730,7 +426,6 @@ router.post('/personas/:personaClientId/images', async (req: AuthenticatedReques
         isFavorite: body.isFavorite || false,
         model: body.model || null,
         mediaType: body.mediaType || 'image',
-        userId: req.user.id,
       },
     }).returning();
     res.json(imageToClient(row));
@@ -782,14 +477,13 @@ router.post('/revenue', async (req: AuthenticatedRequest, res: Response) => {
       notes: body.notes || '',
       userId: req.user.id,
     }).onConflictDoUpdate({
-      target: revenueEntries.clientId,
+      target: [revenueEntries.userId, revenueEntries.clientId],
       set: {
         date: body.date,
         amount: body.amount,
         source: body.source || '',
         platform: body.platform || '',
         notes: body.notes || '',
-        userId: req.user.id,
       },
     }).returning();
     res.json(revenueToClient(row));
@@ -888,7 +582,33 @@ router.post('/migrate', async (req: AuthenticatedRequest, res: Response) => {
           voiceEngine: p.voiceEngine || null,
           heygenAvatarId: p.heygenAvatarId || null,
           userId: req.user.id,
-        }).onConflictDoNothing();
+        }).onConflictDoUpdate({
+          target: [personas.userId, personas.clientId],
+          set: {
+            name: p.name || 'Unnamed',
+            niche: p.niche || '',
+            tone: p.tone || '',
+            platform: p.platform || '',
+            status: p.status || 'Draft',
+            avatar: p.avatar || '',
+            referenceImage: p.referenceImage || null,
+            additionalReferenceImages: JSON.stringify(p.additionalReferenceImages || []),
+            personalityTraits: JSON.stringify(p.personalityTraits || []),
+            visualStyle: p.visualStyle || '',
+            audienceType: p.audienceType || '',
+            contentBoundaries: p.contentBoundaries || '',
+            bio: p.bio || '',
+            brandVoiceRules: p.brandVoiceRules || '',
+            contentGoals: p.contentGoals || '',
+            personaNotes: p.personaNotes || '',
+            voiceId: p.voiceId || null,
+            voiceEngine: p.voiceEngine || null,
+            voiceSampleUrl: p.voiceSampleUrl || null,
+            audioSamples: JSON.stringify(p.audioSamples || []),
+            heygenAvatarId: p.heygenAvatarId || null,
+            updatedAt: new Date(),
+          },
+        });
 
         if (p.visualLibrary && Array.isArray(p.visualLibrary)) {
           for (const img of p.visualLibrary) {
@@ -905,7 +625,21 @@ router.post('/migrate', async (req: AuthenticatedRequest, res: Response) => {
               model: img.model || null,
               mediaType: img.mediaType || 'image',
               userId: req.user.id,
-            }).onConflictDoNothing();
+            }).onConflictDoUpdate({
+              target: [generatedImages.userId, generatedImages.clientId],
+              set: {
+                personaClientId: p.id,
+                url: img.url,
+                prompt: img.prompt || '',
+                timestamp: img.timestamp || Date.now(),
+                environment: img.environment || null,
+                outfit: img.outfit || null,
+                framing: img.framing || null,
+                isFavorite: img.isFavorite || false,
+                model: img.model || null,
+                mediaType: img.mediaType || 'image',
+              },
+            });
           }
         }
       }
@@ -924,7 +658,17 @@ router.post('/migrate', async (req: AuthenticatedRequest, res: Response) => {
               platform: e.platform || '',
               notes: e.notes || '',
               userId: req.user.id,
-            }).onConflictDoNothing();
+            }).onConflictDoUpdate({
+              target: [revenueEntries.userId, revenueEntries.clientId],
+              set: {
+                personaClientId: e.personaId,
+                date: e.date,
+                amount: e.amount,
+                source: e.source || '',
+                platform: e.platform || '',
+                notes: e.notes || '',
+              },
+            });
           }
         }
       }
