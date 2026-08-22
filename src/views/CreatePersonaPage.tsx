@@ -302,7 +302,6 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   const [contentGoals, setContentGoals] = useState('');
   const [contentBoundaries, setContentBoundaries] = useState('');
   const [studioStep, setStudioStep] = useState(0);
-  const [draftStatus, setDraftStatus] = useState<'Saving…' | 'Saved locally'>('Saved locally');
   const studioTopRef = useRef<HTMLDivElement>(null);
   const hasRestoredDraftRef = useRef(false);
 
@@ -788,7 +787,6 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   useEffect(() => {
     if (editingPersona || !hasRestoredDraftRef.current) return;
 
-    setDraftStatus('Saving…');
     const timeoutId = window.setTimeout(() => {
       localStorage.setItem('persona_form_draft', JSON.stringify({
         name,
@@ -803,7 +801,6 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
         contentBoundaries,
         studioStep,
       }));
-      setDraftStatus('Saved locally');
     }, 500);
 
     return () => window.clearTimeout(timeoutId);
@@ -1299,23 +1296,18 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
             </p>
           </div>
 
-          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
-            <span className="text-xs text-[#70C98B] flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-[#70C98B]/10 border border-[#70C98B]/20">
-              {draftStatus === 'Saving…' ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
-              {editingPersona ? 'Editing existing persona' : draftStatus}
-            </span>
-
-            {studioStep === 0 && (
+          {studioStep === 0 && (
+            <div className="flex w-full sm:w-auto sm:justify-end">
               <button
                 onClick={handleGeneratePersonaConcept}
                 disabled={isGeneratingConcept}
-                className="btn-gold-secondary flex-1 sm:flex-none px-3 sm:px-4 py-2.5 text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer"
+                className="btn-gold-secondary w-full sm:w-auto px-3 sm:px-4 py-2.5 text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer"
               >
                 {isGeneratingConcept ? <Loader2 size={15} className="animate-spin text-[#F2D58D]" /> : <Wand2 size={15} className="text-[#D9BA72]" />}
                 <span>Auto-Fill Idea</span>
               </button>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
         {/* ── GUIDED STUDIO PROGRESS ── */}
