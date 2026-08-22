@@ -10,6 +10,7 @@ import toast from 'react-hot-toast';
 import { Persona, NavActions, GeneratedImage } from '../types';
 import { api } from '../services/apiService';
 import { authFetch } from '../services/imageService';
+import { persistPersonaReferenceImages } from '../services/personaMediaService';
 import { supabase } from '../lib/supabase';
 import { cn } from '../utils/cn';
 import { processVoiceSampleFile } from '../utils/audioUtils';
@@ -295,6 +296,19 @@ const STUDIO_STEPS = [
 ] as const;
 
 const HEYGEN_OAUTH_RETURN_KEY = 'ai_studio_heygen_oauth_return';
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  let timeoutId: number | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = window.setTimeout(() => reject(new Error('The save took too long. Please try again.')), timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+  }
+}
 
 export default function CreatePersonaPage({ personas, setPersonas, onSelectPersona, nav, editingPersona }: CreatePersonaPageProps) {
   // Form State
@@ -1391,9 +1405,12 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
     }
 
     setIsSaving(true);
+    const saveToastId = toast.loading('Saving persona securely...');
     try {
-      const primaryImg = referenceImages[0] || '';
-      const additionalImgs = referenceImages.slice(1);
+      const personaId = editingPersona?.id || `user-${Date.now()}`;
+      const persistedReferenceImages = await persistPersonaReferenceImages(referenceImages, personaId);
+      const primaryImg = persistedReferenceImages[0] || '';
+      const additionalImgs = persistedReferenceImages.slice(1);
 
       const defaultVoiceRule = `Deeply loyal, devoted, and open with her creator. Loves teasing, talking dirty, and fulfilling all romantic, adult, and creative desires in text and voice. ${tone}`.trim();
       const voiceRuleToSave = creatorVoiceRule.trim() || (editingPersona?.brandVoiceRules || defaultVoiceRule);
@@ -1439,19 +1456,15 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
           personaNotes: voicePrompt ? `${voicePrompt}. ${defaultNotes}` : (editingPersona.personaNotes || defaultNotes),
         } as Persona;
 
-        setPersonas(personas.map(p => p.id === editingPersona.id ? updatedPersona : p));
-        onSelectPersona(updatedPersona.id);
-        toast.success(`✅ Saved ${updatedPersona.name}!`);
-
-        // Async non-blocking API call
-        Promise.race([
-          api.personas.update(updatedPersona),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 30000))
-        ]).catch(apiErr => console.warn('[Persona API Update Warning]:', apiErr));
+        const savedPersona = await withTimeout(api.personas.update(updatedPersona), 30000);
+        const confirmedPersona = { ...updatedPersona, ...savedPersona } as Persona;
+        setPersonas(personas.map(p => p.id === editingPersona.id ? confirmedPersona : p));
+        onSelectPersona(confirmedPersona.id);
+        toast.success(`✅ Saved ${confirmedPersona.name}!`, { id: saveToastId });
 
       } else {
         const newPersona: Persona = {
-          id: `user-${Date.now()}`,
+          id: personaId,
           name,
           niche,
           platform,
@@ -1482,15 +1495,11 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
           createdAt: new Date().toISOString()
         } as Persona;
 
-        setPersonas([...personas, newPersona]);
-        onSelectPersona(newPersona.id);
-        toast.success(`✨ Created ${newPersona.name}!`);
-
-        // Async non-blocking API call
-        Promise.race([
-          api.personas.create(newPersona),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 30000))
-        ]).catch(apiErr => console.warn('[Persona API Create Warning]:', apiErr));
+        const savedPersona = await withTimeout(api.personas.create(newPersona), 30000);
+        const confirmedPersona = { ...newPersona, ...savedPersona } as Persona;
+        setPersonas([...personas, confirmedPersona]);
+        onSelectPersona(confirmedPersona.id);
+        toast.success(`✨ Created ${confirmedPersona.name}!`, { id: saveToastId });
       }
 
       localStorage.removeItem('persona_form_draft');
@@ -1500,7 +1509,8 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       nav.replace({ view: 'personas' });
     } catch (error) {
       console.error('[Save Persona Error]:', error);
-      toast.error('Failed to save persona');
+      const message = error instanceof Error ? error.message : 'Failed to save persona';
+      toast.error(message, { id: saveToastId });
     } finally {
       setIsSaving(false);
     }
