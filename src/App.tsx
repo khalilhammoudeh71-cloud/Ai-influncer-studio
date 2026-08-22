@@ -417,7 +417,7 @@ function App() {
           if (!Array.isArray(list)) return [];
           const map = new Map<string, Persona>();
           for (const p of list) {
-            if (p && p.id && !p.id.toLowerCase().includes('luna') && !p.name?.toLowerCase().includes('luna') && p.id !== 'user-1786568481742' && p.id !== 'user-1786418027030' && !p.name?.toLowerCase().includes('dr.h')) {
+            if (p && p.id && !p.id.toLowerCase().includes('luna') && !p.name?.toLowerCase().includes('luna') && p.id !== 'user-1786568481742' && p.id !== 'user-1786418027030') {
               const existing = map.get(p.id) || {} as Persona;
               const existingAddRefs = existing.additionalReferenceImages || [];
               const incomingAddRefs = p.additionalReferenceImages || [];
