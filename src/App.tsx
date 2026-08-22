@@ -41,8 +41,19 @@ import TrendView from './views/TrendView';
 import CreatePersonaPage from './views/CreatePersonaPage';
 import PersonaAvatar from './components/PersonaAvatar';
 import PasswordRecoveryView from './views/PasswordRecoveryView';
-import { accountStorageKey, migrateLegacyAccountKey, setActiveStorageUserId } from './utils/accountStorage';
+import {
+  accountStorageKey,
+  configureAccountStorageSync,
+  hydrateAccountLocalStorage,
+  migrateLegacyAccountKey,
+  setActiveStorageUserId,
+} from './utils/accountStorage';
 
+configureAccountStorageSync({
+  list: api.workspaceState.list,
+  save: api.workspaceState.save,
+  remove: api.workspaceState.delete,
+});
 
 const EMPTY_PERSONA: Persona = {
   id: 'empty',
@@ -383,7 +394,13 @@ function App() {
 
       try {
         setIsLoading(true);
-        let serverPersonas = await loadPersonas();
+        const [loadedPersonas] = await Promise.all([
+          loadPersonas(),
+          hydrateAccountLocalStorage(userId).catch(error => {
+            console.warn('[Workspace Sync] Using the local cache for this session:', error);
+          }),
+        ]);
+        let serverPersonas = loadedPersonas;
         if (cancelled) return;
 
         migrateMatchingLegacyPersonaCache(userId, serverPersonas);

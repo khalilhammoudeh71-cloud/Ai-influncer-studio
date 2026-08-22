@@ -66,6 +66,17 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  workspaceState: {
+    list: () => request<Array<{ key: string; value: string; updatedAt: string }>>('/workspace-state'),
+    save: (key: string, value: string) =>
+      request<{ key: string; value: string; updatedAt: string }>(`/workspace-state/${encodeURIComponent(key)}`, {
+        method: 'PUT',
+        body: JSON.stringify({ value }),
+      }),
+    delete: (key: string) =>
+      request<{ success: boolean }>(`/workspace-state/${encodeURIComponent(key)}`, { method: 'DELETE' }),
+  },
+
   personas: {
     list: () => request<Persona[]>('/personas'),
     create: (p: Persona) => request<Persona>('/personas', { method: 'POST', body: JSON.stringify(p) }),

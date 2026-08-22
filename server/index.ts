@@ -7647,6 +7647,34 @@ async function pushSchema() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS workspace_states (
+        user_id TEXT NOT NULL,
+        state_key TEXT NOT NULL,
+        value TEXT NOT NULL,
+        updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        PRIMARY KEY (user_id, state_key),
+        CONSTRAINT workspace_states_key_length CHECK (char_length(state_key) BETWEEN 1 AND 180),
+        CONSTRAINT workspace_states_value_size CHECK (octet_length(value) <= 2000000)
+      );
+      ALTER TABLE workspace_states ENABLE ROW LEVEL SECURITY;
+      REVOKE ALL ON TABLE workspace_states FROM anon;
+      GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE workspace_states TO authenticated;
+      DO $workspace_policies$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'workspace_states' AND policyname = 'workspace_states_select_own') THEN
+          CREATE POLICY workspace_states_select_own ON workspace_states FOR SELECT TO authenticated USING ((SELECT auth.uid())::text = user_id);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'workspace_states' AND policyname = 'workspace_states_insert_own') THEN
+          CREATE POLICY workspace_states_insert_own ON workspace_states FOR INSERT TO authenticated WITH CHECK ((SELECT auth.uid())::text = user_id);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'workspace_states' AND policyname = 'workspace_states_update_own') THEN
+          CREATE POLICY workspace_states_update_own ON workspace_states FOR UPDATE TO authenticated USING ((SELECT auth.uid())::text = user_id) WITH CHECK ((SELECT auth.uid())::text = user_id);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'workspace_states' AND policyname = 'workspace_states_delete_own') THEN
+          CREATE POLICY workspace_states_delete_own ON workspace_states FOR DELETE TO authenticated USING ((SELECT auth.uid())::text = user_id);
+        END IF;
+      END
+      $workspace_policies$;
       CREATE TABLE IF NOT EXISTS personas (
         id SERIAL PRIMARY KEY,
         client_id TEXT NOT NULL UNIQUE,

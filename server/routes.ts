@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
 import { createRequire } from 'module';
 import { db } from './db';
-import { personas, generatedImages, revenueEntries, plannedPosts } from '../shared/schema';
+import { personas, generatedImages, revenueEntries, plannedPosts, workspaceStates } from '../shared/schema';
 import { eq, and } from 'drizzle-orm';
 import { GoogleGenAI } from '@google/genai';
 import { requireAuth, AuthenticatedRequest } from './auth';
@@ -304,10 +304,92 @@ function revenueToClient(row: typeof revenueEntries.$inferSelect) {
 // All router endpoints are authenticated
 router.use(requireAuth);
 
-router.get('/creator-profile', async (_req: AuthenticatedRequest, res: Response) => {
+function workspaceStateToClient(row: typeof workspaceStates.$inferSelect) {
+  return {
+    key: row.stateKey,
+    value: row.value,
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+function isValidWorkspaceStateKey(value: unknown): value is string {
+  return typeof value === 'string'
+    && value.length > 0
+    && value.length <= 180
+    && /^[a-zA-Z0-9:_-]+$/.test(value);
+}
+
+router.get('/workspace-state', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const profile = readLocalCreatorProfile();
-    res.json({ profile: profile || null });
+    const rows = await db.select().from(workspaceStates).where(eq(workspaceStates.userId, req.user.id));
+    res.json(rows.map(workspaceStateToClient));
+  } catch (err) {
+    console.error('[API] GET /workspace-state error:', err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to load workspace state' });
+  }
+});
+
+router.put('/workspace-state/:stateKey', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const stateKey = req.params.stateKey;
+    const value = req.body?.value;
+    if (!isValidWorkspaceStateKey(stateKey)) {
+      return res.status(400).json({ error: 'Invalid workspace state key' });
+    }
+    if (typeof value !== 'string') {
+      return res.status(400).json({ error: 'Workspace state value must be a string' });
+    }
+    if (Buffer.byteLength(value, 'utf8') > 2_000_000) {
+      return res.status(413).json({ error: 'Workspace state value is too large' });
+    }
+
+    const now = new Date();
+    const [row] = await db.insert(workspaceStates).values({
+      userId: req.user.id,
+      stateKey,
+      value,
+      updatedAt: now,
+    }).onConflictDoUpdate({
+      target: [workspaceStates.userId, workspaceStates.stateKey],
+      set: { value, updatedAt: now },
+    }).returning();
+
+    res.json(workspaceStateToClient(row));
+  } catch (err) {
+    console.error('[API] PUT /workspace-state error:', err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to save workspace state' });
+  }
+});
+
+router.delete('/workspace-state/:stateKey', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const stateKey = req.params.stateKey;
+    if (!isValidWorkspaceStateKey(stateKey)) {
+      return res.status(400).json({ error: 'Invalid workspace state key' });
+    }
+    await db.delete(workspaceStates).where(and(
+      eq(workspaceStates.userId, req.user.id),
+      eq(workspaceStates.stateKey, stateKey),
+    ));
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[API] DELETE /workspace-state error:', err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to delete workspace state' });
+  }
+});
+
+router.get('/creator-profile', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const [row] = await db.select().from(workspaceStates).where(and(
+      eq(workspaceStates.userId, req.user.id),
+      eq(workspaceStates.stateKey, 'ai_studio_creator_profile'),
+    ));
+    if (!row) return res.json({ profile: null });
+    try {
+      return res.json({ profile: JSON.parse(row.value) });
+    } catch {
+      return res.json({ profile: null });
+    }
   } catch (err: any) {
     res.status(500).json({ error: err?.message || 'Failed to get creator profile' });
   }
@@ -315,8 +397,21 @@ router.get('/creator-profile', async (_req: AuthenticatedRequest, res: Response)
 
 router.post('/creator-profile', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const saved = writeLocalCreatorProfile(req.body);
-    res.json({ success: true, profile: saved });
+    const value = JSON.stringify(req.body || {});
+    if (Buffer.byteLength(value, 'utf8') > 2_000_000) {
+      return res.status(413).json({ error: 'Creator profile is too large' });
+    }
+    const now = new Date();
+    await db.insert(workspaceStates).values({
+      userId: req.user.id,
+      stateKey: 'ai_studio_creator_profile',
+      value,
+      updatedAt: now,
+    }).onConflictDoUpdate({
+      target: [workspaceStates.userId, workspaceStates.stateKey],
+      set: { value, updatedAt: now },
+    });
+    res.json({ success: true, profile: req.body });
   } catch (err: any) {
     res.status(500).json({ error: err?.message || 'Failed to save creator profile' });
   }

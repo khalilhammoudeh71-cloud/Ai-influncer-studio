@@ -57,31 +57,7 @@ function safeSetLocalStorage(key: string, value: string, fallbackWithoutBigImage
 }
 
 export async function fetchServerCreatorProfile(): Promise<CreatorProfile | null> {
-  try {
-    const token = localStorage.getItem('supabase_auth_token') || localStorage.getItem('sb-access-token') || '';
-    const headers: Record<string, string> = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-
-    const res = await fetch('/api/creator-profile', { headers });
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (data?.profile && typeof data.profile === 'object') {
-      const merged: CreatorProfile = {
-        ...DEFAULT_CREATOR_PROFILE,
-        ...data.profile,
-        photos: Array.isArray(data.profile.photos) ? data.profile.photos : [],
-        primaryPhoto: data.profile.primaryPhoto || (Array.isArray(data.profile.photos) && data.profile.photos.length > 0 ? data.profile.photos[0] : undefined),
-      };
-      safeSetLocalStorage(CREATOR_PROFILE_KEY, JSON.stringify(merged), merged);
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent(CREATOR_PROFILE_EVENT, { detail: merged }));
-      }
-      return merged;
-    }
-  } catch (err) {
-    console.warn('[Creator Profile] Could not fetch from server:', err);
-  }
-  return null;
+  return accountLocalStorage.getItem(CREATOR_PROFILE_KEY) ? getCreatorProfile() : null;
 }
 
 export async function saveCreatorProfileAsync(updates: Partial<CreatorProfile>): Promise<CreatorProfile> {
@@ -110,38 +86,6 @@ export async function saveCreatorProfileAsync(updates: Partial<CreatorProfile>):
   // Dispatch custom event for real-time reactivity
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent(CREATOR_PROFILE_EVENT, { detail: updated }));
-  }
-
-  // Persist to server disk store (and convert base64 to /uploads/ files)
-  try {
-    const token = localStorage.getItem('supabase_auth_token') || localStorage.getItem('sb-access-token') || '';
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-
-    const res = await fetch('/api/creator-profile', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(updated),
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      if (data?.profile) {
-        const serverMerged: CreatorProfile = {
-          ...DEFAULT_CREATOR_PROFILE,
-          ...data.profile,
-          photos: Array.isArray(data.profile.photos) ? data.profile.photos : [],
-          primaryPhoto: data.profile.primaryPhoto || (Array.isArray(data.profile.photos) && data.profile.photos.length > 0 ? data.profile.photos[0] : undefined),
-        };
-        safeSetLocalStorage(CREATOR_PROFILE_KEY, JSON.stringify(serverMerged), serverMerged);
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent(CREATOR_PROFILE_EVENT, { detail: serverMerged }));
-        }
-        return serverMerged;
-      }
-    }
-  } catch (err) {
-    console.warn('[Creator Profile] Error posting to server:', err);
   }
 
   return updated;
@@ -173,9 +117,6 @@ export function saveCreatorProfile(updates: Partial<CreatorProfile>): CreatorPro
     window.dispatchEvent(new CustomEvent(CREATOR_PROFILE_EVENT, { detail: updated }));
   }
 
-  // Trigger async server sync in background
-  saveCreatorProfileAsync(updates).catch(console.warn);
-
   return updated;
 }
 
@@ -183,13 +124,6 @@ export function useCreatorProfile(): [CreatorProfile, (updated: Partial<CreatorP
   const [profile, setProfile] = useState<CreatorProfile>(() => getCreatorProfile());
 
   useEffect(() => {
-    // Initial fetch from server to guarantee persistence across browser sessions
-    fetchServerCreatorProfile().then(serverProf => {
-      if (serverProf) {
-        setProfile(serverProf);
-      }
-    });
-
     const handleUpdate = (e: Event) => {
       const custom = e as CustomEvent<CreatorProfile>;
       if (custom.detail) {

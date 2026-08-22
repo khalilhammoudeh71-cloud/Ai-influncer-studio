@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, text, timestamp, boolean, real } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, text, timestamp, boolean, real, primaryKey } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
 export const users = pgTable("users", {
@@ -11,6 +11,15 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
+
+export const workspaceStates = pgTable("workspace_states", {
+  userId: text("user_id").notNull(),
+  stateKey: text("state_key").notNull(),
+  value: text("value").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.userId, table.stateKey] }),
+]);
 
 export const conversations = pgTable("conversations", {
   id: serial("id").primaryKey(),
