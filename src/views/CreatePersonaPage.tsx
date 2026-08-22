@@ -13,6 +13,11 @@ import { authFetch } from '../services/imageService';
 import { supabase } from '../lib/supabase';
 import { cn } from '../utils/cn';
 import { processVoiceSampleFile } from '../utils/audioUtils';
+import {
+  clearPersonaDraftReferenceImages,
+  getPersonaDraftReferenceImages,
+  savePersonaDraftReferenceImages,
+} from '../utils/indexedPersonaDraftDb';
 
 interface CreatePersonaPageProps {
   personas: Persona[];
@@ -308,6 +313,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   const [studioStep, setStudioStep] = useState(0);
   const studioTopRef = useRef<HTMLDivElement>(null);
   const hasRestoredDraftRef = useRef(false);
+  const hasRestoredImageDraftRef = useRef(false);
 
   // Image State
   const [imageTab, setImageTab] = useState<'upload' | 'ai' | 'wizard'>('upload');
@@ -976,6 +982,44 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   }, [editingPersona]);
 
   useEffect(() => {
+    hasRestoredImageDraftRef.current = false;
+
+    if (editingPersona) {
+      hasRestoredImageDraftRef.current = true;
+      return;
+    }
+
+    let cancelled = false;
+
+    getPersonaDraftReferenceImages()
+      .then(images => {
+        if (!cancelled) setReferenceImages(images);
+      })
+      .catch(error => {
+        console.warn('[Persona Image Draft Restore Note]:', error);
+      })
+      .finally(() => {
+        if (!cancelled) hasRestoredImageDraftRef.current = true;
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [editingPersona]);
+
+  useEffect(() => {
+    if (editingPersona || !hasRestoredImageDraftRef.current) return;
+
+    const timeoutId = window.setTimeout(() => {
+      savePersonaDraftReferenceImages(referenceImages).catch(error => {
+        console.warn('[Persona Image Draft Save Note]:', error);
+      });
+    }, 300);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [editingPersona, referenceImages]);
+
+  useEffect(() => {
     if (editingPersona || !hasRestoredDraftRef.current) return;
 
     const timeoutId = window.setTimeout(() => {
@@ -1450,6 +1494,9 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       }
 
       localStorage.removeItem('persona_form_draft');
+      await clearPersonaDraftReferenceImages().catch(error => {
+        console.warn('[Persona Image Draft Clear Note]:', error);
+      });
       nav.replace({ view: 'personas' });
     } catch (error) {
       console.error('[Save Persona Error]:', error);
