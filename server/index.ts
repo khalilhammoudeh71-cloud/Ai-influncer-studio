@@ -5546,7 +5546,6 @@ app.get('/api/heygen-voices', async (req: AuthenticatedRequest, res) => {
   const isRealCreatorSession = Boolean(
     authHeader?.startsWith('Bearer ') &&
     req.user?.id &&
-    req.user.id !== 'mock-user-id' &&
     isCreatorUser(req.user.email)
   );
 
@@ -6126,7 +6125,6 @@ async function handleTTS(req: express.Request, res: express.Response) {
     const isRealCreatorSession = Boolean(
       authHeader?.startsWith('Bearer ') &&
       (req as AuthenticatedRequest).user?.id &&
-      (req as AuthenticatedRequest).user.id !== 'mock-user-id' &&
       isCreatorUser((req as AuthenticatedRequest).user.email)
     );
     const heygenVoiceId = voiceId || voiceParam;

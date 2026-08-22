@@ -73,31 +73,34 @@ function App() {
   const [showShortcutsModal, setShowShortcutsModal] = useState(false);
   const [newAssetsCount, setNewAssetsCount] = useState(0); // #6 gallery badge
 
-  // Listen to Supabase authentication state & Auto-Bypass Password for instant Studio access
+  // Keep the app in sync with the real Supabase authentication session.
   useEffect(() => {
-    const defaultCreatorUser = {
-      id: 'mock-user-id',
-      email: 'khalilhammoudeh71@gmail.com',
-      email_confirmed_at: new Date().toISOString(),
-      confirmed_at: new Date().toISOString()
-    };
+    let cancelled = false;
+    let receivedAuthEvent = false;
 
-    const sessionPromise = supabase.auth.getSession();
-    const timeoutPromise = new Promise<any>((resolve) => setTimeout(() => resolve({ data: { session: null } }), 1000));
-    Promise.race([sessionPromise, timeoutPromise]).then((res) => {
-      setUser(res?.data?.session?.user ?? defaultCreatorUser);
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (cancelled || receivedAuthEvent) return;
+      if (error) console.error('[Auth] Could not restore session:', error.message);
+      setUser(data?.session?.user ?? null);
       setAuthLoading(false);
-    }).catch(() => {
-      setUser(defaultCreatorUser);
+    }).catch((error) => {
+      if (cancelled || receivedAuthEvent) return;
+      console.error('[Auth] Could not restore session:', error);
+      setUser(null);
       setAuthLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? defaultCreatorUser);
+      if (cancelled) return;
+      receivedAuthEvent = true;
+      setUser(session?.user ?? null);
       setAuthLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
   }, []);
 
   // Fetch billing & credits when user changes

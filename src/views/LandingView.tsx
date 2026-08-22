@@ -205,20 +205,22 @@ export default function LandingView({ onGetStarted, isLoggedIn }: LandingViewPro
     e.preventDefault();
     setLoading(true);
     try {
-      if (import.meta.env.DEV) {
-        toast.success(authMode === 'signin' ? 'Developer Sign-In Successful!' : 'Developer Sign-Up Complete!');
-        setShowAuthModal(false);
-        onGetStarted();
-        return;
-      }
-
       if (authMode === 'signin') {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
         toast.success('Signed in successfully!');
         setShowAuthModal(false);
+        onGetStarted();
       } else {
-        const { error } = await supabase.auth.signUp({ email, password });
+        const redirectUrl = new URL(window.location.href);
+        redirectUrl.hash = '';
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: redirectUrl.toString(),
+          },
+        });
         if (error) throw error;
         toast.success('Sign up complete! Check your email for verification link.');
         setShowAuthModal(false);
@@ -235,6 +237,7 @@ export default function LandingView({ onGetStarted, isLoggedIn }: LandingViewPro
     try {
       const redirectUrl = new URL(window.location.href);
       redirectUrl.hash = '';
+      onGetStarted();
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {

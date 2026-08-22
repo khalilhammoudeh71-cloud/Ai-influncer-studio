@@ -32,14 +32,16 @@ export interface AuthenticatedRequest extends Request {
 export async function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ') || authHeader.includes('undefined') || authHeader.includes('null')) {
-    req.user = { id: 'mock-user-id', email: 'khalilhammoudeh71@gmail.com', email_confirmed_at: new Date().toISOString() };
-    return next();
+    return res.status(401).json({ error: 'Unauthorized: Please sign in to continue' });
   }
 
   const token = authHeader.split(' ')[1];
-  if (!token || token === 'undefined' || token === 'null' || !supabaseAdmin) {
-    req.user = { id: 'mock-user-id', email: 'khalilhammoudeh71@gmail.com', email_confirmed_at: new Date().toISOString() };
-    return next();
+  if (!token || token === 'undefined' || token === 'null') {
+    return res.status(401).json({ error: 'Unauthorized: Please sign in to continue' });
+  }
+  if (!supabaseAdmin) {
+    console.error('[Auth] Supabase authentication is not configured on the server');
+    return res.status(503).json({ error: 'Authentication service is temporarily unavailable' });
   }
 
   try {
@@ -47,10 +49,11 @@ export async function requireAuth(req: AuthenticatedRequest, res: Response, next
     const timeoutPromise = new Promise<any>((resolve) => setTimeout(() => resolve({ data: { user: null }, error: new Error('Auth Timeout') }), 8000));
     const { data: { user }, error } = await Promise.race([userPromise, timeoutPromise]);
 
+    if (error?.message === 'Auth Timeout') {
+      return res.status(503).json({ error: 'Authentication service is temporarily unavailable' });
+    }
     if (error || !user) {
-      // Fallback for local development or mock sessions if token isn't recognized or times out
-      req.user = { id: 'mock-user-id', email: 'khalilhammoudeh71@gmail.com', email_confirmed_at: new Date().toISOString() };
-      return next();
+      return res.status(401).json({ error: 'Unauthorized: Your session is invalid or has expired' });
     }
 
     // Require email verification
@@ -86,9 +89,8 @@ export async function requireAuth(req: AuthenticatedRequest, res: Response, next
 
     next();
   } catch (err) {
-    console.error('[Auth] Verification error, falling back to mock user session:', err);
-    req.user = { id: 'mock-user-id', email: 'khalilhammoudeh71@gmail.com', email_confirmed_at: new Date().toISOString() };
-    return next();
+    console.error('[Auth] Verification error:', err);
+    return res.status(503).json({ error: 'Authentication service is temporarily unavailable' });
   }
 }
 
@@ -107,7 +109,7 @@ function normalizeEmail(email: string): string {
 export function isCreatorUser(email?: string): boolean {
   if (!email) return false;
   const creatorEmail = process.env.CREATOR_EMAIL || 'khalilhammoudeh71@gmail.com';
-  return normalizeEmail(email) === normalizeEmail(creatorEmail) || email.toLowerCase() === 'mock@example.com';
+  return normalizeEmail(email) === normalizeEmail(creatorEmail);
 }
 
 export async function deductCredits(userId: string, amount: number) {

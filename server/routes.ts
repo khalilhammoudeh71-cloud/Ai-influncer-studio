@@ -324,7 +324,7 @@ router.post('/creator-profile', async (req: AuthenticatedRequest, res: Response)
 
 router.get('/personas', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const userId = req.user?.id || 'mock-user-id';
+    const userId = req.user.id;
     let dbPersonas: any[] = [];
     if (db) {
       try {
