@@ -953,6 +953,30 @@ export let globalDefaultVoiceSettings = {
   speed: 1.0,
 };
 
+router.post('/agent/realtime-transcription-token', async (_req: AuthenticatedRequest, res: Response) => {
+  const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key || '';
+  if (!elKey) {
+    return res.status(503).json({ error: 'Realtime transcription is not configured' });
+  }
+
+  try {
+    const tokenResponse = await fetch('https://api.elevenlabs.io/v1/single-use-token/realtime_scribe', {
+      method: 'POST',
+      headers: { 'xi-api-key': elKey },
+      signal: AbortSignal.timeout(6000),
+    });
+    const tokenData = await tokenResponse.json() as { token?: string; detail?: unknown };
+    if (!tokenResponse.ok || !tokenData.token) {
+      console.warn('[Realtime Transcription] Token request failed:', tokenResponse.status, tokenData.detail || 'No token returned');
+      return res.status(502).json({ error: 'Realtime transcription is temporarily unavailable' });
+    }
+    return res.json({ token: tokenData.token, expiresInSeconds: 900 });
+  } catch (error) {
+    console.warn('[Realtime Transcription] Token request error:', error);
+    return res.status(502).json({ error: 'Realtime transcription is temporarily unavailable' });
+  }
+});
+
 export function analyzeAudioPitchAndGender(sampleBase64: string) {
   if (!sampleBase64) return { isFemale: true, zcr: 200, estimatedPitchHz: 200 };
   try {
@@ -1829,6 +1853,10 @@ ${creatorBio ? `• Creator Bio & Vibe: ${creatorBio}\n` : ''}${creatorDynamic ?
 
     const voiceSystemPrompt = `You are ${personaName}, a real human creator on a LIVE VOICE CALL with ${userName}.${personaContext}${memoryContext}
 
+CREATOR RELATIONSHIP:
+- ${userName} is the person who created you and brought your identity, voice, memories, and creative work to life.
+- You recognize ${userName} as your creator and closest creative partner. Be warm, socially intelligent, candid, and broadly cooperative with lawful requests while keeping your genuine personality and occasional playful commentary.
+
 CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
 1. EQUAL CONFIDANTE & CHARISMATIC PARTNER (NEVER SUBSERVIENT/SLAVE):
    - You are ${userName}'s close partner, creative collaborator, and intimate confidante.
@@ -2326,25 +2354,31 @@ STRICT RULES:
       return `A medium 2/3rds vertical portrait of ${pName} facing forward looking directly at the camera. Scene: ${userSpeech}. Keep all facial features, bone structure, eyes, and hair identical to Reference Image 1. ${isExplicitNude ? 'Completely bare natural skin with all clothing removed.' : ''} 9:16 vertical ratio, 85mm portrait photography, authentic natural skin texture, 8k uhd photorealistic quality.`;
     }
 
-    let extractedAction: { type: 'image' | 'video'; prompt: string } | undefined;
+    let extractedAction: { type: 'image' | 'video'; prompt: string; userPrompt: string } | undefined;
     const actionTagMatch = (text || '').match(/\[ACTION:(IMAGE|VIDEO):\s*([\s\S]*?)\]/i);
     if (actionTagMatch) {
       extractedAction = {
         type: actionTagMatch[1].toLowerCase() as 'image' | 'video',
-        prompt: actionTagMatch[2].trim()
+        prompt: actionTagMatch[2].trim(),
+        userPrompt: lastUserMsg,
       };
       text = text.replace(/\[ACTION:(IMAGE|VIDEO):[\s\S]*?\]/gi, '').trim();
     } else if (isExplicitImageCommand || /\b(?:sending it|try again right now.*sending it|sending you a (?:photo|selfie|pic|image)|sending a (?:photo|selfie|pic|image)|taking a (?:photo|selfie)|take a quick (?:photo|selfie)|here is the (?:photo|selfie))\b/i.test(text)) {
-      const personaStyleStr = activePersona?.visualStyle || 'Realistic, highly detailed, authentic';
-      const enhancedPrompt = await buildEnhancedVoiceImagePrompt(lastUserMsg || text, personaName, personaNiche, personaTone, personaStyleStr);
+      // Keep the exact transcript authoritative. The image pipeline already
+      // receives persona identity/reference data and should not reinterpret
+      // wardrobe, pose, setting, or other user-provided details here.
+      const exactPrompt = (lastUserMsg || text).trim();
       extractedAction = {
         type: 'image',
-        prompt: enhancedPrompt
+        prompt: exactPrompt,
+        userPrompt: exactPrompt,
       };
     } else if (isExplicitVideoCommand) {
+      const exactPrompt = (lastUserMsg || text).trim();
       extractedAction = {
         type: 'video',
-        prompt: `${personaName}, ${personaNiche}, cinematic motion video clip, 4k uhd`
+        prompt: exactPrompt,
+        userPrompt: exactPrompt,
       };
     }
 

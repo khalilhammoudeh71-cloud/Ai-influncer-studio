@@ -13,6 +13,7 @@ import VoiceNoteBubble from '../components/VoiceNoteBubble';
 import PersonaAvatar from '../components/PersonaAvatar';
 import { getCreatorProfile } from '../utils/creatorProfile';
 import { accountLocalStorage } from '../utils/accountStorage';
+import { CommitStrategy, RealtimeEvents, Scribe, type RealtimeConnection } from '@elevenlabs/client';
 
 // ── Typewriter hook ──────────────────────────────────────
 function useTypewriter(text: string, speed = 18) {
@@ -103,28 +104,37 @@ function correctSpeechPhonetics(transcript: string, activePersonaName?: string):
     }
   }
 
-  // 5. Contextual Visual & Photoshoot ASR corrections
-  corrected = corrected
-    .replace(/\b(?:requeaed|requeast|reques|recwest|rekwest)\b/gi, 'requested')
-    .replace(/\b(take|send|snap|show|give|make|post)\s+(?:a\s+)?(?:pick|peek)\b/gi, '$1 a pic')
-    .replace(/\b(?:sell\s*fee|cell\s*fee|sellfie|cellfie)\b/gi, 'selfie')
-    .replace(/\b(?:photo\s*shot|photo\s*shoots?)\b/gi, 'photoshoot')
-    .replace(/\b(?:out\s*fitt?|out-fit)\b/gi, 'outfit')
-    .replace(/\b(?:full\s*buddy)\b/gi, 'full-body')
-    .replace(/\b(?:half\s*buddy|have\s*body)\b/gi, 'half-body')
-    .replace(/\b(?:front\s*face\s*ing|from\s*facing)\b/gi, 'front-facing')
-    .replace(/\b(?:core\s*set)\b/gi, 'corset')
-    .replace(/\b(?:sat\s*in)\s+(slip|dress|sheets?|robe|corset|fabric)\b/gi, 'satin $1')
-    .replace(/\b(?:lingeree|linger\s*ee|lingery)\b/gi, 'lingerie')
-    .replace(/\b(?:she\s*meez|shameez)\b/gi, 'chemise')
-    .replace(/\b(?:oat\s*couture|hot\s*couture|out\s*couture)\b/gi, 'haute couture')
-    .replace(/\b(?:barge\s*in|barj\s*in)\b/gi, 'barge in')
-    .replace(/\b(?:up\s*scale|up-scale)\b/gi, 'upscale');
-
-  // 6. Clean up spacing
+  // Preserve the user's actual wording. Broad phonetic substitutions used to
+  // turn valid words into rhyming alternatives and could silently change a
+  // generation request.
   corrected = corrected.replace(/\s+/g, ' ').trim();
 
   return corrected;
+}
+
+function normalizeEchoText(value: string): string[] {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9'\s]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+function isLikelyPersonaEcho(candidate: string, personaSpeech: string): boolean {
+  const heard = normalizeEchoText(candidate);
+  const spoken = normalizeEchoText(personaSpeech);
+  if (heard.length === 0 || spoken.length === 0) return false;
+
+  const heardPhrase = heard.join(' ');
+  const spokenPhrase = spoken.join(' ');
+  if (heard.length >= 2 && spokenPhrase.includes(heardPhrase)) return true;
+
+  const spokenWords = new Set(spoken);
+  const overlap = heard.filter(word => spokenWords.has(word)).length / heard.length;
+  const interruptionWords = new Set(['stop', 'wait', 'hold', 'pause', 'no', 'actually']);
+  if (heard.some(word => interruptionWords.has(word))) return false;
+
+  return heard.length >= 4 && overlap >= 0.78;
 }
 
 function loadHistory(personaId: string): ChatMessage[] {
@@ -252,8 +262,8 @@ function detectIntent(message: string): 'image' | 'video' | 'chat' {
 }
 
 export const VOICE_CALL_ENGINES = [
-  { id: 'eleven_turbo_v2_5', name: 'ElevenLabs Turbo 2.5', badge: 'Fast (~250ms)', desc: 'Rich human tone & nuances (Recommended)' },
-  { id: 'eleven_flash_v2_5', name: 'ElevenLabs Flash 2.5', badge: 'Ultra Fast (~75ms)', desc: 'Instantaneous response' },
+  { id: 'eleven_flash_v2_5', name: 'ElevenLabs Flash 2.5', badge: 'Ultra Fast (~75ms)', desc: 'Lowest-latency voice calls (Recommended)' },
+  { id: 'eleven_turbo_v2_5', name: 'ElevenLabs Turbo 2.5', badge: 'Fast (~250ms)', desc: 'Rich human tone and nuance' },
   { id: 'cartesia-sonic', name: 'Cartesia Sonic', badge: 'Extreme Speed (~90ms)', desc: 'Fastest conversational turn-taking' },
   { id: 'eleven_multilingual_v2', name: 'ElevenLabs Multilingual v2', badge: 'Expressive (~800ms)', desc: 'High cinematic emotion' },
 ];
@@ -352,7 +362,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     return () => window.removeEventListener('persona-updated', handlePersonaUpdated as EventListener);
   }, []);
   const [voiceLlmModel, setVoiceLlmModel] = useState<string>(() => localStorage.getItem('agent_voice_llm') || 'gemini');
-  const [selectedVoiceEngine, setSelectedVoiceEngine] = useState<string>(() => localStorage.getItem('agent_voice_engine') || 'eleven_turbo_v2_5');
+  const [selectedVoiceEngine, setSelectedVoiceEngine] = useState<string>(() => localStorage.getItem('agent_voice_engine') || 'eleven_flash_v2_5');
 
   const handleVoiceEngineChange = (engineId: string) => {
     setSelectedVoiceEngine(engineId);
@@ -663,6 +673,12 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   const lastRestartTimeRef = useRef<number>(0);
   const restartCountRef = useRef<number>(0);
   const recognitionStartIndexRef = useRef<number>(0);
+  const scribeConnectionRef = useRef<RealtimeConnection | null>(null);
+  const scribeStartPromiseRef = useRef<Promise<boolean> | null>(null);
+  const scribeReconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastCommittedTranscriptRef = useRef<{ text: string; at: number }>({ text: '', at: 0 });
+  const scribeFailureCountRef = useRef(0);
+  const callTurnIdRef = useRef(0);
 
   const vadStreamRef = useRef<MediaStream | null>(null);
   const vadAudioCtxRef = useRef<AudioContext | null>(null);
@@ -765,8 +781,148 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     }
   };
 
+  const stopRealtimeTranscription = () => {
+    if (scribeReconnectTimerRef.current) {
+      clearTimeout(scribeReconnectTimerRef.current);
+      scribeReconnectTimerRef.current = null;
+    }
+    const connection = scribeConnectionRef.current;
+    scribeConnectionRef.current = null;
+    scribeStartPromiseRef.current = null;
+    if (connection) {
+      try { connection.close(); } catch {}
+    }
+  };
+
+  const startRealtimeTranscription = async (): Promise<boolean> => {
+    if (scribeConnectionRef.current) return true;
+    if (scribeStartPromiseRef.current) return scribeStartPromiseRef.current;
+
+    const startPromise = (async () => {
+      try {
+        const tokenResponse = await authFetch('/api/agent/realtime-transcription-token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        const tokenData = await tokenResponse.json().catch(() => ({}));
+        if (!tokenResponse.ok || !tokenData.token || !isCallActiveRef.current) {
+          throw new Error(tokenData.error || 'Realtime transcription is unavailable');
+        }
+
+        const connection = Scribe.connect({
+          token: tokenData.token,
+          modelId: 'scribe_v2_realtime',
+          commitStrategy: CommitStrategy.VAD,
+          vadSilenceThresholdSecs: 0.8,
+          vadThreshold: 0.42,
+          minSpeechDurationMs: 100,
+          minSilenceDurationMs: 250,
+          languageCode: 'en',
+          filterBackgroundAudio: true,
+          noVerbatim: false,
+          microphone: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            channelCount: 1,
+          },
+        });
+
+        scribeConnectionRef.current = connection;
+
+        connection.on(RealtimeEvents.PARTIAL_TRANSCRIPT, (event) => {
+          if (!isCallActiveRef.current || isMutedRef.current) return;
+          const partial = String(event.text || '').trim();
+          if (!partial) return;
+
+          const personaSpeech = currentPersonaSpeechRef.current;
+          if (isAgentSpeakingRef.current && isLikelyPersonaEcho(partial, personaSpeech)) {
+            return;
+          }
+
+          setLiveUserSpeech(partial);
+
+          if (isAgentSpeakingRef.current) {
+            const words = normalizeEchoText(partial);
+            const isDirectInterrupt = /^(stop|wait|hold on|pause|no|actually)\b/i.test(partial);
+            if (isDirectInterrupt || words.length >= 2) {
+              interruptPersona();
+              setLiveUserSpeech(partial);
+            }
+          }
+        });
+
+        connection.on(RealtimeEvents.COMMITTED_TRANSCRIPT, (event) => {
+          if (!isCallActiveRef.current || isMutedRef.current) return;
+          const rawTranscript = String(event.text || '').trim();
+          if (!rawTranscript) return;
+
+          if (isLikelyPersonaEcho(rawTranscript, currentPersonaSpeechRef.current)) {
+            setLiveUserSpeech('');
+            return;
+          }
+
+          const corrected = correctSpeechPhonetics(rawTranscript, activePersona?.name);
+          const now = Date.now();
+          const last = lastCommittedTranscriptRef.current;
+          if (corrected.toLowerCase() === last.text.toLowerCase() && now - last.at < 2500) {
+            return;
+          }
+          lastCommittedTranscriptRef.current = { text: corrected, at: now };
+
+          if (isAgentSpeakingRef.current || voiceCallBusyRef.current) {
+            interruptPersona();
+          }
+          setLiveUserSpeech('');
+          void handleSendCallMessage(corrected);
+        });
+
+        connection.on(RealtimeEvents.SESSION_STARTED, () => {
+          scribeFailureCountRef.current = 0;
+          if (isCallActiveRef.current && !isAgentSpeakingRef.current) {
+            setCallStatus('listening');
+          }
+        });
+
+        connection.on(RealtimeEvents.ERROR, (event) => {
+          console.warn('[Realtime Transcription] Scribe error:', event);
+        });
+
+        connection.on(RealtimeEvents.CLOSE, () => {
+          if (scribeConnectionRef.current === connection) {
+            scribeConnectionRef.current = null;
+          }
+          if (!isCallActiveRef.current || isMutedRef.current) return;
+
+          scribeFailureCountRef.current += 1;
+          if (scribeFailureCountRef.current <= 2) {
+            scribeReconnectTimerRef.current = setTimeout(() => {
+              scribeStartPromiseRef.current = null;
+              void startRealtimeTranscription();
+            }, 350);
+          } else {
+            console.warn('[Realtime Transcription] Falling back to browser speech recognition');
+            restartSpeechRecognition();
+          }
+        });
+
+        return true;
+      } catch (error) {
+        console.warn('[Realtime Transcription] Could not start Scribe; using browser fallback:', error);
+        scribeConnectionRef.current = null;
+        return false;
+      } finally {
+        scribeStartPromiseRef.current = null;
+      }
+    })();
+
+    scribeStartPromiseRef.current = startPromise;
+    return startPromise;
+  };
+
   const interruptPersona = useCallback(() => {
     console.log('[Interrupt] 🛑 Halting persona audio playback and cancelling in-flight request...');
+    callTurnIdRef.current += 1;
     if (activeCallAbortControllerRef.current) {
       try { activeCallAbortControllerRef.current.abort(); } catch {}
       activeCallAbortControllerRef.current = null;
@@ -785,10 +941,11 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     currentPersonaSpeechRef.current = '';
     isAgentSpeakingRef.current = false;
     voiceCallBusyRef.current = false;
-    setLiveUserSpeech('');
     if (isCallActiveRef.current) {
       setCallStatus('listening');
-      restartSpeechRecognition();
+      if (!scribeConnectionRef.current) {
+        restartSpeechRecognition();
+      }
     }
   }, []);
 
@@ -813,6 +970,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 
   const restartSpeechRecognition = () => {
     if (isMutedRef.current || !isCallActiveRef.current) return;
+    if (scribeConnectionRef.current) return;
     if (callRecRef.current || isStartingRecRef.current) return;
 
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -849,24 +1007,16 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         const trimmed = fullTranscript.trim();
         if (!trimmed || trimmed.length < 1) return;
 
-        // Instant Vocal Barge-in: If the persona is speaking, immediately halt speech on any incoming user voice
+        // Ignore the persona's own speaker audio while leaving recognition live
+        // so a real user interruption still retains its opening words.
+        if (isAgentSpeakingRef.current && isLikelyPersonaEcho(trimmed, currentPersonaSpeechRef.current)) {
+          return;
+        }
+
+        // Instant Vocal Barge-in: halt playback on non-echo user speech.
         if (isAgentSpeakingRef.current) {
           console.log('[Vocal Barge-In] ⚡ Spoken words recognized while persona was speaking! Halting playback immediately...');
-          if (audioRef.current) {
-            try {
-              audioRef.current.pause();
-              audioRef.current.currentTime = 0;
-              audioRef.current.src = '';
-            } catch {}
-            audioRef.current = null;
-          }
-          if (activeCallAbortControllerRef.current) {
-            try { activeCallAbortControllerRef.current.abort(); } catch {}
-            activeCallAbortControllerRef.current = null;
-          }
-          isAgentSpeakingRef.current = false;
-          voiceCallBusyRef.current = false;
-          setCallStatus('listening');
+          interruptPersona();
         }
 
         setLiveUserSpeech(trimmed);
@@ -878,11 +1028,11 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         const lastWord = trimmed.split(/\s+/).pop()?.toLowerCase().replace(/[^a-z]/g, '') || '';
         const isTrailingThought = /^(and|or|but|so|because|like|um|uh|then|when|if|that|which|to|with|for|about|my|your|the|a|i|we|you|he|she|it|they|got|had|was|is)$/i.test(lastWord);
 
-        let pauseDelay = 2200;
+        let pauseDelay = 1100;
         if (isTrailingThought) {
-          pauseDelay = 3000;
+          pauseDelay = 1800;
         } else if (hasFinalResult && /[.?!]$/.test(trimmed)) {
-          pauseDelay = 1500;
+          pauseDelay = 700;
         }
 
         interimSilenceTimer = setTimeout(() => {
@@ -940,9 +1090,14 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   useEffect(() => {
     isMutedRef.current = isMuted;
     if (isMuted) {
+      try { scribeConnectionRef.current?.mute(); } catch {}
       stopSpeechRecognition();
     } else if (isCallActiveRef.current) {
-      restartSpeechRecognition();
+      if (scribeConnectionRef.current) {
+        try { scribeConnectionRef.current.unmute(); } catch {}
+      } else {
+        restartSpeechRecognition();
+      }
     }
   }, [isMuted]);
 
@@ -1018,8 +1173,6 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     setCallStatus('speaking');
     isAgentSpeakingRef.current = true;
     personaSpeakingStartTimeRef.current = Date.now();
-    // Stop microphone recognition while persona is speaking to eliminate speaker-mic feedback loop
-    stopSpeechRecognition();
 
     const onPlaybackComplete = () => {
       isAgentSpeakingRef.current = false;
@@ -1028,7 +1181,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       if (isCallActiveRef.current) {
         setCallStatus('listening');
         setTimeout(() => {
-          if (isCallActiveRef.current && !isAgentSpeakingRef.current) {
+          if (isCallActiveRef.current && !isAgentSpeakingRef.current && !scribeConnectionRef.current) {
             restartSpeechRecognition();
           }
         }, 150);
@@ -1074,7 +1227,6 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           audio.src = '';
           return;
         }
-        stopSpeechRecognition();
         personaSpeakingStartTimeRef.current = Date.now();
         onStart?.();
       };
@@ -1126,13 +1278,17 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     }
 
     voiceCallBusyRef.current = true;
+    const callTurnId = ++callTurnIdRef.current;
     isAgentSpeakingRef.current = true;
     personaSpeakingStartTimeRef.current = Date.now();
     restartSpeechRecognition();
 
     const watchdogTimer = setTimeout(() => {
-      if (voiceCallBusyRef.current) {
+      if (voiceCallBusyRef.current && callTurnId === callTurnIdRef.current) {
         console.warn('[Call Watchdog] ⏰ Request timed out, auto-recovering...');
+        callTurnIdRef.current += 1;
+        try { activeCallAbortControllerRef.current?.abort(); } catch {}
+        activeCallAbortControllerRef.current = null;
         isAgentSpeakingRef.current = false;
         voiceCallBusyRef.current = false;
         if (isCallActiveRef.current) {
@@ -1140,7 +1296,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           restartSpeechRecognition();
         }
       }
-    }, 25000);
+    }, 40000);
 
     // Stop any currently playing persona audio
     if (audioRef.current) {
@@ -1192,6 +1348,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           })),
           priorChatHistory: priorHistory.slice(-40).map(m => ({ role: m.role === 'user' ? 'user' : 'model', content: m.content })),
           memories: personaMemories,
+          voiceLlmModel,
           voiceId: getActivePersonaVoice(activePersona).voiceId,
           voiceReference: getActivePersonaVoice(activePersona).voiceReference,
           voiceModel: selectedVoiceEngine,
@@ -1203,6 +1360,10 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       if (!res.ok) throw new Error(data.error || 'Failed call dialogue response');
       
       clearTimeout(watchdogTimer);
+
+      if (callTurnId !== callTurnIdRef.current) {
+        return;
+      }
 
       // If call was ended while we were waiting for network response, do NOT play audio
       if (!isCallActiveRef.current) {
@@ -1237,7 +1398,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       if (isVoiceImageIntent) {
         const loadingMsgId = uid();
         setCallTranscript(prev => [...prev, personaMsg, { id: loadingMsgId, role: 'persona', type: 'loading', content: '' }]);
-        const visualPrompt = data.action?.prompt || text || `${activePersona.name}, ${activePersona.niche}, glamorous photorealistic portrait, intimate, natural lighting, ultra high resolution 8k`;
+        const exactVisualRequest = data.action?.userPrompt || text;
+        const visualPrompt = data.action?.prompt || exactVisualRequest || `${activePersona.name}, ${activePersona.niche}, glamorous photorealistic portrait, intimate, natural lighting, ultra high resolution 8k`;
         
         const isDuoShoot = /\b(with me|with (?:dr\.?\s*h|alex|chris|creator)|duo|together|both of us|us at|with you)\b/i.test(visualPrompt) || /\b(with me|with (?:dr\.?\s*h|alex|chris|creator)|duo|together|both of us|us at)\b/i.test(text);
         const isExplicitNude = /\b(naked|nude|topless|unclothed|bare|boobs|tits|breasts|nipples|exposed|sensual|erotic|no clothes|without clothes|undressed|pussy|ass)\b/i.test(visualPrompt) || /\b(naked|nude|topless|unclothed|bare|boobs|tits|breasts|nipples|exposed|sensual|erotic|no clothes|without clothes|undressed|pussy|ass)\b/i.test(text);
@@ -1258,7 +1420,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           modelId: 'wavespeed:bytedance/seedream-v5.0-pro',
           aspectRatio: '9:16',
           isChatContext: true,
-          chatPrompt: text, // preserve exact spoken request with user specifics
+          chatPrompt: exactVisualRequest, // preserve exact spoken request with user specifics
           allowNsfw: true,
           referenceImage: personaPrimaryRef,
           additionalImages: extraImages.length > 0 ? extraImages : undefined,
@@ -1276,7 +1438,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         const loadingMsgId = uid();
         setCallTranscript(prev => [...prev, personaMsg, { id: loadingMsgId, role: 'persona', type: 'loading', content: '' }]);
         const personaPhoto = activePersona.referenceImage || activePersona.avatar || activePersona.alternateReferenceImage;
-        const videoPrompt = data.action?.prompt || text || `${activePersona.name}, ${activePersona.niche}, cinematic motion video clip, 4k uhd`;
+        const exactVideoRequest = data.action?.userPrompt || text;
+        const videoPrompt = data.action?.prompt || exactVideoRequest || `${activePersona.name}, ${activePersona.niche}, cinematic motion video clip, 4k uhd`;
         generateVideo(videoPrompt, selectedVideoModelId, personaPhoto || undefined).then(result => {
           setActiveCallMedia({ type: 'video', url: result.videoUrl, prompt: videoPrompt });
           setCallTranscript(prev => prev.map(m => m.id === loadingMsgId ? { ...m, type: 'video', content: result.videoUrl, prompt: videoPrompt } : m));
@@ -1362,9 +1525,11 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           isAgentSpeakingRef.current = true;
         });
       }
-    } catch (err) {
+    } catch (err: any) {
       clearTimeout(watchdogTimer);
-      console.error('[Call Voice Network Error, recovering]:', err);
+      if (err?.name !== 'AbortError') {
+        console.error('[Call Voice Network Error, recovering]:', err);
+      }
       isAgentSpeakingRef.current = false;
       voiceCallBusyRef.current = false;
       if (isCallActiveRef.current) {
@@ -1457,8 +1622,6 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     setCallDuration(0);
     isAgentSpeakingRef.current = true;
     voiceCallBusyRef.current = true;
-    
-    startVadInterruptionMonitor();
 
     // Unlock HTML5 audio context directly inside user click gesture
     try {
@@ -1473,28 +1636,33 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     setCallTranscript([
       { id: uid(), role: 'persona', content: `Calling ${activePersona.name}...` }
     ]);
-    
-    setTimeout(async () => {
-      if (!isCallActiveRef.current) return;
-      setCallStatus('connected');
-      
-      callTimerRef.current = setInterval(() => {
-        setCallDuration(prev => prev + 1);
-      }, 1000);
 
-      // Fetch dynamic context-aware greeting picking up from last conversation
-      const greeting = await fetchDynamicGreeting(activePersona, 'voice');
+    // Keep one echo-cancelled microphone session alive for the entire call.
+    // Scribe's realtime VAD commits natural turns and preserves the first words.
+    const realtimeStarted = await startRealtimeTranscription();
+    if (!isCallActiveRef.current) return;
+    if (!realtimeStarted) {
+      startVadInterruptionMonitor();
+      restartSpeechRecognition();
+    }
 
-      // Synchronize greeting text bubble to appear at the EXACT instant audio starts playing
-      if (isCallActiveRef.current) {
-        await playTTS(greeting, () => {
-          if (!isCallActiveRef.current) return;
-          setCallTranscript([
-            { id: uid(), role: 'persona', content: greeting }
-          ]);
-        });
-      }
-    }, 50);
+    setCallStatus('connected');
+    callTimerRef.current = setInterval(() => {
+      setCallDuration(prev => prev + 1);
+    }, 1000);
+
+    // Fetch dynamic context-aware greeting picking up from last conversation
+    const greeting = await fetchDynamicGreeting(activePersona, 'voice');
+
+    // Synchronize greeting text bubble to appear at the exact instant audio starts.
+    if (isCallActiveRef.current) {
+      await playTTS(greeting, () => {
+        if (!isCallActiveRef.current) return;
+        setCallTranscript([
+          { id: uid(), role: 'persona', content: greeting }
+        ]);
+      });
+    }
   };
 
   // End Call
@@ -1516,6 +1684,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     });
 
     stopVadInterruptionMonitor();
+    stopRealtimeTranscription();
 
     if (callTimerRef.current) {
       clearInterval(callTimerRef.current);
@@ -1546,6 +1715,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   useEffect(() => {
     return () => {
       isCallActiveRef.current = false;
+      stopRealtimeTranscription();
+      stopVadInterruptionMonitor();
       if (audioRef.current) {
         try { audioRef.current.pause(); audioRef.current.src = ''; } catch {}
         audioRef.current = null;
