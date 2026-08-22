@@ -289,6 +289,8 @@ const STUDIO_STEPS = [
   { id: 'review', title: 'Review', description: 'Confirm everything and publish' },
 ] as const;
 
+const HEYGEN_OAUTH_RETURN_KEY = 'ai_studio_heygen_oauth_return';
+
 export default function CreatePersonaPage({ personas, setPersonas, onSelectPersona, nav, editingPersona }: CreatePersonaPageProps) {
   // Form State
   const [name, setName] = useState('');
@@ -559,6 +561,40 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
     }
   };
 
+  useEffect(() => {
+    if (sessionStorage.getItem(HEYGEN_OAUTH_RETURN_KEY) !== 'true') return;
+
+    sessionStorage.removeItem(HEYGEN_OAUTH_RETURN_KEY);
+    let cancelled = false;
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (cancelled) return;
+
+      setStudioStep(3);
+      setVoiceTab('heygen');
+      setIsHeyGenGoogleSigningIn(false);
+
+      if (data.session) {
+        setShowHeyGenSignIn(false);
+        toast.success('Google account connected');
+      } else {
+        setShowHeyGenSignIn(true);
+        toast.error('Google sign-in did not finish. Please try again.');
+      }
+    }).catch(() => {
+      if (!cancelled) {
+        setStudioStep(3);
+        setVoiceTab('heygen');
+        setShowHeyGenSignIn(true);
+        toast.error('Could not restore the Google session. Please try again.');
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const handleHeyGenCreatorSignIn = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!heyGenSignInEmail.trim() || !heyGenSignInPassword) {
@@ -588,15 +624,19 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
 
   const handleHeyGenGoogleSignIn = async () => {
     setIsHeyGenGoogleSigningIn(true);
+    sessionStorage.setItem(HEYGEN_OAUTH_RETURN_KEY, 'true');
     try {
+      const redirectUrl = new URL(window.location.href);
+      redirectUrl.hash = '';
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}${window.location.pathname}`,
+          redirectTo: redirectUrl.toString(),
         },
       });
       if (error) throw error;
     } catch (err: any) {
+      sessionStorage.removeItem(HEYGEN_OAUTH_RETURN_KEY);
       setIsHeyGenGoogleSigningIn(false);
       toast.error(err?.message || 'Could not continue with Google');
     }

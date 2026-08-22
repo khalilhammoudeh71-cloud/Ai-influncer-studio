@@ -36,7 +36,7 @@ export async function requireAuth(req: AuthenticatedRequest, res: Response, next
 
   try {
     const userPromise = supabaseAdmin.auth.getUser(token);
-    const timeoutPromise = new Promise<any>((resolve) => setTimeout(() => resolve({ data: { user: null }, error: new Error('Auth Timeout') }), 1500));
+    const timeoutPromise = new Promise<any>((resolve) => setTimeout(() => resolve({ data: { user: null }, error: new Error('Auth Timeout') }), 8000));
     const { data: { user }, error } = await Promise.race([userPromise, timeoutPromise]);
 
     if (error || !user) {
@@ -84,10 +84,22 @@ export async function requireAuth(req: AuthenticatedRequest, res: Response, next
   }
 }
 
+function normalizeEmail(email: string): string {
+  const normalized = email.trim().toLowerCase();
+  const [localPart, domain] = normalized.split('@');
+  if (!localPart || !domain) return normalized;
+
+  if (domain === 'gmail.com' || domain === 'googlemail.com') {
+    return `${localPart.replace(/\./g, '')}@gmail.com`;
+  }
+
+  return normalized;
+}
+
 export function isCreatorUser(email?: string): boolean {
   if (!email) return false;
-  const creatorEmail = (process.env.CREATOR_EMAIL || 'khalilhammoudeh71@gmail.com').toLowerCase();
-  return email.toLowerCase() === creatorEmail || email.toLowerCase() === 'mock@example.com';
+  const creatorEmail = process.env.CREATOR_EMAIL || 'khalilhammoudeh71@gmail.com';
+  return normalizeEmail(email) === normalizeEmail(creatorEmail) || email.toLowerCase() === 'mock@example.com';
 }
 
 export async function deductCredits(userId: string, amount: number) {

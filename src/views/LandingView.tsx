@@ -233,10 +233,12 @@ export default function LandingView({ onGetStarted, isLoggedIn }: LandingViewPro
   const handleGoogleAuth = async () => {
     setGoogleLoading(true);
     try {
+      const redirectUrl = new URL(window.location.href);
+      redirectUrl.hash = '';
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin,
+          redirectTo: redirectUrl.toString(),
         },
       });
 

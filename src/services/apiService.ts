@@ -3,9 +3,7 @@ import { supabase } from '../lib/supabase';
 
 export async function getAuthHeaders(): Promise<HeadersInit> {
   try {
-    const sessionPromise = supabase.auth.getSession();
-    const timeoutPromise = new Promise<any>((resolve) => setTimeout(() => resolve({ data: { session: null } }), 800));
-    const sessionRes = await Promise.race([sessionPromise, timeoutPromise]);
+    const sessionRes = await supabase.auth.getSession();
     const token = sessionRes?.data?.session?.access_token;
     return token ? { 'Authorization': `Bearer ${token}` } : {};
   } catch (e) {
