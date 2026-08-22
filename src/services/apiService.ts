@@ -122,11 +122,12 @@ export const api = {
         gemini: boolean;
         wavespeed: boolean;
         elevenlabs: boolean;
+        heygen: boolean;
         database: boolean;
         databaseConnected: boolean;
       }>('/config-status');
     } catch {
-      return { openai: false, gemini: false, wavespeed: false, elevenlabs: false, database: false, databaseConnected: false };
+      return { openai: false, gemini: false, wavespeed: false, elevenlabs: false, heygen: false, database: false, databaseConnected: false };
     }
   },
 
@@ -151,6 +152,16 @@ export const api = {
         labels: Record<string, string>;
         settings: { stability: number; similarity_boost: number; style: number };
       }> }>('/elevenlabs-voices'),
+    getHeyGenVoices: () =>
+      request<{ voices: Array<{
+        voice_id: string;
+        name: string;
+        language: string;
+        gender: string;
+        support_pause: boolean;
+        support_locale: boolean;
+        preview_audio_url: string;
+      }>; hasMore: boolean; nextToken: string | null }>('/heygen-voices'),
     cloneVoice: (name: string, description: string, sampleBase64: string | string[]) =>
       requestWithBody<{ voiceId: string; name: string }>('/elevenlabs-clone-voice', {
         name,
@@ -164,7 +175,7 @@ export const api = {
       voice?: string;
       performancePrompt?: string;
       backgroundAtmosphere?: string;
-      engine?: 'elevenlabs' | 'openai' | 'gemini' | 'omnivoice' | 'minimax-clone' | 'qwen3-clone' | 'seed-speech' | 'chatterbox' | 'mureka-vocal' | 'qwen-tts' | string;
+      engine?: 'elevenlabs' | 'heygen' | 'openai' | 'gemini' | 'omnivoice' | 'minimax-clone' | 'qwen3-clone' | 'seed-speech' | 'chatterbox' | 'mureka-vocal' | 'qwen-tts' | string;
       voiceId?: string;
       voiceSettings?: { stability?: number; similarity_boost?: number; style?: number };
       voiceReference?: string;

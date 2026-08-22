@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Send, Bot, ChevronDown, ImageIcon, Video, Loader2, AlertCircle, Camera, MessageSquareQuote, Copy, Bookmark, Check, Phone, PhoneOff, Volume2, VolumeX, Mic, MicOff, RotateCcw, Trash2, Plus, Upload, Music, Film, X, Play, Sparkles, Paperclip, FileText, SlidersHorizontal, Settings, Hand, Maximize2, Download, Shirt, Heart } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Persona, NavActions, RelationshipState } from '../types';
-import { ModelInfo, fetchAllModelTypes, editImage, generateImage, generateVideo, textToSpeech } from '../services/imageService';
+import { ModelInfo, authFetch, fetchAllModelTypes, editImage, generateImage, generateVideo, textToSpeech } from '../services/imageService';
 import { cn } from '../utils/cn';
 import { api } from '../services/apiService';
 import toast from 'react-hot-toast';
@@ -1039,7 +1039,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       const controller = new AbortController();
       activeCallAbortControllerRef.current = controller;
 
-      const ttsRes = await fetch('/api/agent/voice-chat', {
+      const ttsRes = await authFetch('/api/agent/voice-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1173,7 +1173,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       activeCallAbortControllerRef.current = controller;
 
       // Single-hop Unified Real-Time Voice Endpoint (LLM generation + ElevenLabs Turbo in ONE parallel round-trip)
-      const res = await fetch('/api/agent/voice-chat', {
+      const res = await authFetch('/api/agent/voice-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

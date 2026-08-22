@@ -5540,6 +5540,85 @@ app.get('/api/elevenlabs-voices', async (_req, res) => {
   }
 });
 
+// ─── HeyGen Account Voices ───────────────────────────────────────────────────
+app.get('/api/heygen-voices', async (req: AuthenticatedRequest, res) => {
+  const authHeader = req.headers.authorization;
+  const isRealCreatorSession = Boolean(
+    authHeader?.startsWith('Bearer ') &&
+    req.user?.id &&
+    req.user.id !== 'mock-user-id' &&
+    isCreatorUser(req.user.email)
+  );
+
+  if (!isRealCreatorSession) {
+    return res.status(403).json({ error: 'Creator sign-in required to view private HeyGen voices', voices: [] });
+  }
+  if (!HEYGEN_API_KEY) {
+    return res.status(503).json({ error: 'HeyGen API key not configured', voices: [] });
+  }
+
+  try {
+    const url = new URL('https://api.heygen.com/v3/voices');
+    url.searchParams.set('type', 'private');
+    url.searchParams.set('engine', 'starfish');
+    url.searchParams.set('limit', '100');
+
+    const response = await fetch(url, {
+      headers: {
+        'X-Api-Key': HEYGEN_API_KEY,
+        'Accept': 'application/json',
+      },
+      signal: AbortSignal.timeout(12000),
+    });
+    const payload = await response.json() as {
+      data?: Array<{
+        voice_id?: string;
+        name?: string;
+        language?: string;
+        gender?: string;
+        support_pause?: boolean;
+        support_locale?: boolean;
+        preview_audio_url?: string;
+      }>;
+      message?: string;
+      error?: { message?: string } | string;
+      has_more?: boolean;
+      next_token?: string | null;
+    };
+
+    if (!response.ok) {
+      const upstreamMessage = typeof payload.error === 'string'
+        ? payload.error
+        : payload.error?.message || payload.message;
+      return res.status(response.status).json({
+        error: upstreamMessage || 'Failed to fetch HeyGen voices',
+        voices: [],
+      });
+    }
+
+    const voices = Array.isArray(payload.data)
+      ? payload.data
+          .filter(voice => Boolean(voice.voice_id && voice.name))
+          .map(voice => ({
+            voice_id: voice.voice_id,
+            name: voice.name,
+            language: voice.language || 'Auto-detect',
+            gender: voice.gender || 'Neutral',
+            support_pause: Boolean(voice.support_pause),
+            support_locale: Boolean(voice.support_locale),
+            preview_audio_url: voice.preview_audio_url || '',
+          }))
+      : [];
+
+    return res.json({ voices, hasMore: Boolean(payload.has_more), nextToken: payload.next_token || null });
+  } catch (err) {
+    return res.status(500).json({
+      error: err instanceof Error ? err.message : 'Failed to fetch HeyGen voices',
+      voices: [],
+    });
+  }
+});
+
 async function extractAudioFromVideoFile(videoFilePath: string): Promise<Buffer | null> {
   const uploadsDir = path.join(process.cwd(), 'server', 'public', 'uploads');
   if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
@@ -5935,7 +6014,7 @@ async function handleTTS(req: express.Request, res: express.Response) {
     voiceReference,
   } = req.body as {
     text: string; voiceName?: string; voice?: string; voiceId?: string;
-    engine?: 'gemini' | 'openai' | 'elevenlabs' | 'omnivoice' | 'qwen-tts'; speed?: number;
+    engine?: 'gemini' | 'openai' | 'elevenlabs' | 'heygen' | 'omnivoice' | 'qwen-tts'; speed?: number;
     voiceSettings?: { stability?: number; similarity_boost?: number; style?: number };
     voiceReference?: string;
   };
@@ -6040,6 +6119,71 @@ async function handleTTS(req: express.Request, res: express.Response) {
   const voicePromptStr = ((req.body as any).voicePrompt || (req.body as any).performancePrompt || '').toLowerCase();
   const isMalePersona = /\b(man|male|guy|boy|gentleman|father|husband|masculine)\b/i.test(personaNameStr) || /\b(masculine|deep male voice|male speaker|man voice)\b/i.test(voicePromptStr);
   const defaultFallbackVoice = isMalePersona ? 'KLbbwrUTS6brBkjmN4Fp' : '6u6JbqKdaQy89ENzLSju'; // John vs Brielle
+
+  // HeyGen Starfish TTS keeps private HeyGen voices usable for previews and saved personas.
+  if (currentEngineStr.toLowerCase() === 'heygen') {
+    const authHeader = req.headers.authorization;
+    const isRealCreatorSession = Boolean(
+      authHeader?.startsWith('Bearer ') &&
+      (req as AuthenticatedRequest).user?.id &&
+      (req as AuthenticatedRequest).user.id !== 'mock-user-id' &&
+      isCreatorUser((req as AuthenticatedRequest).user.email)
+    );
+    const heygenVoiceId = voiceId || voiceParam;
+    if (!isRealCreatorSession) {
+      return res.status(403).json({ error: 'Creator sign-in required to use private HeyGen voices' });
+    }
+    if (!HEYGEN_API_KEY) {
+      return res.status(503).json({ error: 'HeyGen API key not configured' });
+    }
+    if (!heygenVoiceId) {
+      return res.status(400).json({ error: 'A HeyGen voice ID is required' });
+    }
+
+    try {
+      const heygenResponse = await fetch('https://api.heygen.com/v3/voices/speech', {
+        method: 'POST',
+        headers: {
+          'X-Api-Key': HEYGEN_API_KEY,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        signal: AbortSignal.timeout(15000),
+        body: JSON.stringify({
+          text,
+          voice_id: heygenVoiceId,
+          speed: Math.min(2, Math.max(0.5, Number((req.body as any).voiceSpeakingSpeed ?? speed) || 1)),
+        }),
+      });
+      const heygenPayload = await heygenResponse.json() as {
+        data?: { audio_url?: string; duration?: number; request_id?: string | null };
+        message?: string;
+        error?: { message?: string } | string;
+      };
+
+      if (!heygenResponse.ok || !heygenPayload.data?.audio_url) {
+        const upstreamMessage = typeof heygenPayload.error === 'string'
+          ? heygenPayload.error
+          : heygenPayload.error?.message || heygenPayload.message;
+        return res.status(heygenResponse.status || 502).json({
+          error: upstreamMessage || 'HeyGen could not synthesize this voice',
+        });
+      }
+
+      return res.json({
+        audioUrl: heygenPayload.data.audio_url,
+        voice: heygenVoiceId,
+        model: 'heygen-starfish',
+        engine: 'heygen',
+        duration: heygenPayload.data.duration,
+      });
+    } catch (err) {
+      console.warn('[HeyGen Starfish TTS Error]:', err);
+      return res.status(502).json({
+        error: err instanceof Error ? err.message : 'HeyGen voice synthesis failed',
+      });
+    }
+  }
 
   const rawRefs: string[] = ((req.body as any).voiceReferences && Array.isArray((req.body as any).voiceReferences) && (req.body as any).voiceReferences.length > 0)
     ? (req.body as any).voiceReferences

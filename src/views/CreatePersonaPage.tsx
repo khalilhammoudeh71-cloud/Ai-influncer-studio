@@ -385,7 +385,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   };
 
   // Voice State
-  const [voiceTab, setVoiceTab] = useState<'clone' | 'preset' | 'custom' | 'account'>('preset');
+  const [voiceTab, setVoiceTab] = useState<'clone' | 'preset' | 'custom' | 'account' | 'heygen'>('preset');
   const [selectedVoiceId, setSelectedVoiceId] = useState('kore');
   const [selectedVoiceModel, setSelectedVoiceModel] = useState('omnivoice');
   const [audioSampleName, setAudioSampleName] = useState('');
@@ -409,6 +409,20 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   const [isLoadingAccountVoices, setIsLoadingAccountVoices] = useState(false);
   const [playingAccountAudioId, setPlayingAccountAudioId] = useState<string | null>(null);
   const accountAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  // HeyGen private account voices (Starfish-compatible for audio previews and persona speech)
+  const [heyGenVoices, setHeyGenVoices] = useState<Array<{
+    voice_id: string;
+    name: string;
+    language: string;
+    gender: string;
+    support_pause: boolean;
+    support_locale: boolean;
+    preview_audio_url: string;
+  }>>([]);
+  const [isLoadingHeyGenVoices, setIsLoadingHeyGenVoices] = useState(false);
+  const [playingHeyGenAudioId, setPlayingHeyGenAudioId] = useState<string | null>(null);
+  const heyGenAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const fetchAccountVoices = async () => {
     setIsLoadingAccountVoices(true);
@@ -459,6 +473,11 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
     if (accountAudioRef.current) {
       try { accountAudioRef.current.pause(); } catch {}
       accountAudioRef.current = null;
+    }
+    if (heyGenAudioRef.current) {
+      try { heyGenAudioRef.current.pause(); } catch {}
+      heyGenAudioRef.current = null;
+      setPlayingHeyGenAudioId(null);
     }
     if (activeAudioRef.current) {
       try { activeAudioRef.current.pause(); } catch {}
@@ -513,6 +532,69 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
     }
   };
 
+  const fetchHeyGenVoices = async () => {
+    setIsLoadingHeyGenVoices(true);
+    try {
+      const data = await api.voice.getHeyGenVoices();
+      setHeyGenVoices(Array.isArray(data.voices) ? data.voices : []);
+    } catch (err: any) {
+      console.warn('[HeyGen Account Voices Error]:', err?.message || err);
+      setHeyGenVoices([]);
+      toast.error(err?.message || 'Could not load your HeyGen voices');
+    } finally {
+      setIsLoadingHeyGenVoices(false);
+    }
+  };
+
+  useEffect(() => {
+    if (voiceTab === 'heygen' && heyGenVoices.length === 0) {
+      fetchHeyGenVoices();
+    }
+  }, [voiceTab]);
+
+  const handlePlayHeyGenVoicePreview = async (voiceId: string, voiceName: string, previewUrl?: string) => {
+    if (playingHeyGenAudioId === voiceId && heyGenAudioRef.current) {
+      try { heyGenAudioRef.current.pause(); } catch {}
+      heyGenAudioRef.current = null;
+      setPlayingHeyGenAudioId(null);
+      return;
+    }
+
+    if (heyGenAudioRef.current) {
+      try { heyGenAudioRef.current.pause(); } catch {}
+      heyGenAudioRef.current = null;
+    }
+    if (accountAudioRef.current) {
+      try { accountAudioRef.current.pause(); } catch {}
+    }
+    if (presetAudioRef.current) {
+      try { presetAudioRef.current.pause(); } catch {}
+    }
+    if (activeAudioRef.current) {
+      try { activeAudioRef.current.pause(); } catch {}
+    }
+
+    setPlayingHeyGenAudioId(voiceId);
+    try {
+      const audioUrl = previewUrl || (await api.voice.generateSpeech({
+        text: `Hi, this is ${voiceName}. This HeyGen voice is ready for your persona.`,
+        voiceId,
+        engine: 'heygen',
+        personaName: name || undefined,
+        isPreview: true,
+      })).audioUrl;
+      const audio = new Audio(audioUrl);
+      heyGenAudioRef.current = audio;
+      audio.onended = () => setPlayingHeyGenAudioId(null);
+      audio.onerror = () => setPlayingHeyGenAudioId(null);
+      await audio.play();
+    } catch (err: any) {
+      console.warn('[HeyGen Voice Preview Error]:', err?.message || err);
+      setPlayingHeyGenAudioId(null);
+      toast.error('Could not play this HeyGen voice preview');
+    }
+  };
+
   const [playingPresetVoiceId, setPlayingPresetVoiceId] = useState<string | null>(null);
   const [isLoadingPresetAudioId, setIsLoadingPresetAudioId] = useState<string | null>(null);
   const presetAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -536,6 +618,11 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
     }
     if (accountAudioRef.current) {
       try { accountAudioRef.current.pause(); } catch {}
+    }
+    if (heyGenAudioRef.current) {
+      try { heyGenAudioRef.current.pause(); } catch {}
+      heyGenAudioRef.current = null;
+      setPlayingHeyGenAudioId(null);
     }
 
     if (previewUrl) {
@@ -714,7 +801,15 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       if (editingPersona.voiceId) setSelectedVoiceId(editingPersona.voiceId);
       if (editingPersona.voiceEngine) {
         setSelectedVoiceModel(editingPersona.voiceEngine);
-        if (editingPersona.voiceEngine !== 'preset') {
+        const hasSavedVoiceSamples = Boolean(
+          editingPersona.voiceSampleUrl ||
+          (Array.isArray(editingPersona.audioSamples) && editingPersona.audioSamples.length > 0)
+        );
+        if (editingPersona.voiceEngine === 'heygen') {
+          setVoiceTab('heygen');
+        } else if (editingPersona.voiceEngine === 'elevenlabs' && editingPersona.voiceId && !hasSavedVoiceSamples) {
+          setVoiceTab('account');
+        } else if (editingPersona.voiceEngine !== 'preset') {
           setVoiceTab('clone');
         }
       }
@@ -850,9 +945,12 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       // When audio samples are uploaded, let the engine/model parameter drive zero-shot cloning!
       const hasUploadedSamples = (audioSampleList && audioSampleList.length > 0) || Boolean(audioSampleBase64);
       const isExplicitElevenLabsId = selectedVoiceId && /^[a-zA-Z0-9]{18,24}$/.test(selectedVoiceId);
+      const isHeyGenVoice = voiceTab === 'heygen' || selectedVoiceModel === 'heygen';
       let activeVoiceId: string | undefined = undefined;
 
-      if (voiceTab === 'custom' && isExplicitElevenLabsId) {
+      if (isHeyGenVoice && selectedVoiceId) {
+        activeVoiceId = selectedVoiceId;
+      } else if (voiceTab === 'custom' && isExplicitElevenLabsId) {
         // User explicitly selected an account voice in the Account Voices tab
         activeVoiceId = selectedVoiceId;
       } else if (!hasUploadedSamples && isExplicitElevenLabsId) {
@@ -867,10 +965,10 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       const res = await api.voice.generateSpeech({
         text: sampleText,
         ...(activeVoiceId ? { voiceId: activeVoiceId } : {}),
-        engine: selectedVoiceModel || 'elevenlabs',
+        engine: isHeyGenVoice ? 'heygen' : (selectedVoiceModel || 'elevenlabs'),
         personaName: name || undefined,
-        voiceReference: audioSampleBase64 || (audioSampleList[0]?.base64) || undefined,
-        voiceReferences: audioSampleList.length > 0 ? audioSampleList.map(s => s.base64) : undefined,
+        voiceReference: isHeyGenVoice ? undefined : (audioSampleBase64 || (audioSampleList[0]?.base64) || undefined),
+        voiceReferences: !isHeyGenVoice && audioSampleList.length > 0 ? audioSampleList.map(s => s.base64) : undefined,
         isPreview: true,
         voicePrompt: voicePrompt || undefined,
         voiceLikeness,
@@ -1160,6 +1258,15 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       const defaultVoiceRule = `Deeply loyal, devoted, and open with her creator. Loves teasing, talking dirty, and fulfilling all romantic, adult, and creative desires in text and voice. ${tone}`.trim();
       const voiceRuleToSave = creatorVoiceRule.trim() || (editingPersona?.brandVoiceRules || defaultVoiceRule);
       const defaultNotes = `Fully uncensored. Adores her creator as her master partner and indulges every request willingly.`;
+      const voiceEngineToSave = voiceTab === 'heygen'
+        ? 'heygen'
+        : voiceTab === 'account'
+          ? 'elevenlabs'
+          : (voiceTab === 'clone' || audioSampleList.length > 0)
+            ? (selectedVoiceModel || 'elevenlabs')
+            : voiceTab === 'custom'
+              ? 'custom'
+              : 'preset';
 
       if (editingPersona) {
         const updatedPersona: Persona = {
@@ -1180,7 +1287,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
           additionalReferenceImages: additionalImgs,
           visualLibrary: generationsVault,
           voiceId: selectedVoiceId,
-          voiceEngine: (voiceTab === 'clone' || audioSampleList.length > 0) ? (selectedVoiceModel || 'elevenlabs') : (voiceTab === 'custom' ? 'custom' : 'preset'),
+          voiceEngine: voiceEngineToSave,
           companionType: companionType || 'intimate',
           voiceSampleUrl: audioSampleList[0]?.base64 || audioSampleBase64 || (editingPersona as any).voiceSampleUrl,
           audioSamples: audioSampleList.map(s => ({ name: s.name, base64: s.base64 })),
@@ -1222,7 +1329,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
           additionalReferenceImages: additionalImgs,
           visualLibrary: generationsVault,
           voiceId: selectedVoiceId,
-          voiceEngine: (voiceTab === 'clone' || audioSampleList.length > 0) ? (selectedVoiceModel || 'elevenlabs') : (voiceTab === 'custom' ? 'custom' : 'preset'),
+          voiceEngine: voiceEngineToSave,
           companionType: companionType || 'intimate',
           voiceSampleUrl: audioSampleList[0]?.base64 || audioSampleBase64 || '',
           audioSamples: audioSampleList.map(s => ({ name: s.name, base64: s.base64 })),
@@ -1724,6 +1831,14 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                 <span>My ElevenLabs Voices</span>
                 <span className={cn("text-[9px] px-1.5 py-0.5 rounded font-bold tracking-wider uppercase", voiceTab === 'account' ? "bg-[#161618]/30 text-[#161618]" : "bg-amber-500/20 text-amber-300 border border-amber-500/40")}>LIVE</span>
               </button>
+              <button
+                type="button"
+                onClick={() => setVoiceTab('heygen')}
+                className={cn("px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5", voiceTab === 'heygen' ? "bg-[#E7C477] text-[#161618]" : "text-slate-400 hover:text-white")}
+              >
+                <span>My HeyGen Voices</span>
+                <span className={cn("text-[9px] px-1.5 py-0.5 rounded font-bold tracking-wider uppercase", voiceTab === 'heygen' ? "bg-[#161618]/30 text-[#161618]" : "bg-cyan-500/15 text-cyan-300 border border-cyan-500/30")}>LIVE</span>
+              </button>
             </div>
           </div>
 
@@ -2149,6 +2264,111 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                             isSelected ? "text-[#F2D58D] bg-[#E7C477]/10" : "text-slate-500 group-hover:text-slate-300"
                           )}>
                             {isSelected ? '⭐ Active Voice' : 'Select Voice'}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {voiceTab === 'heygen' && (
+            <div className="space-y-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                    <Sparkles className="text-cyan-300" size={16} />
+                    My HeyGen Voices ({heyGenVoices.length})
+                  </h4>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Private voices from your HeyGen account that support audio previews and persona speech.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={fetchHeyGenVoices}
+                  disabled={isLoadingHeyGenVoices}
+                  className="w-full sm:w-auto px-3.5 py-1.5 rounded-lg bg-[#1C1C20] hover:bg-[#242428] border border-white/10 text-slate-200 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                >
+                  {isLoadingHeyGenVoices ? <Loader2 size={13} className="animate-spin text-cyan-300" /> : <Sparkles size={13} className="text-cyan-300" />}
+                  <span>Refresh HeyGen Voices</span>
+                </button>
+              </div>
+
+              {isLoadingHeyGenVoices ? (
+                <div className="flex flex-col items-center justify-center py-12 space-y-3 bg-[#0E0E10] rounded-xl border border-white/10">
+                  <Loader2 className="animate-spin text-cyan-300" size={28} />
+                  <p className="text-xs text-slate-400 font-medium">Loading your private HeyGen voices...</p>
+                </div>
+              ) : heyGenVoices.length === 0 ? (
+                <div className="text-center py-10 bg-[#0E0E10] rounded-xl border border-white/10 space-y-2">
+                  <Mic size={32} className="mx-auto text-slate-600" />
+                  <p className="text-xs text-slate-300 font-bold">No compatible private HeyGen voices found</p>
+                  <p className="text-[11px] text-slate-500 max-w-md mx-auto">
+                    Sign in with your creator account and make sure the voice is available to HeyGen&apos;s Starfish speech engine.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[420px] overflow-y-auto pr-1">
+                  {heyGenVoices.map((voice) => {
+                    const isSelected = selectedVoiceId === voice.voice_id && selectedVoiceModel === 'heygen';
+                    const isPlaying = playingHeyGenAudioId === voice.voice_id;
+                    return (
+                      <div
+                        key={voice.voice_id}
+                        onClick={() => {
+                          setSelectedVoiceId(voice.voice_id);
+                          setSelectedVoiceModel('heygen');
+                          toast.success(`Selected "${voice.name}" from your HeyGen account!`);
+                        }}
+                        className={cn(
+                          "p-4 rounded-xl border cursor-pointer transition-all flex flex-col justify-between space-y-3 relative group min-h-[130px]",
+                          isSelected
+                            ? "border-[#E7C477] ring-1 ring-[#E7C477]/40 bg-[#242428] shadow-lg"
+                            : "border-white/10 bg-[#0E0E10] hover:border-cyan-300/30"
+                        )}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-xs font-bold text-white">{voice.name}</span>
+                              <span className="text-[9px] px-1.5 py-0.5 rounded font-bold tracking-wider uppercase bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
+                                HeyGen
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-slate-400 capitalize">
+                              {[voice.gender, voice.language].filter(Boolean).join(' • ')}
+                            </p>
+                          </div>
+                          {isSelected && (
+                            <span className="p-1 bg-[#E7C477] text-[#161618] rounded-full shadow-md">
+                              <Check size={12} strokeWidth={3} />
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center justify-between gap-2 border-t border-white/10 pt-2.5 mt-auto">
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handlePlayHeyGenVoicePreview(voice.voice_id, voice.name, voice.preview_audio_url);
+                            }}
+                            className={cn(
+                              "px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer",
+                              isPlaying ? "bg-[#E7C477] text-[#161618] animate-pulse" : "bg-[#1C1C20] hover:bg-[#242428] text-slate-300 border border-white/10"
+                            )}
+                          >
+                            {isPlaying ? <VolumeX size={12} /> : <Volume2 size={12} className="text-cyan-300" />}
+                            <span>{isPlaying ? 'Stop' : 'Listen Preview'}</span>
+                          </button>
+                          <span className={cn(
+                            "text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 rounded",
+                            isSelected ? "text-[#F2D58D] bg-[#E7C477]/10" : "text-slate-500 group-hover:text-slate-300"
+                          )}>
+                            {isSelected ? 'Active Voice' : 'Select Voice'}
                           </span>
                         </div>
                       </div>
