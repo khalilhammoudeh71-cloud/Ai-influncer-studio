@@ -371,7 +371,6 @@ function App() {
 
   useEffect(() => {
     let cancelled = false;
-    let safetyTimer: ReturnType<typeof setTimeout> | undefined;
 
     hydratedAccountIdRef.current = null;
     if (!userId) {
@@ -388,12 +387,6 @@ function App() {
     recentPersonaIds.current = [];
 
     async function init() {
-      safetyTimer = setTimeout(() => {
-        if (cancelled) return;
-        console.warn('[App Init] Initialization safety timer triggered after 3s');
-        setIsLoading(false);
-      }, 3000);
-
       try {
         setIsLoading(true);
         const [loadResult] = await Promise.all([
@@ -513,7 +506,6 @@ function App() {
       } catch (err) {
         console.error('[App Init] Initialization error:', err);
       } finally {
-        if (safetyTimer) clearTimeout(safetyTimer);
         if (!cancelled) setIsLoading(false);
       }
     }
@@ -521,7 +513,6 @@ function App() {
 
     return () => {
       cancelled = true;
-      if (safetyTimer) clearTimeout(safetyTimer);
     };
   }, [loadPersonas, userId]);
 

@@ -1329,8 +1329,104 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       const controller = new AbortController();
       activeCallAbortControllerRef.current = controller;
 
-      // Single-hop Unified Real-Time Voice Endpoint (LLM generation + ElevenLabs Turbo in ONE parallel round-trip)
-      const res = await authFetch('/api/agent/voice-chat', {
+      let streamedReply = '';
+      let speechBuffer = '';
+      let streamMetadata: any = {};
+      let streamingSpeechQueued = false;
+      let streamingAudioPlayed = false;
+      let streamingPlayback = Promise.resolve();
+      const { voiceId: targetVoiceId, voiceReference: targetVoiceRef } = getActivePersonaVoice(activePersona);
+
+      const synthesizeSpeechSegment = async (segment: string): Promise<string | undefined> => {
+        const ttsResponse = await authFetch('/api/agent/voice-chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            activePersona,
+            directTTS: segment,
+            voiceId: targetVoiceId,
+            voiceReference: targetVoiceRef,
+            voiceModel: selectedVoiceEngine,
+            ttsModel: selectedVoiceEngine,
+          }),
+          signal: controller.signal,
+        });
+        if (!ttsResponse.ok) return undefined;
+        const ttsData = await ttsResponse.json().catch(() => ({}));
+        return ttsData.audioUrl;
+      };
+
+      const playPreparedSegment = async (audioPromise: Promise<string | undefined>) => {
+        const audioUrl = await audioPromise.catch(() => undefined);
+        if (!audioUrl || controller.signal.aborted || callTurnId !== callTurnIdRef.current || !isCallActiveRef.current) return;
+
+        await new Promise<void>((resolve) => {
+          const audio = new Audio();
+          audioRef.current = audio;
+          audio.src = audioUrl;
+          audio.volume = 1;
+          let settled = false;
+
+          const finish = () => {
+            if (settled) return;
+            settled = true;
+            controller.signal.removeEventListener('abort', finish);
+            if (audioRef.current === audio) audioRef.current = null;
+            resolve();
+          };
+
+          controller.signal.addEventListener('abort', finish, { once: true });
+          audio.onended = finish;
+          audio.onerror = finish;
+          audio.onplay = () => {
+            streamingAudioPlayed = true;
+            personaSpeakingStartTimeRef.current = Date.now();
+            setCallStatus('speaking');
+            isAgentSpeakingRef.current = true;
+            // Let a new committed transcript barge in while this phrase plays.
+            voiceCallBusyRef.current = false;
+            if (!isMutedRef.current) restartSpeechRecognition();
+          };
+
+          audio.play().catch(finish);
+        });
+      };
+
+      const queueSpeechSegment = (segment: string) => {
+        const cleanSegment = segment.replace(/\s+/g, ' ').trim();
+        if (!speakerOn || cleanSegment.length < 2) return;
+        streamingSpeechQueued = true;
+        const audioPromise = synthesizeSpeechSegment(cleanSegment);
+        streamingPlayback = streamingPlayback.then(() => playPreparedSegment(audioPromise));
+      };
+
+      const flushSpeechBuffer = (force = false) => {
+        while (speechBuffer.trim()) {
+          const normalized = speechBuffer.trimStart();
+          const sentenceMatch = normalized.match(/^([\s\S]{18,220}?[.!?])(?:\s|$)/);
+          if (sentenceMatch) {
+            queueSpeechSegment(sentenceMatch[1]);
+            speechBuffer = normalized.slice(sentenceMatch[0].length);
+            continue;
+          }
+          if (normalized.length > 180) {
+            const preferredBreak = Math.max(normalized.lastIndexOf(',', 150), normalized.lastIndexOf(';', 150), normalized.lastIndexOf(' ', 150));
+            const splitAt = preferredBreak > 50 ? preferredBreak + 1 : 150;
+            queueSpeechSegment(normalized.slice(0, splitAt));
+            speechBuffer = normalized.slice(splitAt);
+            continue;
+          }
+          if (force) {
+            queueSpeechSegment(normalized);
+            speechBuffer = '';
+          }
+          break;
+        }
+      };
+
+      // Stream LLM text immediately, and synthesize each complete phrase while
+      // the rest of the response is still being generated.
+      const res = await authFetch('/api/agent/voice-chat-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1356,8 +1452,42 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         }),
         signal: controller.signal,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed call dialogue response');
+      if (!res.ok || !res.body) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed streaming call dialogue response');
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let eventBuffer = '';
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        eventBuffer += decoder.decode(value, { stream: true });
+        const events = eventBuffer.split('\n\n');
+        eventBuffer = events.pop() || '';
+
+        for (const event of events) {
+          const payloadLine = event.split('\n').find(line => line.startsWith('data:'));
+          if (!payloadLine) continue;
+          const payload = JSON.parse(payloadLine.slice(5).trim());
+          if (payload.error) throw new Error(payload.error);
+          if (payload.text && !payload.done) {
+            streamedReply += payload.text;
+            speechBuffer += payload.text;
+            currentPersonaSpeechRef.current = streamedReply.toLowerCase().trim();
+            flushSpeechBuffer(false);
+          }
+          if (payload.done) streamMetadata = payload;
+        }
+      }
+      flushSpeechBuffer(true);
+
+      const data = {
+        ...streamMetadata,
+        text: streamMetadata.text || streamedReply,
+      };
+      if (!data.text) throw new Error('The streaming voice response was empty');
       
       clearTimeout(watchdogTimer);
 
@@ -1513,6 +1643,21 @@ export default function AssistantView({ personas, persona: propActivePersona, on
             if (audioRef.current === audio) audioRef.current = null;
             onCallAudioEnded();
           }
+        }
+      } else if (streamingSpeechQueued && isCallActiveRef.current) {
+        await streamingPlayback;
+        if (callTurnId !== callTurnIdRef.current || !isCallActiveRef.current) return;
+        if (!streamingAudioPlayed) {
+          await playTTS(reply, () => {
+            setCallStatus('speaking');
+            isAgentSpeakingRef.current = true;
+          });
+        } else {
+          isAgentSpeakingRef.current = false;
+          voiceCallBusyRef.current = false;
+          currentPersonaSpeechRef.current = '';
+          setCallStatus('listening');
+          restartSpeechRecognition();
         }
       } else if (isCallActiveRef.current) {
         setCallTranscript(prev => {

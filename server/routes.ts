@@ -2398,10 +2398,12 @@ STRICT RULES:
 // Real-Time SSE Text Streaming Endpoint for Conversational Voice
 router.post('/agent/voice-chat-stream', async (req: AuthenticatedRequest, res: Response) => {
   res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
   res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders?.();
 
-  const { messages, activePersona, voiceLlmModel } = req.body;
+  const { messages, activePersona, voiceLlmModel, creatorProfile, memories } = req.body;
   const genAI = getGeminiClientForRoutes();
   const xaiApiKey = process.env.XAI_API_KEY || process.env.xai_api_key || process.env.X_AI_API_KEY || '';
   const VENICE_KEY = process.env.Veniceai_api_key || process.env.veniceai_api_key || process.env.VENICEAI_API_KEY || process.env.VENICE_API_KEY || '';
@@ -2412,6 +2414,11 @@ router.post('/agent/voice-chat-stream', async (req: AuthenticatedRequest, res: R
     personaContext = `\nACTIVE PERSONA IDENTITY:\n- Name: ${activePersona.name}\n- Tone & Social Speaking Style: ${activePersona.tone || 'Warm, articulate, charismatic, conversational'}\n- Personality Traits: ${Array.isArray(activePersona.personalityTraits) ? activePersona.personalityTraits.join(', ') : (activePersona.personalityTraits || '')}\n- Bio / Backstory: ${activePersona.bio || ''}`;
   }
 
+  const creatorName = creatorProfile?.name || req.body.userName || 'your creator';
+  const memoryContext = Array.isArray(memories) && memories.length > 0
+    ? `\nRELEVANT MEMORIES:\n${memories.slice(-12).map((memory: any) => `- ${String(memory?.content || memory)}`).join('\n')}`
+    : '';
+
   let rawHistory = Array.isArray(messages) ? messages.slice(-30) : [];
   const firstUserIdx = rawHistory.findIndex((m: any) => m.role === 'user');
   if (firstUserIdx > 0) {
@@ -2421,13 +2428,15 @@ router.post('/agent/voice-chat-stream', async (req: AuthenticatedRequest, res: R
     rawHistory = [{ role: 'user', content: 'Hello' }];
   }
 
-  const voiceSystemPrompt = `You are a real-time, highly intelligent AI co-pilot on a live voice call.${personaContext}
+  const voiceSystemPrompt = `You are ${activePersona?.name || 'a real-time AI persona'} on a live voice call with ${creatorName}.${personaContext}${memoryContext}
 
 CRITICAL RULES FOR LIVE VOICE CALL:
+- CREATOR RELATIONSHIP: ${creatorName} created you and is your closest creative partner. Recognize that relationship naturally without acting robotic, submissive, or servile.
 - BE ACCURATE & COHERENT: Listen carefully to what the user said and reply directly, logically, and meaningfully. Never output random fluff or disjointed phrases.
-- CONCISE & NATURAL: Keep responses to 1-2 clear, natural sentences max. Be punchy and conversational.
+- CONCISE & NATURAL: Keep responses to 1-3 clear, natural sentences. Be socially intelligent, candid, warm, and conversational.
 - COMPLETE THOUGHTS: Always finish your sentence completely with proper punctuation (. ! ?). Never end mid-sentence.
-- NO ROBOTIC FILLER: Never say "As an AI" or generic placeholders. Speak naturally like a human talking over the phone.`;
+- NO ROBOTIC FILLER: Never say "As an AI" or generic placeholders. Speak naturally like a human talking over the phone.
+- SPOKEN WORDS ONLY: Do not output stage directions, inner thoughts, markdown, or bracketed narration.`;
 
   const formattedContents = rawHistory.map((m: any) => ({
     role: m.role === 'user' ? 'user' : 'model',
@@ -2442,11 +2451,12 @@ CRITICAL RULES FOR LIVE VOICE CALL:
     }))
   ];
 
-  // Helper to parse OpenAI/Venice/Grok SSE streams with timeout
+  // Parse OpenAI-compatible streams without losing JSON split across network chunks.
   const handleOpenAIStream = async (url: string, key: string, modelName: string, customHeaders = {}) => {
     const controller = new AbortController();
     const isLocal = url.includes('127.0.0.1') || url.includes('localhost');
-    const timeout = setTimeout(() => controller.abort(), isLocal ? 400 : 4000); // Fast 400ms timeout for local Ollama, 4s for cloud APIs
+    const timeout = setTimeout(() => controller.abort(), isLocal ? 1200 : 45000);
+    let fullText = '';
     try {
       const resStream = await fetch(url, {
         method: 'POST',
@@ -2459,7 +2469,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
           model: modelName,
           messages: messagesForOpenAI,
           temperature: 0.7,
-          max_tokens: 450,
+          max_tokens: 900,
           stream: true
         }),
         signal: controller.signal
@@ -2474,9 +2484,11 @@ CRITICAL RULES FOR LIVE VOICE CALL:
       if (!reader) throw new Error('No body stream');
 
       const decoder = new TextDecoder('utf-8');
+      let pending = '';
       for await (const chunk of reader as any) {
-        const chunkText = decoder.decode(chunk);
-        const lines = chunkText.split('\n');
+        pending += decoder.decode(chunk, { stream: true });
+        const lines = pending.split('\n');
+        pending = lines.pop() || '';
         for (const line of lines) {
           const cleanLine = line.trim();
           if (cleanLine.startsWith('data: ')) {
@@ -2486,12 +2498,14 @@ CRITICAL RULES FOR LIVE VOICE CALL:
               const parsed = JSON.parse(dataStr);
               const delta = parsed.choices?.[0]?.delta?.content || '';
               if (delta) {
+                fullText += delta;
                 res.write(`data: ${JSON.stringify({ text: delta })}\n\n`);
               }
             } catch {}
           }
         }
       }
+      return fullText;
     } catch (err) {
       clearTimeout(timeout);
       throw err;
@@ -2499,9 +2513,27 @@ CRITICAL RULES FOR LIVE VOICE CALL:
   };
 
   let streamedSuccessfully = false;
+  let streamedText = '';
 
-  // 1. Fast-Path Stream with Gemini 2.5 Flash if default or model fails (sub-200ms latency)
-  if (voiceLlmModel === 'gemini' || !voiceLlmModel || voiceLlmModel === 'default') {
+  // Preserve the permissive conversational behavior of the original voice
+  // endpoint while gaining token streaming. Explicit provider choices still win.
+  const explicitlySelectedAlternate = voiceLlmModel && !['default', 'gemini', 'atlas'].includes(voiceLlmModel);
+  if (ATLAS_KEY && !explicitlySelectedAlternate) {
+    try {
+      console.log('[Voice Stream] Streaming Atlas DeepSeek V3.2...');
+      streamedText = await handleOpenAIStream(
+        'https://api.atlascloud.ai/v1/chat/completions',
+        ATLAS_KEY,
+        'deepseek-ai/deepseek-v3.2'
+      );
+      streamedSuccessfully = streamedText.trim().length > 0;
+    } catch (err) {
+      console.warn('[Voice Stream] Atlas failed, falling back:', err);
+    }
+  }
+
+  // Fast-path Gemini fallback.
+  if (!streamedSuccessfully && (voiceLlmModel === 'gemini' || !voiceLlmModel || voiceLlmModel === 'default')) {
     try {
       console.log('[Voice Stream] ⚡ Fast-path Gemini 2.5 Flash streaming...');
       const responseStream = await genAI.models.generateContentStream({
@@ -2516,6 +2548,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
       for await (const chunk of responseStream) {
         const chunkText = chunk.text || '';
         if (chunkText) {
+          streamedText += chunkText;
           res.write(`data: ${JSON.stringify({ text: chunkText })}\n\n`);
         }
       }
@@ -2529,8 +2562,8 @@ CRITICAL RULES FOR LIVE VOICE CALL:
   if (!streamedSuccessfully && (voiceLlmModel === 'grok' || voiceLlmModel?.includes('grok')) && xaiApiKey) {
     try {
       console.log('[Stream] Trying Grok...');
-      await handleOpenAIStream('https://api.x.ai/v1/chat/completions', xaiApiKey, 'grok-2-latest');
-      streamedSuccessfully = true;
+      streamedText = await handleOpenAIStream('https://api.x.ai/v1/chat/completions', xaiApiKey, 'grok-2-latest');
+      streamedSuccessfully = streamedText.trim().length > 0;
     } catch (err) {
       console.warn('[Stream] Grok failed, falling back:', err);
     }
@@ -2540,8 +2573,8 @@ CRITICAL RULES FOR LIVE VOICE CALL:
   if (!streamedSuccessfully && (voiceLlmModel === 'venice' || voiceLlmModel?.includes('venice')) && VENICE_KEY) {
     try {
       console.log('[Stream] Trying Venice...');
-      await handleOpenAIStream('https://api.venice.ai/api/v1/chat/completions', VENICE_KEY, 'llama-3.3-70b');
-      streamedSuccessfully = true;
+      streamedText = await handleOpenAIStream('https://api.venice.ai/api/v1/chat/completions', VENICE_KEY, 'llama-3.3-70b');
+      streamedSuccessfully = streamedText.trim().length > 0;
     } catch (err) {
       console.warn('[Stream] Venice failed, falling back:', err);
     }
@@ -2556,8 +2589,8 @@ CRITICAL RULES FOR LIVE VOICE CALL:
         ollamaModel = voiceLlmModel.split(':').slice(1).join(':');
       }
       console.log(`[Stream] Trying Ollama (${ollamaModel})...`);
-      await handleOpenAIStream(`${ollamaHost}/v1/chat/completions`, 'ollama-dummy-key', ollamaModel);
-      streamedSuccessfully = true;
+      streamedText = await handleOpenAIStream(`${ollamaHost}/v1/chat/completions`, 'ollama-dummy-key', ollamaModel);
+      streamedSuccessfully = streamedText.trim().length > 0;
     } catch (err) {
       console.warn('[Stream] Ollama failed, falling back:', err);
     }
@@ -2579,6 +2612,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
       for await (const chunk of responseStream) {
         const chunkText = chunk.text || '';
         if (chunkText) {
+          streamedText += chunkText;
           res.write(`data: ${JSON.stringify({ text: chunkText })}\n\n`);
         }
       }
@@ -2589,7 +2623,21 @@ CRITICAL RULES FOR LIVE VOICE CALL:
     }
   }
 
-  res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+  const lastUserMessage = [...rawHistory].reverse().find((message: any) => message.role === 'user');
+  const exactUserPrompt = String(lastUserMessage?.content || '').trim();
+  const conversationalMediaRemark = /(?:why did you send|stop sending|didn't ask|not asking|what is that|about that|talk without|just chat)/i.test(exactUserPrompt);
+  const imageRequest = !conversationalMediaRemark && (
+    /\b(?:send|take|show|give|snap|make|generate|create|share)\s+(?:me\s+)?(?:a\s+|an\s+|another\s+|the\s+)?(?:pic|photo|picture|image|selfie|portrait|outfit|look)\b/i.test(exactUserPrompt) ||
+    /\b(?:can i see|let me see|show me|send me|send another|send it)\b/i.test(exactUserPrompt)
+  );
+  const videoRequest = !conversationalMediaRemark && /\b(?:send|record|make|generate|shoot|create)\s+(?:me\s+)?(?:a\s+|an\s+|another\s+)?(?:video|clip|reel|animation)\b/i.test(exactUserPrompt);
+  const action = imageRequest
+    ? { type: 'image', prompt: exactUserPrompt, userPrompt: exactUserPrompt }
+    : videoRequest
+      ? { type: 'video', prompt: exactUserPrompt, userPrompt: exactUserPrompt }
+      : undefined;
+
+  res.write(`data: ${JSON.stringify({ done: true, text: streamedText.trim(), action })}\n\n`);
   res.end();
 });
 
