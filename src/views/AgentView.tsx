@@ -487,7 +487,7 @@ function audioBufferToWav(buffer: AudioBuffer): Blob {
   return new Blob([bufferArr], { type: 'audio/wav' });
 }
 export default function AgentView({ personas, setPersonas, selectedPersonaId: propSelectedPersonaId, onSelectPersona, nav }: AgentViewProps) {
-  const effectiveSelectedPersonaId = propSelectedPersonaId ?? (typeof localStorage !== 'undefined' ? (localStorage.getItem('ai_influencer_selected_id') || localStorage.getItem('selected_persona_id')) : undefined);
+  const effectiveSelectedPersonaId = propSelectedPersonaId;
   const [inputText, setInputText] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);

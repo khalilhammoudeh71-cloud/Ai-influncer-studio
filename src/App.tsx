@@ -61,6 +61,69 @@ const EMPTY_PERSONA: Persona = {
   personaNotes: '',
 };
 
+const ACCOUNT_STORAGE_VERSION = 'v1';
+const LEGACY_PERSONA_STORAGE_KEYS = [
+  'ai_influencer_personas',
+  'ai_influencers_local_backup',
+  'ai-influencer-studio-personas',
+  'personas_data',
+  'studio_personas',
+] as const;
+
+const accountStorageKey = (base: string, userId: string) =>
+  `${base}:${ACCOUNT_STORAGE_VERSION}:${userId}`;
+
+const getAccountStorageKeys = (userId: string) => ({
+  personas: accountStorageKey('ai_influencer_personas', userId),
+  backup: accountStorageKey('ai_influencers_local_backup', userId),
+  selectedPersona: accountStorageKey('ai_influencer_selected_id', userId),
+  recentPersonas: accountStorageKey('recent_persona_ids', userId),
+  databaseMigrated: accountStorageKey('ai_influencer_db_migrated', userId),
+});
+
+function readStoredArray<T>(keys: readonly string[]): T[] {
+  for (const key of keys) {
+    const saved = localStorage.getItem(key);
+    if (!saved) continue;
+    try {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed as T[];
+    } catch {}
+  }
+  return [];
+}
+
+function migrateMatchingLegacyPersonaCache(userId: string, serverPersonas: Persona[]) {
+  const keys = getAccountStorageKeys(userId);
+  if (localStorage.getItem(keys.personas) || serverPersonas.length === 0) return;
+
+  const serverIds = new Set(serverPersonas.map(persona => persona.id));
+  const matchingPersonas = readStoredArray<Persona>(LEGACY_PERSONA_STORAGE_KEYS)
+    .filter(persona => persona?.id && serverIds.has(persona.id));
+
+  if (matchingPersonas.length === 0) return;
+
+  try {
+    const payload = JSON.stringify(matchingPersonas);
+    localStorage.setItem(keys.personas, payload);
+    localStorage.setItem(keys.backup, payload);
+
+    const legacySelected = localStorage.getItem('ai_influencer_selected_id')
+      || localStorage.getItem('selected_persona_id');
+    if (legacySelected && serverIds.has(legacySelected)) {
+      localStorage.setItem(keys.selectedPersona, legacySelected);
+    }
+
+    const legacyRecent = readStoredArray<string>(['recent_persona_ids'])
+      .filter(personaId => serverIds.has(personaId));
+    if (legacyRecent.length > 0) {
+      localStorage.setItem(keys.recentPersonas, JSON.stringify(legacyRecent));
+    }
+  } catch (error) {
+    console.warn('[LocalStorage] Could not migrate the matching legacy persona cache:', error);
+  }
+}
+
 import { supabase } from './lib/supabase';
 import toast from 'react-hot-toast';
 
@@ -230,32 +293,17 @@ function App() {
     localStorage.setItem('ai_influencer_nav_stack', JSON.stringify([entry]));
   }, []);
 
-  const [personas, setPersonasLocal] = useState<Persona[]>(() => {
-    try {
-      const saved = localStorage.getItem('ai_influencer_personas') || localStorage.getItem('ai_influencers_local_backup');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {}
-    return [];
-  });
+  const userId = typeof user?.id === 'string' ? user.id : null;
+  const [personas, setPersonasLocal] = useState<Persona[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const [selectedPersonaId, setSelectedPersonaId] = useState<string>(() => {
-    const saved = localStorage.getItem('ai_influencer_selected_id');
-    const legacySelected = localStorage.getItem('selected_persona_id');
-    if (saved && saved !== 'empty' && saved !== 'user-1786418027030') return saved;
-    if (legacySelected && legacySelected !== 'empty' && legacySelected !== 'user-1786418027030') return legacySelected;
-    return 'empty';
-  });
+  const [selectedPersonaId, setSelectedPersonaId] = useState<string>('empty');
 
-  const hasMigrated = useRef(false);
+  const hydratedAccountIdRef = useRef<string | null>(null);
+  const migratedAccountIdsRef = useRef(new Set<string>());
   const prevTabRef = useRef<Tab>('personas');
   const tabDirectionRef = useRef<'right' | 'left'>('right');
-  const recentPersonaIds = useRef<string[]>(
-    (() => { try { return JSON.parse(localStorage.getItem('recent_persona_ids') || '[]') as string[]; } catch { return []; } })()
-  );
+  const recentPersonaIds = useRef<string[]>([]);
 
   const [isPersonaSwitcherOpen, setIsPersonaSwitcherOpen] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
@@ -284,51 +332,49 @@ function App() {
 
   // Track recently used persona
   const trackPersonaUse = (id: string) => {
+    if (!userId) return;
     const list = [id, ...recentPersonaIds.current.filter((x: string) => x !== id)].slice(0, 10);
     recentPersonaIds.current = list;
-    localStorage.setItem('recent_persona_ids', JSON.stringify(list));
+    localStorage.setItem(getAccountStorageKeys(userId).recentPersonas, JSON.stringify(list));
   };
 
   const loadPersonas = useCallback(async () => {
+    if (!userId) return [];
+    const storageKeys = getAccountStorageKeys(userId);
     try {
       const data = await api.personas.list();
       if (Array.isArray(data) && data.length > 0) {
-        setPersonasLocal(data);
-        try { localStorage.setItem('ai_influencers_local_backup', JSON.stringify(data)); } catch {}
+        try { localStorage.setItem(storageKeys.backup, JSON.stringify(data)); } catch {}
         return data;
-      } else {
-        const saved = localStorage.getItem('ai_influencer_personas') || localStorage.getItem('ai_influencers_local_backup');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setPersonasLocal(parsed);
-            return parsed;
-          }
-        }
       }
-      setPersonasLocal([]);
-      return [];
+      return readStoredArray<Persona>([storageKeys.personas, storageKeys.backup]);
     } catch (err) {
       console.error('[API] Failed to load personas:', err);
-      const saved = localStorage.getItem('ai_influencer_personas') || localStorage.getItem('ai_influencers_local_backup');
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setPersonasLocal(parsed);
-            return parsed;
-          }
-        } catch {}
-      }
-      setPersonasLocal([]);
-      return [];
+      return readStoredArray<Persona>([storageKeys.personas, storageKeys.backup]);
     }
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
+    let cancelled = false;
+    let safetyTimer: ReturnType<typeof setTimeout> | undefined;
+
+    hydratedAccountIdRef.current = null;
+    if (!userId) {
+      setPersonasLocal([]);
+      setSelectedPersonaId('empty');
+      recentPersonaIds.current = [];
+      setIsLoading(false);
+      return () => { cancelled = true; };
+    }
+
+    const storageKeys = getAccountStorageKeys(userId);
+    setPersonasLocal([]);
+    setSelectedPersonaId('empty');
+    recentPersonaIds.current = [];
+
     async function init() {
-      if (!user) return;
-      const safetyTimer = setTimeout(() => {
+      safetyTimer = setTimeout(() => {
+        if (cancelled) return;
         console.warn('[App Init] Initialization safety timer triggered after 3s');
         setIsLoading(false);
       }, 3000);
@@ -336,7 +382,11 @@ function App() {
       try {
         setIsLoading(true);
         let serverPersonas = await loadPersonas();
-        const localPersonas = getLocalStoragePersonas();
+        if (cancelled) return;
+
+        migrateMatchingLegacyPersonaCache(userId, serverPersonas);
+        const localPersonas = getLocalStoragePersonas(userId);
+        recentPersonaIds.current = readStoredArray<string>([storageKeys.recentPersonas]);
 
         const cleanPersonas = (list: Persona[]) => {
           if (!Array.isArray(list)) return [];
@@ -374,6 +424,7 @@ function App() {
 
         const activeList = cleanPersonas([...localPersonas, ...(Array.isArray(serverPersonas) ? serverPersonas : [])]);
         const finalActive = activeList;
+        if (cancelled) return;
         setPersonasLocal(finalActive);
         try {
           // Cache to localStorage
@@ -384,13 +435,13 @@ function App() {
             additionalReferenceImages: (p.additionalReferenceImages || []).map((img, i) => img?.startsWith('data:') ? `/uploads/ref_${p.id}_add_${i}.jpg` : img).filter(Boolean),
             visualLibrary: (p.visualLibrary || []).map((v, i) => ({ ...v, url: v.url?.startsWith('data:') ? `/uploads/vis_${p.id}_${i}.jpg` : v.url })),
           }));
-          localStorage.setItem('ai_influencer_personas', JSON.stringify(lightList));
+          localStorage.setItem(storageKeys.personas, JSON.stringify(lightList));
         } catch (e) {
           console.warn('[LocalStorage] Could not cache personas:', e);
         }
 
-        // Purge Luna from all local storage keys
-        ['ai_influencer_personas', 'ai-influencer-studio-personas', 'personas_data', 'studio_personas'].forEach(key => {
+        // Keep retired placeholder personas out of this account's cache.
+        [storageKeys.personas, storageKeys.backup].forEach(key => {
           const saved = localStorage.getItem(key);
           if (saved) {
             try {
@@ -403,58 +454,72 @@ function App() {
           }
         });
 
-        // Keep the selected persona valid without seeding another creator's data.
-        const currentSelected = finalActive.find(p => p.id === selectedPersonaId);
-        if (!currentSelected || selectedPersonaId.toLowerCase().includes('luna') || selectedPersonaId === 'empty') {
-          const nextSelectedId = finalActive[0]?.id || 'empty';
-          setSelectedPersonaId(nextSelectedId);
-          localStorage.setItem('ai_influencer_selected_id', nextSelectedId);
-        }
+        // Hydrate selection only from this authenticated account's namespace.
+        const storedSelectedId = localStorage.getItem(storageKeys.selectedPersona);
+        const nextSelectedId = storedSelectedId
+          && storedSelectedId !== 'empty'
+          && finalActive.some(persona => persona.id === storedSelectedId)
+          ? storedSelectedId
+          : finalActive[0]?.id || 'empty';
+        hydratedAccountIdRef.current = userId;
+        setSelectedPersonaId(nextSelectedId);
+        localStorage.setItem(storageKeys.selectedPersona, nextSelectedId);
 
         // Background sync custom personas to server & delete Luna from server DB
         serverPersonas.filter(p => p.id && p.id.toLowerCase().includes('luna')).forEach(p => api.personas.delete(p.id).catch(() => {}));
         const serverIds = new Set(serverPersonas.map(p => p.id));
         activeList.filter(p => !serverIds.has(p.id)).forEach(p => api.personas.create(p).catch(() => {}));
 
-        if (!hasMigrated.current && !localStorage.getItem('ai_influencer_db_migrated')) {
-          hasMigrated.current = true;
+        if (!migratedAccountIdsRef.current.has(userId) && !localStorage.getItem(storageKeys.databaseMigrated)) {
+          migratedAccountIdsRef.current.add(userId);
 
-          const localRevenue = getLocalStorageRevenue(localPersonas);
-          const localPlans = getLocalStoragePlans(localPersonas);
+          const localRevenue = getLocalStorageRevenue(localPersonas, userId);
+          const localPlans = getLocalStoragePlans(localPersonas, userId);
 
           if (localPersonas.length > 0) {
             console.log(`[Migration] Migrating ${localPersonas.length} personas to server...`);
             try {
               await api.migrate({ personas: localPersonas, revenueEntries: localRevenue, plannedPosts: localPlans });
+              if (cancelled) return;
               serverPersonas = await loadPersonas();
-              localStorage.setItem('ai_influencer_db_migrated', 'true');
+              if (cancelled) return;
+              localStorage.setItem(storageKeys.databaseMigrated, 'true');
               console.log('[Migration] Complete');
             } catch (err) {
               console.error('[Migration] Failed, will retry on next load:', err);
             }
           } else {
-            localStorage.setItem('ai_influencer_db_migrated', 'true');
+            localStorage.setItem(storageKeys.databaseMigrated, 'true');
           }
         }
       } catch (err) {
         console.error('[App Init] Initialization error:', err);
       } finally {
-        clearTimeout(safetyTimer);
-        setIsLoading(false);
+        if (safetyTimer) clearTimeout(safetyTimer);
+        if (!cancelled) setIsLoading(false);
       }
     }
     init();
-  }, [loadPersonas, user]);
+
+    return () => {
+      cancelled = true;
+      if (safetyTimer) clearTimeout(safetyTimer);
+    };
+  }, [loadPersonas, userId]);
 
   const setPersonas = useCallback(async (value: Persona[] | ((prev: Persona[]) => Persona[])) => {
+    if (!userId || hydratedAccountIdRef.current !== userId) return;
     const oldPersonas = personas;
     const newPersonas = typeof value === 'function' ? value(oldPersonas) : value;
     setPersonasLocal(newPersonas);
 
-    try {
-      localStorage.setItem('ai_influencer_personas', JSON.stringify(newPersonas));
-      localStorage.setItem('ai_influencers_local_backup', JSON.stringify(newPersonas));
-    } catch {}
+    if (userId) {
+      const storageKeys = getAccountStorageKeys(userId);
+      try {
+        localStorage.setItem(storageKeys.personas, JSON.stringify(newPersonas));
+        localStorage.setItem(storageKeys.backup, JSON.stringify(newPersonas));
+      } catch {}
+    }
 
     const oldIds = new Set(oldPersonas.map(p => p.id));
     const newIds = new Set(newPersonas.map(p => p.id));
@@ -476,7 +541,7 @@ function App() {
     } catch (err) {
       console.error('[API] Sync error:', err);
     }
-  }, [personas]);
+  }, [personas, userId]);
 
   useEffect(() => {
     if (personas.length === 0) {
@@ -489,8 +554,9 @@ function App() {
   }, [personas, selectedPersonaId]);
 
   useEffect(() => {
-    localStorage.setItem('ai_influencer_selected_id', selectedPersonaId);
-  }, [selectedPersonaId]);
+    if (!userId || hydratedAccountIdRef.current !== userId) return;
+    localStorage.setItem(getAccountStorageKeys(userId).selectedPersona, selectedPersonaId);
+  }, [selectedPersonaId, userId]);
 
   useEffect(() => {
     localStorage.setItem('ai_influencer_active_tab', activeTab);
@@ -1063,13 +1129,9 @@ function App() {
   );
 }
 
-function getLocalStoragePersonas(): Persona[] {
-  const keys = [
-    'ai_influencer_personas',
-    'ai-influencer-studio-personas',
-    'personas_data',
-    'studio_personas'
-  ];
+function getLocalStoragePersonas(userId: string): Persona[] {
+  const accountKeys = getAccountStorageKeys(userId);
+  const keys = [accountKeys.personas, accountKeys.backup];
 
   const personaMap = new Map<string, Persona>();
 
@@ -1114,10 +1176,10 @@ function getLocalStoragePersonas(): Persona[] {
   return Array.from(personaMap.values());
 }
 
-function getLocalStorageRevenue(personaList: Persona[]): Record<string, RevenueEntry[]> {
+function getLocalStorageRevenue(personaList: Persona[], userId: string): Record<string, RevenueEntry[]> {
   const result: Record<string, RevenueEntry[]> = {};
   for (const p of personaList) {
-    const saved = localStorage.getItem(`revenue_entries_${p.id}`);
+    const saved = localStorage.getItem(accountStorageKey(`revenue_entries_${p.id}`, userId));
     if (saved) {
       try {
         const entries = JSON.parse(saved);
@@ -1132,14 +1194,14 @@ function getLocalStorageRevenue(personaList: Persona[]): Record<string, RevenueE
   return result;
 }
 
-function getLocalStoragePlans(personaList: Persona[]): Record<string, Record<string, PlannedPost[]>> {
+function getLocalStoragePlans(personaList: Persona[], userId: string): Record<string, Record<string, PlannedPost[]>> {
   const result: Record<string, Record<string, PlannedPost[]>> = {};
   const platforms = ['Instagram', 'TikTok', 'YouTube', 'Twitter', 'LinkedIn'];
   for (const p of personaList) {
     for (const platform of platforms) {
       const keys = [
-        `planned_posts_${p.id}_${platform}`,
-        `content_plan_${p.id}_${platform}`,
+        accountStorageKey(`planned_posts_${p.id}_${platform}`, userId),
+        accountStorageKey(`content_plan_${p.id}_${platform}`, userId),
       ];
       for (const key of keys) {
         const saved = localStorage.getItem(key);
