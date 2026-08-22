@@ -18,7 +18,7 @@ import { GoogleGenAI } from '@google/genai';
 import convert from 'heic-convert';
 import { Jimp } from 'jimp';
 // Pool is imported dynamically in pushSchema to support different environments
-import apiRoutes, { globalDefaultVoiceRef, readLocalCreatorProfile, synthesizeClonedAudioWithWavespeed } from './routes';
+import apiRoutes, { globalDefaultVoiceRef, readCreatorProfileForUser, synthesizeClonedAudioWithWavespeed } from './routes';
 import stripeRoutes, { handleStripeWebhook } from './stripe-routes';
 import { requireAuth, deductCredits, isCreatorUser, AuthenticatedRequest } from './auth';
 
@@ -1120,9 +1120,9 @@ function cleanChatPromptToVisualScene(prompt: string, personaName: string, creat
   if (!prompt) return '';
   let cleaned = prompt.trim();
   
-  const creator = creatorProfile || readLocalCreatorProfile();
-  const creatorName = creator?.name || 'Dr. H';
-  const creatorAppearance = creator?.appearance || 'Charismatic male creator with sharp modern styling, short dark hair, and athletic build';
+  const creator = creatorProfile || null;
+  const creatorName = creator?.name || 'Creator';
+  const creatorAppearance = creator?.appearance || "the creator's configured appearance";
 
   const isDuo = /\b(with me|with you|me and you|you and me|of me and you|of you and me|me and her|her and me|us together|duo|together|both of us|us at|couple|holding you|holding me|holding each other|with (?:dr\.?\s*h|creator|partner)|kissing you|kissing me|with us)\b/i.test(prompt);
 
@@ -1160,9 +1160,9 @@ function buildPrompt(body: ImageGenRequest, useEditInstructionStyle = false): st
 
   if (isChatContext) {
     const rawScene = chatPrompt || (body as any).prompt || '';
-    const creator = (body as any).creatorProfile || readLocalCreatorProfile();
-    const creatorName = creator?.name || 'Dr. H';
-    const creatorAppearance = creator?.appearance || 'Charismatic male creator with sharp modern styling, short dark hair, and athletic build';
+    const creator = (body as any).creatorProfile || null;
+    const creatorName = creator?.name || 'Creator';
+    const creatorAppearance = creator?.appearance || "the creator's configured appearance";
     const hasDuoOrSecondPerson = /\b(you|ur|your|her|us|together|both|with you|with her|holding|fucking|touching|kissing|riding|sucking|eating|on top of|underneath|behind|couple|duo)\b/i.test(rawScene);
     const isCreatorSolo = !hasDuoOrSecondPerson && (/\b(image of me only|photo of me only|pic of me only|just me|of me only|portrait of me only|solo photo of me|only me|portrait of dr\.?\s*h)\b/i.test(rawScene) || !!(body as any).isCreatorSolo);
     const isDuo = hasDuoOrSecondPerson || /\b(with me|with you|me and you|you and me|of me and you|of you and me|me and her|her and me|us together|duo|together|both of us|us at|couple|holding you|holding me|holding each other|with (?:dr\.?\s*h|creator|partner)|kissing you|kissing me|with us)\b/i.test(rawScene) || !!(body as any).isDuoShoot;
@@ -3118,9 +3118,9 @@ app.post('/api/persona-greeting', async (req, res) => {
     const personaName = persona?.name || 'Creator';
     const personaNiche = persona?.niche || 'Lifestyle';
     const personaTone = persona?.tone || 'Confident, alluring, witty';
-    const storedCreator = readLocalCreatorProfile();
+    const storedCreator = await readCreatorProfileForUser((req as AuthenticatedRequest).user.id);
     const effectiveCreator = creatorProfile || storedCreator;
-    const effectiveUserName = effectiveCreator?.name || 'Dr. H';
+    const effectiveUserName = effectiveCreator?.name || 'Creator';
     const creatorDynamic = effectiveCreator?.customDynamic || '';
 
     // Extract recent messages to understand the last conversation vibe
@@ -3408,9 +3408,9 @@ app.post('/api/chat', async (req, res) => {
     const boundaries = persona.contentBoundaries ? `\nBoundaries: ${persona.contentBoundaries}` : '';
     const visualStyle = persona?.visualStyle || 'High fashion, natural photography';
 
-    const storedCreator = readLocalCreatorProfile();
+    const storedCreator = await readCreatorProfileForUser((req as AuthenticatedRequest).user.id);
     const effectiveCreator = creatorProfile || storedCreator;
-    const effectiveUserName = effectiveCreator?.name || req.body.userName || persona?.userProfile?.name || 'Dr. H';
+    const effectiveUserName = effectiveCreator?.name || req.body.userName || persona?.userProfile?.name || 'Creator';
     const creatorRole = effectiveCreator?.role || 'Creator, close partner, and primary companion';
     const creatorAppearance = effectiveCreator?.appearance || '';
     const creatorBio = effectiveCreator?.bio || '';
@@ -3419,7 +3419,7 @@ app.post('/api/chat', async (req, res) => {
     const hasCreatorPhotos = Array.isArray(effectiveCreator?.photos) && effectiveCreator.photos.length > 0;
     const creatorPrimaryPhoto = effectiveCreator?.primaryPhoto || (hasCreatorPhotos ? effectiveCreator.photos[0] : '');
 
-    let memoryContext = `\n\nCORE USER & CREATOR PROFILE (DR. H):
+    let memoryContext = `\n\nCORE USER & CREATOR PROFILE (${effectiveUserName.toUpperCase()}):
 • Creator Name: ${effectiveUserName}
 • Relationship / Role: ${creatorRole} (Address him naturally as ${effectiveUserName})
 • Physical Appearance & Styling: ${creatorAppearance || 'Charismatic male creator with sharp modern styling, short dark hair, and athletic build'}
@@ -4362,7 +4362,7 @@ app.post('/api/generate-image', async (req, res) => {
   }
 
   try {
-    const storedCreator = readLocalCreatorProfile();
+    const storedCreator = await readCreatorProfileForUser(authReq.user.id);
     const isDuo = Boolean((req.body as any).isDuoShoot);
     const isCreatorSolo = Boolean((req.body as any).isCreatorSolo);
     const creatorPhoto = (req.body as any).creatorProfile?.primaryPhoto || 
@@ -4380,7 +4380,7 @@ app.post('/api/generate-image', async (req, res) => {
 
     let imageUrls: string[] = [];
     let modelName = modelId;
-    let prompt = buildPrompt({ ...rest, referenceImage, additionalImages } as any);
+    let prompt = buildPrompt({ ...rest, creatorProfile: (rest as any).creatorProfile || storedCreator, referenceImage, additionalImages } as any);
 
     // Automatic LLM Visual Prompt Rephraser & Scene Enhancer (Wavespeed-style detailed prompt expander)
     if ((rest as any).isChatContext || (rest as any).chatPrompt || (rest as any).prompt) {
@@ -4391,8 +4391,8 @@ app.post('/api/generate-image', async (req, res) => {
           personaName: (rest as any).personaName || 'Model',
           personaNiche: (rest as any).niche,
           personaBio: (rest as any).bio,
-          creatorName: (rest as any).creatorProfile?.name || storedCreator?.name || 'Dr. H',
-          creatorAppearance: (rest as any).creatorProfile?.appearance || storedCreator?.appearance || 'Charismatic male creator with shaved head, trimmed dark beard, sharp masculine facial features, and athletic muscular build',
+          creatorName: (rest as any).creatorProfile?.name || storedCreator?.name || 'Creator',
+          creatorAppearance: (rest as any).creatorProfile?.appearance || storedCreator?.appearance || "the creator's configured appearance",
           isDuo,
           isCreatorSolo,
           hasPersonaRef: Boolean(referenceImage),
@@ -5540,6 +5540,84 @@ app.get('/api/elevenlabs-voices', async (_req, res) => {
   }
 });
 
+// ─── HeyGen Account Voices ───────────────────────────────────────────────────
+app.get('/api/heygen-voices', async (req: AuthenticatedRequest, res) => {
+  const authHeader = req.headers.authorization;
+  const isRealCreatorSession = Boolean(
+    authHeader?.startsWith('Bearer ') &&
+    req.user?.id &&
+    isCreatorUser(req.user.email)
+  );
+
+  if (!isRealCreatorSession) {
+    return res.status(403).json({ error: 'Creator sign-in required to view private HeyGen voices', voices: [] });
+  }
+  if (!HEYGEN_API_KEY) {
+    return res.status(503).json({ error: 'HeyGen API key not configured', voices: [] });
+  }
+
+  try {
+    const url = new URL('https://api.heygen.com/v3/voices');
+    url.searchParams.set('type', 'private');
+    url.searchParams.set('engine', 'starfish');
+    url.searchParams.set('limit', '100');
+
+    const response = await fetch(url, {
+      headers: {
+        'X-Api-Key': HEYGEN_API_KEY,
+        'Accept': 'application/json',
+      },
+      signal: AbortSignal.timeout(12000),
+    });
+    const payload = await response.json() as {
+      data?: Array<{
+        voice_id?: string;
+        name?: string;
+        language?: string;
+        gender?: string;
+        support_pause?: boolean;
+        support_locale?: boolean;
+        preview_audio_url?: string;
+      }>;
+      message?: string;
+      error?: { message?: string } | string;
+      has_more?: boolean;
+      next_token?: string | null;
+    };
+
+    if (!response.ok) {
+      const upstreamMessage = typeof payload.error === 'string'
+        ? payload.error
+        : payload.error?.message || payload.message;
+      return res.status(response.status).json({
+        error: upstreamMessage || 'Failed to fetch HeyGen voices',
+        voices: [],
+      });
+    }
+
+    const voices = Array.isArray(payload.data)
+      ? payload.data
+          .filter(voice => Boolean(voice.voice_id && voice.name))
+          .map(voice => ({
+            voice_id: voice.voice_id,
+            name: voice.name,
+            language: voice.language || 'Auto-detect',
+            gender: voice.gender || 'Neutral',
+            support_pause: Boolean(voice.support_pause),
+            support_locale: Boolean(voice.support_locale),
+            preview_audio_url: voice.preview_audio_url || '',
+          }))
+      : [];
+
+    return res.json({ voices, hasMore: Boolean(payload.has_more), nextToken: payload.next_token || null });
+  } catch (err) {
+    return res.status(500).json({
+      error: err instanceof Error ? err.message : 'Failed to fetch HeyGen voices',
+      voices: [],
+    });
+  }
+});
+
 async function extractAudioFromVideoFile(videoFilePath: string): Promise<Buffer | null> {
   const uploadsDir = path.join(process.cwd(), 'server', 'public', 'uploads');
   if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
@@ -5935,7 +6013,7 @@ async function handleTTS(req: express.Request, res: express.Response) {
     voiceReference,
   } = req.body as {
     text: string; voiceName?: string; voice?: string; voiceId?: string;
-    engine?: 'gemini' | 'openai' | 'elevenlabs' | 'omnivoice' | 'qwen-tts'; speed?: number;
+    engine?: 'gemini' | 'openai' | 'elevenlabs' | 'heygen' | 'omnivoice' | 'qwen-tts'; speed?: number;
     voiceSettings?: { stability?: number; similarity_boost?: number; style?: number };
     voiceReference?: string;
   };
@@ -6040,6 +6118,70 @@ async function handleTTS(req: express.Request, res: express.Response) {
   const voicePromptStr = ((req.body as any).voicePrompt || (req.body as any).performancePrompt || '').toLowerCase();
   const isMalePersona = /\b(man|male|guy|boy|gentleman|father|husband|masculine)\b/i.test(personaNameStr) || /\b(masculine|deep male voice|male speaker|man voice)\b/i.test(voicePromptStr);
   const defaultFallbackVoice = isMalePersona ? 'KLbbwrUTS6brBkjmN4Fp' : '6u6JbqKdaQy89ENzLSju'; // John vs Brielle
+
+  // HeyGen Starfish TTS keeps private HeyGen voices usable for previews and saved personas.
+  if (currentEngineStr.toLowerCase() === 'heygen') {
+    const authHeader = req.headers.authorization;
+    const isRealCreatorSession = Boolean(
+      authHeader?.startsWith('Bearer ') &&
+      (req as AuthenticatedRequest).user?.id &&
+      isCreatorUser((req as AuthenticatedRequest).user.email)
+    );
+    const heygenVoiceId = voiceId || voiceParam;
+    if (!isRealCreatorSession) {
+      return res.status(403).json({ error: 'Creator sign-in required to use private HeyGen voices' });
+    }
+    if (!HEYGEN_API_KEY) {
+      return res.status(503).json({ error: 'HeyGen API key not configured' });
+    }
+    if (!heygenVoiceId) {
+      return res.status(400).json({ error: 'A HeyGen voice ID is required' });
+    }
+
+    try {
+      const heygenResponse = await fetch('https://api.heygen.com/v3/voices/speech', {
+        method: 'POST',
+        headers: {
+          'X-Api-Key': HEYGEN_API_KEY,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        signal: AbortSignal.timeout(15000),
+        body: JSON.stringify({
+          text,
+          voice_id: heygenVoiceId,
+          speed: Math.min(2, Math.max(0.5, Number((req.body as any).voiceSpeakingSpeed ?? speed) || 1)),
+        }),
+      });
+      const heygenPayload = await heygenResponse.json() as {
+        data?: { audio_url?: string; duration?: number; request_id?: string | null };
+        message?: string;
+        error?: { message?: string } | string;
+      };
+
+      if (!heygenResponse.ok || !heygenPayload.data?.audio_url) {
+        const upstreamMessage = typeof heygenPayload.error === 'string'
+          ? heygenPayload.error
+          : heygenPayload.error?.message || heygenPayload.message;
+        return res.status(heygenResponse.status || 502).json({
+          error: upstreamMessage || 'HeyGen could not synthesize this voice',
+        });
+      }
+
+      return res.json({
+        audioUrl: heygenPayload.data.audio_url,
+        voice: heygenVoiceId,
+        model: 'heygen-starfish',
+        engine: 'heygen',
+        duration: heygenPayload.data.duration,
+      });
+    } catch (err) {
+      console.warn('[HeyGen Starfish TTS Error]:', err);
+      return res.status(502).json({
+        error: err instanceof Error ? err.message : 'HeyGen voice synthesis failed',
+      });
+    }
+  }
 
   const rawRefs: string[] = ((req.body as any).voiceReferences && Array.isArray((req.body as any).voiceReferences) && (req.body as any).voiceReferences.length > 0)
     ? (req.body as any).voiceReferences
@@ -7505,9 +7647,37 @@ async function pushSchema() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS workspace_states (
+        user_id TEXT NOT NULL,
+        state_key TEXT NOT NULL,
+        value TEXT NOT NULL,
+        updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        PRIMARY KEY (user_id, state_key),
+        CONSTRAINT workspace_states_key_length CHECK (char_length(state_key) BETWEEN 1 AND 180),
+        CONSTRAINT workspace_states_value_size CHECK (octet_length(value) <= 2000000)
+      );
+      ALTER TABLE workspace_states ENABLE ROW LEVEL SECURITY;
+      REVOKE ALL ON TABLE workspace_states FROM anon;
+      GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE workspace_states TO authenticated;
+      DO $workspace_policies$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'workspace_states' AND policyname = 'workspace_states_select_own') THEN
+          CREATE POLICY workspace_states_select_own ON workspace_states FOR SELECT TO authenticated USING ((SELECT auth.uid())::text = user_id);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'workspace_states' AND policyname = 'workspace_states_insert_own') THEN
+          CREATE POLICY workspace_states_insert_own ON workspace_states FOR INSERT TO authenticated WITH CHECK ((SELECT auth.uid())::text = user_id);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'workspace_states' AND policyname = 'workspace_states_update_own') THEN
+          CREATE POLICY workspace_states_update_own ON workspace_states FOR UPDATE TO authenticated USING ((SELECT auth.uid())::text = user_id) WITH CHECK ((SELECT auth.uid())::text = user_id);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'workspace_states' AND policyname = 'workspace_states_delete_own') THEN
+          CREATE POLICY workspace_states_delete_own ON workspace_states FOR DELETE TO authenticated USING ((SELECT auth.uid())::text = user_id);
+        END IF;
+      END
+      $workspace_policies$;
       CREATE TABLE IF NOT EXISTS personas (
         id SERIAL PRIMARY KEY,
-        client_id TEXT NOT NULL UNIQUE,
+        client_id TEXT NOT NULL,
         name TEXT NOT NULL DEFAULT '',
         niche TEXT NOT NULL DEFAULT '',
         tone TEXT NOT NULL DEFAULT '',
@@ -7530,7 +7700,7 @@ async function pushSchema() {
       );
       CREATE TABLE IF NOT EXISTS generated_images (
         id SERIAL PRIMARY KEY,
-        client_id TEXT NOT NULL UNIQUE,
+        client_id TEXT NOT NULL,
         persona_client_id TEXT NOT NULL,
         url TEXT NOT NULL,
         prompt TEXT NOT NULL DEFAULT '',
@@ -7549,6 +7719,8 @@ async function pushSchema() {
       ALTER TABLE personas ADD COLUMN IF NOT EXISTS identity_lock BOOLEAN DEFAULT true;
       ALTER TABLE personas ADD COLUMN IF NOT EXISTS alternate_reference_image TEXT;
       ALTER TABLE personas ADD COLUMN IF NOT EXISTS additional_reference_images TEXT DEFAULT '[]';
+      ALTER TABLE personas ADD COLUMN IF NOT EXISTS voice_sample_url TEXT;
+      ALTER TABLE personas ADD COLUMN IF NOT EXISTS audio_samples TEXT DEFAULT '[]';
       ALTER TABLE personas ADD COLUMN IF NOT EXISTS voice_id TEXT;
       ALTER TABLE personas ADD COLUMN IF NOT EXISTS voice_engine TEXT;
       ALTER TABLE personas ADD COLUMN IF NOT EXISTS companion_type TEXT DEFAULT 'intimate';
@@ -7560,7 +7732,7 @@ async function pushSchema() {
       
       CREATE TABLE IF NOT EXISTS revenue_entries (
         id SERIAL PRIMARY KEY,
-        client_id TEXT NOT NULL UNIQUE,
+        client_id TEXT NOT NULL,
         persona_client_id TEXT NOT NULL,
         date TEXT NOT NULL,
         amount REAL NOT NULL,
@@ -7583,6 +7755,65 @@ async function pushSchema() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
       );
       ALTER TABLE planned_posts ADD COLUMN IF NOT EXISTS user_id TEXT;
+
+      -- Account ownership is mandatory. Legacy unowned rows remain inaccessible.
+      UPDATE personas SET user_id = 'legacy-unowned' WHERE user_id IS NULL;
+      UPDATE generated_images SET user_id = 'legacy-unowned' WHERE user_id IS NULL;
+      UPDATE revenue_entries SET user_id = 'legacy-unowned' WHERE user_id IS NULL;
+      UPDATE planned_posts SET user_id = 'legacy-unowned' WHERE user_id IS NULL;
+      ALTER TABLE personas ALTER COLUMN user_id SET NOT NULL;
+      ALTER TABLE generated_images ALTER COLUMN user_id SET NOT NULL;
+      ALTER TABLE revenue_entries ALTER COLUMN user_id SET NOT NULL;
+      ALTER TABLE planned_posts ALTER COLUMN user_id SET NOT NULL;
+
+      -- Client-generated IDs only need to be unique inside their owning account.
+      DO $account_constraints$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'personas'::regclass AND conname = 'personas_user_client_id_unique') THEN
+          ALTER TABLE personas ADD CONSTRAINT personas_user_client_id_unique UNIQUE (user_id, client_id);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'generated_images'::regclass AND conname = 'generated_images_user_client_id_unique') THEN
+          ALTER TABLE generated_images ADD CONSTRAINT generated_images_user_client_id_unique UNIQUE (user_id, client_id);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'revenue_entries'::regclass AND conname = 'revenue_entries_user_client_id_unique') THEN
+          ALTER TABLE revenue_entries ADD CONSTRAINT revenue_entries_user_client_id_unique UNIQUE (user_id, client_id);
+        END IF;
+      END
+      $account_constraints$;
+
+      CREATE INDEX IF NOT EXISTS planned_posts_user_id_idx ON planned_posts (user_id);
+
+      ALTER TABLE personas ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE generated_images ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE revenue_entries ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE planned_posts ENABLE ROW LEVEL SECURITY;
+      REVOKE ALL ON TABLE personas, generated_images, revenue_entries, planned_posts FROM anon;
+      GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE personas, generated_images, revenue_entries, planned_posts TO authenticated;
+      REVOKE ALL ON SEQUENCE personas_id_seq, generated_images_id_seq, revenue_entries_id_seq, planned_posts_id_seq FROM anon;
+      GRANT USAGE, SELECT ON SEQUENCE personas_id_seq, generated_images_id_seq, revenue_entries_id_seq, planned_posts_id_seq TO authenticated;
+      DO $account_policies$
+      DECLARE
+        target_table text;
+        policy_prefix text;
+      BEGIN
+        FOREACH target_table IN ARRAY ARRAY['personas', 'generated_images', 'revenue_entries', 'planned_posts']
+        LOOP
+          policy_prefix := target_table || '_own';
+          IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = target_table AND policyname = policy_prefix || '_select') THEN
+            EXECUTE format('CREATE POLICY %I ON %I FOR SELECT TO authenticated USING ((SELECT auth.uid())::text = user_id)', policy_prefix || '_select', target_table);
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = target_table AND policyname = policy_prefix || '_insert') THEN
+            EXECUTE format('CREATE POLICY %I ON %I FOR INSERT TO authenticated WITH CHECK ((SELECT auth.uid())::text = user_id)', policy_prefix || '_insert', target_table);
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = target_table AND policyname = policy_prefix || '_update') THEN
+            EXECUTE format('CREATE POLICY %I ON %I FOR UPDATE TO authenticated USING ((SELECT auth.uid())::text = user_id) WITH CHECK ((SELECT auth.uid())::text = user_id)', policy_prefix || '_update', target_table);
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = target_table AND policyname = policy_prefix || '_delete') THEN
+            EXECUTE format('CREATE POLICY %I ON %I FOR DELETE TO authenticated USING ((SELECT auth.uid())::text = user_id)', policy_prefix || '_delete', target_table);
+          END IF;
+        END LOOP;
+      END
+      $account_policies$;
 
       CREATE TABLE IF NOT EXISTS conversations (
         id SERIAL PRIMARY KEY,

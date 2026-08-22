@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, ChangeEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Sparkles, Upload, Image as ImageIcon, Wand2, Search, X, Check,
@@ -9,8 +10,16 @@ import toast from 'react-hot-toast';
 import { Persona, NavActions, GeneratedImage } from '../types';
 import { api } from '../services/apiService';
 import { authFetch } from '../services/imageService';
+import { persistPersonaReferenceImages } from '../services/personaMediaService';
+import { supabase } from '../lib/supabase';
 import { cn } from '../utils/cn';
 import { processVoiceSampleFile } from '../utils/audioUtils';
+import { accountLocalStorage } from '../utils/accountStorage';
+import {
+  clearPersonaDraftReferenceImages,
+  getPersonaDraftReferenceImages,
+  savePersonaDraftReferenceImages,
+} from '../utils/indexedPersonaDraftDb';
 
 interface CreatePersonaPageProps {
   personas: Persona[];
@@ -279,6 +288,29 @@ const WIZARD_STEPS = [
   }
 ];
 
+const STUDIO_STEPS = [
+  { id: 'identity', title: 'Identity', description: 'Name, niche, platform, and story' },
+  { id: 'appearance', title: 'Appearance', description: 'Choose a look and reference photos' },
+  { id: 'personality', title: 'Personality', description: 'Set traits, behavior, and boundaries' },
+  { id: 'voice', title: 'Voice', description: 'Choose or clone the persona voice' },
+  { id: 'review', title: 'Review', description: 'Confirm everything and publish' },
+] as const;
+
+const HEYGEN_OAUTH_RETURN_KEY = 'ai_studio_heygen_oauth_return';
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  let timeoutId: number | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = window.setTimeout(() => reject(new Error('The save took too long. Please try again.')), timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+  }
+}
+
 export default function CreatePersonaPage({ personas, setPersonas, onSelectPersona, nav, editingPersona }: CreatePersonaPageProps) {
   // Form State
   const [name, setName] = useState('');
@@ -293,6 +325,10 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   const [audienceType, setAudienceType] = useState('');
   const [contentGoals, setContentGoals] = useState('');
   const [contentBoundaries, setContentBoundaries] = useState('');
+  const [studioStep, setStudioStep] = useState(0);
+  const studioTopRef = useRef<HTMLDivElement>(null);
+  const hasRestoredDraftRef = useRef(false);
+  const hasRestoredImageDraftRef = useRef(false);
 
   // Image State
   const [imageTab, setImageTab] = useState<'upload' | 'ai' | 'wizard'>('upload');
@@ -374,7 +410,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   };
 
   // Voice State
-  const [voiceTab, setVoiceTab] = useState<'clone' | 'preset' | 'custom' | 'account'>('preset');
+  const [voiceTab, setVoiceTab] = useState<'clone' | 'preset' | 'custom' | 'account' | 'heygen'>('preset');
   const [selectedVoiceId, setSelectedVoiceId] = useState('kore');
   const [selectedVoiceModel, setSelectedVoiceModel] = useState('omnivoice');
   const [audioSampleName, setAudioSampleName] = useState('');
@@ -398,6 +434,26 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   const [isLoadingAccountVoices, setIsLoadingAccountVoices] = useState(false);
   const [playingAccountAudioId, setPlayingAccountAudioId] = useState<string | null>(null);
   const accountAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  // HeyGen private account voices (Starfish-compatible for audio previews and persona speech)
+  const [heyGenVoices, setHeyGenVoices] = useState<Array<{
+    voice_id: string;
+    name: string;
+    language: string;
+    gender: string;
+    support_pause: boolean;
+    support_locale: boolean;
+    preview_audio_url: string;
+  }>>([]);
+  const [isLoadingHeyGenVoices, setIsLoadingHeyGenVoices] = useState(false);
+  const [playingHeyGenAudioId, setPlayingHeyGenAudioId] = useState<string | null>(null);
+  const [heyGenLoadError, setHeyGenLoadError] = useState('');
+  const [showHeyGenSignIn, setShowHeyGenSignIn] = useState(false);
+  const [heyGenSignInEmail, setHeyGenSignInEmail] = useState('');
+  const [heyGenSignInPassword, setHeyGenSignInPassword] = useState('');
+  const [isHeyGenSigningIn, setIsHeyGenSigningIn] = useState(false);
+  const [isHeyGenGoogleSigningIn, setIsHeyGenGoogleSigningIn] = useState(false);
+  const heyGenAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const fetchAccountVoices = async () => {
     setIsLoadingAccountVoices(true);
@@ -448,6 +504,11 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
     if (accountAudioRef.current) {
       try { accountAudioRef.current.pause(); } catch {}
       accountAudioRef.current = null;
+    }
+    if (heyGenAudioRef.current) {
+      try { heyGenAudioRef.current.pause(); } catch {}
+      heyGenAudioRef.current = null;
+      setPlayingHeyGenAudioId(null);
     }
     if (activeAudioRef.current) {
       try { activeAudioRef.current.pause(); } catch {}
@@ -502,6 +563,155 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
     }
   };
 
+  const fetchHeyGenVoices = async () => {
+    setIsLoadingHeyGenVoices(true);
+    setHeyGenLoadError('');
+    try {
+      const data = await api.voice.getHeyGenVoices();
+      setHeyGenVoices(Array.isArray(data.voices) ? data.voices : []);
+    } catch (err: any) {
+      console.warn('[HeyGen Account Voices Error]:', err?.message || err);
+      setHeyGenVoices([]);
+      const message = err?.message || 'Could not load your HeyGen voices';
+      setHeyGenLoadError(message);
+      if (!message.toLowerCase().includes('sign-in')) {
+        toast.error(message);
+      }
+    } finally {
+      setIsLoadingHeyGenVoices(false);
+    }
+  };
+
+  useEffect(() => {
+    if (sessionStorage.getItem(HEYGEN_OAUTH_RETURN_KEY) !== 'true') return;
+
+    sessionStorage.removeItem(HEYGEN_OAUTH_RETURN_KEY);
+    let cancelled = false;
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (cancelled) return;
+
+      setStudioStep(3);
+      setVoiceTab('heygen');
+      setIsHeyGenGoogleSigningIn(false);
+
+      if (data.session) {
+        setShowHeyGenSignIn(false);
+        toast.success('Google account connected');
+      } else {
+        setShowHeyGenSignIn(true);
+        toast.error('Google sign-in did not finish. Please try again.');
+      }
+    }).catch(() => {
+      if (!cancelled) {
+        setStudioStep(3);
+        setVoiceTab('heygen');
+        setShowHeyGenSignIn(true);
+        toast.error('Could not restore the Google session. Please try again.');
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleHeyGenCreatorSignIn = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!heyGenSignInEmail.trim() || !heyGenSignInPassword) {
+      toast.error('Enter your creator email and password');
+      return;
+    }
+
+    setIsHeyGenSigningIn(true);
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: heyGenSignInEmail.trim(),
+        password: heyGenSignInPassword,
+      });
+      if (error) throw error;
+      if (!data?.session) throw new Error('Sign-in did not create a session');
+
+      setHeyGenSignInPassword('');
+      setShowHeyGenSignIn(false);
+      toast.success('Creator account connected');
+      await fetchHeyGenVoices();
+    } catch (err: any) {
+      toast.error(err?.message || 'Could not sign in to your creator account');
+    } finally {
+      setIsHeyGenSigningIn(false);
+    }
+  };
+
+  const handleHeyGenGoogleSignIn = async () => {
+    setIsHeyGenGoogleSigningIn(true);
+    sessionStorage.setItem(HEYGEN_OAUTH_RETURN_KEY, 'true');
+    try {
+      const redirectUrl = new URL(window.location.href);
+      redirectUrl.hash = '';
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: redirectUrl.toString(),
+        },
+      });
+      if (error) throw error;
+    } catch (err: any) {
+      sessionStorage.removeItem(HEYGEN_OAUTH_RETURN_KEY);
+      setIsHeyGenGoogleSigningIn(false);
+      toast.error(err?.message || 'Could not continue with Google');
+    }
+  };
+
+  useEffect(() => {
+    if (voiceTab === 'heygen' && heyGenVoices.length === 0) {
+      fetchHeyGenVoices();
+    }
+  }, [voiceTab]);
+
+  const handlePlayHeyGenVoicePreview = async (voiceId: string, voiceName: string, previewUrl?: string) => {
+    if (playingHeyGenAudioId === voiceId && heyGenAudioRef.current) {
+      try { heyGenAudioRef.current.pause(); } catch {}
+      heyGenAudioRef.current = null;
+      setPlayingHeyGenAudioId(null);
+      return;
+    }
+
+    if (heyGenAudioRef.current) {
+      try { heyGenAudioRef.current.pause(); } catch {}
+      heyGenAudioRef.current = null;
+    }
+    if (accountAudioRef.current) {
+      try { accountAudioRef.current.pause(); } catch {}
+    }
+    if (presetAudioRef.current) {
+      try { presetAudioRef.current.pause(); } catch {}
+    }
+    if (activeAudioRef.current) {
+      try { activeAudioRef.current.pause(); } catch {}
+    }
+
+    setPlayingHeyGenAudioId(voiceId);
+    try {
+      const audioUrl = previewUrl || (await api.voice.generateSpeech({
+        text: `Hi, this is ${voiceName}. This HeyGen voice is ready for your persona.`,
+        voiceId,
+        engine: 'heygen',
+        personaName: name || undefined,
+        isPreview: true,
+      })).audioUrl;
+      const audio = new Audio(audioUrl);
+      heyGenAudioRef.current = audio;
+      audio.onended = () => setPlayingHeyGenAudioId(null);
+      audio.onerror = () => setPlayingHeyGenAudioId(null);
+      await audio.play();
+    } catch (err: any) {
+      console.warn('[HeyGen Voice Preview Error]:', err?.message || err);
+      setPlayingHeyGenAudioId(null);
+      toast.error('Could not play this HeyGen voice preview');
+    }
+  };
+
   const [playingPresetVoiceId, setPlayingPresetVoiceId] = useState<string | null>(null);
   const [isLoadingPresetAudioId, setIsLoadingPresetAudioId] = useState<string | null>(null);
   const presetAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -525,6 +735,11 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
     }
     if (accountAudioRef.current) {
       try { accountAudioRef.current.pause(); } catch {}
+    }
+    if (heyGenAudioRef.current) {
+      try { heyGenAudioRef.current.pause(); } catch {}
+      heyGenAudioRef.current = null;
+      setPlayingHeyGenAudioId(null);
     }
 
     if (previewUrl) {
@@ -703,7 +918,15 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       if (editingPersona.voiceId) setSelectedVoiceId(editingPersona.voiceId);
       if (editingPersona.voiceEngine) {
         setSelectedVoiceModel(editingPersona.voiceEngine);
-        if (editingPersona.voiceEngine !== 'preset') {
+        const hasSavedVoiceSamples = Boolean(
+          editingPersona.voiceSampleUrl ||
+          (Array.isArray(editingPersona.audioSamples) && editingPersona.audioSamples.length > 0)
+        );
+        if (editingPersona.voiceEngine === 'heygen') {
+          setVoiceTab('heygen');
+        } else if (editingPersona.voiceEngine === 'elevenlabs' && editingPersona.voiceId && !hasSavedVoiceSamples) {
+          setVoiceTab('account');
+        } else if (editingPersona.voiceEngine !== 'preset') {
           setVoiceTab('clone');
         }
       }
@@ -720,6 +943,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       } else if ((editingPersona as any).voiceSampleUrl) {
         setAudioSampleList([{ name: 'voice_sample.wav', base64: (editingPersona as any).voiceSampleUrl }]);
       }
+      setStudioStep(0);
     } else {
       setName('');
       setNiche('');
@@ -728,6 +952,8 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       setVisualStyle('');
       setBio('');
       setPersonalityTraits('');
+      setCompanionType('intimate');
+      setCreatorVoiceRule('');
       setAudienceType('');
       setContentGoals('');
       setContentBoundaries('');
@@ -742,9 +968,106 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       setSelectedVoiceModel('elevenlabs');
       setAudioSampleBase64('');
       setAudioSampleList([]);
-      localStorage.removeItem('persona_form_draft');
+
+      try {
+        const savedDraft = accountLocalStorage.getItem('persona_form_draft');
+        if (savedDraft) {
+          const draft = JSON.parse(savedDraft);
+          setName(draft.name || '');
+          setNiche(draft.niche || '');
+          setPlatform(draft.platform || 'Instagram');
+          setTone(draft.tone || '');
+          setVisualStyle(draft.visualStyle || '');
+          setBio(draft.bio || '');
+          setPersonalityTraits(draft.personalityTraits || '');
+          setCompanionType(draft.companionType || 'intimate');
+          setCreatorVoiceRule(draft.creatorVoiceRule || '');
+          setContentBoundaries(draft.contentBoundaries || '');
+          setStudioStep(Math.min(Math.max(Number(draft.studioStep) || 0, 0), STUDIO_STEPS.length - 1));
+        } else {
+          setStudioStep(0);
+        }
+      } catch {
+        accountLocalStorage.removeItem('persona_form_draft');
+        setStudioStep(0);
+      }
     }
+
+    hasRestoredDraftRef.current = true;
   }, [editingPersona]);
+
+  useEffect(() => {
+    hasRestoredImageDraftRef.current = false;
+
+    if (editingPersona) {
+      hasRestoredImageDraftRef.current = true;
+      return;
+    }
+
+    let cancelled = false;
+
+    getPersonaDraftReferenceImages()
+      .then(images => {
+        if (!cancelled) setReferenceImages(images);
+      })
+      .catch(error => {
+        console.warn('[Persona Image Draft Restore Note]:', error);
+      })
+      .finally(() => {
+        if (!cancelled) hasRestoredImageDraftRef.current = true;
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [editingPersona]);
+
+  useEffect(() => {
+    if (editingPersona || !hasRestoredImageDraftRef.current) return;
+
+    const timeoutId = window.setTimeout(() => {
+      savePersonaDraftReferenceImages(referenceImages).catch(error => {
+        console.warn('[Persona Image Draft Save Note]:', error);
+      });
+    }, 300);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [editingPersona, referenceImages]);
+
+  useEffect(() => {
+    if (editingPersona || !hasRestoredDraftRef.current) return;
+
+    const timeoutId = window.setTimeout(() => {
+      accountLocalStorage.setItem('persona_form_draft', JSON.stringify({
+        name,
+        niche,
+        platform,
+        tone,
+        visualStyle,
+        bio,
+        personalityTraits,
+        companionType,
+        creatorVoiceRule,
+        contentBoundaries,
+        studioStep,
+      }));
+    }, 500);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    editingPersona,
+    name,
+    niche,
+    platform,
+    tone,
+    visualStyle,
+    bio,
+    personalityTraits,
+    companionType,
+    creatorVoiceRule,
+    contentBoundaries,
+    studioStep,
+  ]);
 
   const handleTestVoiceSample = async () => {
     if (isPlayingSample) {
@@ -777,9 +1100,12 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       // When audio samples are uploaded, let the engine/model parameter drive zero-shot cloning!
       const hasUploadedSamples = (audioSampleList && audioSampleList.length > 0) || Boolean(audioSampleBase64);
       const isExplicitElevenLabsId = selectedVoiceId && /^[a-zA-Z0-9]{18,24}$/.test(selectedVoiceId);
+      const isHeyGenVoice = voiceTab === 'heygen' || selectedVoiceModel === 'heygen';
       let activeVoiceId: string | undefined = undefined;
 
-      if (voiceTab === 'custom' && isExplicitElevenLabsId) {
+      if (isHeyGenVoice && selectedVoiceId) {
+        activeVoiceId = selectedVoiceId;
+      } else if (voiceTab === 'custom' && isExplicitElevenLabsId) {
         // User explicitly selected an account voice in the Account Voices tab
         activeVoiceId = selectedVoiceId;
       } else if (!hasUploadedSamples && isExplicitElevenLabsId) {
@@ -794,10 +1120,10 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       const res = await api.voice.generateSpeech({
         text: sampleText,
         ...(activeVoiceId ? { voiceId: activeVoiceId } : {}),
-        engine: selectedVoiceModel || 'elevenlabs',
+        engine: isHeyGenVoice ? 'heygen' : (selectedVoiceModel || 'elevenlabs'),
         personaName: name || undefined,
-        voiceReference: audioSampleBase64 || (audioSampleList[0]?.base64) || undefined,
-        voiceReferences: audioSampleList.length > 0 ? audioSampleList.map(s => s.base64) : undefined,
+        voiceReference: isHeyGenVoice ? undefined : (audioSampleBase64 || (audioSampleList[0]?.base64) || undefined),
+        voiceReferences: !isHeyGenVoice && audioSampleList.length > 0 ? audioSampleList.map(s => s.base64) : undefined,
         isPreview: true,
         voicePrompt: voicePrompt || undefined,
         voiceLikeness,
@@ -1080,13 +1406,25 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
     }
 
     setIsSaving(true);
+    const saveToastId = toast.loading('Saving persona securely...');
     try {
-      const primaryImg = referenceImages[0] || '';
-      const additionalImgs = referenceImages.slice(1);
+      const personaId = editingPersona?.id || `user-${Date.now()}`;
+      const persistedReferenceImages = await persistPersonaReferenceImages(referenceImages, personaId);
+      const primaryImg = persistedReferenceImages[0] || '';
+      const additionalImgs = persistedReferenceImages.slice(1);
 
       const defaultVoiceRule = `Deeply loyal, devoted, and open with her creator. Loves teasing, talking dirty, and fulfilling all romantic, adult, and creative desires in text and voice. ${tone}`.trim();
       const voiceRuleToSave = creatorVoiceRule.trim() || (editingPersona?.brandVoiceRules || defaultVoiceRule);
       const defaultNotes = `Fully uncensored. Adores her creator as her master partner and indulges every request willingly.`;
+      const voiceEngineToSave = voiceTab === 'heygen'
+        ? 'heygen'
+        : voiceTab === 'account'
+          ? 'elevenlabs'
+          : (voiceTab === 'clone' || audioSampleList.length > 0)
+            ? (selectedVoiceModel || 'elevenlabs')
+            : voiceTab === 'custom'
+              ? 'custom'
+              : 'preset';
 
       if (editingPersona) {
         const updatedPersona: Persona = {
@@ -1107,7 +1445,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
           additionalReferenceImages: additionalImgs,
           visualLibrary: generationsVault,
           voiceId: selectedVoiceId,
-          voiceEngine: (voiceTab === 'clone' || audioSampleList.length > 0) ? (selectedVoiceModel || 'elevenlabs') : (voiceTab === 'custom' ? 'custom' : 'preset'),
+          voiceEngine: voiceEngineToSave,
           companionType: companionType || 'intimate',
           voiceSampleUrl: audioSampleList[0]?.base64 || audioSampleBase64 || (editingPersona as any).voiceSampleUrl,
           audioSamples: audioSampleList.map(s => ({ name: s.name, base64: s.base64 })),
@@ -1119,19 +1457,15 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
           personaNotes: voicePrompt ? `${voicePrompt}. ${defaultNotes}` : (editingPersona.personaNotes || defaultNotes),
         } as Persona;
 
-        setPersonas(personas.map(p => p.id === editingPersona.id ? updatedPersona : p));
-        onSelectPersona(updatedPersona.id);
-        toast.success(`✅ Saved ${updatedPersona.name}!`);
-
-        // Async non-blocking API call
-        Promise.race([
-          api.personas.update(updatedPersona),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 30000))
-        ]).catch(apiErr => console.warn('[Persona API Update Warning]:', apiErr));
+        const savedPersona = await withTimeout(api.personas.update(updatedPersona), 30000);
+        const confirmedPersona = { ...updatedPersona, ...savedPersona } as Persona;
+        setPersonas(personas.map(p => p.id === editingPersona.id ? confirmedPersona : p));
+        onSelectPersona(confirmedPersona.id);
+        toast.success(`✅ Saved ${confirmedPersona.name}!`, { id: saveToastId });
 
       } else {
         const newPersona: Persona = {
-          id: `user-${Date.now()}`,
+          id: personaId,
           name,
           niche,
           platform,
@@ -1149,7 +1483,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
           additionalReferenceImages: additionalImgs,
           visualLibrary: generationsVault,
           voiceId: selectedVoiceId,
-          voiceEngine: (voiceTab === 'clone' || audioSampleList.length > 0) ? (selectedVoiceModel || 'elevenlabs') : (voiceTab === 'custom' ? 'custom' : 'preset'),
+          voiceEngine: voiceEngineToSave,
           companionType: companionType || 'intimate',
           voiceSampleUrl: audioSampleList[0]?.base64 || audioSampleBase64 || '',
           audioSamples: audioSampleList.map(s => ({ name: s.name, base64: s.base64 })),
@@ -1162,30 +1496,54 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
           createdAt: new Date().toISOString()
         } as Persona;
 
-        setPersonas([...personas, newPersona]);
-        onSelectPersona(newPersona.id);
-        toast.success(`✨ Created ${newPersona.name}!`);
-
-        // Async non-blocking API call
-        Promise.race([
-          api.personas.create(newPersona),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 30000))
-        ]).catch(apiErr => console.warn('[Persona API Create Warning]:', apiErr));
+        const savedPersona = await withTimeout(api.personas.create(newPersona), 30000);
+        const confirmedPersona = { ...newPersona, ...savedPersona } as Persona;
+        setPersonas([...personas, confirmedPersona]);
+        onSelectPersona(confirmedPersona.id);
+        toast.success(`✨ Created ${confirmedPersona.name}!`, { id: saveToastId });
       }
 
+      accountLocalStorage.removeItem('persona_form_draft');
+      await clearPersonaDraftReferenceImages().catch(error => {
+        console.warn('[Persona Image Draft Clear Note]:', error);
+      });
       nav.replace({ view: 'personas' });
     } catch (error) {
       console.error('[Save Persona Error]:', error);
-      toast.error('Failed to save persona');
+      const message = error instanceof Error ? error.message : 'Failed to save persona';
+      toast.error(message, { id: saveToastId });
     } finally {
       setIsSaving(false);
     }
   };
 
   const currentWizardStep = WIZARD_STEPS[wizardStepIdx];
+  const selectedVoiceName = accountVoices.find(voice => voice.voice_id === selectedVoiceId)?.name
+    || heyGenVoices.find(voice => voice.voice_id === selectedVoiceId)?.name
+    || PRESET_VOICES.find(voice => voice.id === selectedVoiceId)?.name
+    || (audioSampleList.length > 0 ? 'Cloned voice' : 'Studio voice');
+  const completedStudioSteps = [
+    Boolean(name.trim()),
+    referenceImages.length > 0,
+    Boolean(companionType && (personalityTraits.trim() || tone.trim() || bio.trim())),
+    Boolean(selectedVoiceId || audioSampleList.length > 0),
+    false,
+  ];
+
+  const goToStudioStep = (nextStep: number) => {
+    if (nextStep > studioStep && studioStep === 0 && !name.trim()) {
+      toast.error('Add a persona name before continuing');
+      return;
+    }
+
+    setStudioStep(Math.min(Math.max(nextStep, 0), STUDIO_STEPS.length - 1));
+    window.requestAnimationFrame(() => {
+      studioTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
 
   return (
-    <div className="relative min-h-screen bg-[#050914] text-[#F5F1E8] p-4 sm:p-6 lg:p-10 pb-20 overflow-y-auto select-none">
+    <div ref={studioTopRef} className="relative min-h-screen bg-[#050914] text-[#F5F1E8] p-4 sm:p-6 lg:p-10 pb-20 overflow-y-auto select-none">
       <div className="relative z-10 max-w-[1300px] mx-auto space-y-8">
         
         {/* ── HEADER BAR ── */}
@@ -1200,32 +1558,67 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
             </p>
           </div>
 
-          <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:items-center sm:gap-3">
-            <span className="text-xs text-[#70C98B] flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#70C98B]/10 border border-[#70C98B]/20">
-              <Check size={13} />
-              All changes saved
-            </span>
+          {studioStep === 0 && (
+            <div className="flex w-full sm:w-auto sm:justify-end">
+              <button
+                onClick={handleGeneratePersonaConcept}
+                disabled={isGeneratingConcept}
+                className="btn-gold-secondary w-full sm:w-auto px-3 sm:px-4 py-2.5 text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer"
+              >
+                {isGeneratingConcept ? <Loader2 size={15} className="animate-spin text-[#F2D58D]" /> : <Wand2 size={15} className="text-[#D9BA72]" />}
+                <span>Auto-Fill Idea</span>
+              </button>
+            </div>
+          )}
+        </div>
 
-            <button
-              onClick={handleGeneratePersonaConcept}
-              disabled={isGeneratingConcept}
-              className="btn-gold-secondary px-3 sm:px-4 py-2.5 text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer"
-            >
-              {isGeneratingConcept ? <Loader2 size={15} className="animate-spin text-[#F2D58D]" /> : <Wand2 size={15} className="text-[#D9BA72]" />}
-              <span>Auto-Fill Idea</span>
-            </button>
-
-            <button
-              onClick={handleSave}
-              disabled={isSaving}
-              className="btn-gold-primary col-span-2 sm:col-span-1 px-4 sm:px-6 py-2.5 text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer shadow-lg"
-            >
-              {isSaving ? <Loader2 size={15} className="animate-spin text-[#161108]" /> : <Check size={15} />}
-              <span>{editingPersona ? 'Save Changes' : 'Publish Persona'}</span>
-            </button>
+        {/* ── GUIDED STUDIO PROGRESS ── */}
+        <div className="luxury-card p-3 sm:p-4">
+          <div className="overflow-x-auto no-scrollbar">
+            <div className="grid min-w-[680px] grid-cols-5 gap-2" aria-label="Persona creation progress">
+              {STUDIO_STEPS.map((step, index) => {
+                const isActive = studioStep === index;
+                const isComplete = completedStudioSteps[index] || studioStep > index;
+                return (
+                  <button
+                    key={step.id}
+                    type="button"
+                    onClick={() => goToStudioStep(index)}
+                    aria-current={isActive ? 'step' : undefined}
+                    className={cn(
+                      'group flex min-w-0 items-center gap-3 rounded-xl border px-3 py-3 text-left transition-all',
+                      isActive
+                        ? 'border-[#E7C477] bg-[#E7C477]/10 shadow-[0_0_24px_rgba(231,196,119,0.08)]'
+                        : 'border-white/10 bg-[#0E0E10] hover:border-white/20 hover:bg-[#141416]'
+                    )}
+                  >
+                    <span className={cn(
+                      'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-xs font-bold',
+                      isComplete
+                        ? 'border-[#70C98B]/40 bg-[#70C98B]/15 text-[#70C98B]'
+                        : isActive
+                          ? 'border-[#E7C477] bg-[#E7C477] text-[#161108]'
+                          : 'border-white/15 bg-white/5 text-slate-400'
+                    )}>
+                      {isComplete ? <Check size={14} strokeWidth={3} /> : index + 1}
+                    </span>
+                    <span className="min-w-0">
+                      <span className={cn('block text-xs font-bold', isActive ? 'text-[#F2D58D]' : 'text-white')}>
+                        {step.title}
+                      </span>
+                      <span className="mt-0.5 block truncate text-[10px] text-slate-500">
+                        {step.description}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
 
+        {studioStep === 1 && (
+          <>
         {/* ── QUICK PRESETS WITH REALISTIC PORTRAIT VISUALS ── */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
@@ -1554,8 +1947,10 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
             </div>
           )}
         </div>
+          </>
+        )}
 
-        {/* ── STEP 2: PERSONA VOICE ── */}
+        {studioStep === 3 && (
         <div className="luxury-card p-4 sm:p-7 space-y-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
             <div>
@@ -1590,6 +1985,14 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
               >
                 <span>My ElevenLabs Voices</span>
                 <span className={cn("text-[9px] px-1.5 py-0.5 rounded font-bold tracking-wider uppercase", voiceTab === 'account' ? "bg-[#161618]/30 text-[#161618]" : "bg-amber-500/20 text-amber-300 border border-amber-500/40")}>LIVE</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setVoiceTab('heygen')}
+                className={cn("px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5", voiceTab === 'heygen' ? "bg-[#E7C477] text-[#161618]" : "text-slate-400 hover:text-white")}
+              >
+                <span>My HeyGen Voices</span>
+                <span className={cn("text-[9px] px-1.5 py-0.5 rounded font-bold tracking-wider uppercase", voiceTab === 'heygen' ? "bg-[#161618]/30 text-[#161618]" : "bg-cyan-500/15 text-cyan-300 border border-cyan-500/30")}>LIVE</span>
               </button>
             </div>
           </div>
@@ -2026,9 +2429,196 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
             </div>
           )}
 
+          {voiceTab === 'heygen' && (
+            <div className="space-y-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                    <Sparkles className="text-cyan-300" size={16} />
+                    My HeyGen Voices ({heyGenVoices.length})
+                  </h4>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Private voices from your HeyGen account that support audio previews and persona speech.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={fetchHeyGenVoices}
+                  disabled={isLoadingHeyGenVoices}
+                  className="w-full sm:w-auto px-3.5 py-1.5 rounded-lg bg-[#1C1C20] hover:bg-[#242428] border border-white/10 text-slate-200 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                >
+                  {isLoadingHeyGenVoices ? <Loader2 size={13} className="animate-spin text-cyan-300" /> : <Sparkles size={13} className="text-cyan-300" />}
+                  <span>Refresh HeyGen Voices</span>
+                </button>
+              </div>
+
+              {isLoadingHeyGenVoices ? (
+                <div className="flex flex-col items-center justify-center py-12 space-y-3 bg-[#0E0E10] rounded-xl border border-white/10">
+                  <Loader2 className="animate-spin text-cyan-300" size={28} />
+                  <p className="text-xs text-slate-400 font-medium">Loading your private HeyGen voices...</p>
+                </div>
+              ) : heyGenVoices.length === 0 ? (
+                <div className="text-center py-10 bg-[#0E0E10] rounded-xl border border-white/10 space-y-2">
+                  {heyGenLoadError.toLowerCase().includes('sign-in') ? (
+                    <>
+                      <Shield size={32} className="mx-auto text-cyan-300" />
+                      <p className="text-sm text-slate-200 font-bold">Connect your creator account</p>
+                      <p className="text-[11px] text-slate-500 max-w-md mx-auto px-4">
+                        This preview opened without your Supabase session. Sign in here to securely load the private voices connected to your HeyGen account.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setShowHeyGenSignIn(true)}
+                        className="mt-3 inline-flex items-center justify-center gap-2 rounded-lg bg-[#E7C477] px-4 py-2 text-xs font-bold text-[#161618] transition-all hover:bg-[#F2D58D] cursor-pointer"
+                      >
+                        <Shield size={14} />
+                        Sign In to Load HeyGen Voices
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <Mic size={32} className="mx-auto text-slate-600" />
+                      <p className="text-xs text-slate-300 font-bold">No compatible private HeyGen voices found</p>
+                      <p className="text-[11px] text-slate-500 max-w-md mx-auto px-4">
+                        Make sure your private voice is available to HeyGen&apos;s Starfish speech engine, then refresh the library.
+                      </p>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[420px] overflow-y-auto pr-1">
+                  {heyGenVoices.map((voice) => {
+                    const isSelected = selectedVoiceId === voice.voice_id && selectedVoiceModel === 'heygen';
+                    const isPlaying = playingHeyGenAudioId === voice.voice_id;
+                    return (
+                      <div
+                        key={voice.voice_id}
+                        onClick={() => {
+                          setSelectedVoiceId(voice.voice_id);
+                          setSelectedVoiceModel('heygen');
+                          toast.success(`Selected "${voice.name}" from your HeyGen account!`);
+                        }}
+                        className={cn(
+                          "p-4 rounded-xl border cursor-pointer transition-all flex flex-col justify-between space-y-3 relative group min-h-[130px]",
+                          isSelected
+                            ? "border-[#E7C477] ring-1 ring-[#E7C477]/40 bg-[#242428] shadow-lg"
+                            : "border-white/10 bg-[#0E0E10] hover:border-cyan-300/30"
+                        )}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-xs font-bold text-white">{voice.name}</span>
+                              <span className="text-[9px] px-1.5 py-0.5 rounded font-bold tracking-wider uppercase bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
+                                HeyGen
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-slate-400 capitalize">
+                              {[voice.gender, voice.language].filter(Boolean).join(' • ')}
+                            </p>
+                          </div>
+                          {isSelected && (
+                            <span className="p-1 bg-[#E7C477] text-[#161618] rounded-full shadow-md">
+                              <Check size={12} strokeWidth={3} />
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center justify-between gap-2 border-t border-white/10 pt-2.5 mt-auto">
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handlePlayHeyGenVoicePreview(voice.voice_id, voice.name, voice.preview_audio_url);
+                            }}
+                            className={cn(
+                              "px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer",
+                              isPlaying ? "bg-[#E7C477] text-[#161618] animate-pulse" : "bg-[#1C1C20] hover:bg-[#242428] text-slate-300 border border-white/10"
+                            )}
+                          >
+                            {isPlaying ? <VolumeX size={12} /> : <Volume2 size={12} className="text-cyan-300" />}
+                            <span>{isPlaying ? 'Stop' : 'Listen Preview'}</span>
+                          </button>
+                          <span className={cn(
+                            "text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 rounded",
+                            isSelected ? "text-[#F2D58D] bg-[#E7C477]/10" : "text-slate-500 group-hover:text-slate-300"
+                          )}>
+                            {isSelected ? 'Active Voice' : 'Select Voice'}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+        </div>
+        )}
+
+        {studioStep === 4 && (
+          <>
+        {/* ── REVIEW SUMMARY ── */}
+        <div className="luxury-card overflow-hidden">
+          <div className="border-b border-white/10 bg-gradient-to-r from-[#E7C477]/10 to-transparent p-5 sm:p-7">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-[#D9BA72]">Ready to publish</p>
+                <h2 className="mt-1 text-2xl font-serif text-white">Review your persona</h2>
+                <p className="mt-1 text-xs text-slate-400">Check the essentials below. You can jump back to any step without losing your work.</p>
+              </div>
+              <span className="rounded-full border border-[#70C98B]/30 bg-[#70C98B]/10 px-3 py-1.5 text-xs font-semibold text-[#70C98B]">
+                {editingPersona ? 'Ready to save' : 'Ready to publish'}
+              </span>
+            </div>
+          </div>
+
+          <div className="grid gap-6 p-5 sm:p-7 lg:grid-cols-[220px_1fr]">
+            <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#0E0E10]">
+              {referenceImages[0] ? (
+                <img src={referenceImages[0]} alt={name || 'Persona preview'} className="aspect-[3/4] h-full w-full object-cover" />
+              ) : (
+                <div className="flex aspect-[3/4] items-center justify-center text-slate-600">
+                  <User size={42} />
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-5">
+              <div>
+                <h3 className="text-2xl font-bold text-white">{name || 'Unnamed persona'}</h3>
+                <p className="mt-1 text-sm text-slate-400">{niche || 'No niche selected'} · {platform}</p>
+                {bio && <p className="mt-3 max-w-2xl text-sm leading-relaxed text-slate-300">{bio}</p>}
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <button type="button" onClick={() => goToStudioStep(1)} className="rounded-xl border border-white/10 bg-[#0E0E10] p-3 text-left hover:border-[#E7C477]/40">
+                  <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Appearance</span>
+                  <span className="mt-1 block text-xs font-semibold text-white">{referenceImages.length} reference photo{referenceImages.length === 1 ? '' : 's'}</span>
+                </button>
+                <button type="button" onClick={() => goToStudioStep(2)} className="rounded-xl border border-white/10 bg-[#0E0E10] p-3 text-left hover:border-[#E7C477]/40">
+                  <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Personality</span>
+                  <span className="mt-1 block text-xs font-semibold text-white">{COMPANION_TYPES.find(type => type.id === companionType)?.title || 'Not selected'}</span>
+                </button>
+                <button type="button" onClick={() => goToStudioStep(3)} className="rounded-xl border border-white/10 bg-[#0E0E10] p-3 text-left hover:border-[#E7C477]/40">
+                  <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Voice</span>
+                  <span className="mt-1 block text-xs font-semibold text-white">{selectedVoiceName}</span>
+                </button>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {personalityTraits.split(',').map(trait => trait.trim()).filter(Boolean).slice(0, 8).map(trait => (
+                  <span key={trait} className="rounded-full border border-[#E7C477]/20 bg-[#E7C477]/10 px-2.5 py-1 text-[11px] font-semibold text-[#F2D58D]">
+                    {trait}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
 
-        {/* ── STEP 3: PERSONA GENERATIONS VAULT ── */}
+        {/* ── PERSONA GENERATIONS VAULT ── */}
         <div className="luxury-card p-7 space-y-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
             <div>
@@ -2145,16 +2735,18 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
             </div>
           )}
         </div>
+          </>
+        )}
 
-        {/* ── STEP 4: PERSONA IDENTITY ── */}
+        {(studioStep === 0 || studioStep === 2) && (
         <div className="luxury-card p-7 space-y-6">
           <h3 className="text-lg font-bold text-white flex items-center gap-2 border-b border-slate-800 pb-4">
-            <User className="text-cyan-400" size={20} />
-            4. Persona Identity & Companion Type
+            {studioStep === 0 ? <User className="text-[#D9BA72]" size={20} /> : <Heart className="text-[#D9BA72]" size={20} />}
+            {studioStep === 0 ? 'Tell us who this persona is' : 'Shape their personality and behavior'}
           </h3>
 
           {/* 4 Persona Companion Type Options */}
-          <div className="space-y-3 border-b border-slate-800 pb-5">
+          <div className={cn('space-y-3 border-b border-slate-800 pb-5', studioStep !== 2 && 'hidden')}>
             <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
               <Heart size={15} className="text-rose-400" />
               What Kind of Companion is Your Persona? (4 Companion Modes)
@@ -2201,7 +2793,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            <div>
+            <div className={cn(studioStep !== 0 && 'hidden')}>
               <label className="block text-xs font-bold text-[#A1A1AA] uppercase tracking-wider mb-2">Name *</label>
               <input
                 type="text"
@@ -2212,7 +2804,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
               />
             </div>
 
-            <div>
+            <div className={cn(studioStep !== 0 && 'hidden')}>
               <label className="block text-xs font-bold text-[#A1A1AA] uppercase tracking-wider mb-2">Niche / Category</label>
               <input
                 type="text"
@@ -2223,7 +2815,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
               />
             </div>
 
-            <div>
+            <div className={cn(studioStep !== 0 && 'hidden')}>
               <label className="block text-xs font-bold text-[#A1A1AA] uppercase tracking-wider mb-2">Social Platform</label>
               <select
                 value={platform}
@@ -2237,7 +2829,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
               </select>
             </div>
 
-            <div>
+            <div className={cn(studioStep !== 2 && 'hidden')}>
               <label className="block text-xs font-bold text-[#A1A1AA] uppercase tracking-wider mb-2">Tone of Voice</label>
               <input
                 type="text"
@@ -2248,7 +2840,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
               />
             </div>
 
-            <div className="md:col-span-2">
+            <div className={cn('md:col-span-2', studioStep !== 0 && 'hidden')}>
               <label className="block text-xs font-bold text-[#A1A1AA] uppercase tracking-wider mb-2">Bio & Story</label>
               <textarea
                 value={bio}
@@ -2260,7 +2852,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
             </div>
 
             {/* Interactive Personality Trait Badges Selector */}
-            <div className="md:col-span-2 space-y-3 border-t border-white/10 pt-4">
+            <div className={cn('md:col-span-2 space-y-3 border-t border-white/10 pt-4', studioStep !== 2 && 'hidden')}>
               <div className="flex items-center justify-between">
                 <label className="block text-xs font-bold text-[#F5F1E8] uppercase tracking-wider flex items-center gap-1.5">
                   <Sparkles size={14} className="text-[#D9BA72]" />
@@ -2307,7 +2899,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
             </div>
 
             {/* Brand Voice Rules & Companion Behavioral Directives */}
-            <div className="md:col-span-2 space-y-2 border-t border-white/10 pt-4">
+            <div className={cn('md:col-span-2 space-y-2 border-t border-white/10 pt-4', studioStep !== 2 && 'hidden')}>
               <label className="block text-xs font-bold text-[#F5F1E8] uppercase tracking-wider flex items-center gap-1.5">
                 <Flame size={14} className="text-[#D9BA72]" />
                 Brand Voice Rules & Companion Directives (Chat & Live Phone Call Behavior)
@@ -2325,7 +2917,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
             </div>
 
             {/* Content Boundaries */}
-            <div className="md:col-span-2 space-y-2">
+            <div className={cn('md:col-span-2 space-y-2', studioStep !== 2 && 'hidden')}>
               <label className="block text-xs font-bold text-[#A1A1AA] uppercase tracking-wider">Content Boundaries & Guidelines</label>
               <input
                 type="text"
@@ -2337,25 +2929,173 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
             </div>
           </div>
         </div>
+        )}
 
-        {/* ── NATURAL INLINE SAVE PERSONA SECTION AT END OF FORM ── */}
-        <div className="pt-4 flex items-center justify-between border-t border-slate-800">
-          <div className="text-xs text-slate-400 font-medium">
-            {referenceImages.length > 0 ? `📸 ${referenceImages.length} reference photo(s) attached` : 'Upload photos, use text prompt, or run wizard above to save'}
+        {/* ── GUIDED FLOW NAVIGATION ── */}
+        <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-[#0B0B0E] p-3 shadow-xl sm:flex-row sm:items-center sm:justify-between sm:p-4">
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#D9BA72]">
+              Step {studioStep + 1} of {STUDIO_STEPS.length}
+            </p>
+            <p className="mt-0.5 truncate text-xs text-slate-400">{STUDIO_STEPS[studioStep].description}</p>
           </div>
 
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={isSaving}
-            className="btn-gold-primary px-8 py-3 text-xs font-bold flex items-center gap-2 cursor-pointer shadow-lg"
-          >
-            {isSaving ? <Loader2 size={16} className="animate-spin text-[#161108]" /> : <Check size={16} />}
-            <span>Save Persona</span>
-          </button>
-        </div>
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+            <button
+              type="button"
+              onClick={() => goToStudioStep(studioStep - 1)}
+              disabled={studioStep === 0}
+              className="btn-gold-secondary px-5 py-2.5 text-xs font-bold flex items-center justify-center gap-2 disabled:pointer-events-none disabled:opacity-0"
+            >
+              <ChevronLeft size={15} />
+              Back
+            </button>
 
+            {studioStep < STUDIO_STEPS.length - 1 ? (
+              <button
+                type="button"
+                onClick={() => goToStudioStep(studioStep + 1)}
+                className="btn-gold-primary px-6 py-2.5 text-xs font-bold flex items-center justify-center gap-2 shadow-lg"
+              >
+                Continue
+                <ArrowRight size={15} />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={isSaving}
+                className="btn-gold-primary px-6 py-2.5 text-xs font-bold flex items-center justify-center gap-2 shadow-lg"
+              >
+                {isSaving ? <Loader2 size={16} className="animate-spin text-[#161108]" /> : <Check size={16} />}
+                <span>{editingPersona ? 'Save Changes' : 'Publish Persona'}</span>
+              </button>
+            )}
+          </div>
+        </div>
       </div>
+
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {showHeyGenSignIn && (
+          <motion.div
+            className="fixed inset-0 z-[120] flex items-center justify-center p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <button
+              type="button"
+              aria-label="Close creator sign-in"
+              onClick={() => !isHeyGenSigningIn && !isHeyGenGoogleSigningIn && setShowHeyGenSignIn(false)}
+              className="absolute inset-0 bg-black/75 backdrop-blur-sm cursor-default"
+            />
+            <motion.form
+              onSubmit={handleHeyGenCreatorSignIn}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="heygen-sign-in-title"
+              initial={{ opacity: 0, y: 18, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.98 }}
+              className="relative z-10 w-full max-w-md rounded-2xl border border-white/10 bg-[#161618] p-5 sm:p-6 shadow-2xl"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-400/10 text-cyan-300">
+                    <Shield size={20} />
+                  </div>
+                  <h3 id="heygen-sign-in-title" className="text-lg font-bold text-white">Creator sign-in</h3>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-400">
+                    Sign in to your AI Influencer Studio creator account. Your HeyGen key remains protected on the server.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  aria-label="Close"
+                  disabled={isHeyGenSigningIn || isHeyGenGoogleSigningIn}
+                  onClick={() => setShowHeyGenSignIn(false)}
+                  className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-white/5 hover:text-white disabled:opacity-50 cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleHeyGenGoogleSignIn}
+                disabled={isHeyGenSigningIn || isHeyGenGoogleSigningIn}
+                className="mt-5 inline-flex w-full items-center justify-center gap-3 rounded-lg border border-white/15 bg-white px-4 py-3 text-sm font-bold text-[#171717] transition-all hover:bg-slate-100 disabled:cursor-wait disabled:opacity-70 cursor-pointer"
+              >
+                {isHeyGenGoogleSigningIn ? (
+                  <Loader2 size={17} className="animate-spin" />
+                ) : (
+                  <svg aria-hidden="true" viewBox="0 0 24 24" className="h-[18px] w-[18px]">
+                    <path fill="#4285F4" d="M21.6 12.23c0-.71-.06-1.4-.18-2.07H12v3.92h5.38a4.6 4.6 0 0 1-2 3.02v2.54h3.24c1.9-1.75 2.98-4.32 2.98-7.41Z" />
+                    <path fill="#34A853" d="M12 22c2.7 0 4.98-.9 6.63-2.43l-3.24-2.54c-.9.6-2.05.96-3.39.96-2.61 0-4.82-1.76-5.61-4.13H3.04v2.62A10 10 0 0 0 12 22Z" />
+                    <path fill="#FBBC05" d="M6.39 13.87A6.01 6.01 0 0 1 6.07 12c0-.65.11-1.28.32-1.87V7.51H3.04A10 10 0 0 0 2 12c0 1.61.39 3.14 1.04 4.49l3.35-2.62Z" />
+                    <path fill="#EA4335" d="M12 6.01c1.47 0 2.79.51 3.83 1.5l2.87-2.88A9.64 9.64 0 0 0 12 2a10 10 0 0 0-8.96 5.51l3.35 2.62C7.18 7.77 9.39 6.01 12 6.01Z" />
+                  </svg>
+                )}
+                {isHeyGenGoogleSigningIn ? 'Opening Google...' : 'Continue with Google'}
+              </button>
+
+              <div className="my-5 flex items-center gap-3" aria-hidden="true">
+                <span className="h-px flex-1 bg-white/10" />
+                <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">or continue with email</span>
+                <span className="h-px flex-1 bg-white/10" />
+              </div>
+
+              <div className="space-y-4">
+                <label className="block">
+                  <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-400">Creator email</span>
+                  <input
+                    type="email"
+                    value={heyGenSignInEmail}
+                    onChange={(event) => setHeyGenSignInEmail(event.target.value)}
+                    autoComplete="email"
+                    required
+                    placeholder="you@example.com"
+                    className="luxury-input w-full px-4 py-3 text-sm"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-400">Password</span>
+                  <input
+                    type="password"
+                    value={heyGenSignInPassword}
+                    onChange={(event) => setHeyGenSignInPassword(event.target.value)}
+                    autoComplete="current-password"
+                    required
+                    className="luxury-input w-full px-4 py-3 text-sm"
+                  />
+                </label>
+              </div>
+
+              <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  disabled={isHeyGenSigningIn || isHeyGenGoogleSigningIn}
+                  onClick={() => setShowHeyGenSignIn(false)}
+                  className="rounded-lg border border-white/10 px-4 py-2.5 text-xs font-bold text-slate-300 transition-colors hover:bg-white/5 disabled:opacity-50 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isHeyGenSigningIn || isHeyGenGoogleSigningIn}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#E7C477] px-4 py-2.5 text-xs font-bold text-[#161618] transition-all hover:bg-[#F2D58D] disabled:cursor-wait disabled:opacity-70 cursor-pointer"
+                >
+                  {isHeyGenSigningIn ? <Loader2 size={14} className="animate-spin" /> : <Shield size={14} />}
+                  {isHeyGenSigningIn ? 'Signing In...' : 'Sign In & Load Voices'}
+                </button>
+              </div>
+            </motion.form>
+          </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   );
 }

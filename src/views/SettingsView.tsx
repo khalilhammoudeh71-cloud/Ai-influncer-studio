@@ -12,6 +12,7 @@ import { fetchAllModelTypes, ModelInfo } from '../services/imageService';
 import { supabase } from '../lib/supabase';
 import { useCreatorProfile, saveCreatorProfile } from '../utils/creatorProfile';
 import { processImageFile } from '../utils/imageProcessing';
+import { accountLocalStorage } from '../utils/accountStorage';
 import toast from 'react-hot-toast';
 
 interface Props {
@@ -914,7 +915,7 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
                 label: 'Clear All Chat History',
                 desc: 'Remove stored conversations from all personas',
                 onClick: () => {
-                  personas.forEach(p => localStorage.removeItem(`chat_history_${p.id}`));
+                  personas.forEach(p => accountLocalStorage.removeItem(`chat_history_${p.id}`));
                   toast.success('All chat history cleared');
                 }
               },

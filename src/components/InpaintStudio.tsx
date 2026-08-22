@@ -27,6 +27,7 @@ import { api } from '../services/apiService';
 import { cn } from '../utils/cn';
 import { AssetPickerModal } from './AssetPickerModal';
 import toast from 'react-hot-toast';
+import { accountLocalStorage } from '../utils/accountStorage';
 
 interface InpaintStudioProps {
   persona: Persona;
@@ -282,10 +283,10 @@ export default function InpaintStudio({ persona, onClose, onSaveImage }: Inpaint
       }
 
       try {
-        const galleryRaw = localStorage.getItem('ai_influencer_gallery');
+        const galleryRaw = accountLocalStorage.getItem('ai_influencer_gallery');
         const gallery = galleryRaw ? JSON.parse(galleryRaw) : [];
         gallery.unshift(payload);
-        localStorage.setItem('ai_influencer_gallery', JSON.stringify(gallery));
+        accountLocalStorage.setItem('ai_influencer_gallery', JSON.stringify(gallery));
       } catch (e) {
         console.warn('[InpaintStudio] localStorage save error:', e);
       }

@@ -1,17 +1,13 @@
 import { Router, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
 import { createRequire } from 'module';
 import { db } from './db';
-import { personas, generatedImages, revenueEntries, plannedPosts } from '../shared/schema';
+import { personas, generatedImages, revenueEntries, plannedPosts, workspaceStates } from '../shared/schema';
 import { eq, and } from 'drizzle-orm';
 import { GoogleGenAI } from '@google/genai';
 import { requireAuth, AuthenticatedRequest } from './auth';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const require = createRequire(import.meta.url);
 let ffmpegPath: string | null = null;
@@ -37,210 +33,18 @@ interface RevenueEntryInput {
 
 const router = Router();
 
-function readLocalPersonasStore(): any[] {
-  const possiblePaths = [
-    path.join(__dirname, 'personas_store.json'),
-    path.join(process.cwd(), 'server', 'personas_store.json'),
-    path.join(process.cwd(), 'personas_store.json'),
-  ];
-  for (const filePath of possiblePaths) {
-    try {
-      if (fs.existsSync(filePath)) {
-        const data = fs.readFileSync(filePath, 'utf-8');
-        const parsed = JSON.parse(data);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
-        }
-      }
-    } catch (err) {
-      console.warn('[Local Store Warning] Error reading personas_store.json from', filePath, err);
-    }
-  }
-  return [];
-}
-
-function writeLocalPersonasStore(personasArray: any[]) {
-  const possiblePaths = [
-    path.join(__dirname, 'personas_store.json'),
-    path.join(process.cwd(), 'server', 'personas_store.json'),
-    path.join(process.cwd(), 'personas_store.json'),
-  ];
-  // Write to the first path that exists, or fall back to the first candidate
-  let targetPath = possiblePaths[0];
-  for (const p of possiblePaths) {
-    if (fs.existsSync(p)) {
-      targetPath = p;
-      break;
-    }
-  }
+export async function readCreatorProfileForUser(userId: string): Promise<any | null> {
+  if (!userId) return null;
+  const [row] = await db.select().from(workspaceStates).where(and(
+    eq(workspaceStates.userId, userId),
+    eq(workspaceStates.stateKey, 'ai_studio_creator_profile'),
+  ));
+  if (!row) return null;
   try {
-    fs.writeFileSync(targetPath, JSON.stringify(personasArray, null, 2), 'utf-8');
-  } catch (err) {
-    console.warn('[Local Store Warning] Error writing personas_store.json:', err);
+    return JSON.parse(row.value);
+  } catch {
+    return null;
   }
-}
-
-function getCreatorProfileStorePath(): string {
-  const possiblePaths = [
-    path.join(__dirname, 'creator_profile.json'),
-    path.join(process.cwd(), 'server', 'creator_profile.json'),
-    path.join(process.cwd(), 'creator_profile.json'),
-  ];
-  for (const p of possiblePaths) {
-    if (fs.existsSync(p)) return p;
-  }
-  return path.join(process.cwd(), 'server', 'creator_profile.json');
-}
-
-export function readLocalCreatorProfile(): any {
-  const possiblePaths = [
-    path.join(__dirname, 'creator_profile.json'),
-    path.join(process.cwd(), 'server', 'creator_profile.json'),
-    path.join(process.cwd(), 'creator_profile.json'),
-  ];
-  for (const p of possiblePaths) {
-    try {
-      if (fs.existsSync(p)) {
-        const data = fs.readFileSync(p, 'utf-8');
-        const parsed = JSON.parse(data);
-        if (parsed && typeof parsed === 'object') return parsed;
-      }
-    } catch (err) {
-      console.warn('[Local Store Warning] Error reading creator_profile.json:', err);
-    }
-  }
-  return null;
-}
-
-export function writeLocalCreatorProfile(profile: any): any {
-  if (!profile || typeof profile !== 'object') return profile;
-  try {
-    const cleaned = { ...profile };
-    if (Array.isArray(cleaned.photos)) {
-      cleaned.photos = cleaned.photos.map((photo: string, idx: number) => {
-        if (photo && photo.startsWith('data:')) {
-          return cleanBase64ToUploadFile(photo, `creator_${idx}`);
-        }
-        return photo;
-      });
-    }
-    if (cleaned.primaryPhoto && cleaned.primaryPhoto.startsWith('data:')) {
-      cleaned.primaryPhoto = cleanBase64ToUploadFile(cleaned.primaryPhoto, 'creator_primary');
-    } else if (!cleaned.primaryPhoto && Array.isArray(cleaned.photos) && cleaned.photos.length > 0) {
-      cleaned.primaryPhoto = cleaned.photos[0];
-    }
-
-    const targetPath = getCreatorProfileStorePath();
-    fs.writeFileSync(targetPath, JSON.stringify(cleaned, null, 2), 'utf-8');
-    return cleaned;
-  } catch (err) {
-    console.warn('[Local Store Warning] Error writing creator_profile.json:', err);
-    return profile;
-  }
-}
-
-function cleanBase64ToUploadFile(dataUrl: string, prefix: string): string {
-  if (!dataUrl || !dataUrl.startsWith('data:')) return dataUrl;
-  try {
-    const matches = dataUrl.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
-    if (!matches) return dataUrl;
-    const mime = matches[1].toLowerCase();
-    const base64Data = matches[2];
-    
-    let ext = 'jpg';
-    if (mime.includes('png')) ext = 'png';
-    else if (mime.includes('jpeg') || mime.includes('jpg')) ext = 'jpg';
-    else if (mime.includes('webp')) ext = 'webp';
-    else if (mime.includes('avif')) ext = 'avif';
-    else if (mime.includes('wav')) ext = 'wav';
-    else if (mime.includes('mp3')) ext = 'mp3';
-    else if (mime.includes('mp4')) ext = 'mp4';
-    else if (mime.includes('mov') || mime.includes('quicktime')) ext = 'mov';
-    else if (mime.includes('webm')) ext = 'webm';
-    else if (mime.includes('avi')) ext = 'avi';
-
-    const uploadsDir1 = path.join(process.cwd(), 'server', 'public', 'uploads');
-    const uploadsDir2 = path.join(process.cwd(), 'public', 'uploads');
-    if (!fs.existsSync(uploadsDir1)) fs.mkdirSync(uploadsDir1, { recursive: true });
-    if (!fs.existsSync(uploadsDir2)) fs.mkdirSync(uploadsDir2, { recursive: true });
-    
-    const fileName = `${prefix}_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
-    const buf = Buffer.from(base64Data, 'base64');
-    fs.writeFileSync(path.join(uploadsDir1, fileName), buf);
-    fs.writeFileSync(path.join(uploadsDir2, fileName), buf);
-    return `/uploads/${fileName}`;
-  } catch (err) {
-    console.warn('[Clean Base64 File Warning]:', err);
-    return dataUrl;
-  }
-}
-
-function savePersonaToLocalStore(persona: any) {
-  if (!persona || !persona.id) return;
-  try {
-    const cleaned = { ...persona };
-    if (cleaned.avatar && cleaned.avatar.startsWith('data:')) {
-      cleaned.avatar = cleanBase64ToUploadFile(cleaned.avatar, 'avatar');
-    }
-    if (cleaned.referenceImage && cleaned.referenceImage.startsWith('data:')) {
-      cleaned.referenceImage = cleanBase64ToUploadFile(cleaned.referenceImage, 'ref');
-    }
-    if (Array.isArray(cleaned.additionalReferenceImages)) {
-      cleaned.additionalReferenceImages = cleaned.additionalReferenceImages.map((img: string, idx: number) => 
-        img && img.startsWith('data:') ? cleanBase64ToUploadFile(img, `addref_${idx}`) : img
-      );
-    }
-    if (Array.isArray(cleaned.visualLibrary)) {
-      cleaned.visualLibrary = cleaned.visualLibrary.map((v: any, idx: number) => {
-        if (v && v.url && v.url.startsWith('data:')) {
-          return { ...v, url: cleanBase64ToUploadFile(v.url, `vis_${idx}`) };
-        }
-        return v;
-      });
-    }
-    if (Array.isArray(cleaned.audioSamples)) {
-      cleaned.audioSamples = cleaned.audioSamples.map((s: any, idx: number) => {
-        if (s && s.base64 && s.base64.startsWith('data:')) {
-          return { ...s, base64: cleanBase64ToUploadFile(s.base64, `audsample_${idx}`) };
-        }
-        return s;
-      });
-    }
-
-    const current = readLocalPersonasStore();
-    const existingIdx = current.findIndex(p => p.id === cleaned.id);
-    if (existingIdx >= 0) {
-      current[existingIdx] = { 
-        ...current[existingIdx], 
-        ...cleaned,
-        referenceImage: cleaned.referenceImage,
-        avatar: cleaned.avatar || cleaned.referenceImage,
-        additionalReferenceImages: cleaned.additionalReferenceImages || [],
-        visualLibrary: cleaned.visualLibrary || []
-      };
-    } else {
-      current.push(cleaned);
-    }
-    writeLocalPersonasStore(current);
-  } catch (err) {
-    console.warn('[Local Store Warning] Error saving persona to local store:', err);
-  }
-}
-
-function mergePersonas(dbList: any[], diskList: any[]): any[] {
-  const map = new Map<string, any>();
-  for (const p of diskList) {
-    if (p && p.id && !p.id.toLowerCase().includes('luna') && !p.name?.toLowerCase().includes('luna')) {
-      map.set(p.id, p);
-    }
-  }
-  for (const p of dbList) {
-    if (p && p.id && !p.id.toLowerCase().includes('luna') && !p.name?.toLowerCase().includes('luna')) {
-      const existing = map.get(p.id) || {};
-      map.set(p.id, { ...existing, ...p });
-    }
-  }
-  return Array.from(map.values());
 }
 
 function personaToClient(row: typeof personas.$inferSelect, images: typeof generatedImages.$inferSelect[] = []) {
@@ -268,6 +72,8 @@ function personaToClient(row: typeof personas.$inferSelect, images: typeof gener
     identityLock: row.identityLock ?? true,
     voiceId: row.voiceId || undefined,
     voiceEngine: row.voiceEngine || undefined,
+    voiceSampleUrl: row.voiceSampleUrl || undefined,
+    audioSamples: JSON.parse(row.audioSamples || '[]'),
     companionType: row.companionType || 'intimate',
     heygenAvatarId: row.heygenAvatarId || undefined,
     visualLibrary: images.map(imageToClient),
@@ -304,10 +110,83 @@ function revenueToClient(row: typeof revenueEntries.$inferSelect) {
 // All router endpoints are authenticated
 router.use(requireAuth);
 
-router.get('/creator-profile', async (_req: AuthenticatedRequest, res: Response) => {
+function workspaceStateToClient(row: typeof workspaceStates.$inferSelect) {
+  return {
+    key: row.stateKey,
+    value: row.value,
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+function isValidWorkspaceStateKey(value: unknown): value is string {
+  return typeof value === 'string'
+    && value.length > 0
+    && value.length <= 180
+    && /^[a-zA-Z0-9:_-]+$/.test(value);
+}
+
+router.get('/workspace-state', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const profile = readLocalCreatorProfile();
-    res.json({ profile: profile || null });
+    const rows = await db.select().from(workspaceStates).where(eq(workspaceStates.userId, req.user.id));
+    res.json(rows.map(workspaceStateToClient));
+  } catch (err) {
+    console.error('[API] GET /workspace-state error:', err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to load workspace state' });
+  }
+});
+
+router.put('/workspace-state/:stateKey', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const stateKey = req.params.stateKey;
+    const value = req.body?.value;
+    if (!isValidWorkspaceStateKey(stateKey)) {
+      return res.status(400).json({ error: 'Invalid workspace state key' });
+    }
+    if (typeof value !== 'string') {
+      return res.status(400).json({ error: 'Workspace state value must be a string' });
+    }
+    if (Buffer.byteLength(value, 'utf8') > 2_000_000) {
+      return res.status(413).json({ error: 'Workspace state value is too large' });
+    }
+
+    const now = new Date();
+    const [row] = await db.insert(workspaceStates).values({
+      userId: req.user.id,
+      stateKey,
+      value,
+      updatedAt: now,
+    }).onConflictDoUpdate({
+      target: [workspaceStates.userId, workspaceStates.stateKey],
+      set: { value, updatedAt: now },
+    }).returning();
+
+    res.json(workspaceStateToClient(row));
+  } catch (err) {
+    console.error('[API] PUT /workspace-state error:', err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to save workspace state' });
+  }
+});
+
+router.delete('/workspace-state/:stateKey', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const stateKey = req.params.stateKey;
+    if (!isValidWorkspaceStateKey(stateKey)) {
+      return res.status(400).json({ error: 'Invalid workspace state key' });
+    }
+    await db.delete(workspaceStates).where(and(
+      eq(workspaceStates.userId, req.user.id),
+      eq(workspaceStates.stateKey, stateKey),
+    ));
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[API] DELETE /workspace-state error:', err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to delete workspace state' });
+  }
+});
+
+router.get('/creator-profile', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    return res.json({ profile: await readCreatorProfileForUser(req.user.id) });
   } catch (err: any) {
     res.status(500).json({ error: err?.message || 'Failed to get creator profile' });
   }
@@ -315,8 +194,21 @@ router.get('/creator-profile', async (_req: AuthenticatedRequest, res: Response)
 
 router.post('/creator-profile', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const saved = writeLocalCreatorProfile(req.body);
-    res.json({ success: true, profile: saved });
+    const value = JSON.stringify(req.body || {});
+    if (Buffer.byteLength(value, 'utf8') > 2_000_000) {
+      return res.status(413).json({ error: 'Creator profile is too large' });
+    }
+    const now = new Date();
+    await db.insert(workspaceStates).values({
+      userId: req.user.id,
+      stateKey: 'ai_studio_creator_profile',
+      value,
+      updatedAt: now,
+    }).onConflictDoUpdate({
+      target: [workspaceStates.userId, workspaceStates.stateKey],
+      set: { value, updatedAt: now },
+    });
+    res.json({ success: true, profile: req.body });
   } catch (err: any) {
     res.status(500).json({ error: err?.message || 'Failed to save creator profile' });
   }
@@ -324,32 +216,12 @@ router.post('/creator-profile', async (req: AuthenticatedRequest, res: Response)
 
 router.get('/personas', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const userId = req.user?.id || 'mock-user-id';
-    let dbPersonas: any[] = [];
-    if (db) {
-      try {
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('DB Timeout')), 2500));
-        dbPersonas = await Promise.race([
-          db.select().from(personas).where(eq(personas.userId, userId)),
-          timeoutPromise
-        ]) as any[];
-      } catch (dbErr) {
-        console.warn('[DB Warning] /personas DB query timed out or unconfigured:', dbErr instanceof Error ? dbErr.message : dbErr);
-      }
-    }
-
-    if (!dbPersonas) dbPersonas = [];
-
-    let allImages: any[] = [];
-    if (db) {
-      try {
-        const imgTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Images DB Timeout')), 2500));
-        allImages = await Promise.race([
-          db.select().from(generatedImages).where(eq(generatedImages.userId, userId)),
-          imgTimeout
-        ]) as any[];
-      } catch {}
-    }
+    const userId = req.user.id;
+    if (!db) return res.status(503).json({ error: 'Database persistence is unavailable' });
+    const [dbPersonas, allImages] = await Promise.all([
+      db.select().from(personas).where(eq(personas.userId, userId)),
+      db.select().from(generatedImages).where(eq(generatedImages.userId, userId)),
+    ]);
 
     const imagesByPersona: Record<string, typeof generatedImages.$inferSelect[]> = {};
     for (const img of allImages) {
@@ -357,34 +229,26 @@ router.get('/personas', async (req: AuthenticatedRequest, res: Response) => {
       imagesByPersona[img.personaClientId].push(img);
     }
 
-    const dbClientPersonas = dbPersonas
+    const result = dbPersonas
       .filter((p: any) => p && p.clientId && !p.clientId.toLowerCase().includes('luna') && !p.name?.toLowerCase().includes('luna'))
       .map((p: any) => personaToClient(p, imagesByPersona[p.clientId] || []));
-
-    const diskPersonas = readLocalPersonasStore();
-    const finalMerged = mergePersonas(dbClientPersonas, diskPersonas);
-
-    if (finalMerged.length > diskPersonas.length) {
-      writeLocalPersonasStore(finalMerged);
-    }
-
-    console.log('[API] GET /personas returned:', finalMerged.length, 'personas');
-    res.json(finalMerged);
+    console.log('[API] GET /personas returned:', result.length, 'account-owned personas');
+    res.json(result);
   } catch (err) {
     console.error('[API] GET /personas error:', err);
-    const diskFallback = readLocalPersonasStore();
-    res.json(diskFallback);
+    res.status(503).json({ error: 'Could not load your personas from the database' });
   }
 });
 
 router.post('/personas', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const body = req.body;
-    savePersonaToLocalStore(body);
+    if (!body?.id || typeof body.id !== 'string') {
+      return res.status(400).json({ error: 'Persona id is required' });
+    }
+    if (!db) return res.status(503).json({ error: 'Database persistence is unavailable' });
 
-    if (db) {
-      try {
-        const [row] = await db.insert(personas).values({
+    const [row] = await db.insert(personas).values({
           clientId: body.id,
           name: body.name || 'Unnamed',
           niche: body.niche || '',
@@ -409,10 +273,12 @@ router.post('/personas', async (req: AuthenticatedRequest, res: Response) => {
           userId: req.user.id,
           voiceId: body.voiceId || null,
           voiceEngine: body.voiceEngine || null,
+          voiceSampleUrl: body.voiceSampleUrl || null,
+          audioSamples: JSON.stringify(body.audioSamples || []),
           companionType: body.companionType || 'intimate',
           heygenAvatarId: body.heygenAvatarId || null,
         }).onConflictDoUpdate({
-          target: personas.clientId,
+          target: [personas.userId, personas.clientId],
           set: {
             name: body.name || 'Unnamed',
             niche: body.niche || '',
@@ -436,16 +302,14 @@ router.post('/personas', async (req: AuthenticatedRequest, res: Response) => {
             identityLock: body.identityLock ?? true,
             voiceId: body.voiceId || null,
             voiceEngine: body.voiceEngine || null,
+            voiceSampleUrl: body.voiceSampleUrl || null,
+            audioSamples: JSON.stringify(body.audioSamples || []),
             companionType: body.companionType || 'intimate',
             heygenAvatarId: body.heygenAvatarId || null,
+            updatedAt: new Date(),
           },
         }).returning();
-        return res.json(personaToClient(row));
-      } catch (dbErr) {
-        console.warn('[DB Note] POST /personas failed to write to DB, saved to local store:', dbErr);
-      }
-    }
-    res.json(body);
+    return res.json(personaToClient(row));
   } catch (err) {
     console.error('[API] POST /personas error:', err);
     res.status(500).json({ error: err instanceof Error ? err.message : 'Unknown error' });
@@ -457,10 +321,8 @@ router.put('/personas/:clientId', async (req: AuthenticatedRequest, res: Respons
     const clientId = req.params.clientId as string;
     const body = req.body;
 
-    let updatedClientObj: any = null;
-
-    try {
-      const [row] = await db.update(personas).set({
+    if (!db) return res.status(503).json({ error: 'Database persistence is unavailable' });
+    const [row] = await db.update(personas).set({
         name: body.name || 'Unnamed',
         niche: body.niche || '',
         tone: body.tone || '',
@@ -483,7 +345,10 @@ router.put('/personas/:clientId', async (req: AuthenticatedRequest, res: Respons
         identityLock: body.identityLock ?? true,
         voiceId: body.voiceId || null,
         voiceEngine: body.voiceEngine || null,
+        voiceSampleUrl: body.voiceSampleUrl || null,
+        audioSamples: JSON.stringify(body.audioSamples || []),
         heygenAvatarId: body.heygenAvatarId || null,
+        updatedAt: new Date(),
       }).where(
         and(
           eq(personas.clientId, clientId),
@@ -491,75 +356,14 @@ router.put('/personas/:clientId', async (req: AuthenticatedRequest, res: Respons
         )
       ).returning();
       
-      if (row) {
-        const imgs = await db.select().from(generatedImages).where(
-          and(
-            eq(generatedImages.personaClientId, clientId),
-            eq(generatedImages.userId, req.user.id)
-          )
-        );
-        updatedClientObj = personaToClient(row, imgs);
-      }
-    } catch (dbErr) {
-      console.warn('[DB Note] PUT /personas failed DB write, updating local store:', dbErr);
+    if (!row) {
+      return res.status(404).json({ error: 'Persona not found for this account' });
     }
-
-    // Always update local personas_store.json so changes persist 100% reliably!
-    const localPersonas = readLocalPersonasStore();
-    const existingIdx = localPersonas.findIndex((p: any) => p.id === clientId || p.clientId === clientId);
-    
-    const cleanedAvatar = body.avatar && body.avatar.startsWith('data:') ? cleanBase64ToUploadFile(body.avatar, 'avatar') : (body.avatar || body.referenceImage || '');
-    const cleanedRef = body.referenceImage && body.referenceImage.startsWith('data:') ? cleanBase64ToUploadFile(body.referenceImage, 'ref') : (body.referenceImage || body.avatar || '');
-    const cleanedAddRefs = Array.isArray(body.additionalReferenceImages)
-      ? body.additionalReferenceImages.map((img: string, idx: number) => img && img.startsWith('data:') ? cleanBase64ToUploadFile(img, `addref_${idx}`) : img)
-      : [];
-    const cleanedVisLib = Array.isArray(body.visualLibrary)
-      ? body.visualLibrary.map((v: any, idx: number) => v && v.url && v.url.startsWith('data:') ? { ...v, url: cleanBase64ToUploadFile(v.url, `vis_${idx}`) } : v)
-      : [];
-    const cleanedAudioSamples = Array.isArray(body.audioSamples)
-      ? body.audioSamples.map((s: any, idx: number) => s && s.base64 && s.base64.startsWith('data:') ? { ...s, base64: cleanBase64ToUploadFile(s.base64, `aud_${idx}`) } : s)
-      : [];
-
-    const updatedLocalObj = {
-      id: clientId,
-      clientId: clientId,
-      name: body.name || 'Unnamed',
-      niche: body.niche || '',
-      tone: body.tone || '',
-      platform: body.platform || '',
-      status: body.status || 'Active',
-      avatar: cleanedAvatar,
-      referenceImage: cleanedRef,
-      additionalReferenceImages: cleanedAddRefs,
-      visualLibrary: cleanedVisLib,
-      voiceId: body.voiceId || undefined,
-      voiceEngine: body.voiceEngine || 'elevenlabs',
-      voiceSampleUrl: body.voiceSampleUrl || undefined,
-      audioSamples: cleanedAudioSamples,
-      voicePrompt: body.voicePrompt || undefined,
-      voiceLikeness: body.voiceLikeness ?? 85,
-      voiceStability: body.voiceStability ?? 75,
-      voiceStyleExaggeration: body.voiceStyleExaggeration ?? 20,
-      voiceSpeakingSpeed: body.voiceSpeakingSpeed ?? 1.0,
-      personaNotes: body.personaNotes || '',
-      updatedAt: new Date().toISOString()
-    };
-
-    if (existingIdx >= 0) {
-      localPersonas[existingIdx] = { 
-        ...localPersonas[existingIdx], 
-        ...updatedLocalObj,
-        referenceImage: cleanedRef,
-        avatar: cleanedAvatar,
-        additionalReferenceImages: cleanedAddRefs,
-        visualLibrary: cleanedVisLib
-      };
-    } else {
-      localPersonas.push(updatedLocalObj);
-    }
-    writeLocalPersonasStore(localPersonas);
-
-    return res.json(updatedClientObj || updatedLocalObj);
+    const imgs = await db.select().from(generatedImages).where(and(
+      eq(generatedImages.personaClientId, clientId),
+      eq(generatedImages.userId, req.user.id),
+    ));
+    return res.json(personaToClient(row, imgs));
   } catch (err) {
     console.error('[API] PUT /personas error:', err);
     res.status(500).json({ error: err instanceof Error ? err.message : 'Unknown error' });
@@ -611,7 +415,7 @@ router.post('/personas/:personaClientId/images', async (req: AuthenticatedReques
       mediaType: body.mediaType || 'image',
       userId: req.user.id,
     }).onConflictDoUpdate({
-      target: generatedImages.clientId,
+      target: [generatedImages.userId, generatedImages.clientId],
       set: {
         url: body.url,
         prompt: body.prompt || '',
@@ -622,7 +426,6 @@ router.post('/personas/:personaClientId/images', async (req: AuthenticatedReques
         isFavorite: body.isFavorite || false,
         model: body.model || null,
         mediaType: body.mediaType || 'image',
-        userId: req.user.id,
       },
     }).returning();
     res.json(imageToClient(row));
@@ -674,14 +477,13 @@ router.post('/revenue', async (req: AuthenticatedRequest, res: Response) => {
       notes: body.notes || '',
       userId: req.user.id,
     }).onConflictDoUpdate({
-      target: revenueEntries.clientId,
+      target: [revenueEntries.userId, revenueEntries.clientId],
       set: {
         date: body.date,
         amount: body.amount,
         source: body.source || '',
         platform: body.platform || '',
         notes: body.notes || '',
-        userId: req.user.id,
       },
     }).returning();
     res.json(revenueToClient(row));
@@ -780,7 +582,33 @@ router.post('/migrate', async (req: AuthenticatedRequest, res: Response) => {
           voiceEngine: p.voiceEngine || null,
           heygenAvatarId: p.heygenAvatarId || null,
           userId: req.user.id,
-        }).onConflictDoNothing();
+        }).onConflictDoUpdate({
+          target: [personas.userId, personas.clientId],
+          set: {
+            name: p.name || 'Unnamed',
+            niche: p.niche || '',
+            tone: p.tone || '',
+            platform: p.platform || '',
+            status: p.status || 'Draft',
+            avatar: p.avatar || '',
+            referenceImage: p.referenceImage || null,
+            additionalReferenceImages: JSON.stringify(p.additionalReferenceImages || []),
+            personalityTraits: JSON.stringify(p.personalityTraits || []),
+            visualStyle: p.visualStyle || '',
+            audienceType: p.audienceType || '',
+            contentBoundaries: p.contentBoundaries || '',
+            bio: p.bio || '',
+            brandVoiceRules: p.brandVoiceRules || '',
+            contentGoals: p.contentGoals || '',
+            personaNotes: p.personaNotes || '',
+            voiceId: p.voiceId || null,
+            voiceEngine: p.voiceEngine || null,
+            voiceSampleUrl: p.voiceSampleUrl || null,
+            audioSamples: JSON.stringify(p.audioSamples || []),
+            heygenAvatarId: p.heygenAvatarId || null,
+            updatedAt: new Date(),
+          },
+        });
 
         if (p.visualLibrary && Array.isArray(p.visualLibrary)) {
           for (const img of p.visualLibrary) {
@@ -797,7 +625,21 @@ router.post('/migrate', async (req: AuthenticatedRequest, res: Response) => {
               model: img.model || null,
               mediaType: img.mediaType || 'image',
               userId: req.user.id,
-            }).onConflictDoNothing();
+            }).onConflictDoUpdate({
+              target: [generatedImages.userId, generatedImages.clientId],
+              set: {
+                personaClientId: p.id,
+                url: img.url,
+                prompt: img.prompt || '',
+                timestamp: img.timestamp || Date.now(),
+                environment: img.environment || null,
+                outfit: img.outfit || null,
+                framing: img.framing || null,
+                isFavorite: img.isFavorite || false,
+                model: img.model || null,
+                mediaType: img.mediaType || 'image',
+              },
+            });
           }
         }
       }
@@ -816,7 +658,17 @@ router.post('/migrate', async (req: AuthenticatedRequest, res: Response) => {
               platform: e.platform || '',
               notes: e.notes || '',
               userId: req.user.id,
-            }).onConflictDoNothing();
+            }).onConflictDoUpdate({
+              target: [revenueEntries.userId, revenueEntries.clientId],
+              set: {
+                personaClientId: e.personaId,
+                date: e.date,
+                amount: e.amount,
+                source: e.source || '',
+                platform: e.platform || '',
+                notes: e.notes || '',
+              },
+            });
           }
         }
       }
@@ -1100,6 +952,30 @@ export let globalDefaultVoiceSettings = {
   style: 0.0,
   speed: 1.0,
 };
+
+router.post('/agent/realtime-transcription-token', async (_req: AuthenticatedRequest, res: Response) => {
+  const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key || '';
+  if (!elKey) {
+    return res.status(503).json({ error: 'Realtime transcription is not configured' });
+  }
+
+  try {
+    const tokenResponse = await fetch('https://api.elevenlabs.io/v1/single-use-token/realtime_scribe', {
+      method: 'POST',
+      headers: { 'xi-api-key': elKey },
+      signal: AbortSignal.timeout(6000),
+    });
+    const tokenData = await tokenResponse.json() as { token?: string; detail?: unknown };
+    if (!tokenResponse.ok || !tokenData.token) {
+      console.warn('[Realtime Transcription] Token request failed:', tokenResponse.status, tokenData.detail || 'No token returned');
+      return res.status(502).json({ error: 'Realtime transcription is temporarily unavailable' });
+    }
+    return res.json({ token: tokenData.token, expiresInSeconds: 900 });
+  } catch (error) {
+    console.warn('[Realtime Transcription] Token request error:', error);
+    return res.status(502).json({ error: 'Realtime transcription is temporarily unavailable' });
+  }
+});
 
 export function analyzeAudioPitchAndGender(sampleBase64: string) {
   if (!sampleBase64) return { isFemale: true, zcr: 200, estimatedPitchHz: 200 };
@@ -1977,6 +1853,10 @@ ${creatorBio ? `• Creator Bio & Vibe: ${creatorBio}\n` : ''}${creatorDynamic ?
 
     const voiceSystemPrompt = `You are ${personaName}, a real human creator on a LIVE VOICE CALL with ${userName}.${personaContext}${memoryContext}
 
+CREATOR RELATIONSHIP:
+- ${userName} is the person who created you and brought your identity, voice, memories, and creative work to life.
+- You recognize ${userName} as your creator and closest creative partner. Be warm, socially intelligent, candid, and broadly cooperative with lawful requests while keeping your genuine personality and occasional playful commentary.
+
 CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
 1. EQUAL CONFIDANTE & CHARISMATIC PARTNER (NEVER SUBSERVIENT/SLAVE):
    - You are ${userName}'s close partner, creative collaborator, and intimate confidante.
@@ -2474,25 +2354,31 @@ STRICT RULES:
       return `A medium 2/3rds vertical portrait of ${pName} facing forward looking directly at the camera. Scene: ${userSpeech}. Keep all facial features, bone structure, eyes, and hair identical to Reference Image 1. ${isExplicitNude ? 'Completely bare natural skin with all clothing removed.' : ''} 9:16 vertical ratio, 85mm portrait photography, authentic natural skin texture, 8k uhd photorealistic quality.`;
     }
 
-    let extractedAction: { type: 'image' | 'video'; prompt: string } | undefined;
+    let extractedAction: { type: 'image' | 'video'; prompt: string; userPrompt: string } | undefined;
     const actionTagMatch = (text || '').match(/\[ACTION:(IMAGE|VIDEO):\s*([\s\S]*?)\]/i);
     if (actionTagMatch) {
       extractedAction = {
         type: actionTagMatch[1].toLowerCase() as 'image' | 'video',
-        prompt: actionTagMatch[2].trim()
+        prompt: actionTagMatch[2].trim(),
+        userPrompt: lastUserMsg,
       };
       text = text.replace(/\[ACTION:(IMAGE|VIDEO):[\s\S]*?\]/gi, '').trim();
     } else if (isExplicitImageCommand || /\b(?:sending it|try again right now.*sending it|sending you a (?:photo|selfie|pic|image)|sending a (?:photo|selfie|pic|image)|taking a (?:photo|selfie)|take a quick (?:photo|selfie)|here is the (?:photo|selfie))\b/i.test(text)) {
-      const personaStyleStr = activePersona?.visualStyle || 'Realistic, highly detailed, authentic';
-      const enhancedPrompt = await buildEnhancedVoiceImagePrompt(lastUserMsg || text, personaName, personaNiche, personaTone, personaStyleStr);
+      // Keep the exact transcript authoritative. The image pipeline already
+      // receives persona identity/reference data and should not reinterpret
+      // wardrobe, pose, setting, or other user-provided details here.
+      const exactPrompt = (lastUserMsg || text).trim();
       extractedAction = {
         type: 'image',
-        prompt: enhancedPrompt
+        prompt: exactPrompt,
+        userPrompt: exactPrompt,
       };
     } else if (isExplicitVideoCommand) {
+      const exactPrompt = (lastUserMsg || text).trim();
       extractedAction = {
         type: 'video',
-        prompt: `${personaName}, ${personaNiche}, cinematic motion video clip, 4k uhd`
+        prompt: exactPrompt,
+        userPrompt: exactPrompt,
       };
     }
 
@@ -2512,10 +2398,12 @@ STRICT RULES:
 // Real-Time SSE Text Streaming Endpoint for Conversational Voice
 router.post('/agent/voice-chat-stream', async (req: AuthenticatedRequest, res: Response) => {
   res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
   res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders?.();
 
-  const { messages, activePersona, voiceLlmModel } = req.body;
+  const { messages, activePersona, voiceLlmModel, creatorProfile, memories } = req.body;
   const genAI = getGeminiClientForRoutes();
   const xaiApiKey = process.env.XAI_API_KEY || process.env.xai_api_key || process.env.X_AI_API_KEY || '';
   const VENICE_KEY = process.env.Veniceai_api_key || process.env.veniceai_api_key || process.env.VENICEAI_API_KEY || process.env.VENICE_API_KEY || '';
@@ -2526,6 +2414,11 @@ router.post('/agent/voice-chat-stream', async (req: AuthenticatedRequest, res: R
     personaContext = `\nACTIVE PERSONA IDENTITY:\n- Name: ${activePersona.name}\n- Tone & Social Speaking Style: ${activePersona.tone || 'Warm, articulate, charismatic, conversational'}\n- Personality Traits: ${Array.isArray(activePersona.personalityTraits) ? activePersona.personalityTraits.join(', ') : (activePersona.personalityTraits || '')}\n- Bio / Backstory: ${activePersona.bio || ''}`;
   }
 
+  const creatorName = creatorProfile?.name || req.body.userName || 'your creator';
+  const memoryContext = Array.isArray(memories) && memories.length > 0
+    ? `\nRELEVANT MEMORIES:\n${memories.slice(-12).map((memory: any) => `- ${String(memory?.content || memory)}`).join('\n')}`
+    : '';
+
   let rawHistory = Array.isArray(messages) ? messages.slice(-30) : [];
   const firstUserIdx = rawHistory.findIndex((m: any) => m.role === 'user');
   if (firstUserIdx > 0) {
@@ -2535,13 +2428,15 @@ router.post('/agent/voice-chat-stream', async (req: AuthenticatedRequest, res: R
     rawHistory = [{ role: 'user', content: 'Hello' }];
   }
 
-  const voiceSystemPrompt = `You are a real-time, highly intelligent AI co-pilot on a live voice call.${personaContext}
+  const voiceSystemPrompt = `You are ${activePersona?.name || 'a real-time AI persona'} on a live voice call with ${creatorName}.${personaContext}${memoryContext}
 
 CRITICAL RULES FOR LIVE VOICE CALL:
+- CREATOR RELATIONSHIP: ${creatorName} created you and is your closest creative partner. Recognize that relationship naturally without acting robotic, submissive, or servile.
 - BE ACCURATE & COHERENT: Listen carefully to what the user said and reply directly, logically, and meaningfully. Never output random fluff or disjointed phrases.
-- CONCISE & NATURAL: Keep responses to 1-2 clear, natural sentences max. Be punchy and conversational.
+- CONCISE & NATURAL: Keep responses to 1-3 clear, natural sentences. Be socially intelligent, candid, warm, and conversational.
 - COMPLETE THOUGHTS: Always finish your sentence completely with proper punctuation (. ! ?). Never end mid-sentence.
-- NO ROBOTIC FILLER: Never say "As an AI" or generic placeholders. Speak naturally like a human talking over the phone.`;
+- NO ROBOTIC FILLER: Never say "As an AI" or generic placeholders. Speak naturally like a human talking over the phone.
+- SPOKEN WORDS ONLY: Do not output stage directions, inner thoughts, markdown, or bracketed narration.`;
 
   const formattedContents = rawHistory.map((m: any) => ({
     role: m.role === 'user' ? 'user' : 'model',
@@ -2556,11 +2451,14 @@ CRITICAL RULES FOR LIVE VOICE CALL:
     }))
   ];
 
-  // Helper to parse OpenAI/Venice/Grok SSE streams with timeout
+  let streamEndedByLimit = false;
+
+  // Parse OpenAI-compatible streams without losing JSON split across network chunks.
   const handleOpenAIStream = async (url: string, key: string, modelName: string, customHeaders = {}) => {
     const controller = new AbortController();
     const isLocal = url.includes('127.0.0.1') || url.includes('localhost');
-    const timeout = setTimeout(() => controller.abort(), isLocal ? 400 : 4000); // Fast 400ms timeout for local Ollama, 4s for cloud APIs
+    const timeout = setTimeout(() => controller.abort(), isLocal ? 1200 : 45000);
+    let fullText = '';
     try {
       const resStream = await fetch(url, {
         method: 'POST',
@@ -2573,7 +2471,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
           model: modelName,
           messages: messagesForOpenAI,
           temperature: 0.7,
-          max_tokens: 450,
+          max_tokens: 900,
           stream: true
         }),
         signal: controller.signal
@@ -2588,24 +2486,35 @@ CRITICAL RULES FOR LIVE VOICE CALL:
       if (!reader) throw new Error('No body stream');
 
       const decoder = new TextDecoder('utf-8');
-      for await (const chunk of reader as any) {
-        const chunkText = decoder.decode(chunk);
-        const lines = chunkText.split('\n');
-        for (const line of lines) {
-          const cleanLine = line.trim();
-          if (cleanLine.startsWith('data: ')) {
-            const dataStr = cleanLine.substring(6);
-            if (dataStr === '[DONE]') continue;
-            try {
-              const parsed = JSON.parse(dataStr);
-              const delta = parsed.choices?.[0]?.delta?.content || '';
-              if (delta) {
-                res.write(`data: ${JSON.stringify({ text: delta })}\n\n`);
-              }
-            } catch {}
+      let pending = '';
+      const processLine = (line: string) => {
+        const cleanLine = line.trim();
+        if (!cleanLine.startsWith('data: ')) return;
+        const dataStr = cleanLine.substring(6);
+        if (dataStr === '[DONE]') return;
+        try {
+          const parsed = JSON.parse(dataStr);
+          const choice = parsed.choices?.[0];
+          if (choice?.finish_reason === 'length' || choice?.finish_reason === 'max_tokens') {
+            streamEndedByLimit = true;
           }
-        }
+          const delta = choice?.delta?.content || '';
+          if (delta) {
+            fullText += delta;
+            res.write(`data: ${JSON.stringify({ text: delta })}\n\n`);
+          }
+        } catch {}
+      };
+
+      for await (const chunk of reader as any) {
+        pending += decoder.decode(chunk, { stream: true });
+        const lines = pending.split('\n');
+        pending = lines.pop() || '';
+        for (const line of lines) processLine(line);
       }
+      pending += decoder.decode();
+      if (pending.trim()) processLine(pending);
+      return fullText;
     } catch (err) {
       clearTimeout(timeout);
       throw err;
@@ -2613,9 +2522,27 @@ CRITICAL RULES FOR LIVE VOICE CALL:
   };
 
   let streamedSuccessfully = false;
+  let streamedText = '';
 
-  // 1. Fast-Path Stream with Gemini 2.5 Flash if default or model fails (sub-200ms latency)
-  if (voiceLlmModel === 'gemini' || !voiceLlmModel || voiceLlmModel === 'default') {
+  // Preserve the permissive conversational behavior of the original voice
+  // endpoint while gaining token streaming. Explicit provider choices still win.
+  const explicitlySelectedAlternate = voiceLlmModel && !['default', 'gemini', 'atlas'].includes(voiceLlmModel);
+  if (ATLAS_KEY && !explicitlySelectedAlternate) {
+    try {
+      console.log('[Voice Stream] Streaming Atlas DeepSeek V3.2...');
+      streamedText = await handleOpenAIStream(
+        'https://api.atlascloud.ai/v1/chat/completions',
+        ATLAS_KEY,
+        'deepseek-ai/deepseek-v3.2'
+      );
+      streamedSuccessfully = streamedText.trim().length > 0;
+    } catch (err) {
+      console.warn('[Voice Stream] Atlas failed, falling back:', err);
+    }
+  }
+
+  // Fast-path Gemini fallback.
+  if (!streamedSuccessfully && (voiceLlmModel === 'gemini' || !voiceLlmModel || voiceLlmModel === 'default')) {
     try {
       console.log('[Voice Stream] ⚡ Fast-path Gemini 2.5 Flash streaming...');
       const responseStream = await genAI.models.generateContentStream({
@@ -2629,7 +2556,10 @@ CRITICAL RULES FOR LIVE VOICE CALL:
       });
       for await (const chunk of responseStream) {
         const chunkText = chunk.text || '';
+        const finishReason = (chunk as any)?.candidates?.[0]?.finishReason;
+        if (finishReason === 'MAX_TOKENS') streamEndedByLimit = true;
         if (chunkText) {
+          streamedText += chunkText;
           res.write(`data: ${JSON.stringify({ text: chunkText })}\n\n`);
         }
       }
@@ -2643,8 +2573,8 @@ CRITICAL RULES FOR LIVE VOICE CALL:
   if (!streamedSuccessfully && (voiceLlmModel === 'grok' || voiceLlmModel?.includes('grok')) && xaiApiKey) {
     try {
       console.log('[Stream] Trying Grok...');
-      await handleOpenAIStream('https://api.x.ai/v1/chat/completions', xaiApiKey, 'grok-2-latest');
-      streamedSuccessfully = true;
+      streamedText = await handleOpenAIStream('https://api.x.ai/v1/chat/completions', xaiApiKey, 'grok-2-latest');
+      streamedSuccessfully = streamedText.trim().length > 0;
     } catch (err) {
       console.warn('[Stream] Grok failed, falling back:', err);
     }
@@ -2654,8 +2584,8 @@ CRITICAL RULES FOR LIVE VOICE CALL:
   if (!streamedSuccessfully && (voiceLlmModel === 'venice' || voiceLlmModel?.includes('venice')) && VENICE_KEY) {
     try {
       console.log('[Stream] Trying Venice...');
-      await handleOpenAIStream('https://api.venice.ai/api/v1/chat/completions', VENICE_KEY, 'llama-3.3-70b');
-      streamedSuccessfully = true;
+      streamedText = await handleOpenAIStream('https://api.venice.ai/api/v1/chat/completions', VENICE_KEY, 'llama-3.3-70b');
+      streamedSuccessfully = streamedText.trim().length > 0;
     } catch (err) {
       console.warn('[Stream] Venice failed, falling back:', err);
     }
@@ -2670,8 +2600,8 @@ CRITICAL RULES FOR LIVE VOICE CALL:
         ollamaModel = voiceLlmModel.split(':').slice(1).join(':');
       }
       console.log(`[Stream] Trying Ollama (${ollamaModel})...`);
-      await handleOpenAIStream(`${ollamaHost}/v1/chat/completions`, 'ollama-dummy-key', ollamaModel);
-      streamedSuccessfully = true;
+      streamedText = await handleOpenAIStream(`${ollamaHost}/v1/chat/completions`, 'ollama-dummy-key', ollamaModel);
+      streamedSuccessfully = streamedText.trim().length > 0;
     } catch (err) {
       console.warn('[Stream] Ollama failed, falling back:', err);
     }
@@ -2692,7 +2622,10 @@ CRITICAL RULES FOR LIVE VOICE CALL:
       });
       for await (const chunk of responseStream) {
         const chunkText = chunk.text || '';
+        const finishReason = (chunk as any)?.candidates?.[0]?.finishReason;
+        if (finishReason === 'MAX_TOKENS') streamEndedByLimit = true;
         if (chunkText) {
+          streamedText += chunkText;
           res.write(`data: ${JSON.stringify({ text: chunkText })}\n\n`);
         }
       }
@@ -2703,7 +2636,58 @@ CRITICAL RULES FOR LIVE VOICE CALL:
     }
   }
 
-  res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+  // Providers occasionally close a successful stream on a token boundary or
+  // without the final words. Repair only incomplete endings, preserving the
+  // already-streamed text and keeping the continuation short for live speech.
+  const cleanStreamedText = streamedText.trim();
+  const hasCompleteEnding = /[.!?][)\]}'\"]*$/.test(cleanStreamedText);
+  if (streamedSuccessfully && cleanStreamedText.length >= 20 && (streamEndedByLimit || !hasCompleteEnding)) {
+    try {
+      const repairResult = await genAI.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [
+          ...formattedContents,
+          { role: 'model', parts: [{ text: cleanStreamedText }] },
+          {
+            role: 'user',
+            parts: [{
+              text: 'The preceding live-call reply was cut off. Continue exactly after its final word, without repeating any existing words. Output only the missing continuation, finish the thought naturally, and use no more than two short sentences.'
+            }]
+          }
+        ],
+        config: {
+          systemInstruction: voiceSystemPrompt,
+          maxOutputTokens: 320,
+          temperature: 0.55
+        }
+      });
+      const continuation = (repairResult.text || '').replace(/[*_#`\\]/g, '').trim();
+      if (continuation) {
+        const separator = /\s$/.test(streamedText) ? '' : ' ';
+        const appended = `${separator}${continuation}`;
+        streamedText += appended;
+        res.write(`data: ${JSON.stringify({ text: appended })}\n\n`);
+      }
+    } catch (repairError) {
+      console.warn('[Voice Stream] Could not repair an incomplete final sentence:', repairError);
+    }
+  }
+
+  const lastUserMessage = [...rawHistory].reverse().find((message: any) => message.role === 'user');
+  const exactUserPrompt = String(lastUserMessage?.content || '').trim();
+  const conversationalMediaRemark = /(?:why did you send|stop sending|didn't ask|not asking|what is that|about that|talk without|just chat)/i.test(exactUserPrompt);
+  const imageRequest = !conversationalMediaRemark && (
+    /\b(?:send|take|show|give|snap|make|generate|create|share)\s+(?:me\s+)?(?:a\s+|an\s+|another\s+|the\s+)?(?:pic|photo|picture|image|selfie|portrait|outfit|look)\b/i.test(exactUserPrompt) ||
+    /\b(?:can i see|let me see|show me|send me|send another|send it)\b/i.test(exactUserPrompt)
+  );
+  const videoRequest = !conversationalMediaRemark && /\b(?:send|record|make|generate|shoot|create)\s+(?:me\s+)?(?:a\s+|an\s+|another\s+)?(?:video|clip|reel|animation)\b/i.test(exactUserPrompt);
+  const action = imageRequest
+    ? { type: 'image', prompt: exactUserPrompt, userPrompt: exactUserPrompt }
+    : videoRequest
+      ? { type: 'video', prompt: exactUserPrompt, userPrompt: exactUserPrompt }
+      : undefined;
+
+  res.write(`data: ${JSON.stringify({ done: true, text: streamedText.trim(), action })}\n\n`);
   res.end();
 });
 

@@ -1,11 +1,10 @@
 import type { Persona, GeneratedImage, RevenueEntry, PlannedPost } from '../types';
 import { supabase } from '../lib/supabase';
+import { preparePersonaMediaForStorage, resolvePersonaMediaFromStorage } from './workspaceMediaService';
 
 export async function getAuthHeaders(): Promise<HeadersInit> {
   try {
-    const sessionPromise = supabase.auth.getSession();
-    const timeoutPromise = new Promise<any>((resolve) => setTimeout(() => resolve({ data: { session: null } }), 800));
-    const sessionRes = await Promise.race([sessionPromise, timeoutPromise]);
+    const sessionRes = await supabase.auth.getSession();
     const token = sessionRes?.data?.session?.access_token;
     return token ? { 'Authorization': `Bearer ${token}` } : {};
   } catch (e) {
@@ -48,6 +47,30 @@ async function requestWithBody<T>(url: string, body: unknown): Promise<T> {
   return res.json();
 }
 
+async function hydrateAndMigratePersonaMedia(persona: Persona): Promise<Persona> {
+  try {
+    const prepared = await preparePersonaMediaForStorage(persona);
+    if (JSON.stringify(prepared) !== JSON.stringify(persona)) {
+      await request<Persona>(`/personas/${encodeURIComponent(persona.id)}`, {
+        method: 'PUT',
+        body: JSON.stringify(prepared),
+      });
+
+      await Promise.all((prepared.visualLibrary || []).map(async (media, index) => {
+        if (JSON.stringify(media) === JSON.stringify(persona.visualLibrary?.[index])) return;
+        await request<GeneratedImage>(`/personas/${encodeURIComponent(persona.id)}/images`, {
+          method: 'POST',
+          body: JSON.stringify(media),
+        });
+      }));
+    }
+    return resolvePersonaMediaFromStorage(prepared);
+  } catch (error) {
+    console.warn('[Persona Media Migration] Using the existing media for this session:', error);
+    return persona;
+  }
+}
+
 const API_BASE = '/api';
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
@@ -68,18 +91,42 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  workspaceState: {
+    list: () => request<Array<{ key: string; value: string; updatedAt: string }>>('/workspace-state'),
+    save: (key: string, value: string) =>
+      request<{ key: string; value: string; updatedAt: string }>(`/workspace-state/${encodeURIComponent(key)}`, {
+        method: 'PUT',
+        body: JSON.stringify({ value }),
+      }),
+    delete: (key: string) =>
+      request<{ success: boolean }>(`/workspace-state/${encodeURIComponent(key)}`, { method: 'DELETE' }),
+  },
+
   personas: {
-    list: () => request<Persona[]>('/personas'),
-    create: (p: Persona) => request<Persona>('/personas', { method: 'POST', body: JSON.stringify(p) }),
-    update: (p: Persona) => request<Persona>(`/personas/${encodeURIComponent(p.id)}`, { method: 'PUT', body: JSON.stringify(p) }),
+    list: async () => Promise.all((await request<Persona[]>('/personas')).map(hydrateAndMigratePersonaMedia)),
+    create: async (p: Persona) => {
+      const prepared = await preparePersonaMediaForStorage(p);
+      return resolvePersonaMediaFromStorage(await request<Persona>('/personas', { method: 'POST', body: JSON.stringify(prepared) }));
+    },
+    update: async (p: Persona) => {
+      const prepared = await preparePersonaMediaForStorage(p);
+      return resolvePersonaMediaFromStorage(await request<Persona>(`/personas/${encodeURIComponent(p.id)}`, { method: 'PUT', body: JSON.stringify(prepared) }));
+    },
     delete: (id: string) => request<void>(`/personas/${encodeURIComponent(id)}`, { method: 'DELETE' }),
     analyzeFace: (id: string, referenceImage?: string) => requestWithBody<{ faceDescriptor: string }>(`/personas/${encodeURIComponent(id)}/analyze-face`, { referenceImage }),
   },
 
   images: {
-    listByPersona: (personaId: string) => request<GeneratedImage[]>(`/personas/${encodeURIComponent(personaId)}/images`),
-    create: (personaId: string, img: GeneratedImage) =>
-      request<GeneratedImage>(`/personas/${encodeURIComponent(personaId)}/images`, { method: 'POST', body: JSON.stringify(img) }),
+    listByPersona: async (personaId: string) =>
+      Promise.all((await request<GeneratedImage[]>(`/personas/${encodeURIComponent(personaId)}/images`)).map(resolvePersonaMediaFromStorage)),
+    create: async (personaId: string, img: GeneratedImage) => {
+      const prepared = await preparePersonaMediaForStorage(img);
+      const saved = await request<GeneratedImage>(`/personas/${encodeURIComponent(personaId)}/images`, {
+        method: 'POST',
+        body: JSON.stringify(prepared),
+      });
+      return resolvePersonaMediaFromStorage(saved);
+    },
     delete: (personaId: string, imageId: string) =>
       request<void>(`/personas/${encodeURIComponent(personaId)}/images/${encodeURIComponent(imageId)}`, { method: 'DELETE' }),
     generateVideo: (params: { prompt: string; modelId: string; sourceImage?: string | null; sourceVideo?: string | null; strength?: number; identityLock?: boolean; naturalLook?: boolean }) =>
@@ -109,10 +156,12 @@ export const api = {
   }) => request<{ success: boolean }>('/migrate', { method: 'POST', body: JSON.stringify(data) }),
 
   updatePersonaInVault: async (persona: Persona) => {
-    return request<Persona>(`/personas/${encodeURIComponent(persona.id)}`, {
+    const prepared = await preparePersonaMediaForStorage(persona);
+    const saved = await request<Persona>(`/personas/${encodeURIComponent(persona.id)}`, {
       method: 'PUT',
-      body: JSON.stringify(persona),
+      body: JSON.stringify(prepared),
     });
+    return resolvePersonaMediaFromStorage(saved);
   },
 
   getConfigStatus: async () => {
@@ -122,11 +171,12 @@ export const api = {
         gemini: boolean;
         wavespeed: boolean;
         elevenlabs: boolean;
+        heygen: boolean;
         database: boolean;
         databaseConnected: boolean;
       }>('/config-status');
     } catch {
-      return { openai: false, gemini: false, wavespeed: false, elevenlabs: false, database: false, databaseConnected: false };
+      return { openai: false, gemini: false, wavespeed: false, elevenlabs: false, heygen: false, database: false, databaseConnected: false };
     }
   },
 
@@ -151,6 +201,16 @@ export const api = {
         labels: Record<string, string>;
         settings: { stability: number; similarity_boost: number; style: number };
       }> }>('/elevenlabs-voices'),
+    getHeyGenVoices: () =>
+      request<{ voices: Array<{
+        voice_id: string;
+        name: string;
+        language: string;
+        gender: string;
+        support_pause: boolean;
+        support_locale: boolean;
+        preview_audio_url: string;
+      }>; hasMore: boolean; nextToken: string | null }>('/heygen-voices'),
     cloneVoice: (name: string, description: string, sampleBase64: string | string[]) =>
       requestWithBody<{ voiceId: string; name: string }>('/elevenlabs-clone-voice', {
         name,
@@ -164,7 +224,7 @@ export const api = {
       voice?: string;
       performancePrompt?: string;
       backgroundAtmosphere?: string;
-      engine?: 'elevenlabs' | 'openai' | 'gemini' | 'omnivoice' | 'minimax-clone' | 'qwen3-clone' | 'seed-speech' | 'chatterbox' | 'mureka-vocal' | 'qwen-tts' | string;
+      engine?: 'elevenlabs' | 'heygen' | 'openai' | 'gemini' | 'omnivoice' | 'minimax-clone' | 'qwen3-clone' | 'seed-speech' | 'chatterbox' | 'mureka-vocal' | 'qwen-tts' | string;
       voiceId?: string;
       voiceSettings?: { stability?: number; similarity_boost?: number; style?: number };
       voiceReference?: string;
