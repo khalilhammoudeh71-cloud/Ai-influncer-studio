@@ -9,6 +9,7 @@ import toast from 'react-hot-toast';
 import { Persona, NavActions, GeneratedImage } from '../types';
 import { api } from '../services/apiService';
 import { authFetch } from '../services/imageService';
+import { supabase } from '../lib/supabase';
 import { cn } from '../utils/cn';
 import { processVoiceSampleFile } from '../utils/audioUtils';
 
@@ -422,6 +423,11 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   }>>([]);
   const [isLoadingHeyGenVoices, setIsLoadingHeyGenVoices] = useState(false);
   const [playingHeyGenAudioId, setPlayingHeyGenAudioId] = useState<string | null>(null);
+  const [heyGenLoadError, setHeyGenLoadError] = useState('');
+  const [showHeyGenSignIn, setShowHeyGenSignIn] = useState(false);
+  const [heyGenSignInEmail, setHeyGenSignInEmail] = useState('');
+  const [heyGenSignInPassword, setHeyGenSignInPassword] = useState('');
+  const [isHeyGenSigningIn, setIsHeyGenSigningIn] = useState(false);
   const heyGenAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const fetchAccountVoices = async () => {
@@ -534,15 +540,47 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
 
   const fetchHeyGenVoices = async () => {
     setIsLoadingHeyGenVoices(true);
+    setHeyGenLoadError('');
     try {
       const data = await api.voice.getHeyGenVoices();
       setHeyGenVoices(Array.isArray(data.voices) ? data.voices : []);
     } catch (err: any) {
       console.warn('[HeyGen Account Voices Error]:', err?.message || err);
       setHeyGenVoices([]);
-      toast.error(err?.message || 'Could not load your HeyGen voices');
+      const message = err?.message || 'Could not load your HeyGen voices';
+      setHeyGenLoadError(message);
+      if (!message.toLowerCase().includes('sign-in')) {
+        toast.error(message);
+      }
     } finally {
       setIsLoadingHeyGenVoices(false);
+    }
+  };
+
+  const handleHeyGenCreatorSignIn = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!heyGenSignInEmail.trim() || !heyGenSignInPassword) {
+      toast.error('Enter your creator email and password');
+      return;
+    }
+
+    setIsHeyGenSigningIn(true);
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: heyGenSignInEmail.trim(),
+        password: heyGenSignInPassword,
+      });
+      if (error) throw error;
+      if (!data?.session) throw new Error('Sign-in did not create a session');
+
+      setHeyGenSignInPassword('');
+      setShowHeyGenSignIn(false);
+      toast.success('Creator account connected');
+      await fetchHeyGenVoices();
+    } catch (err: any) {
+      toast.error(err?.message || 'Could not sign in to your creator account');
+    } finally {
+      setIsHeyGenSigningIn(false);
     }
   };
 
@@ -1365,6 +1403,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
 
   const currentWizardStep = WIZARD_STEPS[wizardStepIdx];
   const selectedVoiceName = accountVoices.find(voice => voice.voice_id === selectedVoiceId)?.name
+    || heyGenVoices.find(voice => voice.voice_id === selectedVoiceId)?.name
     || PRESET_VOICES.find(voice => voice.id === selectedVoiceId)?.name
     || (audioSampleList.length > 0 ? 'Cloned voice' : 'Studio voice');
   const completedStudioSteps = [
@@ -2304,11 +2343,31 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                 </div>
               ) : heyGenVoices.length === 0 ? (
                 <div className="text-center py-10 bg-[#0E0E10] rounded-xl border border-white/10 space-y-2">
-                  <Mic size={32} className="mx-auto text-slate-600" />
-                  <p className="text-xs text-slate-300 font-bold">No compatible private HeyGen voices found</p>
-                  <p className="text-[11px] text-slate-500 max-w-md mx-auto">
-                    Sign in with your creator account and make sure the voice is available to HeyGen&apos;s Starfish speech engine.
-                  </p>
+                  {heyGenLoadError.toLowerCase().includes('sign-in') ? (
+                    <>
+                      <Shield size={32} className="mx-auto text-cyan-300" />
+                      <p className="text-sm text-slate-200 font-bold">Connect your creator account</p>
+                      <p className="text-[11px] text-slate-500 max-w-md mx-auto px-4">
+                        This preview opened without your Supabase session. Sign in here to securely load the private voices connected to your HeyGen account.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setShowHeyGenSignIn(true)}
+                        className="mt-3 inline-flex items-center justify-center gap-2 rounded-lg bg-[#E7C477] px-4 py-2 text-xs font-bold text-[#161618] transition-all hover:bg-[#F2D58D] cursor-pointer"
+                      >
+                        <Shield size={14} />
+                        Sign In to Load HeyGen Voices
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <Mic size={32} className="mx-auto text-slate-600" />
+                      <p className="text-xs text-slate-300 font-bold">No compatible private HeyGen voices found</p>
+                      <p className="text-[11px] text-slate-500 max-w-md mx-auto px-4">
+                        Make sure your private voice is available to HeyGen&apos;s Starfish speech engine, then refresh the library.
+                      </p>
+                    </>
+                  )}
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[420px] overflow-y-auto pr-1">
@@ -2798,8 +2857,101 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
             )}
           </div>
         </div>
-
       </div>
+
+      <AnimatePresence>
+        {showHeyGenSignIn && (
+          <motion.div
+            className="fixed inset-0 z-[120] flex items-center justify-center p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <button
+              type="button"
+              aria-label="Close creator sign-in"
+              onClick={() => !isHeyGenSigningIn && setShowHeyGenSignIn(false)}
+              className="absolute inset-0 bg-black/75 backdrop-blur-sm cursor-default"
+            />
+            <motion.form
+              onSubmit={handleHeyGenCreatorSignIn}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="heygen-sign-in-title"
+              initial={{ opacity: 0, y: 18, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.98 }}
+              className="relative z-10 w-full max-w-md rounded-2xl border border-white/10 bg-[#161618] p-5 sm:p-6 shadow-2xl"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-400/10 text-cyan-300">
+                    <Shield size={20} />
+                  </div>
+                  <h3 id="heygen-sign-in-title" className="text-lg font-bold text-white">Creator sign-in</h3>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-400">
+                    Sign in to your AI Influencer Studio creator account. Your HeyGen key remains protected on the server.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  aria-label="Close"
+                  disabled={isHeyGenSigningIn}
+                  onClick={() => setShowHeyGenSignIn(false)}
+                  className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-white/5 hover:text-white disabled:opacity-50 cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="mt-5 space-y-4">
+                <label className="block">
+                  <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-400">Creator email</span>
+                  <input
+                    type="email"
+                    value={heyGenSignInEmail}
+                    onChange={(event) => setHeyGenSignInEmail(event.target.value)}
+                    autoComplete="email"
+                    required
+                    placeholder="you@example.com"
+                    className="luxury-input w-full px-4 py-3 text-sm"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-400">Password</span>
+                  <input
+                    type="password"
+                    value={heyGenSignInPassword}
+                    onChange={(event) => setHeyGenSignInPassword(event.target.value)}
+                    autoComplete="current-password"
+                    required
+                    className="luxury-input w-full px-4 py-3 text-sm"
+                  />
+                </label>
+              </div>
+
+              <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  disabled={isHeyGenSigningIn}
+                  onClick={() => setShowHeyGenSignIn(false)}
+                  className="rounded-lg border border-white/10 px-4 py-2.5 text-xs font-bold text-slate-300 transition-colors hover:bg-white/5 disabled:opacity-50 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isHeyGenSigningIn}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#E7C477] px-4 py-2.5 text-xs font-bold text-[#161618] transition-all hover:bg-[#F2D58D] disabled:cursor-wait disabled:opacity-70 cursor-pointer"
+                >
+                  {isHeyGenSigningIn ? <Loader2 size={14} className="animate-spin" /> : <Shield size={14} />}
+                  {isHeyGenSigningIn ? 'Signing In...' : 'Sign In & Load Voices'}
+                </button>
+              </div>
+            </motion.form>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
