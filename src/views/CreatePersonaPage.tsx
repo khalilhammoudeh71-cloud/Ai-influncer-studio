@@ -429,6 +429,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   const [heyGenSignInEmail, setHeyGenSignInEmail] = useState('');
   const [heyGenSignInPassword, setHeyGenSignInPassword] = useState('');
   const [isHeyGenSigningIn, setIsHeyGenSigningIn] = useState(false);
+  const [isHeyGenGoogleSigningIn, setIsHeyGenGoogleSigningIn] = useState(false);
   const heyGenAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const fetchAccountVoices = async () => {
@@ -582,6 +583,22 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       toast.error(err?.message || 'Could not sign in to your creator account');
     } finally {
       setIsHeyGenSigningIn(false);
+    }
+  };
+
+  const handleHeyGenGoogleSignIn = async () => {
+    setIsHeyGenGoogleSigningIn(true);
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}${window.location.pathname}`,
+        },
+      });
+      if (error) throw error;
+    } catch (err: any) {
+      setIsHeyGenGoogleSigningIn(false);
+      toast.error(err?.message || 'Could not continue with Google');
     }
   };
 
@@ -2872,7 +2889,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
             <button
               type="button"
               aria-label="Close creator sign-in"
-              onClick={() => !isHeyGenSigningIn && setShowHeyGenSignIn(false)}
+              onClick={() => !isHeyGenSigningIn && !isHeyGenGoogleSigningIn && setShowHeyGenSignIn(false)}
               className="absolute inset-0 bg-black/75 backdrop-blur-sm cursor-default"
             />
             <motion.form
@@ -2898,7 +2915,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                 <button
                   type="button"
                   aria-label="Close"
-                  disabled={isHeyGenSigningIn}
+                  disabled={isHeyGenSigningIn || isHeyGenGoogleSigningIn}
                   onClick={() => setShowHeyGenSignIn(false)}
                   className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-white/5 hover:text-white disabled:opacity-50 cursor-pointer"
                 >
@@ -2906,7 +2923,32 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                 </button>
               </div>
 
-              <div className="mt-5 space-y-4">
+              <button
+                type="button"
+                onClick={handleHeyGenGoogleSignIn}
+                disabled={isHeyGenSigningIn || isHeyGenGoogleSigningIn}
+                className="mt-5 inline-flex w-full items-center justify-center gap-3 rounded-lg border border-white/15 bg-white px-4 py-3 text-sm font-bold text-[#171717] transition-all hover:bg-slate-100 disabled:cursor-wait disabled:opacity-70 cursor-pointer"
+              >
+                {isHeyGenGoogleSigningIn ? (
+                  <Loader2 size={17} className="animate-spin" />
+                ) : (
+                  <svg aria-hidden="true" viewBox="0 0 24 24" className="h-[18px] w-[18px]">
+                    <path fill="#4285F4" d="M21.6 12.23c0-.71-.06-1.4-.18-2.07H12v3.92h5.38a4.6 4.6 0 0 1-2 3.02v2.54h3.24c1.9-1.75 2.98-4.32 2.98-7.41Z" />
+                    <path fill="#34A853" d="M12 22c2.7 0 4.98-.9 6.63-2.43l-3.24-2.54c-.9.6-2.05.96-3.39.96-2.61 0-4.82-1.76-5.61-4.13H3.04v2.62A10 10 0 0 0 12 22Z" />
+                    <path fill="#FBBC05" d="M6.39 13.87A6.01 6.01 0 0 1 6.07 12c0-.65.11-1.28.32-1.87V7.51H3.04A10 10 0 0 0 2 12c0 1.61.39 3.14 1.04 4.49l3.35-2.62Z" />
+                    <path fill="#EA4335" d="M12 6.01c1.47 0 2.79.51 3.83 1.5l2.87-2.88A9.64 9.64 0 0 0 12 2a10 10 0 0 0-8.96 5.51l3.35 2.62C7.18 7.77 9.39 6.01 12 6.01Z" />
+                  </svg>
+                )}
+                {isHeyGenGoogleSigningIn ? 'Opening Google...' : 'Continue with Google'}
+              </button>
+
+              <div className="my-5 flex items-center gap-3" aria-hidden="true">
+                <span className="h-px flex-1 bg-white/10" />
+                <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">or continue with email</span>
+                <span className="h-px flex-1 bg-white/10" />
+              </div>
+
+              <div className="space-y-4">
                 <label className="block">
                   <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-400">Creator email</span>
                   <input
@@ -2935,7 +2977,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
               <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                 <button
                   type="button"
-                  disabled={isHeyGenSigningIn}
+                  disabled={isHeyGenSigningIn || isHeyGenGoogleSigningIn}
                   onClick={() => setShowHeyGenSignIn(false)}
                   className="rounded-lg border border-white/10 px-4 py-2.5 text-xs font-bold text-slate-300 transition-colors hover:bg-white/5 disabled:opacity-50 cursor-pointer"
                 >
@@ -2943,7 +2985,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                 </button>
                 <button
                   type="submit"
-                  disabled={isHeyGenSigningIn}
+                  disabled={isHeyGenSigningIn || isHeyGenGoogleSigningIn}
                   className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#E7C477] px-4 py-2.5 text-xs font-bold text-[#161618] transition-all hover:bg-[#F2D58D] disabled:cursor-wait disabled:opacity-70 cursor-pointer"
                 >
                   {isHeyGenSigningIn ? <Loader2 size={14} className="animate-spin" /> : <Shield size={14} />}
