@@ -1284,7 +1284,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   };
 
   return (
-    <div ref={studioTopRef} className="relative min-h-screen bg-[#050914] text-[#F5F1E8] p-4 sm:p-6 lg:p-10 !pb-36 overflow-y-auto select-none">
+    <div ref={studioTopRef} className="relative min-h-screen bg-[#050914] text-[#F5F1E8] p-4 sm:p-6 lg:p-10 pb-20 overflow-y-auto select-none">
       <div className="relative z-10 max-w-[1300px] mx-auto space-y-8">
         
         {/* ── HEADER BAR ── */}
@@ -2545,7 +2545,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
         )}
 
         {/* ── GUIDED FLOW NAVIGATION ── */}
-        <div className="fixed bottom-3 left-3 right-3 z-40 flex flex-col gap-3 rounded-2xl border border-white/10 bg-[#0B0B0E]/95 p-3 shadow-2xl backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between sm:p-4">
+        <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-[#0B0B0E] p-3 shadow-xl sm:flex-row sm:items-center sm:justify-between sm:p-4">
           <div className="min-w-0">
             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#D9BA72]">
               Step {studioStep + 1} of {STUDIO_STEPS.length}
