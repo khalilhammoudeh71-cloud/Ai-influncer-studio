@@ -673,6 +673,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   const lastRestartTimeRef = useRef<number>(0);
   const restartCountRef = useRef<number>(0);
   const recognitionStartIndexRef = useRef<number>(0);
+  const speechRecognitionSilenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scribeConnectionRef = useRef<RealtimeConnection | null>(null);
   const scribeStartPromiseRef = useRef<Promise<boolean> | null>(null);
   const scribeReconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -990,6 +991,11 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   }, [isCallActive]);
 
   const stopSpeechRecognition = () => {
+    if (speechRecognitionSilenceTimerRef.current) {
+      clearTimeout(speechRecognitionSilenceTimerRef.current);
+      speechRecognitionSilenceTimerRef.current = null;
+    }
+    recognitionStartIndexRef.current = 0;
     const rec = callRecRef.current;
     callRecRef.current = null;
     if (rec) {
@@ -1020,16 +1026,21 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       rec.interimResults = true;
       rec.lang = 'en-US';
       rec.maxAlternatives = 1;
-
-      let interimSilenceTimer: any = null;
+      recognitionStartIndexRef.current = 0;
 
       rec.onresult = (e: any) => {
         if (callRecRef.current !== rec || !isCallActiveRef.current) return;
 
-        // Build entire utterance across all results from index 0
+        // Chrome keeps finalized results at the beginning of e.results for the
+        // lifetime of a continuous recognition session. Only read results that
+        // have not already been sent, otherwise the first utterance is replayed
+        // on every later result event.
+        const firstUnconsumedResult = Math.max(0, recognitionStartIndexRef.current);
+        if (e.results.length <= firstUnconsumedResult) return;
+
         let fullTranscript = '';
         let hasFinalResult = false;
-        for (let i = 0; i < e.results.length; i++) {
+        for (let i = firstUnconsumedResult; i < e.results.length; i++) {
           const res = e.results[i];
           if (res && res[0] && res[0].transcript) {
             const chunk = res[0].transcript.trim();
@@ -1046,6 +1057,9 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         // Ignore the persona's own speaker audio while leaving recognition live
         // so a real user interruption still retains its opening words.
         if (isLikelyPersonaEcho(trimmed, getEchoReferenceSpeech())) {
+          if (hasFinalResult) {
+            recognitionStartIndexRef.current = e.results.length;
+          }
           return;
         }
 
@@ -1065,7 +1079,9 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         setLiveUserSpeech(trimmed);
 
         // Reset silence timer on any newly recognized speech chunk
-        if (interimSilenceTimer) clearTimeout(interimSilenceTimer);
+        if (speechRecognitionSilenceTimerRef.current) {
+          clearTimeout(speechRecognitionSilenceTimerRef.current);
+        }
 
         // Intelligent Conversational Pause Buffer (Generous breathing room so user is never interrupted):
         const lastWord = trimmed.split(/\s+/).pop()?.toLowerCase().replace(/[^a-z]/g, '') || '';
@@ -1078,11 +1094,25 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           pauseDelay = 700;
         }
 
-        interimSilenceTimer = setTimeout(() => {
-          if (trimmed && trimmed.length >= 2 && isCallActiveRef.current) {
+        const resultCountAtSchedule = e.results.length;
+        speechRecognitionSilenceTimerRef.current = setTimeout(() => {
+          speechRecognitionSilenceTimerRef.current = null;
+          if (callRecRef.current === rec && trimmed.length >= 2 && isCallActiveRef.current) {
+            recognitionStartIndexRef.current = Math.max(
+              recognitionStartIndexRef.current,
+              resultCountAtSchedule,
+            );
+            const corrected = correctSpeechPhonetics(trimmed, activePersona?.name);
+            const now = Date.now();
+            const last = lastCommittedTranscriptRef.current;
+            if (corrected.toLowerCase() === last.text.toLowerCase() && now - last.at < 2500) {
+              setLiveUserSpeech('');
+              return;
+            }
+            lastCommittedTranscriptRef.current = { text: corrected, at: now };
             console.log('[Call Voice] 🎤 Captured complete user utterance:', trimmed);
             setLiveUserSpeech('');
-            handleSendCallMessage(correctSpeechPhonetics(trimmed, activePersona?.name));
+            void handleSendCallMessage(corrected);
           }
         }, pauseDelay);
       };
@@ -1101,6 +1131,11 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       };
 
       rec.onend = () => {
+        if (speechRecognitionSilenceTimerRef.current) {
+          clearTimeout(speechRecognitionSilenceTimerRef.current);
+          speechRecognitionSilenceTimerRef.current = null;
+        }
+        recognitionStartIndexRef.current = 0;
         isStartingRecRef.current = false;
         if (callRecRef.current === rec) {
           callRecRef.current = null;
