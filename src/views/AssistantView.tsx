@@ -679,6 +679,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   const lastCommittedTranscriptRef = useRef<{ text: string; at: number }>({ text: '', at: 0 });
   const scribeFailureCountRef = useRef(0);
   const callTurnIdRef = useRef(0);
+  const recentPersonaSpeechRef = useRef<{ text: string; expiresAt: number }>({ text: '', expiresAt: 0 });
+  const bargeInEnergyUntilRef = useRef(0);
 
   const vadStreamRef = useRef<MediaStream | null>(null);
   const vadAudioCtxRef = useRef<AudioContext | null>(null);
@@ -739,13 +741,14 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           const speechThreshold = Math.max(0.11, dynamicNoiseFloor + 0.06);
           const timeSinceStart = Date.now() - personaSpeakingStartTimeRef.current;
 
-          // After minimal 200ms startup buffer, detect user voice within ~60ms (4 frames at 60fps)
+          // Energy alone cannot distinguish a real interruption from the persona
+          // coming back through laptop speakers. Use it only as a short-lived
+          // confidence signal; the transcript still has to be non-echo speech.
           if (timeSinceStart > 200 && avgEnergy > speechThreshold) {
             sustainedSpeechFrames++;
             if (sustainedSpeechFrames >= 4) {
-              console.log('[Vocal Barge-In] 🎙️ User voice detected over speaker! Instantly halting persona...');
+              bargeInEnergyUntilRef.current = Date.now() + 750;
               sustainedSpeechFrames = 0;
-              interruptPersona();
             }
           } else {
             sustainedSpeechFrames = Math.max(0, sustainedSpeechFrames - 1);
@@ -813,11 +816,25 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           token: tokenData.token,
           modelId: 'scribe_v2_realtime',
           commitStrategy: CommitStrategy.VAD,
-          vadSilenceThresholdSecs: 0.8,
+          vadSilenceThresholdSecs: 0.95,
           vadThreshold: 0.42,
-          minSpeechDurationMs: 100,
-          minSilenceDurationMs: 250,
+          minSpeechDurationMs: 80,
+          minSilenceDurationMs: 180,
           languageCode: 'en',
+          keyterms: [
+            activePersona?.name,
+            getStoredUserName(),
+            'send me',
+            'show me',
+            'generate',
+            'image',
+            'photo',
+            'selfie',
+            'video',
+            'Seedream',
+            'Seedance',
+            'Wavespeed',
+          ].filter((term): term is string => Boolean(term && term.length <= 20)),
           filterBackgroundAudio: true,
           noVerbatim: false,
           microphone: {
@@ -835,8 +852,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           const partial = String(event.text || '').trim();
           if (!partial) return;
 
-          const personaSpeech = currentPersonaSpeechRef.current;
-          if (isAgentSpeakingRef.current && isLikelyPersonaEcho(partial, personaSpeech)) {
+          const personaSpeech = getEchoReferenceSpeech();
+          if (isLikelyPersonaEcho(partial, personaSpeech)) {
             return;
           }
 
@@ -845,7 +862,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           if (isAgentSpeakingRef.current) {
             const words = normalizeEchoText(partial);
             const isDirectInterrupt = /^(stop|wait|hold on|pause|no|actually)\b/i.test(partial);
-            if (isDirectInterrupt || words.length >= 2) {
+            if (isDirectInterrupt || words.length >= 3) {
               interruptPersona();
               setLiveUserSpeech(partial);
             }
@@ -857,7 +874,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           const rawTranscript = String(event.text || '').trim();
           if (!rawTranscript) return;
 
-          if (isLikelyPersonaEcho(rawTranscript, currentPersonaSpeechRef.current)) {
+          if (isLikelyPersonaEcho(rawTranscript, getEchoReferenceSpeech())) {
             setLiveUserSpeech('');
             return;
           }
@@ -920,6 +937,24 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     return startPromise;
   };
 
+  const rememberPersonaSpeech = useCallback(() => {
+    const spoken = currentPersonaSpeechRef.current.trim();
+    if (spoken) {
+      recentPersonaSpeechRef.current = {
+        text: spoken,
+        // Bluetooth and browser audio pipelines can deliver speaker echo late.
+        expiresAt: Date.now() + 1800,
+      };
+    }
+  }, []);
+
+  const getEchoReferenceSpeech = useCallback(() => {
+    const current = currentPersonaSpeechRef.current.trim();
+    const recent = recentPersonaSpeechRef.current;
+    const tail = recent.expiresAt > Date.now() ? recent.text : '';
+    return `${current} ${tail}`.trim();
+  }, []);
+
   const interruptPersona = useCallback(() => {
     console.log('[Interrupt] 🛑 Halting persona audio playback and cancelling in-flight request...');
     callTurnIdRef.current += 1;
@@ -938,6 +973,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       try { window.speechSynthesis.cancel(); } catch {}
     }
+    rememberPersonaSpeech();
     currentPersonaSpeechRef.current = '';
     isAgentSpeakingRef.current = false;
     voiceCallBusyRef.current = false;
@@ -947,7 +983,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         restartSpeechRecognition();
       }
     }
-  }, []);
+  }, [rememberPersonaSpeech]);
 
   useEffect(() => {
     isCallActiveRef.current = isCallActive;
@@ -1009,12 +1045,19 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 
         // Ignore the persona's own speaker audio while leaving recognition live
         // so a real user interruption still retains its opening words.
-        if (isAgentSpeakingRef.current && isLikelyPersonaEcho(trimmed, currentPersonaSpeechRef.current)) {
+        if (isLikelyPersonaEcho(trimmed, getEchoReferenceSpeech())) {
           return;
         }
 
-        // Instant Vocal Barge-in: halt playback on non-echo user speech.
+        // Browser fallback uses acoustic activity plus non-echo words. This
+        // prevents the laptop speaker from interrupting its own response.
         if (isAgentSpeakingRef.current) {
+          const words = normalizeEchoText(trimmed);
+          const isDirectInterrupt = /^(stop|wait|hold on|pause|no|actually)\b/i.test(trimmed);
+          const hasFreshEnergy = Date.now() <= bargeInEnergyUntilRef.current;
+          if (!isDirectInterrupt && !(hasFreshEnergy && words.length >= 3)) {
+            return;
+          }
           console.log('[Vocal Barge-In] ⚡ Spoken words recognized while persona was speaking! Halting playback immediately...');
           interruptPersona();
         }
@@ -1177,6 +1220,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     const onPlaybackComplete = () => {
       isAgentSpeakingRef.current = false;
       voiceCallBusyRef.current = false;
+      rememberPersonaSpeech();
       currentPersonaSpeechRef.current = '';
       if (isCallActiveRef.current) {
         setCallStatus('listening');
@@ -1615,6 +1659,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
             if (!isCallActiveRef.current) return;
             isAgentSpeakingRef.current = false;
             voiceCallBusyRef.current = false;
+            rememberPersonaSpeech();
             currentPersonaSpeechRef.current = '';
             setCallStatus('listening');
             restartSpeechRecognition();
@@ -1655,6 +1700,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         } else {
           isAgentSpeakingRef.current = false;
           voiceCallBusyRef.current = false;
+          rememberPersonaSpeech();
           currentPersonaSpeechRef.current = '';
           setCallStatus('listening');
           restartSpeechRecognition();
@@ -1817,6 +1863,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     setCallStatus('disconnected');
     isAgentSpeakingRef.current = false;
     voiceCallBusyRef.current = false;
+    rememberPersonaSpeech();
     currentPersonaSpeechRef.current = '';
     lastCallEndedAtRef.current = Date.now();
     
