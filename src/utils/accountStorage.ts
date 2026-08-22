@@ -7,11 +7,18 @@ const SYNCABLE_EXACT_KEYS = new Set([
   'ai_studio_creator_profile',
   'persona_user_name',
   'persona_form_draft',
+  'persona_draft_reference_images',
   'gallery_favorites',
   'ai_influencer_gallery',
   'ai_tools_saved_prompts',
   'ai_toolbox_garment_desc',
   'ai_toolbox_tryon_mode',
+  'ai_toolbox_source_image',
+  'ai_toolbox_result_image',
+  'ai_toolbox_result_history',
+  'ai_toolbox_garment_image',
+  'ai_toolbox_garment_images',
+  'ai_toolbox_face_image',
   'ai_influencer_draft_prompt',
   'ai_influencer_draft_video_prompt',
   'ai_influencer_feed_history',
@@ -19,6 +26,7 @@ const SYNCABLE_EXACT_KEYS = new Set([
   'agent_default_voice_id',
   'superagent_cloned_voice',
   'superagent_cloned_voice_id',
+  'superagent_cloned_voice_audio',
   'superagent_my_voices',
 ]);
 
@@ -41,6 +49,8 @@ interface WorkspaceSyncAdapter {
   list: () => Promise<WorkspaceStateEntry[]>;
   save: (key: string, value: string) => Promise<WorkspaceStateEntry>;
   remove: (key: string) => Promise<unknown>;
+  prepareForRemote?: (value: string) => Promise<string>;
+  prepareForLocal?: (value: string) => Promise<string>;
 }
 
 interface SyncMarker {
@@ -85,8 +95,11 @@ function isSyncableWorkspaceKey(base: string): boolean {
 }
 
 function canSyncWorkspaceValue(base: string, value: string): boolean {
-  if (!isSyncableWorkspaceKey(base) || new TextEncoder().encode(value).byteLength > MAX_REMOTE_VALUE_BYTES) return false;
-  return !/data:(?:image|audio|video)\//i.test(value);
+  return isSyncableWorkspaceKey(base) && new TextEncoder().encode(value).byteLength <= MAX_REMOTE_VALUE_BYTES;
+}
+
+function isSyncableWorkspaceKeyOnly(base: string): boolean {
+  return isSyncableWorkspaceKey(base);
 }
 
 function getSyncMetaKey(userId: string): string {
@@ -115,7 +128,7 @@ function markLocalChange(base: string, userId: string, deleted = false, updatedA
 }
 
 function scheduleRemoteSave(base: string, value: string, userId: string) {
-  if (!workspaceSyncAdapter || !canSyncWorkspaceValue(base, value)) return;
+  if (!workspaceSyncAdapter || !isSyncableWorkspaceKeyOnly(base)) return;
   const queueKey = `${userId}:${base}`;
   const existingTimer = pendingRemoteChanges.get(queueKey);
   if (existingTimer) clearTimeout(existingTimer);
@@ -123,7 +136,11 @@ function scheduleRemoteSave(base: string, value: string, userId: string) {
   pendingRemoteChanges.set(queueKey, setTimeout(() => {
     pendingRemoteChanges.delete(queueKey);
     if (!workspaceSyncAdapter || activeStorageUserId !== userId) return;
-    void workspaceSyncAdapter.save(base, value)
+    void Promise.resolve(workspaceSyncAdapter.prepareForRemote?.(value) ?? value)
+      .then(preparedValue => {
+        if (!canSyncWorkspaceValue(base, preparedValue)) throw new Error('Workspace value remains too large after media upload');
+        return workspaceSyncAdapter!.save(base, preparedValue);
+      })
       .then(entry => {
         if (activeStorageUserId === userId && localStorage.getItem(accountStorageKey(base, userId)) === value) {
           markLocalChange(base, userId, false, entry.updatedAt);
@@ -223,21 +240,30 @@ export async function hydrateAccountLocalStorage(userId: string): Promise<void> 
     }
 
     if (localValue !== undefined && localUpdatedAt > remoteUpdatedAt) {
-      if (canSyncWorkspaceValue(entry.key, localValue)) {
-        operations.push(workspaceSyncAdapter.save(entry.key, localValue).then(saved => {
+      if (isSyncableWorkspaceKeyOnly(entry.key)) {
+        operations.push(Promise.resolve(workspaceSyncAdapter.prepareForRemote?.(localValue) ?? localValue).then(preparedValue => {
+          if (!canSyncWorkspaceValue(entry.key, preparedValue)) throw new Error('Workspace value remains too large after media upload');
+          return workspaceSyncAdapter!.save(entry.key, preparedValue);
+        }).then(saved => {
           meta[entry.key] = { updatedAt: saved.updatedAt };
         }));
       }
       continue;
     }
 
-    localStorage.setItem(accountStorageKey(entry.key, userId), entry.value);
-    meta[entry.key] = { updatedAt: entry.updatedAt };
+    operations.push(Promise.resolve(workspaceSyncAdapter.prepareForLocal?.(entry.value) ?? entry.value).then(localValueToStore => {
+      if (activeStorageUserId !== userId) return;
+      localStorage.setItem(accountStorageKey(entry.key, userId), localValueToStore);
+      meta[entry.key] = { updatedAt: entry.updatedAt };
+    }));
   }
 
   for (const [base, value] of localValues) {
-    if (remoteByKey.has(base) || meta[base]?.deleted || !canSyncWorkspaceValue(base, value)) continue;
-    operations.push(workspaceSyncAdapter.save(base, value).then(saved => {
+    if (remoteByKey.has(base) || meta[base]?.deleted || !isSyncableWorkspaceKeyOnly(base)) continue;
+    operations.push(Promise.resolve(workspaceSyncAdapter.prepareForRemote?.(value) ?? value).then(preparedValue => {
+      if (!canSyncWorkspaceValue(base, preparedValue)) throw new Error('Workspace value remains too large after media upload');
+      return workspaceSyncAdapter!.save(base, preparedValue);
+    }).then(saved => {
       meta[base] = { updatedAt: saved.updatedAt };
     }));
   }

@@ -1,5 +1,6 @@
 import type { Persona, GeneratedImage, RevenueEntry, PlannedPost } from '../types';
 import { supabase } from '../lib/supabase';
+import { preparePersonaMediaForStorage, resolvePersonaMediaFromStorage } from './workspaceMediaService';
 
 export async function getAuthHeaders(): Promise<HeadersInit> {
   try {
@@ -46,6 +47,30 @@ async function requestWithBody<T>(url: string, body: unknown): Promise<T> {
   return res.json();
 }
 
+async function hydrateAndMigratePersonaMedia(persona: Persona): Promise<Persona> {
+  try {
+    const prepared = await preparePersonaMediaForStorage(persona);
+    if (JSON.stringify(prepared) !== JSON.stringify(persona)) {
+      await request<Persona>(`/personas/${encodeURIComponent(persona.id)}`, {
+        method: 'PUT',
+        body: JSON.stringify(prepared),
+      });
+
+      await Promise.all((prepared.visualLibrary || []).map(async (media, index) => {
+        if (JSON.stringify(media) === JSON.stringify(persona.visualLibrary?.[index])) return;
+        await request<GeneratedImage>(`/personas/${encodeURIComponent(persona.id)}/images`, {
+          method: 'POST',
+          body: JSON.stringify(media),
+        });
+      }));
+    }
+    return resolvePersonaMediaFromStorage(prepared);
+  } catch (error) {
+    console.warn('[Persona Media Migration] Using the existing media for this session:', error);
+    return persona;
+  }
+}
+
 const API_BASE = '/api';
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
@@ -78,17 +103,30 @@ export const api = {
   },
 
   personas: {
-    list: () => request<Persona[]>('/personas'),
-    create: (p: Persona) => request<Persona>('/personas', { method: 'POST', body: JSON.stringify(p) }),
-    update: (p: Persona) => request<Persona>(`/personas/${encodeURIComponent(p.id)}`, { method: 'PUT', body: JSON.stringify(p) }),
+    list: async () => Promise.all((await request<Persona[]>('/personas')).map(hydrateAndMigratePersonaMedia)),
+    create: async (p: Persona) => {
+      const prepared = await preparePersonaMediaForStorage(p);
+      return resolvePersonaMediaFromStorage(await request<Persona>('/personas', { method: 'POST', body: JSON.stringify(prepared) }));
+    },
+    update: async (p: Persona) => {
+      const prepared = await preparePersonaMediaForStorage(p);
+      return resolvePersonaMediaFromStorage(await request<Persona>(`/personas/${encodeURIComponent(p.id)}`, { method: 'PUT', body: JSON.stringify(prepared) }));
+    },
     delete: (id: string) => request<void>(`/personas/${encodeURIComponent(id)}`, { method: 'DELETE' }),
     analyzeFace: (id: string, referenceImage?: string) => requestWithBody<{ faceDescriptor: string }>(`/personas/${encodeURIComponent(id)}/analyze-face`, { referenceImage }),
   },
 
   images: {
-    listByPersona: (personaId: string) => request<GeneratedImage[]>(`/personas/${encodeURIComponent(personaId)}/images`),
-    create: (personaId: string, img: GeneratedImage) =>
-      request<GeneratedImage>(`/personas/${encodeURIComponent(personaId)}/images`, { method: 'POST', body: JSON.stringify(img) }),
+    listByPersona: async (personaId: string) =>
+      Promise.all((await request<GeneratedImage[]>(`/personas/${encodeURIComponent(personaId)}/images`)).map(resolvePersonaMediaFromStorage)),
+    create: async (personaId: string, img: GeneratedImage) => {
+      const prepared = await preparePersonaMediaForStorage(img);
+      const saved = await request<GeneratedImage>(`/personas/${encodeURIComponent(personaId)}/images`, {
+        method: 'POST',
+        body: JSON.stringify(prepared),
+      });
+      return resolvePersonaMediaFromStorage(saved);
+    },
     delete: (personaId: string, imageId: string) =>
       request<void>(`/personas/${encodeURIComponent(personaId)}/images/${encodeURIComponent(imageId)}`, { method: 'DELETE' }),
     generateVideo: (params: { prompt: string; modelId: string; sourceImage?: string | null; sourceVideo?: string | null; strength?: number; identityLock?: boolean; naturalLook?: boolean }) =>
@@ -118,10 +156,12 @@ export const api = {
   }) => request<{ success: boolean }>('/migrate', { method: 'POST', body: JSON.stringify(data) }),
 
   updatePersonaInVault: async (persona: Persona) => {
-    return request<Persona>(`/personas/${encodeURIComponent(persona.id)}`, {
+    const prepared = await preparePersonaMediaForStorage(persona);
+    const saved = await request<Persona>(`/personas/${encodeURIComponent(persona.id)}`, {
       method: 'PUT',
-      body: JSON.stringify(persona),
+      body: JSON.stringify(prepared),
     });
+    return resolvePersonaMediaFromStorage(saved);
   },
 
   getConfigStatus: async () => {

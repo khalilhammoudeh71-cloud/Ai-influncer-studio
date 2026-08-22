@@ -90,8 +90,8 @@ export async function saveVoiceItem(item: SavedVoiceItem): Promise<SavedVoiceIte
     });
   } catch (e) {
     console.warn('[IndexedDB Save Note, fallback to localStorage]:', e);
-    saveLocalStorageFallback(item);
   }
+  saveLocalStorageFallback(item);
   return getAllSavedVoices();
 }
 

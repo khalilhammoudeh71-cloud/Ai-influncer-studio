@@ -237,7 +237,12 @@ function mergePersonas(dbList: any[], diskList: any[]): any[] {
   for (const p of dbList) {
     if (p && p.id && !p.id.toLowerCase().includes('luna') && !p.name?.toLowerCase().includes('luna')) {
       const existing = map.get(p.id) || {};
-      map.set(p.id, { ...existing, ...p });
+      const merged = { ...existing, ...p };
+      if (!p.voiceSampleUrl && existing.voiceSampleUrl) merged.voiceSampleUrl = existing.voiceSampleUrl;
+      if ((!Array.isArray(p.audioSamples) || p.audioSamples.length === 0) && Array.isArray(existing.audioSamples)) {
+        merged.audioSamples = existing.audioSamples;
+      }
+      map.set(p.id, merged);
     }
   }
   return Array.from(map.values());
@@ -268,6 +273,8 @@ function personaToClient(row: typeof personas.$inferSelect, images: typeof gener
     identityLock: row.identityLock ?? true,
     voiceId: row.voiceId || undefined,
     voiceEngine: row.voiceEngine || undefined,
+    voiceSampleUrl: row.voiceSampleUrl || undefined,
+    audioSamples: JSON.parse(row.audioSamples || '[]'),
     companionType: row.companionType || 'intimate',
     heygenAvatarId: row.heygenAvatarId || undefined,
     visualLibrary: images.map(imageToClient),
@@ -504,6 +511,8 @@ router.post('/personas', async (req: AuthenticatedRequest, res: Response) => {
           userId: req.user.id,
           voiceId: body.voiceId || null,
           voiceEngine: body.voiceEngine || null,
+          voiceSampleUrl: body.voiceSampleUrl || null,
+          audioSamples: JSON.stringify(body.audioSamples || []),
           companionType: body.companionType || 'intimate',
           heygenAvatarId: body.heygenAvatarId || null,
         }).onConflictDoUpdate({
@@ -531,6 +540,8 @@ router.post('/personas', async (req: AuthenticatedRequest, res: Response) => {
             identityLock: body.identityLock ?? true,
             voiceId: body.voiceId || null,
             voiceEngine: body.voiceEngine || null,
+            voiceSampleUrl: body.voiceSampleUrl || null,
+            audioSamples: JSON.stringify(body.audioSamples || []),
             companionType: body.companionType || 'intimate',
             heygenAvatarId: body.heygenAvatarId || null,
           },
@@ -578,6 +589,8 @@ router.put('/personas/:clientId', async (req: AuthenticatedRequest, res: Respons
         identityLock: body.identityLock ?? true,
         voiceId: body.voiceId || null,
         voiceEngine: body.voiceEngine || null,
+        voiceSampleUrl: body.voiceSampleUrl || null,
+        audioSamples: JSON.stringify(body.audioSamples || []),
         heygenAvatarId: body.heygenAvatarId || null,
       }).where(
         and(

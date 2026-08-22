@@ -1,9 +1,10 @@
-import { getActiveStorageUserId } from './accountStorage';
+import { accountLocalStorage, getActiveStorageUserId } from './accountStorage';
 
 const DB_NAME = 'AiInfluencerStudioPersonaDraftDB';
 const DB_VERSION = 1;
 const STORE_NAME = 'persona_drafts';
 const REFERENCE_IMAGES_KEY = 'new_persona_reference_images';
+const SYNCED_REFERENCE_IMAGES_KEY = 'persona_draft_reference_images';
 
 interface PersonaReferenceImageDraft {
   id: string;
@@ -36,6 +37,13 @@ function openDB(): Promise<IDBDatabase> {
 }
 
 export async function getPersonaDraftReferenceImages(): Promise<string[]> {
+  try {
+    const synced = accountLocalStorage.getItem(SYNCED_REFERENCE_IMAGES_KEY);
+    if (synced) {
+      const images = JSON.parse(synced);
+      if (Array.isArray(images)) return images;
+    }
+  } catch {}
   const referenceImagesKey = getReferenceImagesKey();
   if (!referenceImagesKey) return [];
   const db = await openDB();
@@ -56,9 +64,15 @@ export async function getPersonaDraftReferenceImages(): Promise<string[]> {
 }
 
 export async function savePersonaDraftReferenceImages(images: string[]): Promise<void> {
+  accountLocalStorage.setItem(SYNCED_REFERENCE_IMAGES_KEY, JSON.stringify(images));
   const referenceImagesKey = getReferenceImagesKey();
   if (!referenceImagesKey) return;
-  const db = await openDB();
+  let db: IDBDatabase;
+  try {
+    db = await openDB();
+  } catch {
+    return;
+  }
 
   try {
     await new Promise<void>((resolve, reject) => {
@@ -78,9 +92,15 @@ export async function savePersonaDraftReferenceImages(images: string[]): Promise
 }
 
 export async function clearPersonaDraftReferenceImages(): Promise<void> {
+  accountLocalStorage.removeItem(SYNCED_REFERENCE_IMAGES_KEY);
   const referenceImagesKey = getReferenceImagesKey();
   if (!referenceImagesKey) return;
-  const db = await openDB();
+  let db: IDBDatabase;
+  try {
+    db = await openDB();
+  } catch {
+    return;
+  }
 
   try {
     await new Promise<void>((resolve, reject) => {

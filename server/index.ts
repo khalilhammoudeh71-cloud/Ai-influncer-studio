@@ -7719,6 +7719,8 @@ async function pushSchema() {
       ALTER TABLE personas ADD COLUMN IF NOT EXISTS identity_lock BOOLEAN DEFAULT true;
       ALTER TABLE personas ADD COLUMN IF NOT EXISTS alternate_reference_image TEXT;
       ALTER TABLE personas ADD COLUMN IF NOT EXISTS additional_reference_images TEXT DEFAULT '[]';
+      ALTER TABLE personas ADD COLUMN IF NOT EXISTS voice_sample_url TEXT;
+      ALTER TABLE personas ADD COLUMN IF NOT EXISTS audio_samples TEXT DEFAULT '[]';
       ALTER TABLE personas ADD COLUMN IF NOT EXISTS voice_id TEXT;
       ALTER TABLE personas ADD COLUMN IF NOT EXISTS voice_engine TEXT;
       ALTER TABLE personas ADD COLUMN IF NOT EXISTS companion_type TEXT DEFAULT 'intimate';

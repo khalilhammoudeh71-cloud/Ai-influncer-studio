@@ -41,6 +41,7 @@ import TrendView from './views/TrendView';
 import CreatePersonaPage from './views/CreatePersonaPage';
 import PersonaAvatar from './components/PersonaAvatar';
 import PasswordRecoveryView from './views/PasswordRecoveryView';
+import { prepareWorkspaceValueForStorage, resolveWorkspaceValueFromStorage } from './services/workspaceMediaService';
 import {
   accountStorageKey,
   configureAccountStorageSync,
@@ -53,6 +54,8 @@ configureAccountStorageSync({
   list: api.workspaceState.list,
   save: api.workspaceState.save,
   remove: api.workspaceState.delete,
+  prepareForRemote: prepareWorkspaceValueForStorage,
+  prepareForLocal: resolveWorkspaceValueFromStorage,
 });
 
 const EMPTY_PERSONA: Persona = {
