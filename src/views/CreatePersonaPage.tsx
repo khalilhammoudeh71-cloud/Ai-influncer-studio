@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, ChangeEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Sparkles, Upload, Image as ImageIcon, Wand2, Search, X, Check,
@@ -2859,8 +2860,9 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
         </div>
       </div>
 
-      <AnimatePresence>
-        {showHeyGenSignIn && (
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {showHeyGenSignIn && (
           <motion.div
             className="fixed inset-0 z-[120] flex items-center justify-center p-4"
             initial={{ opacity: 0 }}
@@ -2950,8 +2952,10 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
               </div>
             </motion.form>
           </motion.div>
-        )}
-      </AnimatePresence>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   );
 }
