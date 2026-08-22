@@ -4,8 +4,16 @@ import { db } from './db';
 import { users } from '../shared/schema';
 import { eq, sql } from 'drizzle-orm';
 
-const supabaseUrl = process.env.SUPABASE_URL || '';
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || '';
+// Vite-prefixed values are public by design and are the names already used by
+// the browser build. Reuse them on the server when dedicated aliases are not
+// configured so bearer-token verification works in Vercel previews as well.
+const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
+const supabaseAnonKey =
+  process.env.SUPABASE_PUBLISHABLE_KEY ||
+  process.env.SUPABASE_ANON_KEY ||
+  process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+  process.env.VITE_SUPABASE_ANON_KEY ||
+  '';
 
 // Backend admin-level Supabase client to inspect JWTs
 export const supabaseAdmin = (supabaseUrl && supabaseAnonKey)
