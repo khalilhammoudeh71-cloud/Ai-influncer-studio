@@ -12,6 +12,9 @@ const mockClient = {
     signInWithOAuth: async () => ({ data: null, error: new Error('Supabase not configured') }),
     signInWithPassword: async () => ({ data: null, error: new Error('Supabase not configured') }),
     signUp: async () => ({ data: null, error: new Error('Supabase not configured') }),
+    resend: async () => ({ data: null, error: new Error('Supabase not configured') }),
+    resetPasswordForEmail: async () => ({ data: null, error: new Error('Supabase not configured') }),
+    updateUser: async () => ({ data: null, error: new Error('Supabase not configured') }),
     signOut: async () => ({ error: null }),
   },
   from: () => ({

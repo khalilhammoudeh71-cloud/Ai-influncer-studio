@@ -40,6 +40,7 @@ import LeftSidebar from './components/LeftSidebar';
 import TrendView from './views/TrendView';
 import CreatePersonaPage from './views/CreatePersonaPage';
 import PersonaAvatar from './components/PersonaAvatar';
+import PasswordRecoveryView from './views/PasswordRecoveryView';
 
 
 const EMPTY_PERSONA: Persona = {
@@ -68,6 +69,11 @@ function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [billingInfo, setBillingInfo] = useState<any>(null);
   const [forceLanding, setForceLanding] = useState(localStorage.getItem('force_landing') === 'true');
+  const [verificationResendLoading, setVerificationResendLoading] = useState(false);
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(() => {
+    const params = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    return params.get('type') === 'recovery';
+  });
 
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showShortcutsModal, setShowShortcutsModal] = useState(false);
@@ -90,9 +96,11 @@ function App() {
       setAuthLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (cancelled) return;
       receivedAuthEvent = true;
+      if (event === 'PASSWORD_RECOVERY') setIsPasswordRecovery(true);
+      if (event === 'SIGNED_OUT') setIsPasswordRecovery(false);
       setUser(session?.user ?? null);
       setAuthLoading(false);
     });
@@ -693,6 +701,28 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
     );
   }
 
+  if (isPasswordRecovery && user) {
+    const clearRecoveryUrl = () => {
+      const cleanUrl = new URL(window.location.href);
+      ['code', 'type', 'token', 'token_hash', 'error', 'error_code', 'error_description'].forEach((key) => {
+        cleanUrl.searchParams.delete(key);
+      });
+      cleanUrl.hash = '';
+      window.history.replaceState({}, document.title, `${cleanUrl.pathname}${cleanUrl.search}`);
+      setIsPasswordRecovery(false);
+    };
+
+    return (
+      <PasswordRecoveryView
+        onComplete={clearRecoveryUrl}
+        onCancel={async () => {
+          await supabase.auth.signOut();
+          clearRecoveryUrl();
+        }}
+      />
+    );
+  }
+
   if (!user || forceLanding) {
     return <LandingView onGetStarted={() => { localStorage.removeItem('force_landing'); setForceLanding(false); }} />;
   }
@@ -713,6 +743,9 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
           <p className="text-sm text-[var(--text-muted)] leading-relaxed mb-6">
             We sent a verification link to <span className="text-white font-bold">{user.email}</span>. Please verify your email address to unlock the studio.
           </p>
+          <p className="text-xs text-white/40 leading-relaxed -mt-3 mb-6">
+            The message may take a minute to arrive. Check your spam or promotions folder if you do not see it.
+          </p>
           <div className="flex flex-col gap-3">
             <button
               onClick={() => {
@@ -731,19 +764,25 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
             </button>
             <button
               onClick={async () => {
+                setVerificationResendLoading(true);
                 const { error } = await supabase.auth.resend({
                   type: 'signup',
                   email: user.email,
+                  options: {
+                    emailRedirectTo: `${window.location.origin}${window.location.pathname}`,
+                  },
                 });
+                setVerificationResendLoading(false);
                 if (error) {
                   toast.error(error.message);
                 } else {
-                  toast.success('Verification email resent!');
+                  toast.success('A new verification link is on its way.');
                 }
               }}
+              disabled={verificationResendLoading}
               className="w-full py-3 bg-white/5 border border-white/10 rounded-full text-white font-semibold text-sm hover:bg-white/10 transition-all cursor-pointer"
             >
-              Resend Verification Link
+              {verificationResendLoading ? 'Sending...' : 'Resend Verification Link'}
             </button>
             <button
               onClick={() => supabase.auth.signOut()}

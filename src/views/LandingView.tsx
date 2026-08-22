@@ -1,12 +1,21 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, ChevronRight, Zap, Image as ImageIcon, Target, Mic, Brain, ArrowRight } from 'lucide-react';
+import { Sparkles, ChevronRight, Zap, Image as ImageIcon, Target, Mic, Brain, ArrowRight, CheckCircle2, KeyRound, MailCheck } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
 interface LandingViewProps {
   onGetStarted: () => void;
-  isLoggedIn?: boolean;
+}
+
+type AuthMode = 'signin' | 'signup' | 'forgot';
+
+function getAuthRedirectUrl() {
+  return `${window.location.origin}${window.location.pathname}`;
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
 }
 
 const SHOWCASE_IMAGES = [
@@ -192,71 +201,113 @@ function HeroBackground() {
   );
 }
 
-export default function LandingView({ onGetStarted, isLoggedIn }: LandingViewProps) {
+export default function LandingView({ onGetStarted }: LandingViewProps) {
   const [activeShowcase, setActiveShowcase] = useState(0);
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
+  const [authMode, setAuthMode] = useState<AuthMode>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [confirmationEmail, setConfirmationEmail] = useState('');
+  const [recoveryEmail, setRecoveryEmail] = useState('');
+  const [recoverySent, setRecoverySent] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
 
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
+      const normalizedEmail = email.trim().toLowerCase();
+
       if (authMode === 'signin') {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
         if (error) throw error;
         toast.success('Signed in successfully!');
         setShowAuthModal(false);
         onGetStarted();
+      } else if (authMode === 'forgot') {
+        const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
+          redirectTo: getAuthRedirectUrl(),
+        });
+        if (error) throw error;
+        setRecoveryEmail(normalizedEmail);
+        setRecoverySent(true);
       } else {
-        const redirectUrl = new URL(window.location.href);
-        redirectUrl.hash = '';
-        const { error } = await supabase.auth.signUp({
-          email,
+        const { data, error } = await supabase.auth.signUp({
+          email: normalizedEmail,
           password,
           options: {
-            emailRedirectTo: redirectUrl.toString(),
+            emailRedirectTo: getAuthRedirectUrl(),
           },
         });
         if (error) throw error;
-        toast.success('Sign up complete! Check your email for verification link.');
-        setShowAuthModal(false);
+        if (data.session) {
+          toast.success('Account created successfully!');
+          setShowAuthModal(false);
+          onGetStarted();
+        } else {
+          setConfirmationEmail(normalizedEmail);
+        }
       }
-    } catch (err: any) {
-      toast.error(err.message || 'Authentication failed');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Authentication failed'));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResendConfirmation = async () => {
+    if (!confirmationEmail) return;
+    setResendLoading(true);
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email: confirmationEmail,
+      options: { emailRedirectTo: getAuthRedirectUrl() },
+    });
+    setResendLoading(false);
+
+    if (error) {
+      toast.error(error.message);
+    } else {
+      toast.success('A new confirmation link is on its way.');
     }
   };
 
   const handleGoogleAuth = async () => {
     setGoogleLoading(true);
     try {
-      const redirectUrl = new URL(window.location.href);
-      redirectUrl.hash = '';
       onGetStarted();
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: redirectUrl.toString(),
+          redirectTo: getAuthRedirectUrl(),
         },
       });
 
       if (error) throw error;
-    } catch (err: any) {
-      toast.error(err.message || 'Google authentication failed');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Google authentication failed'));
       setGoogleLoading(false);
     }
   };
 
-  const openAuth = (mode: 'signin' | 'signup') => {
+  const openAuth = (mode: AuthMode) => {
     setAuthMode(mode);
     setEmail('');
     setPassword('');
+    setConfirmationEmail('');
+    setRecoveryEmail('');
+    setRecoverySent(false);
     setShowAuthModal(true);
+  };
+
+  const switchAuthMode = (mode: AuthMode) => {
+    setAuthMode(mode);
+    setPassword('');
+    setConfirmationEmail('');
+    setRecoveryEmail('');
+    setRecoverySent(false);
   };
 
   const scrollToFeatures = () => {
@@ -601,6 +652,9 @@ export default function LandingView({ onGetStarted, isLoggedIn }: LandingViewPro
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               onClick={e => e.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="auth-dialog-title"
               className="w-full max-w-md bg-[#0B0F17]/90 border border-white/10 rounded-3xl p-8 shadow-2xl relative overflow-hidden backdrop-blur-xl"
             >
               {/* Glow Orbs inside Modal */}
@@ -608,99 +662,197 @@ export default function LandingView({ onGetStarted, isLoggedIn }: LandingViewPro
               <div className="absolute -bottom-10 -right-10 w-24 h-24 bg-cyan-600/10 blur-xl rounded-full" />
               
               <div className="flex items-center justify-between mb-6 relative z-10">
-                <h3 className="text-2xl font-black text-white">
-                  {authMode === 'signin' ? 'Welcome Back' : 'Create Account'}
+                <h3 id="auth-dialog-title" className="text-2xl font-black text-white">
+                  {confirmationEmail
+                    ? 'Check Your Email'
+                    : recoverySent
+                      ? 'Reset Link Sent'
+                      : authMode === 'signin'
+                        ? 'Welcome Back'
+                        : authMode === 'signup'
+                          ? 'Create Account'
+                          : 'Reset Password'}
                 </h3>
                 <button
+                  type="button"
                   onClick={() => setShowAuthModal(false)}
+                  aria-label="Close authentication dialog"
                   className="w-8 h-8 rounded-full flex items-center justify-center text-white/50 hover:text-white bg-white/5 hover:bg-white/10 transition-all cursor-pointer"
                 >
                   ✕
                 </button>
               </div>
 
-              <button
-                type="button"
-                onClick={handleGoogleAuth}
-                disabled={googleLoading || loading}
-                className="relative z-10 w-full py-3.5 rounded-full border border-white/15 bg-white text-[#111827] font-bold text-sm hover:bg-white/90 active:scale-98 transition-all flex items-center justify-center gap-3 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
-                  <path fill="#4285F4" d="M17.64 9.205c0-.638-.057-1.252-.164-1.841H9v3.482h4.844a4.14 4.14 0 0 1-1.797 2.715v2.258h2.909c1.703-1.568 2.684-3.878 2.684-6.614Z" />
-                  <path fill="#34A853" d="M9 18c2.43 0 4.468-.806 5.956-2.181l-2.909-2.258c-.806.54-1.836.859-3.047.859-2.344 0-4.328-1.585-5.037-3.715H.955v2.332A9 9 0 0 0 9 18Z" />
-                  <path fill="#FBBC05" d="M3.963 10.705A5.41 5.41 0 0 1 3.682 9c0-.592.102-1.168.281-1.705V4.963H.955A9 9 0 0 0 0 9c0 1.452.347 2.827.955 4.037l3.008-2.332Z" />
-                  <path fill="#EA4335" d="M9 3.58c1.322 0 2.508.454 3.441 1.346l2.581-2.581C13.464.892 11.426 0 9 0A9 9 0 0 0 .955 4.963l3.008 2.332C4.672 5.165 6.656 3.58 9 3.58Z" />
-                </svg>
-                {googleLoading
-                  ? 'Connecting to Google...'
-                  : authMode === 'signup'
-                    ? 'Sign Up with Google'
-                    : 'Continue with Google'}
-              </button>
-
-              <div className="relative z-10 flex items-center gap-3 my-5" aria-hidden="true">
-                <div className="h-px flex-1 bg-white/10" />
-                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/35">or use email</span>
-                <div className="h-px flex-1 bg-white/10" />
-              </div>
-
-              <form onSubmit={handleAuthSubmit} className="space-y-4 relative z-10">
-                <div>
-                  <label className="text-[10px] font-bold text-violet-400 uppercase tracking-wider block mb-1.5">Email Address</label>
-                  <input
-                    type="email"
-                    required
-                    placeholder="name@example.com"
-                    value={email}
-                    onChange={e => setEmail(e.target.value)}
-                    className="w-full bg-[#111827] border border-white/10 rounded-xl px-4 py-3.5 text-sm text-white outline-none focus:border-violet-500/50 transition-colors"
-                  />
-                </div>
-                
-                <div>
-                  <label className="text-[10px] font-bold text-violet-400 uppercase tracking-wider block mb-1.5">Password</label>
-                  <input
-                    type="password"
-                    required
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                    className="w-full bg-[#111827] border border-white/10 rounded-xl px-4 py-3.5 text-sm text-white outline-none focus:border-violet-500/50 transition-colors"
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full py-3.5 bg-gradient-to-r from-violet-600 to-fuchsia-600 rounded-full text-white font-bold text-sm hover:brightness-110 active:scale-98 transition-all shadow-lg shadow-violet-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 mt-2"
-                >
-                  {loading ? 'Processing...' : authMode === 'signin' ? 'Sign In' : 'Sign Up'}
-                </button>
-              </form>
-
-              <div className="mt-6 text-center text-xs text-white/60 relative z-10">
-                {authMode === 'signin' ? (
-                  <p>
-                    Don't have an account?{' '}
-                    <button
-                      onClick={() => setAuthMode('signup')}
-                      className="text-[#00D4FF] font-bold hover:underline cursor-pointer bg-transparent border-0"
-                    >
-                      Sign Up
-                    </button>
+              {confirmationEmail ? (
+                <div className="relative z-10 text-center">
+                  <div className="w-16 h-16 rounded-2xl mx-auto flex items-center justify-center bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 mb-5">
+                    <MailCheck size={30} />
+                  </div>
+                  <p className="text-sm text-white/65 leading-relaxed">
+                    We sent a confirmation link to <span className="text-white font-bold break-all">{confirmationEmail}</span>.
                   </p>
-                ) : (
-                  <p>
-                    Already have an account?{' '}
-                    <button
-                      onClick={() => setAuthMode('signin')}
-                      className="text-[#00D4FF] font-bold hover:underline cursor-pointer bg-transparent border-0"
-                    >
-                      Sign In
-                    </button>
+                  <p className="text-xs text-white/40 leading-relaxed mt-3 mb-6">
+                    Open the email and select the confirmation link. You will return here signed in and ready to create.
                   </p>
-                )}
-              </div>
+                  <button
+                    type="button"
+                    onClick={handleResendConfirmation}
+                    disabled={resendLoading}
+                    className="w-full py-3.5 bg-gradient-to-r from-violet-600 to-fuchsia-600 rounded-full text-white font-bold text-sm hover:brightness-110 active:scale-[0.98] transition-all shadow-lg shadow-violet-500/20 cursor-pointer disabled:opacity-50"
+                  >
+                    {resendLoading ? 'Sending...' : 'Resend Confirmation Email'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => switchAuthMode('signin')}
+                    className="w-full mt-3 py-2.5 text-white/50 hover:text-white text-xs font-semibold transition-colors cursor-pointer"
+                  >
+                    Back to Sign In
+                  </button>
+                </div>
+              ) : recoverySent ? (
+                <div className="relative z-10 text-center">
+                  <div className="w-16 h-16 rounded-2xl mx-auto flex items-center justify-center bg-violet-500/10 border border-violet-500/25 text-violet-400 mb-5">
+                    <CheckCircle2 size={30} />
+                  </div>
+                  <p className="text-sm text-white/65 leading-relaxed">
+                    If an account exists for <span className="text-white font-bold break-all">{recoveryEmail}</span>, a secure reset link is on its way.
+                  </p>
+                  <p className="text-xs text-white/40 leading-relaxed mt-3 mb-6">
+                    Check your inbox and spam folder. The link will bring you back to create a new password.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => switchAuthMode('signin')}
+                    className="w-full py-3.5 bg-white/5 border border-white/10 rounded-full text-white font-bold text-sm hover:bg-white/10 transition-all cursor-pointer"
+                  >
+                    Back to Sign In
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {authMode !== 'forgot' && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleGoogleAuth}
+                        disabled={googleLoading || loading}
+                        className="relative z-10 w-full py-3.5 rounded-full border border-white/15 bg-white text-[#111827] font-bold text-sm hover:bg-white/90 active:scale-[0.98] transition-all flex items-center justify-center gap-3 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+                          <path fill="#4285F4" d="M17.64 9.205c0-.638-.057-1.252-.164-1.841H9v3.482h4.844a4.14 4.14 0 0 1-1.797 2.715v2.258h2.909c1.703-1.568 2.684-3.878 2.684-6.614Z" />
+                          <path fill="#34A853" d="M9 18c2.43 0 4.468-.806 5.956-2.181l-2.909-2.258c-.806.54-1.836.859-3.047.859-2.344 0-4.328-1.585-5.037-3.715H.955v2.332A9 9 0 0 0 9 18Z" />
+                          <path fill="#FBBC05" d="M3.963 10.705A5.41 5.41 0 0 1 3.682 9c0-.592.102-1.168.281-1.705V4.963H.955A9 9 0 0 0 0 9c0 1.452.347 2.827.955 4.037l3.008-2.332Z" />
+                          <path fill="#EA4335" d="M9 3.58c1.322 0 2.508.454 3.441 1.346l2.581-2.581C13.464.892 11.426 0 9 0A9 9 0 0 0 .955 4.963l3.008 2.332C4.672 5.165 6.656 3.58 9 3.58Z" />
+                        </svg>
+                        {googleLoading
+                          ? 'Connecting to Google...'
+                          : authMode === 'signup'
+                            ? 'Sign Up with Google'
+                            : 'Continue with Google'}
+                      </button>
+
+                      <div className="relative z-10 flex items-center gap-3 my-5" aria-hidden="true">
+                        <div className="h-px flex-1 bg-white/10" />
+                        <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/35">or use email</span>
+                        <div className="h-px flex-1 bg-white/10" />
+                      </div>
+                    </>
+                  )}
+
+                  {authMode === 'forgot' && (
+                    <div className="relative z-10 flex items-start gap-3 rounded-2xl border border-violet-500/15 bg-violet-500/[0.06] p-4 mb-5">
+                      <KeyRound size={18} className="text-violet-400 mt-0.5 shrink-0" />
+                      <p className="text-xs text-white/55 leading-relaxed">Enter your account email and we will send you a secure password-reset link.</p>
+                    </div>
+                  )}
+
+                  <form onSubmit={handleAuthSubmit} className="space-y-4 relative z-10">
+                    <div>
+                      <label htmlFor="auth-email" className="text-[10px] font-bold text-violet-400 uppercase tracking-wider block mb-1.5">Email Address</label>
+                      <input
+                        id="auth-email"
+                        type="email"
+                        autoComplete="email"
+                        required
+                        placeholder="name@example.com"
+                        value={email}
+                        onChange={event => setEmail(event.target.value)}
+                        className="w-full bg-[#111827] border border-white/10 rounded-xl px-4 py-3.5 text-sm text-white outline-none focus:border-violet-500/50 transition-colors"
+                      />
+                    </div>
+
+                    {authMode !== 'forgot' && (
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label htmlFor="auth-password" className="text-[10px] font-bold text-violet-400 uppercase tracking-wider">Password</label>
+                          {authMode === 'signin' && (
+                            <button
+                              type="button"
+                              onClick={() => switchAuthMode('forgot')}
+                              className="text-[10px] font-bold text-[#00D4FF] hover:underline cursor-pointer"
+                            >
+                              Forgot password?
+                            </button>
+                          )}
+                        </div>
+                        <input
+                          id="auth-password"
+                          type="password"
+                          autoComplete={authMode === 'signin' ? 'current-password' : 'new-password'}
+                          required
+                          minLength={authMode === 'signup' ? 8 : undefined}
+                          placeholder="••••••••"
+                          value={password}
+                          onChange={event => setPassword(event.target.value)}
+                          className="w-full bg-[#111827] border border-white/10 rounded-xl px-4 py-3.5 text-sm text-white outline-none focus:border-violet-500/50 transition-colors"
+                        />
+                        {authMode === 'signup' && <p className="text-[10px] text-white/35 mt-1.5">Use at least 8 characters.</p>}
+                      </div>
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="w-full py-3.5 bg-gradient-to-r from-violet-600 to-fuchsia-600 rounded-full text-white font-bold text-sm hover:brightness-110 active:scale-[0.98] transition-all shadow-lg shadow-violet-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 mt-2"
+                    >
+                      {loading
+                        ? 'Processing...'
+                        : authMode === 'signin'
+                          ? 'Sign In'
+                          : authMode === 'signup'
+                            ? 'Sign Up'
+                            : 'Send Reset Link'}
+                    </button>
+                  </form>
+
+                  <div className="mt-6 text-center text-xs text-white/60 relative z-10">
+                    {authMode === 'signin' ? (
+                      <p>
+                        Don't have an account?{' '}
+                        <button
+                          type="button"
+                          onClick={() => switchAuthMode('signup')}
+                          className="text-[#00D4FF] font-bold hover:underline cursor-pointer bg-transparent border-0"
+                        >
+                          Sign Up
+                        </button>
+                      </p>
+                    ) : (
+                      <p>
+                        {authMode === 'signup' ? 'Already have an account?' : 'Remember your password?'}{' '}
+                        <button
+                          type="button"
+                          onClick={() => switchAuthMode('signin')}
+                          className="text-[#00D4FF] font-bold hover:underline cursor-pointer bg-transparent border-0"
+                        >
+                          Sign In
+                        </button>
+                      </p>
+                    )}
+                  </div>
+                </>
+              )}
             </motion.div>
           </motion.div>
         )}
