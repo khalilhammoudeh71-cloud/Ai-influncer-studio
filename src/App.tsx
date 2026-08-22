@@ -41,6 +41,7 @@ import TrendView from './views/TrendView';
 import CreatePersonaPage from './views/CreatePersonaPage';
 import PersonaAvatar from './components/PersonaAvatar';
 import PasswordRecoveryView from './views/PasswordRecoveryView';
+import { accountStorageKey, migrateLegacyAccountKey, setActiveStorageUserId } from './utils/accountStorage';
 
 
 const EMPTY_PERSONA: Persona = {
@@ -61,7 +62,6 @@ const EMPTY_PERSONA: Persona = {
   personaNotes: '',
 };
 
-const ACCOUNT_STORAGE_VERSION = 'v1';
 const LEGACY_PERSONA_STORAGE_KEYS = [
   'ai_influencer_personas',
   'ai_influencers_local_backup',
@@ -69,9 +69,6 @@ const LEGACY_PERSONA_STORAGE_KEYS = [
   'personas_data',
   'studio_personas',
 ] as const;
-
-const accountStorageKey = (base: string, userId: string) =>
-  `${base}:${ACCOUNT_STORAGE_VERSION}:${userId}`;
 
 const getAccountStorageKeys = (userId: string) => ({
   personas: accountStorageKey('ai_influencer_personas', userId),
@@ -150,11 +147,14 @@ function App() {
     supabase.auth.getSession().then(({ data, error }) => {
       if (cancelled || receivedAuthEvent) return;
       if (error) console.error('[Auth] Could not restore session:', error.message);
-      setUser(data?.session?.user ?? null);
+      const sessionUser = data?.session?.user ?? null;
+      setActiveStorageUserId(sessionUser?.id);
+      setUser(sessionUser);
       setAuthLoading(false);
     }).catch((error) => {
       if (cancelled || receivedAuthEvent) return;
       console.error('[Auth] Could not restore session:', error);
+      setActiveStorageUserId(null);
       setUser(null);
       setAuthLoading(false);
     });
@@ -164,7 +164,9 @@ function App() {
       receivedAuthEvent = true;
       if (event === 'PASSWORD_RECOVERY') setIsPasswordRecovery(true);
       if (event === 'SIGNED_OUT') setIsPasswordRecovery(false);
-      setUser(session?.user ?? null);
+      const sessionUser = session?.user ?? null;
+      setActiveStorageUserId(sessionUser?.id);
+      setUser(sessionUser);
       setAuthLoading(false);
     });
 
@@ -385,6 +387,16 @@ function App() {
         if (cancelled) return;
 
         migrateMatchingLegacyPersonaCache(userId, serverPersonas);
+        serverPersonas.forEach(persona => {
+          [
+            `chat_history_${persona.id}`,
+            `persona_memories_${persona.id}`,
+            `persona_relationship_${persona.id}`,
+            `vox_vault_${persona.id}`,
+            `connected_accounts_${persona.id}`,
+            `planner_schedules_${persona.id}`,
+          ].forEach(base => migrateLegacyAccountKey(base, userId));
+        });
         const localPersonas = getLocalStoragePersonas(userId);
         recentPersonaIds.current = readStoredArray<string>([storageKeys.recentPersonas]);
 

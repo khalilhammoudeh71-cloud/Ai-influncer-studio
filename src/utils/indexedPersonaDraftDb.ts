@@ -1,12 +1,19 @@
+import { getActiveStorageUserId } from './accountStorage';
+
 const DB_NAME = 'AiInfluencerStudioPersonaDraftDB';
 const DB_VERSION = 1;
 const STORE_NAME = 'persona_drafts';
 const REFERENCE_IMAGES_KEY = 'new_persona_reference_images';
 
 interface PersonaReferenceImageDraft {
-  id: typeof REFERENCE_IMAGES_KEY;
+  id: string;
   images: string[];
   updatedAt: string;
+}
+
+function getReferenceImagesKey(): string | null {
+  const userId = getActiveStorageUserId();
+  return userId ? `${userId}:${REFERENCE_IMAGES_KEY}` : null;
 }
 
 function openDB(): Promise<IDBDatabase> {
@@ -29,12 +36,14 @@ function openDB(): Promise<IDBDatabase> {
 }
 
 export async function getPersonaDraftReferenceImages(): Promise<string[]> {
+  const referenceImagesKey = getReferenceImagesKey();
+  if (!referenceImagesKey) return [];
   const db = await openDB();
 
   try {
     return await new Promise<string[]>((resolve, reject) => {
       const transaction = db.transaction(STORE_NAME, 'readonly');
-      const request = transaction.objectStore(STORE_NAME).get(REFERENCE_IMAGES_KEY);
+      const request = transaction.objectStore(STORE_NAME).get(referenceImagesKey);
       request.onsuccess = () => {
         const draft = request.result as PersonaReferenceImageDraft | undefined;
         resolve(Array.isArray(draft?.images) ? draft.images : []);
@@ -47,13 +56,15 @@ export async function getPersonaDraftReferenceImages(): Promise<string[]> {
 }
 
 export async function savePersonaDraftReferenceImages(images: string[]): Promise<void> {
+  const referenceImagesKey = getReferenceImagesKey();
+  if (!referenceImagesKey) return;
   const db = await openDB();
 
   try {
     await new Promise<void>((resolve, reject) => {
       const transaction = db.transaction(STORE_NAME, 'readwrite');
       transaction.objectStore(STORE_NAME).put({
-        id: REFERENCE_IMAGES_KEY,
+        id: referenceImagesKey,
         images,
         updatedAt: new Date().toISOString(),
       } satisfies PersonaReferenceImageDraft);
@@ -67,12 +78,14 @@ export async function savePersonaDraftReferenceImages(images: string[]): Promise
 }
 
 export async function clearPersonaDraftReferenceImages(): Promise<void> {
+  const referenceImagesKey = getReferenceImagesKey();
+  if (!referenceImagesKey) return;
   const db = await openDB();
 
   try {
     await new Promise<void>((resolve, reject) => {
       const transaction = db.transaction(STORE_NAME, 'readwrite');
-      transaction.objectStore(STORE_NAME).delete(REFERENCE_IMAGES_KEY);
+      transaction.objectStore(STORE_NAME).delete(referenceImagesKey);
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => reject(transaction.error);
       transaction.onabort = () => reject(transaction.error);

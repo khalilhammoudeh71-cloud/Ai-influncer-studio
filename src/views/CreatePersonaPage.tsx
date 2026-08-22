@@ -14,6 +14,7 @@ import { persistPersonaReferenceImages } from '../services/personaMediaService';
 import { supabase } from '../lib/supabase';
 import { cn } from '../utils/cn';
 import { processVoiceSampleFile } from '../utils/audioUtils';
+import { accountLocalStorage } from '../utils/accountStorage';
 import {
   clearPersonaDraftReferenceImages,
   getPersonaDraftReferenceImages,
@@ -969,7 +970,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       setAudioSampleList([]);
 
       try {
-        const savedDraft = localStorage.getItem('persona_form_draft');
+        const savedDraft = accountLocalStorage.getItem('persona_form_draft');
         if (savedDraft) {
           const draft = JSON.parse(savedDraft);
           setName(draft.name || '');
@@ -987,7 +988,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
           setStudioStep(0);
         }
       } catch {
-        localStorage.removeItem('persona_form_draft');
+        accountLocalStorage.removeItem('persona_form_draft');
         setStudioStep(0);
       }
     }
@@ -1037,7 +1038,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
     if (editingPersona || !hasRestoredDraftRef.current) return;
 
     const timeoutId = window.setTimeout(() => {
-      localStorage.setItem('persona_form_draft', JSON.stringify({
+      accountLocalStorage.setItem('persona_form_draft', JSON.stringify({
         name,
         niche,
         platform,
@@ -1502,7 +1503,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
         toast.success(`✨ Created ${confirmedPersona.name}!`, { id: saveToastId });
       }
 
-      localStorage.removeItem('persona_form_draft');
+      accountLocalStorage.removeItem('persona_form_draft');
       await clearPersonaDraftReferenceImages().catch(error => {
         console.warn('[Persona Image Draft Clear Note]:', error);
       });

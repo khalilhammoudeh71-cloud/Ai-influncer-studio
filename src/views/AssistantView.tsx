@@ -12,6 +12,7 @@ import RelationshipProgressBadge from '../components/RelationshipProgressBadge';
 import VoiceNoteBubble from '../components/VoiceNoteBubble';
 import PersonaAvatar from '../components/PersonaAvatar';
 import { getCreatorProfile } from '../utils/creatorProfile';
+import { accountLocalStorage } from '../utils/accountStorage';
 
 // ── Typewriter hook ──────────────────────────────────────
 function useTypewriter(text: string, speed = 18) {
@@ -47,9 +48,9 @@ const INVALID_NAMES = new Set([
 
 export function getStoredUserName(): string {
   try {
-    const stored = localStorage.getItem(USER_NAME_KEY);
+    const stored = accountLocalStorage.getItem(USER_NAME_KEY);
     if (!stored || INVALID_NAMES.has(stored.toLowerCase().trim())) {
-      localStorage.setItem(USER_NAME_KEY, 'Dr. H');
+      accountLocalStorage.setItem(USER_NAME_KEY, 'Dr. H');
       return 'Dr. H';
     }
     return stored.trim();
@@ -61,7 +62,7 @@ export function setStoredUserName(name: string) {
     if (name && name.trim()) {
       const clean = name.trim();
       if (!INVALID_NAMES.has(clean.toLowerCase())) {
-        localStorage.setItem(USER_NAME_KEY, clean);
+        accountLocalStorage.setItem(USER_NAME_KEY, clean);
       }
     }
   } catch {}
@@ -128,7 +129,7 @@ function correctSpeechPhonetics(transcript: string, activePersonaName?: string):
 
 function loadHistory(personaId: string): ChatMessage[] {
   try {
-    const raw = localStorage.getItem(HISTORY_KEY(personaId));
+    const raw = accountLocalStorage.getItem(HISTORY_KEY(personaId));
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return parsed
@@ -140,13 +141,13 @@ function loadHistory(personaId: string): ChatMessage[] {
 function saveHistory(personaId: string, msgs: ChatMessage[]) {
   try {
     const toStore = msgs.filter(m => m && m.type !== 'loading').slice(-MAX_STORED);
-    localStorage.setItem(HISTORY_KEY(personaId), JSON.stringify(toStore));
+    accountLocalStorage.setItem(HISTORY_KEY(personaId), JSON.stringify(toStore));
   } catch { /* quota */ }
 }
 
 function loadPersonaMemories(personaId: string): string[] {
   try {
-    const raw = localStorage.getItem(MEMORY_KEY(personaId));
+    const raw = accountLocalStorage.getItem(MEMORY_KEY(personaId));
     let parsed: string[] = raw ? JSON.parse(raw) : [];
     const userName = getStoredUserName();
     // Filter out corrupted memories with words like "Allowing", "Serious", etc.
@@ -195,7 +196,7 @@ function savePersonaMemory(personaId: string, memoryText: string) {
 
     if (!existing.includes(trimmed)) {
       const updated = [...existing, trimmed].slice(-30);
-      localStorage.setItem(MEMORY_KEY(personaId), JSON.stringify(updated));
+      accountLocalStorage.setItem(MEMORY_KEY(personaId), JSON.stringify(updated));
     }
   } catch { /* quota */ }
 }
@@ -546,7 +547,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   // ── Relationship & Mood State ─────────────────────────────
   const [relationshipState, setRelationshipState] = useState<RelationshipState>(() => {
     try {
-      const raw = localStorage.getItem(`persona_relationship_${propActivePersona.id}`);
+      const raw = accountLocalStorage.getItem(`persona_relationship_${propActivePersona.id}`);
       if (raw) return JSON.parse(raw);
     } catch {}
     return {
@@ -561,7 +562,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   const updateRelationship = (updated: RelationshipState) => {
     setRelationshipState(updated);
     try {
-      localStorage.setItem(`persona_relationship_${selectedPersonaId}`, JSON.stringify(updated));
+      accountLocalStorage.setItem(`persona_relationship_${selectedPersonaId}`, JSON.stringify(updated));
     } catch {}
   };
 
@@ -1632,7 +1633,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     setSavedMsgIds(new Set());
 
     try {
-      const rRaw = localStorage.getItem(`persona_relationship_${selectedPersonaId}`);
+      const rRaw = accountLocalStorage.getItem(`persona_relationship_${selectedPersonaId}`);
       setRelationshipState(rRaw ? JSON.parse(rRaw) : {
         affinityScore: 28,
         stage: 'partner',
@@ -1699,7 +1700,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   };
 
   const clearHistory = () => {
-    localStorage.removeItem(HISTORY_KEY(selectedPersonaId));
+    accountLocalStorage.removeItem(HISTORY_KEY(selectedPersonaId));
     resetConversation(activePersona);
     toast.success('Conversation cleared');
   };

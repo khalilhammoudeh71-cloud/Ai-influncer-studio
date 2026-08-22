@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Search, Image as ImageIcon, Check, FolderHeart, Sparkles } from 'lucide-react';
 import { Persona } from '../types';
 import { api } from '../services/apiService';
+import { accountLocalStorage } from '../utils/accountStorage';
 
 interface AssetEntry {
   id: string;
@@ -82,7 +83,7 @@ export const AssetPickerModal: React.FC<AssetPickerModalProps> = ({
 
     // 2. Load general localStorage gallery items
     try {
-      const galleryRaw = localStorage.getItem('ai_influencer_gallery');
+      const galleryRaw = accountLocalStorage.getItem('ai_influencer_gallery');
       if (galleryRaw) {
         const parsed = JSON.parse(galleryRaw);
         if (Array.isArray(parsed)) {

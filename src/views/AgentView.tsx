@@ -60,6 +60,7 @@ import { generatePersonaPlan } from '../utils/personaEngine';
 import { generateImage, upscaleImage, authFetch } from '../services/imageService';
 import { cn } from '../utils/cn';
 import { trimAudioBase64To10Sec } from '../utils/audioUtils';
+import { accountLocalStorage } from '../utils/accountStorage';
 import toast from 'react-hot-toast';
 
 interface AgentViewProps {
@@ -578,7 +579,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
   const [voiceNameInput, setVoiceNameInput] = useState('Sofia Voice');
   const [voiceDescInput, setVoiceDescInput] = useState('Voice clone of Sofia reference clip');
   const [clonedVoiceId, setClonedVoiceId] = useState<string | null>(() => {
-    return localStorage.getItem('superagent_cloned_voice_id') || localStorage.getItem('agent_default_voice_id') || null;
+    return accountLocalStorage.getItem('superagent_cloned_voice_id') || accountLocalStorage.getItem('agent_default_voice_id') || null;
   });
 
   // Social Downloader States
@@ -693,7 +694,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
   // Load custom presets from localStorage on mount
   useEffect(() => {
     try {
-      const stored = localStorage.getItem('agent_presets');
+      const stored = accountLocalStorage.getItem('agent_presets');
       if (stored) {
         setCustomPresets(JSON.parse(stored));
       }
@@ -837,7 +838,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
   }, []);
 
   // Global Default Cloned Voice State
-  const [clonedVoiceRef, setClonedVoiceRef] = useState<string | null>(() => localStorage.getItem('superagent_cloned_voice') || null);
+  const [clonedVoiceRef, setClonedVoiceRef] = useState<string | null>(() => accountLocalStorage.getItem('superagent_cloned_voice') || null);
   const [isVoiceCloneModalOpen, setIsVoiceCloneModalOpen] = useState(false);
   const [isCloningVoice, setIsCloningVoice] = useState(false);
   const voiceUploadInputRef = useRef<HTMLInputElement | null>(null);
@@ -864,11 +865,11 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
           setClonedVoiceRef('active');
           if (data.voiceId) {
             setClonedVoiceId(data.voiceId);
-            localStorage.setItem('superagent_cloned_voice_id', data.voiceId);
+            accountLocalStorage.setItem('superagent_cloned_voice_id', data.voiceId);
           }
           try {
-            localStorage.setItem('superagent_cloned_voice', 'active');
-            localStorage.setItem('superagent_cloned_voice_audio', dataUrl);
+            accountLocalStorage.setItem('superagent_cloned_voice', 'active');
+            accountLocalStorage.setItem('superagent_cloned_voice_audio', dataUrl);
           } catch (e) {
             console.warn('[LocalStorage Note]:', e);
           }
@@ -890,9 +891,9 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
   const clearClonedVoice = async () => {
     setClonedVoiceRef(null);
     setClonedVoiceId(null);
-    localStorage.removeItem('superagent_cloned_voice');
-    localStorage.removeItem('superagent_cloned_voice_id');
-    localStorage.removeItem('superagent_cloned_voice_audio');
+    accountLocalStorage.removeItem('superagent_cloned_voice');
+    accountLocalStorage.removeItem('superagent_cloned_voice_id');
+    accountLocalStorage.removeItem('superagent_cloned_voice_audio');
     try {
       await fetch('/api/agent/set-default-voice', {
         method: 'POST',
@@ -917,7 +918,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
     setIsPlayingVoiceSample(true);
     const toastId = toast.loading("Synthesizing active voice sample...");
     try {
-      const savedAudio = localStorage.getItem('superagent_cloned_voice_audio') || localStorage.getItem('voice_sample_1');
+      const savedAudio = accountLocalStorage.getItem('superagent_cloned_voice_audio') || accountLocalStorage.getItem('voice_sample_1');
       let targetAudioUrl = savedAudio;
 
       if (!targetAudioUrl) {
@@ -1269,8 +1270,8 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
         ? personas.find(p => p.id === effectiveSelectedPersonaId)
         : undefined;
 
-      const voiceIdToUse = activePersonaObj?.voiceId || localStorage.getItem('superagent_cloned_voice_id') || undefined;
-      const voiceSampleToUse = activePersonaObj?.voiceSampleUrl || localStorage.getItem('superagent_cloned_voice_audio') || undefined;
+      const voiceIdToUse = activePersonaObj?.voiceId || accountLocalStorage.getItem('superagent_cloned_voice_id') || undefined;
+      const voiceSampleToUse = activePersonaObj?.voiceSampleUrl || accountLocalStorage.getItem('superagent_cloned_voice_audio') || undefined;
       const engineToUse = activePersonaObj?.voiceEngine || (voiceIdToUse ? 'elevenlabs' : (voiceEngine || 'omnivoice'));
       const voiceNameObj = activePersonaObj?.name || 'Aoede';
 
@@ -1764,7 +1765,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
     const newPreset = { name: presetName, prompt: promptText };
     const updated = [...customPresets, newPreset];
     setCustomPresets(updated);
-    localStorage.setItem('agent_presets', JSON.stringify(updated));
+    accountLocalStorage.setItem('agent_presets', JSON.stringify(updated));
     toast.success(`Preset '${name}' saved successfully!`);
   };
 
@@ -1772,7 +1773,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
     e.stopPropagation();
     const updated = customPresets.filter((_, i) => i !== idx);
     setCustomPresets(updated);
-    localStorage.setItem('agent_presets', JSON.stringify(updated));
+    accountLocalStorage.setItem('agent_presets', JSON.stringify(updated));
     toast.success('Preset deleted.');
   };
 
@@ -4979,8 +4980,8 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
           if (voiceId) {
             setClonedVoiceId(voiceId);
             try {
-              localStorage.setItem('superagent_cloned_voice_id', voiceId);
-              localStorage.setItem('superagent_cloned_voice', 'active');
+              accountLocalStorage.setItem('superagent_cloned_voice_id', voiceId);
+              accountLocalStorage.setItem('superagent_cloned_voice', 'active');
             } catch {}
           }
         }}

@@ -41,6 +41,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { Persona, PlannedPost, NavActions } from '../types';
 import { api } from '../services/apiService';
+import { accountLocalStorage } from '../utils/accountStorage';
 import toast from 'react-hot-toast';
 
 interface PlannerViewProps {
@@ -127,7 +128,7 @@ export default function PlannerView({ persona, personas, onSelectPersona, nav }:
   // ── Connected Accounts State ──
   const [connectedAccounts, setConnectedAccounts] = useState<Record<string, boolean>>(() => {
     try {
-      const saved = localStorage.getItem(`connected_accounts_${persona.id}`);
+      const saved = accountLocalStorage.getItem(`connected_accounts_${persona.id}`);
       return saved ? JSON.parse(saved) : {
         Instagram: true,
         TikTok: false,
@@ -143,14 +144,14 @@ export default function PlannerView({ persona, personas, onSelectPersona, nav }:
 
   // Save connected accounts when they change
   useEffect(() => {
-    localStorage.setItem(`connected_accounts_${persona.id}`, JSON.stringify(connectedAccounts));
+    accountLocalStorage.setItem(`connected_accounts_${persona.id}`, JSON.stringify(connectedAccounts));
   }, [connectedAccounts, persona.id]);
 
   // ── Post Scheduling State ──
   // Key format: `${platform}_day_${post.day}`
   const [schedules, setSchedules] = useState<Record<string, { status: 'Draft' | 'Scheduled' | 'Published'; date?: string; time?: string; caption?: string }>>(() => {
     try {
-      const saved = localStorage.getItem(`planner_schedules_${persona.id}`);
+      const saved = accountLocalStorage.getItem(`planner_schedules_${persona.id}`);
       return saved ? JSON.parse(saved) : {};
     } catch {
       return {};
@@ -159,7 +160,7 @@ export default function PlannerView({ persona, personas, onSelectPersona, nav }:
 
   // Save schedules when they change
   useEffect(() => {
-    localStorage.setItem(`planner_schedules_${persona.id}`, JSON.stringify(schedules));
+    accountLocalStorage.setItem(`planner_schedules_${persona.id}`, JSON.stringify(schedules));
   }, [schedules, persona.id]);
 
   // ── Scheduling Modal State ──
