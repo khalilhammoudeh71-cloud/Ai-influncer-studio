@@ -248,7 +248,7 @@ export default function ImageLightboxModal({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[9999] isolate w-screen h-[100dvh] bg-black/95 backdrop-blur-2xl flex flex-col justify-between overflow-hidden select-none"
+        className="fixed inset-0 z-[9999] isolate w-screen h-[100dvh] bg-black/95 backdrop-blur-2xl overflow-hidden select-none"
         role="dialog"
         aria-modal="true"
         aria-label={`Full-screen image of ${persona.name}`}
@@ -257,7 +257,7 @@ export default function ImageLightboxModal({
         }}
       >
         {/* Top Minimal Floating Header */}
-        <header className="flex items-center justify-between px-4 sm:px-6 py-3.5 bg-black/60 border-b border-white/[0.08] backdrop-blur-xl z-20">
+        <header className="absolute inset-x-0 top-0 z-40 flex items-center justify-between px-4 sm:px-6 py-3.5 bg-gradient-to-b from-black via-black/85 to-transparent backdrop-blur-sm">
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-8 h-8 rounded-xl overflow-hidden bg-white/10 border border-white/15 flex-shrink-0">
               {persona.referenceImage || persona.avatar ? (
@@ -341,7 +341,7 @@ export default function ImageLightboxModal({
 
         {/* Main Center Display Area (Maximized Screen View) */}
         <div 
-          className="flex-1 min-h-0 flex items-center justify-center p-2 sm:p-4 relative overflow-hidden"
+          className="absolute inset-0 flex items-center justify-center p-1 sm:p-2 overflow-hidden"
           onDoubleClick={() => setScale(s => (s === 1 ? 1.75 : 1))}
         >
           {isProcessing && (
@@ -360,18 +360,18 @@ export default function ImageLightboxModal({
             dragConstraints={{ left: -400, right: 400, top: -400, bottom: 400 }}
             animate={{ scale }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="max-w-[calc(100vw-1rem)] max-h-[calc(100dvh-7rem)] flex items-center justify-center cursor-zoom-in"
+            className="max-w-[calc(100vw-0.5rem)] max-h-[calc(100dvh-0.5rem)] flex items-center justify-center cursor-zoom-in"
           >
             <img
               src={currentImage}
               alt="Expanded view"
-              className="max-w-full max-h-[calc(100dvh-7rem)] object-contain rounded-2xl shadow-[0_25px_70px_rgba(0,0,0,0.95)] border border-white/[0.15]"
+              className="max-w-full max-h-[calc(100dvh-0.5rem)] object-contain rounded-xl shadow-[0_25px_70px_rgba(0,0,0,0.95)] border border-white/[0.12]"
             />
           </motion.div>
 
           {/* Versions thumbnail strip if edits/upscales exist */}
           {versions.length > 1 && (
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 p-1.5 rounded-2xl bg-black/80 border border-white/15 backdrop-blur-xl shadow-2xl">
+            <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 p-1.5 rounded-2xl bg-black/80 border border-white/15 backdrop-blur-xl shadow-2xl">
               <span className="text-[10px] uppercase font-bold text-zinc-400 px-2 flex items-center gap-1">
                 <Layers size={11} /> Versions:
               </span>
@@ -395,7 +395,7 @@ export default function ImageLightboxModal({
         </div>
 
         {/* Bottom Comprehensive Action Studio Bar */}
-        <footer className="bg-[#15161a]/95 border-t border-white/[0.09] backdrop-blur-2xl p-3 sm:p-4 z-20">
+        <footer className="absolute inset-x-0 bottom-0 z-40 bg-gradient-to-t from-black via-black/90 to-transparent pt-10 p-3 sm:px-4 sm:pb-4">
           <div className="max-w-5xl mx-auto flex flex-col gap-3">
             
             {/* Primary Action Tabs & Direct Buttons */}
