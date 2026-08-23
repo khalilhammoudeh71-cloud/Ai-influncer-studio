@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   X, Download, Sparkles, ZoomIn, ZoomOut, RotateCcw, 
@@ -111,7 +112,25 @@ export default function ImageLightboxModal({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
-  if (!isOpen) return null;
+  // Rendered through a document-body portal below, so lock the page behind the
+  // lightbox and prevent the underlying chat from shifting or scrolling.
+  useEffect(() => {
+    if (!isOpen || typeof document === 'undefined') return;
+
+    const previousOverflow = document.body.style.overflow;
+    const previousPaddingRight = document.body.style.paddingRight;
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+
+    document.body.style.overflow = 'hidden';
+    if (scrollbarWidth > 0) document.body.style.paddingRight = `${scrollbarWidth}px`;
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.body.style.paddingRight = previousPaddingRight;
+    };
+  }, [isOpen]);
+
+  if (!isOpen || typeof document === 'undefined') return null;
 
   const currentImage = versions[activeVersionIndex]?.url || imageUrl;
   const currentPrompt = versions[activeVersionIndex]?.prompt || initialPrompt || `Photo of ${persona.name}`;
@@ -223,13 +242,16 @@ export default function ImageLightboxModal({
     }
   };
 
-  return (
+  return createPortal(
     <AnimatePresence>
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-2xl flex flex-col justify-between overflow-hidden select-none"
+        className="fixed inset-0 z-[9999] isolate w-screen h-[100dvh] bg-black/95 backdrop-blur-2xl flex flex-col justify-between overflow-hidden select-none"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Full-screen image of ${persona.name}`}
         onClick={(e) => {
           if (e.target === e.currentTarget && !isProcessing) onClose();
         }}
@@ -308,9 +330,11 @@ export default function ImageLightboxModal({
               onClick={onClose}
               disabled={isProcessing}
               title="Close (Esc)"
-              className="p-2 rounded-xl bg-white/[0.08] hover:bg-rose-500/20 text-zinc-300 hover:text-rose-300 border border-white/10 hover:border-rose-500/30 transition-all cursor-pointer"
+              aria-label="Close full-screen image"
+              autoFocus
+              className="w-11 h-11 flex items-center justify-center rounded-full bg-black/75 hover:bg-rose-500/30 text-white hover:text-rose-200 border border-white/20 hover:border-rose-400/50 transition-all cursor-pointer shadow-2xl"
             >
-              <X size={16} />
+              <X size={22} strokeWidth={2.25} />
             </button>
           </div>
         </header>
@@ -336,12 +360,12 @@ export default function ImageLightboxModal({
             dragConstraints={{ left: -400, right: 400, top: -400, bottom: 400 }}
             animate={{ scale }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="max-w-[96vw] max-h-[86vh] flex items-center justify-center cursor-zoom-in"
+            className="max-w-[calc(100vw-1rem)] max-h-[calc(100dvh-7rem)] flex items-center justify-center cursor-zoom-in"
           >
             <img
               src={currentImage}
               alt="Expanded view"
-              className="max-w-full max-h-[84vh] object-contain rounded-2xl shadow-[0_25px_70px_rgba(0,0,0,0.95)] border border-white/[0.15]"
+              className="max-w-full max-h-[calc(100dvh-7rem)] object-contain rounded-2xl shadow-[0_25px_70px_rgba(0,0,0,0.95)] border border-white/[0.15]"
             />
           </motion.div>
 
@@ -548,6 +572,7 @@ export default function ImageLightboxModal({
           </div>
         </footer>
       </motion.div>
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }
