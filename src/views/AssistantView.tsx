@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Send, Bot, ChevronDown, ImageIcon, Video, Loader2, AlertCircle, Camera, MessageSquareQuote, Copy, Bookmark, Check, Phone, PhoneOff, Volume2, VolumeX, Mic, MicOff, RotateCcw, Trash2, Plus, Upload, Music, Film, X, Play, Sparkles, Paperclip, FileText, SlidersHorizontal, Settings, Hand, Maximize2, Download, Shirt, Heart } from 'lucide-react';
+import { Send, Bot, ChevronDown, ImageIcon, Video, Loader2, AlertCircle, Camera, MessageSquareQuote, Copy, Bookmark, Check, Phone, PhoneOff, Volume2, VolumeX, Mic, MicOff, RotateCcw, Trash2, Plus, Upload, Music, Film, X, Play, Sparkles, Paperclip, FileText, SlidersHorizontal, Settings, Hand, Maximize2, Download, Shirt, Heart, Pencil, BookOpen } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Persona, NavActions, RelationshipState } from '../types';
 import { ModelInfo, authFetch, fetchAllModelTypes, editImage, requestPersonaMedia, textToSpeech } from '../services/imageService';
@@ -14,6 +14,18 @@ import PersonaAvatar from '../components/PersonaAvatar';
 import { getCreatorProfile } from '../utils/creatorProfile';
 import { accountLocalStorage } from '../utils/accountStorage';
 import { resolveMediaModelFromPrompt } from '../utils/mediaModelResolver';
+import {
+  VOICE_ACCURACY_STORAGE_KEY,
+  addVoiceTerms,
+  applyVoiceCorrections,
+  buildVoiceKeyterms,
+  deriveCalibrationCorrections,
+  isDuplicateVoiceTranscript,
+  needsVoiceConfirmation,
+  parseVoiceAccuracyProfile,
+  saveVoiceCorrection,
+  type VoiceAccuracyProfile,
+} from '../utils/voiceAccuracy';
 import { CommitStrategy, RealtimeEvents, Scribe, type RealtimeConnection } from '@elevenlabs/client';
 
 // ── Typewriter hook ──────────────────────────────────────
@@ -234,6 +246,33 @@ interface ChatMessage {
   duration?: number;
   transcript?: string;
 }
+
+interface CallTranscriptItem {
+  id: string;
+  role: 'user' | 'persona';
+  type?: 'text' | 'image' | 'video' | 'loading' | 'error';
+  content: string;
+  prompt?: string;
+  source?: 'voice' | 'typed';
+  rawContent?: string;
+}
+
+const VOICE_CALIBRATION_SENTENCES = [
+  'Generate an image of Leen Hassan and Rawan Hassan using Seedream 5.0 Pro.',
+  'Create a video of Dr. H using Seedance 2.5 from Wavespeed.',
+  'Use GPT Image 2 or Qwen 3.0 Pro for this request.',
+];
+
+const VOICE_CALIBRATION_TERMS = [
+  'Leen Hassan',
+  'Rawan Hassan',
+  'Dr. H',
+  'Seedream 5.0 Pro',
+  'Seedance 2.5',
+  'Wavespeed',
+  'GPT Image 2',
+  'Qwen 3.0 Pro',
+];
 
 function detectIntent(message: string): 'image' | 'video' | 'chat' {
   const lower = message.toLowerCase().trim();
@@ -556,10 +595,51 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   const [callDuration, setCallDuration] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
   const [speakerOn, setSpeakerOn] = useState(true);
-  const [callTranscript, setCallTranscript] = useState<Array<{ id: string; role: 'user' | 'persona'; type?: 'text' | 'image' | 'video' | 'loading' | 'error'; content: string; prompt?: string }>>([]);
+  const [callTranscript, setCallTranscript] = useState<CallTranscriptItem[]>([]);
+  const callTranscriptRef = useRef<CallTranscriptItem[]>([]);
   const [activeCallMedia, setActiveCallMedia] = useState<{ type: 'image' | 'video'; url: string; prompt?: string } | null>(null);
   const [fullScreenModalMedia, setFullScreenModalMedia] = useState<{ type: 'image' | 'video'; url: string; prompt?: string } | null>(null);
   const [lightboxMedia, setLightboxMedia] = useState<{ url: string; prompt?: string } | null>(null);
+  const [voiceAccuracyProfile, setVoiceAccuracyProfile] = useState<VoiceAccuracyProfile>(() =>
+    parseVoiceAccuracyProfile(accountLocalStorage.getItem(VOICE_ACCURACY_STORAGE_KEY)),
+  );
+  const voiceAccuracyProfileRef = useRef(voiceAccuracyProfile);
+  const [showVoiceAccuracyPanel, setShowVoiceAccuracyPanel] = useState(false);
+  const [editingVoiceTranscriptId, setEditingVoiceTranscriptId] = useState<string | null>(null);
+  const [voiceCorrectionDraft, setVoiceCorrectionDraft] = useState('');
+  const [manualHeardDraft, setManualHeardDraft] = useState('');
+  const [manualIntendedDraft, setManualIntendedDraft] = useState('');
+  const [calibrationStep, setCalibrationStep] = useState<number | null>(null);
+  const calibrationStepRef = useRef<number | null>(null);
+  const [calibrationCapture, setCalibrationCapture] = useState<{
+    heard: string;
+    intended: string;
+    corrections: Array<{ heard: string; intended: string }>;
+  } | null>(null);
+  const [pendingVoiceConfirmation, setPendingVoiceConfirmation] = useState<string | null>(null);
+
+  const updateVoiceAccuracyProfile = useCallback((
+    updater: (current: VoiceAccuracyProfile) => VoiceAccuracyProfile,
+  ) => {
+    setVoiceAccuracyProfile(current => {
+      const next = updater(current);
+      voiceAccuracyProfileRef.current = next;
+      accountLocalStorage.setItem(VOICE_ACCURACY_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    voiceAccuracyProfileRef.current = voiceAccuracyProfile;
+  }, [voiceAccuracyProfile]);
+
+  useEffect(() => {
+    calibrationStepRef.current = calibrationStep;
+  }, [calibrationStep]);
+
+  useEffect(() => {
+    callTranscriptRef.current = callTranscript;
+  }, [callTranscript]);
 
   const handleUpdateImageInChat = (oldUrl: string, newUrl: string) => {
     setMessages(prev => prev.map(m => (m.type === 'image' && m.content === oldUrl) ? { ...m, content: newUrl } : m));
@@ -799,6 +879,51 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     }
   };
 
+  function commitRecognizedVoiceTranscript(rawTranscript: string) {
+    const phoneticCorrection = correctSpeechPhonetics(rawTranscript, activePersona?.name);
+    const corrected = applyVoiceCorrections(
+      phoneticCorrection,
+      voiceAccuracyProfileRef.current.corrections,
+    );
+    if (!corrected) return;
+
+    const activeCalibrationStep = calibrationStepRef.current;
+    if (activeCalibrationStep !== null) {
+      const intended = VOICE_CALIBRATION_SENTENCES[activeCalibrationStep];
+      setCalibrationCapture({
+        heard: rawTranscript,
+        intended,
+        corrections: deriveCalibrationCorrections(rawTranscript, intended),
+      });
+      setLiveUserSpeech('');
+      setCallStatus('listening');
+      return;
+    }
+
+    const now = Date.now();
+    if (isDuplicateVoiceTranscript(corrected, lastCommittedTranscriptRef.current, now)) {
+      console.log('[Voice Accuracy] Ignored a stale repeated transcript:', corrected);
+      setLiveUserSpeech('');
+      return;
+    }
+    lastCommittedTranscriptRef.current = { text: corrected, at: now };
+
+    if (needsVoiceConfirmation(corrected)) {
+      setPendingVoiceConfirmation(corrected);
+      setCallInput(corrected);
+      setLiveUserSpeech('');
+      setCallStatus('listening');
+      return;
+    }
+
+    setPendingVoiceConfirmation(null);
+    setLiveUserSpeech('');
+    if (isAgentSpeakingRef.current || voiceCallBusyRef.current) {
+      interruptPersona();
+    }
+    void handleSendCallMessage(corrected, { rawTranscript });
+  }
+
   const stopRealtimeTranscription = () => {
     if (scribeReconnectTimerRef.current) {
       clearTimeout(scribeReconnectTimerRef.current);
@@ -836,7 +961,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           minSpeechDurationMs: 80,
           minSilenceDurationMs: 180,
           languageCode: 'en',
-          keyterms: [
+          keyterms: buildVoiceKeyterms(voiceAccuracyProfileRef.current, [
+            ...personas.map(persona => persona.name),
             activePersona?.name,
             getStoredUserName(),
             'send me',
@@ -846,10 +972,12 @@ export default function AssistantView({ personas, persona: propActivePersona, on
             'photo',
             'selfie',
             'video',
-            'Seedream',
-            'Seedance',
+            'Seedream 5.0 Pro',
+            'Seedance 2.5',
             'Wavespeed',
-          ].filter((term): term is string => Boolean(term && term.length <= 20)),
+            'GPT Image 2',
+            'Qwen 3.0 Pro',
+          ].filter((term): term is string => Boolean(term))),
           filterBackgroundAudio: true,
           noVerbatim: false,
           microphone: {
@@ -894,19 +1022,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
             return;
           }
 
-          const corrected = correctSpeechPhonetics(rawTranscript, activePersona?.name);
-          const now = Date.now();
-          const last = lastCommittedTranscriptRef.current;
-          if (corrected.toLowerCase() === last.text.toLowerCase() && now - last.at < 2500) {
-            return;
-          }
-          lastCommittedTranscriptRef.current = { text: corrected, at: now };
-
-          if (isAgentSpeakingRef.current || voiceCallBusyRef.current) {
-            interruptPersona();
-          }
-          setLiveUserSpeech('');
-          void handleSendCallMessage(corrected);
+          commitRecognizedVoiceTranscript(rawTranscript);
         });
 
         connection.on(RealtimeEvents.SESSION_STARTED, () => {
@@ -1116,17 +1232,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
               recognitionStartIndexRef.current,
               resultCountAtSchedule,
             );
-            const corrected = correctSpeechPhonetics(trimmed, activePersona?.name);
-            const now = Date.now();
-            const last = lastCommittedTranscriptRef.current;
-            if (corrected.toLowerCase() === last.text.toLowerCase() && now - last.at < 2500) {
-              setLiveUserSpeech('');
-              return;
-            }
-            lastCommittedTranscriptRef.current = { text: corrected, at: now };
             console.log('[Call Voice] 🎤 Captured complete user utterance:', trimmed);
-            setLiveUserSpeech('');
-            void handleSendCallMessage(corrected);
+            commitRecognizedVoiceTranscript(trimmed);
           }
         }, pauseDelay);
       };
@@ -1363,7 +1470,10 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   };
 
   // Send message inside Live Call
-  const handleSendCallMessage = async (overrideText?: string) => {
+  const handleSendCallMessage = async (
+    overrideText?: string,
+    voiceMeta?: { rawTranscript?: string },
+  ) => {
     const text = (overrideText || callInput).trim();
     if (!text || !isCallActiveRef.current) return;
     if (voiceCallBusyRef.current) {
@@ -1372,6 +1482,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     }
 
     voiceCallBusyRef.current = true;
+    setPendingVoiceConfirmation(null);
     const callTurnId = ++callTurnIdRef.current;
     isAgentSpeakingRef.current = true;
     personaSpeakingStartTimeRef.current = Date.now();
@@ -1406,11 +1517,19 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     const sentCallAttachment = chatAttachment;
     setChatAttachment(null);
     
-    const userMsg: any = { id: uid(), role: 'user' as const, type: 'text' as const, content: text };
+    const userMsg: CallTranscriptItem & { attachment?: typeof sentCallAttachment } = {
+      id: uid(),
+      role: 'user',
+      type: 'text',
+      content: text,
+      source: voiceMeta?.rawTranscript ? 'voice' : 'typed',
+      rawContent: voiceMeta?.rawTranscript,
+    };
     if (sentCallAttachment) {
       userMsg.attachment = sentCallAttachment;
     }
-    const updatedHistory = [...callTranscript.filter(t => t.content.indexOf('Calling') !== 0), userMsg];
+    const updatedHistory = [...callTranscriptRef.current.filter(t => t.content.indexOf('Calling') !== 0), userMsg];
+    callTranscriptRef.current = updatedHistory;
     setCallTranscript(updatedHistory);
     
     setCallStatus('speaking');
@@ -1626,7 +1745,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       }
       
       setMessages(prev => [...prev, 
-        { id: uid(), role: 'user', type: 'text', content: text, timestamp: new Date() },
+        { id: userMsg.id, role: 'user', type: 'text', content: text, timestamp: new Date() },
         { id: uid(), role: 'persona', type: 'text', content: reply, timestamp: new Date() }
       ]);
 
@@ -1813,6 +1932,82 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     }
   };
 
+  const saveInlineVoiceCorrection = (item: CallTranscriptItem) => {
+    const intended = voiceCorrectionDraft.replace(/\s+/g, ' ').trim();
+    const heard = (item.rawContent || item.content).replace(/\s+/g, ' ').trim();
+    if (!heard || !intended) return;
+
+    updateVoiceAccuracyProfile(profile => {
+      const focusedCorrections = deriveCalibrationCorrections(heard, intended);
+      if (focusedCorrections.length === 0) return saveVoiceCorrection(profile, heard, intended);
+      return focusedCorrections.reduce(
+        (next, correction) => saveVoiceCorrection(next, correction.heard, correction.intended),
+        profile,
+      );
+    });
+    setCallTranscript(prev => prev.map(entry => entry.id === item.id ? { ...entry, content: intended } : entry));
+    setMessages(prev => prev.map(entry => entry.id === item.id ? { ...entry, content: intended } : entry));
+    setEditingVoiceTranscriptId(null);
+    setVoiceCorrectionDraft('');
+    toast.success('Voice correction learned for future requests.');
+  };
+
+  const saveManualVoiceCorrection = () => {
+    const heard = manualHeardDraft.replace(/\s+/g, ' ').trim();
+    const intended = manualIntendedDraft.replace(/\s+/g, ' ').trim();
+    if (!heard || !intended) return;
+    updateVoiceAccuracyProfile(profile => saveVoiceCorrection(profile, heard, intended));
+    setManualHeardDraft('');
+    setManualIntendedDraft('');
+    toast.success('Pronunciation added to your personal vocabulary.');
+  };
+
+  const startVoiceCalibration = () => {
+    interruptPersona();
+    setCalibrationCapture(null);
+    setCalibrationStep(0);
+    calibrationStepRef.current = 0;
+    setPendingVoiceConfirmation(null);
+    setCallInput('');
+    setCallStatus('listening');
+  };
+
+  const acceptCalibrationCapture = () => {
+    if (!calibrationCapture || calibrationStep === null) return;
+    const isLastStep = calibrationStep >= VOICE_CALIBRATION_SENTENCES.length - 1;
+    updateVoiceAccuracyProfile(profile => {
+      let next = addVoiceTerms(profile, VOICE_CALIBRATION_TERMS);
+      for (const correction of calibrationCapture.corrections) {
+        next = saveVoiceCorrection(next, correction.heard, correction.intended);
+      }
+      return isLastStep
+        ? { ...next, calibrationCompletedAt: new Date().toISOString() }
+        : next;
+    });
+    setCalibrationCapture(null);
+    if (isLastStep) {
+      setCalibrationStep(null);
+      calibrationStepRef.current = null;
+      toast.success('Voice calibration complete. New hints apply on your next call.');
+    } else {
+      setCalibrationStep(step => step === null ? null : step + 1);
+    }
+  };
+
+  const cancelVoiceCalibration = () => {
+    setCalibrationStep(null);
+    calibrationStepRef.current = null;
+    setCalibrationCapture(null);
+  };
+
+  const confirmPendingVoiceRequest = () => {
+    const transcript = pendingVoiceConfirmation;
+    if (!transcript) return;
+    setPendingVoiceConfirmation(null);
+    setCallInput('');
+    void handleSendCallMessage(transcript, { rawTranscript: transcript });
+  };
+
   const lastCallEndedAtRef = useRef<number>(0);
 
   // Dynamic context-aware greeting generator that picks up from last conversation
@@ -1890,6 +2085,10 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   const handleStartCall = async () => {
     setIsCallActive(true);
     isCallActiveRef.current = true;
+    lastCommittedTranscriptRef.current = { text: '', at: 0 };
+    setPendingVoiceConfirmation(null);
+    setEditingVoiceTranscriptId(null);
+    cancelVoiceCalibration();
     setCallStatus('connecting');
     setCallDuration(0);
     isAgentSpeakingRef.current = true;
@@ -1905,9 +2104,11 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       audioRef.current.play().catch(() => {});
     } catch {}
 
-    setCallTranscript([
-      { id: uid(), role: 'persona', content: `Calling ${activePersona.name}...` }
-    ]);
+    const connectingTranscript: CallTranscriptItem[] = [
+      { id: uid(), role: 'persona', content: `Calling ${activePersona.name}...` },
+    ];
+    callTranscriptRef.current = connectingTranscript;
+    setCallTranscript(connectingTranscript);
 
     // Keep one echo-cancelled microphone session alive for the entire call.
     // Scribe's realtime VAD commits natural turns and preserves the first words.
@@ -1930,9 +2131,11 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     if (isCallActiveRef.current) {
       await playTTS(greeting, () => {
         if (!isCallActiveRef.current) return;
-        setCallTranscript([
-          { id: uid(), role: 'persona', content: greeting }
-        ]);
+        const greetingTranscript: CallTranscriptItem[] = [
+          { id: uid(), role: 'persona', content: greeting },
+        ];
+        callTranscriptRef.current = greetingTranscript;
+        setCallTranscript(greetingTranscript);
       });
     }
   };
@@ -1947,6 +2150,12 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     rememberPersonaSpeech();
     currentPersonaSpeechRef.current = '';
     lastCallEndedAtRef.current = Date.now();
+    setPendingVoiceConfirmation(null);
+    setShowVoiceAccuracyPanel(false);
+    setEditingVoiceTranscriptId(null);
+    setCalibrationStep(null);
+    calibrationStepRef.current = null;
+    setCalibrationCapture(null);
     
     // Save history immediately
     setMessages(currentMsgs => {
@@ -2760,6 +2969,18 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                     ))}
                   </select>
                 </div>
+                <button
+                  onClick={() => setShowVoiceAccuracyPanel(open => !open)}
+                  className={cn(
+                    "p-2 rounded-lg border text-zinc-300 transition-all cursor-pointer",
+                    showVoiceAccuracyPanel
+                      ? "bg-[#E7C477]/15 border-[#E7C477]/45 text-[#F2D58D]"
+                      : "bg-white/5 border-white/10 hover:bg-white/10",
+                  )}
+                  title="Voice accuracy and personal vocabulary"
+                >
+                  <SlidersHorizontal size={14} />
+                </button>
                 {callStatus !== 'connecting' && (
                   <div className="bg-white/5 border border-white/10 rounded-full px-3 py-1 text-xs font-mono text-zinc-300">
                     {formatDuration(callDuration)}
@@ -2768,11 +2989,163 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
               </div>
             </div>
 
+            <AnimatePresence>
+              {showVoiceAccuracyPanel && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -8, scale: 0.98 }}
+                  className="absolute top-16 right-4 sm:right-6 z-[70] w-[min(92vw,430px)] max-h-[72vh] overflow-y-auto custom-scrollbar rounded-2xl border border-white/[0.14] bg-[#17181d]/98 shadow-2xl backdrop-blur-2xl p-4 space-y-4"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2 text-white font-bold">
+                        <BookOpen size={16} className="text-[#E7C477]" /> Voice Accuracy
+                      </div>
+                      <p className="text-[11px] text-zinc-400 mt-1">
+                        {voiceAccuracyProfile.corrections.length} learned correction{voiceAccuracyProfile.corrections.length === 1 ? '' : 's'} · {voiceAccuracyProfile.customTerms.length} vocabulary term{voiceAccuracyProfile.customTerms.length === 1 ? '' : 's'}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setShowVoiceAccuracyPanel(false)}
+                      className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 cursor-pointer"
+                      aria-label="Close voice accuracy settings"
+                    >
+                      <X size={15} />
+                    </button>
+                  </div>
+
+                  <div className="rounded-xl border border-[#E7C477]/20 bg-[#E7C477]/[0.06] p-3 space-y-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-bold text-[#F2D58D]">Optional voice calibration</p>
+                        <p className="text-[10px] text-zinc-400 mt-0.5">Read three short sentences so names and model terms are recognized correctly.</p>
+                      </div>
+                      {calibrationStep === null && (
+                        <button
+                          onClick={startVoiceCalibration}
+                          className="px-3 py-1.5 rounded-lg bg-[#E7C477] text-zinc-950 text-[11px] font-bold cursor-pointer hover:bg-[#F2D58D]"
+                        >
+                          {voiceAccuracyProfile.calibrationCompletedAt ? 'Run again' : 'Start'}
+                        </button>
+                      )}
+                    </div>
+
+                    {calibrationStep !== null && (
+                      <div className="space-y-2.5">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                          Sentence {calibrationStep + 1} of {VOICE_CALIBRATION_SENTENCES.length}
+                        </div>
+                        <p className="text-sm leading-relaxed text-white rounded-lg bg-black/25 border border-white/10 p-2.5">
+                          “{VOICE_CALIBRATION_SENTENCES[calibrationStep]}”
+                        </p>
+                        {calibrationCapture ? (
+                          <div className="space-y-2">
+                            <p className="text-[11px] text-zinc-300"><span className="text-zinc-500">Heard:</span> “{calibrationCapture.heard}”</p>
+                            <p className="text-[10px] text-emerald-300">
+                              {calibrationCapture.corrections.length > 0
+                                ? `${calibrationCapture.corrections.length} pronunciation correction${calibrationCapture.corrections.length === 1 ? '' : 's'} found.`
+                                : 'Perfect match — no correction needed.'}
+                            </p>
+                            <button
+                              onClick={acceptCalibrationCapture}
+                              className="w-full py-2 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-bold cursor-pointer hover:bg-emerald-500/20"
+                            >
+                              <Check size={13} className="inline mr-1" />
+                              {calibrationStep === VOICE_CALIBRATION_SENTENCES.length - 1 ? 'Finish calibration' : 'Save & next sentence'}
+                            </button>
+                          </div>
+                        ) : (
+                          <p className="text-[11px] text-emerald-300 animate-pulse">Listening — read the sentence naturally…</p>
+                        )}
+                        <button onClick={cancelVoiceCalibration} className="text-[10px] text-zinc-500 hover:text-zinc-300 cursor-pointer">Cancel calibration</button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-xs font-bold text-zinc-200">Add a correction manually</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        value={manualHeardDraft}
+                        onChange={event => setManualHeardDraft(event.target.value)}
+                        placeholder="App heard…"
+                        className="min-w-0 rounded-lg bg-black/25 border border-white/10 px-2.5 py-2 text-xs text-white outline-none focus:border-[#E7C477]/50"
+                      />
+                      <input
+                        value={manualIntendedDraft}
+                        onChange={event => setManualIntendedDraft(event.target.value)}
+                        onKeyDown={event => { if (event.key === 'Enter') saveManualVoiceCorrection(); }}
+                        placeholder="You meant…"
+                        className="min-w-0 rounded-lg bg-black/25 border border-white/10 px-2.5 py-2 text-xs text-white outline-none focus:border-[#E7C477]/50"
+                      />
+                    </div>
+                    <button
+                      onClick={saveManualVoiceCorrection}
+                      disabled={!manualHeardDraft.trim() || !manualIntendedDraft.trim()}
+                      className="w-full py-2 rounded-lg bg-white/[0.06] border border-white/10 text-zinc-200 text-xs font-bold disabled:opacity-40 cursor-pointer hover:bg-white/10"
+                    >
+                      <Plus size={13} className="inline mr-1" /> Add to personal vocabulary
+                    </button>
+                  </div>
+
+                  {voiceAccuracyProfile.corrections.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-bold text-zinc-200">Learned corrections</p>
+                      <div className="space-y-1.5 max-h-36 overflow-y-auto custom-scrollbar">
+                        {voiceAccuracyProfile.corrections.slice(0, 12).map(correction => (
+                          <div key={`${correction.heard}-${correction.intended}`} className="flex items-center gap-2 rounded-lg bg-black/20 border border-white/[0.07] px-2.5 py-2 text-[11px]">
+                            <span className="text-zinc-500 truncate">{correction.heard}</span>
+                            <span className="text-[#E7C477]">→</span>
+                            <span className="text-zinc-200 truncate flex-1">{correction.intended}</span>
+                            <button
+                              onClick={() => updateVoiceAccuracyProfile(profile => ({
+                                ...profile,
+                                corrections: profile.corrections.filter(item => item !== correction),
+                              }))}
+                              className="p-1 text-zinc-600 hover:text-rose-400 cursor-pointer"
+                              title="Remove correction"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {/* Visualizer Area */}
             <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-3 my-2 relative">
               {/* Status Indicator */}
               <div className="text-center z-10 min-h-[38px] flex flex-col items-center justify-center px-4">
-                {liveUserSpeech ? (
+                {pendingVoiceConfirmation ? (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.96 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="flex flex-wrap items-center justify-center gap-2 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs shadow-sm backdrop-blur-md max-w-[540px]"
+                  >
+                    <span>Did you mean: “{pendingVoiceConfirmation}”?</span>
+                    <button
+                      onClick={confirmPendingVoiceRequest}
+                      className="px-2.5 py-1 rounded-lg bg-amber-300 text-zinc-950 font-bold cursor-pointer"
+                    >
+                      Send
+                    </button>
+                    <button
+                      onClick={() => {
+                        setPendingVoiceConfirmation(null);
+                        setCallInput('');
+                        setCallStatus('listening');
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-white/10 text-zinc-200 font-bold cursor-pointer"
+                    >
+                      Keep speaking
+                    </button>
+                  </motion.div>
+                ) : liveUserSpeech ? (
                   <motion.div 
                     initial={{ opacity: 0, scale: 0.96 }}
                     animate={{ opacity: 1, scale: 1 }}
@@ -3003,9 +3376,49 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                               Speaking
                             </span>
                           )}
+                          {!isPersona && item.source === 'voice' && editingVoiceTranscriptId !== item.id && (
+                            <button
+                              onClick={() => {
+                                setEditingVoiceTranscriptId(item.id);
+                                setVoiceCorrectionDraft(item.content);
+                              }}
+                              className="flex items-center gap-1 text-[10px] text-zinc-500 hover:text-[#F2D58D] cursor-pointer"
+                              title="Correct what the app heard"
+                            >
+                              <Pencil size={10} /> Correct
+                            </button>
+                          )}
                         </div>
 
-                        {item.type === 'loading' ? (
+                        {editingVoiceTranscriptId === item.id ? (
+                          <div className="space-y-2">
+                            <p className="text-[10px] text-zinc-500">Heard: “{item.rawContent || item.content}”</p>
+                            <input
+                              autoFocus
+                              value={voiceCorrectionDraft}
+                              onChange={event => setVoiceCorrectionDraft(event.target.value)}
+                              onKeyDown={event => {
+                                if (event.key === 'Enter') saveInlineVoiceCorrection(item);
+                                if (event.key === 'Escape') setEditingVoiceTranscriptId(null);
+                              }}
+                              className="w-full rounded-lg bg-black/30 border border-[#E7C477]/30 px-2.5 py-2 text-xs text-white outline-none focus:border-[#E7C477]"
+                            />
+                            <div className="flex justify-end gap-1.5">
+                              <button
+                                onClick={() => setEditingVoiceTranscriptId(null)}
+                                className="px-2 py-1 rounded-md text-[10px] text-zinc-400 hover:bg-white/10 cursor-pointer"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={() => saveInlineVoiceCorrection(item)}
+                                className="px-2 py-1 rounded-md text-[10px] font-bold bg-[#E7C477] text-zinc-950 cursor-pointer"
+                              >
+                                Learn correction
+                              </button>
+                            </div>
+                          </div>
+                        ) : item.type === 'loading' ? (
                           <div className="flex items-center gap-2 text-violet-400 text-xs sm:text-sm font-medium py-1 animate-pulse">
                             <span className="inline-block w-2 h-2 rounded-full bg-violet-400 animate-ping" />
                             Creating high-definition photo for you...

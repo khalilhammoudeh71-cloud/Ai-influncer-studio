@@ -28,6 +28,7 @@ const SYNCABLE_EXACT_KEYS = new Set([
   'superagent_cloned_voice_id',
   'superagent_cloned_voice_audio',
   'superagent_my_voices',
+  'voice_accuracy_profile',
 ]);
 
 const SYNCABLE_KEY_PREFIXES = [
