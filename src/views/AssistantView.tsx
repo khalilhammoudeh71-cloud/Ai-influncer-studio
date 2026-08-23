@@ -13,6 +13,7 @@ import VoiceNoteBubble from '../components/VoiceNoteBubble';
 import PersonaAvatar from '../components/PersonaAvatar';
 import { getCreatorProfile } from '../utils/creatorProfile';
 import { accountLocalStorage } from '../utils/accountStorage';
+import { resolveMediaModelFromPrompt } from '../utils/mediaModelResolver';
 import { CommitStrategy, RealtimeEvents, Scribe, type RealtimeConnection } from '@elevenlabs/client';
 
 // ── Typewriter hook ──────────────────────────────────────
@@ -1641,25 +1642,45 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         const loadingMsgId = uid();
         setCallTranscript(prev => [...prev, personaMsg, { id: loadingMsgId, role: 'persona', type: 'loading', content: '' }]);
         const exactMediaRequest = text.trim();
-        const mediaPrompt = exactMediaRequest || `${activePersona.name}, ${activePersona.niche}, ${mediaType === 'image' ? 'photorealistic portrait' : 'cinematic motion video clip'}`;
+        const rawMediaPrompt = exactMediaRequest || `${activePersona.name}, ${activePersona.niche}, ${mediaType === 'image' ? 'photorealistic portrait' : 'cinematic motion video clip'}`;
+        const modelSelection = resolveMediaModelFromPrompt(
+          rawMediaPrompt,
+          mediaType === 'image' ? editModels : videoModels,
+          mediaType,
+        );
+        const mediaPrompt = modelSelection.prompt;
+        const requestedModelId = modelSelection.explicit && modelSelection.matched
+          ? modelSelection.modelId
+          : mediaType === 'image'
+            ? selectedEditModelId || 'wavespeed:bytedance/seedream-v5.0-pro'
+            : selectedVideoModelId || 'wavespeed-i2v:bytedance/seedance-2-mini';
         const extraImages = [
           sentCallAttachment?.type === 'image' ? sentCallAttachment.base64 : undefined,
           !sentCallAttachment && lastUploadedReference ? lastUploadedReference : undefined,
         ].filter((value): value is string => Boolean(value));
 
-        void requestPersonaMedia({
-          type: mediaType,
-          persona: activePersona,
-          prompt: mediaPrompt,
-          imageModelId: selectedEditModelId || 'wavespeed:bytedance/seedream-v5.0-pro',
-          videoModelId: selectedVideoModelId || 'wavespeed-i2v:bytedance/seedance-2-mini',
-          aspectRatio: '9:16',
-          allowNsfw: true,
-          additionalImages: extraImages.length > 0 ? extraImages : undefined,
-          creatorProfile: creator,
-        }).then(result => {
+        const mediaRequest = modelSelection.explicit && !modelSelection.matched
+          ? Promise.reject(new Error(
+              `I couldn't find “${modelSelection.requestedText}” in your available ${mediaType} models. Try another model name or choose one in AI Settings.`,
+            ))
+          : requestPersonaMedia({
+              type: mediaType,
+              persona: activePersona,
+              prompt: mediaPrompt,
+              imageModelId: mediaType === 'image' ? requestedModelId : selectedEditModelId || 'wavespeed:bytedance/seedream-v5.0-pro',
+              videoModelId: mediaType === 'video' ? requestedModelId : selectedVideoModelId || 'wavespeed-i2v:bytedance/seedance-2-mini',
+              aspectRatio: '9:16',
+              allowNsfw: true,
+              additionalImages: extraImages.length > 0 ? extraImages : undefined,
+              creatorProfile: creator,
+            });
+
+        void mediaRequest.then(result => {
+          const resultText = modelSelection.explicit && modelSelection.matched
+            ? `${result.message} Used ${result.model || modelSelection.modelName}.`
+            : result.message;
           const mediaMessage = { id: uid(), role: 'persona' as const, type: mediaType, content: result.url!, prompt: mediaPrompt };
-          const resultMessage = { id: uid(), role: 'persona' as const, type: 'text' as const, content: result.message };
+          const resultMessage = { id: uid(), role: 'persona' as const, type: 'text' as const, content: resultText };
           setActiveCallMedia({ type: mediaType, url: result.url!, prompt: mediaPrompt });
           setCallTranscript(prev => [
             ...prev.map(m => m.id === loadingMsgId ? mediaMessage : m),
@@ -1671,7 +1692,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
             { ...resultMessage, timestamp: new Date() },
           ]);
           if (callTurnId === callTurnIdRef.current && isCallActiveRef.current) {
-            streamingPlayback.then(() => playTTS(result.message)).catch(() => {});
+            streamingPlayback.then(() => playTTS(resultText)).catch(() => {});
           }
         }).catch(err => {
           const failureMessage = err?.message || `I couldn't finish that ${mediaType}.`;
@@ -2232,12 +2253,30 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         }
       } else if (isImageAction || isVideoAction) {
         const mediaType = isImageAction ? 'image' as const : 'video' as const;
-        const mediaPrompt = effectiveText.trim() || data.action?.prompt || '';
+        const rawMediaPrompt = effectiveText.trim() || data.action?.prompt || '';
+        const modelSelection = resolveMediaModelFromPrompt(
+          rawMediaPrompt,
+          mediaType === 'image' ? editModels : videoModels,
+          mediaType,
+        );
+        const mediaPrompt = modelSelection.prompt;
+        const requestedModelId = modelSelection.explicit && modelSelection.matched
+          ? modelSelection.modelId
+          : mediaType === 'image'
+            ? selectedEditModelId || 'wavespeed:bytedance/seedream-v5.0-pro'
+            : selectedVideoModelId || 'wavespeed-i2v:bytedance/seedance-2-mini';
         replaceMessage(loadingId, {
           type: 'loading',
-          content: mediaType === 'image' ? `Generating your image...` : `Rendering your video...`,
+          content: modelSelection.explicit && modelSelection.matched
+            ? `${mediaType === 'image' ? 'Generating' : 'Rendering'} with ${modelSelection.modelName}...`
+            : mediaType === 'image' ? `Generating your image...` : `Rendering your video...`,
         });
         try {
+          if (modelSelection.explicit && !modelSelection.matched) {
+            throw new Error(
+              `I couldn't find “${modelSelection.requestedText}” in your available ${mediaType} models. Try another model name or choose one in AI Settings.`,
+            );
+          }
           const extraImages = [
             sentAttachment?.type === 'image' ? sentAttachment.base64 : undefined,
             !sentAttachment && lastUploadedReference ? lastUploadedReference : undefined,
@@ -2246,15 +2285,18 @@ export default function AssistantView({ personas, persona: propActivePersona, on
             type: mediaType,
             prompt: mediaPrompt,
             persona: activePersona,
-            imageModelId: selectedEditModelId || 'wavespeed:bytedance/seedream-v5.0-pro',
-            videoModelId: selectedVideoModelId || 'wavespeed-i2v:bytedance/seedance-2-mini',
+            imageModelId: mediaType === 'image' ? requestedModelId : selectedEditModelId || 'wavespeed:bytedance/seedream-v5.0-pro',
+            videoModelId: mediaType === 'video' ? requestedModelId : selectedVideoModelId || 'wavespeed-i2v:bytedance/seedance-2-mini',
             referenceImage: activePersona.referenceImage || activePersona.avatar || activePersona.alternateReferenceImage,
             additionalImages: extraImages.length > 0 ? extraImages : undefined,
             creatorProfile: creator,
             aspectRatio: '9:16',
             allowNsfw: true,
           });
-          replaceMessage(loadingId, { type: 'text', content: result.message });
+          const resultText = modelSelection.explicit && modelSelection.matched
+            ? `${result.message} Used ${result.model || modelSelection.modelName}.`
+            : result.message;
+          replaceMessage(loadingId, { type: 'text', content: resultText });
           addMessage({ role: 'persona', type: mediaType, content: result.url!, prompt: mediaPrompt });
         } catch (mediaError: any) {
           replaceMessage(loadingId, {
