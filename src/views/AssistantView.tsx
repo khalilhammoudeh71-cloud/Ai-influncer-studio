@@ -26,6 +26,14 @@ import {
   saveVoiceCorrection,
   type VoiceAccuracyProfile,
 } from '../utils/voiceAccuracy';
+import {
+  drainSseData,
+  isLikelyPersonaEcho,
+  shouldInterruptPersonaSpeech,
+  summarizeVoiceLatency,
+  type VoiceLatencySnapshot,
+  type VoiceTurnTiming,
+} from '../utils/voiceStability';
 import { CommitStrategy, RealtimeEvents, Scribe, type RealtimeConnection } from '@elevenlabs/client';
 
 // ── Typewriter hook ──────────────────────────────────────
@@ -123,31 +131,6 @@ function correctSpeechPhonetics(transcript: string, activePersonaName?: string):
   corrected = corrected.replace(/\s+/g, ' ').trim();
 
   return corrected;
-}
-
-function normalizeEchoText(value: string): string[] {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9'\s]/g, ' ')
-    .split(/\s+/)
-    .filter(Boolean);
-}
-
-function isLikelyPersonaEcho(candidate: string, personaSpeech: string): boolean {
-  const heard = normalizeEchoText(candidate);
-  const spoken = normalizeEchoText(personaSpeech);
-  if (heard.length === 0 || spoken.length === 0) return false;
-
-  const heardPhrase = heard.join(' ');
-  const spokenPhrase = spoken.join(' ');
-  if (heard.length >= 2 && spokenPhrase.includes(heardPhrase)) return true;
-
-  const spokenWords = new Set(spoken);
-  const overlap = heard.filter(word => spokenWords.has(word)).length / heard.length;
-  const interruptionWords = new Set(['stop', 'wait', 'hold', 'pause', 'no', 'actually']);
-  if (heard.some(word => interruptionWords.has(word))) return false;
-
-  return heard.length >= 4 && overlap >= 0.78;
 }
 
 function loadHistory(personaId: string): ChatMessage[] {
@@ -591,7 +574,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 
   // ── Voice Call States & Refs ──────────────────────────────
   const [isCallActive, setIsCallActive] = useState(false);
-  const [callStatus, setCallStatus] = useState<'connecting' | 'connected' | 'speaking' | 'listening' | 'disconnected'>('disconnected');
+  const [callStatus, setCallStatus] = useState<'connecting' | 'connected' | 'thinking' | 'speaking' | 'listening' | 'disconnected'>('disconnected');
   const [callDuration, setCallDuration] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
   const [speakerOn, setSpeakerOn] = useState(true);
@@ -617,6 +600,9 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     corrections: Array<{ heard: string; intended: string }>;
   } | null>(null);
   const [pendingVoiceConfirmation, setPendingVoiceConfirmation] = useState<string | null>(null);
+  const [lastVoiceLatency, setLastVoiceLatency] = useState<VoiceLatencySnapshot | null>(null);
+  const voiceSpeechStartedAtRef = useRef<number | null>(null);
+  const browserPendingTranscriptRef = useRef<{ text: string; updatedAt: number }>({ text: '', updatedAt: 0 });
 
   const updateVoiceAccuracyProfile = useCallback((
     updater: (current: VoiceAccuracyProfile) => VoiceAccuracyProfile,
@@ -887,6 +873,10 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     );
     if (!corrected) return;
 
+    const transcriptCommittedAt = performance.now();
+    const speechStartedAt = voiceSpeechStartedAtRef.current ?? transcriptCommittedAt;
+    voiceSpeechStartedAtRef.current = null;
+
     const activeCalibrationStep = calibrationStepRef.current;
     if (activeCalibrationStep !== null) {
       const intended = VOICE_CALIBRATION_SENTENCES[activeCalibrationStep];
@@ -921,7 +911,11 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     if (isAgentSpeakingRef.current || voiceCallBusyRef.current) {
       interruptPersona();
     }
-    void handleSendCallMessage(corrected, { rawTranscript });
+    void handleSendCallMessage(corrected, {
+      rawTranscript,
+      speechStartedAt,
+      transcriptCommittedAt,
+    });
   }
 
   const stopRealtimeTranscription = () => {
@@ -1000,15 +994,20 @@ export default function AssistantView({ personas, persona: propActivePersona, on
             return;
           }
 
+          if (voiceSpeechStartedAtRef.current === null) {
+            voiceSpeechStartedAtRef.current = performance.now();
+          }
+
           setLiveUserSpeech(partial);
 
-          if (isAgentSpeakingRef.current) {
-            const words = normalizeEchoText(partial);
-            const isDirectInterrupt = /^(stop|wait|hold on|pause|no|actually)\b/i.test(partial);
-            if (isDirectInterrupt || words.length >= 3) {
-              interruptPersona();
-              setLiveUserSpeech(partial);
-            }
+          if (shouldInterruptPersonaSpeech(partial, {
+            source: 'realtime',
+            personaSpeech,
+            personaIsSpeaking: isAgentSpeakingRef.current,
+            responseIsPending: voiceCallBusyRef.current,
+          })) {
+            interruptPersona();
+            setLiveUserSpeech(partial);
           }
         });
 
@@ -1074,13 +1073,13 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       recentPersonaSpeechRef.current = {
         text: spoken,
         // Bluetooth and browser audio pipelines can deliver speaker echo late.
-        expiresAt: Date.now() + 1800,
+        expiresAt: Date.now() + 2800,
       };
     }
   }, []);
 
   const getEchoReferenceSpeech = useCallback(() => {
-    const current = currentPersonaSpeechRef.current.trim();
+    const current = isAgentSpeakingRef.current ? currentPersonaSpeechRef.current.trim() : '';
     const recent = recentPersonaSpeechRef.current;
     const tail = recent.expiresAt > Date.now() ? recent.text : '';
     return `${current} ${tail}`.trim();
@@ -1126,6 +1125,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       speechRecognitionSilenceTimerRef.current = null;
     }
     recognitionStartIndexRef.current = 0;
+    browserPendingTranscriptRef.current = { text: '', updatedAt: 0 };
+    voiceSpeechStartedAtRef.current = null;
     const rec = callRecRef.current;
     callRecRef.current = null;
     if (rec) {
@@ -1193,19 +1194,27 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           return;
         }
 
+        if (voiceSpeechStartedAtRef.current === null) {
+          voiceSpeechStartedAtRef.current = performance.now();
+        }
+
         // Browser fallback uses acoustic activity plus non-echo words. This
         // prevents the laptop speaker from interrupting its own response.
-        if (isAgentSpeakingRef.current) {
-          const words = normalizeEchoText(trimmed);
-          const isDirectInterrupt = /^(stop|wait|hold on|pause|no|actually)\b/i.test(trimmed);
-          const hasFreshEnergy = Date.now() <= bargeInEnergyUntilRef.current;
-          if (!isDirectInterrupt && !(hasFreshEnergy && words.length >= 3)) {
-            return;
-          }
+        if ((isAgentSpeakingRef.current || voiceCallBusyRef.current) && !shouldInterruptPersonaSpeech(trimmed, {
+          source: 'browser',
+          personaSpeech: getEchoReferenceSpeech(),
+          personaIsSpeaking: isAgentSpeakingRef.current,
+          responseIsPending: voiceCallBusyRef.current,
+          hasFreshVoiceEnergy: Date.now() <= bargeInEnergyUntilRef.current,
+        })) {
+          return;
+        }
+        if (isAgentSpeakingRef.current || voiceCallBusyRef.current) {
           console.log('[Vocal Barge-In] ⚡ Spoken words recognized while persona was speaking! Halting playback immediately...');
           interruptPersona();
         }
 
+        browserPendingTranscriptRef.current = { text: trimmed, updatedAt: Date.now() };
         setLiveUserSpeech(trimmed);
 
         // Reset silence timer on any newly recognized speech chunk
@@ -1228,6 +1237,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         speechRecognitionSilenceTimerRef.current = setTimeout(() => {
           speechRecognitionSilenceTimerRef.current = null;
           if (callRecRef.current === rec && trimmed.length >= 2 && isCallActiveRef.current) {
+            browserPendingTranscriptRef.current = { text: '', updatedAt: 0 };
             recognitionStartIndexRef.current = Math.max(
               recognitionStartIndexRef.current,
               resultCountAtSchedule,
@@ -1256,10 +1266,22 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           clearTimeout(speechRecognitionSilenceTimerRef.current);
           speechRecognitionSilenceTimerRef.current = null;
         }
+        const pendingTranscript = browserPendingTranscriptRef.current;
+        browserPendingTranscriptRef.current = { text: '', updatedAt: 0 };
         recognitionStartIndexRef.current = 0;
         isStartingRecRef.current = false;
         if (callRecRef.current === rec) {
           callRecRef.current = null;
+        }
+        // Chrome can close a recognition session before the silence timer fires.
+        // Commit the buffered utterance here so its opening words are not lost.
+        if (
+          pendingTranscript.text.length >= 2 &&
+          Date.now() - pendingTranscript.updatedAt < 2500 &&
+          isCallActiveRef.current &&
+          !isMutedRef.current
+        ) {
+          commitRecognizedVoiceTranscript(pendingTranscript.text);
         }
         if (isCallActiveRef.current && !isMutedRef.current) {
           setTimeout(() => {
@@ -1353,6 +1375,11 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const formatLatency = (milliseconds?: number) => {
+    if (milliseconds === undefined) return '—';
+    return milliseconds < 1000 ? `${milliseconds}ms` : `${(milliseconds / 1000).toFixed(1)}s`;
+  };
+
   // ── Web Speech Fallback Engine (Robotic Voice Suppressed) ──
   const speakWithWebSpeech = (text: string, onStart?: () => void, onEnd?: () => void) => {
     console.log('[Web Speech] Robotic synthesis suppressed to preserve cloned voice identity');
@@ -1370,11 +1397,21 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       restartSpeechRecognition();
       return;
     }
-    setCallStatus('speaking');
-    isAgentSpeakingRef.current = true;
-    personaSpeakingStartTimeRef.current = Date.now();
+    setCallStatus('thinking');
+    isAgentSpeakingRef.current = false;
+    voiceCallBusyRef.current = true;
 
+    let controller: AbortController | null = null;
+    let playbackSettled = false;
     const onPlaybackComplete = () => {
+      if (playbackSettled) return;
+      playbackSettled = true;
+      const ownsCurrentPlayback = controller === null
+        ? activeCallAbortControllerRef.current === null
+        : activeCallAbortControllerRef.current === controller;
+      // An interrupted older playback must never reset a newer turn to idle.
+      if (!ownsCurrentPlayback) return;
+      activeCallAbortControllerRef.current = null;
       isAgentSpeakingRef.current = false;
       voiceCallBusyRef.current = false;
       rememberPersonaSpeech();
@@ -1391,7 +1428,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 
     try {
       const { voiceId: targetVoiceId, voiceReference: targetVoiceRef } = getActivePersonaVoice(activePersona);
-      const controller = new AbortController();
+      controller = new AbortController();
       activeCallAbortControllerRef.current = controller;
 
       const ttsRes = await authFetch('/api/agent/voice-chat', {
@@ -1428,6 +1465,9 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           audio.src = '';
           return;
         }
+        setCallStatus('speaking');
+        isAgentSpeakingRef.current = true;
+        voiceCallBusyRef.current = false;
         personaSpeakingStartTimeRef.current = Date.now();
         onStart?.();
       };
@@ -1456,6 +1496,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           if (audioRef.current === audio) {
             audioRef.current = null;
           }
+          onPlaybackComplete();
         }
       } else {
         if (audioRef.current === audio) {
@@ -1464,6 +1505,10 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         onPlaybackComplete();
       }
     } catch (err: any) {
+      if (err?.name === 'AbortError') {
+        onPlaybackComplete();
+        return;
+      }
       console.warn("TTS fetch failed, falling back to Web Speech Synthesis", err);
       speakWithWebSpeech(text, onStart, onPlaybackComplete);
     }
@@ -1472,21 +1517,46 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   // Send message inside Live Call
   const handleSendCallMessage = async (
     overrideText?: string,
-    voiceMeta?: { rawTranscript?: string },
+    voiceMeta?: {
+      rawTranscript?: string;
+      speechStartedAt?: number;
+      transcriptCommittedAt?: number;
+    },
   ) => {
     const text = (overrideText || callInput).trim();
     if (!text || !isCallActiveRef.current) return;
-    if (voiceCallBusyRef.current) {
-      console.log('[Call Voice] ⏳ Already processing, ignoring duplicate input');
-      return;
+    if (voiceCallBusyRef.current || isAgentSpeakingRef.current) {
+      console.log('[Call Voice] ⚡ New turn interrupted the active response');
+      interruptPersona();
     }
+
+    // Typed turns and fast follow-up speech must cancel every part of the old
+    // response, including already-queued TTS segments.
+    if (activeCallAbortControllerRef.current) {
+      try { activeCallAbortControllerRef.current.abort(); } catch {}
+      activeCallAbortControllerRef.current = null;
+    }
+    rememberPersonaSpeech();
+    currentPersonaSpeechRef.current = '';
 
     voiceCallBusyRef.current = true;
     setPendingVoiceConfirmation(null);
     const callTurnId = ++callTurnIdRef.current;
-    isAgentSpeakingRef.current = true;
-    personaSpeakingStartTimeRef.current = Date.now();
+    isAgentSpeakingRef.current = false;
     restartSpeechRecognition();
+
+    const turnTiming: VoiceTurnTiming = {
+      speechStartedAt: voiceMeta?.speechStartedAt,
+      transcriptCommittedAt: voiceMeta?.transcriptCommittedAt,
+      requestStartedAt: performance.now(),
+    };
+    let latencyRecorded = false;
+    const recordFirstAudioLatency = () => {
+      if (latencyRecorded) return;
+      latencyRecorded = true;
+      turnTiming.firstAudioAt = performance.now();
+      setLastVoiceLatency(summarizeVoiceLatency(turnTiming));
+    };
 
     const watchdogTimer = setTimeout(() => {
       if (voiceCallBusyRef.current && callTurnId === callTurnIdRef.current) {
@@ -1532,7 +1602,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     callTranscriptRef.current = updatedHistory;
     setCallTranscript(updatedHistory);
     
-    setCallStatus('speaking');
+    setCallStatus('thinking');
 
     try {
       const priorHistory = loadHistory(activePersona.id);
@@ -1598,13 +1668,21 @@ export default function AssistantView({ personas, persona: propActivePersona, on
             if (audioRef.current === audio) audioRef.current = null;
             resolve(completed);
           };
-          const onAbort = () => finish(false);
+          const onAbort = () => {
+            try {
+              audio.pause();
+              audio.currentTime = 0;
+              audio.src = '';
+            } catch {}
+            finish(false);
+          };
 
           controller.signal.addEventListener('abort', onAbort, { once: true });
           audio.onended = () => finish(true);
           audio.onerror = () => finish(false);
           audio.onplay = () => {
             streamingAudioPlayed = true;
+            recordFirstAudioLatency();
             personaSpeakingStartTimeRef.current = Date.now();
             setCallStatus('speaking');
             isAgentSpeakingRef.current = true;
@@ -1691,27 +1769,30 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let eventBuffer = '';
+      const processVoiceStreamPayload = (payloadText: string) => {
+        const payload = JSON.parse(payloadText);
+        if (payload.error) throw new Error(payload.error);
+        if (payload.text && !payload.done) {
+          if (turnTiming.firstTextAt === undefined) {
+            turnTiming.firstTextAt = performance.now();
+          }
+          streamedReply += payload.text;
+          speechBuffer += payload.text;
+          currentPersonaSpeechRef.current = streamedReply.toLowerCase().trim();
+          flushSpeechBuffer(false);
+        }
+        if (payload.done) streamMetadata = payload;
+      };
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
         eventBuffer += decoder.decode(value, { stream: true });
-        const events = eventBuffer.split('\n\n');
-        eventBuffer = events.pop() || '';
-
-        for (const event of events) {
-          const payloadLine = event.split('\n').find(line => line.startsWith('data:'));
-          if (!payloadLine) continue;
-          const payload = JSON.parse(payloadLine.slice(5).trim());
-          if (payload.error) throw new Error(payload.error);
-          if (payload.text && !payload.done) {
-            streamedReply += payload.text;
-            speechBuffer += payload.text;
-            currentPersonaSpeechRef.current = streamedReply.toLowerCase().trim();
-            flushSpeechBuffer(false);
-          }
-          if (payload.done) streamMetadata = payload;
-        }
+        const drained = drainSseData(eventBuffer);
+        eventBuffer = drained.remainder;
+        drained.data.forEach(processVoiceStreamPayload);
       }
+      eventBuffer += decoder.decode();
+      drainSseData(eventBuffer, true).data.forEach(processVoiceStreamPayload);
       flushSpeechBuffer(true);
 
       const data = {
@@ -1719,6 +1800,9 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         text: streamMetadata.text || streamedReply,
       };
       if (!data.text) throw new Error('The streaming voice response was empty');
+      if (turnTiming.firstTextAt === undefined) {
+        turnTiming.firstTextAt = performance.now();
+      }
       
       clearTimeout(watchdogTimer);
 
@@ -1827,15 +1911,9 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       
       if (data.audioUrl && isCallActiveRef.current) {
         currentPersonaSpeechRef.current = reply.toLowerCase().trim();
-        setCallStatus('speaking');
-        isAgentSpeakingRef.current = true;
-        voiceCallBusyRef.current = false;
-        personaSpeakingStartTimeRef.current = Date.now();
-        
-        // Ensure recognition is actively listening for vocal barge-in
-        if (!isMutedRef.current) {
-          restartSpeechRecognition();
-        }
+        setCallStatus('thinking');
+        isAgentSpeakingRef.current = false;
+        voiceCallBusyRef.current = true;
         
         // Stop any currently playing audio instance to prevent overlapping voices
         const existingAudio = audioRef.current as HTMLAudioElement | null;
@@ -1852,11 +1930,26 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         audioRef.current = audio;
         audio.src = data.audioUrl;
         audio.volume = 1.0;
+        audio.onplay = () => {
+          if (callTurnId !== callTurnIdRef.current || !isCallActiveRef.current) {
+            try { audio.pause(); audio.src = ''; } catch {}
+            return;
+          }
+          recordFirstAudioLatency();
+          setCallStatus('speaking');
+          isAgentSpeakingRef.current = true;
+          voiceCallBusyRef.current = false;
+          personaSpeakingStartTimeRef.current = Date.now();
+          if (!isMutedRef.current) restartSpeechRecognition();
+        };
 
+        let callAudioSettled = false;
         const onCallAudioEnded = () => {
+          if (callAudioSettled) return;
+          callAudioSettled = true;
           if (audioRef.current === audio) audioRef.current = null;
           setTimeout(() => {
-            if (!isCallActiveRef.current) return;
+            if (!isCallActiveRef.current || callTurnId !== callTurnIdRef.current) return;
             isAgentSpeakingRef.current = false;
             voiceCallBusyRef.current = false;
             rememberPersonaSpeech();
@@ -1894,6 +1987,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         if (callTurnId !== callTurnIdRef.current || !isCallActiveRef.current) return;
         if (!streamingAudioPlayed) {
           await playTTS(reply, () => {
+            recordFirstAudioLatency();
             setCallStatus('speaking');
             isAgentSpeakingRef.current = true;
           });
@@ -1912,6 +2006,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         });
         await playTTS(reply, () => {
           if (!isCallActiveRef.current) return;
+          recordFirstAudioLatency();
           setCallStatus('speaking');
           isAgentSpeakingRef.current = true;
         });
@@ -2083,15 +2178,19 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 
   // Start Hands-Free Live Call with Interruption support
   const handleStartCall = async () => {
+    const greetingTurnId = ++callTurnIdRef.current;
     setIsCallActive(true);
     isCallActiveRef.current = true;
     lastCommittedTranscriptRef.current = { text: '', at: 0 };
+    voiceSpeechStartedAtRef.current = null;
+    browserPendingTranscriptRef.current = { text: '', updatedAt: 0 };
+    setLastVoiceLatency(null);
     setPendingVoiceConfirmation(null);
     setEditingVoiceTranscriptId(null);
     cancelVoiceCalibration();
     setCallStatus('connecting');
     setCallDuration(0);
-    isAgentSpeakingRef.current = true;
+    isAgentSpeakingRef.current = false;
     voiceCallBusyRef.current = true;
 
     // Unlock HTML5 audio context directly inside user click gesture
@@ -2128,9 +2227,9 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     const greeting = await fetchDynamicGreeting(activePersona, 'voice');
 
     // Synchronize greeting text bubble to appear at the exact instant audio starts.
-    if (isCallActiveRef.current) {
+    if (isCallActiveRef.current && greetingTurnId === callTurnIdRef.current) {
       await playTTS(greeting, () => {
-        if (!isCallActiveRef.current) return;
+        if (!isCallActiveRef.current || greetingTurnId !== callTurnIdRef.current) return;
         const greetingTranscript: CallTranscriptItem[] = [
           { id: uid(), role: 'persona', content: greeting },
         ];
@@ -2142,6 +2241,11 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 
   // End Call
   const handleEndCall = useCallback(() => {
+    callTurnIdRef.current += 1;
+    if (activeCallAbortControllerRef.current) {
+      try { activeCallAbortControllerRef.current.abort(); } catch {}
+      activeCallAbortControllerRef.current = null;
+    }
     setIsCallActive(false);
     isCallActiveRef.current = false;
     setCallStatus('disconnected');
@@ -2156,6 +2260,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     setCalibrationStep(null);
     calibrationStepRef.current = null;
     setCalibrationCapture(null);
+    voiceSpeechStartedAtRef.current = null;
+    browserPendingTranscriptRef.current = { text: '', updatedAt: 0 };
     
     // Save history immediately
     setMessages(currentMsgs => {
@@ -2197,6 +2303,11 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   useEffect(() => {
     return () => {
       isCallActiveRef.current = false;
+      callTurnIdRef.current += 1;
+      if (activeCallAbortControllerRef.current) {
+        try { activeCallAbortControllerRef.current.abort(); } catch {}
+        activeCallAbortControllerRef.current = null;
+      }
       stopRealtimeTranscription();
       stopVadInterruptionMonitor();
       if (audioRef.current) {
@@ -2981,6 +3092,15 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                 >
                   <SlidersHorizontal size={14} />
                 </button>
+                {lastVoiceLatency?.responseMs !== undefined && (
+                  <div
+                    className="hidden md:flex items-center gap-1.5 bg-cyan-500/[0.08] border border-cyan-500/20 rounded-full px-2.5 py-1 text-[10px] font-semibold text-cyan-200"
+                    title={`Last reply: recognition ${formatLatency(lastVoiceLatency.recognitionMs)}, AI ${formatLatency(lastVoiceLatency.modelMs)}, voice ${formatLatency(lastVoiceLatency.speechMs)}`}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                    Reply {formatLatency(lastVoiceLatency.responseMs)}
+                  </div>
+                )}
                 {callStatus !== 'connecting' && (
                   <div className="bg-white/5 border border-white/10 rounded-full px-3 py-1 text-xs font-mono text-zinc-300">
                     {formatDuration(callDuration)}
@@ -3013,6 +3133,32 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                     >
                       <X size={15} />
                     </button>
+                  </div>
+
+                  <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/[0.05] p-3 space-y-2.5">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-bold text-cyan-100">Live call health</p>
+                        <p className="text-[10px] text-zinc-400 mt-0.5">Echo protection on · interruption ready · complete-response recovery on</p>
+                      </div>
+                      <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-300">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Active
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {[
+                        ['Hearing', lastVoiceLatency?.recognitionMs],
+                        ['AI', lastVoiceLatency?.modelMs],
+                        ['Voice', lastVoiceLatency?.speechMs],
+                        ['Reply', lastVoiceLatency?.responseMs],
+                      ].map(([label, value]) => (
+                        <div key={String(label)} className="rounded-lg bg-black/25 border border-white/[0.07] px-2 py-2 text-center">
+                          <p className="text-[9px] uppercase tracking-wide text-zinc-500">{label}</p>
+                          <p className="text-[11px] font-bold text-zinc-200 mt-0.5">{formatLatency(value as number | undefined)}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-[9px] text-zinc-500">Reply measures the final transcript to the first audible persona response.</p>
                   </div>
 
                   <div className="rounded-xl border border-[#E7C477]/20 bg-[#E7C477]/[0.06] p-3 space-y-2.5">
@@ -3157,11 +3303,13 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                   <>
                     <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest block mb-1">
                       {callStatus === 'connecting' ? 'Calling...' : 
+                       callStatus === 'thinking' ? `${activePersona?.name || 'Persona'} Thinking` :
                        callStatus === 'speaking' ? `${activePersona?.name || 'Persona'} Speaking` :
                        callStatus === 'listening' ? 'Listening to You' : 'Connected'}
                     </span>
                     <p className="text-xs text-zinc-400 font-medium">
                       {callStatus === 'connecting' ? 'Establishing secure connection...' : 
+                       callStatus === 'thinking' ? 'Preparing a response — you can interrupt anytime...' :
                        callStatus === 'speaking' ? `${activePersona?.name || 'Persona'} is speaking...` :
                        callStatus === 'listening' ? 'Speak now or type below...' : 'Call in progress'}
                     </p>
