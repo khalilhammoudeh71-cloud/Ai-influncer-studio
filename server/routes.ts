@@ -8,6 +8,13 @@ import { personas, generatedImages, revenueEntries, plannedPosts, workspaceState
 import { eq, and } from 'drizzle-orm';
 import { GoogleGenAI } from '@google/genai';
 import { requireAuth, AuthenticatedRequest } from './auth';
+import {
+  type ElevenLabsVoiceSummary,
+  isElevenLabsVoiceEngine,
+  isProviderAccountUnavailableStatus,
+  isValidPublicVoiceReference,
+  selectElevenLabsPersonaVoice,
+} from './voiceRouting';
 
 const require = createRequire(import.meta.url);
 let ffmpegPath: string | null = null;
@@ -32,6 +39,77 @@ interface RevenueEntryInput {
 }
 
 const router = Router();
+
+const ELEVENLABS_VOICE_CACHE_TTL_MS = 5 * 60 * 1000;
+const VENICE_ACCOUNT_COOLDOWN_MS = 10 * 60 * 1000;
+let elevenLabsVoiceCache: { voices: ElevenLabsVoiceSummary[]; expiresAt: number } | null = null;
+let elevenLabsVoiceCatalogPromise: Promise<ElevenLabsVoiceSummary[]> | null = null;
+let veniceUnavailableUntil = 0;
+
+async function loadElevenLabsVoiceCatalog(apiKey: string, forceRefresh = false): Promise<ElevenLabsVoiceSummary[]> {
+  if (!forceRefresh && elevenLabsVoiceCache && elevenLabsVoiceCache.expiresAt > Date.now()) {
+    return elevenLabsVoiceCache.voices;
+  }
+  if (elevenLabsVoiceCatalogPromise) return elevenLabsVoiceCatalogPromise;
+
+  elevenLabsVoiceCatalogPromise = (async () => {
+    try {
+      const response = await fetch('https://api.elevenlabs.io/v1/voices', {
+        headers: { 'xi-api-key': apiKey },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!response.ok) {
+        console.warn(`[ElevenLabs Voice Catalog] Request failed with status ${response.status}`);
+        return [];
+      }
+      const data = await response.json() as { voices?: ElevenLabsVoiceSummary[] };
+      const voices = Array.isArray(data.voices) ? data.voices : [];
+      elevenLabsVoiceCache = { voices, expiresAt: Date.now() + ELEVENLABS_VOICE_CACHE_TTL_MS };
+      return voices;
+    } catch (error) {
+      console.warn('[ElevenLabs Voice Catalog] Request failed:', error);
+      return [];
+    } finally {
+      elevenLabsVoiceCatalogPromise = null;
+    }
+  })();
+
+  return elevenLabsVoiceCatalogPromise;
+}
+
+async function requestElevenLabsSpeech(
+  apiKey: string,
+  voiceId: string,
+  text: string,
+  modelId: string,
+): Promise<{ response: globalThis.Response; audioUrl?: string }> {
+  const response = await fetch(
+    `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}?optimize_streaming_latency=4&output_format=mp3_44100_128`,
+    {
+      method: 'POST',
+      headers: {
+        'xi-api-key': apiKey,
+        'Content-Type': 'application/json',
+        'Accept': 'audio/mpeg',
+      },
+      signal: AbortSignal.timeout(12000),
+      body: JSON.stringify({
+        text,
+        model_id: modelId,
+        voice_settings: {
+          stability: 0.50,
+          similarity_boost: 0.88,
+          style: 0.0,
+          use_speaker_boost: true,
+        },
+      }),
+    },
+  );
+
+  if (!response.ok) return { response };
+  const audio = Buffer.from(await response.arrayBuffer()).toString('base64');
+  return { response, audioUrl: `data:audio/mpeg;base64,${audio}` };
+}
 
 export async function readCreatorProfileForUser(userId: string): Promise<any | null> {
   if (!userId) return null;
@@ -1338,19 +1416,8 @@ router.get('/elevenlabs-voices', async (req: AuthenticatedRequest, res: Response
   if (!elKey) {
     return res.status(503).json({ error: 'ElevenLabs API key not configured', voices: [] });
   }
-  try {
-    const apiRes = await fetch('https://api.elevenlabs.io/v1/voices', {
-      headers: { 'xi-api-key': elKey },
-      signal: AbortSignal.timeout(10000)
-    });
-    if (apiRes.ok) {
-      const data = await apiRes.json();
-      return res.json(data);
-    }
-  } catch (e) {
-    console.warn('[Elevenlabs voices list error]:', e);
-  }
-  return res.json({ voices: [] });
+  const voices = await loadElevenLabsVoiceCatalog(elKey, true);
+  return res.json({ voices });
 });
 
 router.post('/agent/set-default-voice', async (req: AuthenticatedRequest, res: Response) => {
@@ -1463,7 +1530,7 @@ const handleTestVoiceClone = async (req: AuthenticatedRequest, res: Response) =>
     const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key;
 
     const voiceMap: Record<string, string> = {
-      'rawan': 'ov7JSkufAlSs386OYTaC',
+      'rawan': 'W4ynDvR6NFiK8lj2I8iL',
       'leen': '7jFje9BJoTWzqZzouT0j',
       'brielle': '6u6JbqKdaQy89ENzLSju',
       'madison': 'NUjosfEayZAdRcDmcHM8',
@@ -1486,7 +1553,7 @@ const handleTestVoiceClone = async (req: AuthenticatedRequest, res: Response) =>
       'elevenlabs:playht': '8DzKSPdgEQPaK5vKG0Rs',
       'elevenlabs:f5-tts': 'PUhCSw74BFEgrq8dqe8I',
       'elevenlabs:mureka-vocal': 'KLbbwrUTS6brBkjmN4Fp',
-      'openai:tts': 'ov7JSkufAlSs386OYTaC',
+      'openai:tts': 'W4ynDvR6NFiK8lj2I8iL',
 
       'wiro-voice:openmoss/moss-tts-v1-5': 'jqcCZkN6Knx8BJ5TBdYR',
       'wiro-voice:k2-fsa/omnivoice': 'NUjosfEayZAdRcDmcHM8',
@@ -1599,7 +1666,7 @@ const handleGenerateSpeech = async (req: AuthenticatedRequest, res: Response) =>
 
     const voiceIdMap: Record<string, string> = {
       'leen': '7jFje9BJoTWzqZzouT0j',
-      'rawan': 'ov7JSkufAlSs386OYTaC',
+      'rawan': 'W4ynDvR6NFiK8lj2I8iL',
       'brielle': '6u6JbqKdaQy89ENzLSju',
       'madison': 'NUjosfEayZAdRcDmcHM8',
       'kristen': 'XZUXLIpE3dqJ9aCZUj2R',
@@ -1621,7 +1688,7 @@ const handleGenerateSpeech = async (req: AuthenticatedRequest, res: Response) =>
       'elevenlabs:playht': '8DzKSPdgEQPaK5vKG0Rs',
       'elevenlabs:f5-tts': 'PUhCSw74BFEgrq8dqe8I',
       'elevenlabs:mureka-vocal': 'KLbbwrUTS6brBkjmN4Fp',
-      'openai:tts': 'ov7JSkufAlSs386OYTaC',
+      'openai:tts': 'W4ynDvR6NFiK8lj2I8iL',
 
       'wiro-voice:openmoss/moss-tts-v1-5': 'jqcCZkN6Knx8BJ5TBdYR',
       'wiro-voice:k2-fsa/omnivoice': 'NUjosfEayZAdRcDmcHM8',
@@ -1642,7 +1709,7 @@ const handleGenerateSpeech = async (req: AuthenticatedRequest, res: Response) =>
     const isExplicitElevenId = /^[a-zA-Z0-9]{18,24}$/.test(targetVoiceId || '') && !targetVoiceId?.includes(':') && !targetVoiceId?.includes('-');
     if (!isExplicitElevenId) {
       if (pName.includes('leen')) targetVoiceId = '7jFje9BJoTWzqZzouT0j';
-      else if (pName.includes('rawan')) targetVoiceId = 'ov7JSkufAlSs386OYTaC';
+      else if (pName.includes('rawan')) targetVoiceId = 'W4ynDvR6NFiK8lj2I8iL';
       else if (voiceIdMap[(targetVoiceId || '').toLowerCase()]) targetVoiceId = voiceIdMap[(targetVoiceId || '').toLowerCase()];
       else if (voiceIdMap[(requestedEngine || '').toLowerCase()]) targetVoiceId = voiceIdMap[(requestedEngine || '').toLowerCase()];
       else targetVoiceId = '7jFje9BJoTWzqZzouT0j';
@@ -1940,7 +2007,7 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
     };
 
     const requestedConversationModel = String(voiceLlmModel || '').toLowerCase();
-    const shouldUseVenice = Boolean(VENICE_KEY) && (
+    const shouldUseVenice = Boolean(VENICE_KEY) && Date.now() >= veniceUnavailableUntil && (
       requestedConversationModel.includes('venice') ||
       ((!requestedConversationModel || requestedConversationModel === 'default') && isAdultContext)
     );
@@ -1981,7 +2048,14 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
               },
             })
           });
-          if (!veniceRes.ok) continue;
+          if (!veniceRes.ok) {
+            if (isProviderAccountUnavailableStatus(veniceRes.status)) {
+              veniceUnavailableUntil = Date.now() + VENICE_ACCOUNT_COOLDOWN_MS;
+              console.warn(`[Voice Chat LLM] Venice account unavailable (${veniceRes.status}); pausing retries for 10 minutes.`);
+              break;
+            }
+            continue;
+          }
           const veniceData = await veniceRes.json();
           const rawReply = veniceData.choices?.[0]?.message?.content || '';
           if (rawReply && !isRefusal(rawReply)) {
@@ -2120,109 +2194,56 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
     // High-Fidelity Speech Synthesis using chosen voice engine
     let audioUrl: string | undefined = undefined;
     const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key;
-    const requestedTtsModel = req.body.ttsModel || req.body.voiceModel || 'eleven_turbo_v2_5';
-    
-    // Determine persona voice ID
-    const voiceIdMap: Record<string, string> = {
-      'rawan': 'ov7JSkufAlSs386OYTaC',
-      'rawan-latest': 'ov7JSkufAlSs386OYTaC',
-      'rawan-clone': 'ov7JSkufAlSs386OYTaC',
-      'rawan-multi': 'FkiPCg9ZhlwLIOml7TKM',
-      'rawan-orig': 'W4ynDvR6NFiK8lj2I8iL',
-      'leen': '7jFje9BJoTWzqZzouT0j',
-      'brielle': '6u6JbqKdaQy89ENzLSju',
-      'sabrina': 'v2cluk168jzrg0LQKNRl',
-      'madison': 'NUjosfEayZAdRcDmcHM8',
-      'kristen': 'XZUXLIpE3dqJ9aCZUj2R',
-      'zara': 'jqcCZkN6Knx8BJ5TBdYR',
-      'fiona': 'RXtWW6etvimS8QJ5nhVk',
-      'vanessa': '8DzKSPdgEQPaK5vKG0Rs',
-      'crystal': 'pq3wL6Xv3fuEM14W6ZCg',
-      'navya': 'h2dQOVyUfIDqY2whPOMo',
-      'kendra': 'Xkem7o24n3aQyiwIXNeT',
-      'john': 'KLbbwrUTS6brBkjmN4Fp',
-      'jason': 'PUhCSw74BFEgrq8dqe8I',
-      'stark': 'W6zuQRTYRBdAK8ypjo5V',
-    };
-
+    const requestedTtsModel = String(req.body.ttsModel || req.body.voiceModel || 'eleven_turbo_v2_5');
+    const wantsElevenLabs = isElevenLabsVoiceEngine(requestedTtsModel);
     const personaNameStr = (activePersona?.name || '').toLowerCase();
     const isMale = personaNameStr.includes('john') || personaNameStr.includes('jason') || personaNameStr.includes('stark');
-
-    let resolvedVoiceId = req.body.voiceId || activePersona?.voiceId;
-    if (!resolvedVoiceId || resolvedVoiceId === 'default' || resolvedVoiceId === 'female_default' || (personaNameStr.includes('leen') && (resolvedVoiceId === 'ov7JSkufAlSs386OYTaC' || resolvedVoiceId === 'W4ynDvR6NFiK8lj2I8iL'))) {
-      if (personaNameStr.includes('leen')) {
-        resolvedVoiceId = '7jFje9BJoTWzqZzouT0j';
-      } else if (personaNameStr.includes('rawan')) {
-        resolvedVoiceId = 'ov7JSkufAlSs386OYTaC';
-      } else {
-        resolvedVoiceId = isMale ? 'KLbbwrUTS6brBkjmN4Fp' : 'ov7JSkufAlSs386OYTaC';
-        for (const [key, vId] of Object.entries(voiceIdMap)) {
-          if (personaNameStr.includes(key)) {
-            resolvedVoiceId = vId;
-            break;
-          }
-        }
-      }
-    }
+    const savedVoiceId = String(req.body.voiceId || activePersona?.voiceId || '').trim();
+    let resolvedVoiceId = savedVoiceId;
+    let resolvedVoiceName: string | undefined;
 
     // 1. ElevenLabs Speech Synthesis
-    if (elKey && resolvedVoiceId && (requestedTtsModel.startsWith('eleven_') || requestedTtsModel.includes('eleven') || !audioUrl)) {
+    if (wantsElevenLabs && elKey) {
       try {
         const elevenModelId = requestedTtsModel.includes('flash') ? 'eleven_flash_v2_5' : 
                              requestedTtsModel.includes('multilingual') ? 'eleven_multilingual_v2' : 'eleven_turbo_v2_5';
-        
-        console.log(`[Voice Chat ElevenLabs] Synthesizing speech via ${elevenModelId} for persona "${activePersona?.name}" (Voice ID: ${resolvedVoiceId})...`);
-        const elRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${resolvedVoiceId}`, {
-          method: 'POST',
-          headers: {
-            'xi-api-key': elKey,
-            'Content-Type': 'application/json',
-            'Accept': 'audio/mpeg'
-          },
-          body: JSON.stringify({
-            text: spokenText,
-            model_id: elevenModelId,
-            voice_settings: {
-              stability: 0.50,
-              similarity_boost: 0.88,
-              style: 0.0,
-              use_speaker_boost: true
-            }
-          })
-        });
+        let catalog = await loadElevenLabsVoiceCatalog(elKey);
+        let voice = selectElevenLabsPersonaVoice(catalog, savedVoiceId, activePersona?.name);
+        resolvedVoiceId = voice?.voice_id || (catalog.length === 0 ? savedVoiceId : '');
+        resolvedVoiceName = voice?.name;
 
-        if (elRes.ok) {
-          const arrayBuffer = await elRes.arrayBuffer();
-          const base64Audio = Buffer.from(arrayBuffer).toString('base64');
-          audioUrl = `data:audio/mpeg;base64,${base64Audio}`;
-        } else {
-          console.warn(`[ElevenLabs TTS Non-OK, status]: ${elRes.status} for voice ${resolvedVoiceId}`);
-          // Persona-specific secondary voice retry if available
-          const secondaryVoiceId = personaNameStr.includes('leen') ? '7jFje9BJoTWzqZzouT0j' : (personaNameStr.includes('rawan') ? 'ov7JSkufAlSs386OYTaC' : undefined);
-          if (secondaryVoiceId && secondaryVoiceId !== resolvedVoiceId) {
-            const fbRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${secondaryVoiceId}`, {
-              method: 'POST',
-              headers: { 'xi-api-key': elKey, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
-              body: JSON.stringify({
-                text: spokenText,
-                model_id: 'eleven_turbo_v2_5',
-                voice_settings: { stability: 0.50, similarity_boost: 0.88, style: 0.0, use_speaker_boost: true }
-              })
-            });
-            if (fbRes.ok) {
-              const buf = Buffer.from(await fbRes.arrayBuffer());
-              audioUrl = `data:audio/mpeg;base64,${buf.toString('base64')}`;
+        if (resolvedVoiceId) {
+          if (savedVoiceId && resolvedVoiceId !== savedVoiceId) {
+            console.log(`[Voice Chat ElevenLabs] Remapped stale voice for "${activePersona?.name}" to "${resolvedVoiceName}" (${resolvedVoiceId}).`);
+          }
+          console.log(`[Voice Chat ElevenLabs] Synthesizing ${elevenModelId} for "${activePersona?.name}" with ${resolvedVoiceId}.`);
+          let result = await requestElevenLabsSpeech(elKey, resolvedVoiceId, spokenText, elevenModelId);
+
+          // A deleted voice can remain in a warm cache. Refresh once and retry
+          // only when the refreshed catalog proves it belongs to this persona.
+          if (result.response.status === 404) {
+            catalog = await loadElevenLabsVoiceCatalog(elKey, true);
+            voice = selectElevenLabsPersonaVoice(catalog, undefined, activePersona?.name);
+            if (voice && voice.voice_id !== resolvedVoiceId) {
+              resolvedVoiceId = voice.voice_id;
+              resolvedVoiceName = voice.name;
+              result = await requestElevenLabsSpeech(elKey, resolvedVoiceId, spokenText, elevenModelId);
             }
+          }
+
+          audioUrl = result.audioUrl;
+          if (!audioUrl) {
+            console.warn(`[Voice Chat ElevenLabs] Synthesis failed with status ${result.response.status} for ${resolvedVoiceId}.`);
           }
         }
       } catch (elErr) {
-        console.warn('[ElevenLabs TTS Exception, attempting fallback]:', elErr);
+        console.warn('[Voice Chat ElevenLabs] Synthesis failed:', elErr);
       }
     }
 
     // 2. Cartesia Sonic Voice Synthesis (Ultra-Fast ~90ms)
     const cartesiaKey = process.env.CARTESIA_API_KEY || '';
-    if (!audioUrl && cartesiaKey && (requestedTtsModel.includes('cartesia') || !audioUrl)) {
+    if (!audioUrl && cartesiaKey && requestedTtsModel.includes('cartesia')) {
       try {
         console.log(`[Voice Chat Cartesia] Synthesizing speech via Cartesia Sonic engine...`);
         const cartesiaVoiceId = isMale ? 'a0e99841-438c-4a64-b679-ae501e7d6091' : '79a125e8-cd45-4c13-8a67-188112f4dd22';
@@ -2256,27 +2277,32 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
       }
     }
 
-    // High-Quality Zero-Shot Voice Clone Fallback via Wavespeed / OmniVoice using THIS persona's reference audio
+    // Voice-clone routing is only allowed when the selected engine is a clone
+    // engine and the reference is a real public URL or valid embedded audio.
     const personaVoiceRef = (req.body as any).voiceReference || 
                             activePersona?.voiceSampleUrl || 
                             (activePersona as any)?.audioSamples?.[0]?.base64 || 
                             (personaNameStr.includes('rawan') ? globalDefaultVoiceRef : undefined);
 
-    if (!audioUrl && personaVoiceRef) {
+    const wantsReferenceClone = !wantsElevenLabs && !requestedTtsModel.includes('cartesia') && !requestedTtsModel.includes('openai');
+    if (!audioUrl && wantsReferenceClone && isValidPublicVoiceReference(personaVoiceRef)) {
       try {
         console.log(`[Voice Chat TTS] Using Wavespeed voice clone with ${activePersona?.name || 'Persona'} reference audio...`);
         audioUrl = await synthesizeClonedAudioWithWavespeed(personaVoiceRef, text);
       } catch (wErr) {
         console.warn('[Wavespeed Voice Synthesis Warning]:', wErr);
       }
+    } else if (!audioUrl && wantsReferenceClone && personaVoiceRef) {
+      console.warn(`[Voice Chat TTS] Ignoring invalid voice reference for "${activePersona?.name}".`);
     }
 
-    // High-Speed OpenAI TTS Fallback (tts-1 with nova/alloy/onyx voice)
-    if (!audioUrl) {
+    // A generic OpenAI voice is used only when the user explicitly selected
+    // OpenAI. It must never silently replace a missing cloned persona voice.
+    if (!audioUrl && requestedTtsModel.includes('openai')) {
       const openAiKey = process.env.Openai_api_key || process.env.openai_api_key || process.env.OPENAI_API_KEY || '';
       if (openAiKey) {
         try {
-          console.log('[Voice Chat TTS] Falling back to OpenAI TTS-1 engine...');
+          console.log('[Voice Chat TTS] Synthesizing with the explicitly selected OpenAI voice...');
           const openaiVoice = isMale ? 'onyx' : 'nova';
           const oaiRes = await fetch('https://api.openai.com/v1/audio/speech', {
             method: 'POST',
@@ -2301,6 +2327,18 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
           console.warn('[OpenAI TTS Fallback Exception]:', oaiErr);
         }
       }
+    }
+
+    if (req.body.directTTS && !audioUrl) {
+      const message = wantsElevenLabs
+        ? `${activePersona?.name || 'This persona'}'s saved ElevenLabs voice is unavailable. Reselect it in Voice Studio, then try the call again.`
+        : `${activePersona?.name || 'This persona'}'s selected voice engine is unavailable right now.`;
+      return res.status(424).json({
+        error: message,
+        code: 'PERSONA_VOICE_UNAVAILABLE',
+        personaName: activePersona?.name,
+        requestedVoiceId: savedVoiceId || undefined,
+      });
     }
 
     // Helper to generate enhanced photorealistic prompt for voice image requests using uncensored LLM
@@ -2453,6 +2491,8 @@ STRICT RULES:
     return res.json({ 
       text, 
       audioUrl, 
+      resolvedVoiceId: resolvedVoiceId || undefined,
+      resolvedVoiceName,
       status: extractedAction ? 'executing' : 'normal', 
       action: extractedAction,
       suggestedSteps: suggestedSteps.length > 0 ? suggestedSteps : undefined 
@@ -2567,7 +2607,9 @@ CRITICAL RULES FOR LIVE VOICE CALL:
       clearTimeout(timeout);
 
       if (!resStream.ok) {
-        throw new Error(`OpenAI stream response error ${resStream.status}`);
+        const responseError = new Error(`OpenAI stream response error ${resStream.status}`) as Error & { status?: number };
+        responseError.status = resStream.status;
+        throw responseError;
       }
 
       const reader = resStream.body;
@@ -2621,7 +2663,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
   }
 
   const requestedConversationModel = String(voiceLlmModel || '').toLowerCase();
-  const shouldStreamVenice = Boolean(VENICE_KEY) && (
+  const shouldStreamVenice = Boolean(VENICE_KEY) && Date.now() >= veniceUnavailableUntil && (
     requestedConversationModel.includes('venice') ||
     !requestedConversationModel ||
     requestedConversationModel === 'default'
@@ -2655,6 +2697,12 @@ CRITICAL RULES FOR LIVE VOICE CALL:
         streamedSuccessfully = streamedText.trim().length > 0;
         if (streamedSuccessfully) break;
       } catch (err) {
+        const status = (err as { status?: number })?.status;
+        if (isProviderAccountUnavailableStatus(status)) {
+          veniceUnavailableUntil = Date.now() + VENICE_ACCOUNT_COOLDOWN_MS;
+          console.warn(`[Voice Stream] Venice account unavailable (${status}); pausing retries for 10 minutes.`);
+          break;
+        }
         console.warn(`[Voice Stream] Venice ${veniceModel} failed, trying fallback:`, err);
       }
     }

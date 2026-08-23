@@ -292,10 +292,8 @@ export const VOICE_CALL_ENGINES = [
 ];
 
 export const PERSONA_VOICE_CHARACTERS = [
-  { id: 'ov7JSkufAlSs386OYTaC', name: 'Rawan Hasan (Newly Cloned Voice - Latest)', gender: 'Female' },
-  { id: 'FkiPCg9ZhlwLIOml7TKM', name: 'Rawan Hasan (Multi-Sample Cloned Voice)', gender: 'Female' },
-  { id: 'W4ynDvR6NFiK8lj2I8iL', name: 'Rawan Hasan (Original Direct Clone)', gender: 'Female' },
-  { id: 'bEp1nJ6RU85e3wsylRfE', name: 'Rawan Hasan (Multi-Sample 178682133)', gender: 'Female' },
+  { id: 'W4ynDvR6NFiK8lj2I8iL', name: 'Rawan Hasan (Cloned Voice)', gender: 'Female' },
+  { id: 'mnuSAY5SCPZ0NUF04SUe', name: 'Rawan Hasan (Alternate Clone)', gender: 'Female' },
   { id: '7jFje9BJoTWzqZzouT0j', name: 'Leen Hasan (Cloned Voice)', gender: 'Female' },
   { id: 'sabrina', name: 'Sabrina (Sweet, Flirty & Playful)', gender: 'Female' },
   { id: 'brielle', name: 'Brielle (Ultra-Natural Podcast)', gender: 'Female' },
@@ -309,15 +307,20 @@ export const PERSONA_VOICE_CHARACTERS = [
 ];
 
 export function getActivePersonaVoice(persona?: Persona | null) {
-  if (!persona) return { voiceId: 'ov7JSkufAlSs386OYTaC', voiceReference: undefined };
+  if (!persona) return { voiceId: 'W4ynDvR6NFiK8lj2I8iL', voiceReference: undefined };
   const name = (persona.name || '').toLowerCase();
   let voiceId = persona.voiceId;
+  const staleRawanVoice = name.includes('rawan') && [
+    'ov7JSkufAlSs386OYTaC',
+    'FkiPCg9ZhlwLIOml7TKM',
+    'bEp1nJ6RU85e3wsylRfE',
+  ].includes(voiceId || '');
   
-  if (!voiceId || voiceId === 'default' || voiceId === 'female_default' || (name.includes('leen') && (voiceId === 'ov7JSkufAlSs386OYTaC' || voiceId === 'W4ynDvR6NFiK8lj2I8iL'))) {
+  if (!voiceId || voiceId === 'default' || voiceId === 'female_default' || staleRawanVoice || (name.includes('leen') && (voiceId === 'ov7JSkufAlSs386OYTaC' || voiceId === 'W4ynDvR6NFiK8lj2I8iL'))) {
     if (name.includes('leen')) {
       voiceId = '7jFje9BJoTWzqZzouT0j';
     } else if (name.includes('rawan')) {
-      voiceId = 'ov7JSkufAlSs386OYTaC';
+      voiceId = 'W4ynDvR6NFiK8lj2I8iL';
     } else if (name.includes('brielle')) {
       voiceId = '6u6JbqKdaQy89ENzLSju';
     } else if (name.includes('sabrina')) {
@@ -345,7 +348,7 @@ export function getActivePersonaVoice(persona?: Persona | null) {
     } else if (name.includes('stark')) {
       voiceId = 'W6zuQRTYRBdAK8ypjo5V';
     } else {
-      voiceId = 'ov7JSkufAlSs386OYTaC';
+      voiceId = 'W4ynDvR6NFiK8lj2I8iL';
     }
   }
 
@@ -1445,6 +1448,15 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         signal: controller.signal,
       });
       const ttsData = await ttsRes.json().catch(() => ({}));
+      if (!ttsRes.ok) {
+        if (ttsData.code === 'PERSONA_VOICE_UNAVAILABLE') {
+          const message = ttsData.error || `${activePersona.name}'s saved voice is unavailable. Reselect it in Voice Studio.`;
+          toast.error(message, { id: 'persona-voice-unavailable', duration: 7000 });
+          onPlaybackComplete();
+          return;
+        }
+        throw new Error(ttsData.error || `Voice synthesis failed (${ttsRes.status})`);
+      }
       const audioUrl = ttsData.audioUrl;
       
       if (!audioUrl || !isCallActiveRef.current) {
@@ -1617,10 +1629,22 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       let streamMetadata: any = {};
       let streamingSpeechQueued = false;
       let streamingAudioPlayed = false;
+      let terminalTtsError: string | undefined;
       let streamingPlayback = Promise.resolve();
       const { voiceId: targetVoiceId, voiceReference: targetVoiceRef } = getActivePersonaVoice(activePersona);
 
+      const reportTerminalTtsError = (message: string) => {
+        if (terminalTtsError) return;
+        terminalTtsError = message;
+        const errorId = `voice-routing-error-${callTurnId}`;
+        setCallTranscript(prev => prev.some(item => item.id === errorId)
+          ? prev
+          : [...prev, { id: errorId, role: 'persona', type: 'error', content: message }]);
+        toast.error(message, { id: 'persona-voice-unavailable', duration: 7000 });
+      };
+
       const synthesizeSpeechSegment = async (segment: string): Promise<string | undefined> => {
+        if (terminalTtsError) return undefined;
         for (let attempt = 0; attempt < 2; attempt++) {
           try {
             const ttsResponse = await authFetch('/api/agent/voice-chat', {
@@ -1636,9 +1660,13 @@ export default function AssistantView({ personas, persona: propActivePersona, on
               }),
               signal: controller.signal,
             });
-            if (ttsResponse.ok) {
-              const ttsData = await ttsResponse.json().catch(() => ({}));
-              if (ttsData.audioUrl) return ttsData.audioUrl;
+            const ttsData = await ttsResponse.json().catch(() => ({}));
+            if (ttsResponse.ok && ttsData.audioUrl) return ttsData.audioUrl;
+            if (ttsData.code === 'PERSONA_VOICE_UNAVAILABLE') {
+              reportTerminalTtsError(
+                ttsData.error || `${activePersona.name}'s saved voice is unavailable. Reselect it in Voice Studio.`,
+              );
+              return undefined;
             }
           } catch (error: any) {
             if (error?.name === 'AbortError') throw error;
@@ -1696,7 +1724,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 
         // A temporary CDN/audio-element failure should not silently remove the
         // final phrase. Re-synthesize and replay that phrase once.
-        if (!playedToEnd && playbackAttempt === 0 && !controller.signal.aborted && callTurnId === callTurnIdRef.current) {
+        if (!playedToEnd && !terminalTtsError && playbackAttempt === 0 && !controller.signal.aborted && callTurnId === callTurnIdRef.current) {
           await playPreparedSegment(segment, synthesizeSpeechSegment(segment), 1);
         }
       };
@@ -1985,7 +2013,13 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       } else if (streamingSpeechQueued && isCallActiveRef.current) {
         await streamingPlayback;
         if (callTurnId !== callTurnIdRef.current || !isCallActiveRef.current) return;
-        if (!streamingAudioPlayed) {
+        if (terminalTtsError) {
+          isAgentSpeakingRef.current = false;
+          voiceCallBusyRef.current = false;
+          currentPersonaSpeechRef.current = '';
+          setCallStatus('listening');
+          restartSpeechRecognition();
+        } else if (!streamingAudioPlayed) {
           await playTTS(reply, () => {
             recordFirstAudioLatency();
             setCallStatus('speaking');

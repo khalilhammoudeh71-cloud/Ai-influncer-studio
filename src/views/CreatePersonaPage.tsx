@@ -1114,7 +1114,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
         // Only if NO samples are uploaded at all, fallback to preset defaults
         const pName = (name || '').toLowerCase();
         if (pName.includes('leen')) activeVoiceId = '7jFje9BJoTWzqZzouT0j';
-        else if (pName.includes('rawan')) activeVoiceId = 'ov7JSkufAlSs386OYTaC';
+        else if (pName.includes('rawan')) activeVoiceId = 'W4ynDvR6NFiK8lj2I8iL';
       }
 
       const res = await api.voice.generateSpeech({
