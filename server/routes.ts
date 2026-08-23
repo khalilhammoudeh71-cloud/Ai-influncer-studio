@@ -47,6 +47,24 @@ export async function readCreatorProfileForUser(userId: string): Promise<any | n
   }
 }
 
+export async function writeCreatorProfileForUser(userId: string, profile: any): Promise<void> {
+  if (!userId) throw new Error('User id is required');
+  const value = JSON.stringify(profile || {});
+  if (Buffer.byteLength(value, 'utf8') > 2_000_000) {
+    throw new Error('Creator profile is too large');
+  }
+  const now = new Date();
+  await db.insert(workspaceStates).values({
+    userId,
+    stateKey: 'ai_studio_creator_profile',
+    value,
+    updatedAt: now,
+  }).onConflictDoUpdate({
+    target: [workspaceStates.userId, workspaceStates.stateKey],
+    set: { value, updatedAt: now },
+  });
+}
+
 function personaToClient(row: typeof personas.$inferSelect, images: typeof generatedImages.$inferSelect[] = []) {
   return {
     id: row.clientId,
@@ -78,6 +96,24 @@ function personaToClient(row: typeof personas.$inferSelect, images: typeof gener
     heygenAvatarId: row.heygenAvatarId || undefined,
     visualLibrary: images.map(imageToClient),
   };
+}
+
+export async function readPersonasForUser(userId: string): Promise<any[]> {
+  if (!userId) return [];
+  const [dbPersonas, allImages] = await Promise.all([
+    db.select().from(personas).where(eq(personas.userId, userId)),
+    db.select().from(generatedImages).where(eq(generatedImages.userId, userId)),
+  ]);
+
+  const imagesByPersona: Record<string, typeof generatedImages.$inferSelect[]> = {};
+  for (const image of allImages) {
+    if (!imagesByPersona[image.personaClientId]) imagesByPersona[image.personaClientId] = [];
+    imagesByPersona[image.personaClientId].push(image);
+  }
+
+  return dbPersonas
+    .filter((persona: any) => persona?.clientId && !persona.clientId.toLowerCase().includes('luna') && !persona.name?.toLowerCase().includes('luna'))
+    .map((persona: any) => personaToClient(persona, imagesByPersona[persona.clientId] || []));
 }
 
 function imageToClient(row: typeof generatedImages.$inferSelect) {
@@ -194,20 +230,7 @@ router.get('/creator-profile', async (req: AuthenticatedRequest, res: Response) 
 
 router.post('/creator-profile', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const value = JSON.stringify(req.body || {});
-    if (Buffer.byteLength(value, 'utf8') > 2_000_000) {
-      return res.status(413).json({ error: 'Creator profile is too large' });
-    }
-    const now = new Date();
-    await db.insert(workspaceStates).values({
-      userId: req.user.id,
-      stateKey: 'ai_studio_creator_profile',
-      value,
-      updatedAt: now,
-    }).onConflictDoUpdate({
-      target: [workspaceStates.userId, workspaceStates.stateKey],
-      set: { value, updatedAt: now },
-    });
+    await writeCreatorProfileForUser(req.user.id, req.body || {});
     res.json({ success: true, profile: req.body });
   } catch (err: any) {
     res.status(500).json({ error: err?.message || 'Failed to save creator profile' });
@@ -218,20 +241,7 @@ router.get('/personas', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user.id;
     if (!db) return res.status(503).json({ error: 'Database persistence is unavailable' });
-    const [dbPersonas, allImages] = await Promise.all([
-      db.select().from(personas).where(eq(personas.userId, userId)),
-      db.select().from(generatedImages).where(eq(generatedImages.userId, userId)),
-    ]);
-
-    const imagesByPersona: Record<string, typeof generatedImages.$inferSelect[]> = {};
-    for (const img of allImages) {
-      if (!imagesByPersona[img.personaClientId]) imagesByPersona[img.personaClientId] = [];
-      imagesByPersona[img.personaClientId].push(img);
-    }
-
-    const result = dbPersonas
-      .filter((p: any) => p && p.clientId && !p.clientId.toLowerCase().includes('luna') && !p.name?.toLowerCase().includes('luna'))
-      .map((p: any) => personaToClient(p, imagesByPersona[p.clientId] || []));
+    const result = await readPersonasForUser(userId);
     console.log('[API] GET /personas returned:', result.length, 'account-owned personas');
     res.json(result);
   } catch (err) {

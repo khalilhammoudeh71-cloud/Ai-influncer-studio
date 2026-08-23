@@ -409,6 +409,49 @@ export async function generateVideo(
   return { videoUrl: data.videoUrl, model: data.model };
 }
 
+export interface PersonaMediaRequest {
+  type: 'image' | 'video';
+  prompt: string;
+  persona: Persona;
+  imageModelId?: string;
+  videoModelId?: string;
+  referenceImage?: string;
+  additionalImages?: string[];
+  creatorProfile?: object | null;
+  aspectRatio?: string;
+  allowNsfw?: boolean;
+}
+
+export interface PersonaMediaResult {
+  success: boolean;
+  type: 'image' | 'video';
+  url?: string;
+  model?: string;
+  promptUsed?: string;
+  message: string;
+  error?: string;
+  participants?: string[];
+}
+
+export async function requestPersonaMedia(params: PersonaMediaRequest): Promise<PersonaMediaResult> {
+  const response = await authFetch('/api/persona/media-request', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+
+  const contentType = response.headers.get('content-type');
+  if (!contentType?.includes('application/json')) {
+    throw new Error(`Media request failed (${response.status}). Please try again.`);
+  }
+
+  const data = await response.json() as PersonaMediaResult;
+  if (!response.ok || !data.success || !data.url) {
+    throw new Error(data.message || data.error || `${params.type === 'image' ? 'Image' : 'Video'} generation failed.`);
+  }
+  return data;
+}
+
 export async function createPrompts(params: {
   request: string;
   count: number;
@@ -807,4 +850,3 @@ export async function extendVideo(params: {
     model: genRes.model
   };
 }
-

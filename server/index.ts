@@ -18,7 +18,8 @@ import { GoogleGenAI } from '@google/genai';
 import convert from 'heic-convert';
 import { Jimp } from 'jimp';
 // Pool is imported dynamically in pushSchema to support different environments
-import apiRoutes, { globalDefaultVoiceRef, readCreatorProfileForUser, synthesizeClonedAudioWithWavespeed } from './routes';
+import apiRoutes, { globalDefaultVoiceRef, readCreatorProfileForUser, readPersonasForUser, synthesizeClonedAudioWithWavespeed, writeCreatorProfileForUser } from './routes';
+import { composeMultiPersonaPrompt, getPersonaPrimaryReference, resolveCreatorPersona, resolveMediaParticipants } from './persona-media';
 import stripeRoutes, { handleStripeWebhook } from './stripe-routes';
 import { requireAuth, deductCredits, isCreatorUser, AuthenticatedRequest } from './auth';
 
@@ -1119,6 +1120,8 @@ interface ImageGenRequest {
   isDuoShoot?: boolean;
   isCreatorSolo?: boolean;
   preservePromptVerbatim?: boolean;
+  isMultiPersona?: boolean;
+  participantNames?: string[];
 }
 
 function cleanChatPromptToVisualScene(prompt: string, personaName: string, creatorProfile?: any): string {
@@ -1176,7 +1179,12 @@ function buildPrompt(body: ImageGenRequest, useEditInstructionStyle = false): st
     const isAdultOrExplicit = isNsfwPromptText(visualScene, (body as any).allowNsfw) || (niche || '').toLowerCase().includes('adult');
 
     if ((body as any).preservePromptVerbatim) {
-      const subjectDirective = isCreatorSolo
+      const participantNames = Array.isArray((body as any).participantNames)
+        ? (body as any).participantNames.filter(Boolean)
+        : [];
+      const subjectDirective = participantNames.length > 1
+        ? `The scene contains exactly these distinct personas: ${participantNames.join(', ')}. The supplied reference images correspond to them in that order. Keep every identity separate and recognizable.`
+        : isCreatorSolo
         ? `The only subject is ${creatorName} (${creatorAppearance}). Use the supplied creator reference image for identity.`
         : isDuo
           ? `The scene contains exactly ${personaName} and ${creatorName} (${creatorAppearance}). Use each supplied reference image for the corresponding identity.`
@@ -4395,7 +4403,7 @@ async function performFaceSwapPass(targetImage: string, swapImage: string): Prom
   return targetImage;
 }
 
-app.post('/api/generate-image', async (req, res) => {
+const generateImageHandler = async (req: any, res: any) => {
   const { referenceImage, additionalImages: rawAdditionalImages, modelId: rawModelId, imageWeight, aspectRatio, resolution, count: rawCount, ...rest } = req.body as ImageGenRequest & { modelId: string; imageWeight?: number; count?: number };
   const count = Math.max(1, Math.min(4, Math.floor(Number(rawCount) || 1)));
 
@@ -4779,7 +4787,9 @@ app.post('/api/generate-image', async (req, res) => {
       error: err instanceof Error ? err.message : 'Image generation failed',
     });
   }
-});
+};
+
+app.post('/api/generate-image', generateImageHandler);
 
 app.post('/api/generate-reference', async (req, res) => {
   const { prompt, modelId } = req.body;
@@ -5226,7 +5236,7 @@ async function resolveVideoUrlOrDataUrl(input: string): Promise<string> {
   return input;
 }
 
-app.post('/api/generate-video', async (req, res) => {
+const generateVideoHandler = async (req: any, res: any) => {
   req.setTimeout(600000);
   const { prompt: rawPrompt, modelId, sourceImage, sourceVideo, strength, identityLock, naturalLook, aspectRatio, duration, resolution, allowNsfw } = req.body;
 
@@ -5464,6 +5474,215 @@ app.post('/api/generate-video', async (req, res) => {
   } catch (err) {
     console.error('[generate-video] Error:', err instanceof Error ? err.message : err);
     return res.status(500).json({ error: err instanceof Error ? err.message : 'Video generation failed' });
+  }
+};
+
+app.post('/api/generate-video', generateVideoHandler);
+
+async function runJsonGenerationHandler(
+  handler: (req: any, res: any) => Promise<any>,
+  req: any,
+  body: Record<string, unknown>,
+): Promise<{ status: number; payload: any }> {
+  const originalBody = req.body;
+  let status = 200;
+  let payload: any;
+  const captureResponse = {
+    status(code: number) {
+      status = code;
+      return captureResponse;
+    },
+    json(value: any) {
+      payload = value;
+      return value;
+    },
+  };
+
+  try {
+    req.body = body;
+    await handler(req, captureResponse);
+    return { status, payload };
+  } finally {
+    req.body = originalBody;
+  }
+}
+
+app.post('/api/persona/media-request', async (req: AuthenticatedRequest, res) => {
+  const {
+    type,
+    prompt: rawPrompt,
+    persona: requestedPersona,
+    imageModelId,
+    videoModelId,
+    referenceImage,
+    additionalImages: requestedAdditionalImages,
+    creatorProfile: requestedCreatorProfile,
+    aspectRatio,
+    allowNsfw,
+  } = req.body || {};
+
+  if ((type !== 'image' && type !== 'video') || typeof rawPrompt !== 'string' || !rawPrompt.trim() || !requestedPersona?.id) {
+    return res.status(400).json({ success: false, error: 'type, prompt, and persona are required' });
+  }
+
+  try {
+    const [savedPersonas, storedCreatorProfile] = await Promise.all([
+      readPersonasForUser(req.user.id),
+      readCreatorProfileForUser(req.user.id),
+    ]);
+    const activePersona = savedPersonas.find(persona => persona.id === requestedPersona.id) || requestedPersona;
+    const creatorProfile = storedCreatorProfile || requestedCreatorProfile || null;
+    const creatorPersona = resolveCreatorPersona(savedPersonas, creatorProfile);
+    if (creatorPersona?.id && creatorProfile?.ownerPersonaId !== creatorPersona.id) {
+      await writeCreatorProfileForUser(req.user.id, {
+        ...(creatorProfile || {}),
+        ownerPersonaId: creatorPersona.id,
+      });
+    }
+    const participants = resolveMediaParticipants(rawPrompt, activePersona, savedPersonas, creatorPersona);
+    const participantNames = participants.map(persona => persona.name).filter(Boolean);
+    const prompt = composeMultiPersonaPrompt(rawPrompt, participants);
+
+    const primaryReference = referenceImage || getPersonaPrimaryReference(participants[0]);
+    const participantReferences = participants
+      .slice(1)
+      .map(getPersonaPrimaryReference)
+      .filter((value): value is string => Boolean(value));
+    const additionalImages = Array.from(new Set([
+      ...participantReferences,
+      ...(Array.isArray(requestedAdditionalImages) ? requestedAdditionalImages : []),
+    ].filter(Boolean)));
+
+    if (!primaryReference) {
+      return res.status(400).json({
+        success: false,
+        type,
+        error: `No reference image is available for ${activePersona.name || 'the active persona'}`,
+        message: `I couldn't make that yet because my reference image is missing.`,
+        participants: participantNames,
+      });
+    }
+
+    if (participants.length > 1 && participantReferences.length !== participants.length - 1) {
+      const missingNames = participants.slice(1)
+        .filter(persona => !getPersonaPrimaryReference(persona))
+        .map(persona => persona.name || 'a referenced persona');
+      return res.status(400).json({
+        success: false,
+        type,
+        error: `Missing reference image for ${missingNames.join(', ')}`,
+        message: `I couldn't make that collaboration yet because ${missingNames.join(', ')} needs a reference image.`,
+        participants: participantNames,
+      });
+    }
+
+    const commonImageBody = {
+      modelId: imageModelId || 'wavespeed:bytedance/seedream-v5.0-pro',
+      prompt,
+      chatPrompt: prompt,
+      personaId: activePersona.id,
+      personaName: activePersona.name,
+      niche: activePersona.niche,
+      tone: activePersona.tone,
+      bio: activePersona.bio,
+      visualStyle: activePersona.visualStyle || 'Realistic, highly detailed',
+      faceDescriptor: activePersona.faceDescriptor || null,
+      referenceImage: primaryReference,
+      additionalImages: additionalImages.length > 0 ? additionalImages : undefined,
+      aspectRatio: aspectRatio || '9:16',
+      isChatContext: true,
+      preservePromptVerbatim: true,
+      allowNsfw: Boolean(allowNsfw),
+      identityLock: true,
+      naturalLook: true,
+      isMultiPersona: participants.length > 1,
+      participantNames,
+      creatorProfile,
+    };
+
+    if (type === 'image') {
+      const generation = await runJsonGenerationHandler(generateImageHandler, req, commonImageBody);
+      const imageUrl = generation.payload?.imageUrl || generation.payload?.images?.[0]?.imageUrl;
+      if (generation.status >= 400 || !imageUrl) {
+        const error = generation.payload?.error || 'Image generation failed';
+        return res.status(generation.status >= 400 ? generation.status : 500).json({
+          success: false,
+          type,
+          error,
+          message: `I couldn't finish that image. ${error}`,
+          participants: participantNames,
+        });
+      }
+      return res.json({
+        success: true,
+        type,
+        url: imageUrl,
+        model: generation.payload?.model,
+        promptUsed: generation.payload?.promptUsed || prompt,
+        message: participants.length > 1
+          ? `Done — I made that image with ${participantNames.join(' and ')} together.`
+          : `Done — I made that image for you.`,
+        participants: participantNames,
+      });
+    }
+
+    let videoSourceImage = primaryReference;
+    if (participants.length > 1) {
+      const keyframe = await runJsonGenerationHandler(generateImageHandler, req, commonImageBody);
+      videoSourceImage = keyframe.payload?.imageUrl || keyframe.payload?.images?.[0]?.imageUrl;
+      if (keyframe.status >= 400 || !videoSourceImage) {
+        const error = keyframe.payload?.error || 'Could not create the multi-persona video keyframe';
+        return res.status(keyframe.status >= 400 ? keyframe.status : 500).json({
+          success: false,
+          type,
+          error,
+          message: `I couldn't prepare that collaboration video. ${error}`,
+          participants: participantNames,
+        });
+      }
+    }
+
+    const generation = await runJsonGenerationHandler(generateVideoHandler, req, {
+      prompt,
+      modelId: videoModelId || 'wavespeed-i2v:bytedance/seedance-2-mini',
+      sourceImage: videoSourceImage,
+      identityLock: true,
+      naturalLook: true,
+      aspectRatio: aspectRatio || '9:16',
+      allowNsfw: Boolean(allowNsfw),
+    });
+    const videoUrl = generation.payload?.videoUrl;
+    if (generation.status >= 400 || !videoUrl) {
+      const error = generation.payload?.error || 'Video generation failed';
+      return res.status(generation.status >= 400 ? generation.status : 500).json({
+        success: false,
+        type,
+        error,
+        message: `I couldn't finish that video. ${error}`,
+        participants: participantNames,
+      });
+    }
+
+    return res.json({
+      success: true,
+      type,
+      url: videoUrl,
+      model: generation.payload?.model,
+      promptUsed: prompt,
+      message: participants.length > 1
+        ? `Done — I made that video with ${participantNames.join(' and ')} together.`
+        : `Done — I made that video for you.`,
+      participants: participantNames,
+    });
+  } catch (error) {
+    console.error('[persona/media-request] Error:', error);
+    const message = error instanceof Error ? error.message : 'Media generation failed';
+    return res.status(500).json({
+      success: false,
+      type,
+      error: message,
+      message: `I couldn't finish that ${type}. ${message}`,
+    });
   }
 });
 

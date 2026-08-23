@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Send, Bot, ChevronDown, ImageIcon, Video, Loader2, AlertCircle, Camera, MessageSquareQuote, Copy, Bookmark, Check, Phone, PhoneOff, Volume2, VolumeX, Mic, MicOff, RotateCcw, Trash2, Plus, Upload, Music, Film, X, Play, Sparkles, Paperclip, FileText, SlidersHorizontal, Settings, Hand, Maximize2, Download, Shirt, Heart } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Persona, NavActions, RelationshipState } from '../types';
-import { ModelInfo, authFetch, fetchAllModelTypes, editImage, generateImage, generateVideo, textToSpeech } from '../services/imageService';
+import { ModelInfo, authFetch, fetchAllModelTypes, editImage, requestPersonaMedia, textToSpeech } from '../services/imageService';
 import { cn } from '../utils/cn';
 import { api } from '../services/apiService';
 import toast from 'react-hot-toast';
@@ -1636,65 +1636,50 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 
       const isVoiceVideoIntent = !isVoiceImageIntent && (data.action?.type === 'video' || detectIntent(text) === 'video' || /\b(?:sending you a video|recorded a video|sending the video)\b/i.test(reply));
 
-      if (isVoiceImageIntent) {
+      if (isVoiceImageIntent || isVoiceVideoIntent) {
+        const mediaType = isVoiceImageIntent ? 'image' as const : 'video' as const;
         const loadingMsgId = uid();
         setCallTranscript(prev => [...prev, personaMsg, { id: loadingMsgId, role: 'persona', type: 'loading', content: '' }]);
-        const exactVisualRequest = text.trim();
-        const visualPrompt = exactVisualRequest || `${activePersona.name}, ${activePersona.niche}, photorealistic portrait`;
-        
-        const isDuoShoot = /\b(with me|with (?:dr\.?\s*h|creator)|me and you|you and me|us together|both of us|us at|holding me|kissing me|with us|together with me)\b/i.test(exactVisualRequest);
-        const isCreatorSoloShoot = !isDuoShoot && /\b(image of me only|photo of me only|pic of me only|just me|of me only|portrait of me only|solo photo of me|only me|portrait of dr\.?\s*h)\b/i.test(exactVisualRequest);
-        const extraImages: string[] = [];
-        if (sentCallAttachment?.type === 'image') extraImages.push(sentCallAttachment.base64);
-        else if (lastUploadedReference) extraImages.push(lastUploadedReference);
-        if (isDuoShoot && creator?.primaryPhoto && !extraImages.includes(creator.primaryPhoto)) {
-          extraImages.push(creator.primaryPhoto);
-        }
+        const exactMediaRequest = text.trim();
+        const mediaPrompt = exactMediaRequest || `${activePersona.name}, ${activePersona.niche}, ${mediaType === 'image' ? 'photorealistic portrait' : 'cinematic motion video clip'}`;
+        const extraImages = [
+          sentCallAttachment?.type === 'image' ? sentCallAttachment.base64 : undefined,
+          !sentCallAttachment && lastUploadedReference ? lastUploadedReference : undefined,
+        ].filter((value): value is string => Boolean(value));
 
-        // Use the identity requested by the creator rather than assuming every
-        // spoken image request is a solo persona shot.
-        const personaPrimaryRef = isCreatorSoloShoot
-          ? (creator?.primaryPhoto || activePersona.referenceImage || activePersona.avatar || activePersona.alternateReferenceImage)
-          : (activePersona.referenceImage || activePersona.avatar || activePersona.alternateReferenceImage);
-
-        // Generate high-fidelity photorealistic image using ByteDance Seedream 5.0 Pro
-        generateImage({
+        void requestPersonaMedia({
+          type: mediaType,
           persona: activePersona,
-          prompt: visualPrompt,
-          modelId: 'wavespeed:bytedance/seedream-v5.0-pro',
+          prompt: mediaPrompt,
+          imageModelId: selectedEditModelId || 'wavespeed:bytedance/seedream-v5.0-pro',
+          videoModelId: selectedVideoModelId || 'wavespeed-i2v:bytedance/seedance-2-mini',
           aspectRatio: '9:16',
-          isChatContext: true,
-          chatPrompt: exactVisualRequest,
-          preservePromptVerbatim: true,
           allowNsfw: true,
-          identityLock: true,
-          naturalLook: true,
-          referenceImage: personaPrimaryRef,
           additionalImages: extraImages.length > 0 ? extraImages : undefined,
-          isDuoShoot,
-          isCreatorSolo: isCreatorSoloShoot,
-          creatorProfile: isDuoShoot || isCreatorSoloShoot ? creator : undefined,
+          creatorProfile: creator,
         }).then(result => {
-          const imgUrl = Array.isArray(result) ? result[0].imageUrl : result.imageUrl;
-          setActiveCallMedia({ type: 'image', url: imgUrl, prompt: visualPrompt });
-          setCallTranscript(prev => prev.map(m => m.id === loadingMsgId ? { ...m, type: 'image', content: imgUrl, prompt: visualPrompt } : m));
-          setMessages(prev => [...prev, { id: uid(), role: 'persona', type: 'image', content: imgUrl, timestamp: new Date() }]);
+          const mediaMessage = { id: uid(), role: 'persona' as const, type: mediaType, content: result.url!, prompt: mediaPrompt };
+          const resultMessage = { id: uid(), role: 'persona' as const, type: 'text' as const, content: result.message };
+          setActiveCallMedia({ type: mediaType, url: result.url!, prompt: mediaPrompt });
+          setCallTranscript(prev => [
+            ...prev.map(m => m.id === loadingMsgId ? mediaMessage : m),
+            resultMessage,
+          ]);
+          setMessages(prev => [
+            ...prev,
+            { ...mediaMessage, timestamp: new Date() },
+            { ...resultMessage, timestamp: new Date() },
+          ]);
+          if (callTurnId === callTurnIdRef.current && isCallActiveRef.current) {
+            streamingPlayback.then(() => playTTS(result.message)).catch(() => {});
+          }
         }).catch(err => {
-          console.warn('[Voice Call Image Generation Error]:', err);
-          setCallTranscript(prev => prev.map(m => m.id === loadingMsgId ? { ...m, type: 'error', content: err?.message || 'Failed to generate photo' } : m));
-        });
-      } else if (isVoiceVideoIntent) {
-        const loadingMsgId = uid();
-        setCallTranscript(prev => [...prev, personaMsg, { id: loadingMsgId, role: 'persona', type: 'loading', content: '' }]);
-        const personaPhoto = activePersona.referenceImage || activePersona.avatar || activePersona.alternateReferenceImage;
-        const exactVideoRequest = text.trim();
-        const videoPrompt = exactVideoRequest || `${activePersona.name}, ${activePersona.niche}, cinematic motion video clip`;
-        generateVideo(videoPrompt, selectedVideoModelId, personaPhoto || undefined, true, true, '9:16').then(result => {
-          setActiveCallMedia({ type: 'video', url: result.videoUrl, prompt: videoPrompt });
-          setCallTranscript(prev => prev.map(m => m.id === loadingMsgId ? { ...m, type: 'video', content: result.videoUrl, prompt: videoPrompt } : m));
-          setMessages(prev => [...prev, { id: uid(), role: 'persona', type: 'video', content: result.videoUrl, timestamp: new Date() }]);
-        }).catch(err => {
-          setCallTranscript(prev => prev.map(m => m.id === loadingMsgId ? { ...m, type: 'error', content: err?.message || 'Failed to generate video' } : m));
+          const failureMessage = err?.message || `I couldn't finish that ${mediaType}.`;
+          setCallTranscript(prev => prev.map(m => m.id === loadingMsgId ? { ...m, type: 'error', content: failureMessage } : m));
+          setMessages(prev => [...prev, { id: uid(), role: 'persona', type: 'text', content: failureMessage, timestamp: new Date() }]);
+          if (callTurnId === callTurnIdRef.current && isCallActiveRef.current) {
+            streamingPlayback.then(() => playTTS(failureMessage)).catch(() => {});
+          }
         });
       } else {
         setCallTranscript(prev => [...prev, personaMsg]);
@@ -2143,23 +2128,6 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     toast.success('Conversation cleared');
   };
 
-  const getNoRefImageResponse = (type: 'image' | 'video'): string => {
-    const tone = activePersona.tone.toLowerCase();
-    if (tone.includes('luxury') || tone.includes('elite')) {
-      return type === 'image'
-        ? "I don't just send photos to anyone. Set up my profile properly first."
-        : "My presence isn't captured that easily. Set up my reference image first.";
-    }
-    if (tone.includes('playful') || tone.includes('flirty')) {
-      return type === 'image'
-        ? "I'd love to share but you need to set up my reference image first! Go to my persona and generate one, then come back 📸"
-        : "I wanna make a video for you but I need my reference image set up first! Quick — go set it up and come back 🎬";
-    }
-    return type === 'image'
-      ? "I need my reference image set up before I can share photos. Head to my persona profile and generate one!"
-      : "I need my reference image before I can make videos. Set that up in my persona profile first.";
-  };
-
   async function handleSend() {
     const text = input.trim();
     if ((!text && !chatAttachment) || isGenerating) return;
@@ -2184,7 +2152,6 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     const loadingId = addMessage({ role: 'persona', type: 'loading', content: '' });
 
     try {
-      const personaPhoto = activePersona.referenceImage || activePersona.avatar || activePersona.alternateReferenceImage;
       const textMessages = messages.filter(m => m.type === 'text' || m.type === 'image');
       const personaMemories = loadPersonaMemories(activePersona.id);
       const priorHistory = loadHistory(activePersona.id);
@@ -2224,20 +2191,20 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         updateRelationship(data.relationshipState);
       }
 
-      // Replace loading bubble with the persona's authentic, witty dialogue
       const replyText = data.reply || "Hey! I'm right here with you.";
-      replaceMessage(loadingId, { type: 'text', content: replyText });
 
       // Determine if a photo, video, or voice note was requested or returned as an action:
       const explicitVisualKeywords = /\b(image|photo|pic|picture|selfie|pose|portrait|photoshoot|video|clip|recording)\b/i.test(effectiveText);
       const isExplicitVisualRequest = /\b(send|take|generate|show|give|snap|make|create|post|capture)\b/i.test(effectiveText) && explicitVisualKeywords;
       const isConversationalQuestion = !isExplicitVisualRequest && /(?:\b(?:why did you send|why are you sending|what is that picture|who is that in the photo|stop sending)\b)/i.test(effectiveText);
+      const detectedIntent = isConversationalQuestion ? 'chat' : detectIntent(effectiveText);
       
       const isVoiceNoteAction = data.action?.type === 'voice_note' || (/\b(voice note|audio memo|voice message|audio message|whisper to me)\b/i.test(effectiveText) && !isConversationalQuestion);
-      const isImageAction = data.action?.type === 'image' || isExplicitVisualRequest || (!isConversationalQuestion && detectIntent(effectiveText) === 'image');
-      const isVideoAction = data.action?.type === 'video' || (!isConversationalQuestion && detectIntent(effectiveText) === 'video');
+      const isVideoAction = data.action?.type === 'video' || detectedIntent === 'video';
+      const isImageAction = !isVideoAction && (data.action?.type === 'image' || isExplicitVisualRequest || detectedIntent === 'image');
 
       if (isVoiceNoteAction) {
+        replaceMessage(loadingId, { type: 'text', content: replyText });
         const vnLoadingId = addMessage({ role: 'persona', type: 'loading', content: `Recording voice note for you...` });
         try {
           const vnRes = await fetch('/api/generate-voice-note', {
@@ -2263,76 +2230,40 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         } catch {
           replaceMessage(vnLoadingId, { type: 'text', content: replyText });
         }
-      } else if (isImageAction) {
-        const rawVisualPrompt = effectiveText.trim() || data.action?.prompt || '';
-        const combinedText = `${rawVisualPrompt} ${effectiveText}`;
-        
-        // Strict explicit duo check - must explicitly ask for BOTH people together
-        const isExplicitDuo = /\b(with me|with (?:dr\.?\s*h|alex|chris|creator)|me and you|you and me|of me and you|of you and me|me and her|her and me|us together|both of us|duo shoot|couple shoot|holding me|holding each other|kissing me|with us|fucking me|together with me)\b/i.test(combinedText);
-        
-        const isCreatorSoloShoot = !isExplicitDuo && (
-          /\b(image of me only|photo of me only|pic of me only|just me|of me only|portrait of me only|solo photo of me|only me|portrait of dr\.?\s*h)\b/i.test(combinedText)
-        );
-
-        const isDuoShoot = isExplicitDuo;
-        const isExplicitNude = /\b(naked|nude|topless|unclothed|bare|boobs|tits|breasts|nipples|exposed|sensual|erotic|no clothes|without clothes|undressed|pussy|ass)\b/i.test(combinedText);
-
-        const targetReferenceImage = isCreatorSoloShoot 
-          ? (creator?.primaryPhoto || personaPhoto)
-          : personaPhoto;
-
-        if (!targetReferenceImage) {
-          addMessage({ role: 'persona', type: 'text', content: getNoRefImageResponse('image') });
-        } else {
-          const loadingText = isDuoShoot 
-            ? `Generating duo photoshoot with ${activePersona.name} & ${creator?.name || 'Dr. H'}...`
-            : (isCreatorSoloShoot ? `Generating solo photo of ${creator?.name || 'Dr. H'}...` : `Generating photo of ${activePersona.name}...`);
-          const mediaLoadingId = addMessage({ role: 'persona', type: 'loading', content: loadingText });
-          try {
-            const extraImages: string[] = [];
-            if (sentAttachment?.type === 'image') extraImages.push(sentAttachment.base64);
-            else if (lastUploadedReference) extraImages.push(lastUploadedReference);
-            const creatorPhoto = creator?.primaryPhoto || (creator?.photos && creator.photos.length > 0 ? creator.photos[0] : undefined);
-            if (isDuoShoot && creatorPhoto && !extraImages.includes(creatorPhoto)) {
-              extraImages.push(creatorPhoto);
-            }
-
-            const result = await generateImage({
-              persona: activePersona,
-              referenceImage: targetReferenceImage,
-              prompt: rawVisualPrompt,
-              modelId: selectedEditModelId || 'wavespeed:bytedance/seedream-v5.0-pro',
-              aspectRatio: '9:16',
-              isChatContext: true,
-              chatPrompt: rawVisualPrompt,
-              preservePromptVerbatim: true,
-              allowNsfw: true,
-              identityLock: true,
-              naturalLook: true,
-              additionalImages: extraImages.length > 0 ? extraImages : undefined,
-              isDuoShoot,
-              isCreatorSolo: isCreatorSoloShoot,
-              creatorProfile: isDuoShoot || isCreatorSoloShoot ? creator : undefined,
-            });
-            const imgUrl = Array.isArray(result) ? result[0].imageUrl : result.imageUrl;
-            replaceMessage(mediaLoadingId, { type: 'image', content: imgUrl, prompt: rawVisualPrompt });
-          } catch (imgErr: any) {
-            replaceMessage(mediaLoadingId, { type: 'error', content: imgErr?.message || 'Failed to generate photo' });
-          }
+      } else if (isImageAction || isVideoAction) {
+        const mediaType = isImageAction ? 'image' as const : 'video' as const;
+        const mediaPrompt = effectiveText.trim() || data.action?.prompt || '';
+        replaceMessage(loadingId, {
+          type: 'loading',
+          content: mediaType === 'image' ? `Generating your image...` : `Rendering your video...`,
+        });
+        try {
+          const extraImages = [
+            sentAttachment?.type === 'image' ? sentAttachment.base64 : undefined,
+            !sentAttachment && lastUploadedReference ? lastUploadedReference : undefined,
+          ].filter((value): value is string => Boolean(value));
+          const result = await requestPersonaMedia({
+            type: mediaType,
+            prompt: mediaPrompt,
+            persona: activePersona,
+            imageModelId: selectedEditModelId || 'wavespeed:bytedance/seedream-v5.0-pro',
+            videoModelId: selectedVideoModelId || 'wavespeed-i2v:bytedance/seedance-2-mini',
+            referenceImage: activePersona.referenceImage || activePersona.avatar || activePersona.alternateReferenceImage,
+            additionalImages: extraImages.length > 0 ? extraImages : undefined,
+            creatorProfile: creator,
+            aspectRatio: '9:16',
+            allowNsfw: true,
+          });
+          replaceMessage(loadingId, { type: 'text', content: result.message });
+          addMessage({ role: 'persona', type: mediaType, content: result.url!, prompt: mediaPrompt });
+        } catch (mediaError: any) {
+          replaceMessage(loadingId, {
+            type: 'error',
+            content: mediaError?.message || `I couldn't finish that ${mediaType}.`,
+          });
         }
-      } else if (isVideoAction) {
-        if (!personaPhoto) {
-          addMessage({ role: 'persona', type: 'text', content: getNoRefImageResponse('video') });
-        } else {
-          const mediaLoadingId = addMessage({ role: 'persona', type: 'loading', content: `Rendering video clip with ${activePersona.name}...` });
-          try {
-            const videoPrompt = effectiveText.trim() || data.action?.prompt || '';
-            const result = await generateVideo(videoPrompt, selectedVideoModelId, personaPhoto, true, true, '9:16');
-            replaceMessage(mediaLoadingId, { type: 'video', content: result.videoUrl, prompt: videoPrompt });
-          } catch (vidErr: any) {
-            replaceMessage(mediaLoadingId, { type: 'error', content: vidErr?.message || 'Failed to generate video' });
-          }
-        }
+      } else {
+        replaceMessage(loadingId, { type: 'text', content: replyText });
       }
     } catch (err: any) {
       replaceMessage(loadingId, {
