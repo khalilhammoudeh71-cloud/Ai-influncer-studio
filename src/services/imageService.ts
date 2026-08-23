@@ -3,16 +3,51 @@ import { supabase } from '../lib/supabase';
 import { compressForUpload } from '../utils/imageProcessing';
 
 export async function authFetch(url: string, options: RequestInit = {}) {
-  let token = null;
-  try {
-    const sessionPromise = supabase.auth.getSession();
-    const timeoutPromise = new Promise<any>((resolve) => setTimeout(() => resolve({ data: { session: null } }), 600));
-    const sessionRes = await Promise.race([sessionPromise, timeoutPromise]);
-    token = sessionRes?.data?.session?.access_token;
-  } catch {}
   const headers: Record<string, string> = { ...options.headers as Record<string, string> };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-  return fetch(url, { ...options, headers });
+
+  try {
+    // getSession restores the persisted browser session and refreshes an
+    // expired access token when necessary. Do not race it against a short
+    // timeout: slower preview deployments were sending protected media
+    // requests without Authorization while session restoration was still in
+    // progress.
+    const { data, error } = await supabase.auth.getSession();
+    if (error) console.warn('[Auth] Could not restore the current session:', error.message);
+
+    let token = data?.session?.access_token;
+    if (!token) {
+      const refreshed = await supabase.auth.refreshSession();
+      if (refreshed.error) {
+        console.warn('[Auth] Could not refresh the current session:', refreshed.error.message);
+      }
+      token = refreshed.data?.session?.access_token;
+    }
+
+    if (token) headers.Authorization = `Bearer ${token}`;
+  } catch (error) {
+    console.warn('[Auth] Could not prepare authenticated request:', error);
+  }
+
+  let response = await fetch(url, { ...options, headers });
+
+  // A token can expire between being read and reaching the API. Refresh once
+  // and replay the request so an active signed-in user is not forced to sign
+  // in again. The server remains the source of truth and still verifies the
+  // refreshed JWT on every protected request.
+  if (response.status === 401 && headers.Authorization) {
+    try {
+      const { data, error } = await supabase.auth.refreshSession();
+      const refreshedToken = data?.session?.access_token;
+      if (!error && refreshedToken) {
+        headers.Authorization = `Bearer ${refreshedToken}`;
+        response = await fetch(url, { ...options, headers });
+      }
+    } catch (error) {
+      console.warn('[Auth] Could not retry request with a refreshed session:', error);
+    }
+  }
+
+  return response;
 }
 
 export interface ModelInfo {
