@@ -596,7 +596,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     const loadingId = uid();
     addMessage({ role: 'persona', type: 'loading', content: `Creating talking video with ${activePersona.name}...` });
     try {
-      const res = await fetch('/api/generate-talking-head', {
+      const res = await authFetch('/api/generate-talking-head', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -628,7 +628,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     const loadingId = uid();
     addMessage({ role: 'persona', type: 'loading', content: `Recording voice note for you...` });
     try {
-      const res = await fetch('/api/chat', {
+      const res = await authFetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -645,7 +645,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       }
       const spokenText = data.reply || `Hey ${getStoredUserName()}... was just thinking about you.`;
       
-      const vnRes = await fetch('/api/generate-voice-note', {
+      const vnRes = await authFetch('/api/generate-voice-note', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1841,7 +1841,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     try {
       const priorHistory = loadHistory(persona.id);
       const memories = loadPersonaMemories(persona.id);
-      const res = await fetch('/api/persona-greeting', {
+      const res = await authFetch('/api/persona-greeting', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2157,7 +2157,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       const priorHistory = loadHistory(activePersona.id);
 
       const creator = getCreatorProfile();
-      const res = await fetch('/api/chat', {
+      const res = await authFetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2207,7 +2207,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         replaceMessage(loadingId, { type: 'text', content: replyText });
         const vnLoadingId = addMessage({ role: 'persona', type: 'loading', content: `Recording voice note for you...` });
         try {
-          const vnRes = await fetch('/api/generate-voice-note', {
+          const vnRes = await authFetch('/api/generate-voice-note', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -2306,7 +2306,7 @@ Write 3 distinct reply options in your authentic voice. Each should:
 
 Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping object).`;
 
-      const res = await fetch('/api/chat', {
+      const res = await authFetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
