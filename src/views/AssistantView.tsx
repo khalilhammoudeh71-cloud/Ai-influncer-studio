@@ -8,7 +8,6 @@ import { api } from '../services/apiService';
 import toast from 'react-hot-toast';
 import ImageLightboxModal from '../components/ImageLightboxModal';
 import PersonaReferenceModal from '../components/PersonaReferenceModal';
-import RelationshipProgressBadge from '../components/RelationshipProgressBadge';
 import VoiceNoteBubble from '../components/VoiceNoteBubble';
 import PersonaAvatar from '../components/PersonaAvatar';
 import { getCreatorProfile } from '../utils/creatorProfile';
@@ -3372,46 +3371,12 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                   <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-white/[0.06] text-zinc-300 border border-white/[0.08]">
                     {activePersona.niche || 'Creator'}
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => setIsReferenceModalOpen(true)}
-                    className="flex items-center gap-1 text-[10px] font-semibold text-[#F2D58D] bg-[#E7C477]/10 hover:bg-[#E7C477]/20 border border-[#E7C477]/30 px-2 py-0.5 rounded-full transition-all cursor-pointer shadow-sm active:scale-95"
-                    title="View all reference photos and upload new source images"
-                  >
-                    <Camera size={10} />
-                    <span>Reference Photos</span>
-                  </button>
-                </div>
-                <div className="relative flex items-center mt-0.5">
-                  <select
-                    value={selectedPersonaId}
-                    onChange={e => {
-                      const newId = e.target.value;
-                      setSelectedPersonaId(newId);
-                      if (onSelectPersona) onSelectPersona(newId);
-                    }}
-                    className="bg-transparent text-[11px] font-medium text-zinc-400 hover:text-zinc-200 outline-none cursor-pointer appearance-none pr-4"
-                  >
-                    {personas.map(p => (
-                      <option key={p.id} value={p.id} className="bg-[#1c1d22] text-white">
-                        Switch to {p.name}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown size={11} className="text-zinc-500 pointer-events-none -ml-3" />
                 </div>
               </div>
             </div>
 
-            {/* Right: Relationship Badge + Wardrobe Studio + Mode Switcher + AI Settings + Quick Actions + Voice Call */}
+            {/* Right: Mode Switcher + AI Settings + Quick Actions + Voice Call */}
             <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
-              
-              {/* Relationship Affinity & Mood Progression Badge */}
-              <RelationshipProgressBadge 
-                relationship={relationshipState} 
-                personaName={activePersona.name} 
-                userName={getStoredUserName()} 
-              />
 
               {/* View Mode Toggle */}
               <div className="flex bg-[#141518] border border-white/[0.08] rounded-xl p-1 text-xs">
