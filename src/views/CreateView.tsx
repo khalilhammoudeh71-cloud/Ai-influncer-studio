@@ -77,6 +77,7 @@ import {
 } from '../services/imageService';
 import { api } from '../services/apiService';
 import { processImageFile } from '../utils/imageProcessing';
+import { accountLocalStorage } from '../utils/accountStorage';
 import toast from 'react-hot-toast';
 import { useRef } from 'react';
 
@@ -315,7 +316,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   };
 
   const [imagePrompt, setImagePrompt] = useState(() => {
-    try { return localStorage.getItem('ai_influencer_draft_prompt') || ''; } catch { return ''; }
+    try { return accountLocalStorage.getItem('ai_influencer_draft_prompt') || ''; } catch { return ''; }
   });
   const [activePresetChips, setActivePresetChips] = useState<string[]>([]);
   const [selectedEnv, setSelectedEnv] = useState(ENVIRONMENTS[0]);
@@ -354,7 +355,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const [refImages, setRefImages] = useState<{ id: string; url: string; name: string }[]>([]);
 
   const [videoPrompt, setVideoPrompt] = useState(() => {
-    try { return localStorage.getItem('ai_influencer_draft_video_prompt') || ''; } catch { return ''; }
+    try { return accountLocalStorage.getItem('ai_influencer_draft_video_prompt') || ''; } catch { return ''; }
   });
   const [videoResult, setVideoResult] = useState<{ videoUrl: string; model: string } | null>(null);
   const [isExtending, setIsExtending] = useState(false);
@@ -472,7 +473,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const [uploadedAudio, setUploadedAudio] = useState<{ url: string; name: string } | null>(null);
   const [generatedFeed, setGeneratedFeed] = useState<GeneratedEntry[]>(() => {
     try {
-      const saved = localStorage.getItem('ai_influencer_feed_history');
+      const saved = accountLocalStorage.getItem('ai_influencer_feed_history');
       return saved ? JSON.parse(saved) : [];
     } catch {
       return [];
@@ -484,20 +485,20 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
   useEffect(() => {
     try {
-      if (imagePrompt) localStorage.setItem('ai_influencer_draft_prompt', imagePrompt);
+      if (imagePrompt) accountLocalStorage.setItem('ai_influencer_draft_prompt', imagePrompt);
     } catch (e) {}
   }, [imagePrompt]);
 
   useEffect(() => {
     try {
-      if (videoPrompt) localStorage.setItem('ai_influencer_draft_video_prompt', videoPrompt);
+      if (videoPrompt) accountLocalStorage.setItem('ai_influencer_draft_video_prompt', videoPrompt);
     } catch (e) {}
   }, [videoPrompt]);
 
   useEffect(() => {
     try {
       if (generatedFeed.length > 0) {
-        localStorage.setItem('ai_influencer_feed_history', JSON.stringify(generatedFeed.slice(0, 60)));
+        accountLocalStorage.setItem('ai_influencer_feed_history', JSON.stringify(generatedFeed.slice(0, 60)));
       }
     } catch (e) {}
   }, [generatedFeed]);
@@ -516,7 +517,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         try {
-          const savedFeed = localStorage.getItem('ai_influencer_feed_history');
+          const savedFeed = accountLocalStorage.getItem('ai_influencer_feed_history');
           if (savedFeed) {
             const parsed: GeneratedEntry[] = JSON.parse(savedFeed);
             if (Array.isArray(parsed) && parsed.length > 0) {
@@ -1058,7 +1059,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         setActiveHistoryIndex(0);
 
         try {
-          const raw = localStorage.getItem('ai_influencer_gallery');
+          const raw = accountLocalStorage.getItem('ai_influencer_gallery');
           const gallery = raw ? JSON.parse(raw) : [];
           result.forEach((r, i) => {
             gallery.unshift({
@@ -1070,7 +1071,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               mediaType: 'image'
             });
           });
-          localStorage.setItem('ai_influencer_gallery', JSON.stringify(gallery.slice(0, 100)));
+          accountLocalStorage.setItem('ai_influencer_gallery', JSON.stringify(gallery.slice(0, 100)));
         } catch (e) {}
       } else {
         const entry: GeneratedEntry = {
@@ -1089,7 +1090,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         setActiveHistoryIndex(0);
 
         try {
-          const raw = localStorage.getItem('ai_influencer_gallery');
+          const raw = accountLocalStorage.getItem('ai_influencer_gallery');
           const gallery = raw ? JSON.parse(raw) : [];
           gallery.unshift({
             id: `img-${now}-0`,
@@ -1099,7 +1100,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             model: result.model || selectedModel,
             mediaType: 'image'
           });
-          localStorage.setItem('ai_influencer_gallery', JSON.stringify(gallery.slice(0, 100)));
+          accountLocalStorage.setItem('ai_influencer_gallery', JSON.stringify(gallery.slice(0, 100)));
         } catch (e) {}
       }
     } catch (err: unknown) {

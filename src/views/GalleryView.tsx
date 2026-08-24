@@ -11,6 +11,7 @@ import { api } from '../services/apiService';
 import toast from 'react-hot-toast';
 import { upscaleImage } from '../services/imageService';
 import { cn } from '../utils/cn';
+import { accountLocalStorage } from '../utils/accountStorage';
 
 interface GalleryViewProps {
   personas: Persona[];
@@ -34,7 +35,7 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
   const [isExporting, setIsExporting] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>('newest');
   const [favorites, setFavorites] = useState<Set<string>>(() => {
-    try { return new Set(JSON.parse(localStorage.getItem('gallery_favorites') || '[]')); } catch { return new Set(); }
+    try { return new Set(JSON.parse(accountLocalStorage.getItem('gallery_favorites') || '[]')); } catch { return new Set(); }
   });
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [layoutMode, setLayoutMode] = useState<'grid' | 'masonry'>('grid');
@@ -110,7 +111,7 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
     setFavorites(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
-      localStorage.setItem('gallery_favorites', JSON.stringify([...next]));
+      accountLocalStorage.setItem('gallery_favorites', JSON.stringify([...next]));
       return next;
     });
   };

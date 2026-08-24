@@ -8,6 +8,7 @@ import {
 import { Persona, GeneratedImage } from '../types';
 import toast from 'react-hot-toast';
 import { cn } from '../utils/cn';
+import { stitchVideos } from '../services/imageService';
 
 interface VideoStitcherProps {
   persona: Persona | null;
@@ -94,36 +95,25 @@ export default function VideoStitcher({ persona: activePersona, personas, onSele
       toast.error('Add at least one scene to the timeline!');
       return;
     }
+    const videoScenes = scenes.filter(scene => scene.mediaType === 'video');
+    if (videoScenes.length !== scenes.length) {
+      toast.error('Convert image scenes to video clips before stitching. The studio will not substitute demo footage.');
+      return;
+    }
 
     setIsStitching(true);
     try {
-      const response = await fetch('/api/stitch-video-assets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          personaId: activePersona?.id || 'general',
-          scenes: scenes.map(s => ({
-            url: s.mediaUrl,
-            mediaType: s.mediaType,
-            duration: s.duration,
-            caption: s.caption
-          })),
-          audioUrl: selectedAudioUrl
-        })
-      });
-
-      if (!response.ok) throw new Error('Stitching failed');
-      const data = await response.json();
+      const videoUrl = await stitchVideos(videoScenes.map(scene => scene.mediaUrl));
 
       // If successful, create a new GeneratedImage item and add it to the active persona's visual library
       if (activePersona && onUpdatePersonas) {
         const newAsset: GeneratedImage = {
           id: `stitched-${Date.now()}`,
-          url: data.videoUrl,
+          url: videoUrl,
           prompt: scenes.map(s => s.caption).join(' | '),
           timestamp: Date.now(),
           mediaType: 'video',
-          model: 'AI Timeline Stitcher v1.0'
+          model: 'FFmpeg Video Stitcher'
         };
 
         const updatedVisualLibrary = [newAsset, ...(activePersona.visualLibrary || [])];

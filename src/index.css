@@ -58,6 +58,36 @@
   --shadow-elevated: 0 20px 60px rgba(0, 0, 0, 0.7);
 }
 
+/* Keep every public/authentication screen aligned with the studio's
+   charcoal-and-gold visual identity, regardless of a saved workspace theme. */
+.studio-public-theme {
+  --bg-base: #121214;
+  --bg-surface: #161618;
+  --bg-elevated: #1C1C20;
+  --bg-modal: #242428;
+  --bg-input: #0E0E10;
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-default: rgba(255, 255, 255, 0.14);
+  --border-strong: rgba(231, 196, 119, 0.35);
+  --text-primary: #F5F1E8;
+  --text-secondary: #D4D4D8;
+  --text-tertiary: #A1A1AA;
+  --text-muted: #71717A;
+  --accent-primary: #E7C477;
+  --accent-secondary: #F2D58D;
+  --accent-tertiary: #B99655;
+  --gradient-primary: linear-gradient(135deg, #F2D58D 0%, #D9B667 100%);
+  --gradient-accent: linear-gradient(135deg, #E7C477 0%, #B99655 100%);
+  --shadow-glow: 0 0 24px rgba(231, 196, 119, 0.2);
+  color-scheme: dark;
+}
+
+html:has(.studio-public-theme),
+body:has(.studio-public-theme),
+#root:has(.studio-public-theme) {
+  background-color: #121214;
+}
+
 [data-theme="emerald"] {
   --bg-base: #060d0a;
   --bg-surface: #0a1611;
@@ -1226,4 +1256,3 @@ input:focus, textarea:focus, select:focus {
     radial-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 0);
   background-size: 24px 24px;
 }
-

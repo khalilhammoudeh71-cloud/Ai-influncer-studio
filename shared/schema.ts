@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, text, timestamp, boolean, real } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, text, timestamp, boolean, real, primaryKey, unique } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
 export const users = pgTable("users", {
@@ -11,6 +11,15 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
+
+export const workspaceStates = pgTable("workspace_states", {
+  userId: text("user_id").notNull(),
+  stateKey: text("state_key").notNull(),
+  value: text("value").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.userId, table.stateKey] }),
+]);
 
 export const conversations = pgTable("conversations", {
   id: serial("id").primaryKey(),
@@ -29,7 +38,7 @@ export const messages = pgTable("messages", {
 
 export const personas = pgTable("personas", {
   id: serial("id").primaryKey(),
-  clientId: text("client_id").notNull().unique(),
+  clientId: text("client_id").notNull(),
   name: text("name").notNull(),
   niche: text("niche").notNull().default(""),
   tone: text("tone").notNull().default(""),
@@ -50,18 +59,22 @@ export const personas = pgTable("personas", {
   faceDescriptor: text("face_descriptor"),
   naturalLook: boolean("natural_look").default(true),
   identityLock: boolean("identity_lock").default(true),
-  userId: text("user_id"),
+  userId: text("user_id").notNull(),
   voiceId: text("voice_id"),
   voiceEngine: text("voice_engine"),
+  voiceSampleUrl: text("voice_sample_url"),
+  audioSamples: text("audio_samples").default("[]"),
   companionType: text("companion_type").default("intimate"),
   heygenAvatarId: text("heygen_avatar_id"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
-});
+}, (table) => [
+  unique("personas_user_client_id_unique").on(table.userId, table.clientId),
+]);
 
 export const generatedImages = pgTable("generated_images", {
   id: serial("id").primaryKey(),
-  clientId: text("client_id").notNull().unique(),
+  clientId: text("client_id").notNull(),
   personaClientId: text("persona_client_id").notNull(),
   url: text("url").notNull(),
   prompt: text("prompt").notNull().default(""),
@@ -72,22 +85,26 @@ export const generatedImages = pgTable("generated_images", {
   isFavorite: boolean("is_favorite").default(false),
   model: text("model"),
   mediaType: text("media_type").default("image"),
-  userId: text("user_id"),
+  userId: text("user_id").notNull(),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
-});
+}, (table) => [
+  unique("generated_images_user_client_id_unique").on(table.userId, table.clientId),
+]);
 
 export const revenueEntries = pgTable("revenue_entries", {
   id: serial("id").primaryKey(),
-  clientId: text("client_id").notNull().unique(),
+  clientId: text("client_id").notNull(),
   personaClientId: text("persona_client_id").notNull(),
   date: text("date").notNull(),
   amount: real("amount").notNull(),
   source: text("source").notNull().default(""),
   platform: text("platform").notNull().default(""),
   notes: text("notes").notNull().default(""),
-  userId: text("user_id"),
+  userId: text("user_id").notNull(),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
-});
+}, (table) => [
+  unique("revenue_entries_user_client_id_unique").on(table.userId, table.clientId),
+]);
 
 export const plannedPosts = pgTable("planned_posts", {
   id: serial("id").primaryKey(),
@@ -98,6 +115,28 @@ export const plannedPosts = pgTable("planned_posts", {
   hook: text("hook").notNull().default(""),
   angle: text("angle").notNull().default(""),
   cta: text("cta").notNull().default(""),
-  userId: text("user_id"),
+  userId: text("user_id").notNull(),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const mediaJobs = pgTable("media_jobs", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  personaClientId: text("persona_client_id"),
+  kind: text("kind").notNull(),
+  status: text("status").notNull().default("queued"),
+  request: text("request").notNull(),
+  result: text("result"),
+  error: text("error"),
+  modelId: text("model_id"),
+  fallbackModelId: text("fallback_model_id"),
+  attempt: integer("attempt").notNull().default(0),
+  usedFallback: boolean("used_fallback").notNull().default(false),
+  progress: integer("progress").notNull().default(0),
+  stage: text("stage").notNull().default("Queued"),
+  cancelRequested: boolean("cancel_requested").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
 });

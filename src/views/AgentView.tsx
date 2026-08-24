@@ -58,8 +58,10 @@ import VoiceCloneStudioModal from '../components/VoiceCloneStudioModal';
 import { api } from '../services/apiService';
 import { generatePersonaPlan } from '../utils/personaEngine';
 import { generateImage, upscaleImage, authFetch } from '../services/imageService';
+import { editImageJob, talkingAvatarJob } from '../services/mediaJobService';
 import { cn } from '../utils/cn';
 import { trimAudioBase64To10Sec } from '../utils/audioUtils';
+import { accountLocalStorage } from '../utils/accountStorage';
 import toast from 'react-hot-toast';
 
 interface AgentViewProps {
@@ -487,7 +489,7 @@ function audioBufferToWav(buffer: AudioBuffer): Blob {
   return new Blob([bufferArr], { type: 'audio/wav' });
 }
 export default function AgentView({ personas, setPersonas, selectedPersonaId: propSelectedPersonaId, onSelectPersona, nav }: AgentViewProps) {
-  const effectiveSelectedPersonaId = propSelectedPersonaId ?? (typeof localStorage !== 'undefined' ? (localStorage.getItem('ai_influencer_selected_id') || localStorage.getItem('selected_persona_id')) : undefined);
+  const effectiveSelectedPersonaId = propSelectedPersonaId;
   const [inputText, setInputText] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -578,7 +580,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
   const [voiceNameInput, setVoiceNameInput] = useState('Sofia Voice');
   const [voiceDescInput, setVoiceDescInput] = useState('Voice clone of Sofia reference clip');
   const [clonedVoiceId, setClonedVoiceId] = useState<string | null>(() => {
-    return localStorage.getItem('superagent_cloned_voice_id') || localStorage.getItem('agent_default_voice_id') || null;
+    return accountLocalStorage.getItem('superagent_cloned_voice_id') || accountLocalStorage.getItem('agent_default_voice_id') || null;
   });
 
   // Social Downloader States
@@ -693,7 +695,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
   // Load custom presets from localStorage on mount
   useEffect(() => {
     try {
-      const stored = localStorage.getItem('agent_presets');
+      const stored = accountLocalStorage.getItem('agent_presets');
       if (stored) {
         setCustomPresets(JSON.parse(stored));
       }
@@ -837,7 +839,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
   }, []);
 
   // Global Default Cloned Voice State
-  const [clonedVoiceRef, setClonedVoiceRef] = useState<string | null>(() => localStorage.getItem('superagent_cloned_voice') || null);
+  const [clonedVoiceRef, setClonedVoiceRef] = useState<string | null>(() => accountLocalStorage.getItem('superagent_cloned_voice') || null);
   const [isVoiceCloneModalOpen, setIsVoiceCloneModalOpen] = useState(false);
   const [isCloningVoice, setIsCloningVoice] = useState(false);
   const voiceUploadInputRef = useRef<HTMLInputElement | null>(null);
@@ -864,11 +866,11 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
           setClonedVoiceRef('active');
           if (data.voiceId) {
             setClonedVoiceId(data.voiceId);
-            localStorage.setItem('superagent_cloned_voice_id', data.voiceId);
+            accountLocalStorage.setItem('superagent_cloned_voice_id', data.voiceId);
           }
           try {
-            localStorage.setItem('superagent_cloned_voice', 'active');
-            localStorage.setItem('superagent_cloned_voice_audio', dataUrl);
+            accountLocalStorage.setItem('superagent_cloned_voice', 'active');
+            accountLocalStorage.setItem('superagent_cloned_voice_audio', dataUrl);
           } catch (e) {
             console.warn('[LocalStorage Note]:', e);
           }
@@ -890,9 +892,9 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
   const clearClonedVoice = async () => {
     setClonedVoiceRef(null);
     setClonedVoiceId(null);
-    localStorage.removeItem('superagent_cloned_voice');
-    localStorage.removeItem('superagent_cloned_voice_id');
-    localStorage.removeItem('superagent_cloned_voice_audio');
+    accountLocalStorage.removeItem('superagent_cloned_voice');
+    accountLocalStorage.removeItem('superagent_cloned_voice_id');
+    accountLocalStorage.removeItem('superagent_cloned_voice_audio');
     try {
       await fetch('/api/agent/set-default-voice', {
         method: 'POST',
@@ -917,7 +919,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
     setIsPlayingVoiceSample(true);
     const toastId = toast.loading("Synthesizing active voice sample...");
     try {
-      const savedAudio = localStorage.getItem('superagent_cloned_voice_audio') || localStorage.getItem('voice_sample_1');
+      const savedAudio = accountLocalStorage.getItem('superagent_cloned_voice_audio') || accountLocalStorage.getItem('voice_sample_1');
       let targetAudioUrl = savedAudio;
 
       if (!targetAudioUrl) {
@@ -1269,8 +1271,8 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
         ? personas.find(p => p.id === effectiveSelectedPersonaId)
         : undefined;
 
-      const voiceIdToUse = activePersonaObj?.voiceId || localStorage.getItem('superagent_cloned_voice_id') || undefined;
-      const voiceSampleToUse = activePersonaObj?.voiceSampleUrl || localStorage.getItem('superagent_cloned_voice_audio') || undefined;
+      const voiceIdToUse = activePersonaObj?.voiceId || accountLocalStorage.getItem('superagent_cloned_voice_id') || undefined;
+      const voiceSampleToUse = activePersonaObj?.voiceSampleUrl || accountLocalStorage.getItem('superagent_cloned_voice_audio') || undefined;
       const engineToUse = activePersonaObj?.voiceEngine || (voiceIdToUse ? 'elevenlabs' : (voiceEngine || 'omnivoice'));
       const voiceNameObj = activePersonaObj?.name || 'Aoede';
 
@@ -1764,7 +1766,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
     const newPreset = { name: presetName, prompt: promptText };
     const updated = [...customPresets, newPreset];
     setCustomPresets(updated);
-    localStorage.setItem('agent_presets', JSON.stringify(updated));
+    accountLocalStorage.setItem('agent_presets', JSON.stringify(updated));
     toast.success(`Preset '${name}' saved successfully!`);
   };
 
@@ -1772,7 +1774,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
     e.stopPropagation();
     const updated = customPresets.filter((_, i) => i !== idx);
     setCustomPresets(updated);
-    localStorage.setItem('agent_presets', JSON.stringify(updated));
+    accountLocalStorage.setItem('agent_presets', JSON.stringify(updated));
     toast.success('Preset deleted.');
   };
 
@@ -1962,6 +1964,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
 
     try {
       const result = await api.images.generateVideo({
+        personaClientId: propSelectedPersonaId || personas[0]?.id,
         prompt: `Cinematic motion video clip of influencer avatar, subtle camera movement, photorealistic`,
         modelId: 'google:veo-omni',
         strength: 0.6,
@@ -2618,6 +2621,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
           let result;
           try {
             result = await api.images.generateVideo({
+              personaClientId: createdPersonaId,
               prompt: step.params.prompt,
               modelId,
               strength: step.params.strength || 0.6,
@@ -2627,6 +2631,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
           } catch (firstErr: any) {
             addLocalLog(`⚠️ Video model ${modelId} failed. Fallback triggered.`);
             result = await api.images.generateVideo({
+              personaClientId: createdPersonaId,
               prompt: step.params.prompt,
               modelId: 'google:veo-omni',
               strength: 0.6,
@@ -2766,18 +2771,12 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
 
           addLocalLog(`⏳ Synthesizing Talking Avatar lip-sync video...`);
 
-          const res = await fetch('/api/talking-head', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              text: step.params.text,
-              image: avatarImg,
-              voiceId: step.params.voiceId || clonedVoiceId || 'Aoede'
-            })
+          const data = await talkingAvatarJob(createdPersonaId, {
+            script: step.params.text,
+            portraitImage: avatarImg,
+            voiceName: step.params.voiceId || clonedVoiceId || 'Aoede',
+            model: step.params.model || 'wavespeed-ai/ai-talking-photos',
           });
-
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.error || 'Talking head generation failed');
 
           const payload = {
             id: 'talk-' + Math.random().toString(36).substring(2, 9),
@@ -2854,19 +2853,16 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
             addLocalLog(`🎬 Scene ${sIdx + 1}/${scenes.length} [${sc.type}]: "${sc.title}"...`);
 
             if (sc.type === 'talking_avatar') {
-              const res = await fetch('/api/talking-head', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  text: sc.text || 'Hello world',
-                  image: createdPersona.avatar || createdPersona.referenceImage,
-                  voiceId: clonedVoiceId || 'Aoede'
-                })
+              const data = await talkingAvatarJob(createdPersonaId, {
+                script: sc.text || 'Hello world',
+                portraitImage: createdPersona.avatar || createdPersona.referenceImage,
+                voiceName: clonedVoiceId || 'Aoede',
+                model: sc.modelId || 'wavespeed-ai/ai-talking-photos',
               });
-              const data = await res.json();
               if (data.videoUrl) generatedVideoUrls.push(data.videoUrl);
             } else {
               const res = await api.images.generateVideo({
+                personaClientId: createdPersonaId,
                 prompt: sc.prompt || 'Cinematic motion shot of persona',
                 modelId: sc.modelId || 'google:veo-omni',
                 sourceImage: createdPersona.avatar
@@ -2934,13 +2930,12 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
             editedUrl = data.imageUrl;
           } else {
             const chosenEditModel = step.params.modelId || 'wavespeed:bytedance/seedream-v5.0-pro';
-            const res = await fetch('/api/edit-image', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ sourceImage: srcImg, prompt: step.params.prompt || 'Enhance image details', modelId: chosenEditModel })
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || 'Image edit failed');
+            const data = await editImageJob(
+              activeP.id,
+              srcImg,
+              step.params.prompt || 'Enhance image details',
+              chosenEditModel,
+            );
             editedUrl = data.imageUrl;
           }
 
@@ -4979,8 +4974,8 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
           if (voiceId) {
             setClonedVoiceId(voiceId);
             try {
-              localStorage.setItem('superagent_cloned_voice_id', voiceId);
-              localStorage.setItem('superagent_cloned_voice', 'active');
+              accountLocalStorage.setItem('superagent_cloned_voice_id', voiceId);
+              accountLocalStorage.setItem('superagent_cloned_voice', 'active');
             } catch {}
           }
         }}

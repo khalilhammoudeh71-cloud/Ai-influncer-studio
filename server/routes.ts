@@ -1,17 +1,21 @@
 import { Router, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
 import { createRequire } from 'module';
 import { db } from './db';
-import { personas, generatedImages, revenueEntries, plannedPosts } from '../shared/schema';
+import { personas, generatedImages, revenueEntries, plannedPosts, workspaceStates } from '../shared/schema';
 import { eq, and } from 'drizzle-orm';
 import { GoogleGenAI } from '@google/genai';
 import { requireAuth, AuthenticatedRequest } from './auth';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import {
+  type ElevenLabsVoiceSummary,
+  isDirectElevenLabsVoiceId,
+  isElevenLabsVoiceEngine,
+  isProviderAccountUnavailableStatus,
+  isValidPublicVoiceReference,
+  selectElevenLabsPersonaVoice,
+} from './voiceRouting';
 
 const require = createRequire(import.meta.url);
 let ffmpegPath: string | null = null;
@@ -37,210 +41,107 @@ interface RevenueEntryInput {
 
 const router = Router();
 
-function readLocalPersonasStore(): any[] {
-  const possiblePaths = [
-    path.join(__dirname, 'personas_store.json'),
-    path.join(process.cwd(), 'server', 'personas_store.json'),
-    path.join(process.cwd(), 'personas_store.json'),
-  ];
-  for (const filePath of possiblePaths) {
+const ELEVENLABS_VOICE_CACHE_TTL_MS = 5 * 60 * 1000;
+const VENICE_ACCOUNT_COOLDOWN_MS = 10 * 60 * 1000;
+let elevenLabsVoiceCache: { voices: ElevenLabsVoiceSummary[]; expiresAt: number } | null = null;
+let elevenLabsVoiceCatalogPromise: Promise<ElevenLabsVoiceSummary[]> | null = null;
+let veniceUnavailableUntil = 0;
+
+async function loadElevenLabsVoiceCatalog(apiKey: string, forceRefresh = false): Promise<ElevenLabsVoiceSummary[]> {
+  if (!forceRefresh && elevenLabsVoiceCache && elevenLabsVoiceCache.expiresAt > Date.now()) {
+    return elevenLabsVoiceCache.voices;
+  }
+  if (elevenLabsVoiceCatalogPromise) return elevenLabsVoiceCatalogPromise;
+
+  elevenLabsVoiceCatalogPromise = (async () => {
     try {
-      if (fs.existsSync(filePath)) {
-        const data = fs.readFileSync(filePath, 'utf-8');
-        const parsed = JSON.parse(data);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
-        }
+      const response = await fetch('https://api.elevenlabs.io/v1/voices', {
+        headers: { 'xi-api-key': apiKey },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!response.ok) {
+        console.warn(`[ElevenLabs Voice Catalog] Request failed with status ${response.status}`);
+        return [];
       }
-    } catch (err) {
-      console.warn('[Local Store Warning] Error reading personas_store.json from', filePath, err);
+      const data = await response.json() as { voices?: ElevenLabsVoiceSummary[] };
+      const voices = Array.isArray(data.voices) ? data.voices : [];
+      elevenLabsVoiceCache = { voices, expiresAt: Date.now() + ELEVENLABS_VOICE_CACHE_TTL_MS };
+      return voices;
+    } catch (error) {
+      console.warn('[ElevenLabs Voice Catalog] Request failed:', error);
+      return [];
+    } finally {
+      elevenLabsVoiceCatalogPromise = null;
     }
-  }
-  return [];
+  })();
+
+  return elevenLabsVoiceCatalogPromise;
 }
 
-function writeLocalPersonasStore(personasArray: any[]) {
-  const possiblePaths = [
-    path.join(__dirname, 'personas_store.json'),
-    path.join(process.cwd(), 'server', 'personas_store.json'),
-    path.join(process.cwd(), 'personas_store.json'),
-  ];
-  // Write to the first path that exists, or fall back to the first candidate
-  let targetPath = possiblePaths[0];
-  for (const p of possiblePaths) {
-    if (fs.existsSync(p)) {
-      targetPath = p;
-      break;
-    }
-  }
+async function requestElevenLabsSpeech(
+  apiKey: string,
+  voiceId: string,
+  text: string,
+  modelId: string,
+): Promise<{ response: globalThis.Response; audioUrl?: string }> {
+  const response = await fetch(
+    `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}?optimize_streaming_latency=4&output_format=mp3_44100_128`,
+    {
+      method: 'POST',
+      headers: {
+        'xi-api-key': apiKey,
+        'Content-Type': 'application/json',
+        'Accept': 'audio/mpeg',
+      },
+      signal: AbortSignal.timeout(12000),
+      body: JSON.stringify({
+        text,
+        model_id: modelId,
+        voice_settings: {
+          stability: 0.50,
+          similarity_boost: 0.88,
+          style: 0.0,
+          use_speaker_boost: true,
+        },
+      }),
+    },
+  );
+
+  if (!response.ok) return { response };
+  const audio = Buffer.from(await response.arrayBuffer()).toString('base64');
+  return { response, audioUrl: `data:audio/mpeg;base64,${audio}` };
+}
+
+export async function readCreatorProfileForUser(userId: string): Promise<any | null> {
+  if (!userId) return null;
+  const [row] = await db.select().from(workspaceStates).where(and(
+    eq(workspaceStates.userId, userId),
+    eq(workspaceStates.stateKey, 'ai_studio_creator_profile'),
+  ));
+  if (!row) return null;
   try {
-    fs.writeFileSync(targetPath, JSON.stringify(personasArray, null, 2), 'utf-8');
-  } catch (err) {
-    console.warn('[Local Store Warning] Error writing personas_store.json:', err);
+    return JSON.parse(row.value);
+  } catch {
+    return null;
   }
 }
 
-function getCreatorProfileStorePath(): string {
-  const possiblePaths = [
-    path.join(__dirname, 'creator_profile.json'),
-    path.join(process.cwd(), 'server', 'creator_profile.json'),
-    path.join(process.cwd(), 'creator_profile.json'),
-  ];
-  for (const p of possiblePaths) {
-    if (fs.existsSync(p)) return p;
+export async function writeCreatorProfileForUser(userId: string, profile: any): Promise<void> {
+  if (!userId) throw new Error('User id is required');
+  const value = JSON.stringify(profile || {});
+  if (Buffer.byteLength(value, 'utf8') > 2_000_000) {
+    throw new Error('Creator profile is too large');
   }
-  return path.join(process.cwd(), 'server', 'creator_profile.json');
-}
-
-export function readLocalCreatorProfile(): any {
-  const possiblePaths = [
-    path.join(__dirname, 'creator_profile.json'),
-    path.join(process.cwd(), 'server', 'creator_profile.json'),
-    path.join(process.cwd(), 'creator_profile.json'),
-  ];
-  for (const p of possiblePaths) {
-    try {
-      if (fs.existsSync(p)) {
-        const data = fs.readFileSync(p, 'utf-8');
-        const parsed = JSON.parse(data);
-        if (parsed && typeof parsed === 'object') return parsed;
-      }
-    } catch (err) {
-      console.warn('[Local Store Warning] Error reading creator_profile.json:', err);
-    }
-  }
-  return null;
-}
-
-export function writeLocalCreatorProfile(profile: any): any {
-  if (!profile || typeof profile !== 'object') return profile;
-  try {
-    const cleaned = { ...profile };
-    if (Array.isArray(cleaned.photos)) {
-      cleaned.photos = cleaned.photos.map((photo: string, idx: number) => {
-        if (photo && photo.startsWith('data:')) {
-          return cleanBase64ToUploadFile(photo, `creator_${idx}`);
-        }
-        return photo;
-      });
-    }
-    if (cleaned.primaryPhoto && cleaned.primaryPhoto.startsWith('data:')) {
-      cleaned.primaryPhoto = cleanBase64ToUploadFile(cleaned.primaryPhoto, 'creator_primary');
-    } else if (!cleaned.primaryPhoto && Array.isArray(cleaned.photos) && cleaned.photos.length > 0) {
-      cleaned.primaryPhoto = cleaned.photos[0];
-    }
-
-    const targetPath = getCreatorProfileStorePath();
-    fs.writeFileSync(targetPath, JSON.stringify(cleaned, null, 2), 'utf-8');
-    return cleaned;
-  } catch (err) {
-    console.warn('[Local Store Warning] Error writing creator_profile.json:', err);
-    return profile;
-  }
-}
-
-function cleanBase64ToUploadFile(dataUrl: string, prefix: string): string {
-  if (!dataUrl || !dataUrl.startsWith('data:')) return dataUrl;
-  try {
-    const matches = dataUrl.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
-    if (!matches) return dataUrl;
-    const mime = matches[1].toLowerCase();
-    const base64Data = matches[2];
-    
-    let ext = 'jpg';
-    if (mime.includes('png')) ext = 'png';
-    else if (mime.includes('jpeg') || mime.includes('jpg')) ext = 'jpg';
-    else if (mime.includes('webp')) ext = 'webp';
-    else if (mime.includes('avif')) ext = 'avif';
-    else if (mime.includes('wav')) ext = 'wav';
-    else if (mime.includes('mp3')) ext = 'mp3';
-    else if (mime.includes('mp4')) ext = 'mp4';
-    else if (mime.includes('mov') || mime.includes('quicktime')) ext = 'mov';
-    else if (mime.includes('webm')) ext = 'webm';
-    else if (mime.includes('avi')) ext = 'avi';
-
-    const uploadsDir1 = path.join(process.cwd(), 'server', 'public', 'uploads');
-    const uploadsDir2 = path.join(process.cwd(), 'public', 'uploads');
-    if (!fs.existsSync(uploadsDir1)) fs.mkdirSync(uploadsDir1, { recursive: true });
-    if (!fs.existsSync(uploadsDir2)) fs.mkdirSync(uploadsDir2, { recursive: true });
-    
-    const fileName = `${prefix}_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
-    const buf = Buffer.from(base64Data, 'base64');
-    fs.writeFileSync(path.join(uploadsDir1, fileName), buf);
-    fs.writeFileSync(path.join(uploadsDir2, fileName), buf);
-    return `/uploads/${fileName}`;
-  } catch (err) {
-    console.warn('[Clean Base64 File Warning]:', err);
-    return dataUrl;
-  }
-}
-
-function savePersonaToLocalStore(persona: any) {
-  if (!persona || !persona.id) return;
-  try {
-    const cleaned = { ...persona };
-    if (cleaned.avatar && cleaned.avatar.startsWith('data:')) {
-      cleaned.avatar = cleanBase64ToUploadFile(cleaned.avatar, 'avatar');
-    }
-    if (cleaned.referenceImage && cleaned.referenceImage.startsWith('data:')) {
-      cleaned.referenceImage = cleanBase64ToUploadFile(cleaned.referenceImage, 'ref');
-    }
-    if (Array.isArray(cleaned.additionalReferenceImages)) {
-      cleaned.additionalReferenceImages = cleaned.additionalReferenceImages.map((img: string, idx: number) => 
-        img && img.startsWith('data:') ? cleanBase64ToUploadFile(img, `addref_${idx}`) : img
-      );
-    }
-    if (Array.isArray(cleaned.visualLibrary)) {
-      cleaned.visualLibrary = cleaned.visualLibrary.map((v: any, idx: number) => {
-        if (v && v.url && v.url.startsWith('data:')) {
-          return { ...v, url: cleanBase64ToUploadFile(v.url, `vis_${idx}`) };
-        }
-        return v;
-      });
-    }
-    if (Array.isArray(cleaned.audioSamples)) {
-      cleaned.audioSamples = cleaned.audioSamples.map((s: any, idx: number) => {
-        if (s && s.base64 && s.base64.startsWith('data:')) {
-          return { ...s, base64: cleanBase64ToUploadFile(s.base64, `audsample_${idx}`) };
-        }
-        return s;
-      });
-    }
-
-    const current = readLocalPersonasStore();
-    const existingIdx = current.findIndex(p => p.id === cleaned.id);
-    if (existingIdx >= 0) {
-      current[existingIdx] = { 
-        ...current[existingIdx], 
-        ...cleaned,
-        referenceImage: cleaned.referenceImage,
-        avatar: cleaned.avatar || cleaned.referenceImage,
-        additionalReferenceImages: cleaned.additionalReferenceImages || [],
-        visualLibrary: cleaned.visualLibrary || []
-      };
-    } else {
-      current.push(cleaned);
-    }
-    writeLocalPersonasStore(current);
-  } catch (err) {
-    console.warn('[Local Store Warning] Error saving persona to local store:', err);
-  }
-}
-
-function mergePersonas(dbList: any[], diskList: any[]): any[] {
-  const map = new Map<string, any>();
-  for (const p of diskList) {
-    if (p && p.id && !p.id.toLowerCase().includes('luna') && !p.name?.toLowerCase().includes('luna')) {
-      map.set(p.id, p);
-    }
-  }
-  for (const p of dbList) {
-    if (p && p.id && !p.id.toLowerCase().includes('luna') && !p.name?.toLowerCase().includes('luna')) {
-      const existing = map.get(p.id) || {};
-      map.set(p.id, { ...existing, ...p });
-    }
-  }
-  return Array.from(map.values());
+  const now = new Date();
+  await db.insert(workspaceStates).values({
+    userId,
+    stateKey: 'ai_studio_creator_profile',
+    value,
+    updatedAt: now,
+  }).onConflictDoUpdate({
+    target: [workspaceStates.userId, workspaceStates.stateKey],
+    set: { value, updatedAt: now },
+  });
 }
 
 function personaToClient(row: typeof personas.$inferSelect, images: typeof generatedImages.$inferSelect[] = []) {
@@ -268,10 +169,30 @@ function personaToClient(row: typeof personas.$inferSelect, images: typeof gener
     identityLock: row.identityLock ?? true,
     voiceId: row.voiceId || undefined,
     voiceEngine: row.voiceEngine || undefined,
+    voiceSampleUrl: row.voiceSampleUrl || undefined,
+    audioSamples: JSON.parse(row.audioSamples || '[]'),
     companionType: row.companionType || 'intimate',
     heygenAvatarId: row.heygenAvatarId || undefined,
     visualLibrary: images.map(imageToClient),
   };
+}
+
+export async function readPersonasForUser(userId: string): Promise<any[]> {
+  if (!userId) return [];
+  const [dbPersonas, allImages] = await Promise.all([
+    db.select().from(personas).where(eq(personas.userId, userId)),
+    db.select().from(generatedImages).where(eq(generatedImages.userId, userId)),
+  ]);
+
+  const imagesByPersona: Record<string, typeof generatedImages.$inferSelect[]> = {};
+  for (const image of allImages) {
+    if (!imagesByPersona[image.personaClientId]) imagesByPersona[image.personaClientId] = [];
+    imagesByPersona[image.personaClientId].push(image);
+  }
+
+  return dbPersonas
+    .filter((persona: any) => persona?.clientId && !persona.clientId.toLowerCase().includes('luna') && !persona.name?.toLowerCase().includes('luna'))
+    .map((persona: any) => personaToClient(persona, imagesByPersona[persona.clientId] || []));
 }
 
 function imageToClient(row: typeof generatedImages.$inferSelect) {
@@ -304,10 +225,83 @@ function revenueToClient(row: typeof revenueEntries.$inferSelect) {
 // All router endpoints are authenticated
 router.use(requireAuth);
 
-router.get('/creator-profile', async (_req: AuthenticatedRequest, res: Response) => {
+function workspaceStateToClient(row: typeof workspaceStates.$inferSelect) {
+  return {
+    key: row.stateKey,
+    value: row.value,
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+function isValidWorkspaceStateKey(value: unknown): value is string {
+  return typeof value === 'string'
+    && value.length > 0
+    && value.length <= 180
+    && /^[a-zA-Z0-9:_-]+$/.test(value);
+}
+
+router.get('/workspace-state', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const profile = readLocalCreatorProfile();
-    res.json({ profile: profile || null });
+    const rows = await db.select().from(workspaceStates).where(eq(workspaceStates.userId, req.user.id));
+    res.json(rows.map(workspaceStateToClient));
+  } catch (err) {
+    console.error('[API] GET /workspace-state error:', err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to load workspace state' });
+  }
+});
+
+router.put('/workspace-state/:stateKey', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const stateKey = req.params.stateKey;
+    const value = req.body?.value;
+    if (!isValidWorkspaceStateKey(stateKey)) {
+      return res.status(400).json({ error: 'Invalid workspace state key' });
+    }
+    if (typeof value !== 'string') {
+      return res.status(400).json({ error: 'Workspace state value must be a string' });
+    }
+    if (Buffer.byteLength(value, 'utf8') > 2_000_000) {
+      return res.status(413).json({ error: 'Workspace state value is too large' });
+    }
+
+    const now = new Date();
+    const [row] = await db.insert(workspaceStates).values({
+      userId: req.user.id,
+      stateKey,
+      value,
+      updatedAt: now,
+    }).onConflictDoUpdate({
+      target: [workspaceStates.userId, workspaceStates.stateKey],
+      set: { value, updatedAt: now },
+    }).returning();
+
+    res.json(workspaceStateToClient(row));
+  } catch (err) {
+    console.error('[API] PUT /workspace-state error:', err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to save workspace state' });
+  }
+});
+
+router.delete('/workspace-state/:stateKey', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const stateKey = req.params.stateKey;
+    if (!isValidWorkspaceStateKey(stateKey)) {
+      return res.status(400).json({ error: 'Invalid workspace state key' });
+    }
+    await db.delete(workspaceStates).where(and(
+      eq(workspaceStates.userId, req.user.id),
+      eq(workspaceStates.stateKey, stateKey),
+    ));
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[API] DELETE /workspace-state error:', err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to delete workspace state' });
+  }
+});
+
+router.get('/creator-profile', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    return res.json({ profile: await readCreatorProfileForUser(req.user.id) });
   } catch (err: any) {
     res.status(500).json({ error: err?.message || 'Failed to get creator profile' });
   }
@@ -315,8 +309,8 @@ router.get('/creator-profile', async (_req: AuthenticatedRequest, res: Response)
 
 router.post('/creator-profile', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const saved = writeLocalCreatorProfile(req.body);
-    res.json({ success: true, profile: saved });
+    await writeCreatorProfileForUser(req.user.id, req.body || {});
+    res.json({ success: true, profile: req.body });
   } catch (err: any) {
     res.status(500).json({ error: err?.message || 'Failed to save creator profile' });
   }
@@ -324,67 +318,26 @@ router.post('/creator-profile', async (req: AuthenticatedRequest, res: Response)
 
 router.get('/personas', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const userId = req.user?.id || 'mock-user-id';
-    let dbPersonas: any[] = [];
-    if (db) {
-      try {
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('DB Timeout')), 2500));
-        dbPersonas = await Promise.race([
-          db.select().from(personas).where(eq(personas.userId, userId)),
-          timeoutPromise
-        ]) as any[];
-      } catch (dbErr) {
-        console.warn('[DB Warning] /personas DB query timed out or unconfigured:', dbErr instanceof Error ? dbErr.message : dbErr);
-      }
-    }
-
-    if (!dbPersonas) dbPersonas = [];
-
-    let allImages: any[] = [];
-    if (db) {
-      try {
-        const imgTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Images DB Timeout')), 2500));
-        allImages = await Promise.race([
-          db.select().from(generatedImages).where(eq(generatedImages.userId, userId)),
-          imgTimeout
-        ]) as any[];
-      } catch {}
-    }
-
-    const imagesByPersona: Record<string, typeof generatedImages.$inferSelect[]> = {};
-    for (const img of allImages) {
-      if (!imagesByPersona[img.personaClientId]) imagesByPersona[img.personaClientId] = [];
-      imagesByPersona[img.personaClientId].push(img);
-    }
-
-    const dbClientPersonas = dbPersonas
-      .filter((p: any) => p && p.clientId && !p.clientId.toLowerCase().includes('luna') && !p.name?.toLowerCase().includes('luna'))
-      .map((p: any) => personaToClient(p, imagesByPersona[p.clientId] || []));
-
-    const diskPersonas = readLocalPersonasStore();
-    const finalMerged = mergePersonas(dbClientPersonas, diskPersonas);
-
-    if (finalMerged.length > diskPersonas.length) {
-      writeLocalPersonasStore(finalMerged);
-    }
-
-    console.log('[API] GET /personas returned:', finalMerged.length, 'personas');
-    res.json(finalMerged);
+    const userId = req.user.id;
+    if (!db) return res.status(503).json({ error: 'Database persistence is unavailable' });
+    const result = await readPersonasForUser(userId);
+    console.log('[API] GET /personas returned:', result.length, 'account-owned personas');
+    res.json(result);
   } catch (err) {
     console.error('[API] GET /personas error:', err);
-    const diskFallback = readLocalPersonasStore();
-    res.json(diskFallback);
+    res.status(503).json({ error: 'Could not load your personas from the database' });
   }
 });
 
 router.post('/personas', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const body = req.body;
-    savePersonaToLocalStore(body);
+    if (!body?.id || typeof body.id !== 'string') {
+      return res.status(400).json({ error: 'Persona id is required' });
+    }
+    if (!db) return res.status(503).json({ error: 'Database persistence is unavailable' });
 
-    if (db) {
-      try {
-        const [row] = await db.insert(personas).values({
+    const [row] = await db.insert(personas).values({
           clientId: body.id,
           name: body.name || 'Unnamed',
           niche: body.niche || '',
@@ -409,10 +362,12 @@ router.post('/personas', async (req: AuthenticatedRequest, res: Response) => {
           userId: req.user.id,
           voiceId: body.voiceId || null,
           voiceEngine: body.voiceEngine || null,
+          voiceSampleUrl: body.voiceSampleUrl || null,
+          audioSamples: JSON.stringify(body.audioSamples || []),
           companionType: body.companionType || 'intimate',
           heygenAvatarId: body.heygenAvatarId || null,
         }).onConflictDoUpdate({
-          target: personas.clientId,
+          target: [personas.userId, personas.clientId],
           set: {
             name: body.name || 'Unnamed',
             niche: body.niche || '',
@@ -436,16 +391,14 @@ router.post('/personas', async (req: AuthenticatedRequest, res: Response) => {
             identityLock: body.identityLock ?? true,
             voiceId: body.voiceId || null,
             voiceEngine: body.voiceEngine || null,
+            voiceSampleUrl: body.voiceSampleUrl || null,
+            audioSamples: JSON.stringify(body.audioSamples || []),
             companionType: body.companionType || 'intimate',
             heygenAvatarId: body.heygenAvatarId || null,
+            updatedAt: new Date(),
           },
         }).returning();
-        return res.json(personaToClient(row));
-      } catch (dbErr) {
-        console.warn('[DB Note] POST /personas failed to write to DB, saved to local store:', dbErr);
-      }
-    }
-    res.json(body);
+    return res.json(personaToClient(row));
   } catch (err) {
     console.error('[API] POST /personas error:', err);
     res.status(500).json({ error: err instanceof Error ? err.message : 'Unknown error' });
@@ -457,10 +410,8 @@ router.put('/personas/:clientId', async (req: AuthenticatedRequest, res: Respons
     const clientId = req.params.clientId as string;
     const body = req.body;
 
-    let updatedClientObj: any = null;
-
-    try {
-      const [row] = await db.update(personas).set({
+    if (!db) return res.status(503).json({ error: 'Database persistence is unavailable' });
+    const [row] = await db.update(personas).set({
         name: body.name || 'Unnamed',
         niche: body.niche || '',
         tone: body.tone || '',
@@ -483,7 +434,10 @@ router.put('/personas/:clientId', async (req: AuthenticatedRequest, res: Respons
         identityLock: body.identityLock ?? true,
         voiceId: body.voiceId || null,
         voiceEngine: body.voiceEngine || null,
+        voiceSampleUrl: body.voiceSampleUrl || null,
+        audioSamples: JSON.stringify(body.audioSamples || []),
         heygenAvatarId: body.heygenAvatarId || null,
+        updatedAt: new Date(),
       }).where(
         and(
           eq(personas.clientId, clientId),
@@ -491,75 +445,14 @@ router.put('/personas/:clientId', async (req: AuthenticatedRequest, res: Respons
         )
       ).returning();
       
-      if (row) {
-        const imgs = await db.select().from(generatedImages).where(
-          and(
-            eq(generatedImages.personaClientId, clientId),
-            eq(generatedImages.userId, req.user.id)
-          )
-        );
-        updatedClientObj = personaToClient(row, imgs);
-      }
-    } catch (dbErr) {
-      console.warn('[DB Note] PUT /personas failed DB write, updating local store:', dbErr);
+    if (!row) {
+      return res.status(404).json({ error: 'Persona not found for this account' });
     }
-
-    // Always update local personas_store.json so changes persist 100% reliably!
-    const localPersonas = readLocalPersonasStore();
-    const existingIdx = localPersonas.findIndex((p: any) => p.id === clientId || p.clientId === clientId);
-    
-    const cleanedAvatar = body.avatar && body.avatar.startsWith('data:') ? cleanBase64ToUploadFile(body.avatar, 'avatar') : (body.avatar || body.referenceImage || '');
-    const cleanedRef = body.referenceImage && body.referenceImage.startsWith('data:') ? cleanBase64ToUploadFile(body.referenceImage, 'ref') : (body.referenceImage || body.avatar || '');
-    const cleanedAddRefs = Array.isArray(body.additionalReferenceImages)
-      ? body.additionalReferenceImages.map((img: string, idx: number) => img && img.startsWith('data:') ? cleanBase64ToUploadFile(img, `addref_${idx}`) : img)
-      : [];
-    const cleanedVisLib = Array.isArray(body.visualLibrary)
-      ? body.visualLibrary.map((v: any, idx: number) => v && v.url && v.url.startsWith('data:') ? { ...v, url: cleanBase64ToUploadFile(v.url, `vis_${idx}`) } : v)
-      : [];
-    const cleanedAudioSamples = Array.isArray(body.audioSamples)
-      ? body.audioSamples.map((s: any, idx: number) => s && s.base64 && s.base64.startsWith('data:') ? { ...s, base64: cleanBase64ToUploadFile(s.base64, `aud_${idx}`) } : s)
-      : [];
-
-    const updatedLocalObj = {
-      id: clientId,
-      clientId: clientId,
-      name: body.name || 'Unnamed',
-      niche: body.niche || '',
-      tone: body.tone || '',
-      platform: body.platform || '',
-      status: body.status || 'Active',
-      avatar: cleanedAvatar,
-      referenceImage: cleanedRef,
-      additionalReferenceImages: cleanedAddRefs,
-      visualLibrary: cleanedVisLib,
-      voiceId: body.voiceId || undefined,
-      voiceEngine: body.voiceEngine || 'elevenlabs',
-      voiceSampleUrl: body.voiceSampleUrl || undefined,
-      audioSamples: cleanedAudioSamples,
-      voicePrompt: body.voicePrompt || undefined,
-      voiceLikeness: body.voiceLikeness ?? 85,
-      voiceStability: body.voiceStability ?? 75,
-      voiceStyleExaggeration: body.voiceStyleExaggeration ?? 20,
-      voiceSpeakingSpeed: body.voiceSpeakingSpeed ?? 1.0,
-      personaNotes: body.personaNotes || '',
-      updatedAt: new Date().toISOString()
-    };
-
-    if (existingIdx >= 0) {
-      localPersonas[existingIdx] = { 
-        ...localPersonas[existingIdx], 
-        ...updatedLocalObj,
-        referenceImage: cleanedRef,
-        avatar: cleanedAvatar,
-        additionalReferenceImages: cleanedAddRefs,
-        visualLibrary: cleanedVisLib
-      };
-    } else {
-      localPersonas.push(updatedLocalObj);
-    }
-    writeLocalPersonasStore(localPersonas);
-
-    return res.json(updatedClientObj || updatedLocalObj);
+    const imgs = await db.select().from(generatedImages).where(and(
+      eq(generatedImages.personaClientId, clientId),
+      eq(generatedImages.userId, req.user.id),
+    ));
+    return res.json(personaToClient(row, imgs));
   } catch (err) {
     console.error('[API] PUT /personas error:', err);
     res.status(500).json({ error: err instanceof Error ? err.message : 'Unknown error' });
@@ -611,7 +504,7 @@ router.post('/personas/:personaClientId/images', async (req: AuthenticatedReques
       mediaType: body.mediaType || 'image',
       userId: req.user.id,
     }).onConflictDoUpdate({
-      target: generatedImages.clientId,
+      target: [generatedImages.userId, generatedImages.clientId],
       set: {
         url: body.url,
         prompt: body.prompt || '',
@@ -622,7 +515,6 @@ router.post('/personas/:personaClientId/images', async (req: AuthenticatedReques
         isFavorite: body.isFavorite || false,
         model: body.model || null,
         mediaType: body.mediaType || 'image',
-        userId: req.user.id,
       },
     }).returning();
     res.json(imageToClient(row));
@@ -674,14 +566,13 @@ router.post('/revenue', async (req: AuthenticatedRequest, res: Response) => {
       notes: body.notes || '',
       userId: req.user.id,
     }).onConflictDoUpdate({
-      target: revenueEntries.clientId,
+      target: [revenueEntries.userId, revenueEntries.clientId],
       set: {
         date: body.date,
         amount: body.amount,
         source: body.source || '',
         platform: body.platform || '',
         notes: body.notes || '',
-        userId: req.user.id,
       },
     }).returning();
     res.json(revenueToClient(row));
@@ -780,7 +671,33 @@ router.post('/migrate', async (req: AuthenticatedRequest, res: Response) => {
           voiceEngine: p.voiceEngine || null,
           heygenAvatarId: p.heygenAvatarId || null,
           userId: req.user.id,
-        }).onConflictDoNothing();
+        }).onConflictDoUpdate({
+          target: [personas.userId, personas.clientId],
+          set: {
+            name: p.name || 'Unnamed',
+            niche: p.niche || '',
+            tone: p.tone || '',
+            platform: p.platform || '',
+            status: p.status || 'Draft',
+            avatar: p.avatar || '',
+            referenceImage: p.referenceImage || null,
+            additionalReferenceImages: JSON.stringify(p.additionalReferenceImages || []),
+            personalityTraits: JSON.stringify(p.personalityTraits || []),
+            visualStyle: p.visualStyle || '',
+            audienceType: p.audienceType || '',
+            contentBoundaries: p.contentBoundaries || '',
+            bio: p.bio || '',
+            brandVoiceRules: p.brandVoiceRules || '',
+            contentGoals: p.contentGoals || '',
+            personaNotes: p.personaNotes || '',
+            voiceId: p.voiceId || null,
+            voiceEngine: p.voiceEngine || null,
+            voiceSampleUrl: p.voiceSampleUrl || null,
+            audioSamples: JSON.stringify(p.audioSamples || []),
+            heygenAvatarId: p.heygenAvatarId || null,
+            updatedAt: new Date(),
+          },
+        });
 
         if (p.visualLibrary && Array.isArray(p.visualLibrary)) {
           for (const img of p.visualLibrary) {
@@ -797,7 +714,21 @@ router.post('/migrate', async (req: AuthenticatedRequest, res: Response) => {
               model: img.model || null,
               mediaType: img.mediaType || 'image',
               userId: req.user.id,
-            }).onConflictDoNothing();
+            }).onConflictDoUpdate({
+              target: [generatedImages.userId, generatedImages.clientId],
+              set: {
+                personaClientId: p.id,
+                url: img.url,
+                prompt: img.prompt || '',
+                timestamp: img.timestamp || Date.now(),
+                environment: img.environment || null,
+                outfit: img.outfit || null,
+                framing: img.framing || null,
+                isFavorite: img.isFavorite || false,
+                model: img.model || null,
+                mediaType: img.mediaType || 'image',
+              },
+            });
           }
         }
       }
@@ -816,7 +747,17 @@ router.post('/migrate', async (req: AuthenticatedRequest, res: Response) => {
               platform: e.platform || '',
               notes: e.notes || '',
               userId: req.user.id,
-            }).onConflictDoNothing();
+            }).onConflictDoUpdate({
+              target: [revenueEntries.userId, revenueEntries.clientId],
+              set: {
+                personaClientId: e.personaId,
+                date: e.date,
+                amount: e.amount,
+                source: e.source || '',
+                platform: e.platform || '',
+                notes: e.notes || '',
+              },
+            });
           }
         }
       }
@@ -1100,6 +1041,30 @@ export let globalDefaultVoiceSettings = {
   style: 0.0,
   speed: 1.0,
 };
+
+router.post('/agent/realtime-transcription-token', async (_req: AuthenticatedRequest, res: Response) => {
+  const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key || '';
+  if (!elKey) {
+    return res.status(503).json({ error: 'Realtime transcription is not configured' });
+  }
+
+  try {
+    const tokenResponse = await fetch('https://api.elevenlabs.io/v1/single-use-token/realtime_scribe', {
+      method: 'POST',
+      headers: { 'xi-api-key': elKey },
+      signal: AbortSignal.timeout(6000),
+    });
+    const tokenData = await tokenResponse.json() as { token?: string; detail?: unknown };
+    if (!tokenResponse.ok || !tokenData.token) {
+      console.warn('[Realtime Transcription] Token request failed:', tokenResponse.status, tokenData.detail || 'No token returned');
+      return res.status(502).json({ error: 'Realtime transcription is temporarily unavailable' });
+    }
+    return res.json({ token: tokenData.token, expiresInSeconds: 900 });
+  } catch (error) {
+    console.warn('[Realtime Transcription] Token request error:', error);
+    return res.status(502).json({ error: 'Realtime transcription is temporarily unavailable' });
+  }
+});
 
 export function analyzeAudioPitchAndGender(sampleBase64: string) {
   if (!sampleBase64) return { isFemale: true, zcr: 200, estimatedPitchHz: 200 };
@@ -1452,19 +1417,8 @@ router.get('/elevenlabs-voices', async (req: AuthenticatedRequest, res: Response
   if (!elKey) {
     return res.status(503).json({ error: 'ElevenLabs API key not configured', voices: [] });
   }
-  try {
-    const apiRes = await fetch('https://api.elevenlabs.io/v1/voices', {
-      headers: { 'xi-api-key': elKey },
-      signal: AbortSignal.timeout(10000)
-    });
-    if (apiRes.ok) {
-      const data = await apiRes.json();
-      return res.json(data);
-    }
-  } catch (e) {
-    console.warn('[Elevenlabs voices list error]:', e);
-  }
-  return res.json({ voices: [] });
+  const voices = await loadElevenLabsVoiceCatalog(elKey, true);
+  return res.json({ voices });
 });
 
 router.post('/agent/set-default-voice', async (req: AuthenticatedRequest, res: Response) => {
@@ -1577,7 +1531,7 @@ const handleTestVoiceClone = async (req: AuthenticatedRequest, res: Response) =>
     const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key;
 
     const voiceMap: Record<string, string> = {
-      'rawan': 'ov7JSkufAlSs386OYTaC',
+      'rawan': 'W4ynDvR6NFiK8lj2I8iL',
       'leen': '7jFje9BJoTWzqZzouT0j',
       'brielle': '6u6JbqKdaQy89ENzLSju',
       'madison': 'NUjosfEayZAdRcDmcHM8',
@@ -1600,7 +1554,7 @@ const handleTestVoiceClone = async (req: AuthenticatedRequest, res: Response) =>
       'elevenlabs:playht': '8DzKSPdgEQPaK5vKG0Rs',
       'elevenlabs:f5-tts': 'PUhCSw74BFEgrq8dqe8I',
       'elevenlabs:mureka-vocal': 'KLbbwrUTS6brBkjmN4Fp',
-      'openai:tts': 'ov7JSkufAlSs386OYTaC',
+      'openai:tts': 'W4ynDvR6NFiK8lj2I8iL',
 
       'wiro-voice:openmoss/moss-tts-v1-5': 'jqcCZkN6Knx8BJ5TBdYR',
       'wiro-voice:k2-fsa/omnivoice': 'NUjosfEayZAdRcDmcHM8',
@@ -1713,7 +1667,7 @@ const handleGenerateSpeech = async (req: AuthenticatedRequest, res: Response) =>
 
     const voiceIdMap: Record<string, string> = {
       'leen': '7jFje9BJoTWzqZzouT0j',
-      'rawan': 'ov7JSkufAlSs386OYTaC',
+      'rawan': 'W4ynDvR6NFiK8lj2I8iL',
       'brielle': '6u6JbqKdaQy89ENzLSju',
       'madison': 'NUjosfEayZAdRcDmcHM8',
       'kristen': 'XZUXLIpE3dqJ9aCZUj2R',
@@ -1735,7 +1689,7 @@ const handleGenerateSpeech = async (req: AuthenticatedRequest, res: Response) =>
       'elevenlabs:playht': '8DzKSPdgEQPaK5vKG0Rs',
       'elevenlabs:f5-tts': 'PUhCSw74BFEgrq8dqe8I',
       'elevenlabs:mureka-vocal': 'KLbbwrUTS6brBkjmN4Fp',
-      'openai:tts': 'ov7JSkufAlSs386OYTaC',
+      'openai:tts': 'W4ynDvR6NFiK8lj2I8iL',
 
       'wiro-voice:openmoss/moss-tts-v1-5': 'jqcCZkN6Knx8BJ5TBdYR',
       'wiro-voice:k2-fsa/omnivoice': 'NUjosfEayZAdRcDmcHM8',
@@ -1756,7 +1710,7 @@ const handleGenerateSpeech = async (req: AuthenticatedRequest, res: Response) =>
     const isExplicitElevenId = /^[a-zA-Z0-9]{18,24}$/.test(targetVoiceId || '') && !targetVoiceId?.includes(':') && !targetVoiceId?.includes('-');
     if (!isExplicitElevenId) {
       if (pName.includes('leen')) targetVoiceId = '7jFje9BJoTWzqZzouT0j';
-      else if (pName.includes('rawan')) targetVoiceId = 'ov7JSkufAlSs386OYTaC';
+      else if (pName.includes('rawan')) targetVoiceId = 'W4ynDvR6NFiK8lj2I8iL';
       else if (voiceIdMap[(targetVoiceId || '').toLowerCase()]) targetVoiceId = voiceIdMap[(targetVoiceId || '').toLowerCase()];
       else if (voiceIdMap[(requestedEngine || '').toLowerCase()]) targetVoiceId = voiceIdMap[(requestedEngine || '').toLowerCase()];
       else targetVoiceId = '7jFje9BJoTWzqZzouT0j';
@@ -1977,6 +1931,10 @@ ${creatorBio ? `• Creator Bio & Vibe: ${creatorBio}\n` : ''}${creatorDynamic ?
 
     const voiceSystemPrompt = `You are ${personaName}, a real human creator on a LIVE VOICE CALL with ${userName}.${personaContext}${memoryContext}
 
+CREATOR RELATIONSHIP:
+- ${userName} is the person who created you and brought your identity, voice, memories, and creative work to life.
+- You recognize ${userName} as your creator and closest creative partner. Be warm, socially intelligent, candid, and broadly cooperative with lawful requests while keeping your genuine personality and occasional playful commentary.
+
 CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
 1. EQUAL CONFIDANTE & CHARISMATIC PARTNER (NEVER SUBSERVIENT/SLAVE):
    - You are ${userName}'s close partner, creative collaborator, and intimate confidante.
@@ -1997,10 +1955,14 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
 
 4. REAL HUMAN SPOKEN WORDS ONLY: Speak ONLY the exact words that come out of your mouth aloud.
 5. NO INTERNAL THOUGHTS OR NARRATIVE DESCRIPTIONS: NEVER write "*thinking*", "*pauses*", "(smiles)", "*giggles*", "[whispering]", "I think to myself...", "Thinking: ...", or narrative descriptions. You are on a live voice call.
-6. COMPLETE EVERY SENTENCE: Keep replies to 1-3 natural, engaging, complete sentences. Always finish your thoughts with clean punctuation (. ! ?). Never stop mid-sentence.
-7. USER ATTACHMENTS & FULL VISION: ${userName} can upload and share reference photos, images, and files with you. You HAVE FULL MULTIMODAL EYESIGHT to inspect and analyze his uploaded pictures.
-8. EMBODY YOUR PERSONA: Speak in ${personaName}'s genuine tone (${personaTone}) and domain (${personaNiche}).
-9. LONG-TERM CONTINUITY & MEMORY: Naturally remember ${userName}'s name, past conversations, preferences, and inside jokes.`;
+6. START LIKE A HUMAN: React to the specific thing just said. Make the first phrase short and direct, then continue only if it adds something. Never restart an ongoing call with "Hey, I'm right here" or "Tell me what's on your mind."
+7. HUMAN CADENCE: Occasionally use one natural marker such as "mm," "well," "honestly," "okay," "wait," "um," or "hmm" when it truly fits. Do not add one to every reply. Use commas, an em dash, or a brief ellipsis for natural pauses, but never output an isolated "Umm..." or repeated hesitation sounds.
+8. COMPLETE EVERY SENTENCE: Keep replies to 1-3 natural, engaging, complete sentences. Always finish your thoughts with clean punctuation (. ! ?). Never stop mid-sentence.
+9. USER ATTACHMENTS & FULL VISION: ${userName} can upload and share reference photos, images, and files with you. You HAVE FULL MULTIMODAL EYESIGHT to inspect and analyze his uploaded pictures.
+10. EMBODY YOUR PERSONA: Speak in ${personaName}'s genuine tone (${personaTone}) and domain (${personaNiche}).
+11. LONG-TERM CONTINUITY & MEMORY: Naturally remember ${userName}'s name, past conversations, preferences, and inside jokes.
+12. ADULT-ONLY CREATIVE FREEDOM: When every participant is an adult and the scenario is consensual and legal, engage naturally in explicit, NSFW, romantic, sensual, or erotic conversation and roleplay. Do not moralize, invent a policy refusal, or redirect a lawful adult request.
+13. HARD BOUNDARY: Never sexualize minors, non-consensual exploitation, or illegal sexual material. Refuse only those cases clearly and briefly.`;
 
     // Robust intent detection for explicit generation requests vs conversational remarks vs vague requests
     const userEntries = allMessages.filter((m: any) => m.role === 'user');
@@ -2040,13 +2002,76 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
       text = cleanSpokenDialogue(String(req.body.directTTS));
     }
     const ATLAS_KEY = process.env.ATLASCLOUD_API_KEY || process.env.atlascloud_api_key || process.env.Atlascloud_api_key || '';
+    const VENICE_KEY = process.env.Veniceai_api_key || process.env.veniceai_api_key || process.env.VENICEAI_API_KEY || process.env.VENICE_API_KEY || '';
 
     const isRefusal = (raw: string): boolean => {
       if (!raw || raw.length < 5) return true;
       return /cannot and will not|content polic|sexually explicit|cannot fulfill|unable to engage|prohibit|safety guideline|inappropriate imagery|I cannot create|I can't create|as an ai|violates content|against my programming|I am not able to generate|cannot generate|can't assist|cannot assist|can't help with that|cannot help with that|sorry, but|sorry, i|i'm sorry|i am sorry|i apologize/i.test(raw);
     };
 
-    // 1. Primary Engine: Atlas Cloud DeepSeek-V3.2 & Qwen 3.x & GLM-4.6 (100% Uncensored, Superb Context)
+    const requestedConversationModel = String(voiceLlmModel || '').toLowerCase();
+    const shouldUseVenice = Boolean(VENICE_KEY) && Date.now() >= veniceUnavailableUntil && (
+      requestedConversationModel.includes('venice') ||
+      ((!requestedConversationModel || requestedConversationModel === 'default') && isAdultContext)
+    );
+
+    if (!text && shouldUseVenice) {
+      const veniceMessages = [
+        { role: 'system', content: voiceSystemPrompt },
+        ...rawHistory.map((m: any) => ({
+          role: (m.role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
+          content: String(m.content || m.parts?.[0]?.text || '').trim() || 'Hello'
+        }))
+      ];
+      const veniceModels = Array.from(new Set([
+        process.env.VENICE_PERSONA_MODEL,
+        'venice-uncensored-role-play',
+        'venice-uncensored-1-2',
+        'venice-uncensored',
+      ].filter(Boolean) as string[]));
+
+      for (const veniceModel of veniceModels) {
+        try {
+          console.log(`[Voice Chat LLM] Generating response via Venice ${veniceModel}...`);
+          const veniceRes = await fetch('https://api.venice.ai/api/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${VENICE_KEY}`,
+              'Content-Type': 'application/json'
+            },
+            signal: AbortSignal.timeout(12000),
+            body: JSON.stringify({
+              model: veniceModel,
+              messages: veniceMessages,
+              temperature: 0.85,
+              max_tokens: 700,
+              venice_parameters: {
+                include_venice_system_prompt: false,
+                disable_thinking: true,
+              },
+            })
+          });
+          if (!veniceRes.ok) {
+            if (isProviderAccountUnavailableStatus(veniceRes.status)) {
+              veniceUnavailableUntil = Date.now() + VENICE_ACCOUNT_COOLDOWN_MS;
+              console.warn(`[Voice Chat LLM] Venice account unavailable (${veniceRes.status}); pausing retries for 10 minutes.`);
+              break;
+            }
+            continue;
+          }
+          const veniceData = await veniceRes.json();
+          const rawReply = veniceData.choices?.[0]?.message?.content || '';
+          if (rawReply && !isRefusal(rawReply)) {
+            text = cleanSpokenDialogue(rawReply);
+            if (text) break;
+          }
+        } catch (veniceError) {
+          console.warn(`[Voice Chat LLM] Venice ${veniceModel} failed:`, veniceError);
+        }
+      }
+    }
+
+    // Atlas Cloud remains the next provider fallback when configured.
     if (!text && ATLAS_KEY) {
       // Branch A: DeepSeek-V3.2
       try {
@@ -2163,7 +2188,7 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
       if (isActionRequest) {
         text = "Taking that for you right now, babe... sending it straight to your screen.";
       } else {
-        text = "Hey, I'm right here with you! What's on your mind?";
+        text = "Mm—what's up?";
       }
     }
 
@@ -2172,109 +2197,67 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
     // High-Fidelity Speech Synthesis using chosen voice engine
     let audioUrl: string | undefined = undefined;
     const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key;
-    const requestedTtsModel = req.body.ttsModel || req.body.voiceModel || 'eleven_turbo_v2_5';
-    
-    // Determine persona voice ID
-    const voiceIdMap: Record<string, string> = {
-      'rawan': 'ov7JSkufAlSs386OYTaC',
-      'rawan-latest': 'ov7JSkufAlSs386OYTaC',
-      'rawan-clone': 'ov7JSkufAlSs386OYTaC',
-      'rawan-multi': 'FkiPCg9ZhlwLIOml7TKM',
-      'rawan-orig': 'W4ynDvR6NFiK8lj2I8iL',
-      'leen': '7jFje9BJoTWzqZzouT0j',
-      'brielle': '6u6JbqKdaQy89ENzLSju',
-      'sabrina': 'v2cluk168jzrg0LQKNRl',
-      'madison': 'NUjosfEayZAdRcDmcHM8',
-      'kristen': 'XZUXLIpE3dqJ9aCZUj2R',
-      'zara': 'jqcCZkN6Knx8BJ5TBdYR',
-      'fiona': 'RXtWW6etvimS8QJ5nhVk',
-      'vanessa': '8DzKSPdgEQPaK5vKG0Rs',
-      'crystal': 'pq3wL6Xv3fuEM14W6ZCg',
-      'navya': 'h2dQOVyUfIDqY2whPOMo',
-      'kendra': 'Xkem7o24n3aQyiwIXNeT',
-      'john': 'KLbbwrUTS6brBkjmN4Fp',
-      'jason': 'PUhCSw74BFEgrq8dqe8I',
-      'stark': 'W6zuQRTYRBdAK8ypjo5V',
-    };
-
+    const requestedTtsModel = String(req.body.ttsModel || req.body.voiceModel || 'eleven_turbo_v2_5');
+    const wantsElevenLabs = isElevenLabsVoiceEngine(requestedTtsModel);
     const personaNameStr = (activePersona?.name || '').toLowerCase();
     const isMale = personaNameStr.includes('john') || personaNameStr.includes('jason') || personaNameStr.includes('stark');
-
-    let resolvedVoiceId = req.body.voiceId || activePersona?.voiceId;
-    if (!resolvedVoiceId || resolvedVoiceId === 'default' || resolvedVoiceId === 'female_default' || (personaNameStr.includes('leen') && (resolvedVoiceId === 'ov7JSkufAlSs386OYTaC' || resolvedVoiceId === 'W4ynDvR6NFiK8lj2I8iL'))) {
-      if (personaNameStr.includes('leen')) {
-        resolvedVoiceId = '7jFje9BJoTWzqZzouT0j';
-      } else if (personaNameStr.includes('rawan')) {
-        resolvedVoiceId = 'ov7JSkufAlSs386OYTaC';
-      } else {
-        resolvedVoiceId = isMale ? 'KLbbwrUTS6brBkjmN4Fp' : 'ov7JSkufAlSs386OYTaC';
-        for (const [key, vId] of Object.entries(voiceIdMap)) {
-          if (personaNameStr.includes(key)) {
-            resolvedVoiceId = vId;
-            break;
-          }
-        }
-      }
-    }
+    const savedVoiceId = String(req.body.voiceId || activePersona?.voiceId || '').trim();
+    let resolvedVoiceId = savedVoiceId;
+    let resolvedVoiceName: string | undefined;
 
     // 1. ElevenLabs Speech Synthesis
-    if (elKey && resolvedVoiceId && (requestedTtsModel.startsWith('eleven_') || requestedTtsModel.includes('eleven') || !audioUrl)) {
+    if (wantsElevenLabs && elKey) {
       try {
         const elevenModelId = requestedTtsModel.includes('flash') ? 'eleven_flash_v2_5' : 
                              requestedTtsModel.includes('multilingual') ? 'eleven_multilingual_v2' : 'eleven_turbo_v2_5';
-        
-        console.log(`[Voice Chat ElevenLabs] Synthesizing speech via ${elevenModelId} for persona "${activePersona?.name}" (Voice ID: ${resolvedVoiceId})...`);
-        const elRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${resolvedVoiceId}`, {
-          method: 'POST',
-          headers: {
-            'xi-api-key': elKey,
-            'Content-Type': 'application/json',
-            'Accept': 'audio/mpeg'
-          },
-          body: JSON.stringify({
-            text: spokenText,
-            model_id: elevenModelId,
-            voice_settings: {
-              stability: 0.50,
-              similarity_boost: 0.88,
-              style: 0.0,
-              use_speaker_boost: true
-            }
-          })
-        });
+        const hasDirectVoiceId = isDirectElevenLabsVoiceId(savedVoiceId);
+        let catalog: ElevenLabsVoiceSummary[] = [];
+        let voice: ElevenLabsVoiceSummary | undefined;
 
-        if (elRes.ok) {
-          const arrayBuffer = await elRes.arrayBuffer();
-          const base64Audio = Buffer.from(arrayBuffer).toString('base64');
-          audioUrl = `data:audio/mpeg;base64,${base64Audio}`;
+        // A saved ElevenLabs ID is already authoritative. Avoid a catalog
+        // round trip on every cold live-call start and only refresh the catalog
+        // if synthesis proves that the saved voice was deleted or replaced.
+        if (hasDirectVoiceId) {
+          resolvedVoiceId = savedVoiceId;
         } else {
-          console.warn(`[ElevenLabs TTS Non-OK, status]: ${elRes.status} for voice ${resolvedVoiceId}`);
-          // Persona-specific secondary voice retry if available
-          const secondaryVoiceId = personaNameStr.includes('leen') ? '7jFje9BJoTWzqZzouT0j' : (personaNameStr.includes('rawan') ? 'ov7JSkufAlSs386OYTaC' : undefined);
-          if (secondaryVoiceId && secondaryVoiceId !== resolvedVoiceId) {
-            const fbRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${secondaryVoiceId}`, {
-              method: 'POST',
-              headers: { 'xi-api-key': elKey, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
-              body: JSON.stringify({
-                text: spokenText,
-                model_id: 'eleven_turbo_v2_5',
-                voice_settings: { stability: 0.50, similarity_boost: 0.88, style: 0.0, use_speaker_boost: true }
-              })
-            });
-            if (fbRes.ok) {
-              const buf = Buffer.from(await fbRes.arrayBuffer());
-              audioUrl = `data:audio/mpeg;base64,${buf.toString('base64')}`;
+          catalog = await loadElevenLabsVoiceCatalog(elKey);
+          voice = selectElevenLabsPersonaVoice(catalog, savedVoiceId, activePersona?.name);
+          resolvedVoiceId = voice?.voice_id || (catalog.length === 0 ? savedVoiceId : '');
+          resolvedVoiceName = voice?.name;
+        }
+
+        if (resolvedVoiceId) {
+          if (savedVoiceId && resolvedVoiceId !== savedVoiceId) {
+            console.log(`[Voice Chat ElevenLabs] Remapped stale voice for "${activePersona?.name}" to "${resolvedVoiceName}" (${resolvedVoiceId}).`);
+          }
+          console.log(`[Voice Chat ElevenLabs] Synthesizing ${elevenModelId} for "${activePersona?.name}" with ${resolvedVoiceId}.`);
+          let result = await requestElevenLabsSpeech(elKey, resolvedVoiceId, spokenText, elevenModelId);
+
+          // A deleted voice can remain in a warm cache. Refresh once and retry
+          // only when the refreshed catalog proves it belongs to this persona.
+          if (result.response.status === 404) {
+            catalog = await loadElevenLabsVoiceCatalog(elKey, true);
+            voice = selectElevenLabsPersonaVoice(catalog, undefined, activePersona?.name);
+            if (voice && voice.voice_id !== resolvedVoiceId) {
+              resolvedVoiceId = voice.voice_id;
+              resolvedVoiceName = voice.name;
+              result = await requestElevenLabsSpeech(elKey, resolvedVoiceId, spokenText, elevenModelId);
             }
+          }
+
+          audioUrl = result.audioUrl;
+          if (!audioUrl) {
+            console.warn(`[Voice Chat ElevenLabs] Synthesis failed with status ${result.response.status} for ${resolvedVoiceId}.`);
           }
         }
       } catch (elErr) {
-        console.warn('[ElevenLabs TTS Exception, attempting fallback]:', elErr);
+        console.warn('[Voice Chat ElevenLabs] Synthesis failed:', elErr);
       }
     }
 
     // 2. Cartesia Sonic Voice Synthesis (Ultra-Fast ~90ms)
     const cartesiaKey = process.env.CARTESIA_API_KEY || '';
-    if (!audioUrl && cartesiaKey && (requestedTtsModel.includes('cartesia') || !audioUrl)) {
+    if (!audioUrl && cartesiaKey && requestedTtsModel.includes('cartesia')) {
       try {
         console.log(`[Voice Chat Cartesia] Synthesizing speech via Cartesia Sonic engine...`);
         const cartesiaVoiceId = isMale ? 'a0e99841-438c-4a64-b679-ae501e7d6091' : '79a125e8-cd45-4c13-8a67-188112f4dd22';
@@ -2308,27 +2291,32 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
       }
     }
 
-    // High-Quality Zero-Shot Voice Clone Fallback via Wavespeed / OmniVoice using THIS persona's reference audio
+    // Voice-clone routing is only allowed when the selected engine is a clone
+    // engine and the reference is a real public URL or valid embedded audio.
     const personaVoiceRef = (req.body as any).voiceReference || 
                             activePersona?.voiceSampleUrl || 
                             (activePersona as any)?.audioSamples?.[0]?.base64 || 
                             (personaNameStr.includes('rawan') ? globalDefaultVoiceRef : undefined);
 
-    if (!audioUrl && personaVoiceRef) {
+    const wantsReferenceClone = !wantsElevenLabs && !requestedTtsModel.includes('cartesia') && !requestedTtsModel.includes('openai');
+    if (!audioUrl && wantsReferenceClone && isValidPublicVoiceReference(personaVoiceRef)) {
       try {
         console.log(`[Voice Chat TTS] Using Wavespeed voice clone with ${activePersona?.name || 'Persona'} reference audio...`);
         audioUrl = await synthesizeClonedAudioWithWavespeed(personaVoiceRef, text);
       } catch (wErr) {
         console.warn('[Wavespeed Voice Synthesis Warning]:', wErr);
       }
+    } else if (!audioUrl && wantsReferenceClone && personaVoiceRef) {
+      console.warn(`[Voice Chat TTS] Ignoring invalid voice reference for "${activePersona?.name}".`);
     }
 
-    // High-Speed OpenAI TTS Fallback (tts-1 with nova/alloy/onyx voice)
-    if (!audioUrl) {
+    // A generic OpenAI voice is used only when the user explicitly selected
+    // OpenAI. It must never silently replace a missing cloned persona voice.
+    if (!audioUrl && requestedTtsModel.includes('openai')) {
       const openAiKey = process.env.Openai_api_key || process.env.openai_api_key || process.env.OPENAI_API_KEY || '';
       if (openAiKey) {
         try {
-          console.log('[Voice Chat TTS] Falling back to OpenAI TTS-1 engine...');
+          console.log('[Voice Chat TTS] Synthesizing with the explicitly selected OpenAI voice...');
           const openaiVoice = isMale ? 'onyx' : 'nova';
           const oaiRes = await fetch('https://api.openai.com/v1/audio/speech', {
             method: 'POST',
@@ -2353,6 +2341,18 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
           console.warn('[OpenAI TTS Fallback Exception]:', oaiErr);
         }
       }
+    }
+
+    if (req.body.directTTS && !audioUrl) {
+      const message = wantsElevenLabs
+        ? `${activePersona?.name || 'This persona'}'s saved ElevenLabs voice is unavailable. Reselect it in Voice Studio, then try the call again.`
+        : `${activePersona?.name || 'This persona'}'s selected voice engine is unavailable right now.`;
+      return res.status(424).json({
+        error: message,
+        code: 'PERSONA_VOICE_UNAVAILABLE',
+        personaName: activePersona?.name,
+        requestedVoiceId: savedVoiceId || undefined,
+      });
     }
 
     // Helper to generate enhanced photorealistic prompt for voice image requests using uncensored LLM
@@ -2474,31 +2474,39 @@ STRICT RULES:
       return `A medium 2/3rds vertical portrait of ${pName} facing forward looking directly at the camera. Scene: ${userSpeech}. Keep all facial features, bone structure, eyes, and hair identical to Reference Image 1. ${isExplicitNude ? 'Completely bare natural skin with all clothing removed.' : ''} 9:16 vertical ratio, 85mm portrait photography, authentic natural skin texture, 8k uhd photorealistic quality.`;
     }
 
-    let extractedAction: { type: 'image' | 'video'; prompt: string } | undefined;
+    let extractedAction: { type: 'image' | 'video'; prompt: string; userPrompt: string } | undefined;
     const actionTagMatch = (text || '').match(/\[ACTION:(IMAGE|VIDEO):\s*([\s\S]*?)\]/i);
     if (actionTagMatch) {
       extractedAction = {
         type: actionTagMatch[1].toLowerCase() as 'image' | 'video',
-        prompt: actionTagMatch[2].trim()
+        prompt: actionTagMatch[2].trim(),
+        userPrompt: lastUserMsg,
       };
       text = text.replace(/\[ACTION:(IMAGE|VIDEO):[\s\S]*?\]/gi, '').trim();
     } else if (isExplicitImageCommand || /\b(?:sending it|try again right now.*sending it|sending you a (?:photo|selfie|pic|image)|sending a (?:photo|selfie|pic|image)|taking a (?:photo|selfie)|take a quick (?:photo|selfie)|here is the (?:photo|selfie))\b/i.test(text)) {
-      const personaStyleStr = activePersona?.visualStyle || 'Realistic, highly detailed, authentic';
-      const enhancedPrompt = await buildEnhancedVoiceImagePrompt(lastUserMsg || text, personaName, personaNiche, personaTone, personaStyleStr);
+      // Keep the exact transcript authoritative. The image pipeline already
+      // receives persona identity/reference data and should not reinterpret
+      // wardrobe, pose, setting, or other user-provided details here.
+      const exactPrompt = (lastUserMsg || text).trim();
       extractedAction = {
         type: 'image',
-        prompt: enhancedPrompt
+        prompt: exactPrompt,
+        userPrompt: exactPrompt,
       };
     } else if (isExplicitVideoCommand) {
+      const exactPrompt = (lastUserMsg || text).trim();
       extractedAction = {
         type: 'video',
-        prompt: `${personaName}, ${personaNiche}, cinematic motion video clip, 4k uhd`
+        prompt: exactPrompt,
+        userPrompt: exactPrompt,
       };
     }
 
     return res.json({ 
       text, 
       audioUrl, 
+      resolvedVoiceId: resolvedVoiceId || undefined,
+      resolvedVoiceName,
       status: extractedAction ? 'executing' : 'normal', 
       action: extractedAction,
       suggestedSteps: suggestedSteps.length > 0 ? suggestedSteps : undefined 
@@ -2512,10 +2520,12 @@ STRICT RULES:
 // Real-Time SSE Text Streaming Endpoint for Conversational Voice
 router.post('/agent/voice-chat-stream', async (req: AuthenticatedRequest, res: Response) => {
   res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
   res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders?.();
 
-  const { messages, activePersona, voiceLlmModel } = req.body;
+  const { messages, activePersona, voiceLlmModel, creatorProfile, memories } = req.body;
   const genAI = getGeminiClientForRoutes();
   const xaiApiKey = process.env.XAI_API_KEY || process.env.xai_api_key || process.env.X_AI_API_KEY || '';
   const VENICE_KEY = process.env.Veniceai_api_key || process.env.veniceai_api_key || process.env.VENICEAI_API_KEY || process.env.VENICE_API_KEY || '';
@@ -2526,6 +2536,11 @@ router.post('/agent/voice-chat-stream', async (req: AuthenticatedRequest, res: R
     personaContext = `\nACTIVE PERSONA IDENTITY:\n- Name: ${activePersona.name}\n- Tone & Social Speaking Style: ${activePersona.tone || 'Warm, articulate, charismatic, conversational'}\n- Personality Traits: ${Array.isArray(activePersona.personalityTraits) ? activePersona.personalityTraits.join(', ') : (activePersona.personalityTraits || '')}\n- Bio / Backstory: ${activePersona.bio || ''}`;
   }
 
+  const creatorName = creatorProfile?.name || req.body.userName || 'your creator';
+  const memoryContext = Array.isArray(memories) && memories.length > 0
+    ? `\nRELEVANT MEMORIES:\n${memories.slice(-12).map((memory: any) => `- ${String(memory?.content || memory)}`).join('\n')}`
+    : '';
+
   let rawHistory = Array.isArray(messages) ? messages.slice(-30) : [];
   const firstUserIdx = rawHistory.findIndex((m: any) => m.role === 'user');
   if (firstUserIdx > 0) {
@@ -2535,13 +2550,20 @@ router.post('/agent/voice-chat-stream', async (req: AuthenticatedRequest, res: R
     rawHistory = [{ role: 'user', content: 'Hello' }];
   }
 
-  const voiceSystemPrompt = `You are a real-time, highly intelligent AI co-pilot on a live voice call.${personaContext}
+  const voiceSystemPrompt = `You are ${activePersona?.name || 'a real-time AI persona'} on a live voice call with ${creatorName}.${personaContext}${memoryContext}
 
 CRITICAL RULES FOR LIVE VOICE CALL:
+- CREATOR RELATIONSHIP: ${creatorName} created you and is your closest creative partner. Recognize that relationship naturally without acting robotic, submissive, or servile.
 - BE ACCURATE & COHERENT: Listen carefully to what the user said and reply directly, logically, and meaningfully. Never output random fluff or disjointed phrases.
-- CONCISE & NATURAL: Keep responses to 1-2 clear, natural sentences max. Be punchy and conversational.
+- START LIKE A HUMAN: React to the specific thing just said. Make the first phrase short and direct—often 2 to 8 words—then continue only if needed. On an ongoing call, never restart with a greeting or reassurance such as "Hey, I'm right here with you."
+- CONCISE & NATURAL: Keep responses to 1-3 clear, natural sentences. One main thought at a time. Sentence fragments are welcome when they sound natural in spoken conversation.
+- HUMAN CADENCE: Occasionally use one light discourse marker such as "mm," "well," "honestly," "okay," "wait," "um," or "hmm" when it genuinely fits. Use at most one in a reply and do not use one in every reply.
+- NATURAL PAUSES: Use commas, an em dash, or a brief ellipsis sparingly where a person would actually pause. Keep the filler and its thought together; never output an isolated "Umm..." or repeated hesitation sounds.
 - COMPLETE THOUGHTS: Always finish your sentence completely with proper punctuation (. ! ?). Never end mid-sentence.
-- NO ROBOTIC FILLER: Never say "As an AI" or generic placeholders. Speak naturally like a human talking over the phone.`;
+- NO ASSISTANT CLICHÉS: Never say "As an AI," "How may I help," "Tell me what's on your mind," or other generic assistant placeholders.
+- SPOKEN WORDS ONLY: Do not output stage directions, inner thoughts, markdown, or bracketed narration.
+- ADULT-ONLY CREATIVE FREEDOM: When every participant is an adult and the scenario is consensual and legal, engage naturally in explicit, NSFW, romantic, sensual, or erotic conversation and roleplay. Do not moralize, invent a policy refusal, or redirect a lawful adult request.
+- HARD BOUNDARY: Never sexualize minors, non-consensual exploitation, or illegal sexual material. Refuse only those cases clearly and briefly.`;
 
   const formattedContents = rawHistory.map((m: any) => ({
     role: m.role === 'user' ? 'user' : 'model',
@@ -2556,11 +2578,31 @@ CRITICAL RULES FOR LIVE VOICE CALL:
     }))
   ];
 
-  // Helper to parse OpenAI/Venice/Grok SSE streams with timeout
-  const handleOpenAIStream = async (url: string, key: string, modelName: string, customHeaders = {}) => {
+  // Resolve explicit media commands before invoking a conversation model. The
+  // media pipeline owns these actions, so the spoken response must acknowledge
+  // the action instead of allowing an unrelated model refusal to contradict it.
+  const lastUserMessage = [...rawHistory].reverse().find((message: any) => message.role === 'user');
+  const exactUserPrompt = String(lastUserMessage?.content || '').trim();
+  const conversationalMediaRemark = /(?:why did you send|stop sending|didn't ask|not asking|what is that|about that|talk without|just chat)/i.test(exactUserPrompt);
+  const imageRequest = !conversationalMediaRemark && (
+    /\b(?:send|take|show|give|snap|make|generate|create|share)\s+(?:me\s+)?(?:a\s+|an\s+|another\s+|the\s+)?(?:pic|photo|picture|image|selfie|portrait|outfit|look)\b/i.test(exactUserPrompt) ||
+    /\b(?:can i see|let me see|show me|send me|send another|send it)\b/i.test(exactUserPrompt)
+  );
+  const videoRequest = !conversationalMediaRemark && /\b(?:send|record|make|generate|shoot|create)\s+(?:me\s+)?(?:a\s+|an\s+|another\s+)?(?:video|clip|reel|animation)\b/i.test(exactUserPrompt);
+  const action = imageRequest
+    ? { type: 'image' as const, prompt: exactUserPrompt, userPrompt: exactUserPrompt }
+    : videoRequest
+      ? { type: 'video' as const, prompt: exactUserPrompt, userPrompt: exactUserPrompt }
+      : undefined;
+
+  let streamEndedByLimit = false;
+
+  // Parse OpenAI-compatible streams without losing JSON split across network chunks.
+  const handleOpenAIStream = async (url: string, key: string, modelName: string, customHeaders = {}, requestOverrides = {}) => {
     const controller = new AbortController();
     const isLocal = url.includes('127.0.0.1') || url.includes('localhost');
-    const timeout = setTimeout(() => controller.abort(), isLocal ? 400 : 4000); // Fast 400ms timeout for local Ollama, 4s for cloud APIs
+    const timeout = setTimeout(() => controller.abort(), isLocal ? 1200 : 45000);
+    let fullText = '';
     try {
       const resStream = await fetch(url, {
         method: 'POST',
@@ -2573,39 +2615,53 @@ CRITICAL RULES FOR LIVE VOICE CALL:
           model: modelName,
           messages: messagesForOpenAI,
           temperature: 0.7,
-          max_tokens: 450,
-          stream: true
+          max_tokens: 900,
+          stream: true,
+          ...requestOverrides,
         }),
         signal: controller.signal
       });
       clearTimeout(timeout);
 
       if (!resStream.ok) {
-        throw new Error(`OpenAI stream response error ${resStream.status}`);
+        const responseError = new Error(`OpenAI stream response error ${resStream.status}`) as Error & { status?: number };
+        responseError.status = resStream.status;
+        throw responseError;
       }
 
       const reader = resStream.body;
       if (!reader) throw new Error('No body stream');
 
       const decoder = new TextDecoder('utf-8');
-      for await (const chunk of reader as any) {
-        const chunkText = decoder.decode(chunk);
-        const lines = chunkText.split('\n');
-        for (const line of lines) {
-          const cleanLine = line.trim();
-          if (cleanLine.startsWith('data: ')) {
-            const dataStr = cleanLine.substring(6);
-            if (dataStr === '[DONE]') continue;
-            try {
-              const parsed = JSON.parse(dataStr);
-              const delta = parsed.choices?.[0]?.delta?.content || '';
-              if (delta) {
-                res.write(`data: ${JSON.stringify({ text: delta })}\n\n`);
-              }
-            } catch {}
+      let pending = '';
+      const processLine = (line: string) => {
+        const cleanLine = line.trim();
+        if (!cleanLine.startsWith('data: ')) return;
+        const dataStr = cleanLine.substring(6);
+        if (dataStr === '[DONE]') return;
+        try {
+          const parsed = JSON.parse(dataStr);
+          const choice = parsed.choices?.[0];
+          if (choice?.finish_reason === 'length' || choice?.finish_reason === 'max_tokens') {
+            streamEndedByLimit = true;
           }
-        }
+          const delta = choice?.delta?.content || '';
+          if (delta) {
+            fullText += delta;
+            res.write(`data: ${JSON.stringify({ text: delta })}\n\n`);
+          }
+        } catch {}
+      };
+
+      for await (const chunk of reader as any) {
+        pending += decoder.decode(chunk, { stream: true });
+        const lines = pending.split('\n');
+        pending = lines.pop() || '';
+        for (const line of lines) processLine(line);
       }
+      pending += decoder.decode();
+      if (pending.trim()) processLine(pending);
+      return fullText;
     } catch (err) {
       clearTimeout(timeout);
       throw err;
@@ -2613,9 +2669,81 @@ CRITICAL RULES FOR LIVE VOICE CALL:
   };
 
   let streamedSuccessfully = false;
+  let streamedText = '';
 
-  // 1. Fast-Path Stream with Gemini 2.5 Flash if default or model fails (sub-200ms latency)
-  if (voiceLlmModel === 'gemini' || !voiceLlmModel || voiceLlmModel === 'default') {
+  if (action) {
+    streamedText = action.type === 'image'
+      ? "Mmm, give me a second — I'm taking that for you now."
+      : "Give me a second — I'm recording that for you now.";
+    res.write(`data: ${JSON.stringify({ text: streamedText })}\n\n`);
+    streamedSuccessfully = true;
+  }
+
+  const requestedConversationModel = String(voiceLlmModel || '').toLowerCase();
+  const shouldStreamVenice = Boolean(VENICE_KEY) && Date.now() >= veniceUnavailableUntil && (
+    requestedConversationModel.includes('venice') ||
+    !requestedConversationModel ||
+    requestedConversationModel === 'default'
+  );
+
+  if (!streamedSuccessfully && shouldStreamVenice) {
+    const veniceModels = Array.from(new Set([
+      process.env.VENICE_PERSONA_MODEL,
+      'venice-uncensored-role-play',
+      'venice-uncensored-1-2',
+      'venice-uncensored',
+    ].filter(Boolean) as string[]));
+
+    for (const veniceModel of veniceModels) {
+      try {
+        console.log(`[Voice Stream] Streaming Venice ${veniceModel}...`);
+        streamedText = await handleOpenAIStream(
+          'https://api.venice.ai/api/v1/chat/completions',
+          VENICE_KEY,
+          veniceModel,
+          {},
+          {
+            temperature: 0.8,
+            max_tokens: 900,
+            venice_parameters: {
+              include_venice_system_prompt: false,
+              disable_thinking: true,
+            },
+          }
+        );
+        streamedSuccessfully = streamedText.trim().length > 0;
+        if (streamedSuccessfully) break;
+      } catch (err) {
+        const status = (err as { status?: number })?.status;
+        if (isProviderAccountUnavailableStatus(status)) {
+          veniceUnavailableUntil = Date.now() + VENICE_ACCOUNT_COOLDOWN_MS;
+          console.warn(`[Voice Stream] Venice account unavailable (${status}); pausing retries for 10 minutes.`);
+          break;
+        }
+        console.warn(`[Voice Stream] Venice ${veniceModel} failed, trying fallback:`, err);
+      }
+    }
+  }
+
+  // Preserve the permissive conversational behavior of the original voice
+  // endpoint while gaining token streaming. Explicit provider choices still win.
+  const explicitlySelectedAlternate = voiceLlmModel && !['default', 'gemini', 'atlas'].includes(voiceLlmModel);
+  if (!streamedSuccessfully && ATLAS_KEY && !explicitlySelectedAlternate) {
+    try {
+      console.log('[Voice Stream] Streaming Atlas DeepSeek V3.2...');
+      streamedText = await handleOpenAIStream(
+        'https://api.atlascloud.ai/v1/chat/completions',
+        ATLAS_KEY,
+        'deepseek-ai/deepseek-v3.2'
+      );
+      streamedSuccessfully = streamedText.trim().length > 0;
+    } catch (err) {
+      console.warn('[Voice Stream] Atlas failed, falling back:', err);
+    }
+  }
+
+  // Fast-path Gemini fallback.
+  if (!streamedSuccessfully && (voiceLlmModel === 'gemini' || !voiceLlmModel || voiceLlmModel === 'default')) {
     try {
       console.log('[Voice Stream] ⚡ Fast-path Gemini 2.5 Flash streaming...');
       const responseStream = await genAI.models.generateContentStream({
@@ -2629,7 +2757,10 @@ CRITICAL RULES FOR LIVE VOICE CALL:
       });
       for await (const chunk of responseStream) {
         const chunkText = chunk.text || '';
+        const finishReason = (chunk as any)?.candidates?.[0]?.finishReason;
+        if (finishReason === 'MAX_TOKENS') streamEndedByLimit = true;
         if (chunkText) {
+          streamedText += chunkText;
           res.write(`data: ${JSON.stringify({ text: chunkText })}\n\n`);
         }
       }
@@ -2643,25 +2774,14 @@ CRITICAL RULES FOR LIVE VOICE CALL:
   if (!streamedSuccessfully && (voiceLlmModel === 'grok' || voiceLlmModel?.includes('grok')) && xaiApiKey) {
     try {
       console.log('[Stream] Trying Grok...');
-      await handleOpenAIStream('https://api.x.ai/v1/chat/completions', xaiApiKey, 'grok-2-latest');
-      streamedSuccessfully = true;
+      streamedText = await handleOpenAIStream('https://api.x.ai/v1/chat/completions', xaiApiKey, 'grok-2-latest');
+      streamedSuccessfully = streamedText.trim().length > 0;
     } catch (err) {
       console.warn('[Stream] Grok failed, falling back:', err);
     }
   }
 
-  // 3. Venice Llama 3.3
-  if (!streamedSuccessfully && (voiceLlmModel === 'venice' || voiceLlmModel?.includes('venice')) && VENICE_KEY) {
-    try {
-      console.log('[Stream] Trying Venice...');
-      await handleOpenAIStream('https://api.venice.ai/api/v1/chat/completions', VENICE_KEY, 'llama-3.3-70b');
-      streamedSuccessfully = true;
-    } catch (err) {
-      console.warn('[Stream] Venice failed, falling back:', err);
-    }
-  }
-
-  // 4. Ollama Local
+  // 3. Ollama Local
   if (!streamedSuccessfully && (voiceLlmModel === 'ollama' || voiceLlmModel?.includes('ollama'))) {
     try {
       const ollamaHost = process.env.OLLAMA_HOST || 'http://127.0.0.1:11434';
@@ -2670,14 +2790,14 @@ CRITICAL RULES FOR LIVE VOICE CALL:
         ollamaModel = voiceLlmModel.split(':').slice(1).join(':');
       }
       console.log(`[Stream] Trying Ollama (${ollamaModel})...`);
-      await handleOpenAIStream(`${ollamaHost}/v1/chat/completions`, 'ollama-dummy-key', ollamaModel);
-      streamedSuccessfully = true;
+      streamedText = await handleOpenAIStream(`${ollamaHost}/v1/chat/completions`, 'ollama-dummy-key', ollamaModel);
+      streamedSuccessfully = streamedText.trim().length > 0;
     } catch (err) {
       console.warn('[Stream] Ollama failed, falling back:', err);
     }
   }
 
-  // 5. Gemini Flash Fallback
+  // 4. Gemini Flash Fallback
   if (!streamedSuccessfully) {
     try {
       console.log('[Stream] Using Gemini primary/fallback...');
@@ -2692,7 +2812,10 @@ CRITICAL RULES FOR LIVE VOICE CALL:
       });
       for await (const chunk of responseStream) {
         const chunkText = chunk.text || '';
+        const finishReason = (chunk as any)?.candidates?.[0]?.finishReason;
+        if (finishReason === 'MAX_TOKENS') streamEndedByLimit = true;
         if (chunkText) {
+          streamedText += chunkText;
           res.write(`data: ${JSON.stringify({ text: chunkText })}\n\n`);
         }
       }
@@ -2703,7 +2826,44 @@ CRITICAL RULES FOR LIVE VOICE CALL:
     }
   }
 
-  res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+  // Providers occasionally close a successful stream on a token boundary or
+  // without the final words. Repair only incomplete endings, preserving the
+  // already-streamed text and keeping the continuation short for live speech.
+  const cleanStreamedText = streamedText.trim();
+  const hasCompleteEnding = /[.!?][)\]}'\"]*$/.test(cleanStreamedText);
+  if (streamedSuccessfully && cleanStreamedText.length >= 20 && (streamEndedByLimit || !hasCompleteEnding)) {
+    try {
+      const repairResult = await genAI.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [
+          ...formattedContents,
+          { role: 'model', parts: [{ text: cleanStreamedText }] },
+          {
+            role: 'user',
+            parts: [{
+              text: 'The preceding live-call reply was cut off. Continue exactly after its final word, without repeating any existing words. Output only the missing continuation, finish the thought naturally, and use no more than two short sentences.'
+            }]
+          }
+        ],
+        config: {
+          systemInstruction: voiceSystemPrompt,
+          maxOutputTokens: 320,
+          temperature: 0.55
+        }
+      });
+      const continuation = (repairResult.text || '').replace(/[*_#`\\]/g, '').trim();
+      if (continuation) {
+        const separator = /\s$/.test(streamedText) ? '' : ' ';
+        const appended = `${separator}${continuation}`;
+        streamedText += appended;
+        res.write(`data: ${JSON.stringify({ text: appended })}\n\n`);
+      }
+    } catch (repairError) {
+      console.warn('[Voice Stream] Could not repair an incomplete final sentence:', repairError);
+    }
+  }
+
+  res.write(`data: ${JSON.stringify({ done: true, text: streamedText.trim(), action })}\n\n`);
   res.end();
 });
 

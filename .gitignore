@@ -8,6 +8,7 @@ scratch/
 local_models/
 server/temp/
 server/public/uploads/
+supabase/.temp/
 public/uploads/
 rewrite*.py
 rewrite.py

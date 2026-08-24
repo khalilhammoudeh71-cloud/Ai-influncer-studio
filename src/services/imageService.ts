@@ -3,16 +3,51 @@ import { supabase } from '../lib/supabase';
 import { compressForUpload } from '../utils/imageProcessing';
 
 export async function authFetch(url: string, options: RequestInit = {}) {
-  let token = null;
-  try {
-    const sessionPromise = supabase.auth.getSession();
-    const timeoutPromise = new Promise<any>((resolve) => setTimeout(() => resolve({ data: { session: null } }), 600));
-    const sessionRes = await Promise.race([sessionPromise, timeoutPromise]);
-    token = sessionRes?.data?.session?.access_token;
-  } catch {}
   const headers: Record<string, string> = { ...options.headers as Record<string, string> };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-  return fetch(url, { ...options, headers });
+
+  try {
+    // getSession restores the persisted browser session and refreshes an
+    // expired access token when necessary. Do not race it against a short
+    // timeout: slower preview deployments were sending protected media
+    // requests without Authorization while session restoration was still in
+    // progress.
+    const { data, error } = await supabase.auth.getSession();
+    if (error) console.warn('[Auth] Could not restore the current session:', error.message);
+
+    let token = data?.session?.access_token;
+    if (!token) {
+      const refreshed = await supabase.auth.refreshSession();
+      if (refreshed.error) {
+        console.warn('[Auth] Could not refresh the current session:', refreshed.error.message);
+      }
+      token = refreshed.data?.session?.access_token;
+    }
+
+    if (token) headers.Authorization = `Bearer ${token}`;
+  } catch (error) {
+    console.warn('[Auth] Could not prepare authenticated request:', error);
+  }
+
+  let response = await fetch(url, { ...options, headers });
+
+  // A token can expire between being read and reaching the API. Refresh once
+  // and replay the request so an active signed-in user is not forced to sign
+  // in again. The server remains the source of truth and still verifies the
+  // refreshed JWT on every protected request.
+  if (response.status === 401 && headers.Authorization) {
+    try {
+      const { data, error } = await supabase.auth.refreshSession();
+      const refreshedToken = data?.session?.access_token;
+      if (!error && refreshedToken) {
+        headers.Authorization = `Bearer ${refreshedToken}`;
+        response = await fetch(url, { ...options, headers });
+      }
+    } catch (error) {
+      console.warn('[Auth] Could not retry request with a refreshed session:', error);
+    }
+  }
+
+  return response;
 }
 
 export interface ModelInfo {
@@ -66,6 +101,12 @@ export interface GenerateImageParams {
   identityLock?: boolean;
   count?: number;
   lora?: Array<{ model: string; weight: number }>;
+  referenceImage?: string;
+  allowNsfw?: boolean;
+  creatorProfile?: unknown;
+  isDuoShoot?: boolean;
+  isCreatorSolo?: boolean;
+  preservePromptVerbatim?: boolean;
 }
 
 export interface GenerateImageResult {
@@ -211,54 +252,8 @@ export async function generateImage(params: GenerateImageParams): Promise<Genera
     ...restParams,
   };
 
-  let response: Response;
-  try {
-    response = await authFetch('/api/generate-image', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-  } catch (fetchErr) {
-    throw new Error('Could not reach the server. It may have restarted — please try again.');
-  }
-
-  const contentType = response.headers.get('content-type');
-  if (!contentType || !contentType.includes('application/json')) {
-    const text = await response.text().catch(() => '');
-    console.error('[ImageService] Non-JSON response:', response.status, text.substring(0, 200));
-    if (response.status === 413) {
-      throw new Error('Request too large. Try using fewer or smaller reference images.');
-    }
-    throw new Error(text
-      ? `Server error (${response.status}): ${text.substring(0, 100)}`
-      : `Server error (${response.status}). Please try again.`
-    );
-  }
-
-  let data: { imageUrl?: string; images?: { imageUrl: string; model: string; promptUsed: string }[]; model?: string; promptUsed?: string; error?: string };
-  try {
-    data = await response.json();
-  } catch {
-    throw new Error(`Server returned invalid response (${response.status}). Please try again.`);
-  }
-
-  if (!response.ok) {
-    throw new Error(data.error || 'Image generation failed.');
-  }
-
-  if (data.images && data.images.length > 0) {
-    return data.images.map(img => ({
-      imageUrl: img.imageUrl,
-      model: img.model,
-      promptUsed: img.promptUsed || '',
-    }));
-  }
-
-  return {
-    imageUrl: data.imageUrl!,
-    model: data.model!,
-    promptUsed: data.promptUsed || '',
-  };
+  const { studioImageJob } = await import('./mediaJobService');
+  return studioImageJob(persona.id, payload);
 }
 
 async function padImageForExtend(sourceBase64: string, prompt: string): Promise<string> {
@@ -322,44 +317,13 @@ async function padImageForExtend(sourceBase64: string, prompt: string): Promise<
 }
 
 export async function editImage(sourceImage: string, prompt: string, modelId: string, additionalImage?: string, maskImage?: string): Promise<{ imageUrl: string; model: string }> {
-  const body: Record<string, string> = { sourceImage, prompt, modelId };
-  if (additionalImage) body.additionalImage = additionalImage;
-  if (maskImage) body.maskImage = maskImage;
-  const response = await authFetch('/api/edit-image', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-
-  const contentType = response.headers.get('content-type');
-  if (!contentType || !contentType.includes('application/json')) {
-    throw new Error('Image API not reachable. Make sure the backend server is running.');
-  }
-
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.error || 'Image editing failed.');
-  }
-  return { imageUrl: data.imageUrl, model: data.model };
+  const { editImageJob } = await import('./mediaJobService');
+  return editImageJob(undefined, sourceImage, prompt, modelId, additionalImage, maskImage);
 }
 
 export async function upscaleImage(sourceImage: string, modelId: string, targetResolution?: string): Promise<{ imageUrl: string; model: string }> {
-  const response = await authFetch('/api/upscale-image', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sourceImage, modelId, targetResolution }),
-  });
-
-  const contentType = response.headers.get('content-type');
-  if (!contentType || !contentType.includes('application/json')) {
-    throw new Error('Image API not reachable. Make sure the backend server is running.');
-  }
-
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.error || 'Image upscaling failed.');
-  }
-  return { imageUrl: data.imageUrl, model: data.model };
+  const { upscaleImageJob } = await import('./mediaJobService');
+  return upscaleImageJob(undefined, sourceImage, modelId, targetResolution);
 }
 
 export async function generateVideo(
@@ -385,22 +349,72 @@ export async function generateVideo(
   if (sourceVideo) body.sourceVideo = sourceVideo;
   if (generateAudio !== undefined) body.generateAudio = generateAudio;
   if (strength !== undefined) body.strength = strength;
-  const response = await authFetch('/api/generate-video', {
+  const { studioVideoJob } = await import('./mediaJobService');
+  return studioVideoJob(undefined, body);
+}
+
+export interface PersonaMediaRequest {
+  type: 'image' | 'video';
+  prompt: string;
+  persona: Persona;
+  imageModelId?: string;
+  videoModelId?: string;
+  referenceImage?: string;
+  revisionImage?: string;
+  additionalImages?: string[];
+  creatorProfile?: object | null;
+  aspectRatio?: string;
+  allowNsfw?: boolean;
+}
+
+export interface PersonaMediaQualityReport {
+  status: 'passed' | 'failed' | 'unavailable';
+  expectedParticipantCount: number;
+  observedParticipantCount: number | null;
+  countConfidence: number | null;
+  identities: Array<{
+    name: string;
+    present: boolean | null;
+    verdict: 'match' | 'mismatch' | 'uncertain';
+    confidence: number | null;
+  }>;
+  reasons: string[];
+  attempt: number;
+  checkedAt: string;
+}
+
+export interface PersonaMediaResult {
+  success: boolean;
+  type: 'image' | 'video';
+  url?: string;
+  model?: string;
+  promptUsed?: string;
+  message: string;
+  error?: string;
+  participants?: string[];
+  isRevision?: boolean;
+  parentImageUrl?: string;
+  quality?: PersonaMediaQualityReport | null;
+  qualityRetried?: boolean;
+}
+
+export async function requestPersonaMedia(params: PersonaMediaRequest): Promise<PersonaMediaResult> {
+  const response = await authFetch('/api/persona/media-request', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify(params),
   });
 
   const contentType = response.headers.get('content-type');
-  if (!contentType || !contentType.includes('application/json')) {
-    throw new Error('Video API not reachable. Make sure the backend server is running.');
+  if (!contentType?.includes('application/json')) {
+    throw new Error(`Media request failed (${response.status}). Please try again.`);
   }
 
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.error || 'Video generation failed.');
+  const data = await response.json() as PersonaMediaResult;
+  if (!response.ok || !data.success || !data.url) {
+    throw new Error(data.message || data.error || `${params.type === 'image' ? 'Image' : 'Video'} generation failed.`);
   }
-  return { videoUrl: data.videoUrl, model: data.model };
+  return data;
 }
 
 export async function createPrompts(params: {
@@ -668,21 +682,8 @@ export async function generateTalkingHead(params: {
   expression?: string;
   lighting?: string;
 }): Promise<{ videoUrl: string; model: string }> {
-  const compressed = params.portraitImage ? await compressForUpload(params.portraitImage) : undefined;
-  const response = await authFetch('/api/talking-head', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...params, portraitImage: compressed }),
-  });
-  const contentType = response.headers.get('content-type');
-  if (!contentType || !contentType.includes('application/json')) {
-    const text = await response.text().catch(() => '');
-    if (response.status === 413) throw new Error('Request too large — try with a smaller image.');
-    throw new Error(text ? `Server error (${response.status}): ${text.substring(0, 150)}` : `Server error (${response.status}).`);
-  }
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error || 'Talking head generation failed.');
-  return { videoUrl: data.videoUrl, model: data.model };
+  const { talkingAvatarJob } = await import('./mediaJobService');
+  return talkingAvatarJob(undefined, params);
 }
 
 export async function virtualTryOn(
@@ -801,5 +802,3 @@ export async function extendVideo(params: {
     model: genRes.model
   };
 }
-
-

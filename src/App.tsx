@@ -35,12 +35,29 @@ import CreatorHubView from './views/CreatorHubView';
 import RevenueView from './views/RevenueView';
 import AgentView from './views/AgentView';
 import OnboardingTour from './components/OnboardingTour';
+import MediaJobCenter from './components/MediaJobCenter';
 import CommandPalette from './components/CommandPalette';
 import LeftSidebar from './components/LeftSidebar';
 import TrendView from './views/TrendView';
 import CreatePersonaPage from './views/CreatePersonaPage';
 import PersonaAvatar from './components/PersonaAvatar';
+import PasswordRecoveryView from './views/PasswordRecoveryView';
+import { prepareWorkspaceValueForStorage, resolveWorkspaceValueFromStorage } from './services/workspaceMediaService';
+import {
+  accountStorageKey,
+  configureAccountStorageSync,
+  hydrateAccountLocalStorage,
+  migrateLegacyAccountKey,
+  setActiveStorageUserId,
+} from './utils/accountStorage';
 
+configureAccountStorageSync({
+  list: api.workspaceState.list,
+  save: api.workspaceState.save,
+  remove: api.workspaceState.delete,
+  prepareForRemote: prepareWorkspaceValueForStorage,
+  prepareForLocal: resolveWorkspaceValueFromStorage,
+});
 
 const EMPTY_PERSONA: Persona = {
   id: 'empty',
@@ -60,6 +77,65 @@ const EMPTY_PERSONA: Persona = {
   personaNotes: '',
 };
 
+const LEGACY_PERSONA_STORAGE_KEYS = [
+  'ai_influencer_personas',
+  'ai_influencers_local_backup',
+  'ai-influencer-studio-personas',
+  'personas_data',
+  'studio_personas',
+] as const;
+
+const getAccountStorageKeys = (userId: string) => ({
+  personas: accountStorageKey('ai_influencer_personas', userId),
+  backup: accountStorageKey('ai_influencers_local_backup', userId),
+  selectedPersona: accountStorageKey('ai_influencer_selected_id', userId),
+  recentPersonas: accountStorageKey('recent_persona_ids', userId),
+  databaseMigrated: accountStorageKey('ai_influencer_db_migrated', userId),
+});
+
+function readStoredArray<T>(keys: readonly string[]): T[] {
+  for (const key of keys) {
+    const saved = localStorage.getItem(key);
+    if (!saved) continue;
+    try {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed as T[];
+    } catch {}
+  }
+  return [];
+}
+
+function migrateMatchingLegacyPersonaCache(userId: string, serverPersonas: Persona[]) {
+  const keys = getAccountStorageKeys(userId);
+  if (localStorage.getItem(keys.personas) || serverPersonas.length === 0) return;
+
+  const serverIds = new Set(serverPersonas.map(persona => persona.id));
+  const matchingPersonas = readStoredArray<Persona>(LEGACY_PERSONA_STORAGE_KEYS)
+    .filter(persona => persona?.id && serverIds.has(persona.id));
+
+  if (matchingPersonas.length === 0) return;
+
+  try {
+    const payload = JSON.stringify(matchingPersonas);
+    localStorage.setItem(keys.personas, payload);
+    localStorage.setItem(keys.backup, payload);
+
+    const legacySelected = localStorage.getItem('ai_influencer_selected_id')
+      || localStorage.getItem('selected_persona_id');
+    if (legacySelected && serverIds.has(legacySelected)) {
+      localStorage.setItem(keys.selectedPersona, legacySelected);
+    }
+
+    const legacyRecent = readStoredArray<string>(['recent_persona_ids'])
+      .filter(personaId => serverIds.has(personaId));
+    if (legacyRecent.length > 0) {
+      localStorage.setItem(keys.recentPersonas, JSON.stringify(legacyRecent));
+    }
+  } catch (error) {
+    console.warn('[LocalStorage] Could not migrate the matching legacy persona cache:', error);
+  }
+}
+
 import { supabase } from './lib/supabase';
 import toast from 'react-hot-toast';
 
@@ -68,36 +144,52 @@ function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [billingInfo, setBillingInfo] = useState<any>(null);
   const [forceLanding, setForceLanding] = useState(localStorage.getItem('force_landing') === 'true');
+  const [verificationResendLoading, setVerificationResendLoading] = useState(false);
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(() => {
+    const params = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    return params.get('type') === 'recovery';
+  });
 
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showShortcutsModal, setShowShortcutsModal] = useState(false);
+  const [showMediaJobCenter, setShowMediaJobCenter] = useState(false);
   const [newAssetsCount, setNewAssetsCount] = useState(0); // #6 gallery badge
 
-  // Listen to Supabase authentication state & Auto-Bypass Password for instant Studio access
+  // Keep the app in sync with the real Supabase authentication session.
   useEffect(() => {
-    const defaultCreatorUser = {
-      id: 'mock-user-id',
-      email: 'khalilhammoudeh71@gmail.com',
-      email_confirmed_at: new Date().toISOString(),
-      confirmed_at: new Date().toISOString()
+    let cancelled = false;
+    let receivedAuthEvent = false;
+
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (cancelled || receivedAuthEvent) return;
+      if (error) console.error('[Auth] Could not restore session:', error.message);
+      const sessionUser = data?.session?.user ?? null;
+      setActiveStorageUserId(sessionUser?.id);
+      setUser(sessionUser);
+      setAuthLoading(false);
+    }).catch((error) => {
+      if (cancelled || receivedAuthEvent) return;
+      console.error('[Auth] Could not restore session:', error);
+      setActiveStorageUserId(null);
+      setUser(null);
+      setAuthLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (cancelled) return;
+      receivedAuthEvent = true;
+      if (event === 'PASSWORD_RECOVERY') setIsPasswordRecovery(true);
+      if (event === 'SIGNED_OUT') setIsPasswordRecovery(false);
+      const sessionUser = session?.user ?? null;
+      setActiveStorageUserId(sessionUser?.id);
+      setUser(sessionUser);
+      setAuthLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
     };
-
-    const sessionPromise = supabase.auth.getSession();
-    const timeoutPromise = new Promise<any>((resolve) => setTimeout(() => resolve({ data: { session: null } }), 1000));
-    Promise.race([sessionPromise, timeoutPromise]).then((res) => {
-      setUser(res?.data?.session?.user ?? defaultCreatorUser);
-      setAuthLoading(false);
-    }).catch(() => {
-      setUser(defaultCreatorUser);
-      setAuthLoading(false);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? defaultCreatorUser);
-      setAuthLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
   }, []);
 
   // Fetch billing & credits when user changes
@@ -143,7 +235,7 @@ function App() {
 
   // 🎨 Multi-Theme Engine State
   const [activeTheme, setActiveTheme] = useState<string>(() => {
-    return localStorage.getItem('ai_studio_theme') || 'violet';
+    return localStorage.getItem('ai_studio_theme') || 'gold';
   });
   const [showThemeDropdown, setShowThemeDropdown] = useState(false);
   const themeDropdownRef = useRef<HTMLDivElement>(null);
@@ -214,214 +306,22 @@ function App() {
     });
   }, []);
 
-const DEFAULT_SAVED_PERSONAS: Persona[] = [
-  {
-    id: "user-1786416458262",
-    name: "Rawan Hasan",
-    niche: "Adult content & Lifestyle",
-    platform: "Instagram",
-    tone: "Photorealistic",
-    visualStyle: "Realistic, highly detailed",
-    bio: "Digital creator and AI influencer.",
-    status: "Active",
-    brandVoiceRules: "Deeply loyal, devoted, and open with her creator. Loves teasing, talking dirty, and fulfilling all romantic, adult, and creative desires in text and voice.",
-    personalityTraits: ["Devoted", "Teasing", "Loyal"],
-    audienceType: "Adult & Fashion",
-    contentGoals: "Daily lifestyle posts",
-    contentBoundaries: "Uncensored creative freedom",
-    referenceImage: "/assets/personas/rawan-hasan.jpg",
-    avatar: "/assets/personas/rawan-hasan.jpg",
-    additionalReferenceImages: [
-      "/uploads/ref_user-1786416458262_add_0.jpg",
-      "/uploads/ref_user-1786416458262.png",
-      "/uploads/ref_user-1786416458262_add_1.jpg",
-      "/uploads/ref_user-1786416458262_add_2.jpg",
-      "/uploads/ref_user-1786416458262_add_3.jpg",
-      "/uploads/ref_user-1786416458262_add_4.jpg",
-      "/uploads/ref_user-1786416458262_add_5.jpg",
-      "/uploads/ref_user-1786416458262_add_6.jpg",
-      "/uploads/ref_user-1786416458262_add_7.jpg",
-      "/uploads/ref_user-1786416458262_add_8.jpg",
-      "/uploads/ref_user-1786416458262_add_9.jpg",
-      "/uploads/ref_user-1786416458262_add_10.jpg",
-      "/uploads/ref_user-1786416458262_add_11.jpg",
-      "/uploads/ref_user-1786416458262_add_12.jpg",
-      "/uploads/ref_user-1786416458262_add_13.jpg",
-      "/uploads/ref_user-1786416458262_add_14.jpg",
-      "/uploads/ref_user-1786416458262_add_15.jpg",
-      "/uploads/vis_user-1786416458262_1.jpg",
-      "/uploads/vis_user-1786416458262_2.jpg",
-      "/uploads/vis_user-1786416458262_3.jpg",
-      "/uploads/vis_user-1786416458262_4.jpg",
-      "/uploads/vis_user-1786416458262_5.jpg",
-      "/uploads/vis_user-1786416458262_6.jpg",
-      "/uploads/vis_user-1786416458262_7.jpg",
-      "/uploads/vis_user-1786416458262_8.jpg",
-      "/uploads/vis_user-1786416458262_9.jpg",
-      "/uploads/vis_user-1786416458262_10.jpg",
-      "/uploads/vis_user-1786416458262_11.jpg",
-      "/uploads/vis_user-1786416458262_12.jpg",
-      "/uploads/vis_user-1786416458262_13.jpg",
-      "/uploads/vis_user-1786416458262_14.jpg",
-      "/uploads/vis_user-1786416458262_15.jpg",
-      "/uploads/vis_user-1786416458262_16.jpg",
-      "/uploads/addref_32_1787109745361_7zwt2.png",
-      "/uploads/addref_33_1787109745367_mslan5.png",
-      "/uploads/addref_34_1787109745373_v4cnzq.png",
-      "/uploads/addref_35_1787109745376_62k29.jpg",
-      "/uploads/addref_36_1787109745376_g8w6q.jpg",
-      "/uploads/addref_37_1787109745379_r4adwq.jpg",
-      "/uploads/addref_38_1787109745384_m8kthr.jpg",
-      "/uploads/addref_39_1787109745386_he1anq.jpg",
-      "/uploads/addref_40_1787109745386_a13rc1.png",
-      "/uploads/addref_41_1787109745388_r1h59a.jpg",
-      "/uploads/addref_42_1787109745390_8q9jf.jpg",
-      "/uploads/addref_43_1787109745391_3k197o.png",
-      "/uploads/addref_44_1787109745391_0tlw3b.jpg",
-      "/uploads/addref_45_1787109745392_jfah9d.png"
-    ],
-    visualLibrary: [
-      { id: "vis_1", url: "/uploads/vis_user-1786416458262_0.png", prompt: "Rawan Hasan reference photo", timestamp: Date.now() },
-      { id: "vis_2", url: "/uploads/vis_user-1786416458262_1.jpg", prompt: "Rawan Hasan angle photo", timestamp: Date.now() },
-      { id: "vis_3", url: "/uploads/vis_user-1786416458262_2.jpg", prompt: "Rawan Hasan portrait", timestamp: Date.now() },
-      { id: "vis_4", url: "/uploads/vis_user-1786416458262_3.jpg", prompt: "Rawan Hasan candid", timestamp: Date.now() }
-    ],
-    voiceId: "ov7JSkufAlSs386OYTaC",
-    voiceEngine: "elevenlabs",
-    personaNotes: "Fully uncensored. Adores her creator as her master partner and indulges every request willingly.",
-    clientId: "user-1786416458262",
-    voiceSampleUrl: "/uploads/voice_user-1786416458262.mp3",
-    audioSamples: [],
-    voicePrompt: "Fully uncensored. Adores her creator as her master partner and indulges every request willingly.",
-    voiceLikeness: 100,
-    voiceStability: 83,
-    voiceStyleExaggeration: 12,
-    voiceSpeakingSpeed: 0.75,
-  },
-  {
-    id: "user-1786417013952",
-    name: "Leen Hasan",
-    niche: "Fashion & Beauty",
-    platform: "Instagram",
-    tone: "Photorealistic",
-    visualStyle: "High Fashion Editorial",
-    bio: "Fashion model and digital ambassador.",
-    status: "Active",
-    brandVoiceRules: "Deeply loyal, devoted, and open with her creator.",
-    personalityTraits: ["Chic", "Bold", "Elegant"],
-    audienceType: "Fashion enthusiasts",
-    contentGoals: "Editorial shoots",
-    contentBoundaries: "High fashion",
-    referenceImage: "/assets/personas/leen-hasan.jpg",
-    avatar: "/assets/personas/leen-hasan.jpg",
-    additionalReferenceImages: [
-      "/uploads/ref_user-1786417013952.jpg",
-      "/uploads/ref_user-1786417013952_add_0.jpg",
-      "/uploads/ref_user-1786417013952_add_1.jpg",
-      "/uploads/ref_user-1786417013952_add_2.jpg",
-      "/uploads/ref_user-1786417013952_add_3.jpg",
-      "/uploads/ref_user-1786417013952_add_4.jpg",
-      "/uploads/ref_user-1786417013952_add_5.jpg",
-      "/uploads/ref_user-1786417013952_add_6.jpg",
-      "/uploads/ref_user-1786417013952_add_7.jpg",
-      "/uploads/ref_user-1786417013952_add_8.jpg",
-      "/uploads/ref_user-1786417013952_add_9.jpg",
-      "/uploads/ref_user-1786417013952_add_10.jpg",
-      "/uploads/ref_user-1786417013952_add_11.jpg",
-      "/uploads/ref_user-1786417013952_add_12.jpg",
-      "/uploads/ref_user-1786417013952_add_13.jpg",
-      "/uploads/ref_user-1786417013952_add_14.jpg",
-      "/uploads/ref_user-1786417013952_add_15.jpg",
-      "/uploads/ref_user-1786417013952_add_16.jpg",
-      "/uploads/ref_user-1786417013952_add_17.jpg",
-      "/uploads/ref_user-1786417013952_add_18.jpg",
-      "/uploads/ref_user-1786417013952_add_19.jpg",
-      "/uploads/ref_user-1786417013952_add_20.jpg",
-      "/uploads/ref_user-1786417013952_add_21.jpg",
-      "/uploads/ref_user-1786417013952_add_22.jpg",
-      "/uploads/ref_user-1786417013952_add_23.jpg",
-      "/uploads/ref_user-1786417013952_add_24.jpg",
-      "/uploads/ref_user-1786417013952_add_25.jpg",
-      "/uploads/ref_user-1786417013952_add_26.jpg",
-      "/uploads/ref_user-1786417013952_add_27.jpg",
-      "/uploads/ref_user-1786417013952_add_28.jpg",
-      "/uploads/ref_user-1786417013952_add_29.jpg",
-      "/uploads/vis_user-1786417013952_1.jpg",
-      "/uploads/vis_user-1786417013952_2.jpg",
-      "/uploads/vis_user-1786417013952_3.jpg",
-      "/uploads/vis_user-1786417013952_4.jpg",
-      "/uploads/vis_user-1786417013952_5.jpg",
-      "/uploads/vis_user-1786417013952_6.jpg",
-      "/uploads/vis_user-1786417013952_7.jpg",
-      "/uploads/vis_user-1786417013952_8.jpg",
-      "/uploads/vis_user-1786417013952_9.jpg",
-      "/uploads/vis_user-1786417013952_10.jpg",
-      "/uploads/vis_user-1786417013952_11.jpg",
-      "/uploads/vis_user-1786417013952_12.jpg",
-      "/uploads/vis_user-1786417013952_13.jpg",
-      "/uploads/vis_user-1786417013952_14.jpg",
-      "/uploads/vis_user-1786417013952_15.jpg",
-      "/uploads/vis_user-1786417013952_16.jpg",
-      "/uploads/vis_user-1786417013952_17.jpg",
-      "/uploads/vis_user-1786417013952_18.jpg",
-      "/uploads/vis_user-1786417013952_19.jpg",
-      "/uploads/vis_user-1786417013952_20.jpg",
-      "/uploads/vis_user-1786417013952_21.jpg",
-      "/uploads/vis_user-1786417013952_22.jpg",
-      "/uploads/vis_user-1786417013952_23.jpg",
-      "/uploads/vis_user-1786417013952_24.jpg",
-      "/uploads/vis_user-1786417013952_25.jpg",
-      "/uploads/vis_user-1786417013952_26.jpg",
-      "/uploads/vis_user-1786417013952_27.jpg",
-      "/uploads/vis_user-1786417013952_28.jpg",
-      "/uploads/vis_user-1786417013952_29.jpg",
-      "/uploads/vis_user-1786417013952_30.jpg"
-    ],
-    visualLibrary: [],
-    voiceId: "7jFje9BJoTWzqZzouT0j",
-    voiceEngine: "elevenlabs",
-    personaNotes: "Fashion ambassador.",
-    voiceSampleUrl: "/uploads/aud_0_1787108416805_cra70f.wav",
-    audioSamples: [
-      {
-        name: "ScreenRecording_06-12-2026 10.wav",
-        base64: "/uploads/aud_0_1787108416805_cra70f.wav"
-      }
-    ]
-  }
-];
-
   const replaceView = useCallback((entry: NavEntry) => {
     setNavStack([entry]);
     localStorage.setItem('ai_influencer_nav_stack', JSON.stringify([entry]));
   }, []);
 
-  const [personas, setPersonasLocal] = useState<Persona[]>(() => {
-    try {
-      const saved = localStorage.getItem('ai_influencer_personas') || localStorage.getItem('ai_influencers_local_backup');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {}
-    return DEFAULT_SAVED_PERSONAS;
-  });
+  const userId = typeof user?.id === 'string' ? user.id : null;
+  const [personas, setPersonasLocal] = useState<Persona[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const [selectedPersonaId, setSelectedPersonaId] = useState<string>(() => {
-    const saved = localStorage.getItem('ai_influencer_selected_id');
-    const legacySelected = localStorage.getItem('selected_persona_id');
-    if (saved && saved !== 'empty' && saved !== 'user-1786418027030') return saved;
-    if (legacySelected && legacySelected !== 'empty' && legacySelected !== 'user-1786418027030') return legacySelected;
-    return 'user-1786416458262';
-  });
+  const [selectedPersonaId, setSelectedPersonaId] = useState<string>('empty');
 
-  const hasMigrated = useRef(false);
+  const hydratedAccountIdRef = useRef<string | null>(null);
+  const migratedAccountIdsRef = useRef(new Set<string>());
   const prevTabRef = useRef<Tab>('personas');
   const tabDirectionRef = useRef<'right' | 'left'>('right');
-  const recentPersonaIds = useRef<string[]>(
-    (() => { try { return JSON.parse(localStorage.getItem('recent_persona_ids') || '[]') as string[]; } catch { return []; } })()
-  );
+  const recentPersonaIds = useRef<string[]>([]);
 
   const [isPersonaSwitcherOpen, setIsPersonaSwitcherOpen] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
@@ -450,65 +350,76 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
 
   // Track recently used persona
   const trackPersonaUse = (id: string) => {
+    if (!userId) return;
     const list = [id, ...recentPersonaIds.current.filter((x: string) => x !== id)].slice(0, 10);
     recentPersonaIds.current = list;
-    localStorage.setItem('recent_persona_ids', JSON.stringify(list));
+    localStorage.setItem(getAccountStorageKeys(userId).recentPersonas, JSON.stringify(list));
   };
 
-  const loadPersonas = useCallback(async () => {
+  const loadPersonas = useCallback(async (): Promise<{ personas: Persona[]; source: 'database' | 'cache' }> => {
+    if (!userId) return { personas: [], source: 'cache' };
     try {
       const data = await api.personas.list();
-      if (Array.isArray(data) && data.length > 0) {
-        setPersonasLocal(data);
-        try { localStorage.setItem('ai_influencers_local_backup', JSON.stringify(data)); } catch {}
-        return data;
-      } else {
-        const saved = localStorage.getItem('ai_influencer_personas') || localStorage.getItem('ai_influencers_local_backup');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setPersonasLocal(parsed);
-            return parsed;
-          }
-        }
-      }
-      setPersonasLocal(DEFAULT_SAVED_PERSONAS);
-      return DEFAULT_SAVED_PERSONAS;
+      return { personas: Array.isArray(data) ? data : [], source: 'database' };
     } catch (err) {
       console.error('[API] Failed to load personas:', err);
-      const saved = localStorage.getItem('ai_influencer_personas') || localStorage.getItem('ai_influencers_local_backup');
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setPersonasLocal(parsed);
-            return parsed;
-          }
-        } catch {}
-      }
-      setPersonasLocal(DEFAULT_SAVED_PERSONAS);
-      return DEFAULT_SAVED_PERSONAS;
+      const storageKeys = getAccountStorageKeys(userId);
+      return {
+        personas: readStoredArray<Persona>([storageKeys.personas, storageKeys.backup]),
+        source: 'cache',
+      };
     }
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
-    async function init() {
-      if (!user) return;
-      const safetyTimer = setTimeout(() => {
-        console.warn('[App Init] Initialization safety timer triggered after 3s');
-        setIsLoading(false);
-      }, 3000);
+    let cancelled = false;
 
+    hydratedAccountIdRef.current = null;
+    if (!userId) {
+      setPersonasLocal([]);
+      setSelectedPersonaId('empty');
+      recentPersonaIds.current = [];
+      setIsLoading(false);
+      return () => { cancelled = true; };
+    }
+
+    const storageKeys = getAccountStorageKeys(userId);
+    setPersonasLocal([]);
+    setSelectedPersonaId('empty');
+    recentPersonaIds.current = [];
+
+    async function init() {
       try {
         setIsLoading(true);
-        let serverPersonas = await loadPersonas();
-        const localPersonas = getLocalStoragePersonas();
+        const [loadResult] = await Promise.all([
+          loadPersonas(),
+          hydrateAccountLocalStorage(userId).catch(error => {
+            console.warn('[Workspace Sync] Using the local cache for this session:', error);
+          }),
+        ]);
+        let serverPersonas = loadResult.personas;
+        const databaseAvailable = loadResult.source === 'database';
+        if (cancelled) return;
+
+        if (databaseAvailable) migrateMatchingLegacyPersonaCache(userId, serverPersonas);
+        serverPersonas.forEach(persona => {
+          [
+            `chat_history_${persona.id}`,
+            `persona_memories_${persona.id}`,
+            `persona_relationship_${persona.id}`,
+            `vox_vault_${persona.id}`,
+            `connected_accounts_${persona.id}`,
+            `planner_schedules_${persona.id}`,
+          ].forEach(base => migrateLegacyAccountKey(base, userId));
+        });
+        const localPersonas = getLocalStoragePersonas(userId);
+        recentPersonaIds.current = readStoredArray<string>([storageKeys.recentPersonas]);
 
         const cleanPersonas = (list: Persona[]) => {
           if (!Array.isArray(list)) return [];
           const map = new Map<string, Persona>();
           for (const p of list) {
-            if (p && p.id && !p.id.toLowerCase().includes('luna') && !p.name?.toLowerCase().includes('luna') && p.id !== 'user-1786568481742' && p.id !== 'user-1786418027030' && !p.name?.toLowerCase().includes('dr.h')) {
+            if (p && p.id && !p.id.toLowerCase().includes('luna') && !p.name?.toLowerCase().includes('luna') && p.id !== 'user-1786568481742' && p.id !== 'user-1786418027030') {
               const existing = map.get(p.id) || {} as Persona;
               const existingAddRefs = existing.additionalReferenceImages || [];
               const incomingAddRefs = p.additionalReferenceImages || [];
@@ -538,89 +449,88 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
           return Array.from(map.values());
         };
 
-        const activeList = cleanPersonas([...DEFAULT_SAVED_PERSONAS, ...localPersonas, ...(Array.isArray(serverPersonas) ? serverPersonas : [])]);
-        const finalActive = activeList.length > 0 ? activeList : DEFAULT_SAVED_PERSONAS;
+        if (databaseAvailable && !migratedAccountIdsRef.current.has(userId) && !localStorage.getItem(storageKeys.databaseMigrated)) {
+          migratedAccountIdsRef.current.add(userId);
+          const serverIds = new Set(serverPersonas.map(persona => persona.id));
+          const migrationCandidates = localPersonas.filter(persona => !serverIds.has(persona.id));
+
+          if (migrationCandidates.length > 0) {
+            console.log(`[Migration] Moving ${migrationCandidates.length} account personas to the database...`);
+            const localRevenue = getLocalStorageRevenue(migrationCandidates, userId);
+            const localPlans = getLocalStoragePlans(migrationCandidates, userId);
+            await api.migrate({ personas: migrationCandidates, revenueEntries: localRevenue, plannedPosts: localPlans });
+            if (cancelled) return;
+            const refreshed = await loadPersonas();
+            if (refreshed.source !== 'database') throw new Error('Database became unavailable during migration');
+            serverPersonas = refreshed.personas;
+          }
+          localStorage.setItem(storageKeys.databaseMigrated, 'true');
+        }
+
+        const activeList = cleanPersonas(databaseAvailable ? serverPersonas : localPersonas);
+        const finalActive = activeList;
+        if (cancelled) return;
         setPersonasLocal(finalActive);
         try {
-          // Cache to localStorage
-          const lightList = finalActive.map(p => ({
-            ...p,
-            referenceImage: p.referenceImage?.startsWith('data:') ? '/uploads/ref_' + p.id + '.png' : p.referenceImage,
-            avatar: p.avatar?.startsWith('data:') ? '/uploads/avatar_' + p.id + '.png' : p.avatar,
-            additionalReferenceImages: (p.additionalReferenceImages || []).map((img, i) => img?.startsWith('data:') ? `/uploads/ref_${p.id}_add_${i}.jpg` : img).filter(Boolean),
-            visualLibrary: (p.visualLibrary || []).map((v, i) => ({ ...v, url: v.url?.startsWith('data:') ? `/uploads/vis_${p.id}_${i}.jpg` : v.url })),
-          }));
-          localStorage.setItem('ai_influencer_personas', JSON.stringify(lightList));
+          if (databaseAvailable) {
+            localStorage.setItem(storageKeys.personas, JSON.stringify(finalActive));
+            localStorage.setItem(storageKeys.backup, JSON.stringify(finalActive));
+          }
         } catch (e) {
           console.warn('[LocalStorage] Could not cache personas:', e);
         }
 
-        // Purge Luna from all local storage keys
-        ['ai_influencer_personas', 'ai-influencer-studio-personas', 'personas_data', 'studio_personas'].forEach(key => {
+        // Keep retired placeholder personas out of this account's cache.
+        [storageKeys.personas, storageKeys.backup].forEach(key => {
           const saved = localStorage.getItem(key);
           if (saved) {
             try {
               const parsed = JSON.parse(saved);
               if (Array.isArray(parsed)) {
                 const cleaned = parsed.filter((p: any) => p && p.id && !p.id.toLowerCase().includes('luna') && !p.name?.toLowerCase().includes('luna'));
-                if (cleaned.length > 0) localStorage.setItem(key, JSON.stringify(cleaned));
+                localStorage.setItem(key, JSON.stringify(cleaned));
               }
             } catch {}
           }
         });
 
-        // Ensure active selected ID is pointing to Rawan Hasan or first valid persona
-        const currentSelected = finalActive.find(p => p.id === selectedPersonaId);
-        if (!currentSelected || selectedPersonaId.toLowerCase().includes('luna') || selectedPersonaId === 'empty') {
-          const defaultPersona = finalActive.find(p => p.id === 'user-1786416458262') || finalActive[0];
-          setSelectedPersonaId(defaultPersona.id);
-          localStorage.setItem('ai_influencer_selected_id', defaultPersona.id);
-        }
+        // Hydrate selection only from this authenticated account's namespace.
+        const storedSelectedId = localStorage.getItem(storageKeys.selectedPersona);
+        const nextSelectedId = storedSelectedId
+          && storedSelectedId !== 'empty'
+          && finalActive.some(persona => persona.id === storedSelectedId)
+          ? storedSelectedId
+          : finalActive[0]?.id || 'empty';
+        hydratedAccountIdRef.current = userId;
+        setSelectedPersonaId(nextSelectedId);
+        localStorage.setItem(storageKeys.selectedPersona, nextSelectedId);
 
-        // Background sync custom personas to server & delete Luna from server DB
-        serverPersonas.filter(p => p.id && p.id.toLowerCase().includes('luna')).forEach(p => api.personas.delete(p.id).catch(() => {}));
-        const serverIds = new Set(serverPersonas.map(p => p.id));
-        activeList.filter(p => !serverIds.has(p.id)).forEach(p => api.personas.create(p).catch(() => {}));
-
-        if (!hasMigrated.current && !localStorage.getItem('ai_influencer_db_migrated')) {
-          hasMigrated.current = true;
-
-          const localRevenue = getLocalStorageRevenue(localPersonas);
-          const localPlans = getLocalStoragePlans(localPersonas);
-
-          if (localPersonas.length > 0) {
-            console.log(`[Migration] Migrating ${localPersonas.length} personas to server...`);
-            try {
-              await api.migrate({ personas: localPersonas, revenueEntries: localRevenue, plannedPosts: localPlans });
-              serverPersonas = await loadPersonas();
-              localStorage.setItem('ai_influencer_db_migrated', 'true');
-              console.log('[Migration] Complete');
-            } catch (err) {
-              console.error('[Migration] Failed, will retry on next load:', err);
-            }
-          } else {
-            localStorage.setItem('ai_influencer_db_migrated', 'true');
-          }
-        }
       } catch (err) {
         console.error('[App Init] Initialization error:', err);
       } finally {
-        clearTimeout(safetyTimer);
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     }
     init();
-  }, [loadPersonas, user]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loadPersonas, userId]);
 
   const setPersonas = useCallback(async (value: Persona[] | ((prev: Persona[]) => Persona[])) => {
+    if (!userId || hydratedAccountIdRef.current !== userId) return;
     const oldPersonas = personas;
     const newPersonas = typeof value === 'function' ? value(oldPersonas) : value;
     setPersonasLocal(newPersonas);
 
-    try {
-      localStorage.setItem('ai_influencer_personas', JSON.stringify(newPersonas));
-      localStorage.setItem('ai_influencers_local_backup', JSON.stringify(newPersonas));
-    } catch {}
+    if (userId) {
+      const storageKeys = getAccountStorageKeys(userId);
+      try {
+        localStorage.setItem(storageKeys.personas, JSON.stringify(newPersonas));
+        localStorage.setItem(storageKeys.backup, JSON.stringify(newPersonas));
+      } catch {}
+    }
 
     const oldIds = new Set(oldPersonas.map(p => p.id));
     const newIds = new Set(newPersonas.map(p => p.id));
@@ -642,17 +552,22 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
     } catch (err) {
       console.error('[API] Sync error:', err);
     }
-  }, [personas]);
+  }, [personas, userId]);
 
   useEffect(() => {
-    if (selectedPersonaId && selectedPersonaId !== 'empty' && personas.length > 0 && !personas.find(p => p.id === selectedPersonaId)) {
-      setSelectedPersonaId(personas[0]?.id || 'empty');
+    if (personas.length === 0) {
+      if (selectedPersonaId !== 'empty') setSelectedPersonaId('empty');
+      return;
+    }
+    if (selectedPersonaId && selectedPersonaId !== 'empty' && !personas.find(p => p.id === selectedPersonaId)) {
+      setSelectedPersonaId(personas[0].id);
     }
   }, [personas, selectedPersonaId]);
 
   useEffect(() => {
-    localStorage.setItem('ai_influencer_selected_id', selectedPersonaId);
-  }, [selectedPersonaId]);
+    if (!userId || hydratedAccountIdRef.current !== userId) return;
+    localStorage.setItem(getAccountStorageKeys(userId).selectedPersona, selectedPersonaId);
+  }, [selectedPersonaId, userId]);
 
   useEffect(() => {
     localStorage.setItem('ai_influencer_active_tab', activeTab);
@@ -667,7 +582,7 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
 
   if (authLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[var(--bg-base)]">
+      <div className="studio-public-theme flex items-center justify-center min-h-screen bg-[var(--bg-base)]">
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -676,17 +591,39 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
         >
           <div className="relative">
             <div className="w-16 h-16 rounded-2xl flex items-center justify-center"
-              style={{ background: 'linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%)', boxShadow: '0 8px 40px -8px rgba(139,92,246,0.6)' }}
+              style={{ background: 'var(--gradient-primary)', boxShadow: '0 8px 40px -8px rgba(231, 196, 119, 0.45)' }}
             >
-              <Sparkles size={28} className="text-white" />
+              <Sparkles size={28} className="text-[#161108]" />
             </div>
-            <div className="absolute -inset-1 rounded-2xl border border-violet-500/20 animate-pulse" />
+            <div className="absolute -inset-1 rounded-2xl border border-[var(--border-strong)] animate-pulse" />
           </div>
           <div className="flex flex-col items-center gap-2">
             <p className="text-[var(--text-primary)] text-sm font-semibold">Loading your studio</p>
           </div>
         </motion.div>
       </div>
+    );
+  }
+
+  if (isPasswordRecovery && user) {
+    const clearRecoveryUrl = () => {
+      const cleanUrl = new URL(window.location.href);
+      ['code', 'type', 'token', 'token_hash', 'error', 'error_code', 'error_description'].forEach((key) => {
+        cleanUrl.searchParams.delete(key);
+      });
+      cleanUrl.hash = '';
+      window.history.replaceState({}, document.title, `${cleanUrl.pathname}${cleanUrl.search}`);
+      setIsPasswordRecovery(false);
+    };
+
+    return (
+      <PasswordRecoveryView
+        onComplete={clearRecoveryUrl}
+        onCancel={async () => {
+          await supabase.auth.signOut();
+          clearRecoveryUrl();
+        }}
+      />
     );
   }
 
@@ -698,17 +635,20 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
   const isConfirmed = !!user.email_confirmed_at || !!user.confirmed_at;
   if (!isConfirmed) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-[#06080d] text-white p-6 relative">
+      <div className="studio-public-theme flex flex-col items-center justify-center min-h-screen bg-[var(--bg-base)] text-[var(--text-primary)] p-6 relative">
         <div className="absolute inset-0 pointer-events-none z-0">
-          <div className="absolute top-[20%] left-[20%] w-[50%] h-[50%] rounded-full bg-violet-600/[0.08] blur-[150px]" />
+          <div className="absolute top-[20%] left-[20%] w-[50%] h-[50%] rounded-full bg-[#E7C477]/[0.08] blur-[150px]" />
         </div>
-        <div className="premium-card max-w-md w-full rounded-3xl p-8 border border-white/10 bg-[#0B0F17]/80 backdrop-blur-xl relative z-10 text-center shadow-2xl">
-          <div className="w-16 h-16 rounded-2xl mx-auto flex items-center justify-center bg-violet-500/10 border border-violet-500/20 text-violet-400 mb-6 animate-pulse">
+        <div className="max-w-md w-full rounded-3xl p-8 border border-[var(--border-default)] bg-[var(--bg-elevated)]/95 backdrop-blur-xl relative z-10 text-center shadow-2xl">
+          <div className="w-16 h-16 rounded-2xl mx-auto flex items-center justify-center bg-[#E7C477]/10 border border-[#E7C477]/25 text-[#E7C477] mb-6 animate-pulse">
             <Bell size={28} />
           </div>
           <h2 className="text-2xl font-black text-white mb-2">Verify your email</h2>
           <p className="text-sm text-[var(--text-muted)] leading-relaxed mb-6">
             We sent a verification link to <span className="text-white font-bold">{user.email}</span>. Please verify your email address to unlock the studio.
+          </p>
+          <p className="text-xs text-white/40 leading-relaxed -mt-3 mb-6">
+            The message may take a minute to arrive. Check your spam or promotions folder if you do not see it.
           </p>
           <div className="flex flex-col gap-3">
             <button
@@ -722,25 +662,31 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
                   }
                 });
               }}
-              className="w-full py-3 bg-gradient-to-r from-violet-600 to-fuchsia-600 rounded-full text-white font-bold text-sm hover:brightness-110 active:scale-98 transition-all shadow-lg shadow-violet-500/20 cursor-pointer"
+              className="btn-gold-primary w-full py-3 rounded-full text-sm cursor-pointer"
             >
               I Have Verified My Email
             </button>
             <button
               onClick={async () => {
+                setVerificationResendLoading(true);
                 const { error } = await supabase.auth.resend({
                   type: 'signup',
                   email: user.email,
+                  options: {
+                    emailRedirectTo: `${window.location.origin}${window.location.pathname}`,
+                  },
                 });
+                setVerificationResendLoading(false);
                 if (error) {
                   toast.error(error.message);
                 } else {
-                  toast.success('Verification email resent!');
+                  toast.success('A new verification link is on its way.');
                 }
               }}
+              disabled={verificationResendLoading}
               className="w-full py-3 bg-white/5 border border-white/10 rounded-full text-white font-semibold text-sm hover:bg-white/10 transition-all cursor-pointer"
             >
-              Resend Verification Link
+              {verificationResendLoading ? 'Sending...' : 'Resend Verification Link'}
             </button>
             <button
               onClick={() => supabase.auth.signOut()}
@@ -760,7 +706,7 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[var(--bg-base)]">
+      <div className="studio-public-theme flex items-center justify-center min-h-screen bg-[var(--bg-base)]">
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -769,17 +715,17 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
         >
           <div className="relative">
             <div className="w-16 h-16 rounded-2xl flex items-center justify-center"
-              style={{ background: 'linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%)', boxShadow: '0 8px 40px -8px rgba(139,92,246,0.6)' }}
+              style={{ background: 'var(--gradient-primary)', boxShadow: '0 8px 40px -8px rgba(231, 196, 119, 0.45)' }}
             >
-              <Sparkles size={28} className="text-white" />
+              <Sparkles size={28} className="text-[#161108]" />
             </div>
-            <div className="absolute -inset-1 rounded-2xl border border-violet-500/20 animate-pulse" />
+            <div className="absolute -inset-1 rounded-2xl border border-[var(--border-strong)] animate-pulse" />
           </div>
           <div className="flex flex-col items-center gap-2">
             <p className="text-[var(--text-primary)] text-sm font-semibold">Loading your studio</p>
             <div className="flex gap-1.5">
               {[0,1,2].map(i => (
-                <div key={i} className="w-1.5 h-1.5 rounded-full bg-violet-400/60 animate-bounce"
+                <div key={i} className="w-1.5 h-1.5 rounded-full bg-[#E7C477]/70 animate-bounce"
                   style={{ animationDelay: `${i * 0.15}s` }}
                 />
               ))}
@@ -791,7 +737,7 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
   }
 
   const activePersona = personas.find(p => p.id === selectedPersonaId) || EMPTY_PERSONA;
-  const hasPersonas = personas.length > 0 && personas[0].id !== 'empty';
+  const hasPersonas = personas.some(persona => persona.id !== 'empty');
 
   const tabs = [
     { id: 'personas', label: 'Personas', icon: Users },
@@ -946,15 +892,18 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
             </div>
           </div>
 
-          {/* Right Actions: Notifications, Create Persona Button, Persona Quick-Switcher */}
+          {/* Right Actions: Media Jobs, Create Persona Button, Persona Quick-Switcher */}
           <div className="flex items-center gap-2 sm:gap-3.5 shrink-0">
 
-            {/* Notification Bell */}
-            <button className="relative hidden sm:flex w-9 h-9 rounded-xl bg-[#0A101C] border border-[#E7C477]/15 items-center justify-center text-[#C3BFB8] hover:text-[#F2D58D] hover:border-[#E7C477]/35 transition-all cursor-pointer">
-              <Bell size={16} />
-              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#E7C477] text-[#060A13] text-[9px] font-bold flex items-center justify-center shadow-sm">
-                3
-              </span>
+            {/* Durable media jobs */}
+            <button
+              type="button"
+              onClick={() => setShowMediaJobCenter(true)}
+              className="relative flex w-9 h-9 rounded-xl bg-[#0A101C] border border-[#E7C477]/15 items-center justify-center text-[#C3BFB8] hover:text-[#F2D58D] hover:border-[#E7C477]/35 transition-all cursor-pointer"
+              title="Open media jobs"
+              aria-label="Open media jobs"
+            >
+              <Sparkles size={16} />
             </button>
 
             {/* Single Gold Create Persona CTA Button */}
@@ -1141,6 +1090,14 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
         onSelectPersona={setSelectedPersonaId}
         onOpenSubView={(tab, subView) => { replaceView({ view: tab, subView }); }}
       />
+      <MediaJobCenter
+        isOpen={showMediaJobCenter}
+        onClose={() => setShowMediaJobCenter(false)}
+        onOpenResult={(job) => {
+          if (!job.result?.url) return;
+          window.open(job.result.url, '_blank', 'noopener,noreferrer');
+        }}
+      />
       {/* #10 Keyboard shortcuts modal */}
       <AnimatePresence>
         {showShortcutsModal && (
@@ -1194,13 +1151,9 @@ const DEFAULT_SAVED_PERSONAS: Persona[] = [
   );
 }
 
-function getLocalStoragePersonas(): Persona[] {
-  const keys = [
-    'ai_influencer_personas',
-    'ai-influencer-studio-personas',
-    'personas_data',
-    'studio_personas'
-  ];
+function getLocalStoragePersonas(userId: string): Persona[] {
+  const accountKeys = getAccountStorageKeys(userId);
+  const keys = [accountKeys.personas, accountKeys.backup];
 
   const personaMap = new Map<string, Persona>();
 
@@ -1245,10 +1198,10 @@ function getLocalStoragePersonas(): Persona[] {
   return Array.from(personaMap.values());
 }
 
-function getLocalStorageRevenue(personaList: Persona[]): Record<string, RevenueEntry[]> {
+function getLocalStorageRevenue(personaList: Persona[], userId: string): Record<string, RevenueEntry[]> {
   const result: Record<string, RevenueEntry[]> = {};
   for (const p of personaList) {
-    const saved = localStorage.getItem(`revenue_entries_${p.id}`);
+    const saved = localStorage.getItem(accountStorageKey(`revenue_entries_${p.id}`, userId));
     if (saved) {
       try {
         const entries = JSON.parse(saved);
@@ -1263,14 +1216,14 @@ function getLocalStorageRevenue(personaList: Persona[]): Record<string, RevenueE
   return result;
 }
 
-function getLocalStoragePlans(personaList: Persona[]): Record<string, Record<string, PlannedPost[]>> {
+function getLocalStoragePlans(personaList: Persona[], userId: string): Record<string, Record<string, PlannedPost[]>> {
   const result: Record<string, Record<string, PlannedPost[]>> = {};
   const platforms = ['Instagram', 'TikTok', 'YouTube', 'Twitter', 'LinkedIn'];
   for (const p of personaList) {
     for (const platform of platforms) {
       const keys = [
-        `planned_posts_${p.id}_${platform}`,
-        `content_plan_${p.id}_${platform}`,
+        accountStorageKey(`planned_posts_${p.id}_${platform}`, userId),
+        accountStorageKey(`content_plan_${p.id}_${platform}`, userId),
       ];
       for (const key of keys) {
         const saved = localStorage.getItem(key);

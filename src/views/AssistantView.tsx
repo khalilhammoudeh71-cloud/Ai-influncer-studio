@@ -1,17 +1,82 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Send, Bot, ChevronDown, ImageIcon, Video, Loader2, AlertCircle, Camera, MessageSquareQuote, Copy, Bookmark, Check, Phone, PhoneOff, Volume2, VolumeX, Mic, MicOff, RotateCcw, Trash2, Plus, Upload, Music, Film, X, Play, Sparkles, Paperclip, FileText, SlidersHorizontal, Settings, Hand, Maximize2, Download, Shirt, Heart } from 'lucide-react';
+import { Send, Bot, ChevronDown, ImageIcon, Video, Loader2, AlertCircle, Camera, MessageSquareQuote, Copy, Bookmark, Check, Phone, PhoneOff, Volume2, VolumeX, Mic, MicOff, RotateCcw, Trash2, Plus, Upload, Music, Film, X, Play, Sparkles, Paperclip, FileText, SlidersHorizontal, Settings, Hand, Maximize2, Download, Shirt, Heart, Pencil, BookOpen, ShieldCheck, Brain, Pin, Search, ArrowUpCircle, Wand2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Persona, NavActions, RelationshipState } from '../types';
-import { ModelInfo, fetchAllModelTypes, editImage, generateImage, generateVideo, textToSpeech } from '../services/imageService';
+import { ModelInfo, authFetch, fetchAllModelTypes, textToSpeech } from '../services/imageService';
+import { requestPersonaMediaJob, talkingAvatarJob, type MediaJob } from '../services/mediaJobService';
 import { cn } from '../utils/cn';
 import { api } from '../services/apiService';
 import toast from 'react-hot-toast';
-import ImageLightboxModal from '../components/ImageLightboxModal';
+import ImageLightboxModal, {
+  type AnimateImageInput,
+  type ImageStudioMode,
+  type ImageStudioVersionResult,
+  type MediaStudioResult,
+  type TalkingAvatarInput,
+} from '../components/ImageLightboxModal';
 import PersonaReferenceModal from '../components/PersonaReferenceModal';
-import RelationshipProgressBadge from '../components/RelationshipProgressBadge';
 import VoiceNoteBubble from '../components/VoiceNoteBubble';
 import PersonaAvatar from '../components/PersonaAvatar';
+import MediaJobCenter from '../components/MediaJobCenter';
 import { getCreatorProfile } from '../utils/creatorProfile';
+import { accountLocalStorage } from '../utils/accountStorage';
+import {
+  archiveConversationRecords,
+  clearConversationHistory,
+  deleteConversationRecord,
+  loadConversationArchive,
+  loadConversationContext,
+  loadRecentConversation,
+  mergeUniqueConversationRecords,
+  migrateRecentConversationToArchive,
+  saveRecentConversation,
+  searchConversationMemories,
+  type ConversationRecord,
+} from '../utils/conversationContinuity';
+import {
+  addPersonaMemoryNote,
+  buildRecentConversationSummary,
+  deletePersonaMemoryNote,
+  loadPersonaMemoryNotes,
+  togglePersonaMemoryPinned,
+  updatePersonaMemoryNote,
+  type PersonaMemoryNote,
+} from '../utils/personaMemory';
+import { resolveMediaModelFromPrompt } from '../utils/mediaModelResolver';
+import { resolveImageRevisionContext, type GeneratedImageMessage } from '../utils/mediaRevisionContext';
+import {
+  VOICE_IDENTITY_ONBOARDING_STORAGE_KEY,
+  VOICE_IDENTITY_STORAGE_KEY,
+  createVoiceIdentityProfile,
+  extractVoiceFeatureVector,
+  isEnrolledSpeaker,
+  parseVoiceIdentityProfile,
+  scoreVoiceIdentity,
+  shouldOfferVoiceIdentitySetup,
+  type VoiceIdentityProfile,
+} from '../utils/voiceIdentity';
+import {
+  VOICE_ACCURACY_STORAGE_KEY,
+  addVoiceTerms,
+  applyVoiceCorrections,
+  buildVoiceKeyterms,
+  deriveCalibrationCorrections,
+  isDuplicateVoiceTranscript,
+  needsVoiceConfirmation,
+  parseVoiceAccuracyProfile,
+  saveVoiceCorrection,
+  type VoiceAccuracyProfile,
+} from '../utils/voiceAccuracy';
+import {
+  drainSseData,
+  isLikelyPersonaEcho,
+  shouldInterruptPersonaSpeech,
+  summarizeVoiceLatency,
+  takeSpeakableSpeechChunk,
+  type VoiceLatencySnapshot,
+  type VoiceTurnTiming,
+} from '../utils/voiceStability';
+import { CommitStrategy, RealtimeEvents, Scribe, type RealtimeConnection } from '@elevenlabs/client';
 
 // ── Typewriter hook ──────────────────────────────────────
 function useTypewriter(text: string, speed = 18) {
@@ -31,11 +96,56 @@ function useTypewriter(text: string, speed = 18) {
   return { displayed, done };
 }
 
+async function copyTextToClipboard(text: string) {
+  if (navigator.clipboard?.writeText && window.isSecureContext) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+
+  const copied = document.execCommand('copy');
+  document.body.removeChild(textarea);
+  if (!copied) throw new Error('Clipboard access was denied');
+}
+
+async function copyImageBlobToClipboard(imageUrl: string) {
+  if (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined' || !window.isSecureContext) {
+    throw new Error('Image clipboard is not available');
+  }
+
+  const response = await fetch(imageUrl);
+  if (!response.ok) throw new Error('Could not load the generated image');
+  const sourceBlob = await response.blob();
+  let clipboardBlob = sourceBlob;
+
+  if (sourceBlob.type !== 'image/png') {
+    const bitmap = await createImageBitmap(sourceBlob);
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Could not prepare image for clipboard');
+    context.drawImage(bitmap, 0, 0);
+    bitmap.close?.();
+    clipboardBlob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Could not prepare PNG image')), 'image/png');
+    });
+  }
+
+  await navigator.clipboard.write([
+    new ClipboardItem({ [clipboardBlob.type || 'image/png']: clipboardBlob }),
+  ]);
+}
+
 // ── localStorage helpers ──────────────────────────────────
-const HISTORY_KEY = (personaId: string) => `chat_history_${personaId}`;
-const MEMORY_KEY = (personaId: string) => `persona_memories_${personaId}`;
 const USER_NAME_KEY = 'persona_user_name';
-const MAX_STORED = 300; // Complete cross-session conversation capacity
 
 const INVALID_NAMES = new Set([
   'allowing', 'serious', 'asking', 'done', 'trying', 'thinking', 'looking', 
@@ -47,9 +157,9 @@ const INVALID_NAMES = new Set([
 
 export function getStoredUserName(): string {
   try {
-    const stored = localStorage.getItem(USER_NAME_KEY);
+    const stored = accountLocalStorage.getItem(USER_NAME_KEY);
     if (!stored || INVALID_NAMES.has(stored.toLowerCase().trim())) {
-      localStorage.setItem(USER_NAME_KEY, 'Dr. H');
+      accountLocalStorage.setItem(USER_NAME_KEY, 'Dr. H');
       return 'Dr. H';
     }
     return stored.trim();
@@ -61,7 +171,7 @@ export function setStoredUserName(name: string) {
     if (name && name.trim()) {
       const clean = name.trim();
       if (!INVALID_NAMES.has(clean.toLowerCase())) {
-        localStorage.setItem(USER_NAME_KEY, clean);
+        accountLocalStorage.setItem(USER_NAME_KEY, clean);
       }
     }
   } catch {}
@@ -102,79 +212,49 @@ function correctSpeechPhonetics(transcript: string, activePersonaName?: string):
     }
   }
 
-  // 5. Contextual Visual & Photoshoot ASR corrections
-  corrected = corrected
-    .replace(/\b(?:requeaed|requeast|reques|recwest|rekwest)\b/gi, 'requested')
-    .replace(/\b(take|send|snap|show|give|make|post)\s+(?:a\s+)?(?:pick|peek)\b/gi, '$1 a pic')
-    .replace(/\b(?:sell\s*fee|cell\s*fee|sellfie|cellfie)\b/gi, 'selfie')
-    .replace(/\b(?:photo\s*shot|photo\s*shoots?)\b/gi, 'photoshoot')
-    .replace(/\b(?:out\s*fitt?|out-fit)\b/gi, 'outfit')
-    .replace(/\b(?:full\s*buddy)\b/gi, 'full-body')
-    .replace(/\b(?:half\s*buddy|have\s*body)\b/gi, 'half-body')
-    .replace(/\b(?:front\s*face\s*ing|from\s*facing)\b/gi, 'front-facing')
-    .replace(/\b(?:core\s*set)\b/gi, 'corset')
-    .replace(/\b(?:sat\s*in)\s+(slip|dress|sheets?|robe|corset|fabric)\b/gi, 'satin $1')
-    .replace(/\b(?:lingeree|linger\s*ee|lingery)\b/gi, 'lingerie')
-    .replace(/\b(?:she\s*meez|shameez)\b/gi, 'chemise')
-    .replace(/\b(?:oat\s*couture|hot\s*couture|out\s*couture)\b/gi, 'haute couture')
-    .replace(/\b(?:barge\s*in|barj\s*in)\b/gi, 'barge in')
-    .replace(/\b(?:up\s*scale|up-scale)\b/gi, 'upscale');
-
-  // 6. Clean up spacing
+  // Preserve the user's actual wording. Broad phonetic substitutions used to
+  // turn valid words into rhyming alternatives and could silently change a
+  // generation request.
   corrected = corrected.replace(/\s+/g, ' ').trim();
 
   return corrected;
 }
 
 function loadHistory(personaId: string): ChatMessage[] {
-  try {
-    const raw = localStorage.getItem(HISTORY_KEY(personaId));
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return parsed
-      .filter((m: any) => m && m.type !== 'loading')
-      .map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) }));
-  } catch { return []; }
+  return loadRecentConversation(personaId).map(record => {
+    const timestamp = record.timestamp instanceof Date ? record.timestamp : new Date(record.timestamp);
+    if (record.type === 'loading') {
+      return {
+        ...record,
+        type: 'error',
+        content: 'That generation was interrupted before the result returned. Open the source media and try the action again.',
+        timestamp,
+      };
+    }
+    return { ...record, timestamp };
+  }) as ChatMessage[];
 }
 
 function saveHistory(personaId: string, msgs: ChatMessage[]) {
-  try {
-    const toStore = msgs.filter(m => m && m.type !== 'loading').slice(-MAX_STORED);
-    localStorage.setItem(HISTORY_KEY(personaId), JSON.stringify(toStore));
-  } catch { /* quota */ }
+  saveRecentConversation(personaId, msgs as ConversationRecord[]);
 }
 
 function loadPersonaMemories(personaId: string): string[] {
-  try {
-    const raw = localStorage.getItem(MEMORY_KEY(personaId));
-    let parsed: string[] = raw ? JSON.parse(raw) : [];
-    const userName = getStoredUserName();
-    // Filter out corrupted memories with words like "Allowing", "Serious", etc.
-    parsed = parsed.filter(m => 
-      !m.toLowerCase().includes('allowing is the') && 
-      !m.toLowerCase().includes("user's name is allowing") && 
-      !m.toLowerCase().includes("user's name is serious")
-    );
-    const defaultFacts = [
-      `User's name is ${userName}`,
-      `${userName} is the creator and close partner of this persona`,
-      `Values authentic conversation, wit, and intellectual depth`,
-      `Enjoys playful teasing, spontaneous photo generation, and deep banter`
-    ];
-    for (const f of defaultFacts) {
-      if (!parsed.some(m => m.includes(f))) {
-        parsed.unshift(f);
-      }
-    }
-    return parsed.slice(0, 30);
-  } catch { 
-    return [`User's name is Dr. H`, `Dr. H is the creator and partner`]; 
-  }
+  return loadPersonaMemoryNotes(personaId, getDefaultPersonaMemoryFacts()).map(note => note.text).slice(0, 30);
+}
+
+function getDefaultPersonaMemoryFacts(): string[] {
+  const userName = getStoredUserName();
+  return [
+    `User's name is ${userName}`,
+    `${userName} is the creator and close partner of this persona`,
+    'Values authentic conversation, wit, and intellectual depth',
+    'Enjoys playful teasing, spontaneous photo generation, and deep banter',
+  ];
 }
 
 function savePersonaMemory(personaId: string, memoryText: string) {
   try {
-    const existing = loadPersonaMemories(personaId);
     const trimmed = memoryText.trim();
     if (!trimmed) return;
 
@@ -193,10 +273,7 @@ function savePersonaMemory(personaId: string, memoryText: string) {
       return;
     }
 
-    if (!existing.includes(trimmed)) {
-      const updated = [...existing, trimmed].slice(-30);
-      localStorage.setItem(MEMORY_KEY(personaId), JSON.stringify(updated));
-    }
+    addPersonaMemoryNote(personaId, trimmed, 'automatic', getDefaultPersonaMemoryFacts());
   } catch { /* quota */ }
 }
 
@@ -210,18 +287,90 @@ interface Props {
 type MessageType = 'text' | 'image' | 'video' | 'voice_note' | 'loading' | 'error';
 type MessageRole = 'user' | 'persona';
 
+interface ChatAttachment {
+  url: string;
+  type: 'image' | 'video' | 'file';
+  name?: string;
+  base64?: string;
+  sourceMessageId?: string;
+  sourceImageUrl?: string;
+  sourcePrompt?: string;
+  sourceRootPrompt?: string;
+  sourceRevisionHistory?: string[];
+  sourceParticipants?: string[];
+  sourceModelId?: string;
+  sourceModelName?: string;
+}
+
 interface ChatMessage {
   id: string;
   role: MessageRole;
   type: MessageType;
   content: string;
   timestamp: Date;
-  attachment?: { url: string; type: 'image' | 'video' | 'file'; name?: string; base64?: string };
+  attachment?: ChatAttachment;
   prompt?: string;
+  rootPrompt?: string;
+  revisionHistory?: string[];
+  parentMediaId?: string;
+  participants?: string[];
+  modelId?: string;
+  modelName?: string;
   audioUrl?: string;
   duration?: number;
   transcript?: string;
+  source?: 'voice' | 'text' | 'system';
+  rawContent?: string;
 }
+
+interface CallTranscriptItem {
+  id: string;
+  role: 'user' | 'persona';
+  type?: 'text' | 'image' | 'video' | 'loading' | 'error';
+  content: string;
+  prompt?: string;
+  rootPrompt?: string;
+  revisionHistory?: string[];
+  parentMediaId?: string;
+  participants?: string[];
+  modelId?: string;
+  modelName?: string;
+  source?: 'voice' | 'typed';
+  rawContent?: string;
+}
+
+function getAttachmentRevisionSource(attachment?: ChatAttachment | null): GeneratedImageMessage | undefined {
+  if (!attachment?.sourceMessageId || !attachment.sourceImageUrl) return undefined;
+  return {
+    id: attachment.sourceMessageId,
+    role: 'persona',
+    type: 'image',
+    content: attachment.sourceImageUrl,
+    prompt: attachment.sourcePrompt,
+    rootPrompt: attachment.sourceRootPrompt,
+    revisionHistory: attachment.sourceRevisionHistory,
+    participants: attachment.sourceParticipants,
+    modelId: attachment.sourceModelId,
+    modelName: attachment.sourceModelName,
+  };
+}
+
+const VOICE_CALIBRATION_SENTENCES = [
+  'Generate an image of Leen Hassan and Rawan Hassan using Seedream 5.0 Pro.',
+  'Create a video of Dr. H using Seedance 2.5 from Wavespeed.',
+  'Use GPT Image 2 or Qwen 3.0 Pro for this request.',
+];
+
+const VOICE_CALIBRATION_TERMS = [
+  'Leen Hassan',
+  'Rawan Hassan',
+  'Dr. H',
+  'Seedream 5.0 Pro',
+  'Seedance 2.5',
+  'Wavespeed',
+  'GPT Image 2',
+  'Qwen 3.0 Pro',
+];
 
 function detectIntent(message: string): 'image' | 'video' | 'chat' {
   const lower = message.toLowerCase().trim();
@@ -251,17 +400,15 @@ function detectIntent(message: string): 'image' | 'video' | 'chat' {
 }
 
 export const VOICE_CALL_ENGINES = [
-  { id: 'eleven_turbo_v2_5', name: 'ElevenLabs Turbo 2.5', badge: 'Fast (~250ms)', desc: 'Rich human tone & nuances (Recommended)' },
-  { id: 'eleven_flash_v2_5', name: 'ElevenLabs Flash 2.5', badge: 'Ultra Fast (~75ms)', desc: 'Instantaneous response' },
+  { id: 'eleven_flash_v2_5', name: 'ElevenLabs Flash 2.5', badge: 'Ultra Fast (~75ms)', desc: 'Lowest-latency voice calls (Recommended)' },
+  { id: 'eleven_turbo_v2_5', name: 'ElevenLabs Turbo 2.5', badge: 'Fast (~250ms)', desc: 'Rich human tone and nuance' },
   { id: 'cartesia-sonic', name: 'Cartesia Sonic', badge: 'Extreme Speed (~90ms)', desc: 'Fastest conversational turn-taking' },
   { id: 'eleven_multilingual_v2', name: 'ElevenLabs Multilingual v2', badge: 'Expressive (~800ms)', desc: 'High cinematic emotion' },
 ];
 
 export const PERSONA_VOICE_CHARACTERS = [
-  { id: 'ov7JSkufAlSs386OYTaC', name: 'Rawan Hasan (Newly Cloned Voice - Latest)', gender: 'Female' },
-  { id: 'FkiPCg9ZhlwLIOml7TKM', name: 'Rawan Hasan (Multi-Sample Cloned Voice)', gender: 'Female' },
-  { id: 'W4ynDvR6NFiK8lj2I8iL', name: 'Rawan Hasan (Original Direct Clone)', gender: 'Female' },
-  { id: 'bEp1nJ6RU85e3wsylRfE', name: 'Rawan Hasan (Multi-Sample 178682133)', gender: 'Female' },
+  { id: 'W4ynDvR6NFiK8lj2I8iL', name: 'Rawan Hasan (Cloned Voice)', gender: 'Female' },
+  { id: 'mnuSAY5SCPZ0NUF04SUe', name: 'Rawan Hasan (Alternate Clone)', gender: 'Female' },
   { id: '7jFje9BJoTWzqZzouT0j', name: 'Leen Hasan (Cloned Voice)', gender: 'Female' },
   { id: 'sabrina', name: 'Sabrina (Sweet, Flirty & Playful)', gender: 'Female' },
   { id: 'brielle', name: 'Brielle (Ultra-Natural Podcast)', gender: 'Female' },
@@ -275,15 +422,20 @@ export const PERSONA_VOICE_CHARACTERS = [
 ];
 
 export function getActivePersonaVoice(persona?: Persona | null) {
-  if (!persona) return { voiceId: 'ov7JSkufAlSs386OYTaC', voiceReference: undefined };
+  if (!persona) return { voiceId: 'W4ynDvR6NFiK8lj2I8iL', voiceReference: undefined };
   const name = (persona.name || '').toLowerCase();
   let voiceId = persona.voiceId;
+  const staleRawanVoice = name.includes('rawan') && [
+    'ov7JSkufAlSs386OYTaC',
+    'FkiPCg9ZhlwLIOml7TKM',
+    'bEp1nJ6RU85e3wsylRfE',
+  ].includes(voiceId || '');
   
-  if (!voiceId || voiceId === 'default' || voiceId === 'female_default' || (name.includes('leen') && (voiceId === 'ov7JSkufAlSs386OYTaC' || voiceId === 'W4ynDvR6NFiK8lj2I8iL'))) {
+  if (!voiceId || voiceId === 'default' || voiceId === 'female_default' || staleRawanVoice || (name.includes('leen') && (voiceId === 'ov7JSkufAlSs386OYTaC' || voiceId === 'W4ynDvR6NFiK8lj2I8iL'))) {
     if (name.includes('leen')) {
       voiceId = '7jFje9BJoTWzqZzouT0j';
     } else if (name.includes('rawan')) {
-      voiceId = 'ov7JSkufAlSs386OYTaC';
+      voiceId = 'W4ynDvR6NFiK8lj2I8iL';
     } else if (name.includes('brielle')) {
       voiceId = '6u6JbqKdaQy89ENzLSju';
     } else if (name.includes('sabrina')) {
@@ -311,7 +463,7 @@ export function getActivePersonaVoice(persona?: Persona | null) {
     } else if (name.includes('stark')) {
       voiceId = 'W6zuQRTYRBdAK8ypjo5V';
     } else {
-      voiceId = 'ov7JSkufAlSs386OYTaC';
+      voiceId = 'W4ynDvR6NFiK8lj2I8iL';
     }
   }
 
@@ -350,8 +502,21 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     window.addEventListener('persona-updated', handlePersonaUpdated as EventListener);
     return () => window.removeEventListener('persona-updated', handlePersonaUpdated as EventListener);
   }, []);
-  const [voiceLlmModel, setVoiceLlmModel] = useState<string>(() => localStorage.getItem('agent_voice_llm') || 'gemini');
-  const [selectedVoiceEngine, setSelectedVoiceEngine] = useState<string>(() => localStorage.getItem('agent_voice_engine') || 'eleven_turbo_v2_5');
+  const [voiceLlmModel, setVoiceLlmModel] = useState<string>(() => {
+    const savedModel = localStorage.getItem('agent_voice_llm');
+    const userSelectedModel = localStorage.getItem('agent_voice_llm_user_selected') === '1';
+
+    // Existing installs defaulted to Gemini. Migrate that inherited default once
+    // so persona chat uses the adult-friendly roleplay engine without overriding
+    // a model the creator deliberately selected.
+    if (!userSelectedModel && (!savedModel || savedModel === 'gemini')) {
+      localStorage.setItem('agent_voice_llm', 'venice');
+      return 'venice';
+    }
+
+    return savedModel || 'venice';
+  });
+  const [selectedVoiceEngine, setSelectedVoiceEngine] = useState<string>(() => localStorage.getItem('agent_voice_engine') || 'eleven_flash_v2_5');
 
   const handleVoiceEngineChange = (engineId: string) => {
     setSelectedVoiceEngine(engineId);
@@ -363,19 +528,33 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   };
 
   const [messages, setMessages] = useState<ChatMessage[]>(() => loadHistory(propActivePersona.id));
+  const messagesRef = useRef<ChatMessage[]>(messages);
   const [input, setInput] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [savingMsgId, setSavingMsgId] = useState<string | null>(null);
   const [savedMsgIds, setSavedMsgIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   const [activeSegment, setActiveSegment] = useState<'chat' | 'replies'>('chat');
   const [replyInput, setReplyInput] = useState('');
   const [generatedReplies, setGeneratedReplies] = useState<string[]>([]);
   const [showEngineSettings, setShowEngineSettings] = useState(false);
   const [isReferenceModalOpen, setIsReferenceModalOpen] = useState(false);
+  const [showMemoryCenter, setShowMemoryCenter] = useState(false);
+  const [showMediaJobCenter, setShowMediaJobCenter] = useState(false);
+  const [memoryNotes, setMemoryNotes] = useState<PersonaMemoryNote[]>([]);
+  const [memoryActivity, setMemoryActivity] = useState<ConversationRecord[]>([]);
+  const [memorySearch, setMemorySearch] = useState('');
+  const [newMemoryDraft, setNewMemoryDraft] = useState('');
+  const [editingMemoryId, setEditingMemoryId] = useState<string | null>(null);
+  const [editingMemoryDraft, setEditingMemoryDraft] = useState('');
 
   // ── Multimodal Media Attachment States ──────────────────
-  const [chatAttachment, setChatAttachment] = useState<{ url: string; base64: string; type: 'image' | 'video' | 'file'; name: string } | null>(null);
+  const [chatAttachment, setChatAttachment] = useState<ChatAttachment | null>(null);
+  const [copiedGeneratedImage, setCopiedGeneratedImage] = useState<(GeneratedImageMessage & { copiedAt: number }) | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const callFileInputRef = useRef<HTMLInputElement>(null);
   const primaryPhotoInputRef = useRef<HTMLInputElement>(null);
@@ -462,6 +641,77 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     if (e.target) e.target.value = '';
   };
 
+  const handleCopyGeneratedImage = async (msg: ChatMessage) => {
+    if (msg.type !== 'image' || !msg.content) return;
+    setCopiedGeneratedImage({
+      id: msg.id,
+      role: msg.role,
+      type: msg.type,
+      content: msg.content,
+      prompt: msg.prompt,
+      rootPrompt: msg.rootPrompt,
+      revisionHistory: msg.revisionHistory,
+      participants: msg.participants,
+      modelId: msg.modelId,
+      modelName: msg.modelName,
+      copiedAt: Date.now(),
+    });
+
+    try {
+      await copyImageBlobToClipboard(msg.content);
+    } catch {
+      // Cross-origin image hosts do not always expose their bytes to the
+      // browser. Copying the URL still gives the paste handler a reliable
+      // app-internal fallback for this exact generated image.
+      await copyTextToClipboard(msg.content).catch(() => undefined);
+    }
+    toast.success('Image copied — paste it into the prompt to modify it');
+  };
+
+  const handleChatPaste = async (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const recentCopiedImage = copiedGeneratedImage && Date.now() - copiedGeneratedImage.copiedAt < 2 * 60 * 1000
+      ? copiedGeneratedImage
+      : null;
+    const clipboardItems = Array.from(event.clipboardData?.items || []);
+    const imageItem = clipboardItems.find(item => item.type.startsWith('image/'));
+    const pastedImage = imageItem?.getAsFile();
+    const pastedText = event.clipboardData?.getData('text/plain')?.trim();
+    const isInternalImageUrl = Boolean(recentCopiedImage?.content && pastedText === recentCopiedImage.content);
+
+    if (!pastedImage && !isInternalImageUrl) return;
+    event.preventDefault();
+
+    try {
+      const base64 = pastedImage
+        ? await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(pastedImage);
+          })
+        : recentCopiedImage!.content!;
+      const source = recentCopiedImage;
+      setChatAttachment({
+        url: source?.content || base64,
+        base64,
+        type: 'image',
+        name: source ? 'Copied generated image' : pastedImage?.name || 'Pasted image',
+        sourceMessageId: source?.id,
+        sourceImageUrl: source?.content,
+        sourcePrompt: source?.prompt,
+        sourceRootPrompt: source?.rootPrompt,
+        sourceRevisionHistory: source?.revisionHistory,
+        sourceParticipants: source?.participants,
+        sourceModelId: source?.modelId,
+        sourceModelName: source?.modelName,
+      });
+      setLastUploadedReference(base64);
+      toast.success('Image pasted — type the change you want');
+    } catch {
+      toast.error('Could not paste that image');
+    }
+  };
+
   // ── Multi-Sample Voice Clone States ─────────────────────
   const [showVoiceCloneModal, setShowVoiceCloneModal] = useState(false);
   const [uploadedVoiceSamples, setUploadedVoiceSamples] = useState<Array<{ name: string; size: string; type: string; base64: string }>>([]);
@@ -527,26 +777,136 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 
   // ── Voice Call States & Refs ──────────────────────────────
   const [isCallActive, setIsCallActive] = useState(false);
-  const [callStatus, setCallStatus] = useState<'connecting' | 'connected' | 'speaking' | 'listening' | 'disconnected'>('disconnected');
+  const [callStatus, setCallStatus] = useState<'connecting' | 'connected' | 'thinking' | 'speaking' | 'listening' | 'disconnected'>('disconnected');
   const [callDuration, setCallDuration] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
   const [speakerOn, setSpeakerOn] = useState(true);
-  const [callTranscript, setCallTranscript] = useState<Array<{ id: string; role: 'user' | 'persona'; type?: 'text' | 'image' | 'video' | 'loading' | 'error'; content: string; prompt?: string }>>([]);
-  const [activeCallMedia, setActiveCallMedia] = useState<{ type: 'image' | 'video'; url: string; prompt?: string } | null>(null);
+  const [callTranscript, setCallTranscript] = useState<CallTranscriptItem[]>([]);
+  const callTranscriptRef = useRef<CallTranscriptItem[]>([]);
+  const [activeCallMedia, setActiveCallMedia] = useState<{ type: 'image' | 'video'; url: string; prompt?: string; messageId?: string } | null>(null);
   const [fullScreenModalMedia, setFullScreenModalMedia] = useState<{ type: 'image' | 'video'; url: string; prompt?: string } | null>(null);
-  const [lightboxMedia, setLightboxMedia] = useState<{ url: string; prompt?: string } | null>(null);
+  const [lightboxMedia, setLightboxMedia] = useState<{ url: string; prompt?: string; initialMode?: ImageStudioMode } | null>(null);
+  const [voiceAccuracyProfile, setVoiceAccuracyProfile] = useState<VoiceAccuracyProfile>(() =>
+    parseVoiceAccuracyProfile(accountLocalStorage.getItem(VOICE_ACCURACY_STORAGE_KEY)),
+  );
+  const voiceAccuracyProfileRef = useRef(voiceAccuracyProfile);
+  const [voiceIdentityProfile, setVoiceIdentityProfile] = useState<VoiceIdentityProfile | null>(() =>
+    parseVoiceIdentityProfile(accountLocalStorage.getItem(VOICE_IDENTITY_STORAGE_KEY)),
+  );
+  const voiceIdentityProfileRef = useRef<VoiceIdentityProfile | null>(voiceIdentityProfile);
+  const [voiceEnrollmentStatus, setVoiceEnrollmentStatus] = useState<'idle' | 'recording' | 'ready' | 'error'>(
+    voiceIdentityProfile ? 'ready' : 'idle',
+  );
+  const [voiceEnrollmentSeconds, setVoiceEnrollmentSeconds] = useState(0);
+  const [showSpeakerLockSetup, setShowSpeakerLockSetup] = useState(false);
+  const [ignoredSpeakerCount, setIgnoredSpeakerCount] = useState(0);
+  const [lastSpeakerMatchScore, setLastSpeakerMatchScore] = useState<number | null>(null);
+  const voiceFeatureFramesRef = useRef<Array<{ at: number; vector: number[] }>>([]);
+  const voiceEnrollmentFramesRef = useRef<number[][]>([]);
+  const voiceEnrollmentActiveRef = useRef(false);
+  const voiceEnrollmentTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const voiceEnrollmentFinishRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const voiceUtteranceStartedAtRef = useRef<number | null>(null);
+  const lastVoiceFeatureCaptureAtRef = useRef(0);
+  const [showVoiceAccuracyPanel, setShowVoiceAccuracyPanel] = useState(false);
+  const [editingVoiceTranscriptId, setEditingVoiceTranscriptId] = useState<string | null>(null);
+  const [voiceCorrectionDraft, setVoiceCorrectionDraft] = useState('');
+  const [manualHeardDraft, setManualHeardDraft] = useState('');
+  const [manualIntendedDraft, setManualIntendedDraft] = useState('');
+  const [calibrationStep, setCalibrationStep] = useState<number | null>(null);
+  const calibrationStepRef = useRef<number | null>(null);
+  const [calibrationCapture, setCalibrationCapture] = useState<{
+    heard: string;
+    intended: string;
+    corrections: Array<{ heard: string; intended: string }>;
+  } | null>(null);
+  const [pendingVoiceConfirmation, setPendingVoiceConfirmation] = useState<string | null>(null);
+  const [lastVoiceLatency, setLastVoiceLatency] = useState<VoiceLatencySnapshot | null>(null);
+  const voiceSpeechStartedAtRef = useRef<number | null>(null);
+  const browserPendingTranscriptRef = useRef<{ text: string; updatedAt: number }>({ text: '', updatedAt: 0 });
 
-  const handleUpdateImageInChat = (oldUrl: string, newUrl: string) => {
-    setMessages(prev => prev.map(m => (m.type === 'image' && m.content === oldUrl) ? { ...m, content: newUrl } : m));
-    if (activeCallMedia?.type === 'image' && activeCallMedia.url === oldUrl) {
-      setActiveCallMedia({ ...activeCallMedia, url: newUrl });
+  const updateVoiceAccuracyProfile = useCallback((
+    updater: (current: VoiceAccuracyProfile) => VoiceAccuracyProfile,
+  ) => {
+    setVoiceAccuracyProfile(current => {
+      const next = updater(current);
+      voiceAccuracyProfileRef.current = next;
+      accountLocalStorage.setItem(VOICE_ACCURACY_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    voiceAccuracyProfileRef.current = voiceAccuracyProfile;
+  }, [voiceAccuracyProfile]);
+
+  useEffect(() => {
+    voiceIdentityProfileRef.current = voiceIdentityProfile;
+  }, [voiceIdentityProfile]);
+
+  useEffect(() => {
+    calibrationStepRef.current = calibrationStep;
+  }, [calibrationStep]);
+
+  useEffect(() => {
+    callTranscriptRef.current = callTranscript;
+  }, [callTranscript]);
+
+  const handlePersistStudioImageVersion = (newUrl: string, result: ImageStudioVersionResult) => {
+    const source = [...messagesRef.current]
+      .reverse()
+      .find(message => message.type === 'image' && message.content === result.sourceUrl);
+    const revisionNote = result.kind === 'upscale'
+      ? 'Created a separate HD-upscaled version.'
+      : result.prompt;
+
+    addMessage({
+      role: 'persona',
+      type: 'image',
+      content: newUrl,
+      prompt: result.kind === 'upscale' ? source?.prompt || result.prompt : result.prompt,
+      rootPrompt: source?.rootPrompt || source?.prompt || result.prompt,
+      revisionHistory: [...(source?.revisionHistory || []), revisionNote].slice(-8),
+      parentMediaId: source?.id,
+      participants: source?.participants,
+      modelId: source?.modelId,
+      modelName: result.model || source?.modelName,
+      source: 'text',
+    });
+
+    setActiveCallMedia({ type: 'image', url: newUrl, prompt: result.prompt });
+  };
+
+  const handleRecoveredMediaJob = (job: MediaJob) => {
+    const result = job.result;
+    if (!result?.url || (job.personaClientId && job.personaClientId !== activePersona.id)) return;
+    const type = job.kind === 'video' || job.kind === 'avatar' || result.type === 'video' ? 'video' : 'image';
+    addMessage({
+      role: 'persona',
+      type,
+      content: result.url,
+      prompt: result.promptUsed || job.summary,
+      participants: result.participants,
+      modelName: result.model,
+      source: 'text',
+    });
+    setActiveCallMedia({ type, url: result.url, prompt: result.promptUsed || job.summary });
+  };
+
+  const handleOpenMediaJobResult = (job: MediaJob) => {
+    if (!job.result?.url) return;
+    if (job.kind === 'video' || job.kind === 'avatar' || job.result.type === 'video') {
+      setFullScreenModalMedia({ type: 'video', url: job.result.url, prompt: job.summary });
+    } else {
+      setLightboxMedia({ url: job.result.url, prompt: job.summary });
     }
+    setShowMediaJobCenter(false);
   };
 
   // ── Relationship & Mood State ─────────────────────────────
   const [relationshipState, setRelationshipState] = useState<RelationshipState>(() => {
     try {
-      const raw = localStorage.getItem(`persona_relationship_${propActivePersona.id}`);
+      const raw = accountLocalStorage.getItem(`persona_relationship_${propActivePersona.id}`);
       if (raw) return JSON.parse(raw);
     } catch {}
     return {
@@ -561,41 +921,123 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   const updateRelationship = (updated: RelationshipState) => {
     setRelationshipState(updated);
     try {
-      localStorage.setItem(`persona_relationship_${selectedPersonaId}`, JSON.stringify(updated));
+      accountLocalStorage.setItem(`persona_relationship_${selectedPersonaId}`, JSON.stringify(updated));
     } catch {}
   };
 
   // ── Talking Head Video & Voice Note Handlers ──────────────
-  const handleGenerateTalkingVideo = async (imageMsg: ChatMessage) => {
-    if (!imageMsg.content) return;
-    toast.loading('Generating talking video with realistic lip-sync...', { id: 'talking-video' });
-    const loadingId = uid();
-    addMessage({ role: 'persona', type: 'loading', content: `Creating talking video with ${activePersona.name}...` });
+  const handleAnimateImageFromStudio = async (input: AnimateImageInput): Promise<MediaStudioResult> => {
+    const loadingId = addMessage({
+      role: 'persona',
+      type: 'loading',
+      content: `Animating this image with ${activePersona.name}...`,
+      prompt: input.prompt,
+      source: 'text',
+    });
+
     try {
-      const res = await fetch('/api/generate-talking-head', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          image: imageMsg.content,
-          persona: activePersona,
-          prompt: `cinematic talking video portrait of ${activePersona.name}, speaking expressively with subtle head movements and soft smile, looking at camera`,
-        })
+      const result = await requestPersonaMediaJob({
+        type: 'video',
+        persona: activePersona,
+        prompt: input.prompt,
+        imageModelId: selectedEditModelId || 'wavespeed:bytedance/seedream-v5.0-pro',
+        videoModelId: selectedVideoModelId || 'wavespeed-i2v:bytedance/seedance-2-mini',
+        referenceImage: input.imageUrl,
+        aspectRatio: input.aspectRatio,
+        allowNsfw: true,
+        creatorProfile: getCreatorProfile(),
       });
-      const data = await res.json();
-      if (data.videoUrl) {
-        toast.success('🎉 Talking video created!', { id: 'talking-video' });
-        replaceMessage(loadingId, {
-          type: 'video',
-          content: data.videoUrl,
-          prompt: data.promptUsed,
-        });
-      } else {
-        throw new Error(data.error || 'Video generation failed');
-      }
-    } catch (e: any) {
-      toast.error('Talking video generation failed: ' + (e?.message || 'Error'), { id: 'talking-video' });
-      replaceMessage(loadingId, { type: 'error', content: 'Could not generate talking video clip.' });
+
+      const resultText = result.message || `Done — I animated that image with ${activePersona.name}.`;
+      replaceMessage(loadingId, { type: 'text', content: resultText });
+      addMessage({
+        role: 'persona',
+        type: 'video',
+        content: result.url!,
+        prompt: result.promptUsed || input.prompt,
+        modelName: result.model,
+        source: 'text',
+      });
+
+      return {
+        url: result.url!,
+        model: result.model,
+        prompt: result.promptUsed || input.prompt,
+      };
+    } catch (error: any) {
+      const message = error?.message || 'I could not animate that image.';
+      replaceMessage(loadingId, { type: 'error', content: message });
+      throw new Error(message);
     }
+  };
+
+  const handleCreateTalkingAvatarFromStudio = async (input: TalkingAvatarInput): Promise<MediaStudioResult> => {
+    const loadingId = addMessage({
+      role: 'persona',
+      type: 'loading',
+      content: `Creating ${activePersona.name}'s talking avatar...`,
+      prompt: input.script,
+      source: 'text',
+    });
+
+    try {
+      if (!activePersona.voiceId) {
+        throw new Error(`${activePersona.name} does not have a selected voice yet. Choose a voice in Persona Studio, then try again.`);
+      }
+
+      let audioUrl: string;
+      try {
+        const configuredVoiceEngine = activePersona.voiceEngine;
+        const voiceEngine = configuredVoiceEngine === 'openai' || configuredVoiceEngine === 'gemini'
+          ? configuredVoiceEngine
+          : 'elevenlabs';
+        const speech = await textToSpeech({
+          text: input.script,
+          voiceName: activePersona.name,
+          voiceId: activePersona.voiceId,
+          engine: voiceEngine,
+        });
+        audioUrl = speech.audioUrl;
+      } catch (voiceError) {
+        console.warn('[TalkingAvatar] Persona voice synthesis failed:', voiceError);
+        throw new Error(`I couldn't synthesize ${activePersona.name}'s selected voice. Check the voice provider and try again.`);
+      }
+
+      const result = await talkingAvatarJob(activePersona.id, {
+        portraitImage: input.imageUrl,
+        audioUrl,
+        script: input.script,
+        voiceName: activePersona.voiceId || 'Kore',
+        engine: 'wavespeed',
+        model: 'wavespeed-ai/ai-talking-photos',
+      });
+
+      const resultText = `Done — ${activePersona.name}'s talking avatar is ready.`;
+      replaceMessage(loadingId, { type: 'text', content: resultText });
+      addMessage({
+        role: 'persona',
+        type: 'video',
+        content: result.videoUrl,
+        prompt: input.script,
+        modelName: result.model,
+        source: 'text',
+      });
+
+      return { url: result.videoUrl, model: result.model, prompt: input.script };
+    } catch (error: any) {
+      const message = error?.message || 'I could not create that talking avatar.';
+      replaceMessage(loadingId, { type: 'error', content: message });
+      throw new Error(message);
+    }
+  };
+
+  const handleGenerateTalkingVideo = (imageMsg: ChatMessage) => {
+    if (!imageMsg.content) return;
+    setLightboxMedia({
+      url: imageMsg.content,
+      prompt: imageMsg.prompt,
+      initialMode: 'avatar',
+    });
   };
 
   const handleSendVoiceNoteRequest = async () => {
@@ -604,7 +1046,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     const loadingId = uid();
     addMessage({ role: 'persona', type: 'loading', content: `Recording voice note for you...` });
     try {
-      const res = await fetch('/api/chat', {
+      const res = await authFetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -621,7 +1063,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       }
       const spokenText = data.reply || `Hey ${getStoredUserName()}... was just thinking about you.`;
       
-      const vnRes = await fetch('/api/generate-voice-note', {
+      const vnRes = await authFetch('/api/generate-voice-note', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -662,6 +1104,15 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   const lastRestartTimeRef = useRef<number>(0);
   const restartCountRef = useRef<number>(0);
   const recognitionStartIndexRef = useRef<number>(0);
+  const speechRecognitionSilenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scribeConnectionRef = useRef<RealtimeConnection | null>(null);
+  const scribeStartPromiseRef = useRef<Promise<boolean> | null>(null);
+  const scribeReconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastCommittedTranscriptRef = useRef<{ text: string; at: number }>({ text: '', at: 0 });
+  const scribeFailureCountRef = useRef(0);
+  const callTurnIdRef = useRef(0);
+  const recentPersonaSpeechRef = useRef<{ text: string; expiresAt: number }>({ text: '', expiresAt: 0 });
+  const bargeInEnergyUntilRef = useRef(0);
 
   const vadStreamRef = useRef<MediaStream | null>(null);
   const vadAudioCtxRef = useRef<AudioContext | null>(null);
@@ -669,8 +1120,9 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   const personaSpeakingStartTimeRef = useRef<number>(0);
 
   // ── Adaptive Acoustic Echo-Cancelled VAD Interruption Monitor ───
-  const startVadInterruptionMonitor = async () => {
-    if (vadAudioCtxRef.current || !isCallActiveRef.current) return;
+  const startVadInterruptionMonitor = async (allowOutsideCall = false): Promise<boolean> => {
+    if (vadAudioCtxRef.current) return true;
+    if (!isCallActiveRef.current && !allowOutsideCall) return false;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -682,7 +1134,11 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       vadStreamRef.current = stream;
 
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioContextClass) return;
+      if (!AudioContextClass) {
+        stream.getTracks().forEach(track => track.stop());
+        vadStreamRef.current = null;
+        return false;
+      }
       const ctx = new AudioContextClass();
       vadAudioCtxRef.current = ctx;
 
@@ -697,7 +1153,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       let dynamicNoiseFloor = 0.08;
 
       const checkAudioEnergy = () => {
-        if (!isCallActiveRef.current || !vadAudioCtxRef.current) return;
+        if ((!isCallActiveRef.current && !voiceEnrollmentActiveRef.current) || !vadAudioCtxRef.current) return;
 
         analyser.getByteFrequencyData(buffer);
         let sum = 0;
@@ -713,6 +1169,26 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 
         const avgEnergy = binCount > 0 ? (sum / binCount) / 255 : 0;
 
+        // Capture a compact spectral signature while someone is speaking.
+        // Only feature vectors are retained; microphone audio never leaves
+        // this analyser or gets stored in the speaker profile.
+        const now = Date.now();
+        const featureThreshold = Math.max(
+          voiceEnrollmentActiveRef.current ? 0.045 : 0.07,
+          dynamicNoiseFloor + 0.015,
+        );
+        if (avgEnergy > featureThreshold && now - lastVoiceFeatureCaptureAtRef.current >= 45) {
+          const vector = extractVoiceFeatureVector(buffer, ctx.sampleRate, analyser.fftSize);
+          if (vector) {
+            lastVoiceFeatureCaptureAtRef.current = now;
+            voiceFeatureFramesRef.current.push({ at: now, vector });
+            voiceFeatureFramesRef.current = voiceFeatureFramesRef.current.filter(frame => frame.at >= now - 7000);
+            if (voiceEnrollmentActiveRef.current) {
+              voiceEnrollmentFramesRef.current.push(vector);
+            }
+          }
+        }
+
         // If the persona is actively speaking, detect user vocal barge-in immediately
         if (isAgentSpeakingRef.current) {
           // Adapt smoothly to ambient room noise
@@ -722,13 +1198,14 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           const speechThreshold = Math.max(0.11, dynamicNoiseFloor + 0.06);
           const timeSinceStart = Date.now() - personaSpeakingStartTimeRef.current;
 
-          // After minimal 200ms startup buffer, detect user voice within ~60ms (4 frames at 60fps)
+          // Energy alone cannot distinguish a real interruption from the persona
+          // coming back through laptop speakers. Use it only as a short-lived
+          // confidence signal; the transcript still has to be non-echo speech.
           if (timeSinceStart > 200 && avgEnergy > speechThreshold) {
             sustainedSpeechFrames++;
             if (sustainedSpeechFrames >= 4) {
-              console.log('[Vocal Barge-In] 🎙️ User voice detected over speaker! Instantly halting persona...');
+              bargeInEnergyUntilRef.current = Date.now() + 750;
               sustainedSpeechFrames = 0;
-              interruptPersona();
             }
           } else {
             sustainedSpeechFrames = Math.max(0, sustainedSpeechFrames - 1);
@@ -742,8 +1219,18 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       };
 
       vadAnimFrameRef.current = requestAnimationFrame(checkAudioEnergy);
+      return true;
     } catch (err) {
       console.warn('[VAD] Could not initialize voice interruption monitor:', err);
+      if (vadAudioCtxRef.current) {
+        try { vadAudioCtxRef.current.close(); } catch {}
+        vadAudioCtxRef.current = null;
+      }
+      if (vadStreamRef.current) {
+        vadStreamRef.current.getTracks().forEach(track => track.stop());
+        vadStreamRef.current = null;
+      }
+      return false;
     }
   };
 
@@ -764,8 +1251,257 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     }
   };
 
+  function commitRecognizedVoiceTranscript(rawTranscript: string) {
+    const phoneticCorrection = correctSpeechPhonetics(rawTranscript, activePersona?.name);
+    const corrected = applyVoiceCorrections(
+      phoneticCorrection,
+      voiceAccuracyProfileRef.current.corrections,
+    );
+    if (!corrected) return;
+
+    const transcriptCommittedAt = performance.now();
+    const speechStartedAt = voiceSpeechStartedAtRef.current ?? transcriptCommittedAt;
+    voiceSpeechStartedAtRef.current = null;
+    const utteranceStartedAt = voiceUtteranceStartedAtRef.current ?? Date.now() - 4500;
+    voiceUtteranceStartedAtRef.current = null;
+
+    const activeCalibrationStep = calibrationStepRef.current;
+    if (activeCalibrationStep !== null) {
+      const intended = VOICE_CALIBRATION_SENTENCES[activeCalibrationStep];
+      setCalibrationCapture({
+        heard: rawTranscript,
+        intended,
+        corrections: deriveCalibrationCorrections(rawTranscript, intended),
+      });
+      setLiveUserSpeech('');
+      setCallStatus('listening');
+      return;
+    }
+
+    // Enrollment speech is used only to build the local profile; it should not
+    // become a chat turn or trigger persona actions.
+    if (voiceEnrollmentActiveRef.current) {
+      setLiveUserSpeech('');
+      setCallStatus('listening');
+      return;
+    }
+
+    const identityProfile = voiceIdentityProfileRef.current;
+    if (identityProfile?.enabled) {
+      const candidateVectors = voiceFeatureFramesRef.current
+        .filter(frame => frame.at >= utteranceStartedAt - 120 && frame.at <= Date.now() + 120)
+        .map(frame => frame.vector);
+      const score = scoreVoiceIdentity(identityProfile, candidateVectors);
+      setLastSpeakerMatchScore(score);
+      const enrolledSpeaker = isEnrolledSpeaker(identityProfile, candidateVectors);
+      if (enrolledSpeaker === false) {
+        setIgnoredSpeakerCount(count => count + 1);
+        setLiveUserSpeech('');
+        setCallStatus('listening');
+        toast('Background speaker ignored', { icon: '🔒', duration: 1800, id: 'speaker-lock-ignored' });
+        return;
+      }
+    }
+
+    const now = Date.now();
+    if (isDuplicateVoiceTranscript(corrected, lastCommittedTranscriptRef.current, now)) {
+      console.log('[Voice Accuracy] Ignored a stale repeated transcript:', corrected);
+      setLiveUserSpeech('');
+      return;
+    }
+    lastCommittedTranscriptRef.current = { text: corrected, at: now };
+
+    if (needsVoiceConfirmation(corrected)) {
+      setPendingVoiceConfirmation(corrected);
+      setCallInput(corrected);
+      setLiveUserSpeech('');
+      setCallStatus('listening');
+      return;
+    }
+
+    setPendingVoiceConfirmation(null);
+    setLiveUserSpeech('');
+    if (isAgentSpeakingRef.current || voiceCallBusyRef.current) {
+      interruptPersona();
+    }
+    void handleSendCallMessage(corrected, {
+      rawTranscript,
+      speechStartedAt,
+      transcriptCommittedAt,
+    });
+  }
+
+  const stopRealtimeTranscription = () => {
+    if (scribeReconnectTimerRef.current) {
+      clearTimeout(scribeReconnectTimerRef.current);
+      scribeReconnectTimerRef.current = null;
+    }
+    const connection = scribeConnectionRef.current;
+    scribeConnectionRef.current = null;
+    scribeStartPromiseRef.current = null;
+    if (connection) {
+      try { connection.close(); } catch {}
+    }
+  };
+
+  const startRealtimeTranscription = async (): Promise<boolean> => {
+    if (scribeConnectionRef.current) return true;
+    if (scribeStartPromiseRef.current) return scribeStartPromiseRef.current;
+
+    const startPromise = (async () => {
+      try {
+        const tokenResponse = await authFetch('/api/agent/realtime-transcription-token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        const tokenData = await tokenResponse.json().catch(() => ({}));
+        if (!tokenResponse.ok || !tokenData.token || !isCallActiveRef.current) {
+          throw new Error(tokenData.error || 'Realtime transcription is unavailable');
+        }
+
+        const connection = Scribe.connect({
+          token: tokenData.token,
+          modelId: 'scribe_v2_realtime',
+          commitStrategy: CommitStrategy.VAD,
+          vadSilenceThresholdSecs: 0.95,
+          vadThreshold: 0.42,
+          minSpeechDurationMs: 80,
+          minSilenceDurationMs: 180,
+          languageCode: 'en',
+          keyterms: buildVoiceKeyterms(voiceAccuracyProfileRef.current, [
+            ...personas.map(persona => persona.name),
+            activePersona?.name,
+            getStoredUserName(),
+            'send me',
+            'show me',
+            'generate',
+            'image',
+            'photo',
+            'selfie',
+            'video',
+            'Seedream 5.0 Pro',
+            'Seedance 2.5',
+            'Wavespeed',
+            'GPT Image 2',
+            'Qwen 3.0 Pro',
+          ].filter((term): term is string => Boolean(term))),
+          filterBackgroundAudio: true,
+          noVerbatim: false,
+          microphone: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            channelCount: 1,
+          },
+        });
+
+        scribeConnectionRef.current = connection;
+
+        connection.on(RealtimeEvents.PARTIAL_TRANSCRIPT, (event) => {
+          if (!isCallActiveRef.current || isMutedRef.current) return;
+          const partial = String(event.text || '').trim();
+          if (!partial) return;
+
+          const personaSpeech = getEchoReferenceSpeech();
+          if (isLikelyPersonaEcho(partial, personaSpeech)) {
+            return;
+          }
+
+          if (voiceSpeechStartedAtRef.current === null) {
+            voiceSpeechStartedAtRef.current = performance.now();
+            voiceUtteranceStartedAtRef.current = Date.now();
+          }
+
+          setLiveUserSpeech(partial);
+
+          if (shouldInterruptPersonaSpeech(partial, {
+            source: 'realtime',
+            personaSpeech,
+            personaIsSpeaking: isAgentSpeakingRef.current,
+            responseIsPending: voiceCallBusyRef.current,
+          })) {
+            interruptPersona();
+            setLiveUserSpeech(partial);
+          }
+        });
+
+        connection.on(RealtimeEvents.COMMITTED_TRANSCRIPT, (event) => {
+          if (!isCallActiveRef.current || isMutedRef.current) return;
+          const rawTranscript = String(event.text || '').trim();
+          if (!rawTranscript) return;
+
+          if (isLikelyPersonaEcho(rawTranscript, getEchoReferenceSpeech())) {
+            setLiveUserSpeech('');
+            return;
+          }
+
+          commitRecognizedVoiceTranscript(rawTranscript);
+        });
+
+        connection.on(RealtimeEvents.SESSION_STARTED, () => {
+          scribeFailureCountRef.current = 0;
+          if (isCallActiveRef.current && !isAgentSpeakingRef.current) {
+            setCallStatus('listening');
+          }
+        });
+
+        connection.on(RealtimeEvents.ERROR, (event) => {
+          console.warn('[Realtime Transcription] Scribe error:', event);
+        });
+
+        connection.on(RealtimeEvents.CLOSE, () => {
+          if (scribeConnectionRef.current === connection) {
+            scribeConnectionRef.current = null;
+          }
+          if (!isCallActiveRef.current || isMutedRef.current) return;
+
+          scribeFailureCountRef.current += 1;
+          if (scribeFailureCountRef.current <= 2) {
+            scribeReconnectTimerRef.current = setTimeout(() => {
+              scribeStartPromiseRef.current = null;
+              void startRealtimeTranscription();
+            }, 350);
+          } else {
+            console.warn('[Realtime Transcription] Falling back to browser speech recognition');
+            restartSpeechRecognition();
+          }
+        });
+
+        return true;
+      } catch (error) {
+        console.warn('[Realtime Transcription] Could not start Scribe; using browser fallback:', error);
+        scribeConnectionRef.current = null;
+        return false;
+      } finally {
+        scribeStartPromiseRef.current = null;
+      }
+    })();
+
+    scribeStartPromiseRef.current = startPromise;
+    return startPromise;
+  };
+
+  const rememberPersonaSpeech = useCallback(() => {
+    const spoken = currentPersonaSpeechRef.current.trim();
+    if (spoken) {
+      recentPersonaSpeechRef.current = {
+        text: spoken,
+        // Bluetooth and browser audio pipelines can deliver speaker echo late.
+        expiresAt: Date.now() + 2800,
+      };
+    }
+  }, []);
+
+  const getEchoReferenceSpeech = useCallback(() => {
+    const current = isAgentSpeakingRef.current ? currentPersonaSpeechRef.current.trim() : '';
+    const recent = recentPersonaSpeechRef.current;
+    const tail = recent.expiresAt > Date.now() ? recent.text : '';
+    return `${current} ${tail}`.trim();
+  }, []);
+
   const interruptPersona = useCallback(() => {
     console.log('[Interrupt] 🛑 Halting persona audio playback and cancelling in-flight request...');
+    callTurnIdRef.current += 1;
     if (activeCallAbortControllerRef.current) {
       try { activeCallAbortControllerRef.current.abort(); } catch {}
       activeCallAbortControllerRef.current = null;
@@ -781,21 +1517,30 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       try { window.speechSynthesis.cancel(); } catch {}
     }
+    rememberPersonaSpeech();
     currentPersonaSpeechRef.current = '';
     isAgentSpeakingRef.current = false;
     voiceCallBusyRef.current = false;
-    setLiveUserSpeech('');
     if (isCallActiveRef.current) {
       setCallStatus('listening');
-      restartSpeechRecognition();
+      if (!scribeConnectionRef.current) {
+        restartSpeechRecognition();
+      }
     }
-  }, []);
+  }, [rememberPersonaSpeech]);
 
   useEffect(() => {
     isCallActiveRef.current = isCallActive;
   }, [isCallActive]);
 
   const stopSpeechRecognition = () => {
+    if (speechRecognitionSilenceTimerRef.current) {
+      clearTimeout(speechRecognitionSilenceTimerRef.current);
+      speechRecognitionSilenceTimerRef.current = null;
+    }
+    recognitionStartIndexRef.current = 0;
+    browserPendingTranscriptRef.current = { text: '', updatedAt: 0 };
+    voiceSpeechStartedAtRef.current = null;
     const rec = callRecRef.current;
     callRecRef.current = null;
     if (rec) {
@@ -812,6 +1557,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 
   const restartSpeechRecognition = () => {
     if (isMutedRef.current || !isCallActiveRef.current) return;
+    if (scribeConnectionRef.current) return;
     if (callRecRef.current || isStartingRecRef.current) return;
 
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -825,16 +1571,21 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       rec.interimResults = true;
       rec.lang = 'en-US';
       rec.maxAlternatives = 1;
-
-      let interimSilenceTimer: any = null;
+      recognitionStartIndexRef.current = 0;
 
       rec.onresult = (e: any) => {
         if (callRecRef.current !== rec || !isCallActiveRef.current) return;
 
-        // Build entire utterance across all results from index 0
+        // Chrome keeps finalized results at the beginning of e.results for the
+        // lifetime of a continuous recognition session. Only read results that
+        // have not already been sent, otherwise the first utterance is replayed
+        // on every later result event.
+        const firstUnconsumedResult = Math.max(0, recognitionStartIndexRef.current);
+        if (e.results.length <= firstUnconsumedResult) return;
+
         let fullTranscript = '';
         let hasFinalResult = false;
-        for (let i = 0; i < e.results.length; i++) {
+        for (let i = firstUnconsumedResult; i < e.results.length; i++) {
           const res = e.results[i];
           if (res && res[0] && res[0].transcript) {
             const chunk = res[0].transcript.trim();
@@ -848,47 +1599,66 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         const trimmed = fullTranscript.trim();
         if (!trimmed || trimmed.length < 1) return;
 
-        // Instant Vocal Barge-in: If the persona is speaking, immediately halt speech on any incoming user voice
-        if (isAgentSpeakingRef.current) {
-          console.log('[Vocal Barge-In] ⚡ Spoken words recognized while persona was speaking! Halting playback immediately...');
-          if (audioRef.current) {
-            try {
-              audioRef.current.pause();
-              audioRef.current.currentTime = 0;
-              audioRef.current.src = '';
-            } catch {}
-            audioRef.current = null;
+        // Ignore the persona's own speaker audio while leaving recognition live
+        // so a real user interruption still retains its opening words.
+        if (isLikelyPersonaEcho(trimmed, getEchoReferenceSpeech())) {
+          if (hasFinalResult) {
+            recognitionStartIndexRef.current = e.results.length;
           }
-          if (activeCallAbortControllerRef.current) {
-            try { activeCallAbortControllerRef.current.abort(); } catch {}
-            activeCallAbortControllerRef.current = null;
-          }
-          isAgentSpeakingRef.current = false;
-          voiceCallBusyRef.current = false;
-          setCallStatus('listening');
+          return;
         }
 
+        if (voiceSpeechStartedAtRef.current === null) {
+          voiceSpeechStartedAtRef.current = performance.now();
+          voiceUtteranceStartedAtRef.current = Date.now();
+        }
+
+        // Browser fallback uses acoustic activity plus non-echo words. This
+        // prevents the laptop speaker from interrupting its own response.
+        if ((isAgentSpeakingRef.current || voiceCallBusyRef.current) && !shouldInterruptPersonaSpeech(trimmed, {
+          source: 'browser',
+          personaSpeech: getEchoReferenceSpeech(),
+          personaIsSpeaking: isAgentSpeakingRef.current,
+          responseIsPending: voiceCallBusyRef.current,
+          hasFreshVoiceEnergy: Date.now() <= bargeInEnergyUntilRef.current,
+        })) {
+          return;
+        }
+        if (isAgentSpeakingRef.current || voiceCallBusyRef.current) {
+          console.log('[Vocal Barge-In] ⚡ Spoken words recognized while persona was speaking! Halting playback immediately...');
+          interruptPersona();
+        }
+
+        browserPendingTranscriptRef.current = { text: trimmed, updatedAt: Date.now() };
         setLiveUserSpeech(trimmed);
 
         // Reset silence timer on any newly recognized speech chunk
-        if (interimSilenceTimer) clearTimeout(interimSilenceTimer);
+        if (speechRecognitionSilenceTimerRef.current) {
+          clearTimeout(speechRecognitionSilenceTimerRef.current);
+        }
 
         // Intelligent Conversational Pause Buffer (Generous breathing room so user is never interrupted):
         const lastWord = trimmed.split(/\s+/).pop()?.toLowerCase().replace(/[^a-z]/g, '') || '';
         const isTrailingThought = /^(and|or|but|so|because|like|um|uh|then|when|if|that|which|to|with|for|about|my|your|the|a|i|we|you|he|she|it|they|got|had|was|is)$/i.test(lastWord);
 
-        let pauseDelay = 2200;
+        let pauseDelay = 1100;
         if (isTrailingThought) {
-          pauseDelay = 3000;
+          pauseDelay = 1800;
         } else if (hasFinalResult && /[.?!]$/.test(trimmed)) {
-          pauseDelay = 1500;
+          pauseDelay = 700;
         }
 
-        interimSilenceTimer = setTimeout(() => {
-          if (trimmed && trimmed.length >= 2 && isCallActiveRef.current) {
+        const resultCountAtSchedule = e.results.length;
+        speechRecognitionSilenceTimerRef.current = setTimeout(() => {
+          speechRecognitionSilenceTimerRef.current = null;
+          if (callRecRef.current === rec && trimmed.length >= 2 && isCallActiveRef.current) {
+            browserPendingTranscriptRef.current = { text: '', updatedAt: 0 };
+            recognitionStartIndexRef.current = Math.max(
+              recognitionStartIndexRef.current,
+              resultCountAtSchedule,
+            );
             console.log('[Call Voice] 🎤 Captured complete user utterance:', trimmed);
-            setLiveUserSpeech('');
-            handleSendCallMessage(correctSpeechPhonetics(trimmed, activePersona?.name));
+            commitRecognizedVoiceTranscript(trimmed);
           }
         }, pauseDelay);
       };
@@ -907,9 +1677,26 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       };
 
       rec.onend = () => {
+        if (speechRecognitionSilenceTimerRef.current) {
+          clearTimeout(speechRecognitionSilenceTimerRef.current);
+          speechRecognitionSilenceTimerRef.current = null;
+        }
+        const pendingTranscript = browserPendingTranscriptRef.current;
+        browserPendingTranscriptRef.current = { text: '', updatedAt: 0 };
+        recognitionStartIndexRef.current = 0;
         isStartingRecRef.current = false;
         if (callRecRef.current === rec) {
           callRecRef.current = null;
+        }
+        // Chrome can close a recognition session before the silence timer fires.
+        // Commit the buffered utterance here so its opening words are not lost.
+        if (
+          pendingTranscript.text.length >= 2 &&
+          Date.now() - pendingTranscript.updatedAt < 2500 &&
+          isCallActiveRef.current &&
+          !isMutedRef.current
+        ) {
+          commitRecognizedVoiceTranscript(pendingTranscript.text);
         }
         if (isCallActiveRef.current && !isMutedRef.current) {
           setTimeout(() => {
@@ -939,9 +1726,14 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   useEffect(() => {
     isMutedRef.current = isMuted;
     if (isMuted) {
+      try { scribeConnectionRef.current?.mute(); } catch {}
       stopSpeechRecognition();
     } else if (isCallActiveRef.current) {
-      restartSpeechRecognition();
+      if (scribeConnectionRef.current) {
+        try { scribeConnectionRef.current.unmute(); } catch {}
+      } else {
+        restartSpeechRecognition();
+      }
     }
   }, [isMuted]);
 
@@ -981,9 +1773,10 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       if (isCallActiveRef.current && !isMutedRef.current && !callRecRef.current && !isStartingRecRef.current && !isAgentSpeakingRef.current && !voiceCallBusyRef.current) {
         restartSpeechRecognition();
       }
-      // If agent has been "speaking" for >60s without ending, force recover
-      if (isAgentSpeakingRef.current && (Date.now() - personaSpeakingStartTimeRef.current > 60000)) {
-        console.warn('[Voice Watchdog] ⏰ Agent stuck >60s. Force recovering...');
+      // Leave enough room for a complete multi-segment spoken answer. This is
+      // only a last-resort recovery for genuinely stuck playback.
+      if (isAgentSpeakingRef.current && (Date.now() - personaSpeakingStartTimeRef.current > 120000)) {
+        console.warn('[Voice Watchdog] ⏰ Agent stuck >120s. Force recovering...');
         interruptPersona();
       }
     }, 1500);
@@ -995,6 +1788,11 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const formatLatency = (milliseconds?: number) => {
+    if (milliseconds === undefined) return '—';
+    return milliseconds < 1000 ? `${milliseconds}ms` : `${(milliseconds / 1000).toFixed(1)}s`;
   };
 
   // ── Web Speech Fallback Engine (Robotic Voice Suppressed) ──
@@ -1014,20 +1812,29 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       restartSpeechRecognition();
       return;
     }
-    setCallStatus('speaking');
-    isAgentSpeakingRef.current = true;
-    personaSpeakingStartTimeRef.current = Date.now();
-    // Stop microphone recognition while persona is speaking to eliminate speaker-mic feedback loop
-    stopSpeechRecognition();
+    setCallStatus('thinking');
+    isAgentSpeakingRef.current = false;
+    voiceCallBusyRef.current = true;
 
+    let controller: AbortController | null = null;
+    let playbackSettled = false;
     const onPlaybackComplete = () => {
+      if (playbackSettled) return;
+      playbackSettled = true;
+      const ownsCurrentPlayback = controller === null
+        ? activeCallAbortControllerRef.current === null
+        : activeCallAbortControllerRef.current === controller;
+      // An interrupted older playback must never reset a newer turn to idle.
+      if (!ownsCurrentPlayback) return;
+      activeCallAbortControllerRef.current = null;
       isAgentSpeakingRef.current = false;
       voiceCallBusyRef.current = false;
+      rememberPersonaSpeech();
       currentPersonaSpeechRef.current = '';
       if (isCallActiveRef.current) {
         setCallStatus('listening');
         setTimeout(() => {
-          if (isCallActiveRef.current && !isAgentSpeakingRef.current) {
+          if (isCallActiveRef.current && !isAgentSpeakingRef.current && !scribeConnectionRef.current) {
             restartSpeechRecognition();
           }
         }, 150);
@@ -1036,10 +1843,10 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 
     try {
       const { voiceId: targetVoiceId, voiceReference: targetVoiceRef } = getActivePersonaVoice(activePersona);
-      const controller = new AbortController();
+      controller = new AbortController();
       activeCallAbortControllerRef.current = controller;
 
-      const ttsRes = await fetch('/api/agent/voice-chat', {
+      const ttsRes = await authFetch('/api/agent/voice-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1053,6 +1860,15 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         signal: controller.signal,
       });
       const ttsData = await ttsRes.json().catch(() => ({}));
+      if (!ttsRes.ok) {
+        if (ttsData.code === 'PERSONA_VOICE_UNAVAILABLE') {
+          const message = ttsData.error || `${activePersona.name}'s saved voice is unavailable. Reselect it in Voice Studio.`;
+          toast.error(message, { id: 'persona-voice-unavailable', duration: 7000 });
+          onPlaybackComplete();
+          return;
+        }
+        throw new Error(ttsData.error || `Voice synthesis failed (${ttsRes.status})`);
+      }
       const audioUrl = ttsData.audioUrl;
       
       if (!audioUrl || !isCallActiveRef.current) {
@@ -1073,7 +1889,9 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           audio.src = '';
           return;
         }
-        stopSpeechRecognition();
+        setCallStatus('speaking');
+        isAgentSpeakingRef.current = true;
+        voiceCallBusyRef.current = false;
         personaSpeakingStartTimeRef.current = Date.now();
         onStart?.();
       };
@@ -1102,6 +1920,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           if (audioRef.current === audio) {
             audioRef.current = null;
           }
+          onPlaybackComplete();
         }
       } else {
         if (audioRef.current === audio) {
@@ -1110,28 +1929,65 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         onPlaybackComplete();
       }
     } catch (err: any) {
+      if (err?.name === 'AbortError') {
+        onPlaybackComplete();
+        return;
+      }
       console.warn("TTS fetch failed, falling back to Web Speech Synthesis", err);
       speakWithWebSpeech(text, onStart, onPlaybackComplete);
     }
   };
 
   // Send message inside Live Call
-  const handleSendCallMessage = async (overrideText?: string) => {
+  const handleSendCallMessage = async (
+    overrideText?: string,
+    voiceMeta?: {
+      rawTranscript?: string;
+      speechStartedAt?: number;
+      transcriptCommittedAt?: number;
+    },
+  ) => {
     const text = (overrideText || callInput).trim();
     if (!text || !isCallActiveRef.current) return;
-    if (voiceCallBusyRef.current) {
-      console.log('[Call Voice] ⏳ Already processing, ignoring duplicate input');
-      return;
+    if (voiceCallBusyRef.current || isAgentSpeakingRef.current) {
+      console.log('[Call Voice] ⚡ New turn interrupted the active response');
+      interruptPersona();
     }
 
+    // Typed turns and fast follow-up speech must cancel every part of the old
+    // response, including already-queued TTS segments.
+    if (activeCallAbortControllerRef.current) {
+      try { activeCallAbortControllerRef.current.abort(); } catch {}
+      activeCallAbortControllerRef.current = null;
+    }
+    rememberPersonaSpeech();
+    currentPersonaSpeechRef.current = '';
+
     voiceCallBusyRef.current = true;
-    isAgentSpeakingRef.current = true;
-    personaSpeakingStartTimeRef.current = Date.now();
+    setPendingVoiceConfirmation(null);
+    const callTurnId = ++callTurnIdRef.current;
+    isAgentSpeakingRef.current = false;
     restartSpeechRecognition();
 
+    const turnTiming: VoiceTurnTiming = {
+      speechStartedAt: voiceMeta?.speechStartedAt,
+      transcriptCommittedAt: voiceMeta?.transcriptCommittedAt,
+      requestStartedAt: performance.now(),
+    };
+    let latencyRecorded = false;
+    const recordFirstAudioLatency = () => {
+      if (latencyRecorded) return;
+      latencyRecorded = true;
+      turnTiming.firstAudioAt = performance.now();
+      setLastVoiceLatency(summarizeVoiceLatency(turnTiming));
+    };
+
     const watchdogTimer = setTimeout(() => {
-      if (voiceCallBusyRef.current) {
+      if (voiceCallBusyRef.current && callTurnId === callTurnIdRef.current) {
         console.warn('[Call Watchdog] ⏰ Request timed out, auto-recovering...');
+        callTurnIdRef.current += 1;
+        try { activeCallAbortControllerRef.current?.abort(); } catch {}
+        activeCallAbortControllerRef.current = null;
         isAgentSpeakingRef.current = false;
         voiceCallBusyRef.current = false;
         if (isCallActiveRef.current) {
@@ -1139,7 +1995,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           restartSpeechRecognition();
         }
       }
-    }, 25000);
+    }, 75000);
 
     // Stop any currently playing persona audio
     if (audioRef.current) {
@@ -1153,27 +2009,196 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     setCallInput('');
 
     const sentCallAttachment = chatAttachment;
+    const callRevisionSource = getAttachmentRevisionSource(sentCallAttachment);
     setChatAttachment(null);
     
-    const userMsg: any = { id: uid(), role: 'user' as const, type: 'text' as const, content: text };
+    const userMsg: CallTranscriptItem & { attachment?: typeof sentCallAttachment } = {
+      id: uid(),
+      role: 'user',
+      type: 'text',
+      content: text,
+      source: voiceMeta?.rawTranscript ? 'voice' : 'typed',
+      rawContent: voiceMeta?.rawTranscript,
+    };
     if (sentCallAttachment) {
       userMsg.attachment = sentCallAttachment;
     }
-    const updatedHistory = [...callTranscript.filter(t => t.content.indexOf('Calling') !== 0), userMsg];
+    const updatedHistory = [...callTranscriptRef.current.filter(t => t.content.indexOf('Calling') !== 0), userMsg];
+    callTranscriptRef.current = updatedHistory;
     setCallTranscript(updatedHistory);
+    appendConversationMessages([{
+      id: userMsg.id,
+      role: 'user',
+      type: 'text',
+      content: text,
+      timestamp: new Date(),
+      source: userMsg.source === 'voice' ? 'voice' : 'text',
+      rawContent: voiceMeta?.rawTranscript,
+      ...(sentCallAttachment ? { attachment: sentCallAttachment } : {}),
+    }]);
     
-    setCallStatus('speaking');
+    setCallStatus('thinking');
+
+    let earlySpeechTimer: ReturnType<typeof setTimeout> | null = null;
 
     try {
-      const priorHistory = loadHistory(activePersona.id);
       const personaMemories = loadPersonaMemories(activePersona.id);
       const creator = getCreatorProfile();
+      const conversationContext = mergeUniqueConversationRecords(
+        searchConversationMemories(activePersona.id, text, 12),
+        loadConversationContext(activePersona.id, 60),
+        messagesRef.current.slice(-60) as ConversationRecord[],
+      ).filter(record => record.type !== 'loading');
 
       const controller = new AbortController();
       activeCallAbortControllerRef.current = controller;
 
-      // Single-hop Unified Real-Time Voice Endpoint (LLM generation + ElevenLabs Turbo in ONE parallel round-trip)
-      const res = await fetch('/api/agent/voice-chat', {
+      let streamedReply = '';
+      let speechBuffer = '';
+      let streamMetadata: any = {};
+      let streamingSpeechQueued = false;
+      let streamingAudioPlayed = false;
+      let terminalTtsError: string | undefined;
+      let streamingPlayback = Promise.resolve();
+      const { voiceId: targetVoiceId, voiceReference: targetVoiceRef } = getActivePersonaVoice(activePersona);
+
+      const reportTerminalTtsError = (message: string) => {
+        if (terminalTtsError) return;
+        terminalTtsError = message;
+        const errorId = `voice-routing-error-${callTurnId}`;
+        setCallTranscript(prev => prev.some(item => item.id === errorId)
+          ? prev
+          : [...prev, { id: errorId, role: 'persona', type: 'error', content: message }]);
+        toast.error(message, { id: 'persona-voice-unavailable', duration: 7000 });
+      };
+
+      const synthesizeSpeechSegment = async (segment: string): Promise<string | undefined> => {
+        if (terminalTtsError) return undefined;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            const ttsResponse = await authFetch('/api/agent/voice-chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                activePersona,
+                directTTS: segment,
+                voiceId: targetVoiceId,
+                voiceReference: targetVoiceRef,
+                voiceModel: selectedVoiceEngine,
+                ttsModel: selectedVoiceEngine,
+              }),
+              signal: controller.signal,
+            });
+            const ttsData = await ttsResponse.json().catch(() => ({}));
+            if (ttsResponse.ok && ttsData.audioUrl) return ttsData.audioUrl;
+            if (ttsData.code === 'PERSONA_VOICE_UNAVAILABLE') {
+              reportTerminalTtsError(
+                ttsData.error || `${activePersona.name}'s saved voice is unavailable. Reselect it in Voice Studio.`,
+              );
+              return undefined;
+            }
+          } catch (error: any) {
+            if (error?.name === 'AbortError') throw error;
+          }
+          if (attempt === 0 && !controller.signal.aborted) {
+            await new Promise(resolve => setTimeout(resolve, 250));
+          }
+        }
+        return undefined;
+      };
+
+      const playPreparedSegment = async (segment: string, audioPromise: Promise<string | undefined>, playbackAttempt = 0): Promise<void> => {
+        const audioUrl = await audioPromise.catch(() => undefined);
+        if (!audioUrl || controller.signal.aborted || callTurnId !== callTurnIdRef.current || !isCallActiveRef.current) return;
+
+        const playedToEnd = await new Promise<boolean>((resolve) => {
+          const audio = new Audio();
+          audioRef.current = audio;
+          audio.src = audioUrl;
+          audio.volume = 1;
+          let settled = false;
+
+          const finish = (completed = false) => {
+            if (settled) return;
+            settled = true;
+            controller.signal.removeEventListener('abort', onAbort);
+            if (audioRef.current === audio) audioRef.current = null;
+            resolve(completed);
+          };
+          const onAbort = () => {
+            try {
+              audio.pause();
+              audio.currentTime = 0;
+              audio.src = '';
+            } catch {}
+            finish(false);
+          };
+
+          controller.signal.addEventListener('abort', onAbort, { once: true });
+          audio.onended = () => finish(true);
+          audio.onerror = () => finish(false);
+          audio.onplay = () => {
+            streamingAudioPlayed = true;
+            recordFirstAudioLatency();
+            personaSpeakingStartTimeRef.current = Date.now();
+            setCallStatus('speaking');
+            isAgentSpeakingRef.current = true;
+            // Let a new committed transcript barge in while this phrase plays.
+            voiceCallBusyRef.current = false;
+            if (!isMutedRef.current) restartSpeechRecognition();
+          };
+
+          audio.play().catch(() => finish(false));
+        });
+
+        // A temporary CDN/audio-element failure should not silently remove the
+        // final phrase. Re-synthesize and replay that phrase once.
+        if (!playedToEnd && !terminalTtsError && playbackAttempt === 0 && !controller.signal.aborted && callTurnId === callTurnIdRef.current) {
+          await playPreparedSegment(segment, synthesizeSpeechSegment(segment), 1);
+        }
+      };
+
+      const queueSpeechSegment = (segment: string) => {
+        const cleanSegment = segment.replace(/\s+/g, ' ').trim();
+        if (!speakerOn || cleanSegment.length < 2) return;
+        if (earlySpeechTimer) {
+          clearTimeout(earlySpeechTimer);
+          earlySpeechTimer = null;
+        }
+        streamingSpeechQueued = true;
+        const audioPromise = synthesizeSpeechSegment(cleanSegment);
+        streamingPlayback = streamingPlayback.then(() => playPreparedSegment(cleanSegment, audioPromise));
+      };
+
+      const flushSpeechBuffer = (force = false, allowEarlyPartial = false) => {
+        while (speechBuffer.trim()) {
+          const extracted = takeSpeakableSpeechChunk(speechBuffer, {
+            force,
+            firstChunk: !streamingSpeechQueued,
+            allowEarlyPartial,
+          });
+          speechBuffer = extracted.remainder;
+          if (!extracted.chunk) break;
+          queueSpeechSegment(extracted.chunk);
+        }
+      };
+
+      const scheduleEarlySpeech = () => {
+        if (!speakerOn || streamingSpeechQueued || earlySpeechTimer || !speechBuffer.trim()) return;
+        earlySpeechTimer = setTimeout(() => {
+          earlySpeechTimer = null;
+          flushSpeechBuffer(false, true);
+          // A very small initial token may not yet be safe to speak. Check it
+          // again shortly without resetting the timer on every streamed token.
+          if (!streamingSpeechQueued && speechBuffer.trim()) {
+            scheduleEarlySpeech();
+          }
+        }, 180);
+      };
+
+      // Stream LLM text immediately, and synthesize each complete phrase while
+      // the rest of the response is still being generated.
+      const res = await authFetch('/api/agent/voice-chat-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1181,16 +2206,20 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           creatorProfile: creator,
           userName: creator.name || getStoredUserName(),
           attachedImage: sentCallAttachment?.type === 'image' ? sentCallAttachment.base64 : undefined,
-          messages: updatedHistory.slice(-15).map(m => ({
+          messages: conversationContext.map(m => ({
+            id: m.id,
             role: m.role === 'user' ? 'user' : 'model',
             content: m.type === 'image' 
               ? `[Persona generated and sent a photo of herself: "${m.prompt || 'photo requested by user'}". User is looking at the photo on screen.]` 
               : m.type === 'video'
               ? `[Persona generated and sent a video clip to the user's screen.]`
-              : m.content
+              : m.content,
+            source: m.source,
+            timestamp: m.timestamp,
           })),
-          priorChatHistory: priorHistory.slice(-40).map(m => ({ role: m.role === 'user' ? 'user' : 'model', content: m.content })),
+          priorChatHistory: [],
           memories: personaMemories,
+          voiceLlmModel,
           voiceId: getActivePersonaVoice(activePersona).voiceId,
           voiceReference: getActivePersonaVoice(activePersona).voiceReference,
           voiceModel: selectedVoiceEngine,
@@ -1198,10 +2227,59 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         }),
         signal: controller.signal,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed call dialogue response');
+      if (!res.ok || !res.body) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed streaming call dialogue response');
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let eventBuffer = '';
+      const processVoiceStreamPayload = (payloadText: string) => {
+        const payload = JSON.parse(payloadText);
+        if (payload.error) throw new Error(payload.error);
+        if (payload.text && !payload.done) {
+          if (turnTiming.firstTextAt === undefined) {
+            turnTiming.firstTextAt = performance.now();
+          }
+          streamedReply += payload.text;
+          speechBuffer += payload.text;
+          currentPersonaSpeechRef.current = streamedReply.toLowerCase().trim();
+          flushSpeechBuffer(false);
+          scheduleEarlySpeech();
+        }
+        if (payload.done) streamMetadata = payload;
+      };
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        eventBuffer += decoder.decode(value, { stream: true });
+        const drained = drainSseData(eventBuffer);
+        eventBuffer = drained.remainder;
+        drained.data.forEach(processVoiceStreamPayload);
+      }
+      eventBuffer += decoder.decode();
+      drainSseData(eventBuffer, true).data.forEach(processVoiceStreamPayload);
+      if (earlySpeechTimer) {
+        clearTimeout(earlySpeechTimer);
+        earlySpeechTimer = null;
+      }
+      flushSpeechBuffer(true);
+
+      const data = {
+        ...streamMetadata,
+        text: streamMetadata.text || streamedReply,
+      };
+      if (!data.text) throw new Error('The streaming voice response was empty');
+      if (turnTiming.firstTextAt === undefined) {
+        turnTiming.firstTextAt = performance.now();
+      }
       
       clearTimeout(watchdogTimer);
+
+      if (callTurnId !== callTurnIdRef.current) {
+        return;
+      }
 
       // If call was ended while we were waiting for network response, do NOT play audio
       if (!isCallActiveRef.current) {
@@ -1210,7 +2288,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         return;
       }
 
-      let reply = data.text || data.reply || "Hey, I'm right here with you!";
+      let reply = data.text || data.reply || "Mm—what's up?";
       if (/^(?:generating|creating|rendering|loading|producing|processing|taking)\s+(?:image|photo|video|picture|visual|content|look|selfie)/i.test(reply) || /^take a look at this (?:image|photo|picture)/i.test(reply)) {
         reply = `Let me take that for you right now, babe...`;
       }
@@ -1221,67 +2299,118 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         savePersonaMemory(activePersona.id, text);
       }
       
-      setMessages(prev => [...prev, 
-        { id: uid(), role: 'user', type: 'text', content: text, timestamp: new Date() },
-        { id: uid(), role: 'persona', type: 'text', content: reply, timestamp: new Date() }
-      ]);
+      appendConversationMessages([{
+        id: personaMsg.id,
+        role: 'persona',
+        type: 'text',
+        content: reply,
+        timestamp: new Date(),
+        source: 'voice',
+      }]);
 
-      const isVoiceImageIntent = data.action?.type === 'image' || 
+      const voiceImageRevisionCandidate = resolveImageRevisionContext(text, messagesRef.current, callRevisionSource);
+      const isVoiceImageIntent = voiceImageRevisionCandidate.isRevision || data.action?.type === 'image' ||
         detectIntent(text) === 'image' || 
         (/\b(?:photo|pic|picture|selfie|image)\b/i.test(text) && /\b(?:take|send|snap|show|generate|make|see|want|wearing|exposed|nude|naked|bedroom|bed)\b/i.test(text)) ||
         /\b(?:sending it|try again right now.*sending it|sending you a (?:photo|selfie|pic|image)|sending a (?:photo|selfie|pic|image)|taking a (?:photo|selfie)|take a quick (?:photo|selfie)|here is the (?:photo|selfie)|snap that for you|take that for you|snapping (?:this|that|a photo)|let me take|give me one second.*(?:snap|take|photo|pic)|here you go.*(?:pic|photo))\b/i.test(reply);
 
       const isVoiceVideoIntent = !isVoiceImageIntent && (data.action?.type === 'video' || detectIntent(text) === 'video' || /\b(?:sending you a video|recorded a video|sending the video)\b/i.test(reply));
 
-      if (isVoiceImageIntent) {
+      if (isVoiceImageIntent || isVoiceVideoIntent) {
+        const mediaType = isVoiceImageIntent ? 'image' as const : 'video' as const;
         const loadingMsgId = uid();
-        setCallTranscript(prev => [...prev, personaMsg, { id: loadingMsgId, role: 'persona', type: 'loading', content: '' }]);
-        const visualPrompt = data.action?.prompt || text || `${activePersona.name}, ${activePersona.niche}, glamorous photorealistic portrait, intimate, natural lighting, ultra high resolution 8k`;
-        
-        const isDuoShoot = /\b(with me|with (?:dr\.?\s*h|alex|chris|creator)|duo|together|both of us|us at|with you)\b/i.test(visualPrompt) || /\b(with me|with (?:dr\.?\s*h|alex|chris|creator)|duo|together|both of us|us at)\b/i.test(text);
-        const isExplicitNude = /\b(naked|nude|topless|unclothed|bare|boobs|tits|breasts|nipples|exposed|sensual|erotic|no clothes|without clothes|undressed|pussy|ass)\b/i.test(visualPrompt) || /\b(naked|nude|topless|unclothed|bare|boobs|tits|breasts|nipples|exposed|sensual|erotic|no clothes|without clothes|undressed|pussy|ass)\b/i.test(text);
-        const extraImages: string[] = [];
-        if (sentCallAttachment?.type === 'image') extraImages.push(sentCallAttachment.base64);
-        else if (lastUploadedReference) extraImages.push(lastUploadedReference);
-        if (isDuoShoot && creator?.primaryPhoto && !extraImages.includes(creator.primaryPhoto)) {
-          extraImages.push(creator.primaryPhoto);
-        }
+        const callGenerationLabel = mediaType === 'image'
+          ? 'Generating your image...'
+          : 'Rendering your video...';
+        setCallTranscript(prev => [...prev, personaMsg, {
+          id: loadingMsgId,
+          role: 'persona',
+          type: 'loading',
+          content: callGenerationLabel,
+        }]);
+        const exactMediaRequest = text.trim();
+        const rawMediaPrompt = exactMediaRequest || `${activePersona.name}, ${activePersona.niche}, ${mediaType === 'image' ? 'photorealistic portrait' : 'cinematic motion video clip'}`;
+        const modelSelection = resolveMediaModelFromPrompt(
+          rawMediaPrompt,
+          mediaType === 'image' ? editModels : videoModels,
+          mediaType,
+        );
+        const mediaPrompt = modelSelection.prompt;
+        const imageRevision = mediaType === 'image'
+          ? resolveImageRevisionContext(mediaPrompt, messagesRef.current, callRevisionSource)
+          : { isRevision: false, prompt: mediaPrompt, source: undefined, rootPrompt: undefined, revisionHistory: undefined };
+        const requestPrompt = imageRevision.prompt;
+        const requestedModelId = modelSelection.explicit && modelSelection.matched
+          ? modelSelection.modelId
+          : mediaType === 'image'
+            ? imageRevision.source?.modelId || selectedEditModelId || 'wavespeed:bytedance/seedream-v5.0-pro'
+            : selectedVideoModelId || 'wavespeed-i2v:bytedance/seedance-2-mini';
+        const extraImages = [
+          sentCallAttachment?.type === 'image' && !sentCallAttachment.sourceMessageId ? sentCallAttachment.base64 : undefined,
+          !sentCallAttachment && lastUploadedReference ? lastUploadedReference : undefined,
+        ].filter((value): value is string => Boolean(value));
 
-        // Primary persona reference photo for exact facial identity locking
-        const personaPrimaryRef = activePersona.referenceImage || activePersona.avatar || activePersona.alternateReferenceImage;
+        const mediaRequest = modelSelection.explicit && !modelSelection.matched
+          ? Promise.reject(new Error(
+              `I couldn't find “${modelSelection.requestedText}” in your available ${mediaType} models. Try another model name or choose one in AI Settings.`,
+            ))
+          : requestPersonaMediaJob({
+              type: mediaType,
+              persona: activePersona,
+              prompt: requestPrompt,
+              imageModelId: mediaType === 'image' ? requestedModelId : selectedEditModelId || 'wavespeed:bytedance/seedream-v5.0-pro',
+              videoModelId: mediaType === 'video' ? requestedModelId : selectedVideoModelId || 'wavespeed-i2v:bytedance/seedance-2-mini',
+              aspectRatio: '9:16',
+              allowNsfw: true,
+              revisionImage: imageRevision.isRevision ? imageRevision.source?.content : undefined,
+              additionalImages: extraImages.length > 0 ? extraImages : undefined,
+              creatorProfile: creator,
+            });
 
-        // Generate high-fidelity photorealistic image using ByteDance Seedream 5.0 Pro
-        generateImage({
-          persona: activePersona,
-          prompt: visualPrompt,
-          modelId: 'wavespeed:bytedance/seedream-v5.0-pro',
-          aspectRatio: '9:16',
-          isChatContext: true,
-          chatPrompt: text, // preserve exact spoken request with user specifics
-          allowNsfw: true,
-          referenceImage: personaPrimaryRef,
-          additionalImages: extraImages.length > 0 ? extraImages : undefined,
-          creatorProfile: isDuoShoot ? creator : undefined,
-        } as any).then(result => {
-          const imgUrl = Array.isArray(result) ? result[0].imageUrl : result.imageUrl;
-          setActiveCallMedia({ type: 'image', url: imgUrl, prompt: visualPrompt });
-          setCallTranscript(prev => prev.map(m => m.id === loadingMsgId ? { ...m, type: 'image', content: imgUrl, prompt: visualPrompt } : m));
-          setMessages(prev => [...prev, { id: uid(), role: 'persona', type: 'image', content: imgUrl, timestamp: new Date() }]);
+        void mediaRequest.then(result => {
+          const resultText = modelSelection.explicit && modelSelection.matched
+            ? `${result.message} Used ${result.model || modelSelection.modelName}.`
+            : result.message;
+          const mediaMessage = {
+            id: uid(),
+            role: 'persona' as const,
+            type: mediaType,
+            content: result.url!,
+            prompt: requestPrompt,
+            rootPrompt: mediaType === 'image' ? imageRevision.rootPrompt || mediaPrompt : undefined,
+            revisionHistory: mediaType === 'image' ? imageRevision.revisionHistory || [] : undefined,
+            parentMediaId: imageRevision.isRevision ? imageRevision.source?.id : undefined,
+            participants: result.participants,
+            modelId: requestedModelId,
+            modelName: result.model || imageRevision.source?.modelName,
+          };
+          const resultMessage = { id: uid(), role: 'persona' as const, type: 'text' as const, content: resultText };
+          setActiveCallMedia({ type: mediaType, url: result.url!, prompt: requestPrompt, messageId: mediaMessage.id });
+          setCallTranscript(prev => [
+            ...prev.map(m => m.id === loadingMsgId ? mediaMessage : m),
+            resultMessage,
+          ]);
+          appendConversationMessages([
+            { ...mediaMessage, timestamp: new Date(), source: 'voice' },
+            { ...resultMessage, timestamp: new Date(), source: 'voice' },
+          ]);
+          if (callTurnId === callTurnIdRef.current && isCallActiveRef.current) {
+            streamingPlayback.then(() => playTTS(resultText)).catch(() => {});
+          }
         }).catch(err => {
-          console.warn('[Voice Call Image Generation Error]:', err);
-          setCallTranscript(prev => prev.map(m => m.id === loadingMsgId ? { ...m, type: 'error', content: err?.message || 'Failed to generate photo' } : m));
-        });
-      } else if (isVoiceVideoIntent) {
-        const loadingMsgId = uid();
-        setCallTranscript(prev => [...prev, personaMsg, { id: loadingMsgId, role: 'persona', type: 'loading', content: '' }]);
-        const personaPhoto = activePersona.referenceImage || activePersona.avatar || activePersona.alternateReferenceImage;
-        const videoPrompt = data.action?.prompt || text || `${activePersona.name}, ${activePersona.niche}, cinematic motion video clip, 4k uhd`;
-        generateVideo(videoPrompt, selectedVideoModelId, personaPhoto || undefined).then(result => {
-          setActiveCallMedia({ type: 'video', url: result.videoUrl, prompt: videoPrompt });
-          setCallTranscript(prev => prev.map(m => m.id === loadingMsgId ? { ...m, type: 'video', content: result.videoUrl, prompt: videoPrompt } : m));
-          setMessages(prev => [...prev, { id: uid(), role: 'persona', type: 'video', content: result.videoUrl, timestamp: new Date() }]);
-        }).catch(err => {
-          setCallTranscript(prev => prev.map(m => m.id === loadingMsgId ? { ...m, type: 'error', content: err?.message || 'Failed to generate video' } : m));
+          const failureMessage = err?.message || `I couldn't finish that ${mediaType}.`;
+          setCallTranscript(prev => prev.map(m => m.id === loadingMsgId ? { ...m, type: 'error', content: failureMessage } : m));
+          appendConversationMessages([{
+            id: uid(),
+            role: 'persona',
+            type: 'text',
+            content: failureMessage,
+            timestamp: new Date(),
+            source: 'voice',
+          }]);
+          if (callTurnId === callTurnIdRef.current && isCallActiveRef.current) {
+            streamingPlayback.then(() => playTTS(failureMessage)).catch(() => {});
+          }
         });
       } else {
         setCallTranscript(prev => [...prev, personaMsg]);
@@ -1289,15 +2418,9 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       
       if (data.audioUrl && isCallActiveRef.current) {
         currentPersonaSpeechRef.current = reply.toLowerCase().trim();
-        setCallStatus('speaking');
-        isAgentSpeakingRef.current = true;
-        voiceCallBusyRef.current = false;
-        personaSpeakingStartTimeRef.current = Date.now();
-        
-        // Ensure recognition is actively listening for vocal barge-in
-        if (!isMutedRef.current) {
-          restartSpeechRecognition();
-        }
+        setCallStatus('thinking');
+        isAgentSpeakingRef.current = false;
+        voiceCallBusyRef.current = true;
         
         // Stop any currently playing audio instance to prevent overlapping voices
         const existingAudio = audioRef.current as HTMLAudioElement | null;
@@ -1314,13 +2437,29 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         audioRef.current = audio;
         audio.src = data.audioUrl;
         audio.volume = 1.0;
+        audio.onplay = () => {
+          if (callTurnId !== callTurnIdRef.current || !isCallActiveRef.current) {
+            try { audio.pause(); audio.src = ''; } catch {}
+            return;
+          }
+          recordFirstAudioLatency();
+          setCallStatus('speaking');
+          isAgentSpeakingRef.current = true;
+          voiceCallBusyRef.current = false;
+          personaSpeakingStartTimeRef.current = Date.now();
+          if (!isMutedRef.current) restartSpeechRecognition();
+        };
 
+        let callAudioSettled = false;
         const onCallAudioEnded = () => {
+          if (callAudioSettled) return;
+          callAudioSettled = true;
           if (audioRef.current === audio) audioRef.current = null;
           setTimeout(() => {
-            if (!isCallActiveRef.current) return;
+            if (!isCallActiveRef.current || callTurnId !== callTurnIdRef.current) return;
             isAgentSpeakingRef.current = false;
             voiceCallBusyRef.current = false;
+            rememberPersonaSpeech();
             currentPersonaSpeechRef.current = '';
             setCallStatus('listening');
             restartSpeechRecognition();
@@ -1350,6 +2489,29 @@ export default function AssistantView({ personas, persona: propActivePersona, on
             onCallAudioEnded();
           }
         }
+      } else if (streamingSpeechQueued && isCallActiveRef.current) {
+        await streamingPlayback;
+        if (callTurnId !== callTurnIdRef.current || !isCallActiveRef.current) return;
+        if (terminalTtsError) {
+          isAgentSpeakingRef.current = false;
+          voiceCallBusyRef.current = false;
+          currentPersonaSpeechRef.current = '';
+          setCallStatus('listening');
+          restartSpeechRecognition();
+        } else if (!streamingAudioPlayed) {
+          await playTTS(reply, () => {
+            recordFirstAudioLatency();
+            setCallStatus('speaking');
+            isAgentSpeakingRef.current = true;
+          });
+        } else {
+          isAgentSpeakingRef.current = false;
+          voiceCallBusyRef.current = false;
+          rememberPersonaSpeech();
+          currentPersonaSpeechRef.current = '';
+          setCallStatus('listening');
+          restartSpeechRecognition();
+        }
       } else if (isCallActiveRef.current) {
         setCallTranscript(prev => {
           if (prev.some(m => m.id === personaMsg.id)) return prev;
@@ -1357,13 +2519,20 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         });
         await playTTS(reply, () => {
           if (!isCallActiveRef.current) return;
+          recordFirstAudioLatency();
           setCallStatus('speaking');
           isAgentSpeakingRef.current = true;
         });
       }
-    } catch (err) {
+    } catch (err: any) {
+      if (earlySpeechTimer) {
+        clearTimeout(earlySpeechTimer);
+        earlySpeechTimer = null;
+      }
       clearTimeout(watchdogTimer);
-      console.error('[Call Voice Network Error, recovering]:', err);
+      if (err?.name !== 'AbortError') {
+        console.error('[Call Voice Network Error, recovering]:', err);
+      }
       isAgentSpeakingRef.current = false;
       voiceCallBusyRef.current = false;
       if (isCallActiveRef.current) {
@@ -1375,14 +2544,188 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     }
   };
 
+  const saveInlineVoiceCorrection = (item: CallTranscriptItem) => {
+    const intended = voiceCorrectionDraft.replace(/\s+/g, ' ').trim();
+    const heard = (item.rawContent || item.content).replace(/\s+/g, ' ').trim();
+    if (!heard || !intended) return;
+
+    updateVoiceAccuracyProfile(profile => {
+      const focusedCorrections = deriveCalibrationCorrections(heard, intended);
+      if (focusedCorrections.length === 0) return saveVoiceCorrection(profile, heard, intended);
+      return focusedCorrections.reduce(
+        (next, correction) => saveVoiceCorrection(next, correction.heard, correction.intended),
+        profile,
+      );
+    });
+    setCallTranscript(prev => prev.map(entry => entry.id === item.id ? { ...entry, content: intended } : entry));
+    const next = messagesRef.current.map(entry => entry.id === item.id ? { ...entry, content: intended } : entry);
+    messagesRef.current = next;
+    setMessages(next);
+    saveHistory(selectedPersonaId, next);
+    const updated = next.find(entry => entry.id === item.id);
+    if (updated) archiveConversationRecords(selectedPersonaId, [updated] as ConversationRecord[]);
+    setEditingVoiceTranscriptId(null);
+    setVoiceCorrectionDraft('');
+    toast.success('Voice correction learned for future requests.');
+  };
+
+  const saveManualVoiceCorrection = () => {
+    const heard = manualHeardDraft.replace(/\s+/g, ' ').trim();
+    const intended = manualIntendedDraft.replace(/\s+/g, ' ').trim();
+    if (!heard || !intended) return;
+    updateVoiceAccuracyProfile(profile => saveVoiceCorrection(profile, heard, intended));
+    setManualHeardDraft('');
+    setManualIntendedDraft('');
+    toast.success('Pronunciation added to your personal vocabulary.');
+  };
+
+  const clearVoiceEnrollmentTimers = () => {
+    if (voiceEnrollmentTimerRef.current) {
+      clearInterval(voiceEnrollmentTimerRef.current);
+      voiceEnrollmentTimerRef.current = null;
+    }
+    if (voiceEnrollmentFinishRef.current) {
+      clearTimeout(voiceEnrollmentFinishRef.current);
+      voiceEnrollmentFinishRef.current = null;
+    }
+  };
+
+  const finishVoiceEnrollment = () => {
+    clearVoiceEnrollmentTimers();
+    voiceEnrollmentActiveRef.current = false;
+    setVoiceEnrollmentSeconds(0);
+    const profile = createVoiceIdentityProfile(voiceEnrollmentFramesRef.current);
+    voiceEnrollmentFramesRef.current = [];
+    if (!profile) {
+      setVoiceEnrollmentStatus('error');
+      if (!isCallActiveRef.current) stopVadInterruptionMonitor();
+      toast.error('I could not capture enough clear speech. Try again in a quieter room.');
+      return;
+    }
+    voiceIdentityProfileRef.current = profile;
+    setVoiceIdentityProfile(profile);
+    setVoiceEnrollmentStatus('ready');
+    accountLocalStorage.setItem(VOICE_IDENTITY_STORAGE_KEY, JSON.stringify(profile));
+    accountLocalStorage.setItem(VOICE_IDENTITY_ONBOARDING_STORAGE_KEY, '1');
+    if (!isCallActiveRef.current) stopVadInterruptionMonitor();
+    toast.success('Your voice is enrolled. Speaker Lock is now active.');
+  };
+
+  const cancelVoiceEnrollment = (quiet = false) => {
+    clearVoiceEnrollmentTimers();
+    voiceEnrollmentActiveRef.current = false;
+    voiceEnrollmentFramesRef.current = [];
+    setVoiceEnrollmentSeconds(0);
+    setVoiceEnrollmentStatus(voiceIdentityProfileRef.current ? 'ready' : 'idle');
+    if (!isCallActiveRef.current) stopVadInterruptionMonitor();
+    if (!quiet) toast('Voice enrollment cancelled.');
+  };
+
+  const startVoiceEnrollment = async () => {
+    cancelVoiceCalibration();
+    cancelVoiceEnrollment(true);
+    if (isCallActiveRef.current) interruptPersona();
+    voiceFeatureFramesRef.current = [];
+    voiceEnrollmentFramesRef.current = [];
+    voiceEnrollmentActiveRef.current = true;
+    setVoiceEnrollmentStatus('recording');
+    setVoiceEnrollmentSeconds(8);
+    setPendingVoiceConfirmation(null);
+    setCallInput('');
+    if (isCallActiveRef.current) setCallStatus('listening');
+
+    const microphoneReady = await startVadInterruptionMonitor(true);
+    if (!voiceEnrollmentActiveRef.current) {
+      if (!isCallActiveRef.current) stopVadInterruptionMonitor();
+      return;
+    }
+    if (!microphoneReady) {
+      voiceEnrollmentActiveRef.current = false;
+      setVoiceEnrollmentSeconds(0);
+      setVoiceEnrollmentStatus('error');
+      toast.error('Microphone access is needed to enroll your voice.');
+      return;
+    }
+
+    voiceEnrollmentTimerRef.current = setInterval(() => {
+      setVoiceEnrollmentSeconds(seconds => Math.max(0, seconds - 1));
+    }, 1000);
+    voiceEnrollmentFinishRef.current = setTimeout(finishVoiceEnrollment, 8000);
+  };
+
+  const toggleVoiceIdentityLock = () => {
+    const current = voiceIdentityProfileRef.current;
+    if (!current) return;
+    const next = { ...current, enabled: !current.enabled };
+    voiceIdentityProfileRef.current = next;
+    setVoiceIdentityProfile(next);
+    accountLocalStorage.setItem(VOICE_IDENTITY_STORAGE_KEY, JSON.stringify(next));
+    toast.success(next.enabled ? 'Speaker Lock enabled.' : 'Speaker Lock paused.');
+  };
+
+  const removeVoiceIdentityProfile = () => {
+    cancelVoiceEnrollment(true);
+    voiceIdentityProfileRef.current = null;
+    setVoiceIdentityProfile(null);
+    setVoiceEnrollmentStatus('idle');
+    setLastSpeakerMatchScore(null);
+    accountLocalStorage.removeItem(VOICE_IDENTITY_STORAGE_KEY);
+    toast.success('Voice profile removed.');
+  };
+
+  const startVoiceCalibration = () => {
+    cancelVoiceEnrollment(true);
+    interruptPersona();
+    setCalibrationCapture(null);
+    setCalibrationStep(0);
+    calibrationStepRef.current = 0;
+    setPendingVoiceConfirmation(null);
+    setCallInput('');
+    setCallStatus('listening');
+  };
+
+  const acceptCalibrationCapture = () => {
+    if (!calibrationCapture || calibrationStep === null) return;
+    const isLastStep = calibrationStep >= VOICE_CALIBRATION_SENTENCES.length - 1;
+    updateVoiceAccuracyProfile(profile => {
+      let next = addVoiceTerms(profile, VOICE_CALIBRATION_TERMS);
+      for (const correction of calibrationCapture.corrections) {
+        next = saveVoiceCorrection(next, correction.heard, correction.intended);
+      }
+      return isLastStep
+        ? { ...next, calibrationCompletedAt: new Date().toISOString() }
+        : next;
+    });
+    setCalibrationCapture(null);
+    if (isLastStep) {
+      setCalibrationStep(null);
+      calibrationStepRef.current = null;
+      toast.success('Voice calibration complete. New hints apply on your next call.');
+    } else {
+      setCalibrationStep(step => step === null ? null : step + 1);
+    }
+  };
+
+  const cancelVoiceCalibration = () => {
+    setCalibrationStep(null);
+    calibrationStepRef.current = null;
+    setCalibrationCapture(null);
+  };
+
+  const confirmPendingVoiceRequest = () => {
+    const transcript = pendingVoiceConfirmation;
+    if (!transcript) return;
+    setPendingVoiceConfirmation(null);
+    setCallInput('');
+    void handleSendCallMessage(transcript, { rawTranscript: transcript });
+  };
+
   const lastCallEndedAtRef = useRef<number>(0);
 
   // Dynamic context-aware greeting generator that picks up from last conversation
   const fetchDynamicGreeting = useCallback(async (persona: Persona, mode: 'voice' | 'chat'): Promise<string> => {
     const creator = getCreatorProfile();
     const cName = creator?.name || 'Dr. H';
-    const hour = new Date().getHours();
-    const timeWord = hour < 12 ? 'morning' : (hour < 18 ? 'afternoon' : 'evening');
     const isAdultOrFlirty = (persona.niche || '').toLowerCase().includes('adult') || 
                             (persona.tone || '').toLowerCase().includes('seductive') || 
                             (persona.tone || '').toLowerCase().includes('flirty') ||
@@ -1392,45 +2735,39 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     const isRecentContinuation = timeSinceLastSec < 600;
 
     const continuationPool = [
-      `Hey, we got disconnected! Where were we?`,
-      `Hey babe, you're back. What was that you were saying?`,
-      `Hey! Did the call drop? I'm right here.`,
-      `Back so soon? Tell me what's on your mind right now.`,
-      `Hey handsome, you're back. Let's pick right back up!`
+      `Oh—there you are.`,
+      `Mm, hey. We got cut off.`,
+      `Hey—where were we?`,
+      `Oh, hey. You're back.`
     ];
 
     const intimatePools = [
-      `Hey ${cName}... good ${timeWord}. Was just hoping you'd call. Still thinking about earlier?`,
-      `Mmm, hey you. Still thinking about earlier, or did you have something new on your mind?`,
-      `Look who it is... what kind of trouble are we getting into today, ${cName}?`,
-      `Hey ${cName}! Perfect timing as always. Tell me what's on your mind.`,
-      `Hey you... was wondering when I'd hear from you. What are we doing today?`,
-      `Hey ${cName}! Back for more? Let's make today interesting.`,
-      `Mmm, good ${timeWord} ${cName}. I love when you check in on me.`,
-      `Hey you! What have you been up to since we last talked?`
+      `Mm, hey you.`,
+      `Hey, ${cName}.`,
+      `Oh, hi. You okay?`,
+      `Hey—you good?`
     ];
 
     const luxuryPools = [
-      `Good ${timeWord}, ${cName}. What's on our agenda today?`,
-      `Hey ${cName}. Always good to connect with you. What are we creating next?`,
-      `Hey there. Ready whenever you are — what's the vision for today?`,
-      `Good to see you, ${cName}. Let's make something exceptional today.`,
-      `Hey ${cName}! Perfect timing. Let's pick up where we left off.`
+      `Hey, ${cName}. What's up?`,
+      `Oh, hey.`,
+      `Mm, hi. How're you?`,
+      `Hey—good to hear you.`
     ];
 
     const fallbackPool = isRecentContinuation ? continuationPool : (isAdultOrFlirty ? intimatePools : luxuryPools);
     const fallbackGreeting = fallbackPool[Math.floor(Math.random() * fallbackPool.length)];
 
     try {
-      const priorHistory = loadHistory(persona.id);
+      const priorHistory = loadConversationContext(persona.id, 20);
       const memories = loadPersonaMemories(persona.id);
-      const res = await fetch('/api/persona-greeting', {
+      const res = await authFetch('/api/persona-greeting', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           persona,
           creatorProfile: creator,
-          priorChatHistory: priorHistory.slice(-8),
+          priorChatHistory: priorHistory.slice(-12),
           memories,
           mode,
           timeSinceLastInteractionSeconds: timeSinceLastSec,
@@ -1450,14 +2787,24 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 
   // Start Hands-Free Live Call with Interruption support
   const handleStartCall = async () => {
+    setShowSpeakerLockSetup(false);
+    const greetingTurnId = ++callTurnIdRef.current;
     setIsCallActive(true);
     isCallActiveRef.current = true;
+    lastCommittedTranscriptRef.current = { text: '', at: 0 };
+    voiceSpeechStartedAtRef.current = null;
+    browserPendingTranscriptRef.current = { text: '', updatedAt: 0 };
+    setLastVoiceLatency(null);
+    setPendingVoiceConfirmation(null);
+    setEditingVoiceTranscriptId(null);
+    cancelVoiceCalibration();
+    cancelVoiceEnrollment(true);
+    setIgnoredSpeakerCount(0);
+    setLastSpeakerMatchScore(null);
     setCallStatus('connecting');
     setCallDuration(0);
-    isAgentSpeakingRef.current = true;
+    isAgentSpeakingRef.current = false;
     voiceCallBusyRef.current = true;
-    
-    startVadInterruptionMonitor();
 
     // Unlock HTML5 audio context directly inside user click gesture
     try {
@@ -1469,52 +2816,108 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       audioRef.current.play().catch(() => {});
     } catch {}
 
-    setCallTranscript([
-      { id: uid(), role: 'persona', content: `Calling ${activePersona.name}...` }
-    ]);
-    
-    setTimeout(async () => {
-      if (!isCallActiveRef.current) return;
-      setCallStatus('connected');
-      
-      callTimerRef.current = setInterval(() => {
-        setCallDuration(prev => prev + 1);
-      }, 1000);
+    const connectingTranscript: CallTranscriptItem[] = [
+      { id: uid(), role: 'persona', content: `Calling ${activePersona.name}...` },
+    ];
+    callTranscriptRef.current = connectingTranscript;
+    setCallTranscript(connectingTranscript);
 
-      // Fetch dynamic context-aware greeting picking up from last conversation
-      const greeting = await fetchDynamicGreeting(activePersona, 'voice');
+    // Keep one echo-cancelled microphone session alive for the entire call.
+    // Scribe's realtime VAD commits natural turns and preserves the first words.
+    const realtimeStarted = await startRealtimeTranscription();
+    if (!isCallActiveRef.current) return;
+    // Keep one local, echo-cancelled analyser active for interruption and the
+    // optional enrolled-speaker lock even when Scribe handles transcription.
+    void startVadInterruptionMonitor();
+    if (!realtimeStarted) {
+      restartSpeechRecognition();
+    }
 
-      // Synchronize greeting text bubble to appear at the EXACT instant audio starts playing
-      if (isCallActiveRef.current) {
-        await playTTS(greeting, () => {
-          if (!isCallActiveRef.current) return;
-          setCallTranscript([
-            { id: uid(), role: 'persona', content: greeting }
-          ]);
-        });
-      }
-    }, 50);
+    setCallStatus('connected');
+    callTimerRef.current = setInterval(() => {
+      setCallDuration(prev => prev + 1);
+    }, 1000);
+
+    // Fetch dynamic context-aware greeting picking up from last conversation
+    const greeting = await fetchDynamicGreeting(activePersona, 'voice');
+
+    // Synchronize greeting text bubble to appear at the exact instant audio starts.
+    if (isCallActiveRef.current && greetingTurnId === callTurnIdRef.current) {
+      await playTTS(greeting, () => {
+        if (!isCallActiveRef.current || greetingTurnId !== callTurnIdRef.current) return;
+        const greetingTranscript: CallTranscriptItem[] = [
+          { id: uid(), role: 'persona', content: greeting },
+        ];
+        callTranscriptRef.current = greetingTranscript;
+        setCallTranscript(greetingTranscript);
+        appendConversationMessages([{
+          id: greetingTranscript[0].id,
+          role: 'persona',
+          type: 'text',
+          content: greeting,
+          timestamp: new Date(),
+          source: 'voice',
+        }]);
+      });
+    }
+  };
+
+  const requestStartCall = () => {
+    if (shouldOfferVoiceIdentitySetup(
+      voiceIdentityProfileRef.current,
+      accountLocalStorage.getItem(VOICE_IDENTITY_ONBOARDING_STORAGE_KEY),
+    )) {
+      setShowSpeakerLockSetup(true);
+      return;
+    }
+    void handleStartCall();
+  };
+
+  const skipSpeakerLockAndStartCall = () => {
+    cancelVoiceEnrollment(true);
+    accountLocalStorage.setItem(VOICE_IDENTITY_ONBOARDING_STORAGE_KEY, '1');
+    setShowSpeakerLockSetup(false);
+    void handleStartCall();
   };
 
   // End Call
   const handleEndCall = useCallback(() => {
+    callTurnIdRef.current += 1;
+    if (activeCallAbortControllerRef.current) {
+      try { activeCallAbortControllerRef.current.abort(); } catch {}
+      activeCallAbortControllerRef.current = null;
+    }
     setIsCallActive(false);
     isCallActiveRef.current = false;
     setCallStatus('disconnected');
     isAgentSpeakingRef.current = false;
     voiceCallBusyRef.current = false;
+    rememberPersonaSpeech();
     currentPersonaSpeechRef.current = '';
     lastCallEndedAtRef.current = Date.now();
+    setPendingVoiceConfirmation(null);
+    setShowVoiceAccuracyPanel(false);
+    setEditingVoiceTranscriptId(null);
+    setCalibrationStep(null);
+    calibrationStepRef.current = null;
+    setCalibrationCapture(null);
+    voiceSpeechStartedAtRef.current = null;
+    voiceUtteranceStartedAtRef.current = null;
+    browserPendingTranscriptRef.current = { text: '', updatedAt: 0 };
+    clearVoiceEnrollmentTimers();
+    voiceEnrollmentActiveRef.current = false;
+    voiceEnrollmentFramesRef.current = [];
+    setVoiceEnrollmentSeconds(0);
+    setVoiceEnrollmentStatus(voiceIdentityProfileRef.current ? 'ready' : 'idle');
     
     // Save history immediately
-    setMessages(currentMsgs => {
-      if (currentMsgs.length > 1) {
-        saveHistory(activePersona.id, currentMsgs);
-      }
-      return currentMsgs;
-    });
+    if (messagesRef.current.length > 0) {
+      saveHistory(activePersona.id, messagesRef.current);
+      archiveConversationRecords(activePersona.id, messagesRef.current as ConversationRecord[]);
+    }
 
     stopVadInterruptionMonitor();
+    stopRealtimeTranscription();
 
     if (callTimerRef.current) {
       clearInterval(callTimerRef.current);
@@ -1545,6 +2948,16 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   useEffect(() => {
     return () => {
       isCallActiveRef.current = false;
+      callTurnIdRef.current += 1;
+      if (activeCallAbortControllerRef.current) {
+        try { activeCallAbortControllerRef.current.abort(); } catch {}
+        activeCallAbortControllerRef.current = null;
+      }
+      stopRealtimeTranscription();
+      stopVadInterruptionMonitor();
+      if (voiceEnrollmentTimerRef.current) clearInterval(voiceEnrollmentTimerRef.current);
+      if (voiceEnrollmentFinishRef.current) clearTimeout(voiceEnrollmentFinishRef.current);
+      voiceEnrollmentActiveRef.current = false;
       if (audioRef.current) {
         try { audioRef.current.pause(); audioRef.current.src = ''; } catch {}
         audioRef.current = null;
@@ -1604,14 +3017,17 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 
   const resetConversation = useCallback(async (persona: Persona) => {
     const greeting = await fetchDynamicGreeting(persona, 'chat');
-
-    setMessages([{
+    const initialMessages: ChatMessage[] = [{
       id: uid(),
       role: 'persona',
       type: 'text',
       content: greeting,
       timestamp: new Date(),
-    }]);
+    }];
+    messagesRef.current = initialMessages;
+    setMessages(initialMessages);
+    saveHistory(persona.id, initialMessages);
+    archiveConversationRecords(persona.id, initialMessages as ConversationRecord[]);
     setGeneratedReplies([]);
     setReplyInput('');
   }, [fetchDynamicGreeting]);
@@ -1623,8 +3039,10 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 
   useEffect(() => {
     // Load persisted history or reset when persona changes
+    migrateRecentConversationToArchive(selectedPersonaId);
     const history = loadHistory(selectedPersonaId);
     if (history.length > 0) {
+      messagesRef.current = history;
       setMessages(history);
     } else {
       resetConversation(personas.find(p => p.id === selectedPersonaId) || propActivePersona);
@@ -1632,7 +3050,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     setSavedMsgIds(new Set());
 
     try {
-      const rRaw = localStorage.getItem(`persona_relationship_${selectedPersonaId}`);
+      const rRaw = accountLocalStorage.getItem(`persona_relationship_${selectedPersonaId}`);
       setRelationshipState(rRaw ? JSON.parse(rRaw) : {
         affinityScore: 28,
         stage: 'partner',
@@ -1649,15 +3067,36 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     }
   }, [messages, activeSegment]);
 
+  const appendConversationMessages = useCallback((records: ChatMessage[]): ChatMessage[] => {
+    const next = mergeUniqueConversationRecords(
+      messagesRef.current as ConversationRecord[],
+      records as ConversationRecord[],
+    ).map(record => ({
+      ...record,
+      timestamp: record.timestamp instanceof Date ? record.timestamp : new Date(record.timestamp),
+    })) as ChatMessage[];
+    messagesRef.current = next;
+    setMessages(next);
+    saveHistory(selectedPersonaId, next);
+    archiveConversationRecords(selectedPersonaId, records as ConversationRecord[]);
+    return next;
+  }, [selectedPersonaId]);
+
   const addMessage = useCallback((msg: Omit<ChatMessage, 'id' | 'timestamp'>): string => {
     const id = uid();
-    setMessages(prev => [...prev, { ...msg, id, timestamp: new Date() }]);
+    const record: ChatMessage = { ...msg, id, timestamp: new Date() };
+    appendConversationMessages([record]);
     return id;
-  }, []);
+  }, [appendConversationMessages]);
 
   const replaceMessage = useCallback((id: string, update: Partial<ChatMessage>) => {
-    setMessages(prev => prev.map(m => m.id === id ? { ...m, ...update } : m));
-  }, []);
+    const next = messagesRef.current.map(m => m.id === id ? { ...m, ...update } : m);
+    messagesRef.current = next;
+    setMessages(next);
+    saveHistory(selectedPersonaId, next);
+    const updated = next.find(message => message.id === id);
+    if (updated) archiveConversationRecords(selectedPersonaId, [updated] as ConversationRecord[]);
+  }, [selectedPersonaId]);
 
   const activeAbortControllersRef = useRef<Record<string, AbortController>>({});
 
@@ -1668,10 +3107,13 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       } catch {}
       delete activeAbortControllersRef.current[msgId];
     }
-    setMessages(prev => prev.filter(m => m.id !== msgId));
+    const next = messagesRef.current.filter(m => m.id !== msgId);
+    messagesRef.current = next;
+    setMessages(next);
+    saveHistory(selectedPersonaId, next);
     setIsGenerating(false);
     toast('Generation cancelled', { icon: '🛑', id: 'cancel-gen-' + msgId });
-  }, []);
+  }, [selectedPersonaId]);
 
   // Save to Vault from chat
   const handleSaveToVault = async (msg: ChatMessage) => {
@@ -1698,27 +3140,99 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     }
   };
 
+  const handleDeleteGeneratedImage = useCallback((msg: ChatMessage) => {
+    if (msg.type !== 'image') return;
+    const confirmed = window.confirm(
+      'Delete this image from the conversation? A separately saved Vault copy will not be removed.',
+    );
+    if (!confirmed) return;
+
+    const next = messagesRef.current.filter(message => message.id !== msg.id);
+    messagesRef.current = next;
+    setMessages(next);
+    deleteConversationRecord(selectedPersonaId, msg.id);
+    setSavedMsgIds(previous => {
+      const updated = new Set(previous);
+      updated.delete(msg.id);
+      return updated;
+    });
+    if (lightboxMedia?.url === msg.content) setLightboxMedia(null);
+    if (activeCallMedia?.type === 'image' && activeCallMedia.url === msg.content) setActiveCallMedia(null);
+    toast.success('Image removed from this conversation');
+  }, [activeCallMedia, lightboxMedia, selectedPersonaId]);
+
+  const refreshMemoryCenter = useCallback(() => {
+    setMemoryNotes(loadPersonaMemoryNotes(selectedPersonaId, getDefaultPersonaMemoryFacts()));
+    setMemoryActivity(
+      loadConversationArchive(selectedPersonaId)
+        .filter(record => record.type === 'text' && record.content.trim())
+        .reverse(),
+    );
+  }, [selectedPersonaId]);
+
+  useEffect(() => {
+    if (showMemoryCenter) refreshMemoryCenter();
+  }, [refreshMemoryCenter, showMemoryCenter]);
+
+  const openMemoryCenter = useCallback(() => {
+    setMemorySearch('');
+    setNewMemoryDraft('');
+    setEditingMemoryId(null);
+    setShowMemoryCenter(true);
+  }, []);
+
+  const handleAddMemoryNote = useCallback(() => {
+    const text = newMemoryDraft.trim();
+    if (!text) return;
+    setMemoryNotes(addPersonaMemoryNote(selectedPersonaId, text, 'manual', getDefaultPersonaMemoryFacts()));
+    setNewMemoryDraft('');
+    toast.success(`${activePersona.name} will remember that`);
+  }, [activePersona.name, newMemoryDraft, selectedPersonaId]);
+
+  const handleSaveMemoryEdit = useCallback(() => {
+    if (!editingMemoryId || !editingMemoryDraft.trim()) return;
+    setMemoryNotes(updatePersonaMemoryNote(selectedPersonaId, editingMemoryId, editingMemoryDraft));
+    setEditingMemoryId(null);
+    setEditingMemoryDraft('');
+    toast.success('Memory corrected');
+  }, [editingMemoryDraft, editingMemoryId, selectedPersonaId]);
+
+  const handleToggleMemoryPin = useCallback((noteId: string) => {
+    setMemoryNotes(togglePersonaMemoryPinned(selectedPersonaId, noteId));
+  }, [selectedPersonaId]);
+
+  const handleForgetMemoryNote = useCallback((noteId: string) => {
+    setMemoryNotes(deletePersonaMemoryNote(selectedPersonaId, noteId));
+    if (editingMemoryId === noteId) setEditingMemoryId(null);
+    toast.success('Memory forgotten');
+  }, [editingMemoryId, selectedPersonaId]);
+
+  const handleForgetConversationRecord = useCallback((recordId: string) => {
+    if (!window.confirm('Forget this individual message from this persona’s history?')) return;
+    deleteConversationRecord(selectedPersonaId, recordId);
+    setMemoryActivity(previous => previous.filter(record => record.id !== recordId));
+    const nextMessages = messagesRef.current.filter(message => message.id !== recordId);
+    messagesRef.current = nextMessages;
+    setMessages(nextMessages);
+    setCallTranscript(previous => previous.filter(record => record.id !== recordId));
+    toast.success('Message removed from memory');
+  }, [selectedPersonaId]);
+
+  const normalizedMemorySearch = memorySearch.trim().toLowerCase();
+  const visibleMemoryNotes = memoryNotes.filter(note => (
+    !normalizedMemorySearch || note.text.toLowerCase().includes(normalizedMemorySearch)
+  ));
+  const visibleMemoryActivity = memoryActivity.filter(record => (
+    !normalizedMemorySearch || record.content.toLowerCase().includes(normalizedMemorySearch)
+  ));
+  const memoryVoiceCount = memoryActivity.filter(record => record.source === 'voice').length;
+  const memoryTextCount = memoryActivity.filter(record => record.source !== 'voice').length;
+  const recentMemorySummary = buildRecentConversationSummary([...memoryActivity].reverse(), activePersona.name);
+
   const clearHistory = () => {
-    localStorage.removeItem(HISTORY_KEY(selectedPersonaId));
+    clearConversationHistory(selectedPersonaId);
     resetConversation(activePersona);
     toast.success('Conversation cleared');
-  };
-
-  const getNoRefImageResponse = (type: 'image' | 'video'): string => {
-    const tone = activePersona.tone.toLowerCase();
-    if (tone.includes('luxury') || tone.includes('elite')) {
-      return type === 'image'
-        ? "I don't just send photos to anyone. Set up my profile properly first."
-        : "My presence isn't captured that easily. Set up my reference image first.";
-    }
-    if (tone.includes('playful') || tone.includes('flirty')) {
-      return type === 'image'
-        ? "I'd love to share but you need to set up my reference image first! Go to my persona and generate one, then come back 📸"
-        : "I wanna make a video for you but I need my reference image set up first! Quick — go set it up and come back 🎬";
-    }
-    return type === 'image'
-      ? "I need my reference image set up before I can share photos. Head to my persona profile and generate one!"
-      : "I need my reference image before I can make videos. Set that up in my persona profile first.";
   };
 
   async function handleSend() {
@@ -1729,46 +3243,67 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     setIsGenerating(true);
 
     const sentAttachment = chatAttachment;
+    const pastedRevisionSource = getAttachmentRevisionSource(sentAttachment);
     setChatAttachment(null);
 
-    const userMsgObj: any = { role: 'user', type: 'text', content: effectiveText };
+    const userMsgObj: any = { role: 'user', type: 'text', content: effectiveText, source: 'text' };
     if (sentAttachment) {
       userMsgObj.attachment = sentAttachment;
     }
-    addMessage(userMsgObj);
+    const userMessageId = addMessage(userMsgObj);
 
     // Save facts / user memories if mentioned
     if (effectiveText.length > 3 && /\b(my name is|i am|i live|i love|i work|remember that|my goal is|call me)\b/i.test(effectiveText)) {
       savePersonaMemory(activePersona.id, effectiveText);
     }
 
-    const loadingId = addMessage({ role: 'persona', type: 'loading', content: '' });
+    // Show useful feedback immediately instead of waiting for the chat model to
+    // finish classifying the request. The label becomes more specific once the
+    // selected provider/model is known below.
+    const immediateIntent = detectIntent(effectiveText);
+    const immediateImageRevision = resolveImageRevisionContext(
+      effectiveText,
+      messagesRef.current,
+      pastedRevisionSource,
+    );
+    const immediateLoadingLabel = immediateImageRevision.isRevision || immediateIntent === 'image'
+      ? 'Preparing your image generation...'
+      : immediateIntent === 'video'
+        ? 'Preparing your video generation...'
+        : 'Thinking...';
+    const loadingId = addMessage({
+      role: 'persona',
+      type: 'loading',
+      content: immediateLoadingLabel,
+    });
 
     try {
-      const personaPhoto = activePersona.referenceImage || activePersona.avatar || activePersona.alternateReferenceImage;
-      const textMessages = messages.filter(m => m.type === 'text' || m.type === 'image');
       const personaMemories = loadPersonaMemories(activePersona.id);
-      const priorHistory = loadHistory(activePersona.id);
+      const conversationContext = mergeUniqueConversationRecords(
+        searchConversationMemories(activePersona.id, effectiveText, 12),
+        loadConversationContext(activePersona.id, 60),
+        messagesRef.current.slice(-60) as ConversationRecord[],
+      ).filter(record => record.id !== userMessageId && record.type !== 'loading');
 
       const creator = getCreatorProfile();
-      const res = await fetch('/api/chat', {
+      const res = await authFetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           persona: activePersona,
           creatorProfile: creator,
           userName: creator.name || getStoredUserName(),
-          messages: textMessages.slice(-30).map(m => ({ 
-            role: m.role, 
-            type: m.type, 
-            content: m.content,
-            prompt: m.prompt 
-          })),
-          priorChatHistory: priorHistory.slice(-20).map(m => ({
+          // Text and voice share one canonical timeline. The current user turn
+          // is sent separately below so the server never sees it twice.
+          messages: [],
+          priorChatHistory: conversationContext.map(m => ({
+            id: m.id,
             role: m.role,
             type: m.type,
             content: m.content,
-            prompt: m.prompt
+            prompt: m.prompt,
+            source: m.source,
+            timestamp: m.timestamp,
           })),
           memories: personaMemories,
           userMessage: effectiveText,
@@ -1785,23 +3320,29 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         updateRelationship(data.relationshipState);
       }
 
-      // Replace loading bubble with the persona's authentic, witty dialogue
-      const replyText = data.reply || "Hey! I'm right here with you.";
-      replaceMessage(loadingId, { type: 'text', content: replyText });
+      const replyText = typeof data.reply === 'string' && data.reply.trim()
+        ? data.reply.trim()
+        : data.action?.type
+          ? `I'm working on that ${data.action.type} now.`
+          : '';
+      if (!replyText) throw new Error('The persona returned an empty reply. Please try again.');
 
       // Determine if a photo, video, or voice note was requested or returned as an action:
       const explicitVisualKeywords = /\b(image|photo|pic|picture|selfie|pose|portrait|photoshoot|video|clip|recording)\b/i.test(effectiveText);
       const isExplicitVisualRequest = /\b(send|take|generate|show|give|snap|make|create|post|capture)\b/i.test(effectiveText) && explicitVisualKeywords;
       const isConversationalQuestion = !isExplicitVisualRequest && /(?:\b(?:why did you send|why are you sending|what is that picture|who is that in the photo|stop sending)\b)/i.test(effectiveText);
+      const detectedIntent = isConversationalQuestion ? 'chat' : detectIntent(effectiveText);
+      const imageRevisionCandidate = resolveImageRevisionContext(effectiveText, messagesRef.current, pastedRevisionSource);
       
       const isVoiceNoteAction = data.action?.type === 'voice_note' || (/\b(voice note|audio memo|voice message|audio message|whisper to me)\b/i.test(effectiveText) && !isConversationalQuestion);
-      const isImageAction = data.action?.type === 'image' || isExplicitVisualRequest || (!isConversationalQuestion && detectIntent(effectiveText) === 'image');
-      const isVideoAction = data.action?.type === 'video' || (!isConversationalQuestion && detectIntent(effectiveText) === 'video');
+      const isVideoAction = data.action?.type === 'video' || detectedIntent === 'video';
+      const isImageAction = !isVideoAction && (imageRevisionCandidate.isRevision || data.action?.type === 'image' || isExplicitVisualRequest || detectedIntent === 'image');
 
       if (isVoiceNoteAction) {
+        replaceMessage(loadingId, { type: 'text', content: replyText });
         const vnLoadingId = addMessage({ role: 'persona', type: 'loading', content: `Recording voice note for you...` });
         try {
-          const vnRes = await fetch('/api/generate-voice-note', {
+          const vnRes = await authFetch('/api/generate-voice-note', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1824,73 +3365,77 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         } catch {
           replaceMessage(vnLoadingId, { type: 'text', content: replyText });
         }
-      } else if (isImageAction) {
-        const rawVisualPrompt = data.action?.prompt || effectiveText;
-        const combinedText = `${rawVisualPrompt} ${effectiveText}`;
-        
-        // Strict explicit duo check - must explicitly ask for BOTH people together
-        const isExplicitDuo = /\b(with me|with (?:dr\.?\s*h|alex|chris|creator)|me and you|you and me|of me and you|of you and me|me and her|her and me|us together|both of us|duo shoot|couple shoot|holding me|holding each other|kissing me|with us|fucking me|together with me)\b/i.test(combinedText);
-        
-        const isCreatorSoloShoot = !isExplicitDuo && (
-          /\b(image of me only|photo of me only|pic of me only|just me|of me only|portrait of me only|solo photo of me|only me|portrait of dr\.?\s*h)\b/i.test(combinedText)
+      } else if (isImageAction || isVideoAction) {
+        const mediaType = isImageAction ? 'image' as const : 'video' as const;
+        const rawMediaPrompt = effectiveText.trim() || data.action?.prompt || '';
+        const modelSelection = resolveMediaModelFromPrompt(
+          rawMediaPrompt,
+          mediaType === 'image' ? editModels : videoModels,
+          mediaType,
         );
-
-        const isDuoShoot = isExplicitDuo;
-        const isExplicitNude = /\b(naked|nude|topless|unclothed|bare|boobs|tits|breasts|nipples|exposed|sensual|erotic|no clothes|without clothes|undressed|pussy|ass)\b/i.test(combinedText);
-
-        const targetReferenceImage = isCreatorSoloShoot 
-          ? (creator?.primaryPhoto || personaPhoto)
-          : personaPhoto;
-
-        if (!targetReferenceImage) {
-          addMessage({ role: 'persona', type: 'text', content: getNoRefImageResponse('image') });
-        } else {
-          const loadingText = isDuoShoot 
-            ? `Generating duo photoshoot with ${activePersona.name} & ${creator?.name || 'Dr. H'}...`
-            : (isCreatorSoloShoot ? `Generating solo photo of ${creator?.name || 'Dr. H'}...` : `Generating photo of ${activePersona.name}...`);
-          const mediaLoadingId = addMessage({ role: 'persona', type: 'loading', content: loadingText });
-          try {
-            const extraImages: string[] = [];
-            if (sentAttachment?.type === 'image') extraImages.push(sentAttachment.base64);
-            else if (lastUploadedReference) extraImages.push(lastUploadedReference);
-            const creatorPhoto = creator?.primaryPhoto || (creator?.photos && creator.photos.length > 0 ? creator.photos[0] : undefined);
-            if (isDuoShoot && creatorPhoto && !extraImages.includes(creatorPhoto)) {
-              extraImages.push(creatorPhoto);
-            }
-
-            const result = await generateImage({
-              persona: activePersona,
-              referenceImage: targetReferenceImage,
-              prompt: rawVisualPrompt,
-              modelId: selectedEditModelId || 'wavespeed:bytedance/seedream-v5.0-pro',
-              aspectRatio: '9:16',
-              isChatContext: true,
-              chatPrompt: rawVisualPrompt,
-              allowNsfw: true,
-              additionalImages: extraImages.length > 0 ? extraImages : undefined,
-              isDuoShoot,
-              isCreatorSolo: isCreatorSoloShoot,
-              creatorProfile: isDuoShoot || isCreatorSoloShoot ? creator : undefined,
-            } as any);
-            const imgUrl = Array.isArray(result) ? result[0].imageUrl : result.imageUrl;
-            replaceMessage(mediaLoadingId, { type: 'image', content: imgUrl, prompt: rawVisualPrompt });
-          } catch (imgErr: any) {
-            replaceMessage(mediaLoadingId, { type: 'error', content: imgErr?.message || 'Failed to generate photo' });
+        const mediaPrompt = modelSelection.prompt;
+        const imageRevision = mediaType === 'image'
+          ? resolveImageRevisionContext(mediaPrompt, messagesRef.current, pastedRevisionSource)
+          : { isRevision: false, prompt: mediaPrompt, source: undefined, rootPrompt: undefined, revisionHistory: undefined };
+        const requestPrompt = imageRevision.prompt;
+        const requestedModelId = modelSelection.explicit && modelSelection.matched
+          ? modelSelection.modelId
+          : mediaType === 'image'
+            ? imageRevision.source?.modelId || selectedEditModelId || 'wavespeed:bytedance/seedream-v5.0-pro'
+            : selectedVideoModelId || 'wavespeed-i2v:bytedance/seedance-2-mini';
+        replaceMessage(loadingId, {
+          type: 'loading',
+          content: modelSelection.explicit && modelSelection.matched
+            ? `${mediaType === 'image' ? 'Generating' : 'Rendering'} with ${modelSelection.modelName}...`
+            : mediaType === 'image' ? `Generating your image...` : `Rendering your video...`,
+        });
+        try {
+          if (modelSelection.explicit && !modelSelection.matched) {
+            throw new Error(
+              `I couldn't find “${modelSelection.requestedText}” in your available ${mediaType} models. Try another model name or choose one in AI Settings.`,
+            );
           }
+          const extraImages = [
+            sentAttachment?.type === 'image' && !sentAttachment.sourceMessageId ? sentAttachment.base64 : undefined,
+            !sentAttachment && lastUploadedReference ? lastUploadedReference : undefined,
+          ].filter((value): value is string => Boolean(value));
+          const result = await requestPersonaMediaJob({
+            type: mediaType,
+            prompt: requestPrompt,
+            persona: activePersona,
+            imageModelId: mediaType === 'image' ? requestedModelId : selectedEditModelId || 'wavespeed:bytedance/seedream-v5.0-pro',
+            videoModelId: mediaType === 'video' ? requestedModelId : selectedVideoModelId || 'wavespeed-i2v:bytedance/seedance-2-mini',
+            referenceImage: activePersona.referenceImage || activePersona.avatar || activePersona.alternateReferenceImage,
+            revisionImage: imageRevision.isRevision ? imageRevision.source?.content : undefined,
+            additionalImages: extraImages.length > 0 ? extraImages : undefined,
+            creatorProfile: creator,
+            aspectRatio: '9:16',
+            allowNsfw: true,
+          });
+          const resultText = modelSelection.explicit && modelSelection.matched
+            ? `${result.message} Used ${result.model || modelSelection.modelName}.`
+            : result.message;
+          replaceMessage(loadingId, { type: 'text', content: resultText });
+          addMessage({
+            role: 'persona',
+            type: mediaType,
+            content: result.url!,
+            prompt: requestPrompt,
+            rootPrompt: mediaType === 'image' ? imageRevision.rootPrompt || mediaPrompt : undefined,
+            revisionHistory: mediaType === 'image' ? imageRevision.revisionHistory || [] : undefined,
+            parentMediaId: imageRevision.isRevision ? imageRevision.source?.id : undefined,
+            participants: result.participants,
+            modelId: requestedModelId,
+            modelName: result.model || imageRevision.source?.modelName,
+          });
+        } catch (mediaError: any) {
+          replaceMessage(loadingId, {
+            type: 'error',
+            content: mediaError?.message || `I couldn't finish that ${mediaType}.`,
+          });
         }
-      } else if (isVideoAction) {
-        if (!personaPhoto) {
-          addMessage({ role: 'persona', type: 'text', content: getNoRefImageResponse('video') });
-        } else {
-          const mediaLoadingId = addMessage({ role: 'persona', type: 'loading', content: `Rendering video clip with ${activePersona.name}...` });
-          try {
-            const videoPrompt = data.action?.prompt || effectiveText;
-            const result = await generateVideo(videoPrompt, selectedVideoModelId, personaPhoto);
-            replaceMessage(mediaLoadingId, { type: 'video', content: result.videoUrl, prompt: videoPrompt });
-          } catch (vidErr: any) {
-            replaceMessage(mediaLoadingId, { type: 'error', content: vidErr?.message || 'Failed to generate video' });
-          }
-        }
+      } else {
+        replaceMessage(loadingId, { type: 'text', content: replyText });
       }
     } catch (err: any) {
       replaceMessage(loadingId, {
@@ -1933,7 +3478,7 @@ Write 3 distinct reply options in your authentic voice. Each should:
 
 Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping object).`;
 
-      const res = await fetch('/api/chat', {
+      const res = await authFetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2032,46 +3577,12 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                   <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-white/[0.06] text-zinc-300 border border-white/[0.08]">
                     {activePersona.niche || 'Creator'}
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => setIsReferenceModalOpen(true)}
-                    className="flex items-center gap-1 text-[10px] font-semibold text-[#F2D58D] bg-[#E7C477]/10 hover:bg-[#E7C477]/20 border border-[#E7C477]/30 px-2 py-0.5 rounded-full transition-all cursor-pointer shadow-sm active:scale-95"
-                    title="View all reference photos and upload new source images"
-                  >
-                    <Camera size={10} />
-                    <span>Reference Photos</span>
-                  </button>
-                </div>
-                <div className="relative flex items-center mt-0.5">
-                  <select
-                    value={selectedPersonaId}
-                    onChange={e => {
-                      const newId = e.target.value;
-                      setSelectedPersonaId(newId);
-                      if (onSelectPersona) onSelectPersona(newId);
-                    }}
-                    className="bg-transparent text-[11px] font-medium text-zinc-400 hover:text-zinc-200 outline-none cursor-pointer appearance-none pr-4"
-                  >
-                    {personas.map(p => (
-                      <option key={p.id} value={p.id} className="bg-[#1c1d22] text-white">
-                        Switch to {p.name}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown size={11} className="text-zinc-500 pointer-events-none -ml-3" />
                 </div>
               </div>
             </div>
 
-            {/* Right: Relationship Badge + Wardrobe Studio + Mode Switcher + AI Settings + Quick Actions + Voice Call */}
+            {/* Right: Mode Switcher + AI Settings + Quick Actions + Voice Call */}
             <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
-              
-              {/* Relationship Affinity & Mood Progression Badge */}
-              <RelationshipProgressBadge 
-                relationship={relationshipState} 
-                personaName={activePersona.name} 
-                userName={getStoredUserName()} 
-              />
 
               {/* View Mode Toggle */}
               <div className="flex bg-[#141518] border border-white/[0.08] rounded-xl p-1 text-xs">
@@ -2105,6 +3616,25 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                 <span className="hidden sm:inline">AI Settings</span>
               </button>
 
+              <button
+                onClick={openMemoryCenter}
+                title={`Open ${activePersona.name}'s Memory Center`}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#24252b] hover:bg-[#2b2c33] border border-white/[0.09] text-zinc-200 hover:text-white text-xs font-semibold transition-all cursor-pointer shadow-sm"
+              >
+                <Brain size={13} className="text-[#E7C477]" />
+                <span className="hidden sm:inline">Memory</span>
+              </button>
+
+              <button
+                onClick={() => setShowMediaJobCenter(true)}
+                title="Open Media Job Center"
+                aria-label="Open Media Job Center"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#24252b] hover:bg-[#2b2c33] border border-white/[0.09] text-zinc-200 hover:text-white text-xs font-semibold transition-all cursor-pointer shadow-sm"
+              >
+                <Sparkles size={13} className="text-[#E7C477]" />
+                <span className="hidden sm:inline">Jobs</span>
+              </button>
+
               {/* New Chat */}
               <button
                 onClick={clearHistory}
@@ -2127,11 +3657,14 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                onClick={handleStartCall}
+                onClick={requestStartCall}
                 className="flex items-center gap-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-400 px-3.5 py-1.5 rounded-xl font-semibold text-xs transition-all shadow-sm cursor-pointer"
               >
                 <Phone size={13} />
                 <span>Voice Call</span>
+                {voiceIdentityProfile?.enabled && (
+                  <ShieldCheck size={13} className="text-emerald-300" aria-label="Speaker Lock active" />
+                )}
               </motion.button>
 
             </div>
@@ -2151,10 +3684,12 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                   onSaveToVault={handleSaveToVault}
                   isSaving={savingMsgId === msg.id}
                   isSaved={savedMsgIds.has(msg.id)}
-                  onImageClick={(url, prompt) => setLightboxMedia({ url, prompt })}
+                  onImageClick={(url, prompt, initialMode) => setLightboxMedia({ url, prompt, initialMode })}
                   onGenerateTalkingVideo={handleGenerateTalkingVideo}
                   onSetAsPrimaryReference={handleSetPrimaryReferenceImage}
                   onCancelGeneration={handleCancelGeneration}
+                  onDeleteImage={handleDeleteGeneratedImage}
+                  onCopyImage={handleCopyGeneratedImage}
                 />
               ))}
               <div ref={messagesEndRef} />
@@ -2208,6 +3743,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                   ref={inputRef}
                   value={input}
                   onChange={e => setInput(e.target.value)}
+                  onPaste={handleChatPaste}
                   onKeyDown={handleKeyDown}
                   placeholder={`Message ${activePersona.name}…`}
                   rows={1}
@@ -2286,6 +3822,395 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
         </div>
       )}
 
+      <AnimatePresence>
+        {showMemoryCenter && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[120] flex items-center justify-center bg-black/85 p-3 sm:p-6 backdrop-blur-xl"
+            onClick={() => setShowMemoryCenter(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 18, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.98 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              onClick={event => event.stopPropagation()}
+              className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-white/[0.14] bg-[#17181d] shadow-[0_32px_100px_rgba(0,0,0,0.8)]"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="memory-center-title"
+            >
+              <div className="border-b border-white/[0.09] bg-gradient-to-br from-[#E7C477]/[0.12] via-transparent to-cyan-500/[0.05] px-5 py-5 sm:px-7">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex min-w-0 items-center gap-3.5">
+                    <div className="relative h-12 w-12 flex-shrink-0 overflow-hidden rounded-2xl border border-[#E7C477]/30 bg-[#E7C477]/10">
+                      {activePersona.referenceImage || activePersona.avatar ? (
+                        <PersonaAvatar
+                          src={activePersona.referenceImage || activePersona.avatar}
+                          alt={activePersona.name}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <Brain size={22} className="absolute inset-0 m-auto text-[#F2D58D]" />
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#E7C477]">Persona intelligence</p>
+                      <h2 id="memory-center-title" className="truncate text-xl font-extrabold text-white sm:text-2xl">
+                        {activePersona.name}&apos;s Memory Center
+                      </h2>
+                      <p className="mt-1 text-xs text-zinc-400">Review, correct, pin, or forget anything this persona remembers.</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowMemoryCenter(false)}
+                    className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-white/10 bg-black/20 text-zinc-400 transition-colors hover:bg-white/10 hover:text-white"
+                    aria-label="Close Memory Center"
+                  >
+                    <X size={17} />
+                  </button>
+                </div>
+
+                <div className="mt-4 grid grid-cols-3 gap-2 sm:max-w-md">
+                  {[
+                    [`${memoryNotes.filter(note => note.pinned).length}`, 'Pinned facts'],
+                    [`${memoryTextCount}`, 'Text turns'],
+                    [`${memoryVoiceCount}`, 'Voice turns'],
+                  ].map(([value, label]) => (
+                    <div key={label} className="rounded-xl border border-white/[0.08] bg-black/20 px-3 py-2">
+                      <p className="text-sm font-black text-white">{value}</p>
+                      <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-500">{label}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex-1 space-y-4 overflow-y-auto p-4 custom-scrollbar sm:p-6">
+                <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
+                  <div className="relative">
+                    <Search size={15} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500" />
+                    <input
+                      value={memorySearch}
+                      onChange={event => setMemorySearch(event.target.value)}
+                      placeholder="Search memories and conversation history…"
+                      className="w-full rounded-xl border border-white/[0.10] bg-[#101115] py-3 pl-10 pr-4 text-sm text-white outline-none transition-colors placeholder:text-zinc-600 focus:border-[#E7C477]/45"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2 rounded-xl border border-emerald-400/20 bg-emerald-400/[0.07] px-4 py-2.5 text-xs font-bold text-emerald-300">
+                    <Check size={15} /> Text and voice share one memory
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-[#E7C477]/20 bg-[#E7C477]/[0.055] p-4">
+                  <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-[#F2D58D]">
+                    <MessageSquareQuote size={15} /> Latest interaction summary
+                  </div>
+                  <p className="mt-2 text-sm leading-relaxed text-zinc-300">{recentMemorySummary}</p>
+                </div>
+
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <section className="min-h-[360px] rounded-2xl border border-white/[0.09] bg-[#121318] p-4 sm:p-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <h3 className="flex items-center gap-2 text-sm font-extrabold text-white">
+                          <Brain size={16} className="text-[#E7C477]" /> Important memories
+                        </h3>
+                        <p className="mt-1 text-[11px] text-zinc-500">Pinned facts are prioritized in future conversations.</p>
+                      </div>
+                      <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-[10px] font-bold text-zinc-400">
+                        {visibleMemoryNotes.length}
+                      </span>
+                    </div>
+
+                    <div className="mt-4 flex gap-2">
+                      <input
+                        value={newMemoryDraft}
+                        onChange={event => setNewMemoryDraft(event.target.value)}
+                        onKeyDown={event => {
+                          if (event.key === 'Enter') handleAddMemoryNote();
+                        }}
+                        placeholder={`Add something ${activePersona.name} should remember…`}
+                        className="min-w-0 flex-1 rounded-xl border border-white/[0.10] bg-black/25 px-3 py-2.5 text-xs text-white outline-none placeholder:text-zinc-600 focus:border-[#E7C477]/45"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddMemoryNote}
+                        disabled={!newMemoryDraft.trim()}
+                        className="flex items-center gap-1.5 rounded-xl bg-[#E7C477] px-3 py-2 text-xs font-black text-zinc-950 transition-colors hover:bg-[#F2D58D] disabled:cursor-not-allowed disabled:opacity-35"
+                      >
+                        <Plus size={14} /> Add
+                      </button>
+                    </div>
+
+                    <div className="mt-4 max-h-[390px] space-y-2 overflow-y-auto pr-1 custom-scrollbar">
+                      {visibleMemoryNotes.length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-white/[0.10] p-8 text-center text-xs text-zinc-500">
+                          No matching memories.
+                        </div>
+                      ) : visibleMemoryNotes.map(note => (
+                        <div key={note.id} className="group rounded-xl border border-white/[0.08] bg-white/[0.035] p-3 transition-colors hover:border-white/[0.14]">
+                          {editingMemoryId === note.id ? (
+                            <div className="space-y-2">
+                              <textarea
+                                autoFocus
+                                value={editingMemoryDraft}
+                                onChange={event => setEditingMemoryDraft(event.target.value)}
+                                onKeyDown={event => {
+                                  if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') handleSaveMemoryEdit();
+                                  if (event.key === 'Escape') setEditingMemoryId(null);
+                                }}
+                                rows={3}
+                                className="w-full resize-none rounded-lg border border-[#E7C477]/35 bg-black/30 px-3 py-2 text-xs leading-relaxed text-white outline-none"
+                              />
+                              <div className="flex justify-end gap-1.5">
+                                <button type="button" onClick={() => setEditingMemoryId(null)} className="rounded-lg px-2.5 py-1.5 text-[10px] font-bold text-zinc-400 hover:text-white">Cancel</button>
+                                <button type="button" onClick={handleSaveMemoryEdit} className="flex items-center gap-1 rounded-lg bg-[#E7C477] px-2.5 py-1.5 text-[10px] font-black text-zinc-950"><Check size={11} /> Save</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-start gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleToggleMemoryPin(note.id)}
+                                className={cn(
+                                  'mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg border transition-colors',
+                                  note.pinned
+                                    ? 'border-[#E7C477]/40 bg-[#E7C477]/15 text-[#F2D58D]'
+                                    : 'border-white/[0.08] bg-black/20 text-zinc-600 hover:text-zinc-300',
+                                )}
+                                title={note.pinned ? 'Unpin memory' : 'Pin memory'}
+                              >
+                                <Pin size={12} className={note.pinned ? 'fill-current' : ''} />
+                              </button>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs leading-relaxed text-zinc-200">{note.text}</p>
+                                <p className="mt-1 text-[9px] font-bold uppercase tracking-wider text-zinc-600">
+                                  {note.source === 'manual' ? 'Added by you' : note.source === 'default' ? 'Core memory' : 'Learned from chat'}
+                                </p>
+                              </div>
+                              <div className="flex flex-shrink-0 gap-1 opacity-60 transition-opacity group-hover:opacity-100">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingMemoryId(note.id);
+                                    setEditingMemoryDraft(note.text);
+                                  }}
+                                  className="flex h-7 w-7 items-center justify-center rounded-lg text-zinc-500 hover:bg-white/[0.08] hover:text-white"
+                                  title="Correct memory"
+                                >
+                                  <Pencil size={12} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleForgetMemoryNote(note.id)}
+                                  className="flex h-7 w-7 items-center justify-center rounded-lg text-zinc-500 hover:bg-rose-500/10 hover:text-rose-400"
+                                  title="Forget memory"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+
+                  <section className="min-h-[360px] rounded-2xl border border-white/[0.09] bg-[#121318] p-4 sm:p-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <h3 className="flex items-center gap-2 text-sm font-extrabold text-white">
+                          <BookOpen size={16} className="text-cyan-300" /> Conversation memory
+                        </h3>
+                        <p className="mt-1 text-[11px] text-zinc-500">Recent text and voice turns in one continuous timeline.</p>
+                      </div>
+                      <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-[10px] font-bold text-zinc-400">
+                        {visibleMemoryActivity.length}
+                      </span>
+                    </div>
+
+                    <div className="mt-4 max-h-[470px] space-y-2 overflow-y-auto pr-1 custom-scrollbar">
+                      {visibleMemoryActivity.length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-white/[0.10] p-8 text-center text-xs text-zinc-500">
+                          No matching conversation history.
+                        </div>
+                      ) : visibleMemoryActivity.slice(0, 40).map(record => (
+                        <div key={record.id} className="group rounded-xl border border-white/[0.08] bg-white/[0.03] p-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-2">
+                              <span className={cn(
+                                'rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wider',
+                                record.source === 'voice'
+                                  ? 'bg-emerald-400/10 text-emerald-300'
+                                  : 'bg-cyan-400/10 text-cyan-300',
+                              )}>
+                                {record.source === 'voice' ? 'Voice' : 'Text'}
+                              </span>
+                              <span className="text-[10px] font-bold text-zinc-500">
+                                {record.role === 'user' ? 'You' : activePersona.name}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <time className="text-[9px] text-zinc-600">
+                                {new Date(record.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                              </time>
+                              <button
+                                type="button"
+                                onClick={() => handleForgetConversationRecord(record.id)}
+                                className="flex h-6 w-6 items-center justify-center rounded-md text-zinc-600 opacity-60 transition-colors hover:bg-rose-500/10 hover:text-rose-400 group-hover:opacity-100"
+                                title="Forget this message"
+                              >
+                                <Trash2 size={11} />
+                              </button>
+                            </div>
+                          </div>
+                          <p className="mt-2 text-xs leading-relaxed text-zinc-300">{record.content}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Optional one-time Speaker Lock setup before the first voice call */}
+      <AnimatePresence>
+        {showSpeakerLockSetup && !isCallActive && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 p-4 backdrop-blur-xl"
+            onClick={() => {
+              if (voiceEnrollmentStatus === 'recording') return;
+              cancelVoiceEnrollment(true);
+              setShowSpeakerLockSetup(false);
+            }}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 18, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.97 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              onClick={event => event.stopPropagation()}
+              className="relative w-full max-w-lg overflow-hidden rounded-3xl border border-white/[0.14] bg-[#18191e] shadow-[0_32px_100px_rgba(0,0,0,0.75)]"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="speaker-lock-setup-title"
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  cancelVoiceEnrollment(true);
+                  setShowSpeakerLockSetup(false);
+                }}
+                disabled={voiceEnrollmentStatus === 'recording'}
+                className="absolute right-4 top-4 z-10 rounded-full border border-white/10 bg-black/25 p-2 text-zinc-400 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+                aria-label="Close Speaker Lock setup"
+              >
+                <X size={17} />
+              </button>
+
+              <div className="border-b border-white/[0.08] bg-gradient-to-br from-emerald-500/[0.12] via-transparent to-[#E7C477]/[0.08] p-6 sm:p-7">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-emerald-400/25 bg-emerald-400/10 text-emerald-300 shadow-inner">
+                  <ShieldCheck size={24} />
+                </div>
+                <h2 id="speaker-lock-setup-title" className="mt-4 text-2xl font-extrabold tracking-tight text-white">
+                  {voiceEnrollmentStatus === 'ready' ? 'Speaker Lock is ready' : 'Let personas recognize your voice'}
+                </h2>
+                <p className="mt-2 text-sm leading-relaxed text-zinc-400">
+                  {voiceEnrollmentStatus === 'ready'
+                    ? `${activePersona.name} will prioritize your voice and ignore longer turns from nearby speakers.`
+                    : 'A quick 8-second setup helps personas tell you apart from other people in the room.'}
+                </p>
+              </div>
+
+              <div className="space-y-4 p-6 sm:p-7">
+                {voiceEnrollmentStatus === 'recording' ? (
+                  <div className="rounded-2xl border border-emerald-400/25 bg-emerald-400/[0.07] p-5 text-center">
+                    <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-emerald-400/30 bg-emerald-400/10">
+                      <Mic size={27} className="animate-pulse text-emerald-300" />
+                    </div>
+                    <div className="mt-3 font-mono text-3xl font-black text-white">{voiceEnrollmentSeconds}s</div>
+                    <p className="mt-2 text-sm font-bold text-emerald-200">Speak naturally in your usual voice</p>
+                    <p className="mt-2 text-xs leading-relaxed text-zinc-400">
+                      Try: “Hi, this is Dr. H. I’m setting up my voice so {activePersona.name} knows when I’m talking.”
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => cancelVoiceEnrollment()}
+                      className="mt-4 text-xs font-semibold text-zinc-500 hover:text-zinc-300"
+                    >
+                      Cancel recording
+                    </button>
+                  </div>
+                ) : voiceEnrollmentStatus === 'ready' && voiceIdentityProfile ? (
+                  <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.06] p-4">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-400 text-zinc-950">
+                        <Check size={19} strokeWidth={3} />
+                      </span>
+                      <div>
+                        <p className="text-sm font-bold text-white">Your voice signature is saved</p>
+                        <p className="mt-0.5 text-[11px] text-zinc-400">No microphone audio was stored.</p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {[
+                      ['8 seconds', 'One short voice sample'],
+                      ['On-device', 'Audio never gets stored'],
+                      ['Optional', 'Skip and call anytime'],
+                    ].map(([title, description]) => (
+                      <div key={title} className="rounded-xl border border-white/[0.09] bg-black/20 p-3">
+                        <p className="text-xs font-bold text-zinc-100">{title}</p>
+                        <p className="mt-1 text-[10px] leading-relaxed text-zinc-500">{description}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {voiceEnrollmentStatus === 'error' && (
+                  <div className="flex items-start gap-2 rounded-xl border border-amber-400/20 bg-amber-400/[0.07] p-3 text-xs text-amber-200">
+                    <AlertCircle size={15} className="mt-0.5 shrink-0" />
+                    I couldn’t capture enough clear speech. Move closer to the microphone and try once more.
+                  </div>
+                )}
+
+                {voiceEnrollmentStatus !== 'recording' && (
+                  <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                    {voiceEnrollmentStatus !== 'ready' && (
+                      <button
+                        type="button"
+                        onClick={skipSpeakerLockAndStartCall}
+                        className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-bold text-zinc-300 transition-colors hover:bg-white/[0.08] hover:text-white"
+                      >
+                        Skip &amp; start call
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={voiceEnrollmentStatus === 'ready' ? () => void handleStartCall() : () => void startVoiceEnrollment()}
+                      className="flex items-center justify-center gap-2 rounded-xl bg-[#E7C477] px-5 py-3 text-sm font-extrabold text-zinc-950 shadow-lg transition-colors hover:bg-[#F2D58D]"
+                    >
+                      {voiceEnrollmentStatus === 'ready' ? <Phone size={16} /> : <Mic size={16} />}
+                      {voiceEnrollmentStatus === 'ready' ? 'Start voice call' : voiceEnrollmentStatus === 'error' ? 'Try again' : 'Enroll my voice'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Voice Call Simulator Overlay */}
       <AnimatePresence>
         {isCallActive && (
@@ -2345,6 +4270,43 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                     ))}
                   </select>
                 </div>
+                <button
+                  onClick={() => setShowVoiceAccuracyPanel(open => !open)}
+                  className={cn(
+                    "p-2 rounded-lg border text-zinc-300 transition-all cursor-pointer",
+                    showVoiceAccuracyPanel
+                      ? "bg-[#E7C477]/15 border-[#E7C477]/45 text-[#F2D58D]"
+                      : "bg-white/5 border-white/10 hover:bg-white/10",
+                  )}
+                  title="Voice accuracy and personal vocabulary"
+                >
+                  <SlidersHorizontal size={14} />
+                </button>
+                {voiceIdentityProfile?.enabled && (
+                  <button
+                    type="button"
+                    onClick={() => setShowVoiceAccuracyPanel(true)}
+                    className={cn(
+                      'hidden sm:flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold transition-colors',
+                      ignoredSpeakerCount > 0
+                        ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-200'
+                        : 'border-white/10 bg-white/[0.04] text-zinc-400 hover:bg-white/[0.08]',
+                    )}
+                    title="Open Speaker Lock details"
+                  >
+                    <ShieldCheck size={12} />
+                    {ignoredSpeakerCount > 0 ? `${ignoredSpeakerCount} ignored` : 'Speaker Lock'}
+                  </button>
+                )}
+                {lastVoiceLatency?.responseMs !== undefined && (
+                  <div
+                    className="hidden md:flex items-center gap-1.5 bg-cyan-500/[0.08] border border-cyan-500/20 rounded-full px-2.5 py-1 text-[10px] font-semibold text-cyan-200"
+                    title={`Last reply: recognition ${formatLatency(lastVoiceLatency.recognitionMs)}, AI ${formatLatency(lastVoiceLatency.modelMs)}, voice ${formatLatency(lastVoiceLatency.speechMs)}`}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                    Reply {formatLatency(lastVoiceLatency.responseMs)}
+                  </div>
+                )}
                 {callStatus !== 'connecting' && (
                   <div className="bg-white/5 border border-white/10 rounded-full px-3 py-1 text-xs font-mono text-zinc-300">
                     {formatDuration(callDuration)}
@@ -2353,11 +4315,259 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
               </div>
             </div>
 
+            <AnimatePresence>
+              {showVoiceAccuracyPanel && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -8, scale: 0.98 }}
+                  className="absolute top-16 right-4 sm:right-6 z-[70] w-[min(92vw,430px)] max-h-[72vh] overflow-y-auto custom-scrollbar rounded-2xl border border-white/[0.14] bg-[#17181d]/98 shadow-2xl backdrop-blur-2xl p-4 space-y-4"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2 text-white font-bold">
+                        <BookOpen size={16} className="text-[#E7C477]" /> Voice Accuracy
+                      </div>
+                      <p className="text-[11px] text-zinc-400 mt-1">
+                        {voiceAccuracyProfile.corrections.length} learned correction{voiceAccuracyProfile.corrections.length === 1 ? '' : 's'} · {voiceAccuracyProfile.customTerms.length} vocabulary term{voiceAccuracyProfile.customTerms.length === 1 ? '' : 's'}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setShowVoiceAccuracyPanel(false)}
+                      className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 cursor-pointer"
+                      aria-label="Close voice accuracy settings"
+                    >
+                      <X size={15} />
+                    </button>
+                  </div>
+
+                  <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/[0.05] p-3 space-y-2.5">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-bold text-cyan-100">Live call health</p>
+                        <p className="text-[10px] text-zinc-400 mt-0.5">Echo protection on · interruption ready · complete-response recovery on</p>
+                      </div>
+                      <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-300">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Active
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {[
+                        ['Hearing', lastVoiceLatency?.recognitionMs],
+                        ['AI', lastVoiceLatency?.modelMs],
+                        ['Voice', lastVoiceLatency?.speechMs],
+                        ['Reply', lastVoiceLatency?.responseMs],
+                      ].map(([label, value]) => (
+                        <div key={String(label)} className="rounded-lg bg-black/25 border border-white/[0.07] px-2 py-2 text-center">
+                          <p className="text-[9px] uppercase tracking-wide text-zinc-500">{label}</p>
+                          <p className="text-[11px] font-bold text-zinc-200 mt-0.5">{formatLatency(value as number | undefined)}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-[9px] text-zinc-500">Reply measures the final transcript to the first audible persona response.</p>
+                  </div>
+
+                  <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.05] p-3 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs font-bold text-emerald-100">Speaker Lock</p>
+                          {voiceIdentityProfile && (
+                            <span className={cn(
+                              'rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide border',
+                              voiceIdentityProfile.enabled
+                                ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300'
+                                : 'border-zinc-500/30 bg-zinc-500/10 text-zinc-400',
+                            )}>
+                              {voiceIdentityProfile.enabled ? 'Active' : 'Paused'}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-zinc-400 mt-0.5">
+                          Enroll Dr. H's voice so longer turns from other people can be ignored.
+                        </p>
+                      </div>
+                      {voiceEnrollmentStatus !== 'recording' && (
+                        <button
+                          onClick={startVoiceEnrollment}
+                          className="shrink-0 px-3 py-1.5 rounded-lg bg-emerald-400 text-zinc-950 text-[11px] font-bold cursor-pointer hover:bg-emerald-300"
+                        >
+                          {voiceIdentityProfile ? 'Enroll again' : 'Enroll my voice'}
+                        </button>
+                      )}
+                    </div>
+
+                    {voiceEnrollmentStatus === 'recording' && (
+                      <div className="rounded-lg border border-emerald-400/25 bg-black/25 p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-xs font-bold text-emerald-200 animate-pulse">Speak naturally now…</p>
+                          <span className="font-mono text-sm font-bold text-white">{voiceEnrollmentSeconds}s</span>
+                        </div>
+                        <p className="text-[10px] leading-relaxed text-zinc-400 mt-1.5">
+                          Read a few normal sentences in your usual voice. Audio is not saved; only a compact voice signature is stored.
+                        </p>
+                        <button onClick={() => cancelVoiceEnrollment()} className="mt-2 text-[10px] text-zinc-500 hover:text-zinc-300 cursor-pointer">Cancel</button>
+                      </div>
+                    )}
+
+                    {voiceIdentityProfile && voiceEnrollmentStatus !== 'recording' && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          onClick={toggleVoiceIdentityLock}
+                          className="px-2.5 py-1.5 rounded-lg border border-white/10 bg-black/20 text-[10px] font-bold text-zinc-200 hover:bg-white/[0.07] cursor-pointer"
+                        >
+                          {voiceIdentityProfile.enabled ? 'Pause lock' : 'Enable lock'}
+                        </button>
+                        <button
+                          onClick={removeVoiceIdentityProfile}
+                          className="px-2.5 py-1.5 rounded-lg border border-rose-500/20 bg-rose-500/[0.06] text-[10px] font-bold text-rose-300 hover:bg-rose-500/10 cursor-pointer"
+                        >
+                          Remove profile
+                        </button>
+                        <span className="ml-auto text-[9px] text-zinc-500">
+                          {ignoredSpeakerCount} ignored this call
+                          {lastSpeakerMatchScore !== null ? ` · last match ${Math.round(lastSpeakerMatchScore * 100)}%` : ''}
+                        </span>
+                      </div>
+                    )}
+
+                    {voiceEnrollmentStatus === 'error' && (
+                      <p className="text-[10px] text-amber-300">Not enough clear speech was captured. Try again closer to the microphone.</p>
+                    )}
+                    <p className="text-[9px] text-zinc-500">Speaker Lock is a conversational filter, not identity authentication. Very short phrases are allowed when there is not enough audio to compare safely.</p>
+                  </div>
+
+                  <div className="rounded-xl border border-[#E7C477]/20 bg-[#E7C477]/[0.06] p-3 space-y-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-bold text-[#F2D58D]">Optional voice calibration</p>
+                        <p className="text-[10px] text-zinc-400 mt-0.5">Read three short sentences so names and model terms are recognized correctly.</p>
+                      </div>
+                      {calibrationStep === null && (
+                        <button
+                          onClick={startVoiceCalibration}
+                          className="px-3 py-1.5 rounded-lg bg-[#E7C477] text-zinc-950 text-[11px] font-bold cursor-pointer hover:bg-[#F2D58D]"
+                        >
+                          {voiceAccuracyProfile.calibrationCompletedAt ? 'Run again' : 'Start'}
+                        </button>
+                      )}
+                    </div>
+
+                    {calibrationStep !== null && (
+                      <div className="space-y-2.5">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                          Sentence {calibrationStep + 1} of {VOICE_CALIBRATION_SENTENCES.length}
+                        </div>
+                        <p className="text-sm leading-relaxed text-white rounded-lg bg-black/25 border border-white/10 p-2.5">
+                          “{VOICE_CALIBRATION_SENTENCES[calibrationStep]}”
+                        </p>
+                        {calibrationCapture ? (
+                          <div className="space-y-2">
+                            <p className="text-[11px] text-zinc-300"><span className="text-zinc-500">Heard:</span> “{calibrationCapture.heard}”</p>
+                            <p className="text-[10px] text-emerald-300">
+                              {calibrationCapture.corrections.length > 0
+                                ? `${calibrationCapture.corrections.length} pronunciation correction${calibrationCapture.corrections.length === 1 ? '' : 's'} found.`
+                                : 'Perfect match — no correction needed.'}
+                            </p>
+                            <button
+                              onClick={acceptCalibrationCapture}
+                              className="w-full py-2 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-bold cursor-pointer hover:bg-emerald-500/20"
+                            >
+                              <Check size={13} className="inline mr-1" />
+                              {calibrationStep === VOICE_CALIBRATION_SENTENCES.length - 1 ? 'Finish calibration' : 'Save & next sentence'}
+                            </button>
+                          </div>
+                        ) : (
+                          <p className="text-[11px] text-emerald-300 animate-pulse">Listening — read the sentence naturally…</p>
+                        )}
+                        <button onClick={cancelVoiceCalibration} className="text-[10px] text-zinc-500 hover:text-zinc-300 cursor-pointer">Cancel calibration</button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-xs font-bold text-zinc-200">Add a correction manually</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        value={manualHeardDraft}
+                        onChange={event => setManualHeardDraft(event.target.value)}
+                        placeholder="App heard…"
+                        className="min-w-0 rounded-lg bg-black/25 border border-white/10 px-2.5 py-2 text-xs text-white outline-none focus:border-[#E7C477]/50"
+                      />
+                      <input
+                        value={manualIntendedDraft}
+                        onChange={event => setManualIntendedDraft(event.target.value)}
+                        onKeyDown={event => { if (event.key === 'Enter') saveManualVoiceCorrection(); }}
+                        placeholder="You meant…"
+                        className="min-w-0 rounded-lg bg-black/25 border border-white/10 px-2.5 py-2 text-xs text-white outline-none focus:border-[#E7C477]/50"
+                      />
+                    </div>
+                    <button
+                      onClick={saveManualVoiceCorrection}
+                      disabled={!manualHeardDraft.trim() || !manualIntendedDraft.trim()}
+                      className="w-full py-2 rounded-lg bg-white/[0.06] border border-white/10 text-zinc-200 text-xs font-bold disabled:opacity-40 cursor-pointer hover:bg-white/10"
+                    >
+                      <Plus size={13} className="inline mr-1" /> Add to personal vocabulary
+                    </button>
+                  </div>
+
+                  {voiceAccuracyProfile.corrections.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-bold text-zinc-200">Learned corrections</p>
+                      <div className="space-y-1.5 max-h-36 overflow-y-auto custom-scrollbar">
+                        {voiceAccuracyProfile.corrections.slice(0, 12).map(correction => (
+                          <div key={`${correction.heard}-${correction.intended}`} className="flex items-center gap-2 rounded-lg bg-black/20 border border-white/[0.07] px-2.5 py-2 text-[11px]">
+                            <span className="text-zinc-500 truncate">{correction.heard}</span>
+                            <span className="text-[#E7C477]">→</span>
+                            <span className="text-zinc-200 truncate flex-1">{correction.intended}</span>
+                            <button
+                              onClick={() => updateVoiceAccuracyProfile(profile => ({
+                                ...profile,
+                                corrections: profile.corrections.filter(item => item !== correction),
+                              }))}
+                              className="p-1 text-zinc-600 hover:text-rose-400 cursor-pointer"
+                              title="Remove correction"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {/* Visualizer Area */}
             <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-3 my-2 relative">
               {/* Status Indicator */}
               <div className="text-center z-10 min-h-[38px] flex flex-col items-center justify-center px-4">
-                {liveUserSpeech ? (
+                {pendingVoiceConfirmation ? (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.96 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="flex flex-wrap items-center justify-center gap-2 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs shadow-sm backdrop-blur-md max-w-[540px]"
+                  >
+                    <span>Did you mean: “{pendingVoiceConfirmation}”?</span>
+                    <button
+                      onClick={confirmPendingVoiceRequest}
+                      className="px-2.5 py-1 rounded-lg bg-amber-300 text-zinc-950 font-bold cursor-pointer"
+                    >
+                      Send
+                    </button>
+                    <button
+                      onClick={() => {
+                        setPendingVoiceConfirmation(null);
+                        setCallInput('');
+                        setCallStatus('listening');
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-white/10 text-zinc-200 font-bold cursor-pointer"
+                    >
+                      Keep speaking
+                    </button>
+                  </motion.div>
+                ) : liveUserSpeech ? (
                   <motion.div 
                     initial={{ opacity: 0, scale: 0.96 }}
                     animate={{ opacity: 1, scale: 1 }}
@@ -2369,11 +4579,13 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                   <>
                     <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest block mb-1">
                       {callStatus === 'connecting' ? 'Calling...' : 
+                       callStatus === 'thinking' ? `${activePersona?.name || 'Persona'} Thinking` :
                        callStatus === 'speaking' ? `${activePersona?.name || 'Persona'} Speaking` :
                        callStatus === 'listening' ? 'Listening to You' : 'Connected'}
                     </span>
                     <p className="text-xs text-zinc-400 font-medium">
                       {callStatus === 'connecting' ? 'Establishing secure connection...' : 
+                       callStatus === 'thinking' ? 'Preparing a response — you can interrupt anytime...' :
                        callStatus === 'speaking' ? `${activePersona?.name || 'Persona'} is speaking...` :
                        callStatus === 'listening' ? 'Speak now or type below...' : 'Call in progress'}
                     </p>
@@ -2529,6 +4741,21 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                       >
                         <Download size={12} />
                       </a>
+                      {activeCallMedia.type === 'image' && activeCallMedia.messageId && (
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            const imageMessage = messagesRef.current.find(message => message.id === activeCallMedia.messageId);
+                            if (imageMessage) handleDeleteGeneratedImage(imageMessage);
+                          }}
+                          className="p-1.5 rounded-full bg-black/80 hover:bg-rose-600 text-white text-xs backdrop-blur-md transition-colors"
+                          title="Delete from conversation"
+                          aria-label="Delete generated image"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      )}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -2588,13 +4815,54 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                               Speaking
                             </span>
                           )}
+                          {!isPersona && item.source === 'voice' && editingVoiceTranscriptId !== item.id && (
+                            <button
+                              onClick={() => {
+                                setEditingVoiceTranscriptId(item.id);
+                                setVoiceCorrectionDraft(item.content);
+                              }}
+                              className="flex items-center gap-1 text-[10px] text-zinc-500 hover:text-[#F2D58D] cursor-pointer"
+                              title="Correct what the app heard"
+                            >
+                              <Pencil size={10} /> Correct
+                            </button>
+                          )}
                         </div>
 
-                        {item.type === 'loading' ? (
-                          <div className="flex items-center gap-2 text-violet-400 text-xs sm:text-sm font-medium py-1 animate-pulse">
-                            <span className="inline-block w-2 h-2 rounded-full bg-violet-400 animate-ping" />
-                            Creating high-definition photo for you...
+                        {editingVoiceTranscriptId === item.id ? (
+                          <div className="space-y-2">
+                            <p className="text-[10px] text-zinc-500">Heard: “{item.rawContent || item.content}”</p>
+                            <input
+                              autoFocus
+                              value={voiceCorrectionDraft}
+                              onChange={event => setVoiceCorrectionDraft(event.target.value)}
+                              onKeyDown={event => {
+                                if (event.key === 'Enter') saveInlineVoiceCorrection(item);
+                                if (event.key === 'Escape') setEditingVoiceTranscriptId(null);
+                              }}
+                              className="w-full rounded-lg bg-black/30 border border-[#E7C477]/30 px-2.5 py-2 text-xs text-white outline-none focus:border-[#E7C477]"
+                            />
+                            <div className="flex justify-end gap-1.5">
+                              <button
+                                onClick={() => setEditingVoiceTranscriptId(null)}
+                                className="px-2 py-1 rounded-md text-[10px] text-zinc-400 hover:bg-white/10 cursor-pointer"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={() => saveInlineVoiceCorrection(item)}
+                                className="px-2 py-1 rounded-md text-[10px] font-bold bg-[#E7C477] text-zinc-950 cursor-pointer"
+                              >
+                                Learn correction
+                              </button>
+                            </div>
                           </div>
+                        ) : item.type === 'loading' ? (
+                          <GeneratingProgressBubble
+                            msgId={item.id}
+                            label={item.content}
+                            compact
+                          />
                         ) : item.type === 'image' ? (
                           <div className="mt-2 flex flex-col sm:flex-row items-start sm:items-center gap-3 bg-black/40 p-2.5 rounded-xl border border-white/10">
                             {item.content && (
@@ -2692,6 +4960,13 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
         )}
       </AnimatePresence>
 
+      <MediaJobCenter
+        isOpen={showMediaJobCenter}
+        onClose={() => setShowMediaJobCenter(false)}
+        onOpenResult={handleOpenMediaJobResult}
+        onJobCompleted={handleRecoveredMediaJob}
+      />
+
       {/* Brand New Almost Fullscreen Image Lightbox Modal with Upscale, Edit, and Download */}
       {lightboxMedia && (
         <ImageLightboxModal
@@ -2700,7 +4975,10 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
           imageUrl={lightboxMedia.url}
           prompt={lightboxMedia.prompt}
           persona={activePersona}
-          onImageUpdated={(newUrl) => handleUpdateImageInChat(lightboxMedia.url, newUrl)}
+          initialMode={lightboxMedia.initialMode}
+          onImageUpdated={handlePersistStudioImageVersion}
+          onAnimateImage={handleAnimateImageFromStudio}
+          onCreateTalkingAvatar={handleCreateTalkingAvatarFromStudio}
         />
       )}
 
@@ -2810,10 +5088,11 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                         const selected = e.target.value;
                         setVoiceLlmModel(selected);
                         localStorage.setItem('agent_voice_llm', selected);
+                        localStorage.setItem('agent_voice_llm_user_selected', '1');
                         const labels: Record<string, string> = {
                           'llama3.3': 'Meta Llama 3.3 70B (Cloud API)',
                           'ollama:llama3.3': 'Meta Llama 3.3 70B (Local GPU)',
-                          venice: 'Venice AI Llama 3.3 70B (Uncensored)',
+                          venice: 'Venice Adult Roleplay (Uncensored)',
                           grok: 'xAI Grok 2',
                           deepseek: 'DeepSeek R1 Reasoner',
                           qwen: 'Qwen 2.5 72B Instruct',
@@ -2825,7 +5104,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                     >
                       <option value="gemini" className="bg-[#1c1d22] text-white">⚡ Gemini 2.5 Flash (Ultra Fast & Conversational)</option>
                       <option value="qwen" className="bg-[#1c1d22] text-white">🔮 Qwen 2.5 72B Instruct (Deep Roleplay & Creative)</option>
-                      <option value="venice" className="bg-[#1c1d22] text-white">🔓 Venice AI Llama 3.3 70B (Fully Uncensored)</option>
+                      <option value="venice" className="bg-[#1c1d22] text-white">🔓 Venice Adult Roleplay (Uncensored)</option>
                       <option value="deepseek" className="bg-[#1c1d22] text-white">🧠 DeepSeek R1 Reasoner (Complex Logic & Analysis)</option>
                       <option value="grok" className="bg-[#1c1d22] text-white">🚀 xAI Grok 2 (Direct & Unfiltered)</option>
                       <option value="llama3.3" className="bg-[#1c1d22] text-white">🦙 Meta Llama 3.3 70B (Cloud API)</option>
@@ -3018,23 +5297,20 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
 function GeneratingProgressBubble({ 
   msgId,
   label, 
-  onCancel 
+  onCancel,
+  compact = false,
 }: { 
   msgId?: string;
   label?: string; 
   onCancel?: (id: string) => void;
+  compact?: boolean;
 }) {
-  const [progress, setProgress] = useState(14);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setProgress(prev => {
-        if (prev >= 95) return prev;
-        const diff = 96 - prev;
-        const step = Math.max(1, Math.floor(Math.random() * (diff / 4) + 1));
-        return Math.min(95, prev + step);
-      });
-    }, 450);
+      setElapsedSeconds(previous => previous + 1);
+    }, 1000);
 
     return () => clearInterval(interval);
   }, []);
@@ -3047,21 +5323,73 @@ function GeneratingProgressBubble({
            .replace(/Creating talking video with .*\.\.\./i, 'Creating video...')
            .replace(/Recording voice note for you\.\.\./i, 'Recording voice...')
            .replace(/Rendering video clip with .*\.\.\./i, 'Rendering video...')
-    : 'Generating visual...';
+    : 'Preparing your request...';
+
+  const lowerLabel = cleanLabel.toLowerCase();
+  const isVideo = /video|rendering/.test(lowerLabel);
+  const isVoice = /voice|recording/.test(lowerLabel);
+  const isImage = !isVideo && !isVoice && /image|photo|picture|visual/.test(lowerLabel);
+  const title = isVideo
+    ? 'Video generation in progress'
+    : isVoice
+      ? 'Voice note in progress'
+      : isImage
+        ? 'Image generation in progress'
+        : 'Working on your request';
+  const ActivityIcon = isVideo ? Video : isVoice ? Mic : isImage ? ImageIcon : Sparkles;
 
   return (
-    <div className="group/loading bg-[#10141D]/95 backdrop-blur-md border border-[#E7C477]/30 rounded-2xl rounded-tl-sm px-3.5 py-2 flex flex-col gap-1.5 min-w-[200px] max-w-[260px] shadow-lg shadow-black/60 transition-all">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <Loader2 size={13} className="text-[#F2D58D] animate-spin flex-shrink-0" />
-          <span className="text-xs font-medium text-zinc-200 truncate">
-            {cleanLabel}
-          </span>
+    <div
+      role="status"
+      aria-live="polite"
+      aria-label={`${title}. ${cleanLabel}`}
+      className={cn(
+        'group/loading relative overflow-hidden bg-[#151515]/98 backdrop-blur-md border border-[#E7C477]/45 rounded-2xl rounded-tl-sm shadow-xl shadow-black/60 transition-all',
+        compact ? 'px-3 py-2.5 min-w-[230px] max-w-[320px]' : 'px-4 py-3.5 min-w-[280px] w-[min(380px,78vw)]',
+      )}
+    >
+      <motion.div
+        aria-hidden="true"
+        className="absolute inset-y-0 -left-1/2 w-1/2 bg-gradient-to-r from-transparent via-[#E7C477]/10 to-transparent"
+        animate={{ x: ['0%', '300%'] }}
+        transition={{ duration: 1.8, repeat: Infinity, ease: 'linear' }}
+      />
+
+      <div className="relative flex items-center gap-3">
+        <div className={cn(
+          'relative flex-shrink-0 rounded-xl bg-[#E7C477]/10 border border-[#E7C477]/25 flex items-center justify-center',
+          compact ? 'w-9 h-9' : 'w-11 h-11',
+        )}>
+          <ActivityIcon size={compact ? 17 : 20} className="text-[#F2D58D]" />
+          <Loader2
+            size={compact ? 29 : 36}
+            className="absolute text-[#E7C477]/55 animate-spin"
+            strokeWidth={1.25}
+          />
         </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          <span className="text-[11px] font-mono font-bold text-[#F2D58D] tabular-nums">
-            {progress}%
-          </span>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <p className={cn('font-bold text-zinc-100 truncate', compact ? 'text-xs' : 'text-sm')}>
+              {title}
+            </p>
+            <span className="text-[10px] font-mono font-semibold text-[#F2D58D]/80 tabular-nums flex-shrink-0">
+              {elapsedSeconds}s
+            </span>
+          </div>
+          <p className={cn('text-zinc-400 truncate mt-0.5', compact ? 'text-[10px]' : 'text-[11px]')}>
+            {cleanLabel}
+          </p>
+          <div className="mt-2 h-1.5 bg-white/[0.08] rounded-full overflow-hidden">
+            <motion.div
+              className="h-full w-2/5 bg-gradient-to-r from-[#9C7A3C] via-[#F2D58D] to-[#B99655] rounded-full"
+              animate={{ x: ['-110%', '260%'] }}
+              transition={{ duration: 1.35, repeat: Infinity, ease: 'easeInOut' }}
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center flex-shrink-0">
           {onCancel && msgId && (
             <button
               type="button"
@@ -3069,19 +5397,14 @@ function GeneratingProgressBubble({
                 e.stopPropagation();
                 onCancel(msgId);
               }}
-              className="w-4 h-4 rounded-full bg-white/10 hover:bg-rose-500 text-zinc-400 hover:text-white flex items-center justify-center transition-all cursor-pointer"
+              className="w-6 h-6 rounded-full bg-white/[0.06] hover:bg-rose-500 text-zinc-400 hover:text-white flex items-center justify-center transition-all cursor-pointer"
               title="Cancel generation"
+              aria-label="Cancel generation"
             >
-              <X size={10} strokeWidth={2.5} />
+              <X size={12} strokeWidth={2.5} />
             </button>
           )}
         </div>
-      </div>
-      <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
-        <div
-          className="h-full bg-gradient-to-r from-[#B99655] to-[#F2D58D] rounded-full transition-all duration-300 ease-out"
-          style={{ width: `${progress}%` }}
-        />
       </div>
     </div>
   );
@@ -3094,17 +5417,69 @@ interface BubbleProps {
   onSaveToVault: (msg: ChatMessage) => void;
   isSaving: boolean;
   isSaved: boolean;
-  onImageClick?: (url: string, prompt?: string) => void;
+  onImageClick?: (url: string, prompt?: string, initialMode?: ImageStudioMode) => void;
   onGenerateTalkingVideo?: (msg: ChatMessage) => void;
   onSetAsPrimaryReference?: (url: string) => void;
   onCancelGeneration?: (id: string) => void;
+  onDeleteImage?: (msg: ChatMessage) => void;
+  onCopyImage?: (msg: ChatMessage) => void;
 }
 
-function MessageBubble({ msg, persona, isLatest, onSaveToVault, isSaving, isSaved, onImageClick, onGenerateTalkingVideo, onSetAsPrimaryReference, onCancelGeneration }: BubbleProps) {
+function MessageBubble({ msg, persona, isLatest, onSaveToVault, isSaving, isSaved, onImageClick, onGenerateTalkingVideo, onSetAsPrimaryReference, onCancelGeneration, onDeleteImage, onCopyImage }: BubbleProps) {
   const isUser = msg.role === 'user';
   const shouldType = !isUser && msg.type === 'text' && isLatest;
   const { displayed, done } = useTypewriter(shouldType ? msg.content : '', 14);
   const textToShow = shouldType ? displayed : msg.content;
+  const [showCopyAction, setShowCopyAction] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const copyResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (copyResetTimerRef.current) clearTimeout(copyResetTimerRef.current);
+  }, []);
+
+  const revealCopyAction = () => {
+    if (msg.content.trim()) setShowCopyAction(true);
+  };
+
+  const handleMessageKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      revealCopyAction();
+    }
+  };
+
+  const handleCopyMessage = async (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    try {
+      await copyTextToClipboard(msg.content);
+      setCopied(true);
+      toast.success('Message copied');
+      if (copyResetTimerRef.current) clearTimeout(copyResetTimerRef.current);
+      copyResetTimerRef.current = setTimeout(() => setCopied(false), 1800);
+    } catch {
+      toast.error('Could not copy this message');
+    }
+  };
+
+  const copyAction = showCopyAction && msg.content.trim() ? (
+    <motion.button
+      type="button"
+      initial={{ opacity: 0, scale: 0.85 }}
+      animate={{ opacity: 1, scale: 1 }}
+      onClick={handleCopyMessage}
+      className={cn(
+        'flex-shrink-0 w-7 h-7 rounded-lg border flex items-center justify-center transition-colors cursor-pointer',
+        copied
+          ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
+          : 'bg-[#24252b] hover:bg-[#2e3036] border-white/[0.10] text-zinc-400 hover:text-white',
+      )}
+      title={copied ? 'Copied' : 'Copy entire message'}
+      aria-label={copied ? 'Message copied' : 'Copy entire message'}
+    >
+      {copied ? <Check size={13} /> : <Copy size={13} />}
+    </motion.button>
+  ) : null;
 
   if (isUser) {
     return (
@@ -3133,8 +5508,18 @@ function MessageBubble({ msg, persona, isLatest, onSaveToVault, isSaving, isSave
             )}
           </div>
         )}
-        <div className="max-w-[75%] bg-[#28292f] hover:bg-[#2e2f36] border border-white/[0.12] text-zinc-100 rounded-2xl rounded-br-sm px-3.5 py-2.5 text-[12.5px] sm:text-[13px] leading-relaxed shadow-sm transition-colors">
-          {msg.content}
+        <div className="flex items-center justify-end gap-1.5 max-w-full">
+          {copyAction}
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={revealCopyAction}
+            onKeyDown={handleMessageKeyDown}
+            title="Click to show copy button"
+            className="max-w-[75%] bg-[#28292f] hover:bg-[#2e2f36] border border-white/[0.12] text-zinc-100 rounded-2xl rounded-br-sm px-3.5 py-2.5 text-[12.5px] sm:text-[13px] leading-relaxed shadow-sm transition-colors cursor-pointer select-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E7C477]/60"
+          >
+            {msg.content}
+          </div>
         </div>
       </motion.div>
     );
@@ -3157,11 +5542,21 @@ function MessageBubble({ msg, persona, isLatest, onSaveToVault, isSaving, isSave
 
       <div className="max-w-[78%] space-y-1">
         {msg.type === 'text' && (
-          <div className="bg-[#1c1d22] border border-white/[0.08] text-zinc-100 rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-[12.5px] sm:text-[13px] leading-relaxed shadow-sm">
-            {textToShow}
-            {shouldType && !done && (
-              <span className="inline-block w-0.5 h-3 bg-zinc-400 ml-1 animate-pulse rounded-sm" />
-            )}
+          <div className="flex items-center gap-1.5 max-w-full">
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={revealCopyAction}
+              onKeyDown={handleMessageKeyDown}
+              title="Click to show copy button"
+              className="bg-[#1c1d22] border border-white/[0.08] text-zinc-100 rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-[12.5px] sm:text-[13px] leading-relaxed shadow-sm cursor-pointer select-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E7C477]/60"
+            >
+              {textToShow}
+              {shouldType && !done && (
+                <span className="inline-block w-0.5 h-3 bg-zinc-400 ml-1 animate-pulse rounded-sm" />
+              )}
+            </div>
+            {copyAction}
           </div>
         )}
 
@@ -3188,7 +5583,7 @@ function MessageBubble({ msg, persona, isLatest, onSaveToVault, isSaving, isSave
             <div 
               className="relative cursor-pointer overflow-hidden bg-black/40"
               onClick={() => onImageClick?.(msg.content, msg.prompt)}
-              title="Click to view full screen, upscale & edit"
+              title="Open Media Studio"
             >
               <img
                 src={msg.content}
@@ -3198,7 +5593,7 @@ function MessageBubble({ msg, persona, isLatest, onSaveToVault, isSaving, isSave
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-4">
                 <span className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-black/85 text-white text-xs font-bold backdrop-blur-md shadow-2xl border border-[#E7C477]/40 transform group-hover:scale-105 transition-transform">
-                  <Maximize2 size={14} className="text-[#F2D58D]" /> Fullscreen Studio & Upscale
+                  <Maximize2 size={14} className="text-[#F2D58D]" /> Open Media Studio
                 </span>
               </div>
             </div>
@@ -3225,20 +5620,60 @@ function MessageBubble({ msg, persona, isLatest, onSaveToVault, isSaving, isSave
               <button
                 onClick={() => onImageClick?.(msg.content, msg.prompt)}
                 className="flex items-center gap-1 text-[#F2D58D] hover:text-white bg-white/5 hover:bg-white/10 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer border border-white/10"
-                title="Open Studio (Upscale, Edit, Download)"
+                title="Open the full Media Studio"
               >
                 <Maximize2 size={11} className="text-[#E7C477]" />
                 <span>Fullscreen</span>
               </button>
 
-              {/* Instant Talking Head Video Generator */}
+              <button
+                type="button"
+                onClick={() => onImageClick?.(msg.content, msg.prompt, 'edit')}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/20 hover:border-violet-500/40 text-violet-200 text-[10px] font-semibold transition-all cursor-pointer active:scale-95"
+                title="Modify this image in Media Studio"
+              >
+                <Wand2 size={10} />
+                <span>Modify</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onImageClick?.(msg.content, msg.prompt, 'upscale')}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 hover:border-amber-500/40 text-amber-200 text-[10px] font-semibold transition-all cursor-pointer active:scale-95"
+                title="Create a separate HD-upscaled version"
+              >
+                <ArrowUpCircle size={10} />
+                <span>Upscale HD</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onImageClick?.(msg.content, msg.prompt, 'animate')}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 hover:border-cyan-500/40 text-cyan-200 text-[10px] font-semibold transition-all cursor-pointer active:scale-95"
+                title="Animate this image with the selected video model"
+              >
+                <Film size={10} />
+                <span>Animate</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onCopyImage?.(msg)}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 hover:border-cyan-500/40 text-cyan-200 text-[10px] font-semibold transition-all cursor-pointer active:scale-95"
+                title="Copy this image, then paste it into the prompt to modify it"
+                aria-label="Copy generated image"
+              >
+                <Copy size={10} />
+                <span>Copy</span>
+              </button>
+
               <button
                 onClick={() => onGenerateTalkingVideo?.(msg)}
                 className="flex items-center gap-1 px-2 py-1 rounded-lg bg-violet-500/15 hover:bg-violet-500/25 border border-violet-500/30 text-violet-300 text-[10px] font-semibold transition-all cursor-pointer shadow-sm active:scale-95"
-                title="Create an animated talking video from this photo"
+                title="Create a talking avatar using this photo and the persona's selected voice"
               >
-                <Film size={10} className="text-violet-400" />
-                <span>Talking Video</span>
+                <Mic size={10} className="text-violet-400" />
+                <span>Talking Avatar</span>
               </button>
 
               <button
@@ -3251,6 +5686,17 @@ function MessageBubble({ msg, persona, isLatest, onSaveToVault, isSaving, isSave
               >
                 {isSaving ? <Loader2 size={10} className="animate-spin" /> : isSaved ? <Check size={10} /> : <Bookmark size={10} />}
                 {isSaved ? 'Saved' : 'Save'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onDeleteImage?.(msg)}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 hover:border-rose-500/40 text-rose-300 text-[10px] font-semibold transition-all cursor-pointer active:scale-95"
+                title="Delete this image from the conversation"
+                aria-label="Delete generated image"
+              >
+                <Trash2 size={10} />
+                <span>Delete</span>
               </button>
             </div>
           </div>
@@ -3280,9 +5726,19 @@ function MessageBubble({ msg, persona, isLatest, onSaveToVault, isSaving, isSave
         )}
 
         {msg.type === 'error' && (
-          <div className="bg-rose-500/10 border border-rose-500/20 rounded-2xl rounded-tl-sm px-4 py-2.5 flex items-start gap-2">
-            <AlertCircle size={14} className="text-rose-400 mt-0.5 flex-shrink-0" />
-            <span className="text-xs text-rose-300">{msg.content}</span>
+          <div className="flex items-center gap-1.5 max-w-full">
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={revealCopyAction}
+              onKeyDown={handleMessageKeyDown}
+              title="Click to show copy button"
+              className="bg-rose-500/10 border border-rose-500/20 rounded-2xl rounded-tl-sm px-4 py-2.5 flex items-start gap-2 cursor-pointer select-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/60"
+            >
+              <AlertCircle size={14} className="text-rose-400 mt-0.5 flex-shrink-0" />
+              <span className="text-xs text-rose-300">{msg.content}</span>
+            </div>
+            {copyAction}
           </div>
         )}
       </div>

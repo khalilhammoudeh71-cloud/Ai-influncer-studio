@@ -40,6 +40,7 @@ import { api } from '../services/apiService';
 import { cn } from '../utils/cn';
 import { processImageFile } from '../utils/imageProcessing';
 import { processVoiceSampleFile } from '../utils/audioUtils';
+import { accountLocalStorage } from '../utils/accountStorage';
 import toast from 'react-hot-toast';
 import WebcamAvatarCreator from '../components/WebcamAvatarCreator';
 
@@ -475,7 +476,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
   // Load history on mount
   useEffect(() => {
     if (persona) {
-      const saved = localStorage.getItem(`vox_vault_${persona.id}`);
+      const saved = accountLocalStorage.getItem(`vox_vault_${persona.id}`);
       if (saved) {
         try {
           setHistory(JSON.parse(saved));
@@ -490,7 +491,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
   useEffect(() => {
     if (persona && history.length > 0) {
       try {
-        localStorage.setItem(`vox_vault_${persona.id}`, JSON.stringify(history));
+        accountLocalStorage.setItem(`vox_vault_${persona.id}`, JSON.stringify(history));
       } catch (e) {
         console.warn('[Vox] Could not save full history to localStorage (quota exceeded). Storing light version.');
         // If quota exceeded, we try to store a lighter version without massive base64 payloads
@@ -499,7 +500,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
             ...item,
             url: item.url.startsWith('data:') ? '' : item.url // Strip base64 content
           }));
-          localStorage.setItem(`vox_vault_${persona.id}`, JSON.stringify(lightHistory));
+          accountLocalStorage.setItem(`vox_vault_${persona.id}`, JSON.stringify(lightHistory));
         } catch (err) {
           console.error('[Vox] Failed entirely to save history', err);
         }
@@ -664,6 +665,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
     try {
       console.log(`[VoiceView] Generating video with model: ${selectedVideoModel}`);
       const res = await api.images.generateVideo({
+        personaClientId: persona?.id,
         prompt: talkingPrompt,
         modelId: selectedVideoModel,
         sourceImage: selectedImage,

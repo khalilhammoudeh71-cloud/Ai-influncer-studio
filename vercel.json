@@ -5,9 +5,12 @@
   "outputDirectory": "dist",
   "functions": {
     "api/index.mjs": {
-      "maxDuration": 60
+      "maxDuration": 300
     }
   },
+  "crons": [
+    { "path": "/api/media-jobs/worker", "schedule": "* * * * *" }
+  ],
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/index.mjs" },
     { "source": "/(.*)", "destination": "/index.html" }

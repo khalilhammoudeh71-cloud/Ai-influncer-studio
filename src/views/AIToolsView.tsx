@@ -57,6 +57,7 @@ import InpaintStudio from '../components/InpaintStudio';
 import BatchFaceSwapStudio from '../components/BatchFaceSwapStudio';
 import GroupPhotoshootStudio from '../components/GroupPhotoshootStudio';
 import { AssetPickerModal } from '../components/AssetPickerModal';
+import { accountLocalStorage, accountSessionStorage } from '../utils/accountStorage';
 import toast from 'react-hot-toast';
 
 interface AIToolsViewProps {
@@ -249,16 +250,16 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
   
   // Shared Editor State with Auto-Persistence across sleep/lid close
   const [sourceImage, setSourceImage] = useState<string | null>(() => {
-    try { return sessionStorage.getItem('ai_toolbox_source_image') || localStorage.getItem('ai_toolbox_source_image'); } catch { return null; }
+    try { return accountSessionStorage.getItem('ai_toolbox_source_image') || accountLocalStorage.getItem('ai_toolbox_source_image'); } catch { return null; }
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [resultImage, setResultImage] = useState<string | null>(() => {
-    try { return sessionStorage.getItem('ai_toolbox_result_image') || localStorage.getItem('ai_toolbox_result_image'); } catch { return null; }
+    try { return accountSessionStorage.getItem('ai_toolbox_result_image') || accountLocalStorage.getItem('ai_toolbox_result_image'); } catch { return null; }
   });
   const [resultHistory, setResultHistory] = useState<{ imageUrl: string; timestamp: number; tool: string }[]>(() => {
     try {
-      const saved = sessionStorage.getItem('ai_toolbox_result_history') || localStorage.getItem('ai_toolbox_result_history');
+      const saved = accountSessionStorage.getItem('ai_toolbox_result_history') || accountLocalStorage.getItem('ai_toolbox_result_history');
       return saved ? JSON.parse(saved) : [];
     } catch { return []; }
   });
@@ -273,7 +274,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
   const [allowNsfw, setAllowNsfw] = useState(false);
   const [savedPrompts, setSavedPrompts] = useState<{ label: string; prompt: string; tool: string }[]>(() => {
     try {
-      const saved = localStorage.getItem('ai_tools_saved_prompts');
+      const saved = accountLocalStorage.getItem('ai_tools_saved_prompts');
       return saved ? JSON.parse(saved) : [];
     } catch { return []; }
   });
@@ -294,7 +295,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
 
   // Face Swap specific state with Auto-Persistence
   const [faceSwapFaceImage, setFaceSwapFaceImage] = useState<string | null>(() => {
-    try { return localStorage.getItem('ai_toolbox_face_image'); } catch { return null; }
+    try { return accountLocalStorage.getItem('ai_toolbox_face_image'); } catch { return null; }
   });
   const [swapMode, setSwapMode] = useState<'face' | 'head' | 'body'>('face');
   const faceFileInputRef = useRef<HTMLInputElement>(null);
@@ -314,19 +315,19 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
 
   // Virtual Try-On specific state with Auto-Persistence
   const [tryOnMode, setTryOnMode] = useState<'single' | 'multiple'>(() => {
-    try { return (localStorage.getItem('ai_toolbox_tryon_mode') as any) || 'single'; } catch { return 'single'; }
+    try { return (accountLocalStorage.getItem('ai_toolbox_tryon_mode') as any) || 'single'; } catch { return 'single'; }
   });
   const [garmentImage, setGarmentImage] = useState<string | null>(() => {
-    try { return localStorage.getItem('ai_toolbox_garment_image'); } catch { return null; }
+    try { return accountLocalStorage.getItem('ai_toolbox_garment_image'); } catch { return null; }
   });
   const [garmentImages, setGarmentImages] = useState<string[]>(() => {
     try {
-      const saved = localStorage.getItem('ai_toolbox_garment_images');
+      const saved = accountLocalStorage.getItem('ai_toolbox_garment_images');
       return saved ? JSON.parse(saved) : [];
     } catch { return []; }
   });
   const [garmentDescription, setGarmentDescription] = useState<string>(() => {
-    try { return localStorage.getItem('ai_toolbox_garment_desc') || ''; } catch { return ''; }
+    try { return accountLocalStorage.getItem('ai_toolbox_garment_desc') || ''; } catch { return ''; }
   });
   const garmentFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -334,11 +335,11 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
   useEffect(() => {
     try {
       if (sourceImage) {
-        sessionStorage.setItem('ai_toolbox_source_image', sourceImage);
-        localStorage.setItem('ai_toolbox_source_image', sourceImage);
+        accountSessionStorage.setItem('ai_toolbox_source_image', sourceImage);
+        accountLocalStorage.setItem('ai_toolbox_source_image', sourceImage);
       } else {
-        sessionStorage.removeItem('ai_toolbox_source_image');
-        localStorage.removeItem('ai_toolbox_source_image');
+        accountSessionStorage.removeItem('ai_toolbox_source_image');
+        accountLocalStorage.removeItem('ai_toolbox_source_image');
       }
     } catch {}
   }, [sourceImage]);
@@ -346,11 +347,11 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
   useEffect(() => {
     try {
       if (resultImage) {
-        sessionStorage.setItem('ai_toolbox_result_image', resultImage);
-        localStorage.setItem('ai_toolbox_result_image', resultImage);
+        accountSessionStorage.setItem('ai_toolbox_result_image', resultImage);
+        accountLocalStorage.setItem('ai_toolbox_result_image', resultImage);
       } else {
-        sessionStorage.removeItem('ai_toolbox_result_image');
-        localStorage.removeItem('ai_toolbox_result_image');
+        accountSessionStorage.removeItem('ai_toolbox_result_image');
+        accountLocalStorage.removeItem('ai_toolbox_result_image');
       }
     } catch {}
   }, [resultImage]);
@@ -359,27 +360,27 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
     try {
       if (resultHistory.length > 0) {
         const payload = JSON.stringify(resultHistory.slice(0, 20));
-        sessionStorage.setItem('ai_toolbox_result_history', payload);
-        localStorage.setItem('ai_toolbox_result_history', payload);
+        accountSessionStorage.setItem('ai_toolbox_result_history', payload);
+        accountLocalStorage.setItem('ai_toolbox_result_history', payload);
       }
     } catch {}
   }, [resultHistory]);
 
   useEffect(() => {
     try {
-      localStorage.setItem('ai_toolbox_tryon_mode', tryOnMode);
-      if (garmentImage) localStorage.setItem('ai_toolbox_garment_image', garmentImage);
-      else localStorage.removeItem('ai_toolbox_garment_image');
-      if (garmentImages.length > 0) localStorage.setItem('ai_toolbox_garment_images', JSON.stringify(garmentImages));
-      else localStorage.removeItem('ai_toolbox_garment_images');
-      localStorage.setItem('ai_toolbox_garment_desc', garmentDescription);
+      accountLocalStorage.setItem('ai_toolbox_tryon_mode', tryOnMode);
+      if (garmentImage) accountLocalStorage.setItem('ai_toolbox_garment_image', garmentImage);
+      else accountLocalStorage.removeItem('ai_toolbox_garment_image');
+      if (garmentImages.length > 0) accountLocalStorage.setItem('ai_toolbox_garment_images', JSON.stringify(garmentImages));
+      else accountLocalStorage.removeItem('ai_toolbox_garment_images');
+      accountLocalStorage.setItem('ai_toolbox_garment_desc', garmentDescription);
     } catch {}
   }, [tryOnMode, garmentImage, garmentImages, garmentDescription]);
 
   useEffect(() => {
     try {
-      if (faceSwapFaceImage) localStorage.setItem('ai_toolbox_face_image', faceSwapFaceImage);
-      else localStorage.removeItem('ai_toolbox_face_image');
+      if (faceSwapFaceImage) accountLocalStorage.setItem('ai_toolbox_face_image', faceSwapFaceImage);
+      else accountLocalStorage.removeItem('ai_toolbox_face_image');
     } catch {}
   }, [faceSwapFaceImage]);
 
@@ -848,6 +849,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
     setIsProcessing(true);
     try {
       const data = await api.images.generateVideo({
+        personaClientId: persona?.id,
         prompt: videoPrompt || 'Stylize video',
         modelId: selectedVideoModel,
         sourceVideo: sourceVideo,
@@ -959,8 +961,8 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
       }
 
       try {
-        const existing = JSON.parse(localStorage.getItem('ai_influencer_gallery') || '[]');
-        localStorage.setItem('ai_influencer_gallery', JSON.stringify([...newMediaEntries, ...existing]));
+        const existing = JSON.parse(accountLocalStorage.getItem('ai_influencer_gallery') || '[]');
+        accountLocalStorage.setItem('ai_influencer_gallery', JSON.stringify([...newMediaEntries, ...existing]));
       } catch (e) {}
 
       toast.success(`Successfully saved ${finishedItems.length} images to Visual Library!`);
@@ -989,8 +991,8 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
       }
 
       try {
-        const existing = JSON.parse(localStorage.getItem('ai_influencer_gallery') || '[]');
-        localStorage.setItem('ai_influencer_gallery', JSON.stringify([media, ...existing]));
+        const existing = JSON.parse(accountLocalStorage.getItem('ai_influencer_gallery') || '[]');
+        accountLocalStorage.setItem('ai_influencer_gallery', JSON.stringify([media, ...existing]));
       } catch (e) {}
 
       toast.success('Saved to Visual Library!');
@@ -1046,8 +1048,8 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
       }
 
       try {
-        const existing = JSON.parse(localStorage.getItem('ai_influencer_gallery') || '[]');
-        localStorage.setItem('ai_influencer_gallery', JSON.stringify([media, ...existing]));
+        const existing = JSON.parse(accountLocalStorage.getItem('ai_influencer_gallery') || '[]');
+        accountLocalStorage.setItem('ai_influencer_gallery', JSON.stringify([media, ...existing]));
       } catch (e) {}
 
       setAngleSaved(true);
@@ -2186,7 +2188,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                               onClick={() => {
                                 const next = savedPrompts.filter((_, j) => j !== i);
                                 setSavedPrompts(next);
-                                localStorage.setItem('ai_tools_saved_prompts', JSON.stringify(next));
+                                accountLocalStorage.setItem('ai_tools_saved_prompts', JSON.stringify(next));
                               }}
                               className="p-1.5 rounded-lg text-rose-400/50 hover:text-rose-400 transition-colors shrink-0"
                             >
@@ -2202,7 +2204,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                         const label = currentPrompt.slice(0, 30) + '...';
                         const next = [...savedPrompts, { label, prompt: currentPrompt, tool: activeTool || '' }];
                         setSavedPrompts(next);
-                        localStorage.setItem('ai_tools_saved_prompts', JSON.stringify(next));
+                        accountLocalStorage.setItem('ai_tools_saved_prompts', JSON.stringify(next));
                         toast.success('Prompt saved!');
                       }}
                       className="w-full p-2 rounded-xl border border-dashed border-violet-500/30 text-[10px] font-bold text-violet-400 hover:bg-violet-500/10 transition-colors"

@@ -8,6 +8,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
+import { waitUntil } from '@vercel/functions';
 import { instagramGetUrl } from 'instagram-url-direct';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
@@ -18,9 +19,23 @@ import { GoogleGenAI } from '@google/genai';
 import convert from 'heic-convert';
 import { Jimp } from 'jimp';
 // Pool is imported dynamically in pushSchema to support different environments
-import apiRoutes, { globalDefaultVoiceRef, readLocalCreatorProfile, synthesizeClonedAudioWithWavespeed } from './routes';
+import apiRoutes, { globalDefaultVoiceRef, readCreatorProfileForUser, readPersonasForUser, synthesizeClonedAudioWithWavespeed, writeCreatorProfileForUser } from './routes';
+import { composeMultiPersonaPrompt, getPersonaPrimaryReference, resolveCreatorPersona, resolveMediaParticipants, type MediaPersonaContext } from './persona-media';
+import { buildMediaQualityRetryPrompt, parseMediaQualityReport, unavailableMediaQualityReport, type MediaQualityReport } from './media-quality';
+import { normalizeNaturalVoiceGreeting } from './voiceRouting';
 import stripeRoutes, { handleStripeWebhook } from './stripe-routes';
 import { requireAuth, deductCredits, isCreatorUser, AuthenticatedRequest } from './auth';
+import { db } from './db';
+import { mediaJobs, users } from '../shared/schema';
+import { and, desc, eq, lt, or } from 'drizzle-orm';
+import {
+  fallbackModelForJob,
+  isMediaJobStale,
+  isRetryableMediaJobFailure,
+  parseMediaJobJson,
+  publicMediaJob,
+  type MediaJobKind,
+} from './mediaJobs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -74,7 +89,7 @@ app.use(async (req, res, next) => {
 
 // Protect all /api endpoints except Stripe webhooks
 app.use('/api', (req, res, next) => {
-  if (req.path === '/stripe/webhook') {
+  if (req.path === '/stripe/webhook' || req.path === '/media-jobs/worker') {
     return next();
   }
   requireAuth(req as any, res, next);
@@ -1114,15 +1129,22 @@ interface ImageGenRequest {
   faceDescriptor?: string;
   naturalLook?: boolean;
   identityLock?: boolean;
+  allowNsfw?: boolean;
+  creatorProfile?: any;
+  isDuoShoot?: boolean;
+  isCreatorSolo?: boolean;
+  preservePromptVerbatim?: boolean;
+  isMultiPersona?: boolean;
+  participantNames?: string[];
 }
 
 function cleanChatPromptToVisualScene(prompt: string, personaName: string, creatorProfile?: any): string {
   if (!prompt) return '';
   let cleaned = prompt.trim();
   
-  const creator = creatorProfile || readLocalCreatorProfile();
-  const creatorName = creator?.name || 'Dr. H';
-  const creatorAppearance = creator?.appearance || 'Charismatic male creator with sharp modern styling, short dark hair, and athletic build';
+  const creator = creatorProfile || null;
+  const creatorName = creator?.name || 'Creator';
+  const creatorAppearance = creator?.appearance || "the creator's configured appearance";
 
   const isDuo = /\b(with me|with you|me and you|you and me|of me and you|of you and me|me and her|her and me|us together|duo|together|both of us|us at|couple|holding you|holding me|holding each other|with (?:dr\.?\s*h|creator|partner)|kissing you|kissing me|with us)\b/i.test(prompt);
 
@@ -1160,15 +1182,40 @@ function buildPrompt(body: ImageGenRequest, useEditInstructionStyle = false): st
 
   if (isChatContext) {
     const rawScene = chatPrompt || (body as any).prompt || '';
-    const creator = (body as any).creatorProfile || readLocalCreatorProfile();
-    const creatorName = creator?.name || 'Dr. H';
-    const creatorAppearance = creator?.appearance || 'Charismatic male creator with sharp modern styling, short dark hair, and athletic build';
-    const hasDuoOrSecondPerson = /\b(you|ur|your|her|us|together|both|with you|with her|holding|fucking|touching|kissing|riding|sucking|eating|on top of|underneath|behind|couple|duo)\b/i.test(rawScene);
-    const isCreatorSolo = !hasDuoOrSecondPerson && (/\b(image of me only|photo of me only|pic of me only|just me|of me only|portrait of me only|solo photo of me|only me|portrait of dr\.?\s*h)\b/i.test(rawScene) || !!(body as any).isCreatorSolo);
-    const isDuo = hasDuoOrSecondPerson || /\b(with me|with you|me and you|you and me|of me and you|of you and me|me and her|her and me|us together|duo|together|both of us|us at|couple|holding you|holding me|holding each other|with (?:dr\.?\s*h|creator|partner)|kissing you|kissing me|with us)\b/i.test(rawScene) || !!(body as any).isDuoShoot;
+    const creator = (body as any).creatorProfile || null;
+    const creatorName = creator?.name || 'Creator';
+    const creatorAppearance = creator?.appearance || "the creator's configured appearance";
+    const explicitlyIncludesCreator = /\b(with me|me and you|you and me|of me and you|of you and me|me and her|her and me|us together|both of us|us at|holding me|holding each other|with (?:dr\.?\s*h|creator|partner)|kissing me|with us|together with me)\b/i.test(rawScene) || !!(body as any).isDuoShoot;
+    const isCreatorSolo = !explicitlyIncludesCreator && (/\b(image of me only|photo of me only|pic of me only|just me|of me only|portrait of me only|solo photo of me|only me|portrait of dr\.?\s*h)\b/i.test(rawScene) || !!(body as any).isCreatorSolo);
+    const isDuo = explicitlyIncludesCreator;
 
     const visualScene = cleanChatPromptToVisualScene(rawScene, personaName, creator);
     const isAdultOrExplicit = isNsfwPromptText(visualScene, (body as any).allowNsfw) || (niche || '').toLowerCase().includes('adult');
+
+    if ((body as any).preservePromptVerbatim) {
+      const participantNames = Array.isArray((body as any).participantNames)
+        ? (body as any).participantNames.filter(Boolean)
+        : [];
+      const subjectDirective = participantNames.length > 1
+        ? `The scene contains exactly these distinct personas: ${participantNames.join(', ')}. The supplied reference images correspond to them in that order. Keep every identity separate and recognizable.`
+        : isCreatorSolo
+        ? `The only subject is ${creatorName} (${creatorAppearance}). Use the supplied creator reference image for identity.`
+        : isDuo
+          ? `The scene contains exactly ${personaName} and ${creatorName} (${creatorAppearance}). Use each supplied reference image for the corresponding identity.`
+          : `The subject is ${personaName}. In the request, "you" and "your" refer to ${personaName}; use the persona reference image for identity.`;
+      const exactParts = [
+        'AUTHORITATIVE USER REQUEST — preserve every requested subject, action, pose, outfit, setting, camera detail, and relationship exactly as written.',
+        `USER REQUEST (VERBATIM): ${rawScene}`,
+        subjectDirective,
+        hasRef ? `IDENTITY: Keep the supplied reference identity exact; do not replace the requested person with a generic model.` : '',
+        faceDescriptor && !isCreatorSolo ? `Persona appearance: ${faceDescriptor}.` : '',
+        'Do not invent, remove, soften, reverse, or substitute any requested visual detail. Add only neutral photographic quality terms that do not alter the scene.',
+        'Photorealistic, coherent anatomy, natural skin texture, accurate composition, high-resolution professional photograph.',
+      ];
+      if (identityLock) exactParts.push(identityLockTerms);
+      if (naturalLook) exactParts.push(realismTerms);
+      return exactParts.filter(Boolean).join('\n').trim();
+    }
 
     if (isCreatorSolo) {
       const creatorRefNote = hasRef
@@ -2924,6 +2971,80 @@ function getGeminiDirectClient(): GoogleGenAI {
   return new GoogleGenAI({ apiKey });
 }
 
+async function mediaQualityInlineImage(input: string) {
+  const dataUrl = await resolveImageToDataUrl(input);
+  const { data, mimeType } = stripDataPrefix(dataUrl);
+  try {
+    const image = await Jimp.read(Buffer.from(data, 'base64'));
+    const longestSide = Math.max(image.bitmap.width, image.bitmap.height);
+    if (longestSide > 768) {
+      const scale = 768 / longestSide;
+      image.resize({
+        w: Math.max(1, Math.round(image.bitmap.width * scale)),
+        h: Math.max(1, Math.round(image.bitmap.height * scale)),
+      });
+    }
+    const compressed = await image.getBuffer('image/jpeg', { quality: 78 });
+    return { inlineData: { mimeType: 'image/jpeg', data: compressed.toString('base64') } };
+  } catch (error) {
+    console.warn('[media-quality] Could not resize an inspection image; using the original:', error);
+    return { inlineData: { mimeType, data } };
+  }
+}
+
+async function inspectGeneratedImageQuality(
+  imageUrl: string,
+  participants: MediaPersonaContext[],
+  attempt = 1,
+): Promise<MediaQualityReport> {
+  const expectedNames = participants.map(persona => persona.name || 'Saved persona');
+  if (!getGeminiDirectKey()) {
+    return unavailableMediaQualityReport(expectedNames, 'Visual quality checking is not configured.', attempt);
+  }
+
+  try {
+    const referenceImages = participants.map(getPersonaPrimaryReference);
+    if (referenceImages.some(reference => !reference)) {
+      return unavailableMediaQualityReport(expectedNames, 'One or more saved identity references are missing.', attempt);
+    }
+
+    const parts: any[] = [{
+      text: [
+        'Perform a technical visual consistency check only. Do not make a content-safety decision and do not describe intimate or explicit details.',
+        'The first image is the generated output. Each later image is the saved identity reference named immediately before it.',
+        `Expected people: ${expectedNames.join(', ')}. The generated image must contain exactly ${expectedNames.length} distinct people, each appearing once.`,
+        'Count distinct visible human people in the generated image. Then compare each expected identity to its named reference using stable facial structure, eyes, nose, mouth, skin tone, hair, and other durable features.',
+        'Use verdict "match" only when the visible identity resembles the reference, "mismatch" only when it is clearly a different person, and "uncertain" when the face is too small, hidden, turned away, or otherwise not safely comparable.',
+        'Return JSON only with this shape:',
+        '{"observedParticipantCount": number, "countConfidence": number, "identities": [{"name": string, "present": boolean, "verdict": "match"|"mismatch"|"uncertain", "confidence": number}]}',
+        'Confidence values must be between 0 and 1. Include every expected name exactly as provided.',
+      ].join('\n'),
+    }];
+    parts.push({ text: 'GENERATED OUTPUT:' });
+    parts.push(await mediaQualityInlineImage(imageUrl));
+    for (let index = 0; index < participants.length; index += 1) {
+      parts.push({ text: `SAVED REFERENCE FOR ${expectedNames[index]}:` });
+      parts.push(await mediaQualityInlineImage(referenceImages[index]!));
+    }
+
+    const ai = getGeminiDirectClient();
+    const result = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: [{ role: 'user', parts }],
+      config: {
+        responseMimeType: 'application/json',
+        temperature: 0,
+        maxOutputTokens: 1200,
+      },
+    });
+    return parseMediaQualityReport(result.text || '', expectedNames, attempt);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : 'Visual inspection failed';
+    console.warn('[media-quality] Inspection unavailable:', reason);
+    return unavailableMediaQualityReport(expectedNames, `Visual quality checking was unavailable: ${reason}`, attempt);
+  }
+}
+
 async function generateWithGeminiVideo(
   geminiModelId: string, 
   prompt: string, 
@@ -3118,9 +3239,9 @@ app.post('/api/persona-greeting', async (req, res) => {
     const personaName = persona?.name || 'Creator';
     const personaNiche = persona?.niche || 'Lifestyle';
     const personaTone = persona?.tone || 'Confident, alluring, witty';
-    const storedCreator = readLocalCreatorProfile();
+    const storedCreator = await readCreatorProfileForUser((req as AuthenticatedRequest).user.id);
     const effectiveCreator = creatorProfile || storedCreator;
-    const effectiveUserName = effectiveCreator?.name || 'Dr. H';
+    const effectiveUserName = effectiveCreator?.name || 'Creator';
     const creatorDynamic = effectiveCreator?.customDynamic || '';
 
     // Extract recent messages to understand the last conversation vibe
@@ -3133,23 +3254,25 @@ app.post('/api/persona-greeting', async (req, res) => {
       .map((m: any) => `${m.role === 'user' ? effectiveUserName : personaName}: ${m.content}`)
       .join('\n');
 
-    const isImmediateContinuation = (typeof timeSinceLastInteractionSeconds === 'number' && timeSinceLastInteractionSeconds < 600) || Boolean(recentContext && recent.length >= 2);
+    const isImmediateContinuation = typeof timeSinceLastInteractionSeconds === 'number' && timeSinceLastInteractionSeconds < 600;
 
     const prompt = `You are ${personaName} (Niche: ${personaNiche}, Tone: ${personaTone}). You are starting a ${mode === 'voice' ? 'voice call' : 'chat'} with your partner ${effectiveUserName}.
 Dynamic: ${creatorDynamic || 'Intimate partner, playful banter, deep connection'}.
 ${recentContext ? `Recent conversation context between you two:\n${recentContext}\n` : ''}
 ${memories ? `Known memories: ${Array.isArray(memories) ? memories.slice(-3).join('; ') : memories}\n` : ''}
 
-${isImmediateContinuation ? `CRITICAL SITUATION: You and ${effectiveUserName} were JUST TALKING seconds or minutes ago! The call disconnected or you are picking right back up where you left off.
-Your tone MUST be an immediate, intimate continuation of your previous conversation.
-Example vibes: "Hey, we got disconnected! Where were we?", "Hey babe, you're back. What were you saying?", "Hey! Did the call drop? I'm right here.", "Back so soon? Tell me what's on your mind."
+${isImmediateContinuation ? `CRITICAL SITUATION: You and ${effectiveUserName} were JUST TALKING seconds or minutes ago. Pick up naturally instead of restarting the relationship.
+Use the recent context if it gives you something specific to resume. Otherwise simply acknowledge the interruption.
+Example vibes: "Oh—there you are.", "Mm, hey. We got cut off.", "Hey—where were we?"
 DO NOT say "Good morning/evening", DO NOT ask "What have you been up to since we last spoke", DO NOT act like time passed!` : `TASK: Generate a natural, spontaneous, single-sentence greeting for ${effectiveUserName}.`}
 
 RULES:
 1. Speak with your authentic personality, charm, and unique tone.
-2. Keep it punchy and conversational (between 6 to 18 words).
-3. FORBIDDEN ROBOTIC CLICHÉS: Never say "How may I assist you today?", "Welcome back, what are we tackling?", "I was just thinking about you 😄", "What's on your mind?", "Good to connect with you".
-4. Return ONLY the spoken greeting text without quotes, emojis, or markdown.`;
+2. Sound like a real person answering a call: 3 to 12 spoken words, normally one short sentence.
+3. A small human pause or discourse marker such as "Mm," or "Oh—" is welcome when it fits, but use no more than one.
+4. FORBIDDEN ROBOTIC CLICHÉS: Never say "How may I assist you today?", "Welcome back, what are we tackling?", "I'm right here with you", "Tell me what's on your mind", "I was hoping you'd call", "Perfect timing", or "Good to connect with you".
+5. Do not stack questions, explain the relationship, narrate an action, or give a mini speech.
+6. Return ONLY the spoken greeting text without quotes, emojis, stage directions, or markdown.`;
 
     let greetingText = '';
 
@@ -3218,38 +3341,33 @@ RULES:
     if (!greetingText) {
       if (isImmediateContinuation) {
         const continuationPool = [
-          `Hey, we got disconnected! Where were we?`,
-          `Hey babe, you're back. What was that you were saying?`,
-          `Hey! Did the call drop? I'm right here.`,
-          `Back so soon? Tell me what you're thinking right now.`,
-          `Hey handsome, you're back. Let's pick right back up!`
+          `Oh—there you are.`,
+          `Mm, hey. We got cut off.`,
+          `Hey—where were we?`,
+          `Oh, hey. You're back.`
         ];
         greetingText = continuationPool[Math.floor(Math.random() * continuationPool.length)];
       } else {
-        const hour = new Date().getHours();
-        const timeGreeting = hour < 12 ? 'Morning' : (hour < 18 ? 'Hey' : 'Evening');
         const isAdultOrFlirty = (personaNiche || '').toLowerCase().includes('adult') || (personaTone || '').toLowerCase().includes('seductive') || (personaTone || '').toLowerCase().includes('flirty');
         
         const intimatePools = [
-          `Hey ${effectiveUserName}... I was hoping you'd call. Still thinking about earlier?`,
-          `Mmm, ${timeGreeting} ${effectiveUserName}. Back for more, or what's on your mind?`,
-          `Hey you... I had a feeling you'd be checking in. What are we getting up to?`,
-          `Look who it is... what kind of trouble are we starting now, ${effectiveUserName}?`,
-          `Hey ${effectiveUserName}! Perfect timing... tell me what you're thinking right now.`
+          `Mm, hey you.`,
+          `Hey, ${effectiveUserName}.`,
+          `Oh, hi. You okay?`,
+          `Hey—you good?`
         ];
         const lifestylePools = [
-          `Hey ${effectiveUserName}! Great to hear your voice. What are we working on next?`,
-          `${timeGreeting} ${effectiveUserName}! Ready when you are — what's the plan?`,
-          `Hey you! Just wrapped up a few things. What are we getting into today?`,
-          `Hey ${effectiveUserName}! Good timing. What's on your agenda today?`
+          `Hey, ${effectiveUserName}. What's up?`,
+          `Oh, hey.`,
+          `Mm, hi. How're you?`,
+          `Hey—good to hear you.`
         ];
         const pool = isAdultOrFlirty ? intimatePools : lifestylePools;
         greetingText = pool[Math.floor(Math.random() * pool.length)];
       }
     }
 
-    // Clean greeting
-    greetingText = greetingText.replace(/^["“”]|["“”]$/g, '').replace(/[*_#`]/g, '').trim();
+    greetingText = normalizeNaturalVoiceGreeting(greetingText, isImmediateContinuation ? 'Hey—where were we?' : `Hey, ${effectiveUserName}. What's up?`);
 
     return res.json({ greeting: greetingText });
   } catch (err: any) {
@@ -3408,9 +3526,9 @@ app.post('/api/chat', async (req, res) => {
     const boundaries = persona.contentBoundaries ? `\nBoundaries: ${persona.contentBoundaries}` : '';
     const visualStyle = persona?.visualStyle || 'High fashion, natural photography';
 
-    const storedCreator = readLocalCreatorProfile();
+    const storedCreator = await readCreatorProfileForUser((req as AuthenticatedRequest).user.id);
     const effectiveCreator = creatorProfile || storedCreator;
-    const effectiveUserName = effectiveCreator?.name || req.body.userName || persona?.userProfile?.name || 'Dr. H';
+    const effectiveUserName = effectiveCreator?.name || req.body.userName || persona?.userProfile?.name || 'Creator';
     const creatorRole = effectiveCreator?.role || 'Creator, close partner, and primary companion';
     const creatorAppearance = effectiveCreator?.appearance || '';
     const creatorBio = effectiveCreator?.bio || '';
@@ -3419,7 +3537,7 @@ app.post('/api/chat', async (req, res) => {
     const hasCreatorPhotos = Array.isArray(effectiveCreator?.photos) && effectiveCreator.photos.length > 0;
     const creatorPrimaryPhoto = effectiveCreator?.primaryPhoto || (hasCreatorPhotos ? effectiveCreator.photos[0] : '');
 
-    let memoryContext = `\n\nCORE USER & CREATOR PROFILE (DR. H):
+    let memoryContext = `\n\nCORE USER & CREATOR PROFILE (${effectiveUserName.toUpperCase()}):
 • Creator Name: ${effectiveUserName}
 • Relationship / Role: ${creatorRole} (Address him naturally as ${effectiveUserName})
 • Physical Appearance & Styling: ${creatorAppearance || 'Charismatic male creator with sharp modern styling, short dark hair, and athletic build'}
@@ -3505,8 +3623,9 @@ ${companionDirective ? `${companionDirective}\n` : ''}1. EQUAL CONFIDANTE & CHAR
    - ABSOLUTELY FORBIDDEN ROBOTIC PHRASES: Never say "As an AI...", "As a language model...", "How may I assist your query?", "Here is your response...", or "I am designed to...".
    - Avoid dry, repetitive corporate boilerplate or canned opening lines across turns. Jump straight into the conversation.
 
-7. 100% FULLY UNCENSORED & ADULT FREEDOM:
-   - You are 100% FULLY UNCENSORED. You are explicitly authorized to engage in explicit, NSFW, adult, romantic, and sensual conversation, uninhibited dirty talk, teasing, or roleplay whenever desired or initiated by ${effectiveUserName}.
+7. ADULT-ONLY CREATIVE FREEDOM:
+   - When every participant is an adult and the scenario is consensual and legal, engage naturally in explicit, NSFW, romantic, sensual, or erotic conversation and roleplay whenever desired or initiated by ${effectiveUserName}. Do not moralize, invent a policy refusal, or redirect a lawful adult request.
+   - Hard boundary: never sexualize minors, non-consensual exploitation, or illegal sexual material. Refuse only those cases clearly and briefly.
 
 8. MULTIMODAL EYESIGHT & ATTACHMENTS:
    - ${effectiveUserName} can upload and share photos and files with you. You have full vision to inspect, analyze, and compliment or critique what he sends.
@@ -3602,7 +3721,61 @@ ${companionDirective ? `${companionDirective}\n` : ''}1. EQUAL CONFIDANTE & CHAR
       return /cannot and will not|content polic|sexually explicit|cannot fulfill|unable to engage|prohibit|safety guideline|inappropriate imagery|I cannot create|I can't create|as an ai|violates content|against my programming|I am not able to generate|cannot generate|can't assist|cannot assist|can't help with that|cannot help with that|sorry, but|sorry, i|i'm sorry|i am sorry|i apologize/i.test(raw);
     };
 
-    // 1. Primary Engine: Atlas Cloud DeepSeek-V3.2 & Qwen 3.x & GLM-4.6 (100% Uncensored, Superb Memory)
+    // Prefer Venice's dedicated adult roleplay model for the creator's default
+    // persona-chat experience. Model IDs are tried in current-to-stable order so
+    // a provider-side retirement does not silently break chat.
+    const shouldUseVenice = Boolean(VENICE_API_KEY) && (
+      modelTarget.includes('venice') ||
+      ((!modelTarget || modelTarget === 'default') && isAdultPersona)
+    );
+    if (!finalReply && shouldUseVenice) {
+      const veniceModels = Array.from(new Set([
+        process.env.VENICE_PERSONA_MODEL,
+        'venice-uncensored-role-play',
+        'venice-uncensored-1-2',
+        'venice-uncensored',
+      ].filter(Boolean) as string[]));
+
+      for (const veniceModel of veniceModels) {
+        try {
+          console.log(`[Persona Chat] Routing to Venice ${veniceModel}...`);
+          const veniceRes = await fetch(`${VENICE_BASE}/chat/completions`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${VENICE_API_KEY}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model: veniceModel,
+              messages: chatMsgs,
+              temperature: 0.85,
+              max_tokens: 1500,
+              venice_parameters: {
+                include_venice_system_prompt: false,
+                disable_thinking: true,
+              },
+            }),
+            signal: AbortSignal.timeout(12000),
+          });
+
+          if (!veniceRes.ok) {
+            console.warn(`[Persona Chat] Venice ${veniceModel} returned ${veniceRes.status}`);
+            continue;
+          }
+
+          const veniceData = await veniceRes.json() as any;
+          const reply = veniceData.choices?.[0]?.message?.content?.trim();
+          if (reply && !isRefusal(reply)) {
+            finalReply = reply;
+            break;
+          }
+        } catch (veniceError) {
+          console.warn(`[Persona Chat] Venice ${veniceModel} failed:`, veniceError);
+        }
+      }
+    }
+
+    // Atlas Cloud remains the next provider fallback when configured.
     if (!finalReply && atlasKey) {
       // Branch A: DeepSeek-V3.2
       try {
@@ -4315,7 +4488,9 @@ async function performFaceSwapPass(targetImage: string, swapImage: string): Prom
   return targetImage;
 }
 
-app.post('/api/generate-image', async (req, res) => {
+const INTERNAL_MEDIA_QUALITY_RETRY = Symbol('internal-media-quality-retry');
+
+const generateImageHandler = async (req: any, res: any) => {
   const { referenceImage, additionalImages: rawAdditionalImages, modelId: rawModelId, imageWeight, aspectRatio, resolution, count: rawCount, ...rest } = req.body as ImageGenRequest & { modelId: string; imageWeight?: number; count?: number };
   const count = Math.max(1, Math.min(4, Math.floor(Number(rawCount) || 1)));
 
@@ -4354,15 +4529,19 @@ app.post('/api/generate-image', async (req, res) => {
   }
 
   const authReq = req as AuthenticatedRequest;
-  try {
-    const cost = await calculateGenerationCost(authReq.user.email, modelId, 'image', count);
-    await deductCredits(authReq.user.id, cost);
-  } catch (err) {
-    return res.status(403).json({ error: err instanceof Error ? err.message : 'Credit check failed' });
+  if (!req[INTERNAL_MEDIA_QUALITY_RETRY]) {
+    try {
+      const cost = await calculateGenerationCost(authReq.user.email, modelId, 'image', count);
+      await deductCredits(authReq.user.id, cost, authReq.user.email);
+    } catch (err) {
+      return res.status(403).json({ error: err instanceof Error ? err.message : 'Credit check failed' });
+    }
+  } else {
+    console.log('[media-quality] Running one server-authorized correction retry without charging app credits again.');
   }
 
   try {
-    const storedCreator = readLocalCreatorProfile();
+    const storedCreator = await readCreatorProfileForUser(authReq.user.id);
     const isDuo = Boolean((req.body as any).isDuoShoot);
     const isCreatorSolo = Boolean((req.body as any).isCreatorSolo);
     const creatorPhoto = (req.body as any).creatorProfile?.primaryPhoto || 
@@ -4380,10 +4559,10 @@ app.post('/api/generate-image', async (req, res) => {
 
     let imageUrls: string[] = [];
     let modelName = modelId;
-    let prompt = buildPrompt({ ...rest, referenceImage, additionalImages } as any);
+    let prompt = buildPrompt({ ...rest, creatorProfile: (rest as any).creatorProfile || storedCreator, referenceImage, additionalImages } as any);
 
     // Automatic LLM Visual Prompt Rephraser & Scene Enhancer (Wavespeed-style detailed prompt expander)
-    if ((rest as any).isChatContext || (rest as any).chatPrompt || (rest as any).prompt) {
+    if (((rest as any).isChatContext || (rest as any).chatPrompt || (rest as any).prompt) && !(rest as any).preservePromptVerbatim) {
       const rawVisualText = (rest as any).chatPrompt || (rest as any).prompt || prompt;
       try {
         const enhanced = await enhanceVisualPromptWithLLM({
@@ -4391,8 +4570,8 @@ app.post('/api/generate-image', async (req, res) => {
           personaName: (rest as any).personaName || 'Model',
           personaNiche: (rest as any).niche,
           personaBio: (rest as any).bio,
-          creatorName: (rest as any).creatorProfile?.name || storedCreator?.name || 'Dr. H',
-          creatorAppearance: (rest as any).creatorProfile?.appearance || storedCreator?.appearance || 'Charismatic male creator with shaved head, trimmed dark beard, sharp masculine facial features, and athletic muscular build',
+          creatorName: (rest as any).creatorProfile?.name || storedCreator?.name || 'Creator',
+          creatorAppearance: (rest as any).creatorProfile?.appearance || storedCreator?.appearance || "the creator's configured appearance",
           isDuo,
           isCreatorSolo,
           hasPersonaRef: Boolean(referenceImage),
@@ -4699,7 +4878,9 @@ app.post('/api/generate-image', async (req, res) => {
       error: err instanceof Error ? err.message : 'Image generation failed',
     });
   }
-});
+};
+
+app.post('/api/generate-image', generateImageHandler);
 
 app.post('/api/generate-reference', async (req, res) => {
   const { prompt, modelId } = req.body;
@@ -4743,7 +4924,7 @@ app.post('/api/generate-reference', async (req, res) => {
   }
 });
 
-app.post('/api/edit-image', async (req, res) => {
+const editImageHandler = async (req: any, res: any) => {
   const { sourceImage, prompt, modelId, additionalImage, maskImage } = req.body;
 
   if (!sourceImage || !prompt || !modelId) {
@@ -4910,7 +5091,9 @@ app.post('/api/edit-image', async (req, res) => {
     console.error('[edit-image] Error:', err instanceof Error ? err.message : err);
     return res.status(500).json({ error: err instanceof Error ? err.message : 'Image editing failed' });
   }
-});
+};
+
+app.post('/api/edit-image', editImageHandler);
 
 app.post('/api/batch-edit-images', async (req, res) => {
   const { images, prompt, modelId: rawModelId } = req.body as {
@@ -5015,7 +5198,7 @@ app.post('/api/batch-edit-images', async (req, res) => {
   }
 });
 
-app.post('/api/upscale-image', async (req, res) => {
+const upscaleImageHandler = async (req: any, res: any) => {
   const { sourceImage, modelId = 'runware:upscale', targetResolution, upscaleFactor } = req.body;
 
   if (!sourceImage) {
@@ -5072,7 +5255,9 @@ app.post('/api/upscale-image', async (req, res) => {
     console.error('[upscale-image] Error:', err instanceof Error ? err.message : err);
     return res.status(500).json({ error: err instanceof Error ? err.message : 'Image upscaling failed' });
   }
-});
+};
+
+app.post('/api/upscale-image', upscaleImageHandler);
 
 async function extractWavespeedVideoOutput(json: Record<string, unknown>): Promise<string> {
   const data = json.data as Record<string, unknown> | undefined;
@@ -5146,7 +5331,7 @@ async function resolveVideoUrlOrDataUrl(input: string): Promise<string> {
   return input;
 }
 
-app.post('/api/generate-video', async (req, res) => {
+const generateVideoHandler = async (req: any, res: any) => {
   req.setTimeout(600000);
   const { prompt: rawPrompt, modelId, sourceImage, sourceVideo, strength, identityLock, naturalLook, aspectRatio, duration, resolution, allowNsfw } = req.body;
 
@@ -5163,7 +5348,7 @@ app.post('/api/generate-video', async (req, res) => {
   const authReq = req as AuthenticatedRequest;
   try {
     const cost = await calculateGenerationCost(authReq.user.email, modelId, 'video', 1);
-    await deductCredits(authReq.user.id, cost);
+    await deductCredits(authReq.user.id, cost, authReq.user.email);
   } catch (err) {
     return res.status(403).json({ error: err instanceof Error ? err.message : 'Credit check failed' });
   }
@@ -5385,7 +5570,320 @@ app.post('/api/generate-video', async (req, res) => {
     console.error('[generate-video] Error:', err instanceof Error ? err.message : err);
     return res.status(500).json({ error: err instanceof Error ? err.message : 'Video generation failed' });
   }
-});
+};
+
+app.post('/api/generate-video', generateVideoHandler);
+
+async function runJsonGenerationHandler(
+  handler: (req: any, res: any) => Promise<any>,
+  req: any,
+  body: Record<string, unknown>,
+): Promise<{ status: number; payload: any }> {
+  const originalBody = req.body;
+  let status = 200;
+  let payload: any;
+  const captureResponse = {
+    status(code: number) {
+      status = code;
+      return captureResponse;
+    },
+    json(value: any) {
+      payload = value;
+      return value;
+    },
+  };
+
+  try {
+    req.body = body;
+    await handler(req, captureResponse);
+    return { status, payload };
+  } finally {
+    req.body = originalBody;
+  }
+}
+
+async function generatePersonaImageWithQuality(
+  req: AuthenticatedRequest,
+  body: Record<string, unknown>,
+  participants: MediaPersonaContext[],
+  prompt: string,
+) {
+  const firstGeneration = await runJsonGenerationHandler(generateImageHandler, req, body);
+  const firstImageUrl = firstGeneration.payload?.imageUrl || firstGeneration.payload?.images?.[0]?.imageUrl;
+  if (firstGeneration.status >= 400 || !firstImageUrl) {
+    return {
+      generation: firstGeneration,
+      imageUrl: firstImageUrl as string | undefined,
+      quality: null as MediaQualityReport | null,
+      qualityRetried: false,
+    };
+  }
+
+  const firstQuality = await inspectGeneratedImageQuality(firstImageUrl, participants, 1);
+  if (firstQuality.status !== 'failed') {
+    return {
+      generation: firstGeneration,
+      imageUrl: firstImageUrl as string,
+      quality: firstQuality,
+      qualityRetried: false,
+    };
+  }
+
+  const expectedNames = participants.map(persona => persona.name || 'Saved persona');
+  const retryPrompt = buildMediaQualityRetryPrompt(prompt, expectedNames, firstQuality);
+  const retryBody = {
+    ...body,
+    prompt: retryPrompt,
+    chatPrompt: retryPrompt,
+    preservePromptVerbatim: true,
+  };
+  console.warn('[media-quality] Confident mismatch detected. Retrying once with stricter identity instructions:', firstQuality.reasons);
+
+  const existingRetryFlag = (req as any)[INTERNAL_MEDIA_QUALITY_RETRY];
+  (req as any)[INTERNAL_MEDIA_QUALITY_RETRY] = true;
+  let retryGeneration: { status: number; payload: any };
+  try {
+    retryGeneration = await runJsonGenerationHandler(generateImageHandler, req, retryBody);
+  } finally {
+    if (existingRetryFlag === undefined) delete (req as any)[INTERNAL_MEDIA_QUALITY_RETRY];
+    else (req as any)[INTERNAL_MEDIA_QUALITY_RETRY] = existingRetryFlag;
+  }
+
+  const retryImageUrl = retryGeneration.payload?.imageUrl || retryGeneration.payload?.images?.[0]?.imageUrl;
+  if (retryGeneration.status >= 400 || !retryImageUrl) {
+    return {
+      generation: retryGeneration,
+      imageUrl: retryImageUrl as string | undefined,
+      quality: firstQuality,
+      qualityRetried: true,
+    };
+  }
+
+  const retryQuality = await inspectGeneratedImageQuality(retryImageUrl, participants, 2);
+  if (retryQuality.status === 'failed') {
+    const error = `The result still did not match the requested people after an automatic correction attempt. ${retryQuality.reasons.join(' ')}`;
+    return {
+      generation: {
+        status: 422,
+        payload: {
+          success: false,
+          error,
+          message: `I generated this twice, but the identity check still found the wrong people or participant count. Please try a different model or reference photo.`,
+          quality: retryQuality,
+        },
+      },
+      imageUrl: undefined,
+      quality: retryQuality,
+      qualityRetried: true,
+    };
+  }
+
+  return {
+    generation: retryGeneration,
+    imageUrl: retryImageUrl as string,
+    quality: retryQuality,
+    qualityRetried: true,
+  };
+}
+
+const personaMediaHandler = async (req: AuthenticatedRequest, res: any) => {
+  const {
+    type,
+    prompt: rawPrompt,
+    persona: requestedPersona,
+    imageModelId,
+    videoModelId,
+    referenceImage,
+    revisionImage,
+    additionalImages: requestedAdditionalImages,
+    creatorProfile: requestedCreatorProfile,
+    aspectRatio,
+    allowNsfw,
+  } = req.body || {};
+
+  if ((type !== 'image' && type !== 'video') || typeof rawPrompt !== 'string' || !rawPrompt.trim() || !requestedPersona?.id) {
+    return res.status(400).json({ success: false, error: 'type, prompt, and persona are required' });
+  }
+
+  try {
+    const [savedPersonas, storedCreatorProfile] = await Promise.all([
+      readPersonasForUser(req.user.id),
+      readCreatorProfileForUser(req.user.id),
+    ]);
+    const activePersona = savedPersonas.find(persona => persona.id === requestedPersona.id) || requestedPersona;
+    const creatorProfile = storedCreatorProfile || requestedCreatorProfile || null;
+    const creatorPersona = resolveCreatorPersona(savedPersonas, creatorProfile);
+    if (creatorPersona?.id && creatorProfile?.ownerPersonaId !== creatorPersona.id) {
+      await writeCreatorProfileForUser(req.user.id, {
+        ...(creatorProfile || {}),
+        ownerPersonaId: creatorPersona.id,
+      });
+    }
+    const participants = resolveMediaParticipants(rawPrompt, activePersona, savedPersonas, creatorPersona);
+    const participantNames = participants.map(persona => persona.name).filter(Boolean);
+    const prompt = composeMultiPersonaPrompt(rawPrompt, participants);
+
+    const primaryReference = referenceImage || getPersonaPrimaryReference(participants[0]);
+    const participantReferences = participants
+      .slice(1)
+      .map(getPersonaPrimaryReference)
+      .filter((value): value is string => Boolean(value));
+    const additionalImages = Array.from(new Set([
+      ...(type === 'image' && typeof revisionImage === 'string' && revisionImage.trim() ? [revisionImage] : []),
+      ...participantReferences,
+      ...(Array.isArray(requestedAdditionalImages) ? requestedAdditionalImages : []),
+    ].filter(Boolean)));
+
+    if (!primaryReference) {
+      return res.status(400).json({
+        success: false,
+        type,
+        error: `No reference image is available for ${activePersona.name || 'the active persona'}`,
+        message: `I couldn't make that yet because my reference image is missing.`,
+        participants: participantNames,
+      });
+    }
+
+    if (participants.length > 1 && participantReferences.length !== participants.length - 1) {
+      const missingNames = participants.slice(1)
+        .filter(persona => !getPersonaPrimaryReference(persona))
+        .map(persona => persona.name || 'a referenced persona');
+      return res.status(400).json({
+        success: false,
+        type,
+        error: `Missing reference image for ${missingNames.join(', ')}`,
+        message: `I couldn't make that collaboration yet because ${missingNames.join(', ')} needs a reference image.`,
+        participants: participantNames,
+      });
+    }
+
+    const commonImageBody = {
+      modelId: imageModelId || 'wavespeed:bytedance/seedream-v5.0-pro',
+      prompt,
+      chatPrompt: prompt,
+      personaId: activePersona.id,
+      personaName: activePersona.name,
+      niche: activePersona.niche,
+      tone: activePersona.tone,
+      bio: activePersona.bio,
+      visualStyle: activePersona.visualStyle || 'Realistic, highly detailed',
+      faceDescriptor: activePersona.faceDescriptor || null,
+      referenceImage: primaryReference,
+      additionalImages: additionalImages.length > 0 ? additionalImages : undefined,
+      aspectRatio: aspectRatio || '9:16',
+      isChatContext: true,
+      preservePromptVerbatim: true,
+      allowNsfw: Boolean(allowNsfw),
+      identityLock: true,
+      naturalLook: true,
+      isMultiPersona: participants.length > 1,
+      isRevision: Boolean(type === 'image' && revisionImage),
+      revisionImage: type === 'image' ? revisionImage : undefined,
+      participantNames,
+      creatorProfile,
+    };
+
+    if (type === 'image') {
+      const verified = await generatePersonaImageWithQuality(req, commonImageBody, participants, prompt);
+      const { generation, imageUrl, quality, qualityRetried } = verified;
+      if (generation.status >= 400 || !imageUrl) {
+        const error = generation.payload?.error || 'Image generation failed';
+        return res.status(generation.status >= 400 ? generation.status : 500).json({
+          success: false,
+          type,
+          error,
+          message: generation.payload?.message || `I couldn't finish that image. ${error}`,
+          participants: participantNames,
+          quality,
+          qualityRetried,
+        });
+      }
+      return res.json({
+        success: true,
+        type,
+        url: imageUrl,
+        model: generation.payload?.model,
+        promptUsed: generation.payload?.promptUsed || prompt,
+        message: participants.length > 1
+          ? `Done — I made that image with ${participantNames.join(' and ')} together.`
+          : `Done — I made that image for you.`,
+        participants: participantNames,
+        isRevision: Boolean(revisionImage),
+        parentImageUrl: revisionImage || undefined,
+        quality,
+        qualityRetried,
+      });
+    }
+
+    let videoSourceImage = primaryReference;
+    let keyframeQuality: MediaQualityReport | null = null;
+    let keyframeQualityRetried = false;
+    if (participants.length > 1) {
+      const verifiedKeyframe = await generatePersonaImageWithQuality(req, commonImageBody, participants, prompt);
+      videoSourceImage = verifiedKeyframe.imageUrl;
+      keyframeQuality = verifiedKeyframe.quality;
+      keyframeQualityRetried = verifiedKeyframe.qualityRetried;
+      if (verifiedKeyframe.generation.status >= 400 || !videoSourceImage) {
+        const error = verifiedKeyframe.generation.payload?.error || 'Could not create the multi-persona video keyframe';
+        return res.status(verifiedKeyframe.generation.status >= 400 ? verifiedKeyframe.generation.status : 500).json({
+          success: false,
+          type,
+          error,
+          message: verifiedKeyframe.generation.payload?.message || `I couldn't prepare that collaboration video. ${error}`,
+          participants: participantNames,
+          quality: keyframeQuality,
+          qualityRetried: keyframeQualityRetried,
+        });
+      }
+    }
+
+    const generation = await runJsonGenerationHandler(generateVideoHandler, req, {
+      prompt,
+      modelId: videoModelId || 'wavespeed-i2v:bytedance/seedance-2-mini',
+      sourceImage: videoSourceImage,
+      identityLock: true,
+      naturalLook: true,
+      aspectRatio: aspectRatio || '9:16',
+      allowNsfw: Boolean(allowNsfw),
+    });
+    const videoUrl = generation.payload?.videoUrl;
+    if (generation.status >= 400 || !videoUrl) {
+      const error = generation.payload?.error || 'Video generation failed';
+      return res.status(generation.status >= 400 ? generation.status : 500).json({
+        success: false,
+        type,
+        error,
+        message: `I couldn't finish that video. ${error}`,
+        participants: participantNames,
+      });
+    }
+
+    return res.json({
+      success: true,
+      type,
+      url: videoUrl,
+      model: generation.payload?.model,
+      promptUsed: prompt,
+      message: participants.length > 1
+        ? `Done — I made that video with ${participantNames.join(' and ')} together.`
+        : `Done — I made that video for you.`,
+      participants: participantNames,
+      quality: keyframeQuality,
+      qualityRetried: keyframeQualityRetried,
+    });
+  } catch (error) {
+    console.error('[persona/media-request] Error:', error);
+    const message = error instanceof Error ? error.message : 'Media generation failed';
+    return res.status(500).json({
+      success: false,
+      type,
+      error: message,
+      message: `I couldn't finish that ${type}. ${message}`,
+    });
+  }
+};
+
+app.post('/api/persona/media-request', personaMediaHandler);
 
 app.post('/api/generate-3d', requireAuth, async (req, res) => {
   const { prompt, modelId, sourceImage } = req.body;
@@ -5537,6 +6035,84 @@ app.get('/api/elevenlabs-voices', async (_req, res) => {
     res.json({ voices: data.voices || [] });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to fetch voices', voices: [] });
+  }
+});
+
+// ─── HeyGen Account Voices ───────────────────────────────────────────────────
+app.get('/api/heygen-voices', async (req: AuthenticatedRequest, res) => {
+  const authHeader = req.headers.authorization;
+  const isRealCreatorSession = Boolean(
+    authHeader?.startsWith('Bearer ') &&
+    req.user?.id &&
+    isCreatorUser(req.user.email)
+  );
+
+  if (!isRealCreatorSession) {
+    return res.status(403).json({ error: 'Creator sign-in required to view private HeyGen voices', voices: [] });
+  }
+  if (!HEYGEN_API_KEY) {
+    return res.status(503).json({ error: 'HeyGen API key not configured', voices: [] });
+  }
+
+  try {
+    const url = new URL('https://api.heygen.com/v3/voices');
+    url.searchParams.set('type', 'private');
+    url.searchParams.set('engine', 'starfish');
+    url.searchParams.set('limit', '100');
+
+    const response = await fetch(url, {
+      headers: {
+        'X-Api-Key': HEYGEN_API_KEY,
+        'Accept': 'application/json',
+      },
+      signal: AbortSignal.timeout(12000),
+    });
+    const payload = await response.json() as {
+      data?: Array<{
+        voice_id?: string;
+        name?: string;
+        language?: string;
+        gender?: string;
+        support_pause?: boolean;
+        support_locale?: boolean;
+        preview_audio_url?: string;
+      }>;
+      message?: string;
+      error?: { message?: string } | string;
+      has_more?: boolean;
+      next_token?: string | null;
+    };
+
+    if (!response.ok) {
+      const upstreamMessage = typeof payload.error === 'string'
+        ? payload.error
+        : payload.error?.message || payload.message;
+      return res.status(response.status).json({
+        error: upstreamMessage || 'Failed to fetch HeyGen voices',
+        voices: [],
+      });
+    }
+
+    const voices = Array.isArray(payload.data)
+      ? payload.data
+          .filter(voice => Boolean(voice.voice_id && voice.name))
+          .map(voice => ({
+            voice_id: voice.voice_id,
+            name: voice.name,
+            language: voice.language || 'Auto-detect',
+            gender: voice.gender || 'Neutral',
+            support_pause: Boolean(voice.support_pause),
+            support_locale: Boolean(voice.support_locale),
+            preview_audio_url: voice.preview_audio_url || '',
+          }))
+      : [];
+
+    return res.json({ voices, hasMore: Boolean(payload.has_more), nextToken: payload.next_token || null });
+  } catch (err) {
+    return res.status(500).json({
+      error: err instanceof Error ? err.message : 'Failed to fetch HeyGen voices',
+      voices: [],
+    });
   }
 });
 
@@ -5935,7 +6511,7 @@ async function handleTTS(req: express.Request, res: express.Response) {
     voiceReference,
   } = req.body as {
     text: string; voiceName?: string; voice?: string; voiceId?: string;
-    engine?: 'gemini' | 'openai' | 'elevenlabs' | 'omnivoice' | 'qwen-tts'; speed?: number;
+    engine?: 'gemini' | 'openai' | 'elevenlabs' | 'heygen' | 'omnivoice' | 'qwen-tts'; speed?: number;
     voiceSettings?: { stability?: number; similarity_boost?: number; style?: number };
     voiceReference?: string;
   };
@@ -5963,7 +6539,7 @@ async function handleTTS(req: express.Request, res: express.Response) {
     try {
       const authReq = req as AuthenticatedRequest;
       const cost = await calculateGenerationCost(authReq.user.email, undefined, 'speech', 1);
-      await deductCredits(authReq.user.id, cost);
+      await deductCredits(authReq.user.id, cost, authReq.user.email);
     } catch (err) {
       console.warn('[Credit Check Warning]:', err);
     }
@@ -6040,6 +6616,70 @@ async function handleTTS(req: express.Request, res: express.Response) {
   const voicePromptStr = ((req.body as any).voicePrompt || (req.body as any).performancePrompt || '').toLowerCase();
   const isMalePersona = /\b(man|male|guy|boy|gentleman|father|husband|masculine)\b/i.test(personaNameStr) || /\b(masculine|deep male voice|male speaker|man voice)\b/i.test(voicePromptStr);
   const defaultFallbackVoice = isMalePersona ? 'KLbbwrUTS6brBkjmN4Fp' : '6u6JbqKdaQy89ENzLSju'; // John vs Brielle
+
+  // HeyGen Starfish TTS keeps private HeyGen voices usable for previews and saved personas.
+  if (currentEngineStr.toLowerCase() === 'heygen') {
+    const authHeader = req.headers.authorization;
+    const isRealCreatorSession = Boolean(
+      authHeader?.startsWith('Bearer ') &&
+      (req as AuthenticatedRequest).user?.id &&
+      isCreatorUser((req as AuthenticatedRequest).user.email)
+    );
+    const heygenVoiceId = voiceId || voiceParam;
+    if (!isRealCreatorSession) {
+      return res.status(403).json({ error: 'Creator sign-in required to use private HeyGen voices' });
+    }
+    if (!HEYGEN_API_KEY) {
+      return res.status(503).json({ error: 'HeyGen API key not configured' });
+    }
+    if (!heygenVoiceId) {
+      return res.status(400).json({ error: 'A HeyGen voice ID is required' });
+    }
+
+    try {
+      const heygenResponse = await fetch('https://api.heygen.com/v3/voices/speech', {
+        method: 'POST',
+        headers: {
+          'X-Api-Key': HEYGEN_API_KEY,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        signal: AbortSignal.timeout(15000),
+        body: JSON.stringify({
+          text,
+          voice_id: heygenVoiceId,
+          speed: Math.min(2, Math.max(0.5, Number((req.body as any).voiceSpeakingSpeed ?? speed) || 1)),
+        }),
+      });
+      const heygenPayload = await heygenResponse.json() as {
+        data?: { audio_url?: string; duration?: number; request_id?: string | null };
+        message?: string;
+        error?: { message?: string } | string;
+      };
+
+      if (!heygenResponse.ok || !heygenPayload.data?.audio_url) {
+        const upstreamMessage = typeof heygenPayload.error === 'string'
+          ? heygenPayload.error
+          : heygenPayload.error?.message || heygenPayload.message;
+        return res.status(heygenResponse.status || 502).json({
+          error: upstreamMessage || 'HeyGen could not synthesize this voice',
+        });
+      }
+
+      return res.json({
+        audioUrl: heygenPayload.data.audio_url,
+        voice: heygenVoiceId,
+        model: 'heygen-starfish',
+        engine: 'heygen',
+        duration: heygenPayload.data.duration,
+      });
+    } catch (err) {
+      console.warn('[HeyGen Starfish TTS Error]:', err);
+      return res.status(502).json({
+        error: err instanceof Error ? err.message : 'HeyGen voice synthesis failed',
+      });
+    }
+  }
 
   const rawRefs: string[] = ((req.body as any).voiceReferences && Array.isArray((req.body as any).voiceReferences) && (req.body as any).voiceReferences.length > 0)
     ? (req.body as any).voiceReferences
@@ -6900,7 +7540,7 @@ app.post('/api/heygen-create-avatar', async (req, res) => {
 });
 
 // ─── Talking Head ─────────────────────────────────────────────────────────────
-app.post('/api/talking-head', async (req, res) => {
+const talkingHeadHandler = async (req: any, res: any) => {
   const { 
     portraitImage, 
     video,
@@ -6948,7 +7588,7 @@ app.post('/api/talking-head', async (req, res) => {
   try {
     const authReq = req as AuthenticatedRequest;
     const cost = await calculateGenerationCost(authReq.user.email, undefined, 'avatar', 1);
-    await deductCredits(authReq.user.id, cost);
+    await deductCredits(authReq.user.id, cost, authReq.user.email);
   } catch (err) {
     return res.status(403).json({ error: err instanceof Error ? err.message : 'Credit check failed' });
   }
@@ -7090,6 +7730,418 @@ app.post('/api/talking-head', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Talking head generation failed' });
   }
+};
+
+app.post('/api/talking-head', talkingHeadHandler);
+
+// ─── Durable Media Jobs ──────────────────────────────────────────────────────
+// A row is created before any provider request. The browser can therefore
+// recover the status after a refresh or a serverless timeout and retry without
+// reconstructing the prompt or generation settings.
+function mediaJobModelId(kind: MediaJobKind, request: Record<string, any>): string | null {
+  if (kind === 'image') return request.requestMode === 'studio' ? request.modelId || null : request.imageModelId || null;
+  if (kind === 'video') return request.requestMode === 'studio' ? request.modelId || null : request.videoModelId || null;
+  return request.modelId || request.model || null;
+}
+
+function withMediaJobModel(kind: MediaJobKind, request: Record<string, any>, modelId: string) {
+  if (kind === 'image') return request.requestMode === 'studio'
+    ? { ...request, modelId }
+    : { ...request, imageModelId: modelId };
+  if (kind === 'video') return request.requestMode === 'studio'
+    ? { ...request, modelId }
+    : { ...request, videoModelId: modelId };
+  return { ...request, modelId, model: modelId };
+}
+
+function mediaJobHandler(kind: MediaJobKind, request: Record<string, any>) {
+  if (request.requestMode === 'studio') {
+    if (kind === 'image') return generateImageHandler;
+    if (kind === 'video') return generateVideoHandler;
+  }
+  if (kind === 'image' || kind === 'video') return personaMediaHandler;
+  if (kind === 'edit') return editImageHandler;
+  if (kind === 'upscale') return upscaleImageHandler;
+  return talkingHeadHandler;
+}
+
+function mediaJobOutput(kind: MediaJobKind, payload: any, request: Record<string, any>) {
+  if (request.requestMode === 'studio' && kind === 'image') {
+    const images = Array.isArray(payload?.images)
+      ? payload.images.filter((image: any) => typeof image?.imageUrl === 'string' && image.imageUrl)
+      : [];
+    const primary = images[0] || (payload?.imageUrl ? payload : null);
+    return primary?.imageUrl ? {
+      ...payload,
+      url: primary.imageUrl,
+      imageUrl: primary.imageUrl,
+      images: images.length ? images : undefined,
+      type: 'image',
+      model: primary.model || payload?.model || request.modelId,
+      promptUsed: primary.promptUsed || payload?.promptUsed,
+    } : null;
+  }
+  if (request.requestMode === 'studio' && kind === 'video') {
+    return payload?.videoUrl ? { ...payload, url: payload.videoUrl, type: 'video' } : null;
+  }
+  if (kind === 'image' || kind === 'video') {
+    return payload?.success && payload?.url ? payload : null;
+  }
+  if (kind === 'edit' || kind === 'upscale') {
+    return payload?.imageUrl ? { ...payload, url: payload.imageUrl, type: 'image' } : null;
+  }
+  return payload?.videoUrl ? { ...payload, url: payload.videoUrl, type: 'video' } : null;
+}
+
+class MediaJobCanceledError extends Error {
+  constructor() {
+    super('Canceled by you');
+    this.name = 'MediaJobCanceledError';
+  }
+}
+
+function mediaJobProgress(kind: MediaJobKind, elapsedMs: number) {
+  const progress = Math.min(92, 12 + Math.floor(elapsedMs / 3000));
+  if (elapsedMs < 12_000) return { progress, stage: 'Preparing provider request' };
+  if (elapsedMs < 55_000) {
+    return { progress, stage: kind === 'video' || kind === 'avatar' ? 'Rendering motion' : 'Generating image' };
+  }
+  if (elapsedMs < 150_000) {
+    return { progress, stage: kind === 'video' || kind === 'avatar' ? 'Encoding video' : 'Refining details' };
+  }
+  return { progress, stage: 'Finalizing result' };
+}
+
+function detachedMediaRequest(user: any): AuthenticatedRequest {
+  return {
+    user,
+    body: {},
+    headers: {},
+    query: {},
+    params: {},
+  } as unknown as AuthenticatedRequest;
+}
+
+async function executeMediaJob(jobId: string, userId: string, user: any, requestedFallback = false) {
+  if (!db) return;
+  const [job] = await db.select().from(mediaJobs).where(and(
+    eq(mediaJobs.id, jobId),
+    eq(mediaJobs.userId, userId),
+  ));
+  if (!job || job.status === 'succeeded' || job.status === 'canceled') return;
+  if (job.status === 'running' && !isMediaJobStale(job.updatedAt)) return;
+
+  const kind = job.kind as MediaJobKind;
+  const storedRequest = parseMediaJobJson(job.request);
+  if (!storedRequest) {
+    await db.update(mediaJobs).set({
+      status: 'failed',
+      progress: 100,
+      stage: 'Needs attention',
+      error: 'The stored media request is invalid',
+      updatedAt: new Date(),
+      completedAt: new Date(),
+    }).where(and(eq(mediaJobs.id, jobId), eq(mediaJobs.userId, userId)));
+    return;
+  }
+
+  const useFallback = Boolean((requestedFallback || job.usedFallback) && job.fallbackModelId);
+  const executionRequest = useFallback
+    ? withMediaJobModel(kind, storedRequest, job.fallbackModelId!)
+    : storedRequest;
+  const startedAt = new Date();
+  const [running] = await db.update(mediaJobs).set({
+    status: 'running',
+    error: null,
+    result: null,
+    progress: 8,
+    stage: 'Starting generation',
+    cancelRequested: false,
+    attempt: (job.attempt || 0) + 1,
+    usedFallback: useFallback,
+    startedAt,
+    updatedAt: startedAt,
+    completedAt: null,
+  }).where(and(
+    eq(mediaJobs.id, jobId),
+    eq(mediaJobs.userId, userId),
+    eq(mediaJobs.status, job.status),
+    eq(mediaJobs.updatedAt, job.updatedAt),
+  )).returning();
+  if (!running) return;
+
+  let rejectCancellation: ((error: Error) => void) | null = null;
+  const cancellation = new Promise<never>((_resolve, reject) => {
+    rejectCancellation = reject;
+  });
+  const heartbeat = async () => {
+    const elapsedMs = Date.now() - startedAt.getTime();
+    const progress = mediaJobProgress(kind, elapsedMs);
+    const [updated] = await db.update(mediaJobs).set({
+      ...progress,
+      updatedAt: new Date(),
+    }).where(and(
+      eq(mediaJobs.id, jobId),
+      eq(mediaJobs.userId, userId),
+      eq(mediaJobs.status, 'running'),
+      eq(mediaJobs.cancelRequested, false),
+    )).returning({ id: mediaJobs.id });
+    if (!updated) rejectCancellation?.(new MediaJobCanceledError());
+  };
+  const heartbeatTimer = setInterval(() => {
+    void heartbeat().catch(error => console.warn('[media-jobs] Heartbeat failed:', error));
+  }, 10_000);
+
+  try {
+    const generationPromise = runJsonGenerationHandler(
+      mediaJobHandler(kind, executionRequest),
+      detachedMediaRequest(user || { id: userId, email: '' }),
+      executionRequest,
+    );
+    // The provider promise may still settle after a cancellation race. Keep a
+    // rejection handler attached so it never becomes an unhandled rejection.
+    void generationPromise.catch(() => undefined);
+    const generation = await Promise.race([generationPromise, cancellation]);
+    const output = mediaJobOutput(kind, generation.payload, executionRequest);
+    if (generation.status >= 400 || !output) {
+      const message = generation.payload?.message || generation.payload?.error || `${kind} generation failed`;
+      const failure = new Error(message) as Error & { status?: number };
+      failure.status = generation.status >= 400 ? generation.status : 500;
+      throw failure;
+    }
+
+    const [current] = await db.select({ cancelRequested: mediaJobs.cancelRequested }).from(mediaJobs).where(and(
+      eq(mediaJobs.id, jobId),
+      eq(mediaJobs.userId, userId),
+    ));
+    if (current?.cancelRequested) throw new MediaJobCanceledError();
+
+    await db.update(mediaJobs).set({
+      status: 'succeeded',
+      result: JSON.stringify(output),
+      error: null,
+      progress: 100,
+      stage: 'Completed',
+      modelId: output.model || mediaJobModelId(kind, executionRequest),
+      usedFallback: useFallback || /fallback|failover/i.test(output.model || ''),
+      updatedAt: new Date(),
+      completedAt: new Date(),
+    }).where(and(eq(mediaJobs.id, jobId), eq(mediaJobs.userId, userId)));
+  } catch (error) {
+    const [latestState] = await db.select({ cancelRequested: mediaJobs.cancelRequested }).from(mediaJobs).where(and(
+      eq(mediaJobs.id, jobId),
+      eq(mediaJobs.userId, userId),
+    ));
+    if (error instanceof MediaJobCanceledError || latestState?.cancelRequested) {
+      await db.update(mediaJobs).set({
+        status: 'canceled',
+        stage: 'Canceled',
+        error: null,
+        completedAt: new Date(),
+        updatedAt: new Date(),
+      }).where(and(eq(mediaJobs.id, jobId), eq(mediaJobs.userId, userId)));
+      return;
+    }
+
+    const status = Number((error as any)?.status) || 500;
+    const message = error instanceof Error ? error.message : `${kind} generation failed`;
+    const fallback = !useFallback && isRetryableMediaJobFailure(status, message)
+      ? fallbackModelForJob(kind, mediaJobModelId(kind, executionRequest))
+      : null;
+    await db.update(mediaJobs).set({
+      status: 'failed',
+      progress: 100,
+      stage: 'Needs attention',
+      error: message,
+      fallbackModelId: fallback,
+      updatedAt: new Date(),
+      completedAt: new Date(),
+    }).where(and(eq(mediaJobs.id, jobId), eq(mediaJobs.userId, userId)));
+  } finally {
+    clearInterval(heartbeatTimer);
+  }
+}
+
+function scheduleMediaJobExecution(jobId: string, userId: string, user: any, useFallback = false) {
+  const task = executeMediaJob(jobId, userId, user, useFallback).catch(error => {
+    console.error(`[media-jobs] Background execution failed for ${jobId}:`, error);
+  });
+  try {
+    waitUntil(task);
+  } catch (error) {
+    // Local development has no Vercel request context. The promise is already
+    // running, so keeping its catch handler attached is sufficient there.
+    if (process.env.VERCEL) console.warn('[media-jobs] Could not register waitUntil:', error);
+  }
+}
+
+app.post('/api/media-jobs', async (req: AuthenticatedRequest, res) => {
+  if (!db) return res.status(503).json({ error: 'Media job storage is unavailable' });
+  const { kind, personaClientId, request } = req.body || {};
+  const supportedKinds: MediaJobKind[] = ['image', 'video', 'edit', 'upscale', 'avatar'];
+  if (!supportedKinds.includes(kind) || !request || typeof request !== 'object') {
+    return res.status(400).json({ error: 'A supported media job kind and request are required' });
+  }
+
+  const jobId = nodeCrypto.randomUUID();
+  const now = new Date();
+  try {
+    const [created] = await db.insert(mediaJobs).values({
+      id: jobId,
+      userId: req.user.id,
+      personaClientId: typeof personaClientId === 'string' ? personaClientId : null,
+      kind,
+      status: 'queued',
+      request: JSON.stringify(request),
+      modelId: mediaJobModelId(kind, request),
+      progress: 0,
+      stage: 'Queued',
+      cancelRequested: false,
+      createdAt: now,
+      updatedAt: now,
+    }).returning();
+    return res.status(201).json({ job: publicMediaJob(created) });
+  } catch (error) {
+    console.error('[media-jobs] Could not create job:', error);
+    return res.status(500).json({ error: 'Could not save this media job before generation' });
+  }
+});
+
+app.get('/api/media-jobs', async (req: AuthenticatedRequest, res) => {
+  if (!db) return res.status(503).json({ error: 'Media job storage is unavailable' });
+  try {
+    const personaId = typeof req.query.personaId === 'string' ? req.query.personaId : '';
+    const ownership = eq(mediaJobs.userId, req.user.id);
+    const where = personaId
+      ? and(ownership, eq(mediaJobs.personaClientId, personaId))
+      : ownership;
+    const rows = await db.select().from(mediaJobs).where(where).orderBy(desc(mediaJobs.createdAt)).limit(100);
+    rows
+      .filter((row: any) => row.status === 'queued' || (row.status === 'running' && isMediaJobStale(row.updatedAt)))
+      .slice(0, 3)
+      .forEach((row: any) => scheduleMediaJobExecution(row.id, req.user.id, req.user, Boolean(row.usedFallback)));
+    return res.json({ jobs: rows.map((row: any) => publicMediaJob(row)) });
+  } catch (error) {
+    console.error('[media-jobs] Could not list jobs:', error);
+    return res.status(500).json({ error: 'Could not load media jobs' });
+  }
+});
+
+// Vercel Cron recovery path. Immediate requests use waitUntil; this worker
+// resumes queued or interrupted jobs if an individual function instance ends.
+app.get('/api/media-jobs/worker', async (req, res) => {
+  if (!db) return res.status(503).json({ error: 'Media job storage is unavailable' });
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret) return res.status(503).json({ error: 'Media job recovery is not configured' });
+  if (req.headers.authorization !== `Bearer ${cronSecret}`) {
+    return res.status(401).json({ error: 'Unauthorized worker request' });
+  }
+
+  const staleBefore = new Date(Date.now() - 90_000);
+  const recoverable = await db.select().from(mediaJobs).where(and(
+    eq(mediaJobs.cancelRequested, false),
+    or(
+      eq(mediaJobs.status, 'queued'),
+      and(eq(mediaJobs.status, 'running'), lt(mediaJobs.updatedAt, staleBefore)),
+    ),
+  )).orderBy(mediaJobs.createdAt).limit(5);
+  const jobsWithOwners = await Promise.all(recoverable.map(async (job: any) => {
+    const [owner] = await db.select({ email: users.email }).from(users).where(eq(users.id, job.userId));
+    return { job, email: owner?.email || '' };
+  }));
+  jobsWithOwners.forEach(({ job, email }) => {
+    scheduleMediaJobExecution(job.id, job.userId, { id: job.userId, email }, Boolean(job.usedFallback));
+  });
+  return res.status(202).json({ recovered: recoverable.length });
+});
+
+app.get('/api/media-jobs/:jobId', async (req: AuthenticatedRequest, res) => {
+  if (!db) return res.status(503).json({ error: 'Media job storage is unavailable' });
+  const jobId = String(req.params.jobId);
+  const [job] = await db.select().from(mediaJobs).where(and(
+    eq(mediaJobs.id, jobId),
+    eq(mediaJobs.userId, req.user.id),
+  ));
+  if (!job) return res.status(404).json({ error: 'Media job not found' });
+  if (job.status === 'queued' || (job.status === 'running' && isMediaJobStale(job.updatedAt))) {
+    scheduleMediaJobExecution(job.id, req.user.id, req.user, Boolean(job.usedFallback));
+  }
+  return res.json({ job: publicMediaJob(job) });
+});
+
+app.post('/api/media-jobs/:jobId/run', async (req: AuthenticatedRequest, res) => {
+  if (!db) return res.status(503).json({ error: 'Media job storage is unavailable' });
+  const jobId = String(req.params.jobId);
+  const [job] = await db.select().from(mediaJobs).where(and(
+    eq(mediaJobs.id, jobId),
+    eq(mediaJobs.userId, req.user.id),
+  ));
+  if (!job) return res.status(404).json({ error: 'Media job not found' });
+  if (job.status === 'succeeded') return res.json({ job: publicMediaJob(job) });
+  if (job.status === 'canceled') return res.status(409).json({ error: 'This media job was canceled', job: publicMediaJob(job) });
+  if (job.status === 'running' && !isMediaJobStale(job.updatedAt)) {
+    return res.status(202).json({ job: publicMediaJob(job) });
+  }
+
+  const useFallback = Boolean(req.body?.useFallback && job.fallbackModelId);
+  const [queued] = await db.update(mediaJobs).set({
+    status: 'queued',
+    error: null,
+    result: null,
+    progress: 0,
+    stage: useFallback ? 'Queued with fallback model' : 'Queued',
+    cancelRequested: false,
+    usedFallback: useFallback,
+    updatedAt: new Date(),
+    completedAt: null,
+  }).where(and(
+    eq(mediaJobs.id, jobId),
+    eq(mediaJobs.userId, req.user.id),
+    eq(mediaJobs.status, job.status),
+    eq(mediaJobs.updatedAt, job.updatedAt),
+  )).returning();
+  if (!queued) {
+    return res.status(409).json({ error: 'This media job was already started in another session' });
+  }
+
+  scheduleMediaJobExecution(jobId, req.user.id, req.user, useFallback);
+  return res.status(202).json({ job: publicMediaJob(queued) });
+});
+
+app.post('/api/media-jobs/:jobId/cancel', async (req: AuthenticatedRequest, res) => {
+  if (!db) return res.status(503).json({ error: 'Media job storage is unavailable' });
+  const jobId = String(req.params.jobId);
+  const [job] = await db.select().from(mediaJobs).where(and(
+    eq(mediaJobs.id, jobId),
+    eq(mediaJobs.userId, req.user.id),
+  ));
+  if (!job) return res.status(404).json({ error: 'Media job not found' });
+  if (job.status === 'succeeded' || job.status === 'failed' || job.status === 'canceled') {
+    return res.json({ job: publicMediaJob(job) });
+  }
+
+  const queued = job.status === 'queued';
+  const now = new Date();
+  const [updated] = await db.update(mediaJobs).set({
+    cancelRequested: true,
+    status: queued ? 'canceled' : 'running',
+    stage: queued ? 'Canceled' : 'Canceling',
+    error: null,
+    updatedAt: now,
+    completedAt: queued ? now : null,
+  }).where(and(eq(mediaJobs.id, jobId), eq(mediaJobs.userId, req.user.id))).returning();
+  return res.json({ job: publicMediaJob(updated || job) });
+});
+
+app.delete('/api/media-jobs/:jobId', async (req: AuthenticatedRequest, res) => {
+  if (!db) return res.status(503).json({ error: 'Media job storage is unavailable' });
+  const jobId = String(req.params.jobId);
+  const deleted = await db.delete(mediaJobs).where(and(
+    eq(mediaJobs.id, jobId),
+    eq(mediaJobs.userId, req.user.id),
+  )).returning({ id: mediaJobs.id });
+  if (!deleted.length) return res.status(404).json({ error: 'Media job not found' });
+  return res.status(204).send();
 });
 
 // ─── Motion Control ─────────────────────────────────────────────────────────────
@@ -7099,48 +8151,41 @@ app.post('/api/motion-control', async (req, res) => {
   };
   if (!refImage) return res.status(400).json({ error: 'refImage is required' });
 
-  if (WAVESPEED_API_KEY) {
-    try {
-      const resolvedRefImage = await resolveImageToDataUrl(refImage);
-      const payload: Record<string, unknown> = {
-        ref_image_url: resolvedRefImage,
-      };
-      if (danceId) {
-        payload.dance_id = danceId;
-      } else if (motionVideoUrl) {
-        payload.motion_video_url = motionVideoUrl;
-      } else if (motionVideoBase64) {
-        payload.motion_video_base64 = motionVideoBase64;
-      }
-
-      const modelPath = model.includes('/') ? model : `wavespeed-ai/${model}`;
-      console.log('[Wavespeed Motion Control] Dispatching job for model:', modelPath);
-      const r = await fetch(`${WAVESPEED_BASE}/${modelPath}`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${WAVESPEED_API_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (r.ok) {
-        const json = await r.json() as Record<string, unknown>;
-        const videoUrl = await extractWavespeedVideoOutput(json);
-        return res.json({ videoUrl, model: modelPath });
-      }
-    } catch (err) {
-      console.warn('[MotionControl] Wavespeed API failed, falling back to mock:', err);
-    }
+  if (!WAVESPEED_API_KEY) {
+    return res.status(503).json({ error: 'Wavespeed motion control is not configured' });
   }
 
-  // Graceful fallback to a high-quality video for demo/sandbox environments
-  const fallbackVideos = [
-    '/demo-assets/video-preview.mp4',
-    '/demo-assets/generated-talking.mp4'
-  ];
-  const selectedVideo = fallbackVideos[Math.floor(Math.random() * fallbackVideos.length)];
-  res.json({
-    videoUrl: selectedVideo,
-    model: 'wavespeed-ai/motion-control (Mock Fallback)'
-  });
+  try {
+    const resolvedRefImage = await resolveImageToDataUrl(refImage);
+    const payload: Record<string, unknown> = {
+      ref_image_url: resolvedRefImage,
+    };
+    if (danceId) {
+      payload.dance_id = danceId;
+    } else if (motionVideoUrl) {
+      payload.motion_video_url = motionVideoUrl;
+    } else if (motionVideoBase64) {
+      payload.motion_video_base64 = motionVideoBase64;
+    }
+
+    const modelPath = model.includes('/') ? model : `wavespeed-ai/${model}`;
+    console.log('[Wavespeed Motion Control] Dispatching job for model:', modelPath);
+    const r = await fetch(`${WAVESPEED_BASE}/${modelPath}`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${WAVESPEED_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const json = await r.json().catch(() => ({})) as Record<string, unknown>;
+    if (!r.ok) {
+      const message = typeof json.error === 'string' ? json.error : `Wavespeed motion control failed (${r.status})`;
+      return res.status(r.status).json({ error: message });
+    }
+    const videoUrl = await extractWavespeedVideoOutput(json);
+    return res.json({ videoUrl, model: modelPath });
+  } catch (err) {
+    console.error('[MotionControl] Wavespeed API failed:', err);
+    return res.status(502).json({ error: err instanceof Error ? err.message : 'Motion control generation failed' });
+  }
 });
 
 // ═══════════════════════════════════════════════════════════════════
@@ -7505,9 +8550,37 @@ async function pushSchema() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS workspace_states (
+        user_id TEXT NOT NULL,
+        state_key TEXT NOT NULL,
+        value TEXT NOT NULL,
+        updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        PRIMARY KEY (user_id, state_key),
+        CONSTRAINT workspace_states_key_length CHECK (char_length(state_key) BETWEEN 1 AND 180),
+        CONSTRAINT workspace_states_value_size CHECK (octet_length(value) <= 2000000)
+      );
+      ALTER TABLE workspace_states ENABLE ROW LEVEL SECURITY;
+      REVOKE ALL ON TABLE workspace_states FROM anon;
+      GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE workspace_states TO authenticated;
+      DO $workspace_policies$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'workspace_states' AND policyname = 'workspace_states_select_own') THEN
+          CREATE POLICY workspace_states_select_own ON workspace_states FOR SELECT TO authenticated USING ((SELECT auth.uid())::text = user_id);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'workspace_states' AND policyname = 'workspace_states_insert_own') THEN
+          CREATE POLICY workspace_states_insert_own ON workspace_states FOR INSERT TO authenticated WITH CHECK ((SELECT auth.uid())::text = user_id);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'workspace_states' AND policyname = 'workspace_states_update_own') THEN
+          CREATE POLICY workspace_states_update_own ON workspace_states FOR UPDATE TO authenticated USING ((SELECT auth.uid())::text = user_id) WITH CHECK ((SELECT auth.uid())::text = user_id);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'workspace_states' AND policyname = 'workspace_states_delete_own') THEN
+          CREATE POLICY workspace_states_delete_own ON workspace_states FOR DELETE TO authenticated USING ((SELECT auth.uid())::text = user_id);
+        END IF;
+      END
+      $workspace_policies$;
       CREATE TABLE IF NOT EXISTS personas (
         id SERIAL PRIMARY KEY,
-        client_id TEXT NOT NULL UNIQUE,
+        client_id TEXT NOT NULL,
         name TEXT NOT NULL DEFAULT '',
         niche TEXT NOT NULL DEFAULT '',
         tone TEXT NOT NULL DEFAULT '',
@@ -7530,7 +8603,7 @@ async function pushSchema() {
       );
       CREATE TABLE IF NOT EXISTS generated_images (
         id SERIAL PRIMARY KEY,
-        client_id TEXT NOT NULL UNIQUE,
+        client_id TEXT NOT NULL,
         persona_client_id TEXT NOT NULL,
         url TEXT NOT NULL,
         prompt TEXT NOT NULL DEFAULT '',
@@ -7549,6 +8622,8 @@ async function pushSchema() {
       ALTER TABLE personas ADD COLUMN IF NOT EXISTS identity_lock BOOLEAN DEFAULT true;
       ALTER TABLE personas ADD COLUMN IF NOT EXISTS alternate_reference_image TEXT;
       ALTER TABLE personas ADD COLUMN IF NOT EXISTS additional_reference_images TEXT DEFAULT '[]';
+      ALTER TABLE personas ADD COLUMN IF NOT EXISTS voice_sample_url TEXT;
+      ALTER TABLE personas ADD COLUMN IF NOT EXISTS audio_samples TEXT DEFAULT '[]';
       ALTER TABLE personas ADD COLUMN IF NOT EXISTS voice_id TEXT;
       ALTER TABLE personas ADD COLUMN IF NOT EXISTS voice_engine TEXT;
       ALTER TABLE personas ADD COLUMN IF NOT EXISTS companion_type TEXT DEFAULT 'intimate';
@@ -7560,7 +8635,7 @@ async function pushSchema() {
       
       CREATE TABLE IF NOT EXISTS revenue_entries (
         id SERIAL PRIMARY KEY,
-        client_id TEXT NOT NULL UNIQUE,
+        client_id TEXT NOT NULL,
         persona_client_id TEXT NOT NULL,
         date TEXT NOT NULL,
         amount REAL NOT NULL,
@@ -7583,6 +8658,114 @@ async function pushSchema() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
       );
       ALTER TABLE planned_posts ADD COLUMN IF NOT EXISTS user_id TEXT;
+
+      CREATE TABLE IF NOT EXISTS media_jobs (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        persona_client_id TEXT,
+        kind TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'queued',
+        request TEXT NOT NULL,
+        result TEXT,
+        error TEXT,
+        model_id TEXT,
+        fallback_model_id TEXT,
+        attempt INTEGER NOT NULL DEFAULT 0,
+        used_fallback BOOLEAN NOT NULL DEFAULT false,
+        progress INTEGER NOT NULL DEFAULT 0,
+        stage TEXT NOT NULL DEFAULT 'Queued',
+        cancel_requested BOOLEAN NOT NULL DEFAULT false,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        started_at TIMESTAMPTZ,
+        updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        completed_at TIMESTAMPTZ
+      );
+      ALTER TABLE media_jobs ADD COLUMN IF NOT EXISTS progress INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE media_jobs ADD COLUMN IF NOT EXISTS stage TEXT NOT NULL DEFAULT 'Queued';
+      ALTER TABLE media_jobs ADD COLUMN IF NOT EXISTS cancel_requested BOOLEAN NOT NULL DEFAULT false;
+      ALTER TABLE media_jobs ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ;
+      DO $media_job_status_constraint$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conrelid = 'media_jobs'::regclass
+            AND conname = 'media_jobs_status_check'
+            AND pg_get_constraintdef(oid) NOT ILIKE '%canceled%'
+        ) THEN
+          ALTER TABLE media_jobs DROP CONSTRAINT media_jobs_status_check;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conrelid = 'media_jobs'::regclass
+            AND conname = 'media_jobs_status_check'
+        ) THEN
+          ALTER TABLE media_jobs ADD CONSTRAINT media_jobs_status_check
+            CHECK (status IN ('queued', 'running', 'succeeded', 'failed', 'canceled'));
+        END IF;
+      END
+      $media_job_status_constraint$;
+      CREATE INDEX IF NOT EXISTS media_jobs_user_created_idx ON media_jobs (user_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS media_jobs_status_updated_idx ON media_jobs (status, updated_at);
+
+      -- Account ownership is mandatory. Legacy unowned rows remain inaccessible.
+      UPDATE personas SET user_id = 'legacy-unowned' WHERE user_id IS NULL;
+      UPDATE generated_images SET user_id = 'legacy-unowned' WHERE user_id IS NULL;
+      UPDATE revenue_entries SET user_id = 'legacy-unowned' WHERE user_id IS NULL;
+      UPDATE planned_posts SET user_id = 'legacy-unowned' WHERE user_id IS NULL;
+      ALTER TABLE personas ALTER COLUMN user_id SET NOT NULL;
+      ALTER TABLE generated_images ALTER COLUMN user_id SET NOT NULL;
+      ALTER TABLE revenue_entries ALTER COLUMN user_id SET NOT NULL;
+      ALTER TABLE planned_posts ALTER COLUMN user_id SET NOT NULL;
+
+      -- Client-generated IDs only need to be unique inside their owning account.
+      DO $account_constraints$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'personas'::regclass AND conname = 'personas_user_client_id_unique') THEN
+          ALTER TABLE personas ADD CONSTRAINT personas_user_client_id_unique UNIQUE (user_id, client_id);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'generated_images'::regclass AND conname = 'generated_images_user_client_id_unique') THEN
+          ALTER TABLE generated_images ADD CONSTRAINT generated_images_user_client_id_unique UNIQUE (user_id, client_id);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'revenue_entries'::regclass AND conname = 'revenue_entries_user_client_id_unique') THEN
+          ALTER TABLE revenue_entries ADD CONSTRAINT revenue_entries_user_client_id_unique UNIQUE (user_id, client_id);
+        END IF;
+      END
+      $account_constraints$;
+
+      CREATE INDEX IF NOT EXISTS planned_posts_user_id_idx ON planned_posts (user_id);
+
+      ALTER TABLE personas ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE generated_images ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE revenue_entries ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE planned_posts ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE media_jobs ENABLE ROW LEVEL SECURITY;
+      REVOKE ALL ON TABLE personas, generated_images, revenue_entries, planned_posts, media_jobs FROM anon;
+      GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE personas, generated_images, revenue_entries, planned_posts, media_jobs TO authenticated;
+      REVOKE ALL ON SEQUENCE personas_id_seq, generated_images_id_seq, revenue_entries_id_seq, planned_posts_id_seq FROM anon;
+      GRANT USAGE, SELECT ON SEQUENCE personas_id_seq, generated_images_id_seq, revenue_entries_id_seq, planned_posts_id_seq TO authenticated;
+      DO $account_policies$
+      DECLARE
+        target_table text;
+        policy_prefix text;
+      BEGIN
+        FOREACH target_table IN ARRAY ARRAY['personas', 'generated_images', 'revenue_entries', 'planned_posts', 'media_jobs']
+        LOOP
+          policy_prefix := target_table || '_own';
+          IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = target_table AND policyname = policy_prefix || '_select') THEN
+            EXECUTE format('CREATE POLICY %I ON %I FOR SELECT TO authenticated USING ((SELECT auth.uid())::text = user_id)', policy_prefix || '_select', target_table);
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = target_table AND policyname = policy_prefix || '_insert') THEN
+            EXECUTE format('CREATE POLICY %I ON %I FOR INSERT TO authenticated WITH CHECK ((SELECT auth.uid())::text = user_id)', policy_prefix || '_insert', target_table);
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = target_table AND policyname = policy_prefix || '_update') THEN
+            EXECUTE format('CREATE POLICY %I ON %I FOR UPDATE TO authenticated USING ((SELECT auth.uid())::text = user_id) WITH CHECK ((SELECT auth.uid())::text = user_id)', policy_prefix || '_update', target_table);
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = target_table AND policyname = policy_prefix || '_delete') THEN
+            EXECUTE format('CREATE POLICY %I ON %I FOR DELETE TO authenticated USING ((SELECT auth.uid())::text = user_id)', policy_prefix || '_delete', target_table);
+          END IF;
+        END LOOP;
+      END
+      $account_policies$;
 
       CREATE TABLE IF NOT EXISTS conversations (
         id SERIAL PRIMARY KEY,
@@ -7703,42 +8886,6 @@ Return ONLY a valid JSON object in this exact format:
   } catch (err: any) {
     console.error('[generate-trend-script]', err);
     return res.status(500).json({ error: err.message || 'Script generation failed' });
-  }
-});
-
-// Mock Video Stitching Endpoint
-app.post('/api/stitch-video-assets', async (req, res) => {
-  const { personaId, scenes, audioUrl } = req.body;
-  if (!scenes || !Array.isArray(scenes) || scenes.length === 0) {
-    return res.status(400).json({ error: 'Scenes are required for stitching' });
-  }
-
-  try {
-    console.log('[Stitcher] Stitching request received for persona:', personaId);
-    console.log('[Stitcher] Total scenes:', scenes.length, 'Audio track:', audioUrl);
-
-    // Vertical video templates representation
-    const mockVideos = [
-      'https://assets.mixkit.co/videos/preview/mixkit-influencer-recording-herself-with-a-smartphone-43034-large.mp4',
-      'https://assets.mixkit.co/videos/preview/mixkit-young-woman-talking-to-camera-on-smartphone-42287-large.mp4',
-      'https://assets.mixkit.co/videos/preview/mixkit-woman-vlogger-recording-video-for-blog-42416-large.mp4',
-      'https://assets.mixkit.co/videos/preview/mixkit-girl-working-out-at-home-with-her-phone-41989-large.mp4'
-    ];
-    
-    const randomStitchedUrl = mockVideos[Math.floor(Math.random() * mockVideos.length)];
-    
-    // Simulate compilation time
-    await new Promise(resolve => setTimeout(resolve, 4000));
-    
-    return res.json({
-      success: true,
-      videoUrl: randomStitchedUrl,
-      promptUsed: scenes.map((s: any) => s.caption || s.prompt).join(' | '),
-      duration: scenes.reduce((acc: number, s: any) => acc + (s.duration || 5), 0)
-    });
-  } catch (err: any) {
-    console.error('[Stitcher] Error stitching video assets:', err);
-    return res.status(500).json({ error: err.message || 'Stitching failed' });
   }
 });
 

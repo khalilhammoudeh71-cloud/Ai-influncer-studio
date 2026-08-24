@@ -14,7 +14,8 @@ const router = Router();
 // GET /billing: Retrieve current user's billing and credit information
 router.get('/billing', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const userId = req.user?.id || 'mock-user-id';
+    const userId = req.user.id;
+    const creator = isCreatorUser(req.user.email);
     let userRow: any = null;
     try {
       const rows = await db.select().from(users).where(eq(users.id, userId));
@@ -24,22 +25,22 @@ router.get('/billing', requireAuth, async (req: AuthenticatedRequest, res: Respo
     }
     
     return res.json({
-      email: userRow?.email || req.user?.email || 'khalilhammoudeh71@gmail.com',
-      subscriptionStatus: userRow?.subscriptionStatus || 'active',
-      credits: userRow?.credits ?? 99999,
+      email: userRow?.email || req.user.email || '',
+      subscriptionStatus: userRow?.subscriptionStatus || 'none',
+      credits: userRow?.credits ?? 50,
       stripeCustomerId: userRow?.stripeCustomerId || null,
       subscriptionPriceId: userRow?.subscriptionPriceId || null,
-      isCreator: true,
+      isCreator: creator,
     });
   } catch (err) {
     console.error('[Billing] GET error:', err);
     return res.json({
-      email: req.user?.email || 'khalilhammoudeh71@gmail.com',
-      subscriptionStatus: 'active',
-      credits: 99999,
+      email: req.user?.email || '',
+      subscriptionStatus: 'none',
+      credits: 50,
       stripeCustomerId: null,
       subscriptionPriceId: null,
-      isCreator: true,
+      isCreator: isCreatorUser(req.user?.email),
     });
   }
 });

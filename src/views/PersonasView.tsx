@@ -94,7 +94,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                   className="btn-gold-primary px-8 py-3.5 text-xs font-semibold flex items-center justify-center gap-2.5 cursor-pointer shadow-xl shadow-amber-950/40"
                 >
                   <Plus size={18} />
-                  <span>Create Your First Persona</span>
+                  <span>{activePersonas.length === 0 ? 'Create Your First Persona' : 'Create Another Persona'}</span>
                 </motion.button>
               </div>
             </motion.div>
@@ -212,7 +212,46 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
         </div>
 
         {/* Persona Cards Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        {activePersonas.length === 0 ? (
+          <div className="luxury-card relative overflow-hidden px-6 py-14 sm:px-10 text-center">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(231,196,119,0.08),transparent_55%)] pointer-events-none" />
+            <div className="relative z-10 max-w-lg mx-auto flex flex-col items-center">
+              <div className="w-16 h-16 rounded-2xl bg-[#E7C477]/10 border border-[#E7C477]/25 text-[#E7C477] flex items-center justify-center mb-5 shadow-lg shadow-black/30">
+                <Users size={28} />
+              </div>
+              <h3 className="text-2xl font-serif text-[#F5F1E8]">Your studio is ready</h3>
+              <p className="mt-2 text-sm text-[#A1A1AA] leading-relaxed">
+                Create your first persona to unlock identity-consistent images, voice, chat, and content planning.
+              </p>
+              <div className="mt-6 grid grid-cols-3 gap-3 w-full text-left">
+                {[
+                  ['1', 'Define identity'],
+                  ['2', 'Add references'],
+                  ['3', 'Choose a voice'],
+                ].map(([step, label]) => (
+                  <div key={step} className="rounded-xl border border-white/8 bg-[#161618] p-3">
+                    <span className="text-[10px] font-bold text-[#E7C477]">STEP {step}</span>
+                    <p className="mt-1 text-[11px] font-semibold text-[#D4D4D8]">{label}</p>
+                  </div>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={handleAddPersona}
+                className="btn-gold-primary mt-7 px-7 py-3 text-sm flex items-center gap-2 cursor-pointer"
+              >
+                <Plus size={16} /> Start Creating
+              </button>
+            </div>
+          </div>
+        ) : filteredPersonas.length === 0 ? (
+          <div className="luxury-card px-6 py-12 text-center">
+            <Search size={24} className="mx-auto text-[#71717A]" />
+            <h3 className="mt-3 text-base font-semibold text-[#F5F1E8]">No personas found</h3>
+            <p className="mt-1 text-xs text-[#A1A1AA]">Try a different name or niche.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {filteredPersonas.map(p => {
             const isSelected = p.id === selectedId;
             return (
@@ -296,7 +335,8 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
               </div>
             );
           })}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* ── FEATURE CARDS ROW (3 CARDS IN CHARCOAL & GOLD) ── */}

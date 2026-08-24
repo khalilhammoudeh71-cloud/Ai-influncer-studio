@@ -27,6 +27,7 @@ import {
   deleteVoiceItem, 
   SavedVoiceItem 
 } from '../utils/indexedVoiceDb';
+import { accountLocalStorage } from '../utils/accountStorage';
 
 export type SavedVoice = SavedVoiceItem;
 
@@ -248,9 +249,9 @@ export default function VoiceCloneStudioModal({
     try {
       // Save locally first so Super Agent voice activation NEVER fails even if network has a hiccup
       try {
-        localStorage.setItem('superagent_cloned_voice', 'active');
-        localStorage.setItem('superagent_cloned_voice_audio', voice.audioRef);
-        if (voice.id) localStorage.setItem('superagent_cloned_voice_id', voice.id);
+        accountLocalStorage.setItem('superagent_cloned_voice', 'active');
+        accountLocalStorage.setItem('superagent_cloned_voice_audio', voice.audioRef);
+        if (voice.id) accountLocalStorage.setItem('superagent_cloned_voice_id', voice.id);
       } catch (e) {}
 
       try {
@@ -266,7 +267,7 @@ export default function VoiceCloneStudioModal({
           }
         });
         if (data && data.voiceId) {
-          try { localStorage.setItem('superagent_cloned_voice_id', data.voiceId); } catch (e) {}
+          try { accountLocalStorage.setItem('superagent_cloned_voice_id', data.voiceId); } catch (e) {}
         }
       } catch (srvErr) {
         console.warn('[SetDefaultVoice Server Note, activated locally]:', srvErr);
@@ -375,8 +376,8 @@ export default function VoiceCloneStudioModal({
     try {
       // Save locally first
       try {
-        localStorage.setItem('superagent_cloned_voice', 'active');
-        localStorage.setItem('superagent_cloned_voice_audio', samples[0]?.base64);
+        accountLocalStorage.setItem('superagent_cloned_voice', 'active');
+        accountLocalStorage.setItem('superagent_cloned_voice_audio', samples[0]?.base64);
       } catch (e) {}
 
       let data: any = { success: true };
