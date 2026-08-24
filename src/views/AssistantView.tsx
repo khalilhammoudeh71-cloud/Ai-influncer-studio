@@ -2133,7 +2133,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         return;
       }
 
-      let reply = data.text || data.reply || "Hey, I'm right here with you!";
+      let reply = data.text || data.reply || "Mm—what's up?";
       if (/^(?:generating|creating|rendering|loading|producing|processing|taking)\s+(?:image|photo|video|picture|visual|content|look|selfie)/i.test(reply) || /^take a look at this (?:image|photo|picture)/i.test(reply)) {
         reply = `Let me take that for you right now, babe...`;
       }
@@ -2555,8 +2555,6 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   const fetchDynamicGreeting = useCallback(async (persona: Persona, mode: 'voice' | 'chat'): Promise<string> => {
     const creator = getCreatorProfile();
     const cName = creator?.name || 'Dr. H';
-    const hour = new Date().getHours();
-    const timeWord = hour < 12 ? 'morning' : (hour < 18 ? 'afternoon' : 'evening');
     const isAdultOrFlirty = (persona.niche || '').toLowerCase().includes('adult') || 
                             (persona.tone || '').toLowerCase().includes('seductive') || 
                             (persona.tone || '').toLowerCase().includes('flirty') ||
@@ -2566,30 +2564,24 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     const isRecentContinuation = timeSinceLastSec < 600;
 
     const continuationPool = [
-      `Hey, we got disconnected! Where were we?`,
-      `Hey babe, you're back. What was that you were saying?`,
-      `Hey! Did the call drop? I'm right here.`,
-      `Back so soon? Tell me what's on your mind right now.`,
-      `Hey handsome, you're back. Let's pick right back up!`
+      `Oh—there you are.`,
+      `Mm, hey. We got cut off.`,
+      `Hey—where were we?`,
+      `Oh, hey. You're back.`
     ];
 
     const intimatePools = [
-      `Hey ${cName}... good ${timeWord}. Was just hoping you'd call. Still thinking about earlier?`,
-      `Mmm, hey you. Still thinking about earlier, or did you have something new on your mind?`,
-      `Look who it is... what kind of trouble are we getting into today, ${cName}?`,
-      `Hey ${cName}! Perfect timing as always. Tell me what's on your mind.`,
-      `Hey you... was wondering when I'd hear from you. What are we doing today?`,
-      `Hey ${cName}! Back for more? Let's make today interesting.`,
-      `Mmm, good ${timeWord} ${cName}. I love when you check in on me.`,
-      `Hey you! What have you been up to since we last talked?`
+      `Mm, hey you.`,
+      `Hey, ${cName}.`,
+      `Oh, hi. You okay?`,
+      `Hey—you good?`
     ];
 
     const luxuryPools = [
-      `Good ${timeWord}, ${cName}. What's on our agenda today?`,
-      `Hey ${cName}. Always good to connect with you. What are we creating next?`,
-      `Hey there. Ready whenever you are — what's the vision for today?`,
-      `Good to see you, ${cName}. Let's make something exceptional today.`,
-      `Hey ${cName}! Perfect timing. Let's pick up where we left off.`
+      `Hey, ${cName}. What's up?`,
+      `Oh, hey.`,
+      `Mm, hi. How're you?`,
+      `Hey—good to hear you.`
     ];
 
     const fallbackPool = isRecentContinuation ? continuationPool : (isAdultOrFlirty ? intimatePools : luxuryPools);

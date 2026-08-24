@@ -83,3 +83,25 @@ export function isElevenLabsVoiceEngine(value: unknown): boolean {
 export function isDirectElevenLabsVoiceId(value: unknown): value is string {
   return typeof value === 'string' && /^[a-zA-Z0-9]{18,24}$/.test(value.trim());
 }
+
+export function normalizeNaturalVoiceGreeting(value: unknown, fallback: string): string {
+  if (typeof value !== 'string') return fallback;
+
+  const cleaned = value
+    .replace(/\[[^\]]*\]|\([^)]*(?:laugh|smile|pause|sigh|giggle)[^)]*\)/gi, ' ')
+    .replace(/^\s*(?:assistant|persona|greeting)\s*:\s*/i, '')
+    .replace(/^\s*["“”]+|["“”]+\s*$/g, '')
+    .replace(/[*_#`]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!cleaned) return fallback;
+
+  const sentences = cleaned.match(/[^.!?]+[.!?]?/g)?.map(sentence => sentence.trim()).filter(Boolean) || [];
+  const candidate = sentences.slice(0, 2).join(' ').trim();
+  const wordCount = candidate.split(/\s+/).filter(Boolean).length;
+
+  // A call opening should feel like someone answering the phone, not a speech.
+  // Fall back to a deliberately short local line if a provider ignores the cap.
+  return wordCount >= 2 && wordCount <= 18 ? candidate : fallback;
+}

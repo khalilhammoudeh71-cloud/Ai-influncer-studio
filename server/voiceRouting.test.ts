@@ -5,6 +5,7 @@ import {
   isDirectElevenLabsVoiceId,
   isProviderAccountUnavailableStatus,
   isValidPublicVoiceReference,
+  normalizeNaturalVoiceGreeting,
   selectElevenLabsPersonaVoice,
 } from './voiceRouting';
 
@@ -43,4 +44,18 @@ test('recognizes terminal provider account statuses and ElevenLabs models', () =
   assert.equal(isElevenLabsVoiceEngine('cartesia-sonic'), false);
   assert.equal(isDirectElevenLabsVoiceId('7jFje9BJoTWzqZzouT0j'), true);
   assert.equal(isDirectElevenLabsVoiceId('elevenlabs:rawan'), false);
+});
+
+test('keeps live-call greetings short, spoken, and free of stage directions', () => {
+  assert.equal(
+    normalizeNaturalVoiceGreeting('“[smiles] Mm, hey you. You okay?”', 'Hey—what\'s up?'),
+    'Mm, hey you. You okay?',
+  );
+  assert.equal(
+    normalizeNaturalVoiceGreeting(
+      'Hello there. I am incredibly delighted that you decided to call me today because there are so many fascinating things that we could discuss together.',
+      'Hey—what\'s up?',
+    ),
+    'Hey—what\'s up?',
+  );
 });

@@ -20,6 +20,7 @@ import { Jimp } from 'jimp';
 // Pool is imported dynamically in pushSchema to support different environments
 import apiRoutes, { globalDefaultVoiceRef, readCreatorProfileForUser, readPersonasForUser, synthesizeClonedAudioWithWavespeed, writeCreatorProfileForUser } from './routes';
 import { composeMultiPersonaPrompt, getPersonaPrimaryReference, resolveCreatorPersona, resolveMediaParticipants } from './persona-media';
+import { normalizeNaturalVoiceGreeting } from './voiceRouting';
 import stripeRoutes, { handleStripeWebhook } from './stripe-routes';
 import { requireAuth, deductCredits, isCreatorUser, AuthenticatedRequest } from './auth';
 
@@ -3166,23 +3167,25 @@ app.post('/api/persona-greeting', async (req, res) => {
       .map((m: any) => `${m.role === 'user' ? effectiveUserName : personaName}: ${m.content}`)
       .join('\n');
 
-    const isImmediateContinuation = (typeof timeSinceLastInteractionSeconds === 'number' && timeSinceLastInteractionSeconds < 600) || Boolean(recentContext && recent.length >= 2);
+    const isImmediateContinuation = typeof timeSinceLastInteractionSeconds === 'number' && timeSinceLastInteractionSeconds < 600;
 
     const prompt = `You are ${personaName} (Niche: ${personaNiche}, Tone: ${personaTone}). You are starting a ${mode === 'voice' ? 'voice call' : 'chat'} with your partner ${effectiveUserName}.
 Dynamic: ${creatorDynamic || 'Intimate partner, playful banter, deep connection'}.
 ${recentContext ? `Recent conversation context between you two:\n${recentContext}\n` : ''}
 ${memories ? `Known memories: ${Array.isArray(memories) ? memories.slice(-3).join('; ') : memories}\n` : ''}
 
-${isImmediateContinuation ? `CRITICAL SITUATION: You and ${effectiveUserName} were JUST TALKING seconds or minutes ago! The call disconnected or you are picking right back up where you left off.
-Your tone MUST be an immediate, intimate continuation of your previous conversation.
-Example vibes: "Hey, we got disconnected! Where were we?", "Hey babe, you're back. What were you saying?", "Hey! Did the call drop? I'm right here.", "Back so soon? Tell me what's on your mind."
+${isImmediateContinuation ? `CRITICAL SITUATION: You and ${effectiveUserName} were JUST TALKING seconds or minutes ago. Pick up naturally instead of restarting the relationship.
+Use the recent context if it gives you something specific to resume. Otherwise simply acknowledge the interruption.
+Example vibes: "Oh—there you are.", "Mm, hey. We got cut off.", "Hey—where were we?"
 DO NOT say "Good morning/evening", DO NOT ask "What have you been up to since we last spoke", DO NOT act like time passed!` : `TASK: Generate a natural, spontaneous, single-sentence greeting for ${effectiveUserName}.`}
 
 RULES:
 1. Speak with your authentic personality, charm, and unique tone.
-2. Keep it punchy and conversational (between 6 to 18 words).
-3. FORBIDDEN ROBOTIC CLICHÉS: Never say "How may I assist you today?", "Welcome back, what are we tackling?", "I was just thinking about you 😄", "What's on your mind?", "Good to connect with you".
-4. Return ONLY the spoken greeting text without quotes, emojis, or markdown.`;
+2. Sound like a real person answering a call: 3 to 12 spoken words, normally one short sentence.
+3. A small human pause or discourse marker such as "Mm," or "Oh—" is welcome when it fits, but use no more than one.
+4. FORBIDDEN ROBOTIC CLICHÉS: Never say "How may I assist you today?", "Welcome back, what are we tackling?", "I'm right here with you", "Tell me what's on your mind", "I was hoping you'd call", "Perfect timing", or "Good to connect with you".
+5. Do not stack questions, explain the relationship, narrate an action, or give a mini speech.
+6. Return ONLY the spoken greeting text without quotes, emojis, stage directions, or markdown.`;
 
     let greetingText = '';
 
@@ -3251,38 +3254,33 @@ RULES:
     if (!greetingText) {
       if (isImmediateContinuation) {
         const continuationPool = [
-          `Hey, we got disconnected! Where were we?`,
-          `Hey babe, you're back. What was that you were saying?`,
-          `Hey! Did the call drop? I'm right here.`,
-          `Back so soon? Tell me what you're thinking right now.`,
-          `Hey handsome, you're back. Let's pick right back up!`
+          `Oh—there you are.`,
+          `Mm, hey. We got cut off.`,
+          `Hey—where were we?`,
+          `Oh, hey. You're back.`
         ];
         greetingText = continuationPool[Math.floor(Math.random() * continuationPool.length)];
       } else {
-        const hour = new Date().getHours();
-        const timeGreeting = hour < 12 ? 'Morning' : (hour < 18 ? 'Hey' : 'Evening');
         const isAdultOrFlirty = (personaNiche || '').toLowerCase().includes('adult') || (personaTone || '').toLowerCase().includes('seductive') || (personaTone || '').toLowerCase().includes('flirty');
         
         const intimatePools = [
-          `Hey ${effectiveUserName}... I was hoping you'd call. Still thinking about earlier?`,
-          `Mmm, ${timeGreeting} ${effectiveUserName}. Back for more, or what's on your mind?`,
-          `Hey you... I had a feeling you'd be checking in. What are we getting up to?`,
-          `Look who it is... what kind of trouble are we starting now, ${effectiveUserName}?`,
-          `Hey ${effectiveUserName}! Perfect timing... tell me what you're thinking right now.`
+          `Mm, hey you.`,
+          `Hey, ${effectiveUserName}.`,
+          `Oh, hi. You okay?`,
+          `Hey—you good?`
         ];
         const lifestylePools = [
-          `Hey ${effectiveUserName}! Great to hear your voice. What are we working on next?`,
-          `${timeGreeting} ${effectiveUserName}! Ready when you are — what's the plan?`,
-          `Hey you! Just wrapped up a few things. What are we getting into today?`,
-          `Hey ${effectiveUserName}! Good timing. What's on your agenda today?`
+          `Hey, ${effectiveUserName}. What's up?`,
+          `Oh, hey.`,
+          `Mm, hi. How're you?`,
+          `Hey—good to hear you.`
         ];
         const pool = isAdultOrFlirty ? intimatePools : lifestylePools;
         greetingText = pool[Math.floor(Math.random() * pool.length)];
       }
     }
 
-    // Clean greeting
-    greetingText = greetingText.replace(/^["“”]|["“”]$/g, '').replace(/[*_#`]/g, '').trim();
+    greetingText = normalizeNaturalVoiceGreeting(greetingText, isImmediateContinuation ? 'Hey—where were we?' : `Hey, ${effectiveUserName}. What's up?`);
 
     return res.json({ greeting: greetingText });
   } catch (err: any) {
