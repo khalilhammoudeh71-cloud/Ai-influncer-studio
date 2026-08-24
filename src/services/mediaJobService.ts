@@ -1,4 +1,4 @@
-import { authFetch, type PersonaMediaRequest, type PersonaMediaResult } from './imageService';
+import { authFetch, type PersonaMediaQualityReport, type PersonaMediaRequest, type PersonaMediaResult } from './imageService';
 import { compressForUpload } from '../utils/imageProcessing';
 
 export type MediaJobKind = 'image' | 'video' | 'edit' | 'upscale' | 'avatar';
@@ -15,6 +15,8 @@ export interface MediaJobResult {
   participants?: string[];
   isRevision?: boolean;
   parentImageUrl?: string;
+  quality?: PersonaMediaQualityReport | null;
+  qualityRetried?: boolean;
 }
 
 export interface MediaJob {
@@ -180,6 +182,8 @@ export async function requestPersonaMediaJob(params: PersonaMediaRequest): Promi
     participants: result.participants,
     isRevision: result.isRevision,
     parentImageUrl: result.parentImageUrl,
+    quality: result.quality,
+    qualityRetried: result.qualityRetried,
   };
 }
 

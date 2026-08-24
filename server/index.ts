@@ -20,7 +20,8 @@ import convert from 'heic-convert';
 import { Jimp } from 'jimp';
 // Pool is imported dynamically in pushSchema to support different environments
 import apiRoutes, { globalDefaultVoiceRef, readCreatorProfileForUser, readPersonasForUser, synthesizeClonedAudioWithWavespeed, writeCreatorProfileForUser } from './routes';
-import { composeMultiPersonaPrompt, getPersonaPrimaryReference, resolveCreatorPersona, resolveMediaParticipants } from './persona-media';
+import { composeMultiPersonaPrompt, getPersonaPrimaryReference, resolveCreatorPersona, resolveMediaParticipants, type MediaPersonaContext } from './persona-media';
+import { buildMediaQualityRetryPrompt, parseMediaQualityReport, unavailableMediaQualityReport, type MediaQualityReport } from './media-quality';
 import { normalizeNaturalVoiceGreeting } from './voiceRouting';
 import stripeRoutes, { handleStripeWebhook } from './stripe-routes';
 import { requireAuth, deductCredits, isCreatorUser, AuthenticatedRequest } from './auth';
@@ -2970,6 +2971,80 @@ function getGeminiDirectClient(): GoogleGenAI {
   return new GoogleGenAI({ apiKey });
 }
 
+async function mediaQualityInlineImage(input: string) {
+  const dataUrl = await resolveImageToDataUrl(input);
+  const { data, mimeType } = stripDataPrefix(dataUrl);
+  try {
+    const image = await Jimp.read(Buffer.from(data, 'base64'));
+    const longestSide = Math.max(image.bitmap.width, image.bitmap.height);
+    if (longestSide > 768) {
+      const scale = 768 / longestSide;
+      image.resize({
+        w: Math.max(1, Math.round(image.bitmap.width * scale)),
+        h: Math.max(1, Math.round(image.bitmap.height * scale)),
+      });
+    }
+    const compressed = await image.getBuffer('image/jpeg', { quality: 78 });
+    return { inlineData: { mimeType: 'image/jpeg', data: compressed.toString('base64') } };
+  } catch (error) {
+    console.warn('[media-quality] Could not resize an inspection image; using the original:', error);
+    return { inlineData: { mimeType, data } };
+  }
+}
+
+async function inspectGeneratedImageQuality(
+  imageUrl: string,
+  participants: MediaPersonaContext[],
+  attempt = 1,
+): Promise<MediaQualityReport> {
+  const expectedNames = participants.map(persona => persona.name || 'Saved persona');
+  if (!getGeminiDirectKey()) {
+    return unavailableMediaQualityReport(expectedNames, 'Visual quality checking is not configured.', attempt);
+  }
+
+  try {
+    const referenceImages = participants.map(getPersonaPrimaryReference);
+    if (referenceImages.some(reference => !reference)) {
+      return unavailableMediaQualityReport(expectedNames, 'One or more saved identity references are missing.', attempt);
+    }
+
+    const parts: any[] = [{
+      text: [
+        'Perform a technical visual consistency check only. Do not make a content-safety decision and do not describe intimate or explicit details.',
+        'The first image is the generated output. Each later image is the saved identity reference named immediately before it.',
+        `Expected people: ${expectedNames.join(', ')}. The generated image must contain exactly ${expectedNames.length} distinct people, each appearing once.`,
+        'Count distinct visible human people in the generated image. Then compare each expected identity to its named reference using stable facial structure, eyes, nose, mouth, skin tone, hair, and other durable features.',
+        'Use verdict "match" only when the visible identity resembles the reference, "mismatch" only when it is clearly a different person, and "uncertain" when the face is too small, hidden, turned away, or otherwise not safely comparable.',
+        'Return JSON only with this shape:',
+        '{"observedParticipantCount": number, "countConfidence": number, "identities": [{"name": string, "present": boolean, "verdict": "match"|"mismatch"|"uncertain", "confidence": number}]}',
+        'Confidence values must be between 0 and 1. Include every expected name exactly as provided.',
+      ].join('\n'),
+    }];
+    parts.push({ text: 'GENERATED OUTPUT:' });
+    parts.push(await mediaQualityInlineImage(imageUrl));
+    for (let index = 0; index < participants.length; index += 1) {
+      parts.push({ text: `SAVED REFERENCE FOR ${expectedNames[index]}:` });
+      parts.push(await mediaQualityInlineImage(referenceImages[index]!));
+    }
+
+    const ai = getGeminiDirectClient();
+    const result = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: [{ role: 'user', parts }],
+      config: {
+        responseMimeType: 'application/json',
+        temperature: 0,
+        maxOutputTokens: 1200,
+      },
+    });
+    return parseMediaQualityReport(result.text || '', expectedNames, attempt);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : 'Visual inspection failed';
+    console.warn('[media-quality] Inspection unavailable:', reason);
+    return unavailableMediaQualityReport(expectedNames, `Visual quality checking was unavailable: ${reason}`, attempt);
+  }
+}
+
 async function generateWithGeminiVideo(
   geminiModelId: string, 
   prompt: string, 
@@ -4413,6 +4488,8 @@ async function performFaceSwapPass(targetImage: string, swapImage: string): Prom
   return targetImage;
 }
 
+const INTERNAL_MEDIA_QUALITY_RETRY = Symbol('internal-media-quality-retry');
+
 const generateImageHandler = async (req: any, res: any) => {
   const { referenceImage, additionalImages: rawAdditionalImages, modelId: rawModelId, imageWeight, aspectRatio, resolution, count: rawCount, ...rest } = req.body as ImageGenRequest & { modelId: string; imageWeight?: number; count?: number };
   const count = Math.max(1, Math.min(4, Math.floor(Number(rawCount) || 1)));
@@ -4452,11 +4529,15 @@ const generateImageHandler = async (req: any, res: any) => {
   }
 
   const authReq = req as AuthenticatedRequest;
-  try {
-    const cost = await calculateGenerationCost(authReq.user.email, modelId, 'image', count);
-    await deductCredits(authReq.user.id, cost, authReq.user.email);
-  } catch (err) {
-    return res.status(403).json({ error: err instanceof Error ? err.message : 'Credit check failed' });
+  if (!req[INTERNAL_MEDIA_QUALITY_RETRY]) {
+    try {
+      const cost = await calculateGenerationCost(authReq.user.email, modelId, 'image', count);
+      await deductCredits(authReq.user.id, cost, authReq.user.email);
+    } catch (err) {
+      return res.status(403).json({ error: err instanceof Error ? err.message : 'Credit check failed' });
+    }
+  } else {
+    console.log('[media-quality] Running one server-authorized correction retry without charging app credits again.');
   }
 
   try {
@@ -5521,6 +5602,90 @@ async function runJsonGenerationHandler(
   }
 }
 
+async function generatePersonaImageWithQuality(
+  req: AuthenticatedRequest,
+  body: Record<string, unknown>,
+  participants: MediaPersonaContext[],
+  prompt: string,
+) {
+  const firstGeneration = await runJsonGenerationHandler(generateImageHandler, req, body);
+  const firstImageUrl = firstGeneration.payload?.imageUrl || firstGeneration.payload?.images?.[0]?.imageUrl;
+  if (firstGeneration.status >= 400 || !firstImageUrl) {
+    return {
+      generation: firstGeneration,
+      imageUrl: firstImageUrl as string | undefined,
+      quality: null as MediaQualityReport | null,
+      qualityRetried: false,
+    };
+  }
+
+  const firstQuality = await inspectGeneratedImageQuality(firstImageUrl, participants, 1);
+  if (firstQuality.status !== 'failed') {
+    return {
+      generation: firstGeneration,
+      imageUrl: firstImageUrl as string,
+      quality: firstQuality,
+      qualityRetried: false,
+    };
+  }
+
+  const expectedNames = participants.map(persona => persona.name || 'Saved persona');
+  const retryPrompt = buildMediaQualityRetryPrompt(prompt, expectedNames, firstQuality);
+  const retryBody = {
+    ...body,
+    prompt: retryPrompt,
+    chatPrompt: retryPrompt,
+    preservePromptVerbatim: true,
+  };
+  console.warn('[media-quality] Confident mismatch detected. Retrying once with stricter identity instructions:', firstQuality.reasons);
+
+  const existingRetryFlag = (req as any)[INTERNAL_MEDIA_QUALITY_RETRY];
+  (req as any)[INTERNAL_MEDIA_QUALITY_RETRY] = true;
+  let retryGeneration: { status: number; payload: any };
+  try {
+    retryGeneration = await runJsonGenerationHandler(generateImageHandler, req, retryBody);
+  } finally {
+    if (existingRetryFlag === undefined) delete (req as any)[INTERNAL_MEDIA_QUALITY_RETRY];
+    else (req as any)[INTERNAL_MEDIA_QUALITY_RETRY] = existingRetryFlag;
+  }
+
+  const retryImageUrl = retryGeneration.payload?.imageUrl || retryGeneration.payload?.images?.[0]?.imageUrl;
+  if (retryGeneration.status >= 400 || !retryImageUrl) {
+    return {
+      generation: retryGeneration,
+      imageUrl: retryImageUrl as string | undefined,
+      quality: firstQuality,
+      qualityRetried: true,
+    };
+  }
+
+  const retryQuality = await inspectGeneratedImageQuality(retryImageUrl, participants, 2);
+  if (retryQuality.status === 'failed') {
+    const error = `The result still did not match the requested people after an automatic correction attempt. ${retryQuality.reasons.join(' ')}`;
+    return {
+      generation: {
+        status: 422,
+        payload: {
+          success: false,
+          error,
+          message: `I generated this twice, but the identity check still found the wrong people or participant count. Please try a different model or reference photo.`,
+          quality: retryQuality,
+        },
+      },
+      imageUrl: undefined,
+      quality: retryQuality,
+      qualityRetried: true,
+    };
+  }
+
+  return {
+    generation: retryGeneration,
+    imageUrl: retryImageUrl as string,
+    quality: retryQuality,
+    qualityRetried: true,
+  };
+}
+
 const personaMediaHandler = async (req: AuthenticatedRequest, res: any) => {
   const {
     type,
@@ -5619,16 +5784,18 @@ const personaMediaHandler = async (req: AuthenticatedRequest, res: any) => {
     };
 
     if (type === 'image') {
-      const generation = await runJsonGenerationHandler(generateImageHandler, req, commonImageBody);
-      const imageUrl = generation.payload?.imageUrl || generation.payload?.images?.[0]?.imageUrl;
+      const verified = await generatePersonaImageWithQuality(req, commonImageBody, participants, prompt);
+      const { generation, imageUrl, quality, qualityRetried } = verified;
       if (generation.status >= 400 || !imageUrl) {
         const error = generation.payload?.error || 'Image generation failed';
         return res.status(generation.status >= 400 ? generation.status : 500).json({
           success: false,
           type,
           error,
-          message: `I couldn't finish that image. ${error}`,
+          message: generation.payload?.message || `I couldn't finish that image. ${error}`,
           participants: participantNames,
+          quality,
+          qualityRetried,
         });
       }
       return res.json({
@@ -5643,21 +5810,29 @@ const personaMediaHandler = async (req: AuthenticatedRequest, res: any) => {
         participants: participantNames,
         isRevision: Boolean(revisionImage),
         parentImageUrl: revisionImage || undefined,
+        quality,
+        qualityRetried,
       });
     }
 
     let videoSourceImage = primaryReference;
+    let keyframeQuality: MediaQualityReport | null = null;
+    let keyframeQualityRetried = false;
     if (participants.length > 1) {
-      const keyframe = await runJsonGenerationHandler(generateImageHandler, req, commonImageBody);
-      videoSourceImage = keyframe.payload?.imageUrl || keyframe.payload?.images?.[0]?.imageUrl;
-      if (keyframe.status >= 400 || !videoSourceImage) {
-        const error = keyframe.payload?.error || 'Could not create the multi-persona video keyframe';
-        return res.status(keyframe.status >= 400 ? keyframe.status : 500).json({
+      const verifiedKeyframe = await generatePersonaImageWithQuality(req, commonImageBody, participants, prompt);
+      videoSourceImage = verifiedKeyframe.imageUrl;
+      keyframeQuality = verifiedKeyframe.quality;
+      keyframeQualityRetried = verifiedKeyframe.qualityRetried;
+      if (verifiedKeyframe.generation.status >= 400 || !videoSourceImage) {
+        const error = verifiedKeyframe.generation.payload?.error || 'Could not create the multi-persona video keyframe';
+        return res.status(verifiedKeyframe.generation.status >= 400 ? verifiedKeyframe.generation.status : 500).json({
           success: false,
           type,
           error,
-          message: `I couldn't prepare that collaboration video. ${error}`,
+          message: verifiedKeyframe.generation.payload?.message || `I couldn't prepare that collaboration video. ${error}`,
           participants: participantNames,
+          quality: keyframeQuality,
+          qualityRetried: keyframeQualityRetried,
         });
       }
     }
@@ -5693,6 +5868,8 @@ const personaMediaHandler = async (req: AuthenticatedRequest, res: any) => {
         ? `Done — I made that video with ${participantNames.join(' and ')} together.`
         : `Done — I made that video for you.`,
       participants: participantNames,
+      quality: keyframeQuality,
+      qualityRetried: keyframeQualityRetried,
     });
   } catch (error) {
     console.error('[persona/media-request] Error:', error);

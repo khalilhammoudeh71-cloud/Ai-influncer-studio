@@ -458,6 +458,22 @@ export interface PersonaMediaRequest {
   allowNsfw?: boolean;
 }
 
+export interface PersonaMediaQualityReport {
+  status: 'passed' | 'failed' | 'unavailable';
+  expectedParticipantCount: number;
+  observedParticipantCount: number | null;
+  countConfidence: number | null;
+  identities: Array<{
+    name: string;
+    present: boolean | null;
+    verdict: 'match' | 'mismatch' | 'uncertain';
+    confidence: number | null;
+  }>;
+  reasons: string[];
+  attempt: number;
+  checkedAt: string;
+}
+
 export interface PersonaMediaResult {
   success: boolean;
   type: 'image' | 'video';
@@ -469,6 +485,8 @@ export interface PersonaMediaResult {
   participants?: string[];
   isRevision?: boolean;
   parentImageUrl?: string;
+  quality?: PersonaMediaQualityReport | null;
+  qualityRetried?: boolean;
 }
 
 export async function requestPersonaMedia(params: PersonaMediaRequest): Promise<PersonaMediaResult> {

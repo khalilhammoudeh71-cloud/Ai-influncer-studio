@@ -10,6 +10,7 @@ import {
   Mic2,
   RefreshCw,
   RotateCcw,
+  ShieldCheck,
   Square,
   Sparkles,
   Trash2,
@@ -236,6 +237,19 @@ export default function MediaJobCenter({ isOpen, onClose, onOpenResult, onJobCom
                           <p className="text-[11px] text-zinc-500 mt-1 truncate">
                             {job.usedFallback ? 'Fallback · ' : ''}{job.modelId || 'Provider default'} · Attempt {job.attempt || 1}
                           </p>
+                        )}
+                        {complete && job.result?.quality && (
+                          <div className={cn(
+                            'mt-2 inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-wider',
+                            job.result.quality.status === 'passed'
+                              ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300'
+                              : 'border-white/10 bg-white/[0.04] text-zinc-400',
+                          )} title={job.result.quality.reasons.join(' ')}>
+                            <ShieldCheck size={11} />
+                            {job.result.quality.status === 'passed'
+                              ? job.result.qualityRetried ? 'Auto-corrected and checked' : 'Identity checked'
+                              : 'Visual check unavailable'}
+                          </div>
                         )}
                       </div>
                     </div>
