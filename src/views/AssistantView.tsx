@@ -13,7 +13,29 @@ import VoiceNoteBubble from '../components/VoiceNoteBubble';
 import PersonaAvatar from '../components/PersonaAvatar';
 import { getCreatorProfile } from '../utils/creatorProfile';
 import { accountLocalStorage } from '../utils/accountStorage';
+import {
+  archiveConversationRecords,
+  clearConversationHistory,
+  deleteConversationRecord,
+  loadConversationContext,
+  loadRecentConversation,
+  mergeUniqueConversationRecords,
+  migrateRecentConversationToArchive,
+  saveRecentConversation,
+  searchConversationMemories,
+  type ConversationRecord,
+} from '../utils/conversationContinuity';
 import { resolveMediaModelFromPrompt } from '../utils/mediaModelResolver';
+import { resolveImageRevisionContext, type GeneratedImageMessage } from '../utils/mediaRevisionContext';
+import {
+  VOICE_IDENTITY_STORAGE_KEY,
+  createVoiceIdentityProfile,
+  extractVoiceFeatureVector,
+  isEnrolledSpeaker,
+  parseVoiceIdentityProfile,
+  scoreVoiceIdentity,
+  type VoiceIdentityProfile,
+} from '../utils/voiceIdentity';
 import {
   VOICE_ACCURACY_STORAGE_KEY,
   addVoiceTerms,
@@ -73,11 +95,38 @@ async function copyTextToClipboard(text: string) {
   if (!copied) throw new Error('Clipboard access was denied');
 }
 
+async function copyImageBlobToClipboard(imageUrl: string) {
+  if (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined' || !window.isSecureContext) {
+    throw new Error('Image clipboard is not available');
+  }
+
+  const response = await fetch(imageUrl);
+  if (!response.ok) throw new Error('Could not load the generated image');
+  const sourceBlob = await response.blob();
+  let clipboardBlob = sourceBlob;
+
+  if (sourceBlob.type !== 'image/png') {
+    const bitmap = await createImageBitmap(sourceBlob);
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Could not prepare image for clipboard');
+    context.drawImage(bitmap, 0, 0);
+    bitmap.close?.();
+    clipboardBlob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Could not prepare PNG image')), 'image/png');
+    });
+  }
+
+  await navigator.clipboard.write([
+    new ClipboardItem({ [clipboardBlob.type || 'image/png']: clipboardBlob }),
+  ]);
+}
+
 // ── localStorage helpers ──────────────────────────────────
-const HISTORY_KEY = (personaId: string) => `chat_history_${personaId}`;
 const MEMORY_KEY = (personaId: string) => `persona_memories_${personaId}`;
 const USER_NAME_KEY = 'persona_user_name';
-const MAX_STORED = 300; // Complete cross-session conversation capacity
 
 const INVALID_NAMES = new Set([
   'allowing', 'serious', 'asking', 'done', 'trying', 'thinking', 'looking', 
@@ -153,21 +202,14 @@ function correctSpeechPhonetics(transcript: string, activePersonaName?: string):
 }
 
 function loadHistory(personaId: string): ChatMessage[] {
-  try {
-    const raw = accountLocalStorage.getItem(HISTORY_KEY(personaId));
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return parsed
-      .filter((m: any) => m && m.type !== 'loading')
-      .map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) }));
-  } catch { return []; }
+  return loadRecentConversation(personaId).map(record => ({
+    ...record,
+    timestamp: record.timestamp instanceof Date ? record.timestamp : new Date(record.timestamp),
+  })) as ChatMessage[];
 }
 
 function saveHistory(personaId: string, msgs: ChatMessage[]) {
-  try {
-    const toStore = msgs.filter(m => m && m.type !== 'loading').slice(-MAX_STORED);
-    accountLocalStorage.setItem(HISTORY_KEY(personaId), JSON.stringify(toStore));
-  } catch { /* quota */ }
+  saveRecentConversation(personaId, msgs as ConversationRecord[]);
 }
 
 function loadPersonaMemories(personaId: string): string[] {
@@ -236,17 +278,40 @@ interface Props {
 type MessageType = 'text' | 'image' | 'video' | 'voice_note' | 'loading' | 'error';
 type MessageRole = 'user' | 'persona';
 
+interface ChatAttachment {
+  url: string;
+  type: 'image' | 'video' | 'file';
+  name?: string;
+  base64?: string;
+  sourceMessageId?: string;
+  sourceImageUrl?: string;
+  sourcePrompt?: string;
+  sourceRootPrompt?: string;
+  sourceRevisionHistory?: string[];
+  sourceParticipants?: string[];
+  sourceModelId?: string;
+  sourceModelName?: string;
+}
+
 interface ChatMessage {
   id: string;
   role: MessageRole;
   type: MessageType;
   content: string;
   timestamp: Date;
-  attachment?: { url: string; type: 'image' | 'video' | 'file'; name?: string; base64?: string };
+  attachment?: ChatAttachment;
   prompt?: string;
+  rootPrompt?: string;
+  revisionHistory?: string[];
+  parentMediaId?: string;
+  participants?: string[];
+  modelId?: string;
+  modelName?: string;
   audioUrl?: string;
   duration?: number;
   transcript?: string;
+  source?: 'voice' | 'text' | 'system';
+  rawContent?: string;
 }
 
 interface CallTranscriptItem {
@@ -255,8 +320,30 @@ interface CallTranscriptItem {
   type?: 'text' | 'image' | 'video' | 'loading' | 'error';
   content: string;
   prompt?: string;
+  rootPrompt?: string;
+  revisionHistory?: string[];
+  parentMediaId?: string;
+  participants?: string[];
+  modelId?: string;
+  modelName?: string;
   source?: 'voice' | 'typed';
   rawContent?: string;
+}
+
+function getAttachmentRevisionSource(attachment?: ChatAttachment | null): GeneratedImageMessage | undefined {
+  if (!attachment?.sourceMessageId || !attachment.sourceImageUrl) return undefined;
+  return {
+    id: attachment.sourceMessageId,
+    role: 'persona',
+    type: 'image',
+    content: attachment.sourceImageUrl,
+    prompt: attachment.sourcePrompt,
+    rootPrompt: attachment.sourceRootPrompt,
+    revisionHistory: attachment.sourceRevisionHistory,
+    participants: attachment.sourceParticipants,
+    modelId: attachment.sourceModelId,
+    modelName: attachment.sourceModelName,
+  };
 }
 
 const VOICE_CALIBRATION_SENTENCES = [
@@ -432,10 +519,15 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   };
 
   const [messages, setMessages] = useState<ChatMessage[]>(() => loadHistory(propActivePersona.id));
+  const messagesRef = useRef<ChatMessage[]>(messages);
   const [input, setInput] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [savingMsgId, setSavingMsgId] = useState<string | null>(null);
   const [savedMsgIds, setSavedMsgIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   const [activeSegment, setActiveSegment] = useState<'chat' | 'replies'>('chat');
   const [replyInput, setReplyInput] = useState('');
@@ -444,7 +536,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   const [isReferenceModalOpen, setIsReferenceModalOpen] = useState(false);
 
   // ── Multimodal Media Attachment States ──────────────────
-  const [chatAttachment, setChatAttachment] = useState<{ url: string; base64: string; type: 'image' | 'video' | 'file'; name: string } | null>(null);
+  const [chatAttachment, setChatAttachment] = useState<ChatAttachment | null>(null);
+  const [copiedGeneratedImage, setCopiedGeneratedImage] = useState<(GeneratedImageMessage & { copiedAt: number }) | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const callFileInputRef = useRef<HTMLInputElement>(null);
   const primaryPhotoInputRef = useRef<HTMLInputElement>(null);
@@ -531,6 +624,77 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     if (e.target) e.target.value = '';
   };
 
+  const handleCopyGeneratedImage = async (msg: ChatMessage) => {
+    if (msg.type !== 'image' || !msg.content) return;
+    setCopiedGeneratedImage({
+      id: msg.id,
+      role: msg.role,
+      type: msg.type,
+      content: msg.content,
+      prompt: msg.prompt,
+      rootPrompt: msg.rootPrompt,
+      revisionHistory: msg.revisionHistory,
+      participants: msg.participants,
+      modelId: msg.modelId,
+      modelName: msg.modelName,
+      copiedAt: Date.now(),
+    });
+
+    try {
+      await copyImageBlobToClipboard(msg.content);
+    } catch {
+      // Cross-origin image hosts do not always expose their bytes to the
+      // browser. Copying the URL still gives the paste handler a reliable
+      // app-internal fallback for this exact generated image.
+      await copyTextToClipboard(msg.content).catch(() => undefined);
+    }
+    toast.success('Image copied — paste it into the prompt to modify it');
+  };
+
+  const handleChatPaste = async (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const recentCopiedImage = copiedGeneratedImage && Date.now() - copiedGeneratedImage.copiedAt < 2 * 60 * 1000
+      ? copiedGeneratedImage
+      : null;
+    const clipboardItems = Array.from(event.clipboardData?.items || []);
+    const imageItem = clipboardItems.find(item => item.type.startsWith('image/'));
+    const pastedImage = imageItem?.getAsFile();
+    const pastedText = event.clipboardData?.getData('text/plain')?.trim();
+    const isInternalImageUrl = Boolean(recentCopiedImage?.content && pastedText === recentCopiedImage.content);
+
+    if (!pastedImage && !isInternalImageUrl) return;
+    event.preventDefault();
+
+    try {
+      const base64 = pastedImage
+        ? await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(pastedImage);
+          })
+        : recentCopiedImage!.content!;
+      const source = recentCopiedImage;
+      setChatAttachment({
+        url: source?.content || base64,
+        base64,
+        type: 'image',
+        name: source ? 'Copied generated image' : pastedImage?.name || 'Pasted image',
+        sourceMessageId: source?.id,
+        sourceImageUrl: source?.content,
+        sourcePrompt: source?.prompt,
+        sourceRootPrompt: source?.rootPrompt,
+        sourceRevisionHistory: source?.revisionHistory,
+        sourceParticipants: source?.participants,
+        sourceModelId: source?.modelId,
+        sourceModelName: source?.modelName,
+      });
+      setLastUploadedReference(base64);
+      toast.success('Image pasted — type the change you want');
+    } catch {
+      toast.error('Could not paste that image');
+    }
+  };
+
   // ── Multi-Sample Voice Clone States ─────────────────────
   const [showVoiceCloneModal, setShowVoiceCloneModal] = useState(false);
   const [uploadedVoiceSamples, setUploadedVoiceSamples] = useState<Array<{ name: string; size: string; type: string; base64: string }>>([]);
@@ -602,13 +766,30 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   const [speakerOn, setSpeakerOn] = useState(true);
   const [callTranscript, setCallTranscript] = useState<CallTranscriptItem[]>([]);
   const callTranscriptRef = useRef<CallTranscriptItem[]>([]);
-  const [activeCallMedia, setActiveCallMedia] = useState<{ type: 'image' | 'video'; url: string; prompt?: string } | null>(null);
+  const [activeCallMedia, setActiveCallMedia] = useState<{ type: 'image' | 'video'; url: string; prompt?: string; messageId?: string } | null>(null);
   const [fullScreenModalMedia, setFullScreenModalMedia] = useState<{ type: 'image' | 'video'; url: string; prompt?: string } | null>(null);
   const [lightboxMedia, setLightboxMedia] = useState<{ url: string; prompt?: string } | null>(null);
   const [voiceAccuracyProfile, setVoiceAccuracyProfile] = useState<VoiceAccuracyProfile>(() =>
     parseVoiceAccuracyProfile(accountLocalStorage.getItem(VOICE_ACCURACY_STORAGE_KEY)),
   );
   const voiceAccuracyProfileRef = useRef(voiceAccuracyProfile);
+  const [voiceIdentityProfile, setVoiceIdentityProfile] = useState<VoiceIdentityProfile | null>(() =>
+    parseVoiceIdentityProfile(accountLocalStorage.getItem(VOICE_IDENTITY_STORAGE_KEY)),
+  );
+  const voiceIdentityProfileRef = useRef<VoiceIdentityProfile | null>(voiceIdentityProfile);
+  const [voiceEnrollmentStatus, setVoiceEnrollmentStatus] = useState<'idle' | 'recording' | 'ready' | 'error'>(
+    voiceIdentityProfile ? 'ready' : 'idle',
+  );
+  const [voiceEnrollmentSeconds, setVoiceEnrollmentSeconds] = useState(0);
+  const [ignoredSpeakerCount, setIgnoredSpeakerCount] = useState(0);
+  const [lastSpeakerMatchScore, setLastSpeakerMatchScore] = useState<number | null>(null);
+  const voiceFeatureFramesRef = useRef<Array<{ at: number; vector: number[] }>>([]);
+  const voiceEnrollmentFramesRef = useRef<number[][]>([]);
+  const voiceEnrollmentActiveRef = useRef(false);
+  const voiceEnrollmentTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const voiceEnrollmentFinishRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const voiceUtteranceStartedAtRef = useRef<number | null>(null);
+  const lastVoiceFeatureCaptureAtRef = useRef(0);
   const [showVoiceAccuracyPanel, setShowVoiceAccuracyPanel] = useState(false);
   const [editingVoiceTranscriptId, setEditingVoiceTranscriptId] = useState<string | null>(null);
   const [voiceCorrectionDraft, setVoiceCorrectionDraft] = useState('');
@@ -642,6 +823,10 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   }, [voiceAccuracyProfile]);
 
   useEffect(() => {
+    voiceIdentityProfileRef.current = voiceIdentityProfile;
+  }, [voiceIdentityProfile]);
+
+  useEffect(() => {
     calibrationStepRef.current = calibrationStep;
   }, [calibrationStep]);
 
@@ -650,7 +835,10 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   }, [callTranscript]);
 
   const handleUpdateImageInChat = (oldUrl: string, newUrl: string) => {
-    setMessages(prev => prev.map(m => (m.type === 'image' && m.content === oldUrl) ? { ...m, content: newUrl } : m));
+    const next = messagesRef.current.map(m => (m.type === 'image' && m.content === oldUrl) ? { ...m, content: newUrl } : m);
+    messagesRef.current = next;
+    setMessages(next);
+    saveHistory(selectedPersonaId, next);
     if (activeCallMedia?.type === 'image' && activeCallMedia.url === oldUrl) {
       setActiveCallMedia({ ...activeCallMedia, url: newUrl });
     }
@@ -835,6 +1023,26 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 
         const avgEnergy = binCount > 0 ? (sum / binCount) / 255 : 0;
 
+        // Capture a compact spectral signature while someone is speaking.
+        // Only feature vectors are retained; microphone audio never leaves
+        // this analyser or gets stored in the speaker profile.
+        const now = Date.now();
+        const featureThreshold = Math.max(
+          voiceEnrollmentActiveRef.current ? 0.045 : 0.07,
+          dynamicNoiseFloor + 0.015,
+        );
+        if (avgEnergy > featureThreshold && now - lastVoiceFeatureCaptureAtRef.current >= 45) {
+          const vector = extractVoiceFeatureVector(buffer, ctx.sampleRate, analyser.fftSize);
+          if (vector) {
+            lastVoiceFeatureCaptureAtRef.current = now;
+            voiceFeatureFramesRef.current.push({ at: now, vector });
+            voiceFeatureFramesRef.current = voiceFeatureFramesRef.current.filter(frame => frame.at >= now - 7000);
+            if (voiceEnrollmentActiveRef.current) {
+              voiceEnrollmentFramesRef.current.push(vector);
+            }
+          }
+        }
+
         // If the persona is actively speaking, detect user vocal barge-in immediately
         if (isAgentSpeakingRef.current) {
           // Adapt smoothly to ambient room noise
@@ -898,6 +1106,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     const transcriptCommittedAt = performance.now();
     const speechStartedAt = voiceSpeechStartedAtRef.current ?? transcriptCommittedAt;
     voiceSpeechStartedAtRef.current = null;
+    const utteranceStartedAt = voiceUtteranceStartedAtRef.current ?? Date.now() - 4500;
+    voiceUtteranceStartedAtRef.current = null;
 
     const activeCalibrationStep = calibrationStepRef.current;
     if (activeCalibrationStep !== null) {
@@ -910,6 +1120,31 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       setLiveUserSpeech('');
       setCallStatus('listening');
       return;
+    }
+
+    // Enrollment speech is used only to build the local profile; it should not
+    // become a chat turn or trigger persona actions.
+    if (voiceEnrollmentActiveRef.current) {
+      setLiveUserSpeech('');
+      setCallStatus('listening');
+      return;
+    }
+
+    const identityProfile = voiceIdentityProfileRef.current;
+    if (identityProfile?.enabled) {
+      const candidateVectors = voiceFeatureFramesRef.current
+        .filter(frame => frame.at >= utteranceStartedAt - 120 && frame.at <= Date.now() + 120)
+        .map(frame => frame.vector);
+      const score = scoreVoiceIdentity(identityProfile, candidateVectors);
+      setLastSpeakerMatchScore(score);
+      const enrolledSpeaker = isEnrolledSpeaker(identityProfile, candidateVectors);
+      if (enrolledSpeaker === false) {
+        setIgnoredSpeakerCount(count => count + 1);
+        setLiveUserSpeech('');
+        setCallStatus('listening');
+        toast('Background speaker ignored', { icon: '🔒', duration: 1800, id: 'speaker-lock-ignored' });
+        return;
+      }
     }
 
     const now = Date.now();
@@ -1018,6 +1253,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 
           if (voiceSpeechStartedAtRef.current === null) {
             voiceSpeechStartedAtRef.current = performance.now();
+            voiceUtteranceStartedAtRef.current = Date.now();
           }
 
           setLiveUserSpeech(partial);
@@ -1218,6 +1454,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 
         if (voiceSpeechStartedAtRef.current === null) {
           voiceSpeechStartedAtRef.current = performance.now();
+          voiceUtteranceStartedAtRef.current = Date.now();
         }
 
         // Browser fallback uses acoustic activity plus non-echo words. This
@@ -1616,6 +1853,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     setCallInput('');
 
     const sentCallAttachment = chatAttachment;
+    const callRevisionSource = getAttachmentRevisionSource(sentCallAttachment);
     setChatAttachment(null);
     
     const userMsg: CallTranscriptItem & { attachment?: typeof sentCallAttachment } = {
@@ -1632,13 +1870,27 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     const updatedHistory = [...callTranscriptRef.current.filter(t => t.content.indexOf('Calling') !== 0), userMsg];
     callTranscriptRef.current = updatedHistory;
     setCallTranscript(updatedHistory);
+    appendConversationMessages([{
+      id: userMsg.id,
+      role: 'user',
+      type: 'text',
+      content: text,
+      timestamp: new Date(),
+      source: userMsg.source === 'voice' ? 'voice' : 'text',
+      rawContent: voiceMeta?.rawTranscript,
+      ...(sentCallAttachment ? { attachment: sentCallAttachment } : {}),
+    }]);
     
     setCallStatus('thinking');
 
     try {
-      const priorHistory = loadHistory(activePersona.id);
       const personaMemories = loadPersonaMemories(activePersona.id);
       const creator = getCreatorProfile();
+      const conversationContext = mergeUniqueConversationRecords(
+        searchConversationMemories(activePersona.id, text, 12),
+        loadConversationContext(activePersona.id, 60),
+        messagesRef.current.slice(-60) as ConversationRecord[],
+      ).filter(record => record.type !== 'loading');
 
       const controller = new AbortController();
       activeCallAbortControllerRef.current = controller;
@@ -1790,15 +2042,18 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           creatorProfile: creator,
           userName: creator.name || getStoredUserName(),
           attachedImage: sentCallAttachment?.type === 'image' ? sentCallAttachment.base64 : undefined,
-          messages: updatedHistory.slice(-15).map(m => ({
+          messages: conversationContext.map(m => ({
+            id: m.id,
             role: m.role === 'user' ? 'user' : 'model',
             content: m.type === 'image' 
               ? `[Persona generated and sent a photo of herself: "${m.prompt || 'photo requested by user'}". User is looking at the photo on screen.]` 
               : m.type === 'video'
               ? `[Persona generated and sent a video clip to the user's screen.]`
-              : m.content
+              : m.content,
+            source: m.source,
+            timestamp: m.timestamp,
           })),
-          priorChatHistory: priorHistory.slice(-40).map(m => ({ role: m.role === 'user' ? 'user' : 'model', content: m.content })),
+          priorChatHistory: [],
           memories: personaMemories,
           voiceLlmModel,
           voiceId: getActivePersonaVoice(activePersona).voiceId,
@@ -1875,12 +2130,17 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         savePersonaMemory(activePersona.id, text);
       }
       
-      setMessages(prev => [...prev, 
-        { id: userMsg.id, role: 'user', type: 'text', content: text, timestamp: new Date() },
-        { id: uid(), role: 'persona', type: 'text', content: reply, timestamp: new Date() }
-      ]);
+      appendConversationMessages([{
+        id: personaMsg.id,
+        role: 'persona',
+        type: 'text',
+        content: reply,
+        timestamp: new Date(),
+        source: 'voice',
+      }]);
 
-      const isVoiceImageIntent = data.action?.type === 'image' || 
+      const voiceImageRevisionCandidate = resolveImageRevisionContext(text, messagesRef.current, callRevisionSource);
+      const isVoiceImageIntent = voiceImageRevisionCandidate.isRevision || data.action?.type === 'image' ||
         detectIntent(text) === 'image' || 
         (/\b(?:photo|pic|picture|selfie|image)\b/i.test(text) && /\b(?:take|send|snap|show|generate|make|see|want|wearing|exposed|nude|naked|bedroom|bed)\b/i.test(text)) ||
         /\b(?:sending it|try again right now.*sending it|sending you a (?:photo|selfie|pic|image)|sending a (?:photo|selfie|pic|image)|taking a (?:photo|selfie)|take a quick (?:photo|selfie)|here is the (?:photo|selfie)|snap that for you|take that for you|snapping (?:this|that|a photo)|let me take|give me one second.*(?:snap|take|photo|pic)|here you go.*(?:pic|photo))\b/i.test(reply);
@@ -1899,13 +2159,17 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           mediaType,
         );
         const mediaPrompt = modelSelection.prompt;
+        const imageRevision = mediaType === 'image'
+          ? resolveImageRevisionContext(mediaPrompt, messagesRef.current, callRevisionSource)
+          : { isRevision: false, prompt: mediaPrompt, source: undefined, rootPrompt: undefined, revisionHistory: undefined };
+        const requestPrompt = imageRevision.prompt;
         const requestedModelId = modelSelection.explicit && modelSelection.matched
           ? modelSelection.modelId
           : mediaType === 'image'
-            ? selectedEditModelId || 'wavespeed:bytedance/seedream-v5.0-pro'
+            ? imageRevision.source?.modelId || selectedEditModelId || 'wavespeed:bytedance/seedream-v5.0-pro'
             : selectedVideoModelId || 'wavespeed-i2v:bytedance/seedance-2-mini';
         const extraImages = [
-          sentCallAttachment?.type === 'image' ? sentCallAttachment.base64 : undefined,
+          sentCallAttachment?.type === 'image' && !sentCallAttachment.sourceMessageId ? sentCallAttachment.base64 : undefined,
           !sentCallAttachment && lastUploadedReference ? lastUploadedReference : undefined,
         ].filter((value): value is string => Boolean(value));
 
@@ -1916,11 +2180,12 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           : requestPersonaMedia({
               type: mediaType,
               persona: activePersona,
-              prompt: mediaPrompt,
+              prompt: requestPrompt,
               imageModelId: mediaType === 'image' ? requestedModelId : selectedEditModelId || 'wavespeed:bytedance/seedream-v5.0-pro',
               videoModelId: mediaType === 'video' ? requestedModelId : selectedVideoModelId || 'wavespeed-i2v:bytedance/seedance-2-mini',
               aspectRatio: '9:16',
               allowNsfw: true,
+              revisionImage: imageRevision.isRevision ? imageRevision.source?.content : undefined,
               additionalImages: extraImages.length > 0 ? extraImages : undefined,
               creatorProfile: creator,
             });
@@ -1929,17 +2194,28 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           const resultText = modelSelection.explicit && modelSelection.matched
             ? `${result.message} Used ${result.model || modelSelection.modelName}.`
             : result.message;
-          const mediaMessage = { id: uid(), role: 'persona' as const, type: mediaType, content: result.url!, prompt: mediaPrompt };
+          const mediaMessage = {
+            id: uid(),
+            role: 'persona' as const,
+            type: mediaType,
+            content: result.url!,
+            prompt: requestPrompt,
+            rootPrompt: mediaType === 'image' ? imageRevision.rootPrompt || mediaPrompt : undefined,
+            revisionHistory: mediaType === 'image' ? imageRevision.revisionHistory || [] : undefined,
+            parentMediaId: imageRevision.isRevision ? imageRevision.source?.id : undefined,
+            participants: result.participants,
+            modelId: requestedModelId,
+            modelName: result.model || imageRevision.source?.modelName,
+          };
           const resultMessage = { id: uid(), role: 'persona' as const, type: 'text' as const, content: resultText };
-          setActiveCallMedia({ type: mediaType, url: result.url!, prompt: mediaPrompt });
+          setActiveCallMedia({ type: mediaType, url: result.url!, prompt: requestPrompt, messageId: mediaMessage.id });
           setCallTranscript(prev => [
             ...prev.map(m => m.id === loadingMsgId ? mediaMessage : m),
             resultMessage,
           ]);
-          setMessages(prev => [
-            ...prev,
-            { ...mediaMessage, timestamp: new Date() },
-            { ...resultMessage, timestamp: new Date() },
+          appendConversationMessages([
+            { ...mediaMessage, timestamp: new Date(), source: 'voice' },
+            { ...resultMessage, timestamp: new Date(), source: 'voice' },
           ]);
           if (callTurnId === callTurnIdRef.current && isCallActiveRef.current) {
             streamingPlayback.then(() => playTTS(resultText)).catch(() => {});
@@ -1947,7 +2223,14 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         }).catch(err => {
           const failureMessage = err?.message || `I couldn't finish that ${mediaType}.`;
           setCallTranscript(prev => prev.map(m => m.id === loadingMsgId ? { ...m, type: 'error', content: failureMessage } : m));
-          setMessages(prev => [...prev, { id: uid(), role: 'persona', type: 'text', content: failureMessage, timestamp: new Date() }]);
+          appendConversationMessages([{
+            id: uid(),
+            role: 'persona',
+            type: 'text',
+            content: failureMessage,
+            timestamp: new Date(),
+            source: 'voice',
+          }]);
           if (callTurnId === callTurnIdRef.current && isCallActiveRef.current) {
             streamingPlayback.then(() => playTTS(failureMessage)).catch(() => {});
           }
@@ -2094,7 +2377,12 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       );
     });
     setCallTranscript(prev => prev.map(entry => entry.id === item.id ? { ...entry, content: intended } : entry));
-    setMessages(prev => prev.map(entry => entry.id === item.id ? { ...entry, content: intended } : entry));
+    const next = messagesRef.current.map(entry => entry.id === item.id ? { ...entry, content: intended } : entry);
+    messagesRef.current = next;
+    setMessages(next);
+    saveHistory(selectedPersonaId, next);
+    const updated = next.find(entry => entry.id === item.id);
+    if (updated) archiveConversationRecords(selectedPersonaId, [updated] as ConversationRecord[]);
     setEditingVoiceTranscriptId(null);
     setVoiceCorrectionDraft('');
     toast.success('Voice correction learned for future requests.');
@@ -2110,7 +2398,86 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     toast.success('Pronunciation added to your personal vocabulary.');
   };
 
+  const clearVoiceEnrollmentTimers = () => {
+    if (voiceEnrollmentTimerRef.current) {
+      clearInterval(voiceEnrollmentTimerRef.current);
+      voiceEnrollmentTimerRef.current = null;
+    }
+    if (voiceEnrollmentFinishRef.current) {
+      clearTimeout(voiceEnrollmentFinishRef.current);
+      voiceEnrollmentFinishRef.current = null;
+    }
+  };
+
+  const finishVoiceEnrollment = () => {
+    clearVoiceEnrollmentTimers();
+    voiceEnrollmentActiveRef.current = false;
+    setVoiceEnrollmentSeconds(0);
+    const profile = createVoiceIdentityProfile(voiceEnrollmentFramesRef.current);
+    voiceEnrollmentFramesRef.current = [];
+    if (!profile) {
+      setVoiceEnrollmentStatus('error');
+      toast.error('I could not capture enough clear speech. Try again in a quieter room.');
+      return;
+    }
+    voiceIdentityProfileRef.current = profile;
+    setVoiceIdentityProfile(profile);
+    setVoiceEnrollmentStatus('ready');
+    accountLocalStorage.setItem(VOICE_IDENTITY_STORAGE_KEY, JSON.stringify(profile));
+    toast.success('Your voice is enrolled. Speaker Lock is now active.');
+  };
+
+  const cancelVoiceEnrollment = (quiet = false) => {
+    clearVoiceEnrollmentTimers();
+    voiceEnrollmentActiveRef.current = false;
+    voiceEnrollmentFramesRef.current = [];
+    setVoiceEnrollmentSeconds(0);
+    setVoiceEnrollmentStatus(voiceIdentityProfileRef.current ? 'ready' : 'idle');
+    if (!quiet) toast('Voice enrollment cancelled.');
+  };
+
+  const startVoiceEnrollment = () => {
+    cancelVoiceCalibration();
+    cancelVoiceEnrollment(true);
+    interruptPersona();
+    voiceFeatureFramesRef.current = [];
+    voiceEnrollmentFramesRef.current = [];
+    voiceEnrollmentActiveRef.current = true;
+    setVoiceEnrollmentStatus('recording');
+    setVoiceEnrollmentSeconds(8);
+    setPendingVoiceConfirmation(null);
+    setCallInput('');
+    setCallStatus('listening');
+    void startVadInterruptionMonitor();
+
+    voiceEnrollmentTimerRef.current = setInterval(() => {
+      setVoiceEnrollmentSeconds(seconds => Math.max(0, seconds - 1));
+    }, 1000);
+    voiceEnrollmentFinishRef.current = setTimeout(finishVoiceEnrollment, 8000);
+  };
+
+  const toggleVoiceIdentityLock = () => {
+    const current = voiceIdentityProfileRef.current;
+    if (!current) return;
+    const next = { ...current, enabled: !current.enabled };
+    voiceIdentityProfileRef.current = next;
+    setVoiceIdentityProfile(next);
+    accountLocalStorage.setItem(VOICE_IDENTITY_STORAGE_KEY, JSON.stringify(next));
+    toast.success(next.enabled ? 'Speaker Lock enabled.' : 'Speaker Lock paused.');
+  };
+
+  const removeVoiceIdentityProfile = () => {
+    cancelVoiceEnrollment(true);
+    voiceIdentityProfileRef.current = null;
+    setVoiceIdentityProfile(null);
+    setVoiceEnrollmentStatus('idle');
+    setLastSpeakerMatchScore(null);
+    accountLocalStorage.removeItem(VOICE_IDENTITY_STORAGE_KEY);
+    toast.success('Voice profile removed.');
+  };
+
   const startVoiceCalibration = () => {
+    cancelVoiceEnrollment(true);
     interruptPersona();
     setCalibrationCapture(null);
     setCalibrationStep(0);
@@ -2203,7 +2570,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     const fallbackGreeting = fallbackPool[Math.floor(Math.random() * fallbackPool.length)];
 
     try {
-      const priorHistory = loadHistory(persona.id);
+      const priorHistory = loadConversationContext(persona.id, 20);
       const memories = loadPersonaMemories(persona.id);
       const res = await authFetch('/api/persona-greeting', {
         method: 'POST',
@@ -2211,7 +2578,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         body: JSON.stringify({
           persona,
           creatorProfile: creator,
-          priorChatHistory: priorHistory.slice(-8),
+          priorChatHistory: priorHistory.slice(-12),
           memories,
           mode,
           timeSinceLastInteractionSeconds: timeSinceLastSec,
@@ -2241,6 +2608,9 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     setPendingVoiceConfirmation(null);
     setEditingVoiceTranscriptId(null);
     cancelVoiceCalibration();
+    cancelVoiceEnrollment(true);
+    setIgnoredSpeakerCount(0);
+    setLastSpeakerMatchScore(null);
     setCallStatus('connecting');
     setCallDuration(0);
     isAgentSpeakingRef.current = false;
@@ -2266,8 +2636,10 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     // Scribe's realtime VAD commits natural turns and preserves the first words.
     const realtimeStarted = await startRealtimeTranscription();
     if (!isCallActiveRef.current) return;
+    // Keep one local, echo-cancelled analyser active for interruption and the
+    // optional enrolled-speaker lock even when Scribe handles transcription.
+    void startVadInterruptionMonitor();
     if (!realtimeStarted) {
-      startVadInterruptionMonitor();
       restartSpeechRecognition();
     }
 
@@ -2288,6 +2660,14 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         ];
         callTranscriptRef.current = greetingTranscript;
         setCallTranscript(greetingTranscript);
+        appendConversationMessages([{
+          id: greetingTranscript[0].id,
+          role: 'persona',
+          type: 'text',
+          content: greeting,
+          timestamp: new Date(),
+          source: 'voice',
+        }]);
       });
     }
   };
@@ -2314,15 +2694,19 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     calibrationStepRef.current = null;
     setCalibrationCapture(null);
     voiceSpeechStartedAtRef.current = null;
+    voiceUtteranceStartedAtRef.current = null;
     browserPendingTranscriptRef.current = { text: '', updatedAt: 0 };
+    clearVoiceEnrollmentTimers();
+    voiceEnrollmentActiveRef.current = false;
+    voiceEnrollmentFramesRef.current = [];
+    setVoiceEnrollmentSeconds(0);
+    setVoiceEnrollmentStatus(voiceIdentityProfileRef.current ? 'ready' : 'idle');
     
     // Save history immediately
-    setMessages(currentMsgs => {
-      if (currentMsgs.length > 1) {
-        saveHistory(activePersona.id, currentMsgs);
-      }
-      return currentMsgs;
-    });
+    if (messagesRef.current.length > 0) {
+      saveHistory(activePersona.id, messagesRef.current);
+      archiveConversationRecords(activePersona.id, messagesRef.current as ConversationRecord[]);
+    }
 
     stopVadInterruptionMonitor();
     stopRealtimeTranscription();
@@ -2363,6 +2747,9 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       }
       stopRealtimeTranscription();
       stopVadInterruptionMonitor();
+      if (voiceEnrollmentTimerRef.current) clearInterval(voiceEnrollmentTimerRef.current);
+      if (voiceEnrollmentFinishRef.current) clearTimeout(voiceEnrollmentFinishRef.current);
+      voiceEnrollmentActiveRef.current = false;
       if (audioRef.current) {
         try { audioRef.current.pause(); audioRef.current.src = ''; } catch {}
         audioRef.current = null;
@@ -2422,14 +2809,17 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 
   const resetConversation = useCallback(async (persona: Persona) => {
     const greeting = await fetchDynamicGreeting(persona, 'chat');
-
-    setMessages([{
+    const initialMessages: ChatMessage[] = [{
       id: uid(),
       role: 'persona',
       type: 'text',
       content: greeting,
       timestamp: new Date(),
-    }]);
+    }];
+    messagesRef.current = initialMessages;
+    setMessages(initialMessages);
+    saveHistory(persona.id, initialMessages);
+    archiveConversationRecords(persona.id, initialMessages as ConversationRecord[]);
     setGeneratedReplies([]);
     setReplyInput('');
   }, [fetchDynamicGreeting]);
@@ -2441,8 +2831,10 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 
   useEffect(() => {
     // Load persisted history or reset when persona changes
+    migrateRecentConversationToArchive(selectedPersonaId);
     const history = loadHistory(selectedPersonaId);
     if (history.length > 0) {
+      messagesRef.current = history;
       setMessages(history);
     } else {
       resetConversation(personas.find(p => p.id === selectedPersonaId) || propActivePersona);
@@ -2467,15 +2859,36 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     }
   }, [messages, activeSegment]);
 
+  const appendConversationMessages = useCallback((records: ChatMessage[]): ChatMessage[] => {
+    const next = mergeUniqueConversationRecords(
+      messagesRef.current as ConversationRecord[],
+      records as ConversationRecord[],
+    ).map(record => ({
+      ...record,
+      timestamp: record.timestamp instanceof Date ? record.timestamp : new Date(record.timestamp),
+    })) as ChatMessage[];
+    messagesRef.current = next;
+    setMessages(next);
+    saveHistory(selectedPersonaId, next);
+    archiveConversationRecords(selectedPersonaId, records as ConversationRecord[]);
+    return next;
+  }, [selectedPersonaId]);
+
   const addMessage = useCallback((msg: Omit<ChatMessage, 'id' | 'timestamp'>): string => {
     const id = uid();
-    setMessages(prev => [...prev, { ...msg, id, timestamp: new Date() }]);
+    const record: ChatMessage = { ...msg, id, timestamp: new Date() };
+    appendConversationMessages([record]);
     return id;
-  }, []);
+  }, [appendConversationMessages]);
 
   const replaceMessage = useCallback((id: string, update: Partial<ChatMessage>) => {
-    setMessages(prev => prev.map(m => m.id === id ? { ...m, ...update } : m));
-  }, []);
+    const next = messagesRef.current.map(m => m.id === id ? { ...m, ...update } : m);
+    messagesRef.current = next;
+    setMessages(next);
+    saveHistory(selectedPersonaId, next);
+    const updated = next.find(message => message.id === id);
+    if (updated) archiveConversationRecords(selectedPersonaId, [updated] as ConversationRecord[]);
+  }, [selectedPersonaId]);
 
   const activeAbortControllersRef = useRef<Record<string, AbortController>>({});
 
@@ -2486,10 +2899,13 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       } catch {}
       delete activeAbortControllersRef.current[msgId];
     }
-    setMessages(prev => prev.filter(m => m.id !== msgId));
+    const next = messagesRef.current.filter(m => m.id !== msgId);
+    messagesRef.current = next;
+    setMessages(next);
+    saveHistory(selectedPersonaId, next);
     setIsGenerating(false);
     toast('Generation cancelled', { icon: '🛑', id: 'cancel-gen-' + msgId });
-  }, []);
+  }, [selectedPersonaId]);
 
   // Save to Vault from chat
   const handleSaveToVault = async (msg: ChatMessage) => {
@@ -2516,8 +2932,29 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     }
   };
 
+  const handleDeleteGeneratedImage = useCallback((msg: ChatMessage) => {
+    if (msg.type !== 'image') return;
+    const confirmed = window.confirm(
+      'Delete this image from the conversation? A separately saved Vault copy will not be removed.',
+    );
+    if (!confirmed) return;
+
+    const next = messagesRef.current.filter(message => message.id !== msg.id);
+    messagesRef.current = next;
+    setMessages(next);
+    deleteConversationRecord(selectedPersonaId, msg.id);
+    setSavedMsgIds(previous => {
+      const updated = new Set(previous);
+      updated.delete(msg.id);
+      return updated;
+    });
+    if (lightboxMedia?.url === msg.content) setLightboxMedia(null);
+    if (activeCallMedia?.type === 'image' && activeCallMedia.url === msg.content) setActiveCallMedia(null);
+    toast.success('Image removed from this conversation');
+  }, [activeCallMedia, lightboxMedia, selectedPersonaId]);
+
   const clearHistory = () => {
-    accountLocalStorage.removeItem(HISTORY_KEY(selectedPersonaId));
+    clearConversationHistory(selectedPersonaId);
     resetConversation(activePersona);
     toast.success('Conversation cleared');
   };
@@ -2530,13 +2967,14 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     setIsGenerating(true);
 
     const sentAttachment = chatAttachment;
+    const pastedRevisionSource = getAttachmentRevisionSource(sentAttachment);
     setChatAttachment(null);
 
-    const userMsgObj: any = { role: 'user', type: 'text', content: effectiveText };
+    const userMsgObj: any = { role: 'user', type: 'text', content: effectiveText, source: 'text' };
     if (sentAttachment) {
       userMsgObj.attachment = sentAttachment;
     }
-    addMessage(userMsgObj);
+    const userMessageId = addMessage(userMsgObj);
 
     // Save facts / user memories if mentioned
     if (effectiveText.length > 3 && /\b(my name is|i am|i live|i love|i work|remember that|my goal is|call me)\b/i.test(effectiveText)) {
@@ -2546,9 +2984,12 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     const loadingId = addMessage({ role: 'persona', type: 'loading', content: '' });
 
     try {
-      const textMessages = messages.filter(m => m.type === 'text' || m.type === 'image');
       const personaMemories = loadPersonaMemories(activePersona.id);
-      const priorHistory = loadHistory(activePersona.id);
+      const conversationContext = mergeUniqueConversationRecords(
+        searchConversationMemories(activePersona.id, effectiveText, 12),
+        loadConversationContext(activePersona.id, 60),
+        messagesRef.current.slice(-60) as ConversationRecord[],
+      ).filter(record => record.id !== userMessageId && record.type !== 'loading');
 
       const creator = getCreatorProfile();
       const res = await authFetch('/api/chat', {
@@ -2558,17 +2999,17 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           persona: activePersona,
           creatorProfile: creator,
           userName: creator.name || getStoredUserName(),
-          messages: textMessages.slice(-30).map(m => ({ 
-            role: m.role, 
-            type: m.type, 
-            content: m.content,
-            prompt: m.prompt 
-          })),
-          priorChatHistory: priorHistory.slice(-20).map(m => ({
+          // Text and voice share one canonical timeline. The current user turn
+          // is sent separately below so the server never sees it twice.
+          messages: [],
+          priorChatHistory: conversationContext.map(m => ({
+            id: m.id,
             role: m.role,
             type: m.type,
             content: m.content,
-            prompt: m.prompt
+            prompt: m.prompt,
+            source: m.source,
+            timestamp: m.timestamp,
           })),
           memories: personaMemories,
           userMessage: effectiveText,
@@ -2585,17 +3026,23 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         updateRelationship(data.relationshipState);
       }
 
-      const replyText = data.reply || "Hey! I'm right here with you.";
+      const replyText = typeof data.reply === 'string' && data.reply.trim()
+        ? data.reply.trim()
+        : data.action?.type
+          ? `I'm working on that ${data.action.type} now.`
+          : '';
+      if (!replyText) throw new Error('The persona returned an empty reply. Please try again.');
 
       // Determine if a photo, video, or voice note was requested or returned as an action:
       const explicitVisualKeywords = /\b(image|photo|pic|picture|selfie|pose|portrait|photoshoot|video|clip|recording)\b/i.test(effectiveText);
       const isExplicitVisualRequest = /\b(send|take|generate|show|give|snap|make|create|post|capture)\b/i.test(effectiveText) && explicitVisualKeywords;
       const isConversationalQuestion = !isExplicitVisualRequest && /(?:\b(?:why did you send|why are you sending|what is that picture|who is that in the photo|stop sending)\b)/i.test(effectiveText);
       const detectedIntent = isConversationalQuestion ? 'chat' : detectIntent(effectiveText);
+      const imageRevisionCandidate = resolveImageRevisionContext(effectiveText, messagesRef.current, pastedRevisionSource);
       
       const isVoiceNoteAction = data.action?.type === 'voice_note' || (/\b(voice note|audio memo|voice message|audio message|whisper to me)\b/i.test(effectiveText) && !isConversationalQuestion);
       const isVideoAction = data.action?.type === 'video' || detectedIntent === 'video';
-      const isImageAction = !isVideoAction && (data.action?.type === 'image' || isExplicitVisualRequest || detectedIntent === 'image');
+      const isImageAction = !isVideoAction && (imageRevisionCandidate.isRevision || data.action?.type === 'image' || isExplicitVisualRequest || detectedIntent === 'image');
 
       if (isVoiceNoteAction) {
         replaceMessage(loadingId, { type: 'text', content: replyText });
@@ -2633,10 +3080,14 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           mediaType,
         );
         const mediaPrompt = modelSelection.prompt;
+        const imageRevision = mediaType === 'image'
+          ? resolveImageRevisionContext(mediaPrompt, messagesRef.current, pastedRevisionSource)
+          : { isRevision: false, prompt: mediaPrompt, source: undefined, rootPrompt: undefined, revisionHistory: undefined };
+        const requestPrompt = imageRevision.prompt;
         const requestedModelId = modelSelection.explicit && modelSelection.matched
           ? modelSelection.modelId
           : mediaType === 'image'
-            ? selectedEditModelId || 'wavespeed:bytedance/seedream-v5.0-pro'
+            ? imageRevision.source?.modelId || selectedEditModelId || 'wavespeed:bytedance/seedream-v5.0-pro'
             : selectedVideoModelId || 'wavespeed-i2v:bytedance/seedance-2-mini';
         replaceMessage(loadingId, {
           type: 'loading',
@@ -2651,16 +3102,17 @@ export default function AssistantView({ personas, persona: propActivePersona, on
             );
           }
           const extraImages = [
-            sentAttachment?.type === 'image' ? sentAttachment.base64 : undefined,
+            sentAttachment?.type === 'image' && !sentAttachment.sourceMessageId ? sentAttachment.base64 : undefined,
             !sentAttachment && lastUploadedReference ? lastUploadedReference : undefined,
           ].filter((value): value is string => Boolean(value));
           const result = await requestPersonaMedia({
             type: mediaType,
-            prompt: mediaPrompt,
+            prompt: requestPrompt,
             persona: activePersona,
             imageModelId: mediaType === 'image' ? requestedModelId : selectedEditModelId || 'wavespeed:bytedance/seedream-v5.0-pro',
             videoModelId: mediaType === 'video' ? requestedModelId : selectedVideoModelId || 'wavespeed-i2v:bytedance/seedance-2-mini',
             referenceImage: activePersona.referenceImage || activePersona.avatar || activePersona.alternateReferenceImage,
+            revisionImage: imageRevision.isRevision ? imageRevision.source?.content : undefined,
             additionalImages: extraImages.length > 0 ? extraImages : undefined,
             creatorProfile: creator,
             aspectRatio: '9:16',
@@ -2670,7 +3122,18 @@ export default function AssistantView({ personas, persona: propActivePersona, on
             ? `${result.message} Used ${result.model || modelSelection.modelName}.`
             : result.message;
           replaceMessage(loadingId, { type: 'text', content: resultText });
-          addMessage({ role: 'persona', type: mediaType, content: result.url!, prompt: mediaPrompt });
+          addMessage({
+            role: 'persona',
+            type: mediaType,
+            content: result.url!,
+            prompt: requestPrompt,
+            rootPrompt: mediaType === 'image' ? imageRevision.rootPrompt || mediaPrompt : undefined,
+            revisionHistory: mediaType === 'image' ? imageRevision.revisionHistory || [] : undefined,
+            parentMediaId: imageRevision.isRevision ? imageRevision.source?.id : undefined,
+            participants: result.participants,
+            modelId: requestedModelId,
+            modelName: result.model || imageRevision.source?.modelName,
+          });
         } catch (mediaError: any) {
           replaceMessage(loadingId, {
             type: 'error',
@@ -2943,6 +3406,8 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                   onGenerateTalkingVideo={handleGenerateTalkingVideo}
                   onSetAsPrimaryReference={handleSetPrimaryReferenceImage}
                   onCancelGeneration={handleCancelGeneration}
+                  onDeleteImage={handleDeleteGeneratedImage}
+                  onCopyImage={handleCopyGeneratedImage}
                 />
               ))}
               <div ref={messagesEndRef} />
@@ -2996,6 +3461,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                   ref={inputRef}
                   value={input}
                   onChange={e => setInput(e.target.value)}
+                  onPaste={handleChatPaste}
                   onKeyDown={handleKeyDown}
                   placeholder={`Message ${activePersona.name}…`}
                   rows={1}
@@ -3212,6 +3678,76 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                       ))}
                     </div>
                     <p className="text-[9px] text-zinc-500">Reply measures the final transcript to the first audible persona response.</p>
+                  </div>
+
+                  <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.05] p-3 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs font-bold text-emerald-100">Speaker Lock</p>
+                          {voiceIdentityProfile && (
+                            <span className={cn(
+                              'rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide border',
+                              voiceIdentityProfile.enabled
+                                ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300'
+                                : 'border-zinc-500/30 bg-zinc-500/10 text-zinc-400',
+                            )}>
+                              {voiceIdentityProfile.enabled ? 'Active' : 'Paused'}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-zinc-400 mt-0.5">
+                          Enroll Dr. H's voice so longer turns from other people can be ignored.
+                        </p>
+                      </div>
+                      {voiceEnrollmentStatus !== 'recording' && (
+                        <button
+                          onClick={startVoiceEnrollment}
+                          className="shrink-0 px-3 py-1.5 rounded-lg bg-emerald-400 text-zinc-950 text-[11px] font-bold cursor-pointer hover:bg-emerald-300"
+                        >
+                          {voiceIdentityProfile ? 'Enroll again' : 'Enroll my voice'}
+                        </button>
+                      )}
+                    </div>
+
+                    {voiceEnrollmentStatus === 'recording' && (
+                      <div className="rounded-lg border border-emerald-400/25 bg-black/25 p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-xs font-bold text-emerald-200 animate-pulse">Speak naturally now…</p>
+                          <span className="font-mono text-sm font-bold text-white">{voiceEnrollmentSeconds}s</span>
+                        </div>
+                        <p className="text-[10px] leading-relaxed text-zinc-400 mt-1.5">
+                          Read a few normal sentences in your usual voice. Audio is not saved; only a compact voice signature is stored.
+                        </p>
+                        <button onClick={() => cancelVoiceEnrollment()} className="mt-2 text-[10px] text-zinc-500 hover:text-zinc-300 cursor-pointer">Cancel</button>
+                      </div>
+                    )}
+
+                    {voiceIdentityProfile && voiceEnrollmentStatus !== 'recording' && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          onClick={toggleVoiceIdentityLock}
+                          className="px-2.5 py-1.5 rounded-lg border border-white/10 bg-black/20 text-[10px] font-bold text-zinc-200 hover:bg-white/[0.07] cursor-pointer"
+                        >
+                          {voiceIdentityProfile.enabled ? 'Pause lock' : 'Enable lock'}
+                        </button>
+                        <button
+                          onClick={removeVoiceIdentityProfile}
+                          className="px-2.5 py-1.5 rounded-lg border border-rose-500/20 bg-rose-500/[0.06] text-[10px] font-bold text-rose-300 hover:bg-rose-500/10 cursor-pointer"
+                        >
+                          Remove profile
+                        </button>
+                        <span className="ml-auto text-[9px] text-zinc-500">
+                          {ignoredSpeakerCount} ignored this call
+                          {lastSpeakerMatchScore !== null ? ` · last match ${Math.round(lastSpeakerMatchScore * 100)}%` : ''}
+                        </span>
+                      </div>
+                    )}
+
+                    {voiceEnrollmentStatus === 'error' && (
+                      <p className="text-[10px] text-amber-300">Not enough clear speech was captured. Try again closer to the microphone.</p>
+                    )}
+                    <p className="text-[9px] text-zinc-500">Speaker Lock is a conversational filter, not identity authentication. Very short phrases are allowed when there is not enough audio to compare safely.</p>
                   </div>
 
                   <div className="rounded-xl border border-[#E7C477]/20 bg-[#E7C477]/[0.06] p-3 space-y-2.5">
@@ -3518,6 +4054,21 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                       >
                         <Download size={12} />
                       </a>
+                      {activeCallMedia.type === 'image' && activeCallMedia.messageId && (
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            const imageMessage = messagesRef.current.find(message => message.id === activeCallMedia.messageId);
+                            if (imageMessage) handleDeleteGeneratedImage(imageMessage);
+                          }}
+                          className="p-1.5 rounded-full bg-black/80 hover:bg-rose-600 text-white text-xs backdrop-blur-md transition-colors"
+                          title="Delete from conversation"
+                          aria-label="Delete generated image"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      )}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -4128,9 +4679,11 @@ interface BubbleProps {
   onGenerateTalkingVideo?: (msg: ChatMessage) => void;
   onSetAsPrimaryReference?: (url: string) => void;
   onCancelGeneration?: (id: string) => void;
+  onDeleteImage?: (msg: ChatMessage) => void;
+  onCopyImage?: (msg: ChatMessage) => void;
 }
 
-function MessageBubble({ msg, persona, isLatest, onSaveToVault, isSaving, isSaved, onImageClick, onGenerateTalkingVideo, onSetAsPrimaryReference, onCancelGeneration }: BubbleProps) {
+function MessageBubble({ msg, persona, isLatest, onSaveToVault, isSaving, isSaved, onImageClick, onGenerateTalkingVideo, onSetAsPrimaryReference, onCancelGeneration, onDeleteImage, onCopyImage }: BubbleProps) {
   const isUser = msg.role === 'user';
   const shouldType = !isUser && msg.type === 'text' && isLatest;
   const { displayed, done } = useTypewriter(shouldType ? msg.content : '', 14);
@@ -4331,6 +4884,17 @@ function MessageBubble({ msg, persona, isLatest, onSaveToVault, isSaving, isSave
                 <span>Fullscreen</span>
               </button>
 
+              <button
+                type="button"
+                onClick={() => onCopyImage?.(msg)}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 hover:border-cyan-500/40 text-cyan-200 text-[10px] font-semibold transition-all cursor-pointer active:scale-95"
+                title="Copy this image, then paste it into the prompt to modify it"
+                aria-label="Copy generated image"
+              >
+                <Copy size={10} />
+                <span>Copy</span>
+              </button>
+
               {/* Instant Talking Head Video Generator */}
               <button
                 onClick={() => onGenerateTalkingVideo?.(msg)}
@@ -4351,6 +4915,17 @@ function MessageBubble({ msg, persona, isLatest, onSaveToVault, isSaving, isSave
               >
                 {isSaving ? <Loader2 size={10} className="animate-spin" /> : isSaved ? <Check size={10} /> : <Bookmark size={10} />}
                 {isSaved ? 'Saved' : 'Save'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onDeleteImage?.(msg)}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 hover:border-rose-500/40 text-rose-300 text-[10px] font-semibold transition-all cursor-pointer active:scale-95"
+                title="Delete this image from the conversation"
+                aria-label="Delete generated image"
+              >
+                <Trash2 size={10} />
+                <span>Delete</span>
               </button>
             </div>
           </div>

@@ -5515,6 +5515,7 @@ app.post('/api/persona/media-request', async (req: AuthenticatedRequest, res) =>
     imageModelId,
     videoModelId,
     referenceImage,
+    revisionImage,
     additionalImages: requestedAdditionalImages,
     creatorProfile: requestedCreatorProfile,
     aspectRatio,
@@ -5549,6 +5550,7 @@ app.post('/api/persona/media-request', async (req: AuthenticatedRequest, res) =>
       .map(getPersonaPrimaryReference)
       .filter((value): value is string => Boolean(value));
     const additionalImages = Array.from(new Set([
+      ...(type === 'image' && typeof revisionImage === 'string' && revisionImage.trim() ? [revisionImage] : []),
       ...participantReferences,
       ...(Array.isArray(requestedAdditionalImages) ? requestedAdditionalImages : []),
     ].filter(Boolean)));
@@ -5596,6 +5598,8 @@ app.post('/api/persona/media-request', async (req: AuthenticatedRequest, res) =>
       identityLock: true,
       naturalLook: true,
       isMultiPersona: participants.length > 1,
+      isRevision: Boolean(type === 'image' && revisionImage),
+      revisionImage: type === 'image' ? revisionImage : undefined,
       participantNames,
       creatorProfile,
     };
@@ -5623,6 +5627,8 @@ app.post('/api/persona/media-request', async (req: AuthenticatedRequest, res) =>
           ? `Done — I made that image with ${participantNames.join(' and ')} together.`
           : `Done — I made that image for you.`,
         participants: participantNames,
+        isRevision: Boolean(revisionImage),
+        parentImageUrl: revisionImage || undefined,
       });
     }
 

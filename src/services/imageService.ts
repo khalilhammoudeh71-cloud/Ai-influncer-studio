@@ -451,6 +451,7 @@ export interface PersonaMediaRequest {
   imageModelId?: string;
   videoModelId?: string;
   referenceImage?: string;
+  revisionImage?: string;
   additionalImages?: string[];
   creatorProfile?: object | null;
   aspectRatio?: string;
@@ -466,6 +467,8 @@ export interface PersonaMediaResult {
   message: string;
   error?: string;
   participants?: string[];
+  isRevision?: boolean;
+  parentImageUrl?: string;
 }
 
 export async function requestPersonaMedia(params: PersonaMediaRequest): Promise<PersonaMediaResult> {
