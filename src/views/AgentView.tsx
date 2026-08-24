@@ -58,6 +58,7 @@ import VoiceCloneStudioModal from '../components/VoiceCloneStudioModal';
 import { api } from '../services/apiService';
 import { generatePersonaPlan } from '../utils/personaEngine';
 import { generateImage, upscaleImage, authFetch } from '../services/imageService';
+import { editImageJob, talkingAvatarJob } from '../services/mediaJobService';
 import { cn } from '../utils/cn';
 import { trimAudioBase64To10Sec } from '../utils/audioUtils';
 import { accountLocalStorage } from '../utils/accountStorage';
@@ -1963,6 +1964,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
 
     try {
       const result = await api.images.generateVideo({
+        personaClientId: propSelectedPersonaId || personas[0]?.id,
         prompt: `Cinematic motion video clip of influencer avatar, subtle camera movement, photorealistic`,
         modelId: 'google:veo-omni',
         strength: 0.6,
@@ -2619,6 +2621,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
           let result;
           try {
             result = await api.images.generateVideo({
+              personaClientId: createdPersonaId,
               prompt: step.params.prompt,
               modelId,
               strength: step.params.strength || 0.6,
@@ -2628,6 +2631,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
           } catch (firstErr: any) {
             addLocalLog(`⚠️ Video model ${modelId} failed. Fallback triggered.`);
             result = await api.images.generateVideo({
+              personaClientId: createdPersonaId,
               prompt: step.params.prompt,
               modelId: 'google:veo-omni',
               strength: 0.6,
@@ -2767,18 +2771,12 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
 
           addLocalLog(`⏳ Synthesizing Talking Avatar lip-sync video...`);
 
-          const res = await fetch('/api/talking-head', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              text: step.params.text,
-              image: avatarImg,
-              voiceId: step.params.voiceId || clonedVoiceId || 'Aoede'
-            })
+          const data = await talkingAvatarJob(createdPersonaId, {
+            script: step.params.text,
+            portraitImage: avatarImg,
+            voiceName: step.params.voiceId || clonedVoiceId || 'Aoede',
+            model: step.params.model || 'wavespeed-ai/ai-talking-photos',
           });
-
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.error || 'Talking head generation failed');
 
           const payload = {
             id: 'talk-' + Math.random().toString(36).substring(2, 9),
@@ -2855,19 +2853,16 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
             addLocalLog(`🎬 Scene ${sIdx + 1}/${scenes.length} [${sc.type}]: "${sc.title}"...`);
 
             if (sc.type === 'talking_avatar') {
-              const res = await fetch('/api/talking-head', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  text: sc.text || 'Hello world',
-                  image: createdPersona.avatar || createdPersona.referenceImage,
-                  voiceId: clonedVoiceId || 'Aoede'
-                })
+              const data = await talkingAvatarJob(createdPersonaId, {
+                script: sc.text || 'Hello world',
+                portraitImage: createdPersona.avatar || createdPersona.referenceImage,
+                voiceName: clonedVoiceId || 'Aoede',
+                model: sc.modelId || 'wavespeed-ai/ai-talking-photos',
               });
-              const data = await res.json();
               if (data.videoUrl) generatedVideoUrls.push(data.videoUrl);
             } else {
               const res = await api.images.generateVideo({
+                personaClientId: createdPersonaId,
                 prompt: sc.prompt || 'Cinematic motion shot of persona',
                 modelId: sc.modelId || 'google:veo-omni',
                 sourceImage: createdPersona.avatar
@@ -2935,13 +2930,12 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
             editedUrl = data.imageUrl;
           } else {
             const chosenEditModel = step.params.modelId || 'wavespeed:bytedance/seedream-v5.0-pro';
-            const res = await fetch('/api/edit-image', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ sourceImage: srcImg, prompt: step.params.prompt || 'Enhance image details', modelId: chosenEditModel })
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || 'Image edit failed');
+            const data = await editImageJob(
+              activeP.id,
+              srcImg,
+              step.params.prompt || 'Enhance image details',
+              chosenEditModel,
+            );
             editedUrl = data.imageUrl;
           }
 

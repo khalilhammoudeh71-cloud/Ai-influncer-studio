@@ -35,6 +35,7 @@ import CreatorHubView from './views/CreatorHubView';
 import RevenueView from './views/RevenueView';
 import AgentView from './views/AgentView';
 import OnboardingTour from './components/OnboardingTour';
+import MediaJobCenter from './components/MediaJobCenter';
 import CommandPalette from './components/CommandPalette';
 import LeftSidebar from './components/LeftSidebar';
 import TrendView from './views/TrendView';
@@ -151,6 +152,7 @@ function App() {
 
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showShortcutsModal, setShowShortcutsModal] = useState(false);
+  const [showMediaJobCenter, setShowMediaJobCenter] = useState(false);
   const [newAssetsCount, setNewAssetsCount] = useState(0); // #6 gallery badge
 
   // Keep the app in sync with the real Supabase authentication session.
@@ -890,15 +892,18 @@ function App() {
             </div>
           </div>
 
-          {/* Right Actions: Notifications, Create Persona Button, Persona Quick-Switcher */}
+          {/* Right Actions: Media Jobs, Create Persona Button, Persona Quick-Switcher */}
           <div className="flex items-center gap-2 sm:gap-3.5 shrink-0">
 
-            {/* Notification Bell */}
-            <button className="relative hidden sm:flex w-9 h-9 rounded-xl bg-[#0A101C] border border-[#E7C477]/15 items-center justify-center text-[#C3BFB8] hover:text-[#F2D58D] hover:border-[#E7C477]/35 transition-all cursor-pointer">
-              <Bell size={16} />
-              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#E7C477] text-[#060A13] text-[9px] font-bold flex items-center justify-center shadow-sm">
-                3
-              </span>
+            {/* Durable media jobs */}
+            <button
+              type="button"
+              onClick={() => setShowMediaJobCenter(true)}
+              className="relative flex w-9 h-9 rounded-xl bg-[#0A101C] border border-[#E7C477]/15 items-center justify-center text-[#C3BFB8] hover:text-[#F2D58D] hover:border-[#E7C477]/35 transition-all cursor-pointer"
+              title="Open media jobs"
+              aria-label="Open media jobs"
+            >
+              <Sparkles size={16} />
             </button>
 
             {/* Single Gold Create Persona CTA Button */}
@@ -1084,6 +1089,14 @@ function App() {
         onNavigate={(tab) => { replaceView({ view: tab }); }}
         onSelectPersona={setSelectedPersonaId}
         onOpenSubView={(tab, subView) => { replaceView({ view: tab, subView }); }}
+      />
+      <MediaJobCenter
+        isOpen={showMediaJobCenter}
+        onClose={() => setShowMediaJobCenter(false)}
+        onOpenResult={(job) => {
+          if (!job.result?.url) return;
+          window.open(job.result.url, '_blank', 'noopener,noreferrer');
+        }}
       />
       {/* #10 Keyboard shortcuts modal */}
       <AnimatePresence>

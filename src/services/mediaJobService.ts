@@ -9,6 +9,7 @@ export interface MediaJobResult {
   type?: 'image' | 'video';
   model?: string;
   imageUrl?: string;
+  images?: Array<{ imageUrl: string; model?: string; promptUsed?: string }>;
   videoUrl?: string;
   promptUsed?: string;
   message?: string;
@@ -187,21 +188,76 @@ export async function requestPersonaMediaJob(params: PersonaMediaRequest): Promi
   };
 }
 
-export async function editImageJob(personaClientId: string, sourceImage: string, prompt: string, modelId: string) {
+async function compressRequestImages(request: Record<string, unknown>) {
+  const compressed = { ...request };
+  for (const key of ['referenceImage', 'sourceImage', 'additionalImage', 'maskImage'] as const) {
+    if (typeof compressed[key] === 'string' && compressed[key]) {
+      compressed[key] = await compressForUpload(compressed[key] as string);
+    }
+  }
+  if (Array.isArray(compressed.additionalImages)) {
+    compressed.additionalImages = await Promise.all(compressed.additionalImages.map(image => (
+      typeof image === 'string' && image ? compressForUpload(image) : image
+    )));
+  }
+  return compressed;
+}
+
+export async function studioImageJob(personaClientId: string | undefined, request: Record<string, unknown>) {
+  const compactRequest = await compressRequestImages({ ...request, requestMode: 'studio' });
+  const job = await createAndRunMediaJob('image', personaClientId, compactRequest);
+  if (!job.result?.url) throw new Error(job.error || 'Image generation failed');
+  if (job.result.images?.length) {
+    return job.result.images.map(image => ({
+      imageUrl: image.imageUrl,
+      model: image.model || job.result?.model || String(request.modelId || ''),
+      promptUsed: image.promptUsed || job.result?.promptUsed || '',
+    }));
+  }
+  return {
+    imageUrl: job.result.url,
+    model: job.result.model || String(request.modelId || ''),
+    promptUsed: job.result.promptUsed || '',
+  };
+}
+
+export async function studioVideoJob(personaClientId: string | undefined, request: Record<string, unknown>) {
+  const compactRequest = await compressRequestImages({ ...request, requestMode: 'studio' });
+  const job = await createAndRunMediaJob('video', personaClientId, compactRequest);
+  if (!job.result?.url) throw new Error(job.error || 'Video generation failed');
+  return { videoUrl: job.result.url, model: job.result.model || String(request.modelId || '') };
+}
+
+export async function editImageJob(
+  personaClientId: string | undefined,
+  sourceImage: string,
+  prompt: string,
+  modelId: string,
+  additionalImage?: string,
+  maskImage?: string,
+) {
   const compressedSource = await compressForUpload(sourceImage);
-  const job = await createAndRunMediaJob('edit', personaClientId, { sourceImage: compressedSource, prompt, modelId });
+  const compressedAdditional = additionalImage ? await compressForUpload(additionalImage) : undefined;
+  const compressedMask = maskImage ? await compressForUpload(maskImage) : undefined;
+  const job = await createAndRunMediaJob('edit', personaClientId, {
+    sourceImage: compressedSource,
+    prompt,
+    modelId,
+    additionalImage: compressedAdditional,
+    maskImage: compressedMask,
+  });
   if (!job.result?.url) throw new Error(job.error || 'Image editing failed');
   return { imageUrl: job.result.url, model: job.result.model || modelId };
 }
 
-export async function upscaleImageJob(personaClientId: string, sourceImage: string, modelId: string, targetResolution?: string) {
+export async function upscaleImageJob(personaClientId: string | undefined, sourceImage: string, modelId: string, targetResolution?: string) {
   const compressedSource = await compressForUpload(sourceImage);
   const job = await createAndRunMediaJob('upscale', personaClientId, { sourceImage: compressedSource, modelId, targetResolution });
   if (!job.result?.url) throw new Error(job.error || 'Image upscaling failed');
   return { imageUrl: job.result.url, model: job.result.model || modelId };
 }
 
-export async function talkingAvatarJob(personaClientId: string, request: Record<string, unknown>) {
+export async function talkingAvatarJob(personaClientId: string | undefined, request: Record<string, unknown>) {
   const portraitImage = typeof request.portraitImage === 'string'
     ? await compressForUpload(request.portraitImage)
     : request.portraitImage;

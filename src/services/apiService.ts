@@ -129,8 +129,10 @@ export const api = {
     },
     delete: (personaId: string, imageId: string) =>
       request<void>(`/personas/${encodeURIComponent(personaId)}/images/${encodeURIComponent(imageId)}`, { method: 'DELETE' }),
-    generateVideo: (params: { prompt: string; modelId: string; sourceImage?: string | null; sourceVideo?: string | null; strength?: number; identityLock?: boolean; naturalLook?: boolean }) =>
-      requestWithBody<{ videoUrl: string }>('/generate-video', params),
+    generateVideo: async (params: { personaClientId?: string; prompt: string; modelId: string; sourceImage?: string | null; sourceVideo?: string | null; strength?: number; identityLock?: boolean; naturalLook?: boolean }) => {
+      const { studioVideoJob } = await import('./mediaJobService');
+      return studioVideoJob(params.personaClientId, params);
+    },
   },
 
   revenue: {

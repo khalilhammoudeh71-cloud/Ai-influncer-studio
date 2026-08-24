@@ -7739,25 +7739,51 @@ app.post('/api/talking-head', talkingHeadHandler);
 // recover the status after a refresh or a serverless timeout and retry without
 // reconstructing the prompt or generation settings.
 function mediaJobModelId(kind: MediaJobKind, request: Record<string, any>): string | null {
-  if (kind === 'image') return request.imageModelId || null;
-  if (kind === 'video') return request.videoModelId || null;
+  if (kind === 'image') return request.requestMode === 'studio' ? request.modelId || null : request.imageModelId || null;
+  if (kind === 'video') return request.requestMode === 'studio' ? request.modelId || null : request.videoModelId || null;
   return request.modelId || request.model || null;
 }
 
 function withMediaJobModel(kind: MediaJobKind, request: Record<string, any>, modelId: string) {
-  if (kind === 'image') return { ...request, imageModelId: modelId };
-  if (kind === 'video') return { ...request, videoModelId: modelId };
+  if (kind === 'image') return request.requestMode === 'studio'
+    ? { ...request, modelId }
+    : { ...request, imageModelId: modelId };
+  if (kind === 'video') return request.requestMode === 'studio'
+    ? { ...request, modelId }
+    : { ...request, videoModelId: modelId };
   return { ...request, modelId, model: modelId };
 }
 
-function mediaJobHandler(kind: MediaJobKind) {
+function mediaJobHandler(kind: MediaJobKind, request: Record<string, any>) {
+  if (request.requestMode === 'studio') {
+    if (kind === 'image') return generateImageHandler;
+    if (kind === 'video') return generateVideoHandler;
+  }
   if (kind === 'image' || kind === 'video') return personaMediaHandler;
   if (kind === 'edit') return editImageHandler;
   if (kind === 'upscale') return upscaleImageHandler;
   return talkingHeadHandler;
 }
 
-function mediaJobOutput(kind: MediaJobKind, payload: any) {
+function mediaJobOutput(kind: MediaJobKind, payload: any, request: Record<string, any>) {
+  if (request.requestMode === 'studio' && kind === 'image') {
+    const images = Array.isArray(payload?.images)
+      ? payload.images.filter((image: any) => typeof image?.imageUrl === 'string' && image.imageUrl)
+      : [];
+    const primary = images[0] || (payload?.imageUrl ? payload : null);
+    return primary?.imageUrl ? {
+      ...payload,
+      url: primary.imageUrl,
+      imageUrl: primary.imageUrl,
+      images: images.length ? images : undefined,
+      type: 'image',
+      model: primary.model || payload?.model || request.modelId,
+      promptUsed: primary.promptUsed || payload?.promptUsed,
+    } : null;
+  }
+  if (request.requestMode === 'studio' && kind === 'video') {
+    return payload?.videoUrl ? { ...payload, url: payload.videoUrl, type: 'video' } : null;
+  }
   if (kind === 'image' || kind === 'video') {
     return payload?.success && payload?.url ? payload : null;
   }
@@ -7868,7 +7894,7 @@ async function executeMediaJob(jobId: string, userId: string, user: any, request
 
   try {
     const generationPromise = runJsonGenerationHandler(
-      mediaJobHandler(kind),
+      mediaJobHandler(kind, executionRequest),
       detachedMediaRequest(user || { id: userId, email: '' }),
       executionRequest,
     );
@@ -7876,7 +7902,7 @@ async function executeMediaJob(jobId: string, userId: string, user: any, request
     // rejection handler attached so it never becomes an unhandled rejection.
     void generationPromise.catch(() => undefined);
     const generation = await Promise.race([generationPromise, cancellation]);
-    const output = mediaJobOutput(kind, generation.payload);
+    const output = mediaJobOutput(kind, generation.payload, executionRequest);
     if (generation.status >= 400 || !output) {
       const message = generation.payload?.message || generation.payload?.error || `${kind} generation failed`;
       const failure = new Error(message) as Error & { status?: number };
@@ -8125,48 +8151,41 @@ app.post('/api/motion-control', async (req, res) => {
   };
   if (!refImage) return res.status(400).json({ error: 'refImage is required' });
 
-  if (WAVESPEED_API_KEY) {
-    try {
-      const resolvedRefImage = await resolveImageToDataUrl(refImage);
-      const payload: Record<string, unknown> = {
-        ref_image_url: resolvedRefImage,
-      };
-      if (danceId) {
-        payload.dance_id = danceId;
-      } else if (motionVideoUrl) {
-        payload.motion_video_url = motionVideoUrl;
-      } else if (motionVideoBase64) {
-        payload.motion_video_base64 = motionVideoBase64;
-      }
-
-      const modelPath = model.includes('/') ? model : `wavespeed-ai/${model}`;
-      console.log('[Wavespeed Motion Control] Dispatching job for model:', modelPath);
-      const r = await fetch(`${WAVESPEED_BASE}/${modelPath}`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${WAVESPEED_API_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (r.ok) {
-        const json = await r.json() as Record<string, unknown>;
-        const videoUrl = await extractWavespeedVideoOutput(json);
-        return res.json({ videoUrl, model: modelPath });
-      }
-    } catch (err) {
-      console.warn('[MotionControl] Wavespeed API failed, falling back to mock:', err);
-    }
+  if (!WAVESPEED_API_KEY) {
+    return res.status(503).json({ error: 'Wavespeed motion control is not configured' });
   }
 
-  // Graceful fallback to a high-quality video for demo/sandbox environments
-  const fallbackVideos = [
-    '/demo-assets/video-preview.mp4',
-    '/demo-assets/generated-talking.mp4'
-  ];
-  const selectedVideo = fallbackVideos[Math.floor(Math.random() * fallbackVideos.length)];
-  res.json({
-    videoUrl: selectedVideo,
-    model: 'wavespeed-ai/motion-control (Mock Fallback)'
-  });
+  try {
+    const resolvedRefImage = await resolveImageToDataUrl(refImage);
+    const payload: Record<string, unknown> = {
+      ref_image_url: resolvedRefImage,
+    };
+    if (danceId) {
+      payload.dance_id = danceId;
+    } else if (motionVideoUrl) {
+      payload.motion_video_url = motionVideoUrl;
+    } else if (motionVideoBase64) {
+      payload.motion_video_base64 = motionVideoBase64;
+    }
+
+    const modelPath = model.includes('/') ? model : `wavespeed-ai/${model}`;
+    console.log('[Wavespeed Motion Control] Dispatching job for model:', modelPath);
+    const r = await fetch(`${WAVESPEED_BASE}/${modelPath}`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${WAVESPEED_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const json = await r.json().catch(() => ({})) as Record<string, unknown>;
+    if (!r.ok) {
+      const message = typeof json.error === 'string' ? json.error : `Wavespeed motion control failed (${r.status})`;
+      return res.status(r.status).json({ error: message });
+    }
+    const videoUrl = await extractWavespeedVideoOutput(json);
+    return res.json({ videoUrl, model: modelPath });
+  } catch (err) {
+    console.error('[MotionControl] Wavespeed API failed:', err);
+    return res.status(502).json({ error: err instanceof Error ? err.message : 'Motion control generation failed' });
+  }
 });
 
 // ═══════════════════════════════════════════════════════════════════
@@ -8867,42 +8886,6 @@ Return ONLY a valid JSON object in this exact format:
   } catch (err: any) {
     console.error('[generate-trend-script]', err);
     return res.status(500).json({ error: err.message || 'Script generation failed' });
-  }
-});
-
-// Mock Video Stitching Endpoint
-app.post('/api/stitch-video-assets', async (req, res) => {
-  const { personaId, scenes, audioUrl } = req.body;
-  if (!scenes || !Array.isArray(scenes) || scenes.length === 0) {
-    return res.status(400).json({ error: 'Scenes are required for stitching' });
-  }
-
-  try {
-    console.log('[Stitcher] Stitching request received for persona:', personaId);
-    console.log('[Stitcher] Total scenes:', scenes.length, 'Audio track:', audioUrl);
-
-    // Vertical video templates representation
-    const mockVideos = [
-      'https://assets.mixkit.co/videos/preview/mixkit-influencer-recording-herself-with-a-smartphone-43034-large.mp4',
-      'https://assets.mixkit.co/videos/preview/mixkit-young-woman-talking-to-camera-on-smartphone-42287-large.mp4',
-      'https://assets.mixkit.co/videos/preview/mixkit-woman-vlogger-recording-video-for-blog-42416-large.mp4',
-      'https://assets.mixkit.co/videos/preview/mixkit-girl-working-out-at-home-with-her-phone-41989-large.mp4'
-    ];
-    
-    const randomStitchedUrl = mockVideos[Math.floor(Math.random() * mockVideos.length)];
-    
-    // Simulate compilation time
-    await new Promise(resolve => setTimeout(resolve, 4000));
-    
-    return res.json({
-      success: true,
-      videoUrl: randomStitchedUrl,
-      promptUsed: scenes.map((s: any) => s.caption || s.prompt).join(' | '),
-      duration: scenes.reduce((acc: number, s: any) => acc + (s.duration || 5), 0)
-    });
-  } catch (err: any) {
-    console.error('[Stitcher] Error stitching video assets:', err);
-    return res.status(500).json({ error: err.message || 'Stitching failed' });
   }
 });
 

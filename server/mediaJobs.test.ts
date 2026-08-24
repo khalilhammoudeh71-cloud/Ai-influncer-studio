@@ -28,7 +28,7 @@ test('chooses a different configured fallback for image, video, edit, and upscal
   assert.equal(fallbackModelForJob('avatar', 'wavespeed-ai/ai-talking-photos'), null);
 });
 
-test('presents abandoned running work as recoverable instead of permanently running', () => {
+test('presents abandoned running work as awaiting automatic recovery', () => {
   const old = new Date(Date.now() - 13 * 60 * 1000);
   assert.equal(isMediaJobStale(old), true);
   const job = publicMediaJob({
@@ -39,8 +39,9 @@ test('presents abandoned running work as recoverable instead of permanently runn
     createdAt: old,
     updatedAt: old,
   });
-  assert.equal(job.status, 'failed');
+  assert.equal(job.status, 'running');
   assert.equal(job.isStale, true);
   assert.equal(job.summary, 'Walk on the beach');
-  assert.match(job.error || '', /interrupted/i);
+  assert.equal(job.stage, 'Waiting for recovery');
+  assert.equal(job.error, null);
 });

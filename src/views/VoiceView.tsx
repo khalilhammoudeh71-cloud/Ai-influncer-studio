@@ -665,6 +665,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
     try {
       console.log(`[VoiceView] Generating video with model: ${selectedVideoModel}`);
       const res = await api.images.generateVideo({
+        personaClientId: persona?.id,
         prompt: talkingPrompt,
         modelId: selectedVideoModel,
         sourceImage: selectedImage,

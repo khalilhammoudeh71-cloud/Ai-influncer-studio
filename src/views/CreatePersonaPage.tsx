@@ -9,7 +9,7 @@ import {
 import toast from 'react-hot-toast';
 import { Persona, NavActions, GeneratedImage } from '../types';
 import { api } from '../services/apiService';
-import { authFetch } from '../services/imageService';
+import { studioImageJob } from '../services/mediaJobService';
 import { persistPersonaReferenceImages } from '../services/personaMediaService';
 import { supabase } from '../lib/supabase';
 import { cn } from '../utils/cn';
@@ -1189,15 +1189,9 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       ];
       for (const modelId of cascade) {
         try {
-          const res = await authFetch('/api/generate-image', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt, modelId })
-          });
-          const data = await res.json();
-          if (res.ok && (data.imageUrl || data.imageUrls?.[0])) {
-            return data.imageUrl || data.imageUrls[0];
-          }
+          const result = await studioImageJob(undefined, { prompt, modelId });
+          const first = Array.isArray(result) ? result[0] : result;
+          if (first?.imageUrl) return first.imageUrl;
         } catch (err) {
           console.warn(`[CreatePersonaPage] Model ${modelId} failed, trying next:`, err);
         }
@@ -1229,15 +1223,9 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       ];
       for (const modelId of cascade) {
         try {
-          const res = await authFetch('/api/generate-image', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt, modelId })
-          });
-          const data = await res.json();
-          if (res.ok && (data.imageUrl || data.imageUrls?.[0])) {
-            return data.imageUrl || data.imageUrls[0];
-          }
+          const result = await studioImageJob(undefined, { prompt, modelId });
+          const first = Array.isArray(result) ? result[0] : result;
+          if (first?.imageUrl) return first.imageUrl;
         } catch (err) {
           console.warn(`[CreatePersonaPage] Model ${modelId} failed, trying next:`, err);
         }

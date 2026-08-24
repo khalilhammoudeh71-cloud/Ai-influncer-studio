@@ -849,6 +849,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
     setIsProcessing(true);
     try {
       const data = await api.images.generateVideo({
+        personaClientId: persona?.id,
         prompt: videoPrompt || 'Stylize video',
         modelId: selectedVideoModel,
         sourceVideo: sourceVideo,
