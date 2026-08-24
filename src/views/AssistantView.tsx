@@ -54,6 +54,25 @@ function useTypewriter(text: string, speed = 18) {
   return { displayed, done };
 }
 
+async function copyTextToClipboard(text: string) {
+  if (navigator.clipboard?.writeText && window.isSecureContext) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+
+  const copied = document.execCommand('copy');
+  document.body.removeChild(textarea);
+  if (!copied) throw new Error('Clipboard access was denied');
+}
+
 // ── localStorage helpers ──────────────────────────────────
 const HISTORY_KEY = (personaId: string) => `chat_history_${personaId}`;
 const MEMORY_KEY = (personaId: string) => `persona_memories_${personaId}`;
@@ -4116,6 +4135,56 @@ function MessageBubble({ msg, persona, isLatest, onSaveToVault, isSaving, isSave
   const shouldType = !isUser && msg.type === 'text' && isLatest;
   const { displayed, done } = useTypewriter(shouldType ? msg.content : '', 14);
   const textToShow = shouldType ? displayed : msg.content;
+  const [showCopyAction, setShowCopyAction] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const copyResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (copyResetTimerRef.current) clearTimeout(copyResetTimerRef.current);
+  }, []);
+
+  const revealCopyAction = () => {
+    if (msg.content.trim()) setShowCopyAction(true);
+  };
+
+  const handleMessageKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      revealCopyAction();
+    }
+  };
+
+  const handleCopyMessage = async (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    try {
+      await copyTextToClipboard(msg.content);
+      setCopied(true);
+      toast.success('Message copied');
+      if (copyResetTimerRef.current) clearTimeout(copyResetTimerRef.current);
+      copyResetTimerRef.current = setTimeout(() => setCopied(false), 1800);
+    } catch {
+      toast.error('Could not copy this message');
+    }
+  };
+
+  const copyAction = showCopyAction && msg.content.trim() ? (
+    <motion.button
+      type="button"
+      initial={{ opacity: 0, scale: 0.85 }}
+      animate={{ opacity: 1, scale: 1 }}
+      onClick={handleCopyMessage}
+      className={cn(
+        'flex-shrink-0 w-7 h-7 rounded-lg border flex items-center justify-center transition-colors cursor-pointer',
+        copied
+          ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
+          : 'bg-[#24252b] hover:bg-[#2e3036] border-white/[0.10] text-zinc-400 hover:text-white',
+      )}
+      title={copied ? 'Copied' : 'Copy entire message'}
+      aria-label={copied ? 'Message copied' : 'Copy entire message'}
+    >
+      {copied ? <Check size={13} /> : <Copy size={13} />}
+    </motion.button>
+  ) : null;
 
   if (isUser) {
     return (
@@ -4144,8 +4213,18 @@ function MessageBubble({ msg, persona, isLatest, onSaveToVault, isSaving, isSave
             )}
           </div>
         )}
-        <div className="max-w-[75%] bg-[#28292f] hover:bg-[#2e2f36] border border-white/[0.12] text-zinc-100 rounded-2xl rounded-br-sm px-3.5 py-2.5 text-[12.5px] sm:text-[13px] leading-relaxed shadow-sm transition-colors">
-          {msg.content}
+        <div className="flex items-center justify-end gap-1.5 max-w-full">
+          {copyAction}
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={revealCopyAction}
+            onKeyDown={handleMessageKeyDown}
+            title="Click to show copy button"
+            className="max-w-[75%] bg-[#28292f] hover:bg-[#2e2f36] border border-white/[0.12] text-zinc-100 rounded-2xl rounded-br-sm px-3.5 py-2.5 text-[12.5px] sm:text-[13px] leading-relaxed shadow-sm transition-colors cursor-pointer select-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E7C477]/60"
+          >
+            {msg.content}
+          </div>
         </div>
       </motion.div>
     );
@@ -4168,11 +4247,21 @@ function MessageBubble({ msg, persona, isLatest, onSaveToVault, isSaving, isSave
 
       <div className="max-w-[78%] space-y-1">
         {msg.type === 'text' && (
-          <div className="bg-[#1c1d22] border border-white/[0.08] text-zinc-100 rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-[12.5px] sm:text-[13px] leading-relaxed shadow-sm">
-            {textToShow}
-            {shouldType && !done && (
-              <span className="inline-block w-0.5 h-3 bg-zinc-400 ml-1 animate-pulse rounded-sm" />
-            )}
+          <div className="flex items-center gap-1.5 max-w-full">
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={revealCopyAction}
+              onKeyDown={handleMessageKeyDown}
+              title="Click to show copy button"
+              className="bg-[#1c1d22] border border-white/[0.08] text-zinc-100 rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-[12.5px] sm:text-[13px] leading-relaxed shadow-sm cursor-pointer select-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E7C477]/60"
+            >
+              {textToShow}
+              {shouldType && !done && (
+                <span className="inline-block w-0.5 h-3 bg-zinc-400 ml-1 animate-pulse rounded-sm" />
+              )}
+            </div>
+            {copyAction}
           </div>
         )}
 
@@ -4291,9 +4380,19 @@ function MessageBubble({ msg, persona, isLatest, onSaveToVault, isSaving, isSave
         )}
 
         {msg.type === 'error' && (
-          <div className="bg-rose-500/10 border border-rose-500/20 rounded-2xl rounded-tl-sm px-4 py-2.5 flex items-start gap-2">
-            <AlertCircle size={14} className="text-rose-400 mt-0.5 flex-shrink-0" />
-            <span className="text-xs text-rose-300">{msg.content}</span>
+          <div className="flex items-center gap-1.5 max-w-full">
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={revealCopyAction}
+              onKeyDown={handleMessageKeyDown}
+              title="Click to show copy button"
+              className="bg-rose-500/10 border border-rose-500/20 rounded-2xl rounded-tl-sm px-4 py-2.5 flex items-start gap-2 cursor-pointer select-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/60"
+            >
+              <AlertCircle size={14} className="text-rose-400 mt-0.5 flex-shrink-0" />
+              <span className="text-xs text-rose-300">{msg.content}</span>
+            </div>
+            {copyAction}
           </div>
         )}
       </div>
