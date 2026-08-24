@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   X, Download, Sparkles, ZoomIn, ZoomOut, RotateCcw, 
   ArrowUpCircle, Wand2, Bookmark, Check, Loader2, 
-  Layers, Eye, ExternalLink
+  Layers, Eye, ExternalLink, Film, Mic2, Play, Image as ImageIcon
 } from 'lucide-react';
 import { ModelInfo, fetchAllModelTypes, upscaleImage, editImage, enhancePrompt } from '../services/imageService';
 import { Persona } from '../types';
@@ -18,6 +18,32 @@ interface ImageVersion {
   prompt?: string;
 }
 
+export type ImageStudioMode = 'view' | 'upscale' | 'edit' | 'animate' | 'avatar';
+
+export interface MediaStudioResult {
+  url: string;
+  model?: string;
+  prompt?: string;
+}
+
+export interface AnimateImageInput {
+  imageUrl: string;
+  prompt: string;
+  aspectRatio: '9:16' | '1:1' | '16:9';
+}
+
+export interface TalkingAvatarInput {
+  imageUrl: string;
+  script: string;
+}
+
+export interface ImageStudioVersionResult {
+  kind: 'upscale' | 'edit';
+  sourceUrl: string;
+  prompt: string;
+  model?: string;
+}
+
 interface Props {
   isOpen: boolean;
   onClose: () => void;
@@ -25,7 +51,10 @@ interface Props {
   prompt?: string;
   persona: Persona;
   onSaveToVault?: (url: string, prompt?: string) => Promise<void>;
-  onImageUpdated?: (newUrl: string) => void;
+  onImageUpdated?: (newUrl: string, result: ImageStudioVersionResult) => void;
+  initialMode?: ImageStudioMode;
+  onAnimateImage?: (input: AnimateImageInput) => Promise<MediaStudioResult>;
+  onCreateTalkingAvatar?: (input: TalkingAvatarInput) => Promise<MediaStudioResult>;
 }
 
 export default function ImageLightboxModal({
@@ -36,12 +65,20 @@ export default function ImageLightboxModal({
   persona,
   onSaveToVault,
   onImageUpdated,
+  initialMode = 'view',
+  onAnimateImage,
+  onCreateTalkingAvatar,
 }: Props) {
   const [versions, setVersions] = useState<ImageVersion[]>([]);
   const [activeVersionIndex, setActiveVersionIndex] = useState(0);
 
-  const [activeTab, setActiveTab] = useState<'view' | 'upscale' | 'edit'>('view');
+  const [activeTab, setActiveTab] = useState<ImageStudioMode>(initialMode);
   const [scale, setScale] = useState(1);
+  const [animationPrompt, setAnimationPrompt] = useState('Natural cinematic movement, subtle expression and body motion, realistic camera movement, preserve the exact face and identity.');
+  const [animationAspectRatio, setAnimationAspectRatio] = useState<'9:16' | '1:1' | '16:9'>('9:16');
+  const [avatarScript, setAvatarScript] = useState(`Hey! It's ${persona.name}. I wanted to share this with you.`);
+  const [generatedVideo, setGeneratedVideo] = useState<MediaStudioResult | null>(null);
+  const [actionError, setActionError] = useState('');
 
   // Model states
   const [upscaleModels, setUpscaleModels] = useState<ModelInfo[]>([]);
@@ -68,12 +105,15 @@ export default function ImageLightboxModal({
         prompt: initialPrompt,
       }]);
       setActiveVersionIndex(0);
-      setActiveTab('view');
+      setActiveTab(initialMode);
       setScale(1);
       setEditPromptText('');
       setIsSaved(false);
+      setGeneratedVideo(null);
+      setActionError('');
+      setAvatarScript(`Hey! It's ${persona.name}. I wanted to share this with you.`);
     }
-  }, [isOpen, imageUrl, initialPrompt]);
+  }, [isOpen, imageUrl, initialPrompt, initialMode, persona.name]);
 
   useEffect(() => {
     if (isOpen) {
@@ -134,20 +174,24 @@ export default function ImageLightboxModal({
 
   const currentImage = versions[activeVersionIndex]?.url || imageUrl;
   const currentPrompt = versions[activeVersionIndex]?.prompt || initialPrompt || `Photo of ${persona.name}`;
+  const previewUrl = generatedVideo?.url || currentImage;
+  const isVideoPreview = Boolean(generatedVideo?.url);
 
   const handleDownload = () => {
     try {
       const a = document.createElement('a');
-      a.href = currentImage;
+      a.href = previewUrl;
       const cleanName = (persona.name || 'Persona').replace(/[^a-zA-Z0-9]/g, '_');
       const timestamp = new Date().toISOString().slice(0, 10);
-      a.download = `${cleanName}_${targetResolution.toUpperCase()}_${timestamp}.png`;
+      a.download = isVideoPreview
+        ? `${cleanName}_video_${timestamp}.mp4`
+        : `${cleanName}_${targetResolution.toUpperCase()}_${timestamp}.png`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       toast.success('Download started!');
     } catch {
-      window.open(currentImage, '_blank');
+      window.open(previewUrl, '_blank');
     }
   };
 
@@ -193,7 +237,12 @@ export default function ImageLightboxModal({
       setVersions(prev => [...prev, newVersion]);
       setActiveVersionIndex(versions.length);
       setActiveTab('view');
-      onImageUpdated?.(result.imageUrl);
+      onImageUpdated?.(result.imageUrl, {
+        kind: 'upscale',
+        sourceUrl: currentImage,
+        prompt: currentPrompt,
+        model: result.model,
+      });
       toast.success(`✨ Upscaled successfully to ${targetResolution.toUpperCase()}!`);
     } catch (err: any) {
       toast.error(err?.message || 'Upscale failed. Please try a different model.');
@@ -218,10 +267,60 @@ export default function ImageLightboxModal({
       setVersions(prev => [...prev, newVersion]);
       setActiveVersionIndex(versions.length);
       setActiveTab('view');
-      onImageUpdated?.(result.imageUrl);
+      onImageUpdated?.(result.imageUrl, {
+        kind: 'edit',
+        sourceUrl: currentImage,
+        prompt: editPromptText.trim(),
+        model: result.model,
+      });
       toast.success('🎨 Image edited successfully!');
     } catch (err: any) {
       toast.error(err?.message || 'Edit failed. Please try a different model or prompt.');
+    } finally {
+      setIsProcessing(false);
+      setProcessStatus('');
+    }
+  };
+
+  const handleExecuteAnimation = async () => {
+    if (!onAnimateImage || !currentImage || !animationPrompt.trim() || isProcessing) return;
+    setIsProcessing(true);
+    setActionError('');
+    setProcessStatus('Animating this image with identity lock...');
+    try {
+      const result = await onAnimateImage({
+        imageUrl: currentImage,
+        prompt: animationPrompt.trim(),
+        aspectRatio: animationAspectRatio,
+      });
+      setGeneratedVideo(result);
+      toast.success('Animated video created and added to the conversation!');
+    } catch (err: any) {
+      const message = err?.message || 'Animation failed. Please try again.';
+      setActionError(message);
+      toast.error(message);
+    } finally {
+      setIsProcessing(false);
+      setProcessStatus('');
+    }
+  };
+
+  const handleExecuteTalkingAvatar = async () => {
+    if (!onCreateTalkingAvatar || !currentImage || !avatarScript.trim() || isProcessing) return;
+    setIsProcessing(true);
+    setActionError('');
+    setProcessStatus(`Creating ${persona.name}'s talking avatar...`);
+    try {
+      const result = await onCreateTalkingAvatar({
+        imageUrl: currentImage,
+        script: avatarScript.trim(),
+      });
+      setGeneratedVideo(result);
+      toast.success('Talking avatar created and added to the conversation!');
+    } catch (err: any) {
+      const message = err?.message || 'Talking avatar generation failed. Please try again.';
+      setActionError(message);
+      toast.error(message);
     } finally {
       setIsProcessing(false);
       setProcessStatus('');
@@ -274,7 +373,7 @@ export default function ImageLightboxModal({
                   {persona.name}
                 </h3>
                 <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/[0.08] text-zinc-300 border border-white/10">
-                  {versions[activeVersionIndex]?.label || 'Portrait'}
+                  {isVideoPreview ? (activeTab === 'avatar' ? 'Talking Avatar' : 'Animated Video') : (versions[activeVersionIndex]?.label || 'Portrait')}
                 </span>
               </div>
               {currentPrompt && (
@@ -289,7 +388,7 @@ export default function ImageLightboxModal({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => window.open(currentImage, '_blank')}
+              onClick={() => window.open(previewUrl, '_blank')}
               title="Open full resolution in a separate tab / window"
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/[0.08] hover:bg-white/[0.16] text-zinc-200 hover:text-white border border-white/10 text-xs font-semibold transition-all cursor-pointer shadow-sm"
             >
@@ -356,21 +455,31 @@ export default function ImageLightboxModal({
           )}
 
           <motion.div
-            drag={scale > 1}
+            drag={!isVideoPreview && scale > 1}
             dragConstraints={{ left: -400, right: 400, top: -400, bottom: 400 }}
             animate={{ scale }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
             className="max-w-[calc(100vw-0.5rem)] max-h-[calc(100dvh-0.5rem)] flex items-center justify-center cursor-zoom-in"
           >
-            <img
-              src={currentImage}
-              alt="Expanded view"
-              className="max-w-full max-h-[calc(100dvh-0.5rem)] object-contain rounded-xl shadow-[0_25px_70px_rgba(0,0,0,0.95)] border border-white/[0.12]"
-            />
+            {isVideoPreview ? (
+              <video
+                src={generatedVideo?.url}
+                controls
+                autoPlay
+                playsInline
+                className="max-w-full max-h-[calc(100dvh-0.5rem)] object-contain rounded-xl shadow-[0_25px_70px_rgba(0,0,0,0.95)] border border-white/[0.12]"
+              />
+            ) : (
+              <img
+                src={currentImage}
+                alt="Expanded view"
+                className="max-w-full max-h-[calc(100dvh-0.5rem)] object-contain rounded-xl shadow-[0_25px_70px_rgba(0,0,0,0.95)] border border-white/[0.12]"
+              />
+            )}
           </motion.div>
 
           {/* Versions thumbnail strip if edits/upscales exist */}
-          {versions.length > 1 && (
+          {!isVideoPreview && versions.length > 1 && (
             <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 p-1.5 rounded-2xl bg-black/80 border border-white/15 backdrop-blur-xl shadow-2xl">
               <span className="text-[10px] uppercase font-bold text-zinc-400 px-2 flex items-center gap-1">
                 <Layers size={11} /> Versions:
@@ -402,10 +511,10 @@ export default function ImageLightboxModal({
             <div className="flex items-center justify-between gap-2 flex-wrap">
               
               {/* Left: Mode Switches (View, Upscale Studio, AI Inpaint/Edit Studio) */}
-              <div className="flex bg-black/40 border border-white/[0.08] rounded-xl p-1 text-xs">
+              <div className="flex max-w-full overflow-x-auto [scrollbar-width:none] bg-black/40 border border-white/[0.08] rounded-xl p-1 text-xs">
                 <button
-                  onClick={() => setActiveTab('view')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                  onClick={() => { setActiveTab('view'); setGeneratedVideo(null); setActionError(''); }}
+                  className={`flex flex-shrink-0 items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold whitespace-nowrap transition-all cursor-pointer ${
                     activeTab === 'view' ? 'bg-white/[0.14] text-white shadow-sm' : 'text-zinc-400 hover:text-white'
                   }`}
                 >
@@ -413,8 +522,8 @@ export default function ImageLightboxModal({
                   <span>Inspect</span>
                 </button>
                 <button
-                  onClick={() => setActiveTab('upscale')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                  onClick={() => { setActiveTab('upscale'); setGeneratedVideo(null); setActionError(''); }}
+                  className={`flex flex-shrink-0 items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold whitespace-nowrap transition-all cursor-pointer ${
                     activeTab === 'upscale' ? 'bg-[#E7C477]/20 text-[#F2D58D] border border-[#E7C477]/40 shadow-sm' : 'text-zinc-400 hover:text-white'
                   }`}
                 >
@@ -422,30 +531,54 @@ export default function ImageLightboxModal({
                   <span>Upscale HD</span>
                 </button>
                 <button
-                  onClick={() => setActiveTab('edit')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                  onClick={() => { setActiveTab('edit'); setGeneratedVideo(null); setActionError(''); }}
+                  className={`flex flex-shrink-0 items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold whitespace-nowrap transition-all cursor-pointer ${
                     activeTab === 'edit' ? 'bg-violet-500/20 text-violet-300 border border-violet-500/40 shadow-sm' : 'text-zinc-400 hover:text-white'
                   }`}
                 >
                   <Wand2 size={13} className="text-violet-400" />
                   <span>AI Edit / Modify</span>
                 </button>
+                {onAnimateImage && (
+                  <button
+                    onClick={() => { setActiveTab('animate'); setGeneratedVideo(null); setActionError(''); }}
+                    className={`flex flex-shrink-0 items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                      activeTab === 'animate' ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-500/40 shadow-sm' : 'text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    <Film size={13} className="text-cyan-300" />
+                    <span>Animate</span>
+                  </button>
+                )}
+                {onCreateTalkingAvatar && (
+                  <button
+                    onClick={() => { setActiveTab('avatar'); setGeneratedVideo(null); setActionError(''); }}
+                    className={`flex flex-shrink-0 items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                      activeTab === 'avatar' ? 'bg-emerald-500/20 text-emerald-200 border border-emerald-500/40 shadow-sm' : 'text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    <Mic2 size={13} className="text-emerald-300" />
+                    <span>Talking Avatar</span>
+                  </button>
+                )}
               </div>
 
               {/* Right: Quick Action Buttons (Save Vault + Download) */}
               <div className="flex items-center gap-2">
-                <button
-                  onClick={handleSaveVault}
-                  disabled={isSaving || isSaved}
-                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-semibold text-xs transition-all cursor-pointer shadow-sm ${
-                    isSaved 
-                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' 
-                      : 'bg-white/[0.08] hover:bg-white/[0.14] text-zinc-200 hover:text-white border border-white/10'
-                  }`}
-                >
-                  {isSaving ? <Loader2 size={13} className="animate-spin" /> : isSaved ? <Check size={13} /> : <Bookmark size={13} />}
-                  <span>{isSaved ? 'Saved to Vault' : 'Save to Vault'}</span>
-                </button>
+                {!isVideoPreview && (
+                  <button
+                    onClick={handleSaveVault}
+                    disabled={isSaving || isSaved}
+                    className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-semibold text-xs transition-all cursor-pointer shadow-sm ${
+                      isSaved
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                        : 'bg-white/[0.08] hover:bg-white/[0.14] text-zinc-200 hover:text-white border border-white/10'
+                    }`}
+                  >
+                    {isSaving ? <Loader2 size={13} className="animate-spin" /> : isSaved ? <Check size={13} /> : <Bookmark size={13} />}
+                    <span>{isSaved ? 'Saved to Vault' : 'Save to Vault'}</span>
+                  </button>
+                )}
 
                 <button
                   onClick={handleDownload}
@@ -568,6 +701,129 @@ export default function ImageLightboxModal({
                 </motion.div>
               )}
             </AnimatePresence>
+
+            <AnimatePresence>
+              {activeTab === 'animate' && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="pt-2 border-t border-white/[0.06] flex flex-col gap-2.5"
+                >
+                  {generatedVideo ? (
+                    <div className="flex items-center justify-between gap-3 rounded-xl border border-cyan-500/25 bg-cyan-500/10 px-3 py-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Play size={14} className="text-cyan-300 flex-shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-cyan-100">Animated video is ready</p>
+                          <p className="text-[10px] text-cyan-200/70 truncate">{generatedVideo.model || 'Selected video model'} • also added to this conversation</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setGeneratedVideo(null)}
+                        className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-xs font-semibold text-white cursor-pointer"
+                      >
+                        Animate again
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2 bg-[#1c1d22] border border-white/15 focus-within:border-cyan-500/50 rounded-xl px-3 py-2 shadow-inner">
+                        <ImageIcon size={13} className="text-cyan-300 flex-shrink-0" />
+                        <input
+                          type="text"
+                          value={animationPrompt}
+                          onChange={event => setAnimationPrompt(event.target.value)}
+                          onKeyDown={event => { if (event.key === 'Enter') handleExecuteAnimation(); }}
+                          placeholder="Describe movement, camera motion, and action..."
+                          className="w-full bg-transparent text-xs text-white placeholder-zinc-500 outline-none"
+                        />
+                        <select
+                          value={animationAspectRatio}
+                          onChange={event => setAnimationAspectRatio(event.target.value as '9:16' | '1:1' | '16:9')}
+                          className="bg-black/30 border border-white/10 text-zinc-200 text-xs rounded-lg px-2 py-1.5 outline-none cursor-pointer"
+                          aria-label="Video aspect ratio"
+                        >
+                          <option value="9:16">Portrait 9:16</option>
+                          <option value="1:1">Square 1:1</option>
+                          <option value="16:9">Landscape 16:9</option>
+                        </select>
+                        <button
+                          type="button"
+                          onClick={handleExecuteAnimation}
+                          disabled={isProcessing || !animationPrompt.trim()}
+                          className="flex items-center gap-1 px-3.5 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-zinc-950 font-bold text-xs transition-all disabled:opacity-40 cursor-pointer flex-shrink-0"
+                        >
+                          {isProcessing ? <Loader2 size={12} className="animate-spin" /> : <Film size={12} />}
+                          <span>Animate</span>
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-zinc-500">Uses the selected video model from AI Settings and preserves this image as the visual starting frame.</p>
+                    </>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <AnimatePresence>
+              {activeTab === 'avatar' && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="pt-2 border-t border-white/[0.06] flex flex-col gap-2.5"
+                >
+                  {generatedVideo ? (
+                    <div className="flex items-center justify-between gap-3 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 py-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Mic2 size={14} className="text-emerald-300 flex-shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-emerald-100">Talking avatar is ready</p>
+                          <p className="text-[10px] text-emerald-200/70 truncate">{generatedVideo.model || 'Talking-avatar engine'} • also added to this conversation</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setGeneratedVideo(null)}
+                        className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-xs font-semibold text-white cursor-pointer"
+                      >
+                        New script
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2 bg-[#1c1d22] border border-white/15 focus-within:border-emerald-500/50 rounded-xl px-3 py-2 shadow-inner">
+                        <Mic2 size={13} className="text-emerald-300 flex-shrink-0" />
+                        <textarea
+                          value={avatarScript}
+                          onChange={event => setAvatarScript(event.target.value)}
+                          rows={2}
+                          placeholder={`What should ${persona.name} say?`}
+                          className="w-full resize-none bg-transparent text-xs text-white placeholder-zinc-500 outline-none leading-relaxed"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleExecuteTalkingAvatar}
+                          disabled={isProcessing || !avatarScript.trim()}
+                          className="flex items-center gap-1 px-3.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs transition-all disabled:opacity-40 cursor-pointer flex-shrink-0"
+                        >
+                          {isProcessing ? <Loader2 size={12} className="animate-spin" /> : <Mic2 size={12} />}
+                          <span>Create</span>
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-zinc-500">Uses this portrait and the persona's selected voice to create a lip-synced talking avatar.</p>
+                    </>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {actionError && (
+              <div role="alert" className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[11px] font-medium text-rose-200">
+                {actionError}
+              </div>
+            )}
 
           </div>
         </footer>

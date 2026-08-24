@@ -1,12 +1,18 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Send, Bot, ChevronDown, ImageIcon, Video, Loader2, AlertCircle, Camera, MessageSquareQuote, Copy, Bookmark, Check, Phone, PhoneOff, Volume2, VolumeX, Mic, MicOff, RotateCcw, Trash2, Plus, Upload, Music, Film, X, Play, Sparkles, Paperclip, FileText, SlidersHorizontal, Settings, Hand, Maximize2, Download, Shirt, Heart, Pencil, BookOpen, ShieldCheck, Brain, Pin, Search } from 'lucide-react';
+import { Send, Bot, ChevronDown, ImageIcon, Video, Loader2, AlertCircle, Camera, MessageSquareQuote, Copy, Bookmark, Check, Phone, PhoneOff, Volume2, VolumeX, Mic, MicOff, RotateCcw, Trash2, Plus, Upload, Music, Film, X, Play, Sparkles, Paperclip, FileText, SlidersHorizontal, Settings, Hand, Maximize2, Download, Shirt, Heart, Pencil, BookOpen, ShieldCheck, Brain, Pin, Search, ArrowUpCircle, Wand2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Persona, NavActions, RelationshipState } from '../types';
-import { ModelInfo, authFetch, fetchAllModelTypes, editImage, requestPersonaMedia, textToSpeech } from '../services/imageService';
+import { ModelInfo, authFetch, fetchAllModelTypes, editImage, generateTalkingHead, requestPersonaMedia, textToSpeech } from '../services/imageService';
 import { cn } from '../utils/cn';
 import { api } from '../services/apiService';
 import toast from 'react-hot-toast';
-import ImageLightboxModal from '../components/ImageLightboxModal';
+import ImageLightboxModal, {
+  type AnimateImageInput,
+  type ImageStudioMode,
+  type ImageStudioVersionResult,
+  type MediaStudioResult,
+  type TalkingAvatarInput,
+} from '../components/ImageLightboxModal';
 import PersonaReferenceModal from '../components/PersonaReferenceModal';
 import VoiceNoteBubble from '../components/VoiceNoteBubble';
 import PersonaAvatar from '../components/PersonaAvatar';
@@ -213,10 +219,18 @@ function correctSpeechPhonetics(transcript: string, activePersonaName?: string):
 }
 
 function loadHistory(personaId: string): ChatMessage[] {
-  return loadRecentConversation(personaId).map(record => ({
-    ...record,
-    timestamp: record.timestamp instanceof Date ? record.timestamp : new Date(record.timestamp),
-  })) as ChatMessage[];
+  return loadRecentConversation(personaId).map(record => {
+    const timestamp = record.timestamp instanceof Date ? record.timestamp : new Date(record.timestamp);
+    if (record.type === 'loading') {
+      return {
+        ...record,
+        type: 'error',
+        content: 'That generation was interrupted before the result returned. Open the source media and try the action again.',
+        timestamp,
+      };
+    }
+    return { ...record, timestamp };
+  }) as ChatMessage[];
 }
 
 function saveHistory(personaId: string, msgs: ChatMessage[]) {
@@ -768,7 +782,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   const callTranscriptRef = useRef<CallTranscriptItem[]>([]);
   const [activeCallMedia, setActiveCallMedia] = useState<{ type: 'image' | 'video'; url: string; prompt?: string; messageId?: string } | null>(null);
   const [fullScreenModalMedia, setFullScreenModalMedia] = useState<{ type: 'image' | 'video'; url: string; prompt?: string } | null>(null);
-  const [lightboxMedia, setLightboxMedia] = useState<{ url: string; prompt?: string } | null>(null);
+  const [lightboxMedia, setLightboxMedia] = useState<{ url: string; prompt?: string; initialMode?: ImageStudioMode } | null>(null);
   const [voiceAccuracyProfile, setVoiceAccuracyProfile] = useState<VoiceAccuracyProfile>(() =>
     parseVoiceAccuracyProfile(accountLocalStorage.getItem(VOICE_ACCURACY_STORAGE_KEY)),
   );
@@ -835,14 +849,29 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     callTranscriptRef.current = callTranscript;
   }, [callTranscript]);
 
-  const handleUpdateImageInChat = (oldUrl: string, newUrl: string) => {
-    const next = messagesRef.current.map(m => (m.type === 'image' && m.content === oldUrl) ? { ...m, content: newUrl } : m);
-    messagesRef.current = next;
-    setMessages(next);
-    saveHistory(selectedPersonaId, next);
-    if (activeCallMedia?.type === 'image' && activeCallMedia.url === oldUrl) {
-      setActiveCallMedia({ ...activeCallMedia, url: newUrl });
-    }
+  const handlePersistStudioImageVersion = (newUrl: string, result: ImageStudioVersionResult) => {
+    const source = [...messagesRef.current]
+      .reverse()
+      .find(message => message.type === 'image' && message.content === result.sourceUrl);
+    const revisionNote = result.kind === 'upscale'
+      ? 'Created a separate HD-upscaled version.'
+      : result.prompt;
+
+    addMessage({
+      role: 'persona',
+      type: 'image',
+      content: newUrl,
+      prompt: result.kind === 'upscale' ? source?.prompt || result.prompt : result.prompt,
+      rootPrompt: source?.rootPrompt || source?.prompt || result.prompt,
+      revisionHistory: [...(source?.revisionHistory || []), revisionNote].slice(-8),
+      parentMediaId: source?.id,
+      participants: source?.participants,
+      modelId: source?.modelId,
+      modelName: result.model || source?.modelName,
+      source: 'text',
+    });
+
+    setActiveCallMedia({ type: 'image', url: newUrl, prompt: result.prompt });
   };
 
   // ── Relationship & Mood State ─────────────────────────────
@@ -868,36 +897,118 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   };
 
   // ── Talking Head Video & Voice Note Handlers ──────────────
-  const handleGenerateTalkingVideo = async (imageMsg: ChatMessage) => {
-    if (!imageMsg.content) return;
-    toast.loading('Generating talking video with realistic lip-sync...', { id: 'talking-video' });
-    const loadingId = uid();
-    addMessage({ role: 'persona', type: 'loading', content: `Creating talking video with ${activePersona.name}...` });
+  const handleAnimateImageFromStudio = async (input: AnimateImageInput): Promise<MediaStudioResult> => {
+    const loadingId = addMessage({
+      role: 'persona',
+      type: 'loading',
+      content: `Animating this image with ${activePersona.name}...`,
+      prompt: input.prompt,
+      source: 'text',
+    });
+
     try {
-      const res = await authFetch('/api/generate-talking-head', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          image: imageMsg.content,
-          persona: activePersona,
-          prompt: `cinematic talking video portrait of ${activePersona.name}, speaking expressively with subtle head movements and soft smile, looking at camera`,
-        })
+      const result = await requestPersonaMedia({
+        type: 'video',
+        persona: activePersona,
+        prompt: input.prompt,
+        imageModelId: selectedEditModelId || 'wavespeed:bytedance/seedream-v5.0-pro',
+        videoModelId: selectedVideoModelId || 'wavespeed-i2v:bytedance/seedance-2-mini',
+        referenceImage: input.imageUrl,
+        aspectRatio: input.aspectRatio,
+        allowNsfw: true,
+        creatorProfile: getCreatorProfile(),
       });
-      const data = await res.json();
-      if (data.videoUrl) {
-        toast.success('🎉 Talking video created!', { id: 'talking-video' });
-        replaceMessage(loadingId, {
-          type: 'video',
-          content: data.videoUrl,
-          prompt: data.promptUsed,
-        });
-      } else {
-        throw new Error(data.error || 'Video generation failed');
-      }
-    } catch (e: any) {
-      toast.error('Talking video generation failed: ' + (e?.message || 'Error'), { id: 'talking-video' });
-      replaceMessage(loadingId, { type: 'error', content: 'Could not generate talking video clip.' });
+
+      const resultText = result.message || `Done — I animated that image with ${activePersona.name}.`;
+      replaceMessage(loadingId, { type: 'text', content: resultText });
+      addMessage({
+        role: 'persona',
+        type: 'video',
+        content: result.url!,
+        prompt: result.promptUsed || input.prompt,
+        modelName: result.model,
+        source: 'text',
+      });
+
+      return {
+        url: result.url!,
+        model: result.model,
+        prompt: result.promptUsed || input.prompt,
+      };
+    } catch (error: any) {
+      const message = error?.message || 'I could not animate that image.';
+      replaceMessage(loadingId, { type: 'error', content: message });
+      throw new Error(message);
     }
+  };
+
+  const handleCreateTalkingAvatarFromStudio = async (input: TalkingAvatarInput): Promise<MediaStudioResult> => {
+    const loadingId = addMessage({
+      role: 'persona',
+      type: 'loading',
+      content: `Creating ${activePersona.name}'s talking avatar...`,
+      prompt: input.script,
+      source: 'text',
+    });
+
+    try {
+      if (!activePersona.voiceId) {
+        throw new Error(`${activePersona.name} does not have a selected voice yet. Choose a voice in Persona Studio, then try again.`);
+      }
+
+      let audioUrl: string;
+      try {
+        const configuredVoiceEngine = activePersona.voiceEngine;
+        const voiceEngine = configuredVoiceEngine === 'openai' || configuredVoiceEngine === 'gemini'
+          ? configuredVoiceEngine
+          : 'elevenlabs';
+        const speech = await textToSpeech({
+          text: input.script,
+          voiceName: activePersona.name,
+          voiceId: activePersona.voiceId,
+          engine: voiceEngine,
+        });
+        audioUrl = speech.audioUrl;
+      } catch (voiceError) {
+        console.warn('[TalkingAvatar] Persona voice synthesis failed:', voiceError);
+        throw new Error(`I couldn't synthesize ${activePersona.name}'s selected voice. Check the voice provider and try again.`);
+      }
+
+      const result = await generateTalkingHead({
+        portraitImage: input.imageUrl,
+        audioUrl,
+        script: input.script,
+        voiceName: activePersona.voiceId || 'Kore',
+        engine: 'wavespeed',
+        model: 'wavespeed-ai/ai-talking-photos',
+      });
+
+      const resultText = `Done — ${activePersona.name}'s talking avatar is ready.`;
+      replaceMessage(loadingId, { type: 'text', content: resultText });
+      addMessage({
+        role: 'persona',
+        type: 'video',
+        content: result.videoUrl,
+        prompt: input.script,
+        modelName: result.model,
+        source: 'text',
+      });
+
+      return { url: result.videoUrl, model: result.model, prompt: input.script };
+    } catch (error: any) {
+      const message = error?.message || 'I could not create that talking avatar.';
+      replaceMessage(loadingId, { type: 'error', content: message });
+      throw new Error(message);
+    }
+  };
+
+  const handleGenerateTalkingVideo = (imageMsg: ChatMessage) => {
+    if (!imageMsg.content) return;
+    setLightboxMedia({
+      url: imageMsg.content,
+      prompt: imageMsg.prompt,
+      initialMode: 'avatar',
+    });
   };
 
   const handleSendVoiceNoteRequest = async () => {
@@ -3534,7 +3645,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                   onSaveToVault={handleSaveToVault}
                   isSaving={savingMsgId === msg.id}
                   isSaved={savedMsgIds.has(msg.id)}
-                  onImageClick={(url, prompt) => setLightboxMedia({ url, prompt })}
+                  onImageClick={(url, prompt, initialMode) => setLightboxMedia({ url, prompt, initialMode })}
                   onGenerateTalkingVideo={handleGenerateTalkingVideo}
                   onSetAsPrimaryReference={handleSetPrimaryReferenceImage}
                   onCancelGeneration={handleCancelGeneration}
@@ -4818,7 +4929,10 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
           imageUrl={lightboxMedia.url}
           prompt={lightboxMedia.prompt}
           persona={activePersona}
-          onImageUpdated={(newUrl) => handleUpdateImageInChat(lightboxMedia.url, newUrl)}
+          initialMode={lightboxMedia.initialMode}
+          onImageUpdated={handlePersistStudioImageVersion}
+          onAnimateImage={handleAnimateImageFromStudio}
+          onCreateTalkingAvatar={handleCreateTalkingAvatarFromStudio}
         />
       )}
 
@@ -5257,7 +5371,7 @@ interface BubbleProps {
   onSaveToVault: (msg: ChatMessage) => void;
   isSaving: boolean;
   isSaved: boolean;
-  onImageClick?: (url: string, prompt?: string) => void;
+  onImageClick?: (url: string, prompt?: string, initialMode?: ImageStudioMode) => void;
   onGenerateTalkingVideo?: (msg: ChatMessage) => void;
   onSetAsPrimaryReference?: (url: string) => void;
   onCancelGeneration?: (id: string) => void;
@@ -5423,7 +5537,7 @@ function MessageBubble({ msg, persona, isLatest, onSaveToVault, isSaving, isSave
             <div 
               className="relative cursor-pointer overflow-hidden bg-black/40"
               onClick={() => onImageClick?.(msg.content, msg.prompt)}
-              title="Click to view full screen, upscale & edit"
+              title="Open Media Studio"
             >
               <img
                 src={msg.content}
@@ -5433,7 +5547,7 @@ function MessageBubble({ msg, persona, isLatest, onSaveToVault, isSaving, isSave
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-4">
                 <span className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-black/85 text-white text-xs font-bold backdrop-blur-md shadow-2xl border border-[#E7C477]/40 transform group-hover:scale-105 transition-transform">
-                  <Maximize2 size={14} className="text-[#F2D58D]" /> Fullscreen Studio & Upscale
+                  <Maximize2 size={14} className="text-[#F2D58D]" /> Open Media Studio
                 </span>
               </div>
             </div>
@@ -5460,10 +5574,40 @@ function MessageBubble({ msg, persona, isLatest, onSaveToVault, isSaving, isSave
               <button
                 onClick={() => onImageClick?.(msg.content, msg.prompt)}
                 className="flex items-center gap-1 text-[#F2D58D] hover:text-white bg-white/5 hover:bg-white/10 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer border border-white/10"
-                title="Open Studio (Upscale, Edit, Download)"
+                title="Open the full Media Studio"
               >
                 <Maximize2 size={11} className="text-[#E7C477]" />
                 <span>Fullscreen</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onImageClick?.(msg.content, msg.prompt, 'edit')}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/20 hover:border-violet-500/40 text-violet-200 text-[10px] font-semibold transition-all cursor-pointer active:scale-95"
+                title="Modify this image in Media Studio"
+              >
+                <Wand2 size={10} />
+                <span>Modify</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onImageClick?.(msg.content, msg.prompt, 'upscale')}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 hover:border-amber-500/40 text-amber-200 text-[10px] font-semibold transition-all cursor-pointer active:scale-95"
+                title="Create a separate HD-upscaled version"
+              >
+                <ArrowUpCircle size={10} />
+                <span>Upscale HD</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onImageClick?.(msg.content, msg.prompt, 'animate')}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 hover:border-cyan-500/40 text-cyan-200 text-[10px] font-semibold transition-all cursor-pointer active:scale-95"
+                title="Animate this image with the selected video model"
+              >
+                <Film size={10} />
+                <span>Animate</span>
               </button>
 
               <button
@@ -5477,14 +5621,13 @@ function MessageBubble({ msg, persona, isLatest, onSaveToVault, isSaving, isSave
                 <span>Copy</span>
               </button>
 
-              {/* Instant Talking Head Video Generator */}
               <button
                 onClick={() => onGenerateTalkingVideo?.(msg)}
                 className="flex items-center gap-1 px-2 py-1 rounded-lg bg-violet-500/15 hover:bg-violet-500/25 border border-violet-500/30 text-violet-300 text-[10px] font-semibold transition-all cursor-pointer shadow-sm active:scale-95"
-                title="Create an animated talking video from this photo"
+                title="Create a talking avatar using this photo and the persona's selected voice"
               >
-                <Film size={10} className="text-violet-400" />
-                <span>Talking Video</span>
+                <Mic size={10} className="text-violet-400" />
+                <span>Talking Avatar</span>
               </button>
 
               <button
