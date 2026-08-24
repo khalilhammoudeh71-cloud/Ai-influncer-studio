@@ -154,7 +154,7 @@ export function loadConversationContext(personaId: string, limit = 80): Conversa
   return mergeUniqueConversationRecords(archived, loadRecentConversation(personaId)).slice(-limit);
 }
 
-function loadArchivedConversation(personaId: string): ConversationRecord[] {
+export function loadConversationArchive(personaId: string): ConversationRecord[] {
   const index = parseIndex(accountLocalStorage.getItem(archiveIndexKey(personaId)));
   const archived: ConversationRecord[] = [];
   for (let chunkNumber = 1; chunkNumber <= index.chunks; chunkNumber += 1) {
@@ -181,7 +181,7 @@ function memoryTerms(text: string): string[] {
 export function searchConversationMemories(personaId: string, query: string, limit = 12): ConversationRecord[] {
   const terms = memoryTerms(query);
   if (terms.length === 0 || limit <= 0) return [];
-  const archive = loadArchivedConversation(personaId);
+  const archive = loadConversationArchive(personaId);
   const normalizedQuery = query.trim().toLowerCase();
   const scored = archive.map((record, index) => {
     const content = record.content.toLowerCase();

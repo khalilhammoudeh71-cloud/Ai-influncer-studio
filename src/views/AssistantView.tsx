@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Send, Bot, ChevronDown, ImageIcon, Video, Loader2, AlertCircle, Camera, MessageSquareQuote, Copy, Bookmark, Check, Phone, PhoneOff, Volume2, VolumeX, Mic, MicOff, RotateCcw, Trash2, Plus, Upload, Music, Film, X, Play, Sparkles, Paperclip, FileText, SlidersHorizontal, Settings, Hand, Maximize2, Download, Shirt, Heart, Pencil, BookOpen, ShieldCheck } from 'lucide-react';
+import { Send, Bot, ChevronDown, ImageIcon, Video, Loader2, AlertCircle, Camera, MessageSquareQuote, Copy, Bookmark, Check, Phone, PhoneOff, Volume2, VolumeX, Mic, MicOff, RotateCcw, Trash2, Plus, Upload, Music, Film, X, Play, Sparkles, Paperclip, FileText, SlidersHorizontal, Settings, Hand, Maximize2, Download, Shirt, Heart, Pencil, BookOpen, ShieldCheck, Brain, Pin, Search } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Persona, NavActions, RelationshipState } from '../types';
 import { ModelInfo, authFetch, fetchAllModelTypes, editImage, requestPersonaMedia, textToSpeech } from '../services/imageService';
@@ -16,6 +16,7 @@ import {
   archiveConversationRecords,
   clearConversationHistory,
   deleteConversationRecord,
+  loadConversationArchive,
   loadConversationContext,
   loadRecentConversation,
   mergeUniqueConversationRecords,
@@ -24,6 +25,15 @@ import {
   searchConversationMemories,
   type ConversationRecord,
 } from '../utils/conversationContinuity';
+import {
+  addPersonaMemoryNote,
+  buildRecentConversationSummary,
+  deletePersonaMemoryNote,
+  loadPersonaMemoryNotes,
+  togglePersonaMemoryPinned,
+  updatePersonaMemoryNote,
+  type PersonaMemoryNote,
+} from '../utils/personaMemory';
 import { resolveMediaModelFromPrompt } from '../utils/mediaModelResolver';
 import { resolveImageRevisionContext, type GeneratedImageMessage } from '../utils/mediaRevisionContext';
 import {
@@ -127,7 +137,6 @@ async function copyImageBlobToClipboard(imageUrl: string) {
 }
 
 // ── localStorage helpers ──────────────────────────────────
-const MEMORY_KEY = (personaId: string) => `persona_memories_${personaId}`;
 const USER_NAME_KEY = 'persona_user_name';
 
 const INVALID_NAMES = new Set([
@@ -215,36 +224,21 @@ function saveHistory(personaId: string, msgs: ChatMessage[]) {
 }
 
 function loadPersonaMemories(personaId: string): string[] {
-  try {
-    const raw = accountLocalStorage.getItem(MEMORY_KEY(personaId));
-    let parsed: string[] = raw ? JSON.parse(raw) : [];
-    const userName = getStoredUserName();
-    // Filter out corrupted memories with words like "Allowing", "Serious", etc.
-    parsed = parsed.filter(m => 
-      !m.toLowerCase().includes('allowing is the') && 
-      !m.toLowerCase().includes("user's name is allowing") && 
-      !m.toLowerCase().includes("user's name is serious")
-    );
-    const defaultFacts = [
-      `User's name is ${userName}`,
-      `${userName} is the creator and close partner of this persona`,
-      `Values authentic conversation, wit, and intellectual depth`,
-      `Enjoys playful teasing, spontaneous photo generation, and deep banter`
-    ];
-    for (const f of defaultFacts) {
-      if (!parsed.some(m => m.includes(f))) {
-        parsed.unshift(f);
-      }
-    }
-    return parsed.slice(0, 30);
-  } catch { 
-    return [`User's name is Dr. H`, `Dr. H is the creator and partner`]; 
-  }
+  return loadPersonaMemoryNotes(personaId, getDefaultPersonaMemoryFacts()).map(note => note.text).slice(0, 30);
+}
+
+function getDefaultPersonaMemoryFacts(): string[] {
+  const userName = getStoredUserName();
+  return [
+    `User's name is ${userName}`,
+    `${userName} is the creator and close partner of this persona`,
+    'Values authentic conversation, wit, and intellectual depth',
+    'Enjoys playful teasing, spontaneous photo generation, and deep banter',
+  ];
 }
 
 function savePersonaMemory(personaId: string, memoryText: string) {
   try {
-    const existing = loadPersonaMemories(personaId);
     const trimmed = memoryText.trim();
     if (!trimmed) return;
 
@@ -263,10 +257,7 @@ function savePersonaMemory(personaId: string, memoryText: string) {
       return;
     }
 
-    if (!existing.includes(trimmed)) {
-      const updated = [...existing, trimmed].slice(-30);
-      accountLocalStorage.setItem(MEMORY_KEY(personaId), JSON.stringify(updated));
-    }
+    addPersonaMemoryNote(personaId, trimmed, 'automatic', getDefaultPersonaMemoryFacts());
   } catch { /* quota */ }
 }
 
@@ -536,6 +527,13 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   const [generatedReplies, setGeneratedReplies] = useState<string[]>([]);
   const [showEngineSettings, setShowEngineSettings] = useState(false);
   const [isReferenceModalOpen, setIsReferenceModalOpen] = useState(false);
+  const [showMemoryCenter, setShowMemoryCenter] = useState(false);
+  const [memoryNotes, setMemoryNotes] = useState<PersonaMemoryNote[]>([]);
+  const [memoryActivity, setMemoryActivity] = useState<ConversationRecord[]>([]);
+  const [memorySearch, setMemorySearch] = useState('');
+  const [newMemoryDraft, setNewMemoryDraft] = useState('');
+  const [editingMemoryId, setEditingMemoryId] = useState<string | null>(null);
+  const [editingMemoryDraft, setEditingMemoryDraft] = useState('');
 
   // ── Multimodal Media Attachment States ──────────────────
   const [chatAttachment, setChatAttachment] = useState<ChatAttachment | null>(null);
@@ -3023,6 +3021,74 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     toast.success('Image removed from this conversation');
   }, [activeCallMedia, lightboxMedia, selectedPersonaId]);
 
+  const refreshMemoryCenter = useCallback(() => {
+    setMemoryNotes(loadPersonaMemoryNotes(selectedPersonaId, getDefaultPersonaMemoryFacts()));
+    setMemoryActivity(
+      loadConversationArchive(selectedPersonaId)
+        .filter(record => record.type === 'text' && record.content.trim())
+        .reverse(),
+    );
+  }, [selectedPersonaId]);
+
+  useEffect(() => {
+    if (showMemoryCenter) refreshMemoryCenter();
+  }, [refreshMemoryCenter, showMemoryCenter]);
+
+  const openMemoryCenter = useCallback(() => {
+    setMemorySearch('');
+    setNewMemoryDraft('');
+    setEditingMemoryId(null);
+    setShowMemoryCenter(true);
+  }, []);
+
+  const handleAddMemoryNote = useCallback(() => {
+    const text = newMemoryDraft.trim();
+    if (!text) return;
+    setMemoryNotes(addPersonaMemoryNote(selectedPersonaId, text, 'manual', getDefaultPersonaMemoryFacts()));
+    setNewMemoryDraft('');
+    toast.success(`${activePersona.name} will remember that`);
+  }, [activePersona.name, newMemoryDraft, selectedPersonaId]);
+
+  const handleSaveMemoryEdit = useCallback(() => {
+    if (!editingMemoryId || !editingMemoryDraft.trim()) return;
+    setMemoryNotes(updatePersonaMemoryNote(selectedPersonaId, editingMemoryId, editingMemoryDraft));
+    setEditingMemoryId(null);
+    setEditingMemoryDraft('');
+    toast.success('Memory corrected');
+  }, [editingMemoryDraft, editingMemoryId, selectedPersonaId]);
+
+  const handleToggleMemoryPin = useCallback((noteId: string) => {
+    setMemoryNotes(togglePersonaMemoryPinned(selectedPersonaId, noteId));
+  }, [selectedPersonaId]);
+
+  const handleForgetMemoryNote = useCallback((noteId: string) => {
+    setMemoryNotes(deletePersonaMemoryNote(selectedPersonaId, noteId));
+    if (editingMemoryId === noteId) setEditingMemoryId(null);
+    toast.success('Memory forgotten');
+  }, [editingMemoryId, selectedPersonaId]);
+
+  const handleForgetConversationRecord = useCallback((recordId: string) => {
+    if (!window.confirm('Forget this individual message from this persona’s history?')) return;
+    deleteConversationRecord(selectedPersonaId, recordId);
+    setMemoryActivity(previous => previous.filter(record => record.id !== recordId));
+    const nextMessages = messagesRef.current.filter(message => message.id !== recordId);
+    messagesRef.current = nextMessages;
+    setMessages(nextMessages);
+    setCallTranscript(previous => previous.filter(record => record.id !== recordId));
+    toast.success('Message removed from memory');
+  }, [selectedPersonaId]);
+
+  const normalizedMemorySearch = memorySearch.trim().toLowerCase();
+  const visibleMemoryNotes = memoryNotes.filter(note => (
+    !normalizedMemorySearch || note.text.toLowerCase().includes(normalizedMemorySearch)
+  ));
+  const visibleMemoryActivity = memoryActivity.filter(record => (
+    !normalizedMemorySearch || record.content.toLowerCase().includes(normalizedMemorySearch)
+  ));
+  const memoryVoiceCount = memoryActivity.filter(record => record.source === 'voice').length;
+  const memoryTextCount = memoryActivity.filter(record => record.source !== 'voice').length;
+  const recentMemorySummary = buildRecentConversationSummary([...memoryActivity].reverse(), activePersona.name);
+
   const clearHistory = () => {
     clearConversationHistory(selectedPersonaId);
     resetConversation(activePersona);
@@ -3410,6 +3476,15 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                 <span className="hidden sm:inline">AI Settings</span>
               </button>
 
+              <button
+                onClick={openMemoryCenter}
+                title={`Open ${activePersona.name}'s Memory Center`}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#24252b] hover:bg-[#2b2c33] border border-white/[0.09] text-zinc-200 hover:text-white text-xs font-semibold transition-all cursor-pointer shadow-sm"
+              >
+                <Brain size={13} className="text-[#E7C477]" />
+                <span className="hidden sm:inline">Memory</span>
+              </button>
+
               {/* New Chat */}
               <button
                 onClick={clearHistory}
@@ -3596,6 +3671,263 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
           )}
         </div>
       )}
+
+      <AnimatePresence>
+        {showMemoryCenter && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[120] flex items-center justify-center bg-black/85 p-3 sm:p-6 backdrop-blur-xl"
+            onClick={() => setShowMemoryCenter(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 18, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.98 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              onClick={event => event.stopPropagation()}
+              className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-white/[0.14] bg-[#17181d] shadow-[0_32px_100px_rgba(0,0,0,0.8)]"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="memory-center-title"
+            >
+              <div className="border-b border-white/[0.09] bg-gradient-to-br from-[#E7C477]/[0.12] via-transparent to-cyan-500/[0.05] px-5 py-5 sm:px-7">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex min-w-0 items-center gap-3.5">
+                    <div className="relative h-12 w-12 flex-shrink-0 overflow-hidden rounded-2xl border border-[#E7C477]/30 bg-[#E7C477]/10">
+                      {activePersona.referenceImage || activePersona.avatar ? (
+                        <PersonaAvatar
+                          src={activePersona.referenceImage || activePersona.avatar}
+                          alt={activePersona.name}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <Brain size={22} className="absolute inset-0 m-auto text-[#F2D58D]" />
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#E7C477]">Persona intelligence</p>
+                      <h2 id="memory-center-title" className="truncate text-xl font-extrabold text-white sm:text-2xl">
+                        {activePersona.name}&apos;s Memory Center
+                      </h2>
+                      <p className="mt-1 text-xs text-zinc-400">Review, correct, pin, or forget anything this persona remembers.</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowMemoryCenter(false)}
+                    className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-white/10 bg-black/20 text-zinc-400 transition-colors hover:bg-white/10 hover:text-white"
+                    aria-label="Close Memory Center"
+                  >
+                    <X size={17} />
+                  </button>
+                </div>
+
+                <div className="mt-4 grid grid-cols-3 gap-2 sm:max-w-md">
+                  {[
+                    [`${memoryNotes.filter(note => note.pinned).length}`, 'Pinned facts'],
+                    [`${memoryTextCount}`, 'Text turns'],
+                    [`${memoryVoiceCount}`, 'Voice turns'],
+                  ].map(([value, label]) => (
+                    <div key={label} className="rounded-xl border border-white/[0.08] bg-black/20 px-3 py-2">
+                      <p className="text-sm font-black text-white">{value}</p>
+                      <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-500">{label}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex-1 space-y-4 overflow-y-auto p-4 custom-scrollbar sm:p-6">
+                <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
+                  <div className="relative">
+                    <Search size={15} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500" />
+                    <input
+                      value={memorySearch}
+                      onChange={event => setMemorySearch(event.target.value)}
+                      placeholder="Search memories and conversation history…"
+                      className="w-full rounded-xl border border-white/[0.10] bg-[#101115] py-3 pl-10 pr-4 text-sm text-white outline-none transition-colors placeholder:text-zinc-600 focus:border-[#E7C477]/45"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2 rounded-xl border border-emerald-400/20 bg-emerald-400/[0.07] px-4 py-2.5 text-xs font-bold text-emerald-300">
+                    <Check size={15} /> Text and voice share one memory
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-[#E7C477]/20 bg-[#E7C477]/[0.055] p-4">
+                  <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-[#F2D58D]">
+                    <MessageSquareQuote size={15} /> Latest interaction summary
+                  </div>
+                  <p className="mt-2 text-sm leading-relaxed text-zinc-300">{recentMemorySummary}</p>
+                </div>
+
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <section className="min-h-[360px] rounded-2xl border border-white/[0.09] bg-[#121318] p-4 sm:p-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <h3 className="flex items-center gap-2 text-sm font-extrabold text-white">
+                          <Brain size={16} className="text-[#E7C477]" /> Important memories
+                        </h3>
+                        <p className="mt-1 text-[11px] text-zinc-500">Pinned facts are prioritized in future conversations.</p>
+                      </div>
+                      <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-[10px] font-bold text-zinc-400">
+                        {visibleMemoryNotes.length}
+                      </span>
+                    </div>
+
+                    <div className="mt-4 flex gap-2">
+                      <input
+                        value={newMemoryDraft}
+                        onChange={event => setNewMemoryDraft(event.target.value)}
+                        onKeyDown={event => {
+                          if (event.key === 'Enter') handleAddMemoryNote();
+                        }}
+                        placeholder={`Add something ${activePersona.name} should remember…`}
+                        className="min-w-0 flex-1 rounded-xl border border-white/[0.10] bg-black/25 px-3 py-2.5 text-xs text-white outline-none placeholder:text-zinc-600 focus:border-[#E7C477]/45"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddMemoryNote}
+                        disabled={!newMemoryDraft.trim()}
+                        className="flex items-center gap-1.5 rounded-xl bg-[#E7C477] px-3 py-2 text-xs font-black text-zinc-950 transition-colors hover:bg-[#F2D58D] disabled:cursor-not-allowed disabled:opacity-35"
+                      >
+                        <Plus size={14} /> Add
+                      </button>
+                    </div>
+
+                    <div className="mt-4 max-h-[390px] space-y-2 overflow-y-auto pr-1 custom-scrollbar">
+                      {visibleMemoryNotes.length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-white/[0.10] p-8 text-center text-xs text-zinc-500">
+                          No matching memories.
+                        </div>
+                      ) : visibleMemoryNotes.map(note => (
+                        <div key={note.id} className="group rounded-xl border border-white/[0.08] bg-white/[0.035] p-3 transition-colors hover:border-white/[0.14]">
+                          {editingMemoryId === note.id ? (
+                            <div className="space-y-2">
+                              <textarea
+                                autoFocus
+                                value={editingMemoryDraft}
+                                onChange={event => setEditingMemoryDraft(event.target.value)}
+                                onKeyDown={event => {
+                                  if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') handleSaveMemoryEdit();
+                                  if (event.key === 'Escape') setEditingMemoryId(null);
+                                }}
+                                rows={3}
+                                className="w-full resize-none rounded-lg border border-[#E7C477]/35 bg-black/30 px-3 py-2 text-xs leading-relaxed text-white outline-none"
+                              />
+                              <div className="flex justify-end gap-1.5">
+                                <button type="button" onClick={() => setEditingMemoryId(null)} className="rounded-lg px-2.5 py-1.5 text-[10px] font-bold text-zinc-400 hover:text-white">Cancel</button>
+                                <button type="button" onClick={handleSaveMemoryEdit} className="flex items-center gap-1 rounded-lg bg-[#E7C477] px-2.5 py-1.5 text-[10px] font-black text-zinc-950"><Check size={11} /> Save</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-start gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleToggleMemoryPin(note.id)}
+                                className={cn(
+                                  'mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg border transition-colors',
+                                  note.pinned
+                                    ? 'border-[#E7C477]/40 bg-[#E7C477]/15 text-[#F2D58D]'
+                                    : 'border-white/[0.08] bg-black/20 text-zinc-600 hover:text-zinc-300',
+                                )}
+                                title={note.pinned ? 'Unpin memory' : 'Pin memory'}
+                              >
+                                <Pin size={12} className={note.pinned ? 'fill-current' : ''} />
+                              </button>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs leading-relaxed text-zinc-200">{note.text}</p>
+                                <p className="mt-1 text-[9px] font-bold uppercase tracking-wider text-zinc-600">
+                                  {note.source === 'manual' ? 'Added by you' : note.source === 'default' ? 'Core memory' : 'Learned from chat'}
+                                </p>
+                              </div>
+                              <div className="flex flex-shrink-0 gap-1 opacity-60 transition-opacity group-hover:opacity-100">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingMemoryId(note.id);
+                                    setEditingMemoryDraft(note.text);
+                                  }}
+                                  className="flex h-7 w-7 items-center justify-center rounded-lg text-zinc-500 hover:bg-white/[0.08] hover:text-white"
+                                  title="Correct memory"
+                                >
+                                  <Pencil size={12} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleForgetMemoryNote(note.id)}
+                                  className="flex h-7 w-7 items-center justify-center rounded-lg text-zinc-500 hover:bg-rose-500/10 hover:text-rose-400"
+                                  title="Forget memory"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+
+                  <section className="min-h-[360px] rounded-2xl border border-white/[0.09] bg-[#121318] p-4 sm:p-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <h3 className="flex items-center gap-2 text-sm font-extrabold text-white">
+                          <BookOpen size={16} className="text-cyan-300" /> Conversation memory
+                        </h3>
+                        <p className="mt-1 text-[11px] text-zinc-500">Recent text and voice turns in one continuous timeline.</p>
+                      </div>
+                      <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-[10px] font-bold text-zinc-400">
+                        {visibleMemoryActivity.length}
+                      </span>
+                    </div>
+
+                    <div className="mt-4 max-h-[470px] space-y-2 overflow-y-auto pr-1 custom-scrollbar">
+                      {visibleMemoryActivity.length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-white/[0.10] p-8 text-center text-xs text-zinc-500">
+                          No matching conversation history.
+                        </div>
+                      ) : visibleMemoryActivity.slice(0, 40).map(record => (
+                        <div key={record.id} className="group rounded-xl border border-white/[0.08] bg-white/[0.03] p-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-2">
+                              <span className={cn(
+                                'rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wider',
+                                record.source === 'voice'
+                                  ? 'bg-emerald-400/10 text-emerald-300'
+                                  : 'bg-cyan-400/10 text-cyan-300',
+                              )}>
+                                {record.source === 'voice' ? 'Voice' : 'Text'}
+                              </span>
+                              <span className="text-[10px] font-bold text-zinc-500">
+                                {record.role === 'user' ? 'You' : activePersona.name}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <time className="text-[9px] text-zinc-600">
+                                {new Date(record.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                              </time>
+                              <button
+                                type="button"
+                                onClick={() => handleForgetConversationRecord(record.id)}
+                                className="flex h-6 w-6 items-center justify-center rounded-md text-zinc-600 opacity-60 transition-colors hover:bg-rose-500/10 hover:text-rose-400 group-hover:opacity-100"
+                                title="Forget this message"
+                              >
+                                <Trash2 size={11} />
+                              </button>
+                            </div>
+                          </div>
+                          <p className="mt-2 text-xs leading-relaxed text-zinc-300">{record.content}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Optional one-time Speaker Lock setup before the first voice call */}
       <AnimatePresence>
