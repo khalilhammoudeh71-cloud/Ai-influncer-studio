@@ -2150,7 +2150,15 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       if (isVoiceImageIntent || isVoiceVideoIntent) {
         const mediaType = isVoiceImageIntent ? 'image' as const : 'video' as const;
         const loadingMsgId = uid();
-        setCallTranscript(prev => [...prev, personaMsg, { id: loadingMsgId, role: 'persona', type: 'loading', content: '' }]);
+        const callGenerationLabel = mediaType === 'image'
+          ? 'Generating your image...'
+          : 'Rendering your video...';
+        setCallTranscript(prev => [...prev, personaMsg, {
+          id: loadingMsgId,
+          role: 'persona',
+          type: 'loading',
+          content: callGenerationLabel,
+        }]);
         const exactMediaRequest = text.trim();
         const rawMediaPrompt = exactMediaRequest || `${activePersona.name}, ${activePersona.niche}, ${mediaType === 'image' ? 'photorealistic portrait' : 'cinematic motion video clip'}`;
         const modelSelection = resolveMediaModelFromPrompt(
@@ -2981,7 +2989,25 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       savePersonaMemory(activePersona.id, effectiveText);
     }
 
-    const loadingId = addMessage({ role: 'persona', type: 'loading', content: '' });
+    // Show useful feedback immediately instead of waiting for the chat model to
+    // finish classifying the request. The label becomes more specific once the
+    // selected provider/model is known below.
+    const immediateIntent = detectIntent(effectiveText);
+    const immediateImageRevision = resolveImageRevisionContext(
+      effectiveText,
+      messagesRef.current,
+      pastedRevisionSource,
+    );
+    const immediateLoadingLabel = immediateImageRevision.isRevision || immediateIntent === 'image'
+      ? 'Preparing your image generation...'
+      : immediateIntent === 'video'
+        ? 'Preparing your video generation...'
+        : 'Thinking...';
+    const loadingId = addMessage({
+      role: 'persona',
+      type: 'loading',
+      content: immediateLoadingLabel,
+    });
 
     try {
       const personaMemories = loadPersonaMemories(activePersona.id);
@@ -4171,10 +4197,11 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                             </div>
                           </div>
                         ) : item.type === 'loading' ? (
-                          <div className="flex items-center gap-2 text-violet-400 text-xs sm:text-sm font-medium py-1 animate-pulse">
-                            <span className="inline-block w-2 h-2 rounded-full bg-violet-400 animate-ping" />
-                            Creating high-definition photo for you...
-                          </div>
+                          <GeneratingProgressBubble
+                            msgId={item.id}
+                            label={item.content}
+                            compact
+                          />
                         ) : item.type === 'image' ? (
                           <div className="mt-2 flex flex-col sm:flex-row items-start sm:items-center gap-3 bg-black/40 p-2.5 rounded-xl border border-white/10">
                             {item.content && (
@@ -4599,23 +4626,20 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
 function GeneratingProgressBubble({ 
   msgId,
   label, 
-  onCancel 
+  onCancel,
+  compact = false,
 }: { 
   msgId?: string;
   label?: string; 
   onCancel?: (id: string) => void;
+  compact?: boolean;
 }) {
-  const [progress, setProgress] = useState(14);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setProgress(prev => {
-        if (prev >= 95) return prev;
-        const diff = 96 - prev;
-        const step = Math.max(1, Math.floor(Math.random() * (diff / 4) + 1));
-        return Math.min(95, prev + step);
-      });
-    }, 450);
+      setElapsedSeconds(previous => previous + 1);
+    }, 1000);
 
     return () => clearInterval(interval);
   }, []);
@@ -4628,21 +4652,73 @@ function GeneratingProgressBubble({
            .replace(/Creating talking video with .*\.\.\./i, 'Creating video...')
            .replace(/Recording voice note for you\.\.\./i, 'Recording voice...')
            .replace(/Rendering video clip with .*\.\.\./i, 'Rendering video...')
-    : 'Generating visual...';
+    : 'Preparing your request...';
+
+  const lowerLabel = cleanLabel.toLowerCase();
+  const isVideo = /video|rendering/.test(lowerLabel);
+  const isVoice = /voice|recording/.test(lowerLabel);
+  const isImage = !isVideo && !isVoice && /image|photo|picture|visual/.test(lowerLabel);
+  const title = isVideo
+    ? 'Video generation in progress'
+    : isVoice
+      ? 'Voice note in progress'
+      : isImage
+        ? 'Image generation in progress'
+        : 'Working on your request';
+  const ActivityIcon = isVideo ? Video : isVoice ? Mic : isImage ? ImageIcon : Sparkles;
 
   return (
-    <div className="group/loading bg-[#10141D]/95 backdrop-blur-md border border-[#E7C477]/30 rounded-2xl rounded-tl-sm px-3.5 py-2 flex flex-col gap-1.5 min-w-[200px] max-w-[260px] shadow-lg shadow-black/60 transition-all">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <Loader2 size={13} className="text-[#F2D58D] animate-spin flex-shrink-0" />
-          <span className="text-xs font-medium text-zinc-200 truncate">
-            {cleanLabel}
-          </span>
+    <div
+      role="status"
+      aria-live="polite"
+      aria-label={`${title}. ${cleanLabel}`}
+      className={cn(
+        'group/loading relative overflow-hidden bg-[#151515]/98 backdrop-blur-md border border-[#E7C477]/45 rounded-2xl rounded-tl-sm shadow-xl shadow-black/60 transition-all',
+        compact ? 'px-3 py-2.5 min-w-[230px] max-w-[320px]' : 'px-4 py-3.5 min-w-[280px] w-[min(380px,78vw)]',
+      )}
+    >
+      <motion.div
+        aria-hidden="true"
+        className="absolute inset-y-0 -left-1/2 w-1/2 bg-gradient-to-r from-transparent via-[#E7C477]/10 to-transparent"
+        animate={{ x: ['0%', '300%'] }}
+        transition={{ duration: 1.8, repeat: Infinity, ease: 'linear' }}
+      />
+
+      <div className="relative flex items-center gap-3">
+        <div className={cn(
+          'relative flex-shrink-0 rounded-xl bg-[#E7C477]/10 border border-[#E7C477]/25 flex items-center justify-center',
+          compact ? 'w-9 h-9' : 'w-11 h-11',
+        )}>
+          <ActivityIcon size={compact ? 17 : 20} className="text-[#F2D58D]" />
+          <Loader2
+            size={compact ? 29 : 36}
+            className="absolute text-[#E7C477]/55 animate-spin"
+            strokeWidth={1.25}
+          />
         </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          <span className="text-[11px] font-mono font-bold text-[#F2D58D] tabular-nums">
-            {progress}%
-          </span>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <p className={cn('font-bold text-zinc-100 truncate', compact ? 'text-xs' : 'text-sm')}>
+              {title}
+            </p>
+            <span className="text-[10px] font-mono font-semibold text-[#F2D58D]/80 tabular-nums flex-shrink-0">
+              {elapsedSeconds}s
+            </span>
+          </div>
+          <p className={cn('text-zinc-400 truncate mt-0.5', compact ? 'text-[10px]' : 'text-[11px]')}>
+            {cleanLabel}
+          </p>
+          <div className="mt-2 h-1.5 bg-white/[0.08] rounded-full overflow-hidden">
+            <motion.div
+              className="h-full w-2/5 bg-gradient-to-r from-[#9C7A3C] via-[#F2D58D] to-[#B99655] rounded-full"
+              animate={{ x: ['-110%', '260%'] }}
+              transition={{ duration: 1.35, repeat: Infinity, ease: 'easeInOut' }}
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center flex-shrink-0">
           {onCancel && msgId && (
             <button
               type="button"
@@ -4650,19 +4726,14 @@ function GeneratingProgressBubble({
                 e.stopPropagation();
                 onCancel(msgId);
               }}
-              className="w-4 h-4 rounded-full bg-white/10 hover:bg-rose-500 text-zinc-400 hover:text-white flex items-center justify-center transition-all cursor-pointer"
+              className="w-6 h-6 rounded-full bg-white/[0.06] hover:bg-rose-500 text-zinc-400 hover:text-white flex items-center justify-center transition-all cursor-pointer"
               title="Cancel generation"
+              aria-label="Cancel generation"
             >
-              <X size={10} strokeWidth={2.5} />
+              <X size={12} strokeWidth={2.5} />
             </button>
           )}
         </div>
-      </div>
-      <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
-        <div
-          className="h-full bg-gradient-to-r from-[#B99655] to-[#F2D58D] rounded-full transition-all duration-300 ease-out"
-          style={{ width: `${progress}%` }}
-        />
       </div>
     </div>
   );
