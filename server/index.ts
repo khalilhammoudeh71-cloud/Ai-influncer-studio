@@ -8,6 +8,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
+import { waitUntil } from '@vercel/functions';
 import { instagramGetUrl } from 'instagram-url-direct';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
@@ -24,8 +25,8 @@ import { normalizeNaturalVoiceGreeting } from './voiceRouting';
 import stripeRoutes, { handleStripeWebhook } from './stripe-routes';
 import { requireAuth, deductCredits, isCreatorUser, AuthenticatedRequest } from './auth';
 import { db } from './db';
-import { mediaJobs } from '../shared/schema';
-import { and, desc, eq } from 'drizzle-orm';
+import { mediaJobs, users } from '../shared/schema';
+import { and, desc, eq, lt, or } from 'drizzle-orm';
 import {
   fallbackModelForJob,
   isMediaJobStale,
@@ -87,7 +88,7 @@ app.use(async (req, res, next) => {
 
 // Protect all /api endpoints except Stripe webhooks
 app.use('/api', (req, res, next) => {
-  if (req.path === '/stripe/webhook') {
+  if (req.path === '/stripe/webhook' || req.path === '/media-jobs/worker') {
     return next();
   }
   requireAuth(req as any, res, next);
@@ -7589,6 +7590,188 @@ function mediaJobOutput(kind: MediaJobKind, payload: any) {
   return payload?.videoUrl ? { ...payload, url: payload.videoUrl, type: 'video' } : null;
 }
 
+class MediaJobCanceledError extends Error {
+  constructor() {
+    super('Canceled by you');
+    this.name = 'MediaJobCanceledError';
+  }
+}
+
+function mediaJobProgress(kind: MediaJobKind, elapsedMs: number) {
+  const progress = Math.min(92, 12 + Math.floor(elapsedMs / 3000));
+  if (elapsedMs < 12_000) return { progress, stage: 'Preparing provider request' };
+  if (elapsedMs < 55_000) {
+    return { progress, stage: kind === 'video' || kind === 'avatar' ? 'Rendering motion' : 'Generating image' };
+  }
+  if (elapsedMs < 150_000) {
+    return { progress, stage: kind === 'video' || kind === 'avatar' ? 'Encoding video' : 'Refining details' };
+  }
+  return { progress, stage: 'Finalizing result' };
+}
+
+function detachedMediaRequest(user: any): AuthenticatedRequest {
+  return {
+    user,
+    body: {},
+    headers: {},
+    query: {},
+    params: {},
+  } as unknown as AuthenticatedRequest;
+}
+
+async function executeMediaJob(jobId: string, userId: string, user: any, requestedFallback = false) {
+  if (!db) return;
+  const [job] = await db.select().from(mediaJobs).where(and(
+    eq(mediaJobs.id, jobId),
+    eq(mediaJobs.userId, userId),
+  ));
+  if (!job || job.status === 'succeeded' || job.status === 'canceled') return;
+  if (job.status === 'running' && !isMediaJobStale(job.updatedAt)) return;
+
+  const kind = job.kind as MediaJobKind;
+  const storedRequest = parseMediaJobJson(job.request);
+  if (!storedRequest) {
+    await db.update(mediaJobs).set({
+      status: 'failed',
+      progress: 100,
+      stage: 'Needs attention',
+      error: 'The stored media request is invalid',
+      updatedAt: new Date(),
+      completedAt: new Date(),
+    }).where(and(eq(mediaJobs.id, jobId), eq(mediaJobs.userId, userId)));
+    return;
+  }
+
+  const useFallback = Boolean((requestedFallback || job.usedFallback) && job.fallbackModelId);
+  const executionRequest = useFallback
+    ? withMediaJobModel(kind, storedRequest, job.fallbackModelId!)
+    : storedRequest;
+  const startedAt = new Date();
+  const [running] = await db.update(mediaJobs).set({
+    status: 'running',
+    error: null,
+    result: null,
+    progress: 8,
+    stage: 'Starting generation',
+    cancelRequested: false,
+    attempt: (job.attempt || 0) + 1,
+    usedFallback: useFallback,
+    startedAt,
+    updatedAt: startedAt,
+    completedAt: null,
+  }).where(and(
+    eq(mediaJobs.id, jobId),
+    eq(mediaJobs.userId, userId),
+    eq(mediaJobs.status, job.status),
+    eq(mediaJobs.updatedAt, job.updatedAt),
+  )).returning();
+  if (!running) return;
+
+  let rejectCancellation: ((error: Error) => void) | null = null;
+  const cancellation = new Promise<never>((_resolve, reject) => {
+    rejectCancellation = reject;
+  });
+  const heartbeat = async () => {
+    const elapsedMs = Date.now() - startedAt.getTime();
+    const progress = mediaJobProgress(kind, elapsedMs);
+    const [updated] = await db.update(mediaJobs).set({
+      ...progress,
+      updatedAt: new Date(),
+    }).where(and(
+      eq(mediaJobs.id, jobId),
+      eq(mediaJobs.userId, userId),
+      eq(mediaJobs.status, 'running'),
+      eq(mediaJobs.cancelRequested, false),
+    )).returning({ id: mediaJobs.id });
+    if (!updated) rejectCancellation?.(new MediaJobCanceledError());
+  };
+  const heartbeatTimer = setInterval(() => {
+    void heartbeat().catch(error => console.warn('[media-jobs] Heartbeat failed:', error));
+  }, 10_000);
+
+  try {
+    const generationPromise = runJsonGenerationHandler(
+      mediaJobHandler(kind),
+      detachedMediaRequest(user || { id: userId, email: '' }),
+      executionRequest,
+    );
+    // The provider promise may still settle after a cancellation race. Keep a
+    // rejection handler attached so it never becomes an unhandled rejection.
+    void generationPromise.catch(() => undefined);
+    const generation = await Promise.race([generationPromise, cancellation]);
+    const output = mediaJobOutput(kind, generation.payload);
+    if (generation.status >= 400 || !output) {
+      const message = generation.payload?.message || generation.payload?.error || `${kind} generation failed`;
+      const failure = new Error(message) as Error & { status?: number };
+      failure.status = generation.status >= 400 ? generation.status : 500;
+      throw failure;
+    }
+
+    const [current] = await db.select({ cancelRequested: mediaJobs.cancelRequested }).from(mediaJobs).where(and(
+      eq(mediaJobs.id, jobId),
+      eq(mediaJobs.userId, userId),
+    ));
+    if (current?.cancelRequested) throw new MediaJobCanceledError();
+
+    await db.update(mediaJobs).set({
+      status: 'succeeded',
+      result: JSON.stringify(output),
+      error: null,
+      progress: 100,
+      stage: 'Completed',
+      modelId: output.model || mediaJobModelId(kind, executionRequest),
+      usedFallback: useFallback || /fallback|failover/i.test(output.model || ''),
+      updatedAt: new Date(),
+      completedAt: new Date(),
+    }).where(and(eq(mediaJobs.id, jobId), eq(mediaJobs.userId, userId)));
+  } catch (error) {
+    const [latestState] = await db.select({ cancelRequested: mediaJobs.cancelRequested }).from(mediaJobs).where(and(
+      eq(mediaJobs.id, jobId),
+      eq(mediaJobs.userId, userId),
+    ));
+    if (error instanceof MediaJobCanceledError || latestState?.cancelRequested) {
+      await db.update(mediaJobs).set({
+        status: 'canceled',
+        stage: 'Canceled',
+        error: null,
+        completedAt: new Date(),
+        updatedAt: new Date(),
+      }).where(and(eq(mediaJobs.id, jobId), eq(mediaJobs.userId, userId)));
+      return;
+    }
+
+    const status = Number((error as any)?.status) || 500;
+    const message = error instanceof Error ? error.message : `${kind} generation failed`;
+    const fallback = !useFallback && isRetryableMediaJobFailure(status, message)
+      ? fallbackModelForJob(kind, mediaJobModelId(kind, executionRequest))
+      : null;
+    await db.update(mediaJobs).set({
+      status: 'failed',
+      progress: 100,
+      stage: 'Needs attention',
+      error: message,
+      fallbackModelId: fallback,
+      updatedAt: new Date(),
+      completedAt: new Date(),
+    }).where(and(eq(mediaJobs.id, jobId), eq(mediaJobs.userId, userId)));
+  } finally {
+    clearInterval(heartbeatTimer);
+  }
+}
+
+function scheduleMediaJobExecution(jobId: string, userId: string, user: any, useFallback = false) {
+  const task = executeMediaJob(jobId, userId, user, useFallback).catch(error => {
+    console.error(`[media-jobs] Background execution failed for ${jobId}:`, error);
+  });
+  try {
+    waitUntil(task);
+  } catch (error) {
+    // Local development has no Vercel request context. The promise is already
+    // running, so keeping its catch handler attached is sufficient there.
+    if (process.env.VERCEL) console.warn('[media-jobs] Could not register waitUntil:', error);
+  }
+}
+
 app.post('/api/media-jobs', async (req: AuthenticatedRequest, res) => {
   if (!db) return res.status(503).json({ error: 'Media job storage is unavailable' });
   const { kind, personaClientId, request } = req.body || {};
@@ -7608,6 +7791,9 @@ app.post('/api/media-jobs', async (req: AuthenticatedRequest, res) => {
       status: 'queued',
       request: JSON.stringify(request),
       modelId: mediaJobModelId(kind, request),
+      progress: 0,
+      stage: 'Queued',
+      cancelRequested: false,
       createdAt: now,
       updatedAt: now,
     }).returning();
@@ -7627,11 +7813,57 @@ app.get('/api/media-jobs', async (req: AuthenticatedRequest, res) => {
       ? and(ownership, eq(mediaJobs.personaClientId, personaId))
       : ownership;
     const rows = await db.select().from(mediaJobs).where(where).orderBy(desc(mediaJobs.createdAt)).limit(100);
+    rows
+      .filter((row: any) => row.status === 'queued' || (row.status === 'running' && isMediaJobStale(row.updatedAt)))
+      .slice(0, 3)
+      .forEach((row: any) => scheduleMediaJobExecution(row.id, req.user.id, req.user, Boolean(row.usedFallback)));
     return res.json({ jobs: rows.map((row: any) => publicMediaJob(row)) });
   } catch (error) {
     console.error('[media-jobs] Could not list jobs:', error);
     return res.status(500).json({ error: 'Could not load media jobs' });
   }
+});
+
+// Vercel Cron recovery path. Immediate requests use waitUntil; this worker
+// resumes queued or interrupted jobs if an individual function instance ends.
+app.get('/api/media-jobs/worker', async (req, res) => {
+  if (!db) return res.status(503).json({ error: 'Media job storage is unavailable' });
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret) return res.status(503).json({ error: 'Media job recovery is not configured' });
+  if (req.headers.authorization !== `Bearer ${cronSecret}`) {
+    return res.status(401).json({ error: 'Unauthorized worker request' });
+  }
+
+  const staleBefore = new Date(Date.now() - 90_000);
+  const recoverable = await db.select().from(mediaJobs).where(and(
+    eq(mediaJobs.cancelRequested, false),
+    or(
+      eq(mediaJobs.status, 'queued'),
+      and(eq(mediaJobs.status, 'running'), lt(mediaJobs.updatedAt, staleBefore)),
+    ),
+  )).orderBy(mediaJobs.createdAt).limit(5);
+  const jobsWithOwners = await Promise.all(recoverable.map(async (job: any) => {
+    const [owner] = await db.select({ email: users.email }).from(users).where(eq(users.id, job.userId));
+    return { job, email: owner?.email || '' };
+  }));
+  jobsWithOwners.forEach(({ job, email }) => {
+    scheduleMediaJobExecution(job.id, job.userId, { id: job.userId, email }, Boolean(job.usedFallback));
+  });
+  return res.status(202).json({ recovered: recoverable.length });
+});
+
+app.get('/api/media-jobs/:jobId', async (req: AuthenticatedRequest, res) => {
+  if (!db) return res.status(503).json({ error: 'Media job storage is unavailable' });
+  const jobId = String(req.params.jobId);
+  const [job] = await db.select().from(mediaJobs).where(and(
+    eq(mediaJobs.id, jobId),
+    eq(mediaJobs.userId, req.user.id),
+  ));
+  if (!job) return res.status(404).json({ error: 'Media job not found' });
+  if (job.status === 'queued' || (job.status === 'running' && isMediaJobStale(job.updatedAt))) {
+    scheduleMediaJobExecution(job.id, req.user.id, req.user, Boolean(job.usedFallback));
+  }
+  return res.json({ job: publicMediaJob(job) });
 });
 
 app.post('/api/media-jobs/:jobId/run', async (req: AuthenticatedRequest, res) => {
@@ -7643,25 +7875,21 @@ app.post('/api/media-jobs/:jobId/run', async (req: AuthenticatedRequest, res) =>
   ));
   if (!job) return res.status(404).json({ error: 'Media job not found' });
   if (job.status === 'succeeded') return res.json({ job: publicMediaJob(job) });
+  if (job.status === 'canceled') return res.status(409).json({ error: 'This media job was canceled', job: publicMediaJob(job) });
   if (job.status === 'running' && !isMediaJobStale(job.updatedAt)) {
-    return res.status(409).json({ error: 'This media job is already running', job: publicMediaJob(job) });
+    return res.status(202).json({ job: publicMediaJob(job) });
   }
 
-  const kind = job.kind as MediaJobKind;
-  const storedRequest = parseMediaJobJson(job.request);
-  if (!storedRequest) return res.status(422).json({ error: 'The stored media request is invalid' });
   const useFallback = Boolean(req.body?.useFallback && job.fallbackModelId);
-  const executionRequest = useFallback
-    ? withMediaJobModel(kind, storedRequest, job.fallbackModelId!)
-    : storedRequest;
-  const now = new Date();
-  const [running] = await db.update(mediaJobs).set({
-    status: 'running',
+  const [queued] = await db.update(mediaJobs).set({
+    status: 'queued',
     error: null,
     result: null,
-    attempt: (job.attempt || 0) + 1,
+    progress: 0,
+    stage: useFallback ? 'Queued with fallback model' : 'Queued',
+    cancelRequested: false,
     usedFallback: useFallback,
-    updatedAt: now,
+    updatedAt: new Date(),
     completedAt: null,
   }).where(and(
     eq(mediaJobs.id, jobId),
@@ -7669,48 +7897,37 @@ app.post('/api/media-jobs/:jobId/run', async (req: AuthenticatedRequest, res) =>
     eq(mediaJobs.status, job.status),
     eq(mediaJobs.updatedAt, job.updatedAt),
   )).returning();
-  if (!running) {
+  if (!queued) {
     return res.status(409).json({ error: 'This media job was already started in another session' });
   }
 
-  try {
-    const generation = await runJsonGenerationHandler(mediaJobHandler(kind), req, executionRequest);
-    const output = mediaJobOutput(kind, generation.payload);
-    if (generation.status >= 400 || !output) {
-      const message = generation.payload?.message || generation.payload?.error || `${kind} generation failed`;
-      const failure = new Error(message) as Error & { status?: number };
-      failure.status = generation.status >= 400 ? generation.status : 500;
-      throw failure;
-    }
+  scheduleMediaJobExecution(jobId, req.user.id, req.user, useFallback);
+  return res.status(202).json({ job: publicMediaJob(queued) });
+});
 
-    const [completed] = await db.update(mediaJobs).set({
-      status: 'succeeded',
-      result: JSON.stringify(output),
-      error: null,
-      modelId: output.model || mediaJobModelId(kind, executionRequest),
-      usedFallback: useFallback || /fallback|failover/i.test(output.model || ''),
-      updatedAt: new Date(),
-      completedAt: new Date(),
-    }).where(and(eq(mediaJobs.id, jobId), eq(mediaJobs.userId, req.user.id))).returning();
-    return res.json({ job: publicMediaJob(completed) });
-  } catch (error) {
-    const status = Number((error as any)?.status) || 500;
-    const message = error instanceof Error ? error.message : `${kind} generation failed`;
-    const fallback = !useFallback && isRetryableMediaJobFailure(status, message)
-      ? fallbackModelForJob(kind, mediaJobModelId(kind, executionRequest))
-      : null;
-    const [failed] = await db.update(mediaJobs).set({
-      status: 'failed',
-      error: message,
-      fallbackModelId: fallback,
-      updatedAt: new Date(),
-      completedAt: new Date(),
-    }).where(and(eq(mediaJobs.id, jobId), eq(mediaJobs.userId, req.user.id))).returning();
-    return res.status(status >= 400 && status < 600 ? status : 500).json({
-      error: message,
-      job: publicMediaJob(failed || running),
-    });
+app.post('/api/media-jobs/:jobId/cancel', async (req: AuthenticatedRequest, res) => {
+  if (!db) return res.status(503).json({ error: 'Media job storage is unavailable' });
+  const jobId = String(req.params.jobId);
+  const [job] = await db.select().from(mediaJobs).where(and(
+    eq(mediaJobs.id, jobId),
+    eq(mediaJobs.userId, req.user.id),
+  ));
+  if (!job) return res.status(404).json({ error: 'Media job not found' });
+  if (job.status === 'succeeded' || job.status === 'failed' || job.status === 'canceled') {
+    return res.json({ job: publicMediaJob(job) });
   }
+
+  const queued = job.status === 'queued';
+  const now = new Date();
+  const [updated] = await db.update(mediaJobs).set({
+    cancelRequested: true,
+    status: queued ? 'canceled' : 'running',
+    stage: queued ? 'Canceled' : 'Canceling',
+    error: null,
+    updatedAt: now,
+    completedAt: queued ? now : null,
+  }).where(and(eq(mediaJobs.id, jobId), eq(mediaJobs.userId, req.user.id))).returning();
+  return res.json({ job: publicMediaJob(updated || job) });
 });
 
 app.delete('/api/media-jobs/:jobId', async (req: AuthenticatedRequest, res) => {
@@ -8259,11 +8476,40 @@ async function pushSchema() {
         fallback_model_id TEXT,
         attempt INTEGER NOT NULL DEFAULT 0,
         used_fallback BOOLEAN NOT NULL DEFAULT false,
+        progress INTEGER NOT NULL DEFAULT 0,
+        stage TEXT NOT NULL DEFAULT 'Queued',
+        cancel_requested BOOLEAN NOT NULL DEFAULT false,
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        started_at TIMESTAMPTZ,
         updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
         completed_at TIMESTAMPTZ
       );
+      ALTER TABLE media_jobs ADD COLUMN IF NOT EXISTS progress INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE media_jobs ADD COLUMN IF NOT EXISTS stage TEXT NOT NULL DEFAULT 'Queued';
+      ALTER TABLE media_jobs ADD COLUMN IF NOT EXISTS cancel_requested BOOLEAN NOT NULL DEFAULT false;
+      ALTER TABLE media_jobs ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ;
+      DO $media_job_status_constraint$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conrelid = 'media_jobs'::regclass
+            AND conname = 'media_jobs_status_check'
+            AND pg_get_constraintdef(oid) NOT ILIKE '%canceled%'
+        ) THEN
+          ALTER TABLE media_jobs DROP CONSTRAINT media_jobs_status_check;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conrelid = 'media_jobs'::regclass
+            AND conname = 'media_jobs_status_check'
+        ) THEN
+          ALTER TABLE media_jobs ADD CONSTRAINT media_jobs_status_check
+            CHECK (status IN ('queued', 'running', 'succeeded', 'failed', 'canceled'));
+        END IF;
+      END
+      $media_job_status_constraint$;
       CREATE INDEX IF NOT EXISTS media_jobs_user_created_idx ON media_jobs (user_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS media_jobs_status_updated_idx ON media_jobs (status, updated_at);
 
       -- Account ownership is mandatory. Legacy unowned rows remain inaccessible.
       UPDATE personas SET user_id = 'legacy-unowned' WHERE user_id IS NULL;

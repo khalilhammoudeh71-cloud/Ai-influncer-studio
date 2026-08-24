@@ -8,6 +8,9 @@
       "maxDuration": 300
     }
   },
+  "crons": [
+    { "path": "/api/media-jobs/worker", "schedule": "* * * * *" }
+  ],
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/index.mjs" },
     { "source": "/(.*)", "destination": "/index.html" }

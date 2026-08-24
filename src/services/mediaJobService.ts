@@ -2,7 +2,7 @@ import { authFetch, type PersonaMediaRequest, type PersonaMediaResult } from './
 import { compressForUpload } from '../utils/imageProcessing';
 
 export type MediaJobKind = 'image' | 'video' | 'edit' | 'upscale' | 'avatar';
-export type MediaJobStatus = 'queued' | 'running' | 'succeeded' | 'failed';
+export type MediaJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled';
 
 export interface MediaJobResult {
   url: string;
@@ -29,8 +29,12 @@ export interface MediaJob {
   fallbackModelId: string | null;
   attempt: number;
   usedFallback: boolean;
+  progress: number;
+  stage: string;
+  cancelRequested: boolean;
   isStale: boolean;
   createdAt: string;
+  startedAt: string | null;
   updatedAt: string;
   completedAt: string | null;
 }
@@ -72,6 +76,43 @@ export async function runMediaJob(jobId: string, useFallback = false): Promise<M
     error.job = data.job;
     throw error;
   }
+  if (data.job.status === 'succeeded') return data.job;
+  return waitForMediaJob(jobId, data.job);
+}
+
+export async function getMediaJob(jobId: string): Promise<MediaJob> {
+  const response = await authFetch(`/api/media-jobs/${encodeURIComponent(jobId)}`);
+  const data = await readJobResponse(response);
+  if (!response.ok || !data.job) throw new Error(data.error || 'Could not load this media job');
+  return data.job;
+}
+
+export async function waitForMediaJob(jobId: string, initialJob?: MediaJob): Promise<MediaJob> {
+  const deadline = Date.now() + 45 * 60 * 1000;
+  let job = initialJob || await getMediaJob(jobId);
+  while (job.status === 'queued' || job.status === 'running') {
+    if (Date.now() >= deadline) {
+      const error = new Error('This generation is still running in the background. You can close this page and check Jobs later.') as Error & { job?: MediaJob };
+      error.job = job;
+      throw error;
+    }
+    await new Promise(resolve => setTimeout(resolve, 2500));
+    job = await getMediaJob(jobId);
+    notifyMediaJobsChanged();
+  }
+  if (job.status === 'failed' || job.status === 'canceled') {
+    const error = new Error(job.status === 'canceled' ? 'Media generation canceled' : job.error || 'Media generation failed') as Error & { job?: MediaJob };
+    error.job = job;
+    throw error;
+  }
+  return job;
+}
+
+export async function cancelMediaJob(jobId: string): Promise<MediaJob> {
+  const response = await authFetch(`/api/media-jobs/${encodeURIComponent(jobId)}/cancel`, { method: 'POST' });
+  const data = await readJobResponse(response);
+  if (!response.ok || !data.job) throw new Error(data.error || 'Could not cancel this media job');
+  notifyMediaJobsChanged();
   return data.job;
 }
 

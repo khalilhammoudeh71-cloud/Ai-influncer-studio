@@ -10,6 +10,7 @@ import {
   Mic2,
   RefreshCw,
   RotateCcw,
+  Square,
   Sparkles,
   Trash2,
   Wand2,
@@ -18,6 +19,7 @@ import {
 import toast from 'react-hot-toast';
 import { cn } from '../utils/cn';
 import {
+  cancelMediaJob,
   deleteMediaJob,
   listMediaJobs,
   runMediaJob,
@@ -124,6 +126,20 @@ export default function MediaJobCenter({ isOpen, onClose, onOpenResult, onJobCom
     }
   };
 
+  const cancel = async (job: MediaJob) => {
+    setActiveJobId(job.id);
+    try {
+      const updated = await cancelMediaJob(job.id);
+      setJobs(current => current.map(item => item.id === updated.id ? updated : item));
+      toast.success(updated.status === 'canceled' ? 'Media job canceled' : 'Cancel requested');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not cancel media job');
+    } finally {
+      setActiveJobId(null);
+      void refresh(true);
+    }
+  };
+
   return createPortal(
     <AnimatePresence>
       {isOpen && (
@@ -186,6 +202,7 @@ export default function MediaJobCenter({ isOpen, onClose, onOpenResult, onJobCom
                 const working = job.status === 'queued' || job.status === 'running';
                 const failed = job.status === 'failed';
                 const complete = job.status === 'succeeded';
+                const canceled = job.status === 'canceled';
                 return (
                   <article key={job.id} className="rounded-2xl border border-white/10 bg-[#202126] p-4 shadow-lg">
                     <div className="flex items-start gap-3">
@@ -194,6 +211,7 @@ export default function MediaJobCenter({ isOpen, onClose, onOpenResult, onJobCom
                         complete && 'bg-emerald-500/10 border-emerald-500/25 text-emerald-400',
                         working && 'bg-[#E7C477]/10 border-[#E7C477]/25 text-[#E7C477]',
                         failed && 'bg-rose-500/10 border-rose-500/25 text-rose-400',
+                        canceled && 'bg-zinc-500/10 border-zinc-500/25 text-zinc-400',
                       )}>
                         {working ? <Loader2 size={18} className="animate-spin" /> : <JobIcon kind={job.kind} className="w-[18px] h-[18px]" />}
                       </div>
@@ -206,8 +224,9 @@ export default function MediaJobCenter({ isOpen, onClose, onOpenResult, onJobCom
                               complete && 'text-emerald-300 bg-emerald-500/10 border-emerald-500/20',
                               working && 'text-[#F2D58D] bg-[#E7C477]/10 border-[#E7C477]/20',
                               failed && 'text-rose-300 bg-rose-500/10 border-rose-500/20',
+                              canceled && 'text-zinc-300 bg-zinc-500/10 border-zinc-500/20',
                             )}>
-                              {job.status === 'running' ? 'Generating' : job.status}
+                              {job.cancelRequested && working ? 'Canceling' : job.status === 'running' ? 'Generating' : job.status}
                             </span>
                           </div>
                           <span className="text-[11px] text-zinc-500 shrink-0">{formatWhen(job.createdAt)}</span>
@@ -221,17 +240,18 @@ export default function MediaJobCenter({ isOpen, onClose, onOpenResult, onJobCom
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-1.5 mt-4" aria-label="Job progress">
-                      {[
-                        { label: 'Queued', done: true },
-                        { label: 'Generating', done: job.status !== 'queued' },
-                        { label: complete ? 'Completed' : failed ? 'Needs attention' : 'Finishing', done: complete || failed },
-                      ].map((step, index) => (
-                        <div key={step.label} className="min-w-0">
-                          <div className={cn('h-1 rounded-full', step.done ? (failed && index === 2 ? 'bg-rose-400' : 'bg-[#E7C477]') : 'bg-white/10')} />
-                          <div className="text-[10px] text-zinc-500 mt-1 truncate">{step.label}</div>
-                        </div>
-                      ))}
+                    <div className="mt-4" aria-label={`Job progress: ${job.progress}%`}>
+                      <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+                        <motion.div
+                          className={cn('h-full rounded-full', failed ? 'bg-rose-400' : canceled ? 'bg-zinc-500' : complete ? 'bg-emerald-400' : 'bg-[#E7C477]')}
+                          animate={{ width: `${Math.max(working ? 4 : 0, job.progress)}%` }}
+                          transition={{ duration: 0.35 }}
+                        />
+                      </div>
+                      <div className="mt-1.5 flex items-center justify-between gap-3 text-[11px]">
+                        <span className="text-zinc-400 truncate">{job.stage || (working ? 'Generating' : job.status)}</span>
+                        <span className="text-zinc-500 tabular-nums">{job.progress}%</span>
+                      </div>
                     </div>
 
                     {failed && job.error && (
@@ -257,6 +277,16 @@ export default function MediaJobCenter({ isOpen, onClose, onOpenResult, onJobCom
                         >
                           {activeJobId === job.id ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />}
                           {job.fallbackModelId ? 'Retry with fallback' : 'Retry'}
+                        </button>
+                      )}
+                      {working && (
+                        <button
+                          onClick={() => void cancel(job)}
+                          disabled={activeJobId === job.id || job.cancelRequested}
+                          className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-rose-500/20 bg-rose-500/[0.07] hover:bg-rose-500/15 text-rose-300 text-xs font-bold disabled:opacity-50 cursor-pointer"
+                        >
+                          {activeJobId === job.id ? <Loader2 size={13} className="animate-spin" /> : <Square size={12} />}
+                          {job.cancelRequested ? 'Canceling' : 'Cancel'}
                         </button>
                       )}
                       {!working && (

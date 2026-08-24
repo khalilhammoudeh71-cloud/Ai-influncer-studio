@@ -132,7 +132,11 @@ export const mediaJobs = pgTable("media_jobs", {
   fallbackModelId: text("fallback_model_id"),
   attempt: integer("attempt").notNull().default(0),
   usedFallback: boolean("used_fallback").notNull().default(false),
+  progress: integer("progress").notNull().default(0),
+  stage: text("stage").notNull().default("Queued"),
+  cancelRequested: boolean("cancel_requested").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  startedAt: timestamp("started_at", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
 });

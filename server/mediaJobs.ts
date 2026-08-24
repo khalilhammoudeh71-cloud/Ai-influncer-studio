@@ -1,7 +1,7 @@
-export const MEDIA_JOB_STALE_AFTER_MS = 12 * 60 * 1000;
+export const MEDIA_JOB_STALE_AFTER_MS = 90 * 1000;
 
 export type MediaJobKind = 'image' | 'video' | 'edit' | 'upscale' | 'avatar';
-export type MediaJobStatus = 'queued' | 'running' | 'succeeded' | 'failed';
+export type MediaJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled';
 
 export interface MediaJobRecordLike {
   id: string;
@@ -15,7 +15,11 @@ export interface MediaJobRecordLike {
   fallbackModelId?: string | null;
   attempt?: number | null;
   usedFallback?: boolean | null;
+  progress?: number | null;
+  stage?: string | null;
+  cancelRequested?: boolean | null;
   createdAt: Date | string;
+  startedAt?: Date | string | null;
   updatedAt: Date | string;
   completedAt?: Date | string | null;
 }
@@ -76,16 +80,20 @@ export function publicMediaJob(record: MediaJobRecordLike, now = Date.now()) {
     id: record.id,
     personaClientId: record.personaClientId || null,
     kind: record.kind,
-    status: stale ? 'failed' : record.status,
+    status: record.status,
     summary: summarizeMediaJobRequest(request),
     result,
-    error: stale ? 'This generation was interrupted before it completed. Retry it to continue.' : record.error || null,
+    error: record.error || null,
     modelId: record.modelId || null,
     fallbackModelId: record.fallbackModelId || null,
     attempt: record.attempt || 0,
     usedFallback: Boolean(record.usedFallback),
+    progress: Math.min(100, Math.max(0, Number(record.progress) || 0)),
+    stage: stale ? 'Waiting for recovery' : record.stage || (record.status === 'queued' ? 'Queued' : ''),
+    cancelRequested: Boolean(record.cancelRequested),
     isStale: stale,
     createdAt: record.createdAt,
+    startedAt: record.startedAt || null,
     updatedAt: record.updatedAt,
     completedAt: record.completedAt || null,
   };
