@@ -36,6 +36,29 @@ test('does not treat send me a photo as a request to include the creator', () =>
   assert.deepEqual(participants.map(persona => persona.id), ['leen']);
 });
 
+test('resolves the creator at the end of a three-person subject list', () => {
+  const creator = resolveCreatorPersona([leen, rawan, drH], null);
+  const participants = resolveMediaParticipants(
+    'I want an image of you, Leen Hassan, and ME posing together',
+    rawan,
+    [leen, rawan, drH],
+    creator,
+  );
+  assert.deepEqual(participants.map(persona => persona.id), ['rawan', 'leen', 'dr-h']);
+  assert.deepEqual(participants.map(getPersonaPrimaryReference), ['rawan.jpg', 'leen.jpg', 'dr-h.jpg']);
+});
+
+test('keeps indirect send me wording out of a named-persona group', () => {
+  const creator = resolveCreatorPersona([leen, rawan, drH], null);
+  const participants = resolveMediaParticipants(
+    'Send me an image of Rawan and Leen posing together',
+    rawan,
+    [leen, rawan, drH],
+    creator,
+  );
+  assert.deepEqual(participants.map(persona => persona.id), ['rawan', 'leen']);
+});
+
 test('composes separate identity instructions for multi-persona media', () => {
   const prompt = composeMultiPersonaPrompt('Leen and Rawan posing together', [leen, rawan]);
   assert.match(prompt, /Leen Hassan/);

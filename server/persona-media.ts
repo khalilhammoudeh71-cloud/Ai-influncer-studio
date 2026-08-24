@@ -80,7 +80,11 @@ export function resolveMediaParticipants(
   }
 
   const creatorReferencePrompt = normalizeCreatorReferencePrompt(prompt);
-  const referencesCreator = /\b(?:you\s+and\s+me|me\s+and\s+you|of\s+us|us\s+together|both\s+of\s+us|with\s+me|beside\s+me|next\s+to\s+me|holding\s+me|kissing\s+me|me\s+with\s+you|myself\s+and\s+you|you\s+and\s+myself|with\s+(?:the\s+)?creator|with\s+(?:the\s+)?owner)\b/i.test(creatorReferencePrompt);
+  const referencesCreatorDirectly = /\b(?:you\s+and\s+me|me\s+and\s+you|of\s+us|us\s+together|both\s+of\s+us|with\s+me|beside\s+me|next\s+to\s+me|holding\s+me|kissing\s+me|me\s+with\s+you|myself\s+and\s+you|you\s+and\s+myself|with\s+(?:the\s+)?creator|with\s+(?:the\s+)?owner)\b/i.test(creatorReferencePrompt);
+  const referencesCreatorInSubjectList =
+    /\b(?:of|with|featuring|showing|include|including|containing)\b(?:\s+[a-z0-9]+){0,16}\s+(?:and|plus|alongside)\s+(?:me|myself)\b/i.test(creatorReferencePrompt)
+    || /\b(?:of|with|featuring|showing|include|including|containing)\s+(?:me|myself)\b(?:\s+[a-z0-9]+){0,16}\s+(?:and|plus|alongside)\b/i.test(creatorReferencePrompt);
+  const referencesCreator = referencesCreatorDirectly || referencesCreatorInSubjectList;
   if (referencesCreator && creatorPersona) {
     const creatorId = creatorPersona.id || `creator:${normalizeForMatch(creatorPersona.name || 'owner')}`;
     if (creatorId !== activeId) byId.set(creatorId, creatorPersona);
