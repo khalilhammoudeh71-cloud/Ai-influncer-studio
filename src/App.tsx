@@ -38,6 +38,7 @@ import OnboardingTour from './components/OnboardingTour';
 import MediaJobCenter from './components/MediaJobCenter';
 import CommandPalette from './components/CommandPalette';
 import LeftSidebar from './components/LeftSidebar';
+import MobileNavigation from './components/MobileNavigation';
 import TrendView from './views/TrendView';
 import CreatePersonaPage from './views/CreatePersonaPage';
 import PersonaAvatar from './components/PersonaAvatar';
@@ -75,6 +76,20 @@ const EMPTY_PERSONA: Persona = {
   brandVoiceRules: '',
   contentGoals: '',
   personaNotes: '',
+};
+
+const SECTION_LABELS: Record<Tab, string> = {
+  personas: 'Home',
+  'create-persona': 'Personas',
+  create: 'Create',
+  gallery: 'Library',
+  planner: 'Planner',
+  assistant: 'Persona Chat',
+  agent: 'Super Agent',
+  trends: 'Analytics',
+  intelligence: 'Advanced Tools',
+  revenue: 'Revenue',
+  settings: 'Settings',
 };
 
 const LEGACY_PERSONA_STORAGE_KEYS = [
@@ -758,6 +773,17 @@ function App() {
     return dir;
   };
 
+  const handleShellNavigate = (tab: Tab, params?: Record<string, unknown>) => {
+    getTabDirection(activeTab, tab);
+    if (tab !== activeTab) prevTabRef.current = activeTab;
+    const { subView, ...restParams } = params || {};
+    replaceView({
+      view: tab,
+      subView: typeof subView === 'string' ? subView : undefined,
+      params: Object.keys(restParams).length > 0 ? restParams : undefined,
+    });
+  };
+
   const navActions = { push: pushView, pop: popView, replace: replaceView };
 
   // Clear gallery badge when visiting gallery
@@ -821,43 +847,31 @@ function App() {
 
 
   return (
-    <div className="flex h-screen w-full max-w-full bg-[var(--bg-base)] text-[var(--text-primary)] overflow-hidden">
+    <div className="app-shell flex h-screen w-full max-w-full overflow-hidden bg-[var(--bg-base)] text-[var(--text-primary)]">
       {/* Left Sidebar Navigation */}
       <LeftSidebar 
         activeTab={activeTab} 
-        onNavigate={(tab, params) => {
-          getTabDirection(activeTab, tab);
-          if (tab !== activeTab) {
-            prevTabRef.current = activeTab;
-          }
-          const { subView, ...restParams } = params || {};
-          replaceView({ 
-            view: tab, 
-            subView: subView,
-            params: Object.keys(restParams).length > 0 ? restParams : undefined
-          });
-        }}
-        activePersona={activePersona}
+        onNavigate={handleShellNavigate}
         newAssetsCount={newAssetsCount}
         mobileOpen={isMobileNavOpen}
         onMobileClose={() => setIsMobileNavOpen(false)}
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 min-w-0 flex flex-col h-full max-w-full relative bg-[#121316]">
+      <div className="relative flex h-full max-w-full min-w-0 flex-1 flex-col bg-[var(--bg-base)]">
         <div className="ambient-glow top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-white/[0.015] blur-[100px] rounded-full pointer-events-none" />
 
       {/* ── Top app bar ─────────────────────────────────────────── */}
-      <header className="flex-none h-[70px] bg-[#16171a] border-b border-white/[0.08] relative z-[9999] max-w-full">
+      <header className="app-topbar relative z-[9999] h-16 max-w-full flex-none border-b border-[var(--border-subtle)]">
         <div className="flex items-center justify-between gap-2 px-3 sm:px-4 md:px-6 h-full max-w-full">
           
           {/* Left: Universal Search Field & Back Button */}
-          <div className="flex items-center gap-2 sm:gap-3.5 flex-1 min-w-0 max-w-lg">
+          <div className="flex min-w-0 max-w-xl flex-1 items-center gap-2 sm:gap-3.5">
             <button
               type="button"
               aria-label="Open navigation menu"
               onClick={() => setIsMobileNavOpen(true)}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-[#18181B] text-[#C3BFB8] transition-colors hover:border-[#E7C477]/35 hover:text-[#F2D58D] lg:hidden"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--border-default)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--accent-primary)] lg:hidden"
             >
               <Menu size={18} />
             </button>
@@ -876,18 +890,23 @@ function App() {
               )}
             </AnimatePresence>
 
+            <div className="min-w-0 lg:hidden">
+              <p className="text-[8px] font-bold uppercase tracking-[0.22em] text-[var(--text-muted)]">Workspace</p>
+              <p className="truncate text-[13px] font-semibold text-[var(--text-primary)]">{SECTION_LABELS[activeTab]}</p>
+            </div>
+
             <div className="relative hidden w-full max-w-md lg:block">
-              <div className="absolute inset-y-0 left-3.5 flex items-center pointer-events-none text-[#A1A1AA]">
+              <div className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-[var(--text-tertiary)]">
                 <Search size={15} />
               </div>
               <button 
                 onClick={() => setShowCommandPalette(true)}
-                className="w-full bg-[#18181B] border border-white/10 rounded-xl py-2 pl-10 pr-12 text-xs text-left text-[#A1A1AA] hover:border-[#E7C477]/35 focus:outline-none transition-all cursor-pointer truncate"
+                className="w-full cursor-pointer truncate rounded-xl border border-[var(--border-default)] bg-[var(--bg-input)] py-2.5 pl-10 pr-12 text-left text-xs text-[var(--text-tertiary)] transition-all hover:border-[var(--border-strong)] focus:outline-none"
               >
                 Search personas, content, projects…
               </button>
               <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none">
-                <kbd className="text-[10px] font-semibold text-[#A1A1AA] bg-[#242428] border border-white/10 rounded px-1.5 py-0.5">⌘ K</kbd>
+                <kbd className="rounded border border-[var(--border-default)] bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--text-tertiary)]">⌘ K</kbd>
               </div>
             </div>
           </div>
@@ -899,7 +918,7 @@ function App() {
             <button
               type="button"
               onClick={() => setShowMediaJobCenter(true)}
-              className="relative flex w-9 h-9 rounded-xl bg-[#0A101C] border border-[#E7C477]/15 items-center justify-center text-[#C3BFB8] hover:text-[#F2D58D] hover:border-[#E7C477]/35 transition-all cursor-pointer"
+              className="relative flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-[var(--border-default)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] transition-all hover:border-[var(--border-strong)] hover:text-[var(--accent-primary)]"
               title="Open media jobs"
               aria-label="Open media jobs"
             >
@@ -909,7 +928,7 @@ function App() {
             {/* Single Gold Create Persona CTA Button */}
             <button 
               onClick={() => pushView({ view: 'create-persona' })}
-              className="btn-gold-primary px-3 sm:px-5 py-2 text-sm font-bold flex items-center gap-2 cursor-pointer shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all"
+              className="btn-gold-primary flex cursor-pointer items-center gap-2 px-3 py-2 text-sm font-bold shadow-lg transition-all hover:shadow-xl active:scale-[0.98] sm:px-5"
             >
               <PlusCircle size={16} /> <span className="hidden sm:inline">Create Persona</span>
             </button>
@@ -919,7 +938,7 @@ function App() {
               <div className="relative" ref={personaSwitcherRef}>
                 <button
                   type="button"
-                  className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-[#18181B] border border-white/10 hover:border-[#E7C477]/40 transition-all cursor-pointer"
+                  className="flex cursor-pointer items-center gap-2 rounded-xl border border-[var(--border-default)] bg-[var(--bg-elevated)] px-2.5 py-1 transition-all hover:border-[var(--border-strong)]"
                   onClick={(e) => {
                     e.stopPropagation();
                     setIsPersonaSwitcherOpen(prev => !prev);
@@ -1029,7 +1048,7 @@ function App() {
         // Deduplicate consecutive entries with the same view for cleaner breadcrumbs
         const deduped = navStack.filter((entry, i, arr) => i === 0 || entry.view !== arr[i - 1].view);
         return (
-        <div className="flex-none px-6 py-1.5 bg-[#121214] border-b border-white/10 backdrop-blur-sm flex items-center gap-1.5 text-[10px] font-bold overflow-x-auto scrollbar-hide">
+        <div className="scrollbar-hide flex flex-none items-center gap-1.5 overflow-x-auto border-b border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-2 text-[10px] font-bold backdrop-blur-sm sm:px-6">
           {deduped.map((entry, i) => {
             const viewLabels: Record<string, string> = {
               'personas': 'Personas', 'create': 'Create', 'gallery': 'Gallery',
@@ -1044,7 +1063,7 @@ function App() {
             const isLast = i === deduped.length - 1;
             return (
               <span key={i} className="flex items-center gap-1.5 shrink-0">
-                {i > 0 && <span className="text-[#334155]">/</span>}
+                {i > 0 && <span className="text-[var(--text-muted)]">/</span>}
                 <button
                   onClick={() => {
                     if (!isLast) {
@@ -1054,15 +1073,15 @@ function App() {
                     }
                   }}
                   className={`uppercase tracking-[0.12em] transition-colors ${
-                    isLast ? 'text-[#00D4FF]' : 'text-[#64748B] hover:text-white cursor-pointer'
+                    isLast ? 'text-[var(--accent-primary)]' : 'cursor-pointer text-[var(--text-muted)] hover:text-[var(--text-primary)]'
                   }`}
                 >
                   {viewLabels[entry.view] || entry.view}
                 </button>
                 {isLast && entry.subView && (
                   <>
-                    <span className="text-[#334155]">/</span>
-                    <span className="text-[#00F5C2] uppercase tracking-[0.12em]">
+                    <span className="text-[var(--text-muted)]">/</span>
+                    <span className="uppercase tracking-[0.12em] text-[var(--accent-primary)]">
                       {subViewLabels[entry.subView] || entry.subView}
                     </span>
                   </>
@@ -1075,12 +1094,18 @@ function App() {
       })()}
 
       {/* ── Content ─────────────────────────────────────────────── */}
-      <main className="flex-1 overflow-y-auto relative z-10">
+      <main className="relative z-10 flex-1 overflow-y-auto pb-[72px] lg:pb-0">
         <div className={`w-full h-full ${tabDirectionRef.current === 'right' ? 'tab-enter-right' : 'tab-enter-left'}`} key={activeTab}>
           {renderContent()}
         </div>
       </main>
     </div>
+    <MobileNavigation
+      activeTab={activeTab}
+      onNavigate={handleShellNavigate}
+      onOpenMenu={() => setIsMobileNavOpen(true)}
+      newAssetsCount={newAssetsCount}
+    />
     <Toaster position="top-right" containerStyle={{ zIndex: 999999 }} toastOptions={{ duration: 4000, style: { background: '#1c1d22', color: '#fff', border: '1px solid rgba(255, 255, 255, 0.12)' } }} />
       <CommandPalette
         isOpen={showCommandPalette}

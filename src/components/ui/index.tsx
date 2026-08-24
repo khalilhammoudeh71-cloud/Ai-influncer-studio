@@ -36,11 +36,11 @@ const Button = ({
 }) => {
   const baseStyles = "px-4 py-2.5 rounded-xl font-semibold text-sm transition-all duration-200 active:scale-[0.97] flex items-center justify-center gap-2 disabled:opacity-50 disabled:pointer-events-none";
   const variants = {
-    primary: "bg-white text-[#09090b] hover:bg-[#e4e4e7] shadow-[0_1px_2px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.1)]",
+    primary: "bg-[var(--accent-primary)] text-[#161108] hover:bg-[var(--accent-secondary)] shadow-[0_8px_24px_rgba(231,196,119,0.2),inset_0_1px_0_rgba(255,255,255,0.22)]",
     secondary: "bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--border-default)] hover:bg-[var(--bg-overlay)] hover:border-[var(--border-strong)]",
     ghost: "bg-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]",
     danger: "bg-rose-500/10 text-rose-400 border border-rose-500/20 hover:bg-rose-500/20",
-    accent: "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white hover:from-violet-500 hover:to-fuchsia-500 shadow-[0_2px_12px_rgba(139,92,246,0.3)]"
+    accent: "bg-[var(--gradient-primary)] text-[#161108] hover:brightness-105 shadow-[0_8px_24px_rgba(231,196,119,0.22)]"
   };
 
   return (
@@ -58,7 +58,7 @@ const Input = ({ label, ...props }: any) => (
   <div className="flex flex-col gap-1.5 w-full">
     {label && <label className="text-xs font-semibold text-[var(--text-tertiary)] ml-1 uppercase tracking-wider">{label}</label>}
     <input 
-      className="bg-[var(--bg-input)] border border-[var(--border-default)] rounded-xl px-4 py-3 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/50 transition-all duration-200" 
+      className="bg-[var(--bg-input)] border border-[var(--border-default)] rounded-xl px-4 py-3 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-subtle)] focus:border-[var(--accent-primary)] transition-all duration-200"
       {...props} 
     />
   </div>

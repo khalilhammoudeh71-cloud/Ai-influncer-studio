@@ -1,61 +1,119 @@
-import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  LayoutDashboard, Users, Sparkles, PlusCircle, Wrench, MessageSquare, 
-  Calendar, Cpu, Settings, ChevronDown, ChevronRight,
-  Sparkle, Image, Mic, UserSquare2, ArrowUpCircle, Eraser,
-  Camera, Zap, Video, ArrowLeftRight, TrendingUp, Film, Wand2,
-  Shirt, Droplets, Weight, Dumbbell, PenTool, Plane, Expand, Box, Layers, BarChart3,
-  Crown, X
+import { useEffect, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import {
+  BarChart3,
+  Bot,
+  CalendarDays,
+  ChevronDown,
+  Home,
+  Images,
+  MessageCircle,
+  MoreHorizontal,
+  Settings,
+  Sparkles,
+  Users,
+  Wrench,
+  X,
 } from 'lucide-react';
-import { Persona, Tab } from '../types';
+import { Tab } from '../types';
 import { cn } from '../utils/cn';
 
 interface LeftSidebarProps {
   activeTab: Tab;
-  onNavigate: (tab: Tab, params?: any) => void;
-  activePersona: Persona;
+  onNavigate: (tab: Tab, params?: Record<string, unknown>) => void;
   newAssetsCount: number;
   mobileOpen?: boolean;
   onMobileClose?: () => void;
 }
 
-export default function LeftSidebar({ activeTab, onNavigate, activePersona, newAssetsCount, mobileOpen = false, onMobileClose }: LeftSidebarProps) {
-  const [openAccordions, setOpenAccordions] = useState<Record<string, boolean>>({
-    toolbox: false
-  });
+interface NavigationItem {
+  id: string;
+  label: string;
+  description: string;
+  icon: typeof Home;
+  tabTarget: Tab;
+  badge?: number;
+}
 
-  const toggleAccordion = (key: string) => {
-    setOpenAccordions(prev => ({ ...prev, [key]: !prev[key] }));
-  };
+const primaryItems: NavigationItem[] = [
+  { id: 'home', label: 'Home', description: 'Your studio overview', icon: Home, tabTarget: 'personas' },
+  { id: 'personas', label: 'Personas', description: 'Create and manage identities', icon: Users, tabTarget: 'create-persona' },
+  { id: 'create', label: 'Create', description: 'Images, video, voice, and more', icon: Sparkles, tabTarget: 'create' },
+  { id: 'library', label: 'Library', description: 'Review every generated asset', icon: Images, tabTarget: 'gallery' },
+  { id: 'planner', label: 'Planner', description: 'Plan and schedule content', icon: CalendarDays, tabTarget: 'planner' },
+];
 
-  const handleNavigate = (tab: Tab, params?: any) => {
+const secondaryItems: NavigationItem[] = [
+  { id: 'chat', label: 'Persona Chat', description: 'Text and live voice conversations', icon: MessageCircle, tabTarget: 'assistant' },
+  { id: 'agent', label: 'Super Agent', description: 'Coordinate complex creator tasks', icon: Bot, tabTarget: 'agent' },
+  { id: 'analytics', label: 'Analytics', description: 'Performance and audience insights', icon: BarChart3, tabTarget: 'trends' },
+  { id: 'tools', label: 'Advanced Tools', description: 'Specialized AI editing controls', icon: Wrench, tabTarget: 'intelligence' },
+];
+
+function isItemActive(item: NavigationItem, activeTab: Tab) {
+  return item.tabTarget === activeTab;
+}
+
+export default function LeftSidebar({
+  activeTab,
+  onNavigate,
+  newAssetsCount,
+  mobileOpen = false,
+  onMobileClose,
+}: LeftSidebarProps) {
+  const hasActiveSecondaryItem = secondaryItems.some((item) => isItemActive(item, activeTab));
+  const [moreOpen, setMoreOpen] = useState(hasActiveSecondaryItem);
+
+  useEffect(() => {
+    if (hasActiveSecondaryItem) setMoreOpen(true);
+  }, [hasActiveSecondaryItem]);
+
+  const handleNavigate = (tab: Tab, params?: Record<string, unknown>) => {
     onNavigate(tab, params);
     onMobileClose?.();
   };
 
-  const navItems = [
-    { id: 'personas', label: 'Dashboard', icon: LayoutDashboard, tabTarget: 'personas' },
-    { id: 'persona-studio', label: 'Persona Studio', icon: Users, tabTarget: 'create-persona' },
-    { id: 'chat', label: 'Persona Chat', icon: MessageSquare, tabTarget: 'assistant' },
-    { id: 'image-studio', label: 'Image Studio', icon: Image, tabTarget: 'create', subView: 'image' },
-    { id: 'voice-studio', label: 'Voice Studio', icon: Mic, tabTarget: 'create', subView: 'voice' },
-    { id: 'planner', label: 'Content Planner', icon: Calendar, tabTarget: 'planner' },
-    { id: 'agent', label: 'Super Agent', icon: Cpu, tabTarget: 'agent' },
-    { id: 'trends', label: 'Analytics', icon: BarChart3, tabTarget: 'trends' },
-    { id: 'settings', label: 'Settings', icon: Settings, tabTarget: 'settings' },
-  ];
+  const renderNavigationItem = (item: NavigationItem) => {
+    const active = isItemActive(item, activeTab);
+    const ItemIcon = item.icon;
+    const badge = item.id === 'library' ? newAssetsCount : item.badge;
 
-  const toolboxItems = [
-    { id: 'virtual-tryon', label: 'Virtual Try-On', icon: Shirt },
-    { id: 'beautify', label: 'Beautify Core', icon: Droplets },
-    { id: 'face-swap', label: 'Face Swap', icon: ArrowLeftRight },
-    { id: 'camera-angles', label: 'Camera Angles', icon: Camera },
-    { id: 'inpaint', label: 'Inpaint Brush', icon: Wand2 },
-    { id: 'bg-remover', label: 'Remove BG', icon: Eraser },
-    { id: 'skin-enhancer', label: 'Skin Enhancer', icon: Sparkle },
-    { id: 'upscaler', label: 'Image Upscaler', icon: ArrowUpCircle },
-  ];
+    return (
+      <button
+        key={item.id}
+        type="button"
+        onClick={() => handleNavigate(item.tabTarget)}
+        aria-current={active ? 'page' : undefined}
+        className={cn(
+          'group relative flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-all duration-200',
+          active
+            ? 'border-[var(--border-strong)] bg-[var(--accent-subtle)] text-[var(--text-primary)] shadow-[0_12px_30px_rgba(0,0,0,0.16)]'
+            : 'border-transparent text-[var(--text-secondary)] hover:border-[var(--border-subtle)] hover:bg-white/[0.035] hover:text-[var(--text-primary)]',
+        )}
+      >
+        <span
+          className={cn(
+            'grid h-9 w-9 shrink-0 place-items-center rounded-[11px] border transition-colors',
+            active
+              ? 'border-[var(--border-strong)] bg-[var(--accent-muted)] text-[var(--accent-primary)]'
+              : 'border-white/[0.055] bg-white/[0.025] text-[var(--text-tertiary)] group-hover:text-[var(--text-primary)]',
+          )}
+        >
+          <ItemIcon size={17} strokeWidth={1.8} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[13px] font-semibold tracking-[-0.01em]">{item.label}</span>
+          <span className="mt-0.5 block truncate text-[10px] text-[var(--text-muted)]">{item.description}</span>
+        </span>
+        {Boolean(badge) && (
+          <span className="rounded-full border border-[var(--border-strong)] bg-[var(--accent-muted)] px-2 py-0.5 text-[10px] font-bold text-[var(--accent-primary)]">
+            {badge}
+          </span>
+        )}
+        {active && <span className="absolute right-0 top-1/2 h-6 w-0.5 -translate-y-1/2 rounded-full bg-[var(--accent-primary)]" />}
+      </button>
+    );
+  };
 
   return (
     <>
@@ -64,115 +122,108 @@ export default function LeftSidebar({ activeTab, onNavigate, activePersona, newA
           type="button"
           aria-label="Close navigation menu"
           onClick={onMobileClose}
-          className="fixed inset-0 z-[10000] bg-black/65 backdrop-blur-sm lg:hidden"
+          className="fixed inset-0 z-[10000] bg-black/70 backdrop-blur-sm lg:hidden"
         />
       )}
-      <aside className={cn(
-        "fixed inset-y-0 left-0 z-[10001] w-72 max-w-[85vw] shrink-0 h-full border-r border-[#E7C477]/10 bg-[#141416] flex flex-col select-none transition-transform duration-200 ease-out lg:static lg:z-50 lg:w-64 lg:max-w-none lg:translate-x-0",
-        mobileOpen ? "translate-x-0" : "-translate-x-full"
-      )}>
-      {/* Brand Header */}
-      <div 
-        onClick={() => handleNavigate('personas')}
-        className="p-4 border-b border-[#E7C477]/10 flex items-center gap-3.5 cursor-pointer hover:bg-white/[0.03] transition-all group"
+      <aside
+        className={cn(
+          'app-sidebar fixed inset-y-0 left-0 z-[10001] flex h-full w-[292px] max-w-[88vw] shrink-0 select-none flex-col border-r border-[var(--border-subtle)] transition-transform duration-200 ease-out lg:static lg:z-50 lg:w-[272px] lg:max-w-none lg:translate-x-0',
+          mobileOpen ? 'translate-x-0' : '-translate-x-full',
+        )}
       >
-        <div className="w-11 h-11 rounded-2xl overflow-hidden border border-[#E7C477]/35 shadow-xl shadow-amber-950/20 flex-shrink-0 bg-[#080C14] p-1 flex items-center justify-center group-hover:border-[#E7C477]/60 group-hover:scale-[1.03] transition-all">
-          <img 
-            src="/logo.png" 
-            alt="AI Influencer Studio" 
-            className="w-full h-full object-contain drop-shadow-md"
-          />
-        </div>
-        <div className="flex flex-col min-w-0">
-          <h1 className="text-[13px] font-bold text-[#F8F5EE] tracking-[0.02em] truncate leading-tight font-['Cinzel',serif]">
-            AI INFLUENCER
-          </h1>
-          <span className="text-[9px] font-['Montserrat',sans-serif] text-[#D9BA72] tracking-[0.38em] uppercase font-bold mt-0.5">
-            STUDIO
-          </span>
-        </div>
-        <button
-          type="button"
-          aria-label="Close navigation menu"
-          onClick={(event) => {
-            event.stopPropagation();
-            onMobileClose?.();
-          }}
-          className="ml-auto rounded-lg p-2 text-[#8C909A] transition-colors hover:bg-white/5 hover:text-white lg:hidden"
-        >
-          <X size={18} />
-        </button>
-      </div>
-
-      {/* Navigation Links */}
-      <div className="flex-1 overflow-y-auto p-3.5 space-y-1.5 custom-scrollbar">
-        {navItems.map((item) => {
-          const isActive = (item.tabTarget === activeTab) || (item.id === 'persona-studio' && activeTab === 'create-persona') || (item.id === 'personas' && activeTab === 'personas');
-          const ItemIcon = item.icon;
-
-          return (
-            <button
-              key={item.id}
-              onClick={() => handleNavigate(item.tabTarget as Tab, item.subView ? { subView: item.subView } : undefined)}
-              className={cn(
-                "w-full flex items-center gap-3.5 px-3.5 py-3 rounded-xl text-xs font-medium transition-all text-left group cursor-pointer",
-                isActive
-                  ? "bg-[#E7C477]/10 border border-[#E7C477]/30 text-[#F2D58D] shadow-sm shadow-amber-950/30 font-semibold"
-                  : "text-[#C3BFB8] hover:text-[#F5F1E8] hover:bg-white/[0.03] border border-transparent"
-              )}
-            >
-              <ItemIcon size={16} className={isActive ? "text-[#F2D58D]" : "text-[#8C909A] group-hover:text-[#F5F1E8] transition-colors"} />
-              <span className="flex-1 truncate">{item.label}</span>
-            </button>
-          );
-        })}
-
-        {/* AI Toolbox Collapsible */}
-        <div className="pt-2">
+        <div className="flex h-20 items-center gap-3 border-b border-[var(--border-subtle)] px-4">
           <button
             type="button"
-            onClick={() => {
-              handleNavigate('intelligence');
-              toggleAccordion('toolbox');
-            }}
+            onClick={() => handleNavigate('personas')}
+            className="flex min-w-0 flex-1 items-center gap-3 rounded-xl p-1 text-left transition-colors hover:bg-white/[0.035]"
+          >
+            <span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-[14px] border border-[var(--border-strong)] bg-[#090a0c] p-1.5 shadow-[0_8px_28px_rgba(0,0,0,0.35)]">
+              <img src="/logo.png" alt="" className="h-full w-full object-contain" />
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate font-['Cinzel',serif] text-[13px] font-bold tracking-[0.02em] text-[var(--text-primary)]">
+                AI INFLUENCER
+              </span>
+              <span className="mt-1 block text-[8px] font-bold uppercase tracking-[0.42em] text-[var(--accent-primary)]">
+                Studio
+              </span>
+            </span>
+          </button>
+          <button
+            type="button"
+            aria-label="Close navigation menu"
+            onClick={onMobileClose}
+            className="rounded-xl p-2 text-[var(--text-tertiary)] transition-colors hover:bg-white/5 hover:text-white lg:hidden"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <nav aria-label="Main navigation" className="custom-scrollbar flex-1 overflow-y-auto px-3 py-4">
+          <p className="mb-2 px-3 text-[9px] font-bold uppercase tracking-[0.25em] text-[var(--text-muted)]">Workspace</p>
+          <div className="space-y-1">{primaryItems.map(renderNavigationItem)}</div>
+
+          <div className="my-4 h-px bg-[var(--border-subtle)]" />
+
+          <button
+            type="button"
+            onClick={() => setMoreOpen((open) => !open)}
+            aria-expanded={moreOpen}
             className={cn(
-              "w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all text-left cursor-pointer",
-              activeTab === 'intelligence'
-                ? "bg-[#E7C477]/10 border border-[#E7C477]/30 text-[#F2D58D] font-semibold"
-                : "text-[#8C909A] hover:text-[#F5F1E8] hover:bg-white/[0.02] border border-transparent"
+              'flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-all',
+              hasActiveSecondaryItem
+                ? 'border-[var(--border-strong)] bg-[var(--accent-subtle)] text-[var(--text-primary)]'
+                : 'border-transparent text-[var(--text-secondary)] hover:bg-white/[0.035] hover:text-[var(--text-primary)]',
             )}
           >
-            <div className="flex items-center gap-3.5">
-              <Wrench size={16} className={activeTab === 'intelligence' ? "text-[#F2D58D]" : "text-[#8C909A]"} />
-              <span>AI Toolbox</span>
-            </div>
-            {openAccordions.toolbox ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            <span className="grid h-9 w-9 place-items-center rounded-[11px] border border-white/[0.055] bg-white/[0.025]">
+              <MoreHorizontal size={17} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[13px] font-semibold">More</span>
+              <span className="mt-0.5 block truncate text-[10px] text-[var(--text-muted)]">Chat, analytics, and advanced tools</span>
+            </span>
+            <ChevronDown size={15} className={cn('transition-transform', moreOpen && 'rotate-180')} />
           </button>
 
           <AnimatePresence initial={false}>
-            {openAccordions.toolbox && (
+            {moreOpen && (
               <motion.div
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: 'auto', opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
                 transition={{ duration: 0.2 }}
-                className="overflow-hidden pl-7 space-y-1 py-1"
+                className="overflow-hidden"
               >
-                {toolboxItems.map((sub) => (
-                  <button
-                    key={sub.id}
-                    onClick={() => handleNavigate('intelligence', { initialTool: sub.id })}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-normal text-[#8C909A] hover:text-[#F5F1E8] hover:bg-white/[0.04] transition-all text-left cursor-pointer"
-                  >
-                    <sub.icon size={13} className="text-[#8C909A]" />
-                    <span className="truncate">{sub.label}</span>
-                  </button>
-                ))}
+                <div className="mt-1 space-y-1 border-l border-[var(--border-subtle)] pl-2">
+                  {secondaryItems.map(renderNavigationItem)}
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
+        </nav>
+
+        <div className="border-t border-[var(--border-subtle)] p-3">
+          <button
+            type="button"
+            onClick={() => handleNavigate('settings')}
+            aria-current={activeTab === 'settings' ? 'page' : undefined}
+            className={cn(
+              'flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-all',
+              activeTab === 'settings'
+                ? 'border-[var(--border-strong)] bg-[var(--accent-subtle)] text-[var(--text-primary)]'
+                : 'border-transparent text-[var(--text-secondary)] hover:bg-white/[0.035] hover:text-[var(--text-primary)]',
+            )}
+          >
+            <span className="grid h-9 w-9 place-items-center rounded-[11px] border border-white/[0.055] bg-white/[0.025]">
+              <Settings size={17} />
+            </span>
+            <span>
+              <span className="block text-[13px] font-semibold">Settings</span>
+              <span className="mt-0.5 block text-[10px] text-[var(--text-muted)]">Providers and preferences</span>
+            </span>
+          </button>
         </div>
-      </div>
       </aside>
     </>
   );
