@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Send, Bot, ChevronDown, ImageIcon, Video, Loader2, AlertCircle, Camera, MessageSquareQuote, Copy, Bookmark, Check, Phone, PhoneOff, Volume2, VolumeX, Mic, MicOff, RotateCcw, Trash2, Plus, Upload, Music, Film, X, Play, Sparkles, Paperclip, FileText, SlidersHorizontal, Settings, Hand, Maximize2, Download, Shirt, Heart, Pencil, BookOpen } from 'lucide-react';
+import { Send, Bot, ChevronDown, ImageIcon, Video, Loader2, AlertCircle, Camera, MessageSquareQuote, Copy, Bookmark, Check, Phone, PhoneOff, Volume2, VolumeX, Mic, MicOff, RotateCcw, Trash2, Plus, Upload, Music, Film, X, Play, Sparkles, Paperclip, FileText, SlidersHorizontal, Settings, Hand, Maximize2, Download, Shirt, Heart, Pencil, BookOpen, ShieldCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Persona, NavActions, RelationshipState } from '../types';
 import { ModelInfo, authFetch, fetchAllModelTypes, editImage, requestPersonaMedia, textToSpeech } from '../services/imageService';
@@ -28,12 +28,14 @@ import {
 import { resolveMediaModelFromPrompt } from '../utils/mediaModelResolver';
 import { resolveImageRevisionContext, type GeneratedImageMessage } from '../utils/mediaRevisionContext';
 import {
+  VOICE_IDENTITY_ONBOARDING_STORAGE_KEY,
   VOICE_IDENTITY_STORAGE_KEY,
   createVoiceIdentityProfile,
   extractVoiceFeatureVector,
   isEnrolledSpeaker,
   parseVoiceIdentityProfile,
   scoreVoiceIdentity,
+  shouldOfferVoiceIdentitySetup,
   type VoiceIdentityProfile,
 } from '../utils/voiceIdentity';
 import {
@@ -782,6 +784,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     voiceIdentityProfile ? 'ready' : 'idle',
   );
   const [voiceEnrollmentSeconds, setVoiceEnrollmentSeconds] = useState(0);
+  const [showSpeakerLockSetup, setShowSpeakerLockSetup] = useState(false);
   const [ignoredSpeakerCount, setIgnoredSpeakerCount] = useState(0);
   const [lastSpeakerMatchScore, setLastSpeakerMatchScore] = useState<number | null>(null);
   const voiceFeatureFramesRef = useRef<Array<{ at: number; vector: number[] }>>([]);
@@ -980,8 +983,9 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   const personaSpeakingStartTimeRef = useRef<number>(0);
 
   // ── Adaptive Acoustic Echo-Cancelled VAD Interruption Monitor ───
-  const startVadInterruptionMonitor = async () => {
-    if (vadAudioCtxRef.current || !isCallActiveRef.current) return;
+  const startVadInterruptionMonitor = async (allowOutsideCall = false): Promise<boolean> => {
+    if (vadAudioCtxRef.current) return true;
+    if (!isCallActiveRef.current && !allowOutsideCall) return false;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -993,7 +997,11 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       vadStreamRef.current = stream;
 
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioContextClass) return;
+      if (!AudioContextClass) {
+        stream.getTracks().forEach(track => track.stop());
+        vadStreamRef.current = null;
+        return false;
+      }
       const ctx = new AudioContextClass();
       vadAudioCtxRef.current = ctx;
 
@@ -1008,7 +1016,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       let dynamicNoiseFloor = 0.08;
 
       const checkAudioEnergy = () => {
-        if (!isCallActiveRef.current || !vadAudioCtxRef.current) return;
+        if ((!isCallActiveRef.current && !voiceEnrollmentActiveRef.current) || !vadAudioCtxRef.current) return;
 
         analyser.getByteFrequencyData(buffer);
         let sum = 0;
@@ -1074,8 +1082,18 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       };
 
       vadAnimFrameRef.current = requestAnimationFrame(checkAudioEnergy);
+      return true;
     } catch (err) {
       console.warn('[VAD] Could not initialize voice interruption monitor:', err);
+      if (vadAudioCtxRef.current) {
+        try { vadAudioCtxRef.current.close(); } catch {}
+        vadAudioCtxRef.current = null;
+      }
+      if (vadStreamRef.current) {
+        vadStreamRef.current.getTracks().forEach(track => track.stop());
+        vadStreamRef.current = null;
+      }
+      return false;
     }
   };
 
@@ -2443,6 +2461,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     voiceEnrollmentFramesRef.current = [];
     if (!profile) {
       setVoiceEnrollmentStatus('error');
+      if (!isCallActiveRef.current) stopVadInterruptionMonitor();
       toast.error('I could not capture enough clear speech. Try again in a quieter room.');
       return;
     }
@@ -2450,6 +2469,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     setVoiceIdentityProfile(profile);
     setVoiceEnrollmentStatus('ready');
     accountLocalStorage.setItem(VOICE_IDENTITY_STORAGE_KEY, JSON.stringify(profile));
+    accountLocalStorage.setItem(VOICE_IDENTITY_ONBOARDING_STORAGE_KEY, '1');
+    if (!isCallActiveRef.current) stopVadInterruptionMonitor();
     toast.success('Your voice is enrolled. Speaker Lock is now active.');
   };
 
@@ -2459,13 +2480,14 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     voiceEnrollmentFramesRef.current = [];
     setVoiceEnrollmentSeconds(0);
     setVoiceEnrollmentStatus(voiceIdentityProfileRef.current ? 'ready' : 'idle');
+    if (!isCallActiveRef.current) stopVadInterruptionMonitor();
     if (!quiet) toast('Voice enrollment cancelled.');
   };
 
-  const startVoiceEnrollment = () => {
+  const startVoiceEnrollment = async () => {
     cancelVoiceCalibration();
     cancelVoiceEnrollment(true);
-    interruptPersona();
+    if (isCallActiveRef.current) interruptPersona();
     voiceFeatureFramesRef.current = [];
     voiceEnrollmentFramesRef.current = [];
     voiceEnrollmentActiveRef.current = true;
@@ -2473,8 +2495,20 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     setVoiceEnrollmentSeconds(8);
     setPendingVoiceConfirmation(null);
     setCallInput('');
-    setCallStatus('listening');
-    void startVadInterruptionMonitor();
+    if (isCallActiveRef.current) setCallStatus('listening');
+
+    const microphoneReady = await startVadInterruptionMonitor(true);
+    if (!voiceEnrollmentActiveRef.current) {
+      if (!isCallActiveRef.current) stopVadInterruptionMonitor();
+      return;
+    }
+    if (!microphoneReady) {
+      voiceEnrollmentActiveRef.current = false;
+      setVoiceEnrollmentSeconds(0);
+      setVoiceEnrollmentStatus('error');
+      toast.error('Microphone access is needed to enroll your voice.');
+      return;
+    }
 
     voiceEnrollmentTimerRef.current = setInterval(() => {
       setVoiceEnrollmentSeconds(seconds => Math.max(0, seconds - 1));
@@ -2616,6 +2650,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 
   // Start Hands-Free Live Call with Interruption support
   const handleStartCall = async () => {
+    setShowSpeakerLockSetup(false);
     const greetingTurnId = ++callTurnIdRef.current;
     setIsCallActive(true);
     isCallActiveRef.current = true;
@@ -2688,6 +2723,24 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         }]);
       });
     }
+  };
+
+  const requestStartCall = () => {
+    if (shouldOfferVoiceIdentitySetup(
+      voiceIdentityProfileRef.current,
+      accountLocalStorage.getItem(VOICE_IDENTITY_ONBOARDING_STORAGE_KEY),
+    )) {
+      setShowSpeakerLockSetup(true);
+      return;
+    }
+    void handleStartCall();
+  };
+
+  const skipSpeakerLockAndStartCall = () => {
+    cancelVoiceEnrollment(true);
+    accountLocalStorage.setItem(VOICE_IDENTITY_ONBOARDING_STORAGE_KEY, '1');
+    setShowSpeakerLockSetup(false);
+    void handleStartCall();
   };
 
   // End Call
@@ -3414,11 +3467,14 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                onClick={handleStartCall}
+                onClick={requestStartCall}
                 className="flex items-center gap-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-400 px-3.5 py-1.5 rounded-xl font-semibold text-xs transition-all shadow-sm cursor-pointer"
               >
                 <Phone size={13} />
                 <span>Voice Call</span>
+                {voiceIdentityProfile?.enabled && (
+                  <ShieldCheck size={13} className="text-emerald-300" aria-label="Speaker Lock active" />
+                )}
               </motion.button>
 
             </div>
@@ -3576,6 +3632,138 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
         </div>
       )}
 
+      {/* Optional one-time Speaker Lock setup before the first voice call */}
+      <AnimatePresence>
+        {showSpeakerLockSetup && !isCallActive && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 p-4 backdrop-blur-xl"
+            onClick={() => {
+              if (voiceEnrollmentStatus === 'recording') return;
+              cancelVoiceEnrollment(true);
+              setShowSpeakerLockSetup(false);
+            }}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 18, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.97 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              onClick={event => event.stopPropagation()}
+              className="relative w-full max-w-lg overflow-hidden rounded-3xl border border-white/[0.14] bg-[#18191e] shadow-[0_32px_100px_rgba(0,0,0,0.75)]"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="speaker-lock-setup-title"
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  cancelVoiceEnrollment(true);
+                  setShowSpeakerLockSetup(false);
+                }}
+                disabled={voiceEnrollmentStatus === 'recording'}
+                className="absolute right-4 top-4 z-10 rounded-full border border-white/10 bg-black/25 p-2 text-zinc-400 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+                aria-label="Close Speaker Lock setup"
+              >
+                <X size={17} />
+              </button>
+
+              <div className="border-b border-white/[0.08] bg-gradient-to-br from-emerald-500/[0.12] via-transparent to-[#E7C477]/[0.08] p-6 sm:p-7">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-emerald-400/25 bg-emerald-400/10 text-emerald-300 shadow-inner">
+                  <ShieldCheck size={24} />
+                </div>
+                <h2 id="speaker-lock-setup-title" className="mt-4 text-2xl font-extrabold tracking-tight text-white">
+                  {voiceEnrollmentStatus === 'ready' ? 'Speaker Lock is ready' : 'Let personas recognize your voice'}
+                </h2>
+                <p className="mt-2 text-sm leading-relaxed text-zinc-400">
+                  {voiceEnrollmentStatus === 'ready'
+                    ? `${activePersona.name} will prioritize your voice and ignore longer turns from nearby speakers.`
+                    : 'A quick 8-second setup helps personas tell you apart from other people in the room.'}
+                </p>
+              </div>
+
+              <div className="space-y-4 p-6 sm:p-7">
+                {voiceEnrollmentStatus === 'recording' ? (
+                  <div className="rounded-2xl border border-emerald-400/25 bg-emerald-400/[0.07] p-5 text-center">
+                    <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-emerald-400/30 bg-emerald-400/10">
+                      <Mic size={27} className="animate-pulse text-emerald-300" />
+                    </div>
+                    <div className="mt-3 font-mono text-3xl font-black text-white">{voiceEnrollmentSeconds}s</div>
+                    <p className="mt-2 text-sm font-bold text-emerald-200">Speak naturally in your usual voice</p>
+                    <p className="mt-2 text-xs leading-relaxed text-zinc-400">
+                      Try: “Hi, this is Dr. H. I’m setting up my voice so {activePersona.name} knows when I’m talking.”
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => cancelVoiceEnrollment()}
+                      className="mt-4 text-xs font-semibold text-zinc-500 hover:text-zinc-300"
+                    >
+                      Cancel recording
+                    </button>
+                  </div>
+                ) : voiceEnrollmentStatus === 'ready' && voiceIdentityProfile ? (
+                  <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.06] p-4">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-400 text-zinc-950">
+                        <Check size={19} strokeWidth={3} />
+                      </span>
+                      <div>
+                        <p className="text-sm font-bold text-white">Your voice signature is saved</p>
+                        <p className="mt-0.5 text-[11px] text-zinc-400">No microphone audio was stored.</p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {[
+                      ['8 seconds', 'One short voice sample'],
+                      ['On-device', 'Audio never gets stored'],
+                      ['Optional', 'Skip and call anytime'],
+                    ].map(([title, description]) => (
+                      <div key={title} className="rounded-xl border border-white/[0.09] bg-black/20 p-3">
+                        <p className="text-xs font-bold text-zinc-100">{title}</p>
+                        <p className="mt-1 text-[10px] leading-relaxed text-zinc-500">{description}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {voiceEnrollmentStatus === 'error' && (
+                  <div className="flex items-start gap-2 rounded-xl border border-amber-400/20 bg-amber-400/[0.07] p-3 text-xs text-amber-200">
+                    <AlertCircle size={15} className="mt-0.5 shrink-0" />
+                    I couldn’t capture enough clear speech. Move closer to the microphone and try once more.
+                  </div>
+                )}
+
+                {voiceEnrollmentStatus !== 'recording' && (
+                  <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                    {voiceEnrollmentStatus !== 'ready' && (
+                      <button
+                        type="button"
+                        onClick={skipSpeakerLockAndStartCall}
+                        className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-bold text-zinc-300 transition-colors hover:bg-white/[0.08] hover:text-white"
+                      >
+                        Skip &amp; start call
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={voiceEnrollmentStatus === 'ready' ? () => void handleStartCall() : () => void startVoiceEnrollment()}
+                      className="flex items-center justify-center gap-2 rounded-xl bg-[#E7C477] px-5 py-3 text-sm font-extrabold text-zinc-950 shadow-lg transition-colors hover:bg-[#F2D58D]"
+                    >
+                      {voiceEnrollmentStatus === 'ready' ? <Phone size={16} /> : <Mic size={16} />}
+                      {voiceEnrollmentStatus === 'ready' ? 'Start voice call' : voiceEnrollmentStatus === 'error' ? 'Try again' : 'Enroll my voice'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Voice Call Simulator Overlay */}
       <AnimatePresence>
         {isCallActive && (
@@ -3647,6 +3835,22 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                 >
                   <SlidersHorizontal size={14} />
                 </button>
+                {voiceIdentityProfile?.enabled && (
+                  <button
+                    type="button"
+                    onClick={() => setShowVoiceAccuracyPanel(true)}
+                    className={cn(
+                      'hidden sm:flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold transition-colors',
+                      ignoredSpeakerCount > 0
+                        ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-200'
+                        : 'border-white/10 bg-white/[0.04] text-zinc-400 hover:bg-white/[0.08]',
+                    )}
+                    title="Open Speaker Lock details"
+                  >
+                    <ShieldCheck size={12} />
+                    {ignoredSpeakerCount > 0 ? `${ignoredSpeakerCount} ignored` : 'Speaker Lock'}
+                  </button>
+                )}
                 {lastVoiceLatency?.responseMs !== undefined && (
                   <div
                     className="hidden md:flex items-center gap-1.5 bg-cyan-500/[0.08] border border-cyan-500/20 rounded-full px-2.5 py-1 text-[10px] font-semibold text-cyan-200"

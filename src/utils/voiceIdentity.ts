@@ -1,4 +1,5 @@
 export const VOICE_IDENTITY_STORAGE_KEY = 'voice_identity_profile';
+export const VOICE_IDENTITY_ONBOARDING_STORAGE_KEY = 'voice_identity_onboarding_seen';
 export const VOICE_IDENTITY_VECTOR_SIZE = 18;
 
 export interface VoiceIdentityProfile {
@@ -8,6 +9,13 @@ export interface VoiceIdentityProfile {
   threshold: number;
   sampleCount: number;
   enrolledAt: string;
+}
+
+export function shouldOfferVoiceIdentitySetup(
+  profile: VoiceIdentityProfile | null,
+  onboardingSeen: string | null | undefined,
+): boolean {
+  return !profile && onboardingSeen !== '1';
 }
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));

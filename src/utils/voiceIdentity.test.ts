@@ -4,6 +4,7 @@ import {
   createVoiceIdentityProfile,
   isEnrolledSpeaker,
   parseVoiceIdentityProfile,
+  shouldOfferVoiceIdentitySetup,
   VOICE_IDENTITY_VECTOR_SIZE,
 } from './voiceIdentity';
 
@@ -28,3 +29,11 @@ test('parses only complete versioned profiles', () => {
   assert.equal(parseVoiceIdentityProfile('{"version":1,"centroid":[1]}'), null);
 });
 
+test('offers optional Speaker Lock setup only before it is enrolled or dismissed', () => {
+  assert.equal(shouldOfferVoiceIdentitySetup(null, null), true);
+  assert.equal(shouldOfferVoiceIdentitySetup(null, '1'), false);
+
+  const profile = createVoiceIdentityProfile(voice(0));
+  assert.ok(profile);
+  assert.equal(shouldOfferVoiceIdentitySetup(profile, null), false);
+});
