@@ -4444,7 +4444,7 @@ const generateImageHandler = async (req: any, res: any) => {
   const authReq = req as AuthenticatedRequest;
   try {
     const cost = await calculateGenerationCost(authReq.user.email, modelId, 'image', count);
-    await deductCredits(authReq.user.id, cost);
+    await deductCredits(authReq.user.id, cost, authReq.user.email);
   } catch (err) {
     return res.status(403).json({ error: err instanceof Error ? err.message : 'Credit check failed' });
   }
@@ -5253,7 +5253,7 @@ const generateVideoHandler = async (req: any, res: any) => {
   const authReq = req as AuthenticatedRequest;
   try {
     const cost = await calculateGenerationCost(authReq.user.email, modelId, 'video', 1);
-    await deductCredits(authReq.user.id, cost);
+    await deductCredits(authReq.user.id, cost, authReq.user.email);
   } catch (err) {
     return res.status(403).json({ error: err instanceof Error ? err.message : 'Credit check failed' });
   }
@@ -6340,7 +6340,7 @@ async function handleTTS(req: express.Request, res: express.Response) {
     try {
       const authReq = req as AuthenticatedRequest;
       const cost = await calculateGenerationCost(authReq.user.email, undefined, 'speech', 1);
-      await deductCredits(authReq.user.id, cost);
+      await deductCredits(authReq.user.id, cost, authReq.user.email);
     } catch (err) {
       console.warn('[Credit Check Warning]:', err);
     }
@@ -7389,7 +7389,7 @@ app.post('/api/talking-head', async (req, res) => {
   try {
     const authReq = req as AuthenticatedRequest;
     const cost = await calculateGenerationCost(authReq.user.email, undefined, 'avatar', 1);
-    await deductCredits(authReq.user.id, cost);
+    await deductCredits(authReq.user.id, cost, authReq.user.email);
   } catch (err) {
     return res.status(403).json({ error: err instanceof Error ? err.message : 'Credit check failed' });
   }

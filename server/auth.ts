@@ -112,9 +112,25 @@ export function isCreatorUser(email?: string): boolean {
   return normalizeEmail(email) === normalizeEmail(creatorEmail);
 }
 
-export async function deductCredits(userId: string, amount: number) {
+export function bypassesInternalCredits(email?: string): boolean {
+  return isCreatorUser(email);
+}
+
+export async function deductCredits(userId: string, amount: number, email?: string) {
+  // The studio owner pays providers directly through the configured API keys.
+  // Internal credits are reserved for customer accounts and must never block
+  // the creator from using an otherwise funded provider account.
+  if (bypassesInternalCredits(email)) {
+    console.log(`[Credits] Creator account bypassed internal deduction for ${amount} credit(s)`);
+    return;
+  }
+
   try {
     const [userRow] = await db.select().from(users).where(eq(users.id, userId));
+    if (bypassesInternalCredits(userRow?.email)) {
+      console.log(`[Credits] Creator account bypassed internal deduction for ${amount} credit(s)`);
+      return;
+    }
     if (userRow && userRow.credits < amount) {
       throw new Error(`Insufficient credits. You need ${amount} credits but only have ${userRow.credits} left.`);
     }
