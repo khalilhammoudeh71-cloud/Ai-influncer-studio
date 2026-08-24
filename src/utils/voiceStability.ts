@@ -24,6 +24,17 @@ export interface VoiceLatencySnapshot {
   endToEndMs?: number;
 }
 
+export interface SpeakableChunkOptions {
+  force?: boolean;
+  firstChunk?: boolean;
+  allowEarlyPartial?: boolean;
+}
+
+export interface SpeakableChunkResult {
+  chunk?: string;
+  remainder: string;
+}
+
 const INTERRUPT_PREFIX = /^(?:stop|wait|hold on|pause|no|actually|cancel|never mind|nevermind)\b/i;
 
 const ECHO_STOP_WORDS = new Set([
@@ -140,4 +151,81 @@ export function summarizeVoiceLatency(timing: VoiceTurnTiming): VoiceLatencySnap
     responseMs: positiveDelta(timing.firstAudioAt, timing.requestStartedAt),
     endToEndMs: positiveDelta(timing.firstAudioAt, timing.speechStartedAt),
   };
+}
+
+/**
+ * Pulls one TTS-friendly phrase from a partial model response. The first phrase
+ * is intentionally short so speech can begin while the rest of the reply is
+ * still streaming, while later phrases stay longer to avoid choppy playback.
+ */
+export function takeSpeakableSpeechChunk(
+  buffer: string,
+  options: SpeakableChunkOptions = {},
+): SpeakableChunkResult {
+  const normalized = buffer.trimStart();
+  if (!normalized) return { remainder: '' };
+
+  const sentence = normalized.match(/^([\s\S]{4,180}?[.!?])(?=\s|$)/);
+  if (sentence) {
+    return {
+      chunk: sentence[1].trim(),
+      remainder: normalized.slice(sentence[0].length).trimStart(),
+    };
+  }
+
+  if (options.firstChunk) {
+    const clause = normalized.match(/^([\s\S]{20,110}?[,;:\u2014\u2013])(?=\s|$)/);
+    if (clause) {
+      return {
+        chunk: clause[1].trim(),
+        remainder: normalized.slice(clause[0].length).trimStart(),
+      };
+    }
+
+    if (normalized.length >= 72) {
+      const nearbyBreak = Math.max(
+        normalized.lastIndexOf(',', 72),
+        normalized.lastIndexOf(';', 72),
+        normalized.lastIndexOf(':', 72),
+        normalized.lastIndexOf(' ', 72),
+      );
+      const splitAt = nearbyBreak >= 30 ? nearbyBreak + 1 : 72;
+      return {
+        chunk: normalized.slice(0, splitAt).trim(),
+        remainder: normalized.slice(splitAt).trimStart(),
+      };
+    }
+
+    // After the short first-speech timer expires, start from the latest whole
+    // word rather than waiting for a short conversational reply to finish.
+    if (options.allowEarlyPartial && normalized.length >= 24) {
+      const splitAt = normalized.lastIndexOf(' ');
+      if (splitAt >= 20) {
+        return {
+          chunk: normalized.slice(0, splitAt).trim(),
+          remainder: normalized.slice(splitAt).trimStart(),
+        };
+      }
+    }
+  }
+
+  if (normalized.length >= 140) {
+    const nearbyBreak = Math.max(
+      normalized.lastIndexOf(',', 120),
+      normalized.lastIndexOf(';', 120),
+      normalized.lastIndexOf(':', 120),
+      normalized.lastIndexOf(' ', 120),
+    );
+    const splitAt = nearbyBreak >= 55 ? nearbyBreak + 1 : 120;
+    return {
+      chunk: normalized.slice(0, splitAt).trim(),
+      remainder: normalized.slice(splitAt).trimStart(),
+    };
+  }
+
+  if (options.force) {
+    return { chunk: normalized, remainder: '' };
+  }
+
+  return { remainder: normalized };
 }

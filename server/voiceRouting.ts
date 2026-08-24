@@ -79,3 +79,7 @@ export function isElevenLabsVoiceEngine(value: unknown): boolean {
   const model = String(value || '').toLowerCase();
   return model.startsWith('eleven_') || model.includes('elevenlabs');
 }
+
+export function isDirectElevenLabsVoiceId(value: unknown): value is string {
+  return typeof value === 'string' && /^[a-zA-Z0-9]{18,24}$/.test(value.trim());
+}

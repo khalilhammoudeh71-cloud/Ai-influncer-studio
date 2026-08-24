@@ -53,6 +53,7 @@ import {
   isLikelyPersonaEcho,
   shouldInterruptPersonaSpeech,
   summarizeVoiceLatency,
+  takeSpeakableSpeechChunk,
   type VoiceLatencySnapshot,
   type VoiceTurnTiming,
 } from '../utils/voiceStability';
@@ -1883,6 +1884,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     
     setCallStatus('thinking');
 
+    let earlySpeechTimer: ReturnType<typeof setTimeout> | null = null;
+
     try {
       const personaMemories = loadPersonaMemories(activePersona.id);
       const creator = getCreatorProfile();
@@ -2003,33 +2006,39 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       const queueSpeechSegment = (segment: string) => {
         const cleanSegment = segment.replace(/\s+/g, ' ').trim();
         if (!speakerOn || cleanSegment.length < 2) return;
+        if (earlySpeechTimer) {
+          clearTimeout(earlySpeechTimer);
+          earlySpeechTimer = null;
+        }
         streamingSpeechQueued = true;
         const audioPromise = synthesizeSpeechSegment(cleanSegment);
         streamingPlayback = streamingPlayback.then(() => playPreparedSegment(cleanSegment, audioPromise));
       };
 
-      const flushSpeechBuffer = (force = false) => {
+      const flushSpeechBuffer = (force = false, allowEarlyPartial = false) => {
         while (speechBuffer.trim()) {
-          const normalized = speechBuffer.trimStart();
-          const sentenceMatch = normalized.match(/^([\s\S]{18,220}?[.!?])(?:\s|$)/);
-          if (sentenceMatch) {
-            queueSpeechSegment(sentenceMatch[1]);
-            speechBuffer = normalized.slice(sentenceMatch[0].length);
-            continue;
-          }
-          if (normalized.length > 180) {
-            const preferredBreak = Math.max(normalized.lastIndexOf(',', 150), normalized.lastIndexOf(';', 150), normalized.lastIndexOf(' ', 150));
-            const splitAt = preferredBreak > 50 ? preferredBreak + 1 : 150;
-            queueSpeechSegment(normalized.slice(0, splitAt));
-            speechBuffer = normalized.slice(splitAt);
-            continue;
-          }
-          if (force) {
-            queueSpeechSegment(normalized);
-            speechBuffer = '';
-          }
-          break;
+          const extracted = takeSpeakableSpeechChunk(speechBuffer, {
+            force,
+            firstChunk: !streamingSpeechQueued,
+            allowEarlyPartial,
+          });
+          speechBuffer = extracted.remainder;
+          if (!extracted.chunk) break;
+          queueSpeechSegment(extracted.chunk);
         }
+      };
+
+      const scheduleEarlySpeech = () => {
+        if (!speakerOn || streamingSpeechQueued || earlySpeechTimer || !speechBuffer.trim()) return;
+        earlySpeechTimer = setTimeout(() => {
+          earlySpeechTimer = null;
+          flushSpeechBuffer(false, true);
+          // A very small initial token may not yet be safe to speak. Check it
+          // again shortly without resetting the timer on every streamed token.
+          if (!streamingSpeechQueued && speechBuffer.trim()) {
+            scheduleEarlySpeech();
+          }
+        }, 180);
       };
 
       // Stream LLM text immediately, and synthesize each complete phrase while
@@ -2082,6 +2091,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           speechBuffer += payload.text;
           currentPersonaSpeechRef.current = streamedReply.toLowerCase().trim();
           flushSpeechBuffer(false);
+          scheduleEarlySpeech();
         }
         if (payload.done) streamMetadata = payload;
       };
@@ -2095,6 +2105,10 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       }
       eventBuffer += decoder.decode();
       drainSseData(eventBuffer, true).data.forEach(processVoiceStreamPayload);
+      if (earlySpeechTimer) {
+        clearTimeout(earlySpeechTimer);
+        earlySpeechTimer = null;
+      }
       flushSpeechBuffer(true);
 
       const data = {
@@ -2356,6 +2370,10 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         });
       }
     } catch (err: any) {
+      if (earlySpeechTimer) {
+        clearTimeout(earlySpeechTimer);
+        earlySpeechTimer = null;
+      }
       clearTimeout(watchdogTimer);
       if (err?.name !== 'AbortError') {
         console.error('[Call Voice Network Error, recovering]:', err);

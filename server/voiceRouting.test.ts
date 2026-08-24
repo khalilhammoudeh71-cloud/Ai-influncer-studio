@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   isElevenLabsVoiceEngine,
+  isDirectElevenLabsVoiceId,
   isProviderAccountUnavailableStatus,
   isValidPublicVoiceReference,
   selectElevenLabsPersonaVoice,
@@ -40,4 +41,6 @@ test('recognizes terminal provider account statuses and ElevenLabs models', () =
   assert.equal(isProviderAccountUnavailableStatus(429), false);
   assert.equal(isElevenLabsVoiceEngine('eleven_flash_v2_5'), true);
   assert.equal(isElevenLabsVoiceEngine('cartesia-sonic'), false);
+  assert.equal(isDirectElevenLabsVoiceId('7jFje9BJoTWzqZzouT0j'), true);
+  assert.equal(isDirectElevenLabsVoiceId('elevenlabs:rawan'), false);
 });

@@ -10,6 +10,7 @@ import { GoogleGenAI } from '@google/genai';
 import { requireAuth, AuthenticatedRequest } from './auth';
 import {
   type ElevenLabsVoiceSummary,
+  isDirectElevenLabsVoiceId,
   isElevenLabsVoiceEngine,
   isProviderAccountUnavailableStatus,
   isValidPublicVoiceReference,
@@ -2207,10 +2208,21 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
       try {
         const elevenModelId = requestedTtsModel.includes('flash') ? 'eleven_flash_v2_5' : 
                              requestedTtsModel.includes('multilingual') ? 'eleven_multilingual_v2' : 'eleven_turbo_v2_5';
-        let catalog = await loadElevenLabsVoiceCatalog(elKey);
-        let voice = selectElevenLabsPersonaVoice(catalog, savedVoiceId, activePersona?.name);
-        resolvedVoiceId = voice?.voice_id || (catalog.length === 0 ? savedVoiceId : '');
-        resolvedVoiceName = voice?.name;
+        const hasDirectVoiceId = isDirectElevenLabsVoiceId(savedVoiceId);
+        let catalog: ElevenLabsVoiceSummary[] = [];
+        let voice: ElevenLabsVoiceSummary | undefined;
+
+        // A saved ElevenLabs ID is already authoritative. Avoid a catalog
+        // round trip on every cold live-call start and only refresh the catalog
+        // if synthesis proves that the saved voice was deleted or replaced.
+        if (hasDirectVoiceId) {
+          resolvedVoiceId = savedVoiceId;
+        } else {
+          catalog = await loadElevenLabsVoiceCatalog(elKey);
+          voice = selectElevenLabsPersonaVoice(catalog, savedVoiceId, activePersona?.name);
+          resolvedVoiceId = voice?.voice_id || (catalog.length === 0 ? savedVoiceId : '');
+          resolvedVoiceName = voice?.name;
+        }
 
         if (resolvedVoiceId) {
           if (savedVoiceId && resolvedVoiceId !== savedVoiceId) {
@@ -2711,7 +2723,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
   // Preserve the permissive conversational behavior of the original voice
   // endpoint while gaining token streaming. Explicit provider choices still win.
   const explicitlySelectedAlternate = voiceLlmModel && !['default', 'gemini', 'atlas'].includes(voiceLlmModel);
-  if (ATLAS_KEY && !explicitlySelectedAlternate) {
+  if (!streamedSuccessfully && ATLAS_KEY && !explicitlySelectedAlternate) {
     try {
       console.log('[Voice Stream] Streaming Atlas DeepSeek V3.2...');
       streamedText = await handleOpenAIStream(

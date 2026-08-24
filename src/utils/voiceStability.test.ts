@@ -5,6 +5,7 @@ import {
   isLikelyPersonaEcho,
   shouldInterruptPersonaSpeech,
   summarizeVoiceLatency,
+  takeSpeakableSpeechChunk,
 } from './voiceStability';
 
 test('detects exact and lightly varied persona speaker leakage', () => {
@@ -59,5 +60,38 @@ test('summarizes the individual live voice latency stages', () => {
     speechMs: 260,
     responseMs: 520,
     endToEndMs: 1_080,
+  });
+});
+
+test('starts the first spoken phrase from a natural clause before the reply finishes', () => {
+  assert.deepEqual(takeSpeakableSpeechChunk(
+    "Absolutely, that sounds like a great idea, and I would love to hear more",
+    { firstChunk: true },
+  ), {
+    chunk: 'Absolutely, that sounds like a great idea,',
+    remainder: 'and I would love to hear more',
+  });
+});
+
+test('starts a short conversational reply after the early speech window', () => {
+  assert.deepEqual(takeSpeakableSpeechChunk(
+    "I would love to hear more about",
+    { firstChunk: true, allowEarlyPartial: true },
+  ), {
+    chunk: 'I would love to hear more',
+    remainder: 'about',
+  });
+});
+
+test('keeps incomplete short text buffered until it is safe to speak', () => {
+  assert.deepEqual(takeSpeakableSpeechChunk('I would', { firstChunk: true }), {
+    remainder: 'I would',
+  });
+});
+
+test('flushes a complete short answer immediately', () => {
+  assert.deepEqual(takeSpeakableSpeechChunk('Yes, absolutely!', { firstChunk: true }), {
+    chunk: 'Yes, absolutely!',
+    remainder: '',
   });
 });
