@@ -6,7 +6,8 @@ import {
   ArrowUpCircle, Wand2, Bookmark, Check, Loader2, 
   Layers, Eye, ExternalLink, Film, Mic2, Play, Image as ImageIcon
 } from 'lucide-react';
-import { ModelInfo, fetchAllModelTypes, upscaleImage, editImage, enhancePrompt } from '../services/imageService';
+import { ModelInfo, fetchAllModelTypes, enhancePrompt } from '../services/imageService';
+import { editImageJob, upscaleImageJob } from '../services/mediaJobService';
 import { Persona } from '../types';
 import { api } from '../services/apiService';
 import toast from 'react-hot-toast';
@@ -227,7 +228,7 @@ export default function ImageLightboxModal({
     setIsProcessing(true);
     setProcessStatus(`Upscaling to ${targetResolution.toUpperCase()} Ultra-HD...`);
     try {
-      const result = await upscaleImage(currentImage, selectedUpscaleModel, targetResolution);
+      const result = await upscaleImageJob(persona.id, currentImage, selectedUpscaleModel, targetResolution);
       const newVersion: ImageVersion = {
         url: result.imageUrl,
         label: `Upscaled (${targetResolution.toUpperCase()})`,
@@ -257,7 +258,7 @@ export default function ImageLightboxModal({
     setIsProcessing(true);
     setProcessStatus('Applying AI visual edits...');
     try {
-      const result = await editImage(currentImage, editPromptText.trim(), selectedEditModel);
+      const result = await editImageJob(persona.id, currentImage, editPromptText.trim(), selectedEditModel);
       const newVersion: ImageVersion = {
         url: result.imageUrl,
         label: `Edit: ${editPromptText.slice(0, 18)}...`,

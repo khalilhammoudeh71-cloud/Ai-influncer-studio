@@ -23,6 +23,17 @@ import { composeMultiPersonaPrompt, getPersonaPrimaryReference, resolveCreatorPe
 import { normalizeNaturalVoiceGreeting } from './voiceRouting';
 import stripeRoutes, { handleStripeWebhook } from './stripe-routes';
 import { requireAuth, deductCredits, isCreatorUser, AuthenticatedRequest } from './auth';
+import { db } from './db';
+import { mediaJobs } from '../shared/schema';
+import { and, desc, eq } from 'drizzle-orm';
+import {
+  fallbackModelForJob,
+  isMediaJobStale,
+  isRetryableMediaJobFailure,
+  parseMediaJobJson,
+  publicMediaJob,
+  type MediaJobKind,
+} from './mediaJobs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -4831,7 +4842,7 @@ app.post('/api/generate-reference', async (req, res) => {
   }
 });
 
-app.post('/api/edit-image', async (req, res) => {
+const editImageHandler = async (req: any, res: any) => {
   const { sourceImage, prompt, modelId, additionalImage, maskImage } = req.body;
 
   if (!sourceImage || !prompt || !modelId) {
@@ -4998,7 +5009,9 @@ app.post('/api/edit-image', async (req, res) => {
     console.error('[edit-image] Error:', err instanceof Error ? err.message : err);
     return res.status(500).json({ error: err instanceof Error ? err.message : 'Image editing failed' });
   }
-});
+};
+
+app.post('/api/edit-image', editImageHandler);
 
 app.post('/api/batch-edit-images', async (req, res) => {
   const { images, prompt, modelId: rawModelId } = req.body as {
@@ -5103,7 +5116,7 @@ app.post('/api/batch-edit-images', async (req, res) => {
   }
 });
 
-app.post('/api/upscale-image', async (req, res) => {
+const upscaleImageHandler = async (req: any, res: any) => {
   const { sourceImage, modelId = 'runware:upscale', targetResolution, upscaleFactor } = req.body;
 
   if (!sourceImage) {
@@ -5160,7 +5173,9 @@ app.post('/api/upscale-image', async (req, res) => {
     console.error('[upscale-image] Error:', err instanceof Error ? err.message : err);
     return res.status(500).json({ error: err instanceof Error ? err.message : 'Image upscaling failed' });
   }
-});
+};
+
+app.post('/api/upscale-image', upscaleImageHandler);
 
 async function extractWavespeedVideoOutput(json: Record<string, unknown>): Promise<string> {
   const data = json.data as Record<string, unknown> | undefined;
@@ -5505,7 +5520,7 @@ async function runJsonGenerationHandler(
   }
 }
 
-app.post('/api/persona/media-request', async (req: AuthenticatedRequest, res) => {
+const personaMediaHandler = async (req: AuthenticatedRequest, res: any) => {
   const {
     type,
     prompt: rawPrompt,
@@ -5688,7 +5703,9 @@ app.post('/api/persona/media-request', async (req: AuthenticatedRequest, res) =>
       message: `I couldn't finish that ${type}. ${message}`,
     });
   }
-});
+};
+
+app.post('/api/persona/media-request', personaMediaHandler);
 
 app.post('/api/generate-3d', requireAuth, async (req, res) => {
   const { prompt, modelId, sourceImage } = req.body;
@@ -7345,7 +7362,7 @@ app.post('/api/heygen-create-avatar', async (req, res) => {
 });
 
 // ─── Talking Head ─────────────────────────────────────────────────────────────
-app.post('/api/talking-head', async (req, res) => {
+const talkingHeadHandler = async (req: any, res: any) => {
   const { 
     portraitImage, 
     video,
@@ -7535,6 +7552,176 @@ app.post('/api/talking-head', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Talking head generation failed' });
   }
+};
+
+app.post('/api/talking-head', talkingHeadHandler);
+
+// ─── Durable Media Jobs ──────────────────────────────────────────────────────
+// A row is created before any provider request. The browser can therefore
+// recover the status after a refresh or a serverless timeout and retry without
+// reconstructing the prompt or generation settings.
+function mediaJobModelId(kind: MediaJobKind, request: Record<string, any>): string | null {
+  if (kind === 'image') return request.imageModelId || null;
+  if (kind === 'video') return request.videoModelId || null;
+  return request.modelId || request.model || null;
+}
+
+function withMediaJobModel(kind: MediaJobKind, request: Record<string, any>, modelId: string) {
+  if (kind === 'image') return { ...request, imageModelId: modelId };
+  if (kind === 'video') return { ...request, videoModelId: modelId };
+  return { ...request, modelId, model: modelId };
+}
+
+function mediaJobHandler(kind: MediaJobKind) {
+  if (kind === 'image' || kind === 'video') return personaMediaHandler;
+  if (kind === 'edit') return editImageHandler;
+  if (kind === 'upscale') return upscaleImageHandler;
+  return talkingHeadHandler;
+}
+
+function mediaJobOutput(kind: MediaJobKind, payload: any) {
+  if (kind === 'image' || kind === 'video') {
+    return payload?.success && payload?.url ? payload : null;
+  }
+  if (kind === 'edit' || kind === 'upscale') {
+    return payload?.imageUrl ? { ...payload, url: payload.imageUrl, type: 'image' } : null;
+  }
+  return payload?.videoUrl ? { ...payload, url: payload.videoUrl, type: 'video' } : null;
+}
+
+app.post('/api/media-jobs', async (req: AuthenticatedRequest, res) => {
+  if (!db) return res.status(503).json({ error: 'Media job storage is unavailable' });
+  const { kind, personaClientId, request } = req.body || {};
+  const supportedKinds: MediaJobKind[] = ['image', 'video', 'edit', 'upscale', 'avatar'];
+  if (!supportedKinds.includes(kind) || !request || typeof request !== 'object') {
+    return res.status(400).json({ error: 'A supported media job kind and request are required' });
+  }
+
+  const jobId = nodeCrypto.randomUUID();
+  const now = new Date();
+  try {
+    const [created] = await db.insert(mediaJobs).values({
+      id: jobId,
+      userId: req.user.id,
+      personaClientId: typeof personaClientId === 'string' ? personaClientId : null,
+      kind,
+      status: 'queued',
+      request: JSON.stringify(request),
+      modelId: mediaJobModelId(kind, request),
+      createdAt: now,
+      updatedAt: now,
+    }).returning();
+    return res.status(201).json({ job: publicMediaJob(created) });
+  } catch (error) {
+    console.error('[media-jobs] Could not create job:', error);
+    return res.status(500).json({ error: 'Could not save this media job before generation' });
+  }
+});
+
+app.get('/api/media-jobs', async (req: AuthenticatedRequest, res) => {
+  if (!db) return res.status(503).json({ error: 'Media job storage is unavailable' });
+  try {
+    const personaId = typeof req.query.personaId === 'string' ? req.query.personaId : '';
+    const ownership = eq(mediaJobs.userId, req.user.id);
+    const where = personaId
+      ? and(ownership, eq(mediaJobs.personaClientId, personaId))
+      : ownership;
+    const rows = await db.select().from(mediaJobs).where(where).orderBy(desc(mediaJobs.createdAt)).limit(100);
+    return res.json({ jobs: rows.map((row: any) => publicMediaJob(row)) });
+  } catch (error) {
+    console.error('[media-jobs] Could not list jobs:', error);
+    return res.status(500).json({ error: 'Could not load media jobs' });
+  }
+});
+
+app.post('/api/media-jobs/:jobId/run', async (req: AuthenticatedRequest, res) => {
+  if (!db) return res.status(503).json({ error: 'Media job storage is unavailable' });
+  const jobId = String(req.params.jobId);
+  const [job] = await db.select().from(mediaJobs).where(and(
+    eq(mediaJobs.id, jobId),
+    eq(mediaJobs.userId, req.user.id),
+  ));
+  if (!job) return res.status(404).json({ error: 'Media job not found' });
+  if (job.status === 'succeeded') return res.json({ job: publicMediaJob(job) });
+  if (job.status === 'running' && !isMediaJobStale(job.updatedAt)) {
+    return res.status(409).json({ error: 'This media job is already running', job: publicMediaJob(job) });
+  }
+
+  const kind = job.kind as MediaJobKind;
+  const storedRequest = parseMediaJobJson(job.request);
+  if (!storedRequest) return res.status(422).json({ error: 'The stored media request is invalid' });
+  const useFallback = Boolean(req.body?.useFallback && job.fallbackModelId);
+  const executionRequest = useFallback
+    ? withMediaJobModel(kind, storedRequest, job.fallbackModelId!)
+    : storedRequest;
+  const now = new Date();
+  const [running] = await db.update(mediaJobs).set({
+    status: 'running',
+    error: null,
+    result: null,
+    attempt: (job.attempt || 0) + 1,
+    usedFallback: useFallback,
+    updatedAt: now,
+    completedAt: null,
+  }).where(and(
+    eq(mediaJobs.id, jobId),
+    eq(mediaJobs.userId, req.user.id),
+    eq(mediaJobs.status, job.status),
+    eq(mediaJobs.updatedAt, job.updatedAt),
+  )).returning();
+  if (!running) {
+    return res.status(409).json({ error: 'This media job was already started in another session' });
+  }
+
+  try {
+    const generation = await runJsonGenerationHandler(mediaJobHandler(kind), req, executionRequest);
+    const output = mediaJobOutput(kind, generation.payload);
+    if (generation.status >= 400 || !output) {
+      const message = generation.payload?.message || generation.payload?.error || `${kind} generation failed`;
+      const failure = new Error(message) as Error & { status?: number };
+      failure.status = generation.status >= 400 ? generation.status : 500;
+      throw failure;
+    }
+
+    const [completed] = await db.update(mediaJobs).set({
+      status: 'succeeded',
+      result: JSON.stringify(output),
+      error: null,
+      modelId: output.model || mediaJobModelId(kind, executionRequest),
+      usedFallback: useFallback || /fallback|failover/i.test(output.model || ''),
+      updatedAt: new Date(),
+      completedAt: new Date(),
+    }).where(and(eq(mediaJobs.id, jobId), eq(mediaJobs.userId, req.user.id))).returning();
+    return res.json({ job: publicMediaJob(completed) });
+  } catch (error) {
+    const status = Number((error as any)?.status) || 500;
+    const message = error instanceof Error ? error.message : `${kind} generation failed`;
+    const fallback = !useFallback && isRetryableMediaJobFailure(status, message)
+      ? fallbackModelForJob(kind, mediaJobModelId(kind, executionRequest))
+      : null;
+    const [failed] = await db.update(mediaJobs).set({
+      status: 'failed',
+      error: message,
+      fallbackModelId: fallback,
+      updatedAt: new Date(),
+      completedAt: new Date(),
+    }).where(and(eq(mediaJobs.id, jobId), eq(mediaJobs.userId, req.user.id))).returning();
+    return res.status(status >= 400 && status < 600 ? status : 500).json({
+      error: message,
+      job: publicMediaJob(failed || running),
+    });
+  }
+});
+
+app.delete('/api/media-jobs/:jobId', async (req: AuthenticatedRequest, res) => {
+  if (!db) return res.status(503).json({ error: 'Media job storage is unavailable' });
+  const jobId = String(req.params.jobId);
+  const deleted = await db.delete(mediaJobs).where(and(
+    eq(mediaJobs.id, jobId),
+    eq(mediaJobs.userId, req.user.id),
+  )).returning({ id: mediaJobs.id });
+  if (!deleted.length) return res.status(404).json({ error: 'Media job not found' });
+  return res.status(204).send();
 });
 
 // ─── Motion Control ─────────────────────────────────────────────────────────────
@@ -8059,6 +8246,25 @@ async function pushSchema() {
       );
       ALTER TABLE planned_posts ADD COLUMN IF NOT EXISTS user_id TEXT;
 
+      CREATE TABLE IF NOT EXISTS media_jobs (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        persona_client_id TEXT,
+        kind TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'queued',
+        request TEXT NOT NULL,
+        result TEXT,
+        error TEXT,
+        model_id TEXT,
+        fallback_model_id TEXT,
+        attempt INTEGER NOT NULL DEFAULT 0,
+        used_fallback BOOLEAN NOT NULL DEFAULT false,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        completed_at TIMESTAMPTZ
+      );
+      CREATE INDEX IF NOT EXISTS media_jobs_user_created_idx ON media_jobs (user_id, created_at DESC);
+
       -- Account ownership is mandatory. Legacy unowned rows remain inaccessible.
       UPDATE personas SET user_id = 'legacy-unowned' WHERE user_id IS NULL;
       UPDATE generated_images SET user_id = 'legacy-unowned' WHERE user_id IS NULL;
@@ -8090,8 +8296,9 @@ async function pushSchema() {
       ALTER TABLE generated_images ENABLE ROW LEVEL SECURITY;
       ALTER TABLE revenue_entries ENABLE ROW LEVEL SECURITY;
       ALTER TABLE planned_posts ENABLE ROW LEVEL SECURITY;
-      REVOKE ALL ON TABLE personas, generated_images, revenue_entries, planned_posts FROM anon;
-      GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE personas, generated_images, revenue_entries, planned_posts TO authenticated;
+      ALTER TABLE media_jobs ENABLE ROW LEVEL SECURITY;
+      REVOKE ALL ON TABLE personas, generated_images, revenue_entries, planned_posts, media_jobs FROM anon;
+      GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE personas, generated_images, revenue_entries, planned_posts, media_jobs TO authenticated;
       REVOKE ALL ON SEQUENCE personas_id_seq, generated_images_id_seq, revenue_entries_id_seq, planned_posts_id_seq FROM anon;
       GRANT USAGE, SELECT ON SEQUENCE personas_id_seq, generated_images_id_seq, revenue_entries_id_seq, planned_posts_id_seq TO authenticated;
       DO $account_policies$
@@ -8099,7 +8306,7 @@ async function pushSchema() {
         target_table text;
         policy_prefix text;
       BEGIN
-        FOREACH target_table IN ARRAY ARRAY['personas', 'generated_images', 'revenue_entries', 'planned_posts']
+        FOREACH target_table IN ARRAY ARRAY['personas', 'generated_images', 'revenue_entries', 'planned_posts', 'media_jobs']
         LOOP
           policy_prefix := target_table || '_own';
           IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = target_table AND policyname = policy_prefix || '_select') THEN

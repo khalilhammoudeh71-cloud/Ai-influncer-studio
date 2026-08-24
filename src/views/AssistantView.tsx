@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Send, Bot, ChevronDown, ImageIcon, Video, Loader2, AlertCircle, Camera, MessageSquareQuote, Copy, Bookmark, Check, Phone, PhoneOff, Volume2, VolumeX, Mic, MicOff, RotateCcw, Trash2, Plus, Upload, Music, Film, X, Play, Sparkles, Paperclip, FileText, SlidersHorizontal, Settings, Hand, Maximize2, Download, Shirt, Heart, Pencil, BookOpen, ShieldCheck, Brain, Pin, Search, ArrowUpCircle, Wand2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Persona, NavActions, RelationshipState } from '../types';
-import { ModelInfo, authFetch, fetchAllModelTypes, editImage, generateTalkingHead, requestPersonaMedia, textToSpeech } from '../services/imageService';
+import { ModelInfo, authFetch, fetchAllModelTypes, textToSpeech } from '../services/imageService';
+import { requestPersonaMediaJob, talkingAvatarJob, type MediaJob } from '../services/mediaJobService';
 import { cn } from '../utils/cn';
 import { api } from '../services/apiService';
 import toast from 'react-hot-toast';
@@ -16,6 +17,7 @@ import ImageLightboxModal, {
 import PersonaReferenceModal from '../components/PersonaReferenceModal';
 import VoiceNoteBubble from '../components/VoiceNoteBubble';
 import PersonaAvatar from '../components/PersonaAvatar';
+import MediaJobCenter from '../components/MediaJobCenter';
 import { getCreatorProfile } from '../utils/creatorProfile';
 import { accountLocalStorage } from '../utils/accountStorage';
 import {
@@ -542,6 +544,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   const [showEngineSettings, setShowEngineSettings] = useState(false);
   const [isReferenceModalOpen, setIsReferenceModalOpen] = useState(false);
   const [showMemoryCenter, setShowMemoryCenter] = useState(false);
+  const [showMediaJobCenter, setShowMediaJobCenter] = useState(false);
   const [memoryNotes, setMemoryNotes] = useState<PersonaMemoryNote[]>([]);
   const [memoryActivity, setMemoryActivity] = useState<ConversationRecord[]>([]);
   const [memorySearch, setMemorySearch] = useState('');
@@ -874,6 +877,32 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     setActiveCallMedia({ type: 'image', url: newUrl, prompt: result.prompt });
   };
 
+  const handleRecoveredMediaJob = (job: MediaJob) => {
+    const result = job.result;
+    if (!result?.url || (job.personaClientId && job.personaClientId !== activePersona.id)) return;
+    const type = job.kind === 'video' || job.kind === 'avatar' || result.type === 'video' ? 'video' : 'image';
+    addMessage({
+      role: 'persona',
+      type,
+      content: result.url,
+      prompt: result.promptUsed || job.summary,
+      participants: result.participants,
+      modelName: result.model,
+      source: 'text',
+    });
+    setActiveCallMedia({ type, url: result.url, prompt: result.promptUsed || job.summary });
+  };
+
+  const handleOpenMediaJobResult = (job: MediaJob) => {
+    if (!job.result?.url) return;
+    if (job.kind === 'video' || job.kind === 'avatar' || job.result.type === 'video') {
+      setFullScreenModalMedia({ type: 'video', url: job.result.url, prompt: job.summary });
+    } else {
+      setLightboxMedia({ url: job.result.url, prompt: job.summary });
+    }
+    setShowMediaJobCenter(false);
+  };
+
   // ── Relationship & Mood State ─────────────────────────────
   const [relationshipState, setRelationshipState] = useState<RelationshipState>(() => {
     try {
@@ -907,7 +936,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     });
 
     try {
-      const result = await requestPersonaMedia({
+      const result = await requestPersonaMediaJob({
         type: 'video',
         persona: activePersona,
         prompt: input.prompt,
@@ -974,7 +1003,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         throw new Error(`I couldn't synthesize ${activePersona.name}'s selected voice. Check the voice provider and try again.`);
       }
 
-      const result = await generateTalkingHead({
+      const result = await talkingAvatarJob(activePersona.id, {
         portraitImage: input.imageUrl,
         audioUrl,
         script: input.script,
@@ -2325,7 +2354,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           ? Promise.reject(new Error(
               `I couldn't find “${modelSelection.requestedText}” in your available ${mediaType} models. Try another model name or choose one in AI Settings.`,
             ))
-          : requestPersonaMedia({
+          : requestPersonaMediaJob({
               type: mediaType,
               persona: activePersona,
               prompt: requestPrompt,
@@ -3370,7 +3399,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
             sentAttachment?.type === 'image' && !sentAttachment.sourceMessageId ? sentAttachment.base64 : undefined,
             !sentAttachment && lastUploadedReference ? lastUploadedReference : undefined,
           ].filter((value): value is string => Boolean(value));
-          const result = await requestPersonaMedia({
+          const result = await requestPersonaMediaJob({
             type: mediaType,
             prompt: requestPrompt,
             persona: activePersona,
@@ -3594,6 +3623,16 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
               >
                 <Brain size={13} className="text-[#E7C477]" />
                 <span className="hidden sm:inline">Memory</span>
+              </button>
+
+              <button
+                onClick={() => setShowMediaJobCenter(true)}
+                title="Open Media Job Center"
+                aria-label="Open Media Job Center"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#24252b] hover:bg-[#2b2c33] border border-white/[0.09] text-zinc-200 hover:text-white text-xs font-semibold transition-all cursor-pointer shadow-sm"
+              >
+                <Sparkles size={13} className="text-[#E7C477]" />
+                <span className="hidden sm:inline">Jobs</span>
               </button>
 
               {/* New Chat */}
@@ -4920,6 +4959,13 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
           </motion.div>
         )}
       </AnimatePresence>
+
+      <MediaJobCenter
+        isOpen={showMediaJobCenter}
+        onClose={() => setShowMediaJobCenter(false)}
+        onOpenResult={handleOpenMediaJobResult}
+        onJobCompleted={handleRecoveredMediaJob}
+      />
 
       {/* Brand New Almost Fullscreen Image Lightbox Modal with Upscale, Edit, and Download */}
       {lightboxMedia && (

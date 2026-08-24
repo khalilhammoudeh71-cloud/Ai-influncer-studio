@@ -118,3 +118,21 @@ export const plannedPosts = pgTable("planned_posts", {
   userId: text("user_id").notNull(),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
+
+export const mediaJobs = pgTable("media_jobs", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  personaClientId: text("persona_client_id"),
+  kind: text("kind").notNull(),
+  status: text("status").notNull().default("queued"),
+  request: text("request").notNull(),
+  result: text("result"),
+  error: text("error"),
+  modelId: text("model_id"),
+  fallbackModelId: text("fallback_model_id"),
+  attempt: integer("attempt").notNull().default(0),
+  usedFallback: boolean("used_fallback").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+});
