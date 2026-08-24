@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { composeMultiPersonaPrompt, resolveCreatorPersona, resolveMediaParticipants } from './persona-media';
+import { composeMultiPersonaPrompt, getPersonaPrimaryReference, resolveCreatorPersona, resolveMediaParticipants } from './persona-media';
 
 const leen = { id: 'leen', name: 'Leen Hassan', referenceImage: 'leen.jpg' };
 const rawan = { id: 'rawan', name: 'Rawan Hassan', referenceImage: 'rawan.jpg' };
@@ -15,6 +15,19 @@ test('resolves you and me to the saved creator persona', () => {
   const creator = resolveCreatorPersona([leen, rawan, drH], null);
   const participants = resolveMediaParticipants('Generate an image of you and me together', leen, [leen, rawan, drH], creator);
   assert.deepEqual(participants.map(persona => persona.id), ['leen', 'dr-h']);
+});
+
+test('resolves casual me and u wording to the saved creator persona', () => {
+  const creator = resolveCreatorPersona([leen, rawan, drH], null);
+  const participants = resolveMediaParticipants('Give me an image of me and u posing on the beach', rawan, [leen, rawan, drH], creator);
+  assert.deepEqual(participants.map(persona => persona.id), ['rawan', 'dr-h']);
+  assert.deepEqual(participants.map(getPersonaPrimaryReference), ['rawan.jpg', 'dr-h.jpg']);
+});
+
+test('resolves ampersand shorthand to the saved creator persona', () => {
+  const creator = resolveCreatorPersona([leen, rawan, drH], null);
+  const participants = resolveMediaParticipants('Make a photo of u & me at the beach', rawan, [leen, rawan, drH], creator);
+  assert.deepEqual(participants.map(persona => persona.id), ['rawan', 'dr-h']);
 });
 
 test('does not treat send me a photo as a request to include the creator', () => {

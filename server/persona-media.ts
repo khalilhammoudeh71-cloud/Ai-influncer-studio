@@ -32,6 +32,23 @@ function containsPhrase(prompt: string, phrase: string): boolean {
   return ` ${normalizeForMatch(prompt)} `.includes(` ${normalizeForMatch(phrase)} `);
 }
 
+function normalizeCreatorReferencePrompt(prompt: string): string {
+  const normalized = normalizeForMatch(
+    prompt
+      .replace(/&/g, ' and ')
+      .replace(/\bw\s*\//gi, ' with '),
+  );
+
+  return normalized
+    .split(' ')
+    .map(token => {
+      if (token === 'u') return 'you';
+      if (token === 'ur') return 'your';
+      return token;
+    })
+    .join(' ');
+}
+
 export function resolveMediaParticipants(
   prompt: string,
   activePersona: MediaPersonaContext,
@@ -62,7 +79,8 @@ export function resolveMediaParticipants(
     if (fullNameMentioned || uniqueFirstNameMentioned) byId.set(personaId, persona);
   }
 
-  const referencesCreator = /\b(?:you\s+and\s+me|me\s+and\s+you|of\s+us|us\s+together|both\s+of\s+us|with\s+me|beside\s+me|next\s+to\s+me|holding\s+me|kissing\s+me|me\s+with\s+you|myself\s+and\s+you|you\s+and\s+myself|with\s+(?:the\s+)?creator|with\s+(?:the\s+)?owner)\b/i.test(prompt);
+  const creatorReferencePrompt = normalizeCreatorReferencePrompt(prompt);
+  const referencesCreator = /\b(?:you\s+and\s+me|me\s+and\s+you|of\s+us|us\s+together|both\s+of\s+us|with\s+me|beside\s+me|next\s+to\s+me|holding\s+me|kissing\s+me|me\s+with\s+you|myself\s+and\s+you|you\s+and\s+myself|with\s+(?:the\s+)?creator|with\s+(?:the\s+)?owner)\b/i.test(creatorReferencePrompt);
   if (referencesCreator && creatorPersona) {
     const creatorId = creatorPersona.id || `creator:${normalizeForMatch(creatorPersona.name || 'owner')}`;
     if (creatorId !== activeId) byId.set(creatorId, creatorPersona);
