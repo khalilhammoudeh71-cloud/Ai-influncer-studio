@@ -611,7 +611,7 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
               <div className="space-y-4">
                 <div className="bg-[#111827]/40 border border-white/5 rounded-2xl p-4 flex items-center justify-between">
                   <div>
-                    <p className="text-[10px] font-bold text-violet-400 uppercase tracking-widest leading-none mb-1">
+                    <p className="text-[10px] font-bold text-[var(--accent-primary)] uppercase tracking-widest leading-none mb-1">
                       {billingInfo.isCreator ? "Available Balance (USD)" : "Available Balance"}
                     </p>
                     <p className="text-3xl font-black text-white">
@@ -621,7 +621,7 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
                       {billingInfo.isCreator ? "USD spent on image/video/speech gens" : "Credits spent on image/video/speech gens"}
                     </p>
                   </div>
-                  <div className="w-10 h-10 rounded-xl bg-violet-500/10 flex items-center justify-center text-violet-400">
+                  <div className="w-10 h-10 rounded-xl bg-[var(--accent-subtle)] flex items-center justify-center text-[var(--accent-primary)]">
                     <Zap size={20} />
                   </div>
                 </div>
@@ -670,7 +670,7 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
                       <button
                         disabled={!!stripeLoading}
                         onClick={() => handleCheckout('price_monthly_sub_placeholder', 'subscription')}
-                        className="w-full py-2.5 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:brightness-110 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-violet-500/10 cursor-pointer disabled:opacity-50"
+                        className="w-full py-2.5 btn-gold-primary rounded-xl text-xs font-bold transition-all shadow-lg cursor-pointer disabled:opacity-50"
                       >
                         {stripeLoading === 'price_monthly_sub_placeholder' ? 'Loading...' : 'Subscribe for $29/mo'}
                       </button>
@@ -687,7 +687,7 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
           <h3 className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-[0.15em] ml-4 mb-3">Your Studio Stats</h3>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
-              { icon: User, label: 'Personas', value: personas.length, color: 'text-violet-400', bg: 'from-violet-500/10' },
+              { icon: User, label: 'Personas', value: personas.length, color: 'text-[var(--accent-primary)]', bg: 'from-amber-500/10' },
               { icon: ImageIcon, label: 'Images', value: totalImages, color: 'text-emerald-400', bg: 'from-emerald-500/10' },
               { icon: Video, label: 'Videos', value: totalVideos, color: 'text-cyan-400', bg: 'from-cyan-500/10' },
               { icon: BarChart3, label: 'Total Assets', value: totalAssets, color: 'text-amber-400', bg: 'from-amber-500/10' },
@@ -718,13 +718,12 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
                 { id: 'cyber', name: 'Electric Cyber', desc: 'Neon Cyan & Electric Blue', dot: 'bg-cyan-400', border: 'border-cyan-500' },
                 { id: 'graphite', name: 'Graphite Slate', desc: 'Smooth Executive Gray', dot: 'bg-slate-400', border: 'border-slate-400' },
                 { id: 'emerald', name: 'Slate Emerald', desc: 'Deep Emerald & Mint', dot: 'bg-emerald-400', border: 'border-emerald-500' },
-                { id: 'violet', name: 'Imperial Violet', desc: 'Royal Purple & Indigo', dot: 'bg-purple-400', border: 'border-purple-500' },
                 { id: 'gold', name: 'Midnight Gold', desc: 'Obsidian & Gold Accents', dot: 'bg-amber-400', border: 'border-amber-500' },
                 { id: 'rosegold', name: 'Rose Gold Velvet', desc: 'Rose Gold & Fashion Pink', dot: 'bg-rose-400', border: 'border-rose-500' },
-                { id: 'light-luxe', name: 'Platinum Slate', desc: 'Crisp Alabaster (Light)', dot: 'bg-indigo-500', border: 'border-indigo-500' },
+                { id: 'light-luxe', name: 'Platinum Gold', desc: 'Crisp Alabaster & Gold (Light)', dot: 'bg-amber-500', border: 'border-amber-500' },
                 { id: 'light-pearl', name: 'Champagne Pearl', desc: 'Warm Ivory & Gold (Light)', dot: 'bg-amber-500', border: 'border-amber-500' },
               ].map((t) => {
-                const isActive = (activeTheme || localStorage.getItem('ai_studio_theme') || 'mint') === t.id;
+                const isActive = (activeTheme || localStorage.getItem('ai_studio_theme') || 'gold') === t.id;
                 return (
                   <div
                     key={t.id}
@@ -766,7 +765,7 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
             <p className="text-xs text-[var(--text-tertiary)]">These models are used as defaults in Create Studio and the AI Assistant when no specific model is selected.</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="text-[10px] font-bold text-violet-400 uppercase tracking-wider block mb-1.5 flex items-center gap-1.5">
+                <label className="text-[10px] font-bold text-[var(--accent-primary)] uppercase tracking-wider block mb-1.5 flex items-center gap-1.5">
                   <ImageIcon size={10} /> Default Image Model
                 </label>
                 <select
@@ -776,7 +775,7 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
                     setDefaultImageModel(e.target.value);
                     saveModelPrefs(e.target.value, defaultVideoModel);
                   }}
-                  className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-violet-500/50 transition-colors disabled:opacity-50"
+                  className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-[var(--accent-primary)] transition-colors disabled:opacity-50"
                 >
                   {editModels.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                 </select>
@@ -812,7 +811,7 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
           <div className="premium-card rounded-2xl p-5 space-y-4">
             <p className="text-xs text-[var(--text-tertiary)]">HeyGen is specialized in highly photorealistic talking avatars. Add your personal HeyGen API Key below to enable it in the Talking Head Studio.</p>
             <div className="space-y-2">
-              <label className="text-[10px] font-bold text-violet-400 uppercase tracking-wider block flex items-center gap-1.5">
+              <label className="text-[10px] font-bold text-[var(--accent-primary)] uppercase tracking-wider block flex items-center gap-1.5">
                 <Key size={10} /> HeyGen API Key
               </label>
               <div className="flex gap-2">
@@ -821,11 +820,11 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
                   placeholder="Enter your HeyGen API Key..."
                   value={heygenKeyInput}
                   onChange={e => setHeygenKeyInput(e.target.value)}
-                  className="flex-1 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-violet-500/50 transition-colors"
+                  className="flex-1 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent-primary)] transition-colors"
                 />
                 <button
                   onClick={saveHeygenKey}
-                  className="px-4 py-2 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:brightness-110 text-xs font-bold rounded-xl text-white transition-all shadow-lg shadow-violet-500/15 shrink-0"
+                  className="px-4 py-2 btn-gold-primary text-xs font-bold rounded-xl transition-all shadow-lg shrink-0"
                 >
                   Save
                 </button>
@@ -866,7 +865,7 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
                 className={`flex items-center justify-between p-4 ${idx !== arr.length - 1 ? 'border-b border-[var(--border-subtle)]' : ''}`}
               >
                 <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 bg-gradient-to-br from-violet-500/10 to-fuchsia-500/5 border border-[var(--border-subtle)] rounded-xl flex items-center justify-center">
+                  <div className="w-10 h-10 bg-[var(--accent-subtle)] border border-[var(--border-subtle)] rounded-xl flex items-center justify-center">
                     <Server size={16} className="text-[var(--text-secondary)]" />
                   </div>
                   <div>
@@ -955,7 +954,7 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
                 className={`flex items-center justify-between p-4 hover:bg-[var(--bg-elevated)] transition-all duration-200 cursor-pointer ${idx !== arr.length - 1 ? 'border-b border-[var(--border-subtle)]' : ''}`}
               >
                 <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 bg-gradient-to-br from-violet-500/10 to-fuchsia-500/5 border border-[var(--border-subtle)] rounded-xl flex items-center justify-center">
+                  <div className="w-10 h-10 bg-[var(--accent-subtle)] border border-[var(--border-subtle)] rounded-xl flex items-center justify-center">
                     <item.icon size={18} className={item.color || 'text-[var(--text-secondary)]'} />
                   </div>
                   <div>

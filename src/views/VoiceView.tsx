@@ -836,7 +836,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
         className={cn(
           "group relative p-3.5 rounded-2xl border transition-all cursor-pointer",
           isSelected
-            ? "bg-gradient-to-br from-[#6C63FF]/10 to-[#A855F7]/10 border-[#A855F7]/60 shadow-[0_0_24px_rgba(168,85,247,0.12)]"
+            ? "bg-gradient-to-br from-[#8D7040]/10 to-[#E7C477]/10 border-[#E7C477]/60 shadow-[0_0_24px_rgba(231,196,119,0.12)]"
             : "bg-[var(--bg-elevated)] border-[var(--border-default)] hover:border-[var(--border-strong)] hover:bg-[var(--bg-hover)]"
         )}
         onClick={() => setSelectedELVoiceId(voice.voice_id)}
@@ -845,7 +845,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
           <div className="flex items-center gap-2.5 min-w-0">
             <div className={cn(
               "w-2 h-2 rounded-full flex-shrink-0 transition-all",
-              isSelected ? "bg-[#A855F7] shadow-[0_0_8px_rgba(168,85,247,0.5)]" : "bg-[var(--text-muted)]"
+              isSelected ? "bg-[#E7C477] shadow-[0_0_8px_rgba(231,196,119,0.5)]" : "bg-[var(--text-muted)]"
             )} />
             <span className={cn(
               "text-sm font-bold truncate",
@@ -860,7 +860,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
             className={cn(
               "w-7 h-7 rounded-full flex items-center justify-center transition-all flex-shrink-0",
               isPreviewing
-                ? "bg-[#A855F7] scale-110 text-white shadow-lg shadow-purple-500/30"
+                ? "bg-[#E7C477] scale-110 text-white shadow-lg shadow-purple-500/30"
                 : "bg-[var(--bg-overlay)] hover:bg-[var(--bg-hover)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
             )}
           >
@@ -912,7 +912,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
   const VoiceSettingsPanel = () => (
     <div className="space-y-4 p-4 rounded-2xl bg-[var(--bg-elevated)] border border-[var(--border-default)]">
       <div className="flex items-center gap-2 mb-1">
-        <SlidersHorizontal className="w-4 h-4 text-[#A855F7]" />
+        <SlidersHorizontal className="w-4 h-4 text-[#E7C477]" />
         <span className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-widest">Voice Settings</span>
       </div>
 
@@ -1159,7 +1159,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
               <label className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest flex items-center gap-2">
                 Voice Actor
                 {voiceEngine === 'elevenlabs' && (
-                  <span className="text-[8px] px-1.5 py-0.5 rounded bg-gradient-to-r from-[#6C63FF]/20 to-[#A855F7]/20 text-[#A855F7] font-bold">
+                  <span className="text-[8px] px-1.5 py-0.5 rounded bg-gradient-to-r from-[#8D7040]/20 to-[#E7C477]/20 text-[#E7C477] font-bold">
                     ELEVENLABS
                   </span>
                 )}
@@ -1171,7 +1171,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                   <div className="flex flex-wrap items-center gap-2 mb-2">
                     <button
                       onClick={() => setShowClonePanel(!showClonePanel)}
-                      className="flex-1 py-2 px-3 bg-[#A855F7]/10 hover:bg-[#A855F7]/20 text-[#A855F7] border border-[#A855F7]/30 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                      className="flex-1 py-2 px-3 bg-[#E7C477]/10 hover:bg-[#E7C477]/20 text-[#E7C477] border border-[#E7C477]/30 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                     >
                       <Crown size={12} />
                       {showClonePanel ? 'Close Cloning Panel' : 'Voice Cloning Studio'}
@@ -1197,9 +1197,9 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
 
                   {/* Voice Cloning Studio Panel */}
                   {showClonePanel && (
-                    <div className="p-4 rounded-2xl bg-gradient-to-b from-[#A855F7]/5 to-black/20 border border-[#A855F7]/20 space-y-4 shadow-xl mb-4">
+                    <div className="p-4 rounded-2xl bg-gradient-to-b from-[#E7C477]/5 to-black/20 border border-[#E7C477]/20 space-y-4 shadow-xl mb-4">
                       <div className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
-                        <Mic size={14} className="text-[#A855F7]" /> Clone Custom Voice
+                        <Mic size={14} className="text-[#E7C477]" /> Clone Custom Voice
                       </div>
                       
                       <div className="space-y-3">
@@ -1210,7 +1210,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                             value={cloneName}
                             onChange={(e) => setCloneName(e.target.value)}
                             placeholder="e.g. My Cloned Voice"
-                            className="w-full bg-[var(--bg-input)] border border-[var(--border-default)] rounded-xl py-2 px-3 text-xs text-white outline-none focus:border-[#A855F7] transition-all"
+                            className="w-full bg-[var(--bg-input)] border border-[var(--border-default)] rounded-xl py-2 px-3 text-xs text-white outline-none focus:border-[#E7C477] transition-all"
                           />
                         </div>
                         
@@ -1221,7 +1221,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                             value={cloneDesc}
                             onChange={(e) => setCloneDesc(e.target.value)}
                             placeholder="e.g. Energetic podcast style"
-                            className="w-full bg-[var(--bg-input)] border border-[var(--border-default)] rounded-xl py-2 px-3 text-xs text-white outline-none focus:border-[#A855F7] transition-all"
+                            className="w-full bg-[var(--bg-input)] border border-[var(--border-default)] rounded-xl py-2 px-3 text-xs text-white outline-none focus:border-[#E7C477] transition-all"
                           />
                         </div>
 
@@ -1275,7 +1275,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                             ) : (
                               <button
                                 onClick={startRecording}
-                                className="flex-1 py-2 rounded-lg bg-[#A855F7]/25 hover:bg-[#A855F7]/30 text-white font-bold text-xs border border-[#A855F7]/35 flex items-center justify-center gap-1.5"
+                                className="flex-1 py-2 rounded-lg bg-[#E7C477]/25 hover:bg-[#E7C477]/30 text-white font-bold text-xs border border-[#E7C477]/35 flex items-center justify-center gap-1.5"
                               >
                                 <Mic size={12} />
                                 Record Live
@@ -1377,7 +1377,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                               id="attachOnClone"
                               checked={attachOnClone}
                               onChange={(e) => setAttachOnClone(e.target.checked)}
-                              className="rounded bg-[var(--bg-input)] border-[var(--border-default)] text-[#A855F7] focus:ring-0"
+                              className="rounded bg-[var(--bg-input)] border-[var(--border-default)] text-[#E7C477] focus:ring-0"
                             />
                             <label htmlFor="attachOnClone" className="text-[10px] font-medium text-[var(--text-secondary)] cursor-pointer">
                               Attach to {persona.name} on creation
@@ -1389,7 +1389,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                       <button
                         onClick={handleCloneVoiceSubmit}
                         disabled={isCloning || !cloneName || !cloningAudioBase64}
-                        className="w-full py-2.5 bg-gradient-to-r from-[#6C63FF] to-[#A855F7] hover:brightness-110 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-40 flex items-center justify-center gap-1.5"
+                        className="w-full py-2.5 bg-gradient-to-r from-[#8D7040] to-[#E7C477] hover:brightness-110 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-40 flex items-center justify-center gap-1.5"
                       >
                         {isCloning ? <Loader2 size={12} className="animate-spin" /> : <Crown size={12} />}
                         {isCloning ? 'Cloning Voice...' : 'Start Voice Cloning'}
@@ -1401,7 +1401,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                   <div className="space-y-2">
                     {isLoadingVoices ? (
                       <div className="flex items-center justify-center py-4 gap-2">
-                        <Loader2 className="w-4 h-4 animate-spin text-[#A855F7]" />
+                        <Loader2 className="w-4 h-4 animate-spin text-[#E7C477]" />
                         <span className="text-[10px] text-[var(--text-muted)]">Loading voices...</span>
                       </div>
                     ) : voicesError ? (
@@ -1747,7 +1747,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                         className={cn(
                           "relative p-3.5 rounded-2xl border text-left transition-all",
                           isSelected
-                            ? "bg-gradient-to-br from-[#6C63FF]/10 to-[#A855F7]/10 border-[#A855F7]/60 shadow-[0_0_24px_rgba(168,85,247,0.12)]"
+                            ? "bg-gradient-to-br from-[#8D7040]/10 to-[#E7C477]/10 border-[#E7C477]/60 shadow-[0_0_24px_rgba(231,196,119,0.12)]"
                             : "bg-[var(--bg-elevated)] border-[var(--border-default)] hover:border-[var(--border-strong)] hover:bg-[var(--bg-hover)]"
                         )}
                       >
@@ -1777,7 +1777,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                           <span className="text-[9px] text-[var(--text-muted)] truncate">{model.description}</span>
                         </div>
                         {isSelected && (
-                          <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-[#A855F7] shadow-[0_0_8px_rgba(168,85,247,0.5)]" />
+                          <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-[#E7C477] shadow-[0_0_8px_rgba(231,196,119,0.5)]" />
                         )}
                       </button>
                     );

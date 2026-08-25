@@ -3,9 +3,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, Users, PlusCircle, Sparkles, MessageSquare, Settings,
   Calendar, Wand2, Image as ImageIcon, Video, Mic, Scissors,
-  Palette, UserRound, ArrowRight, Command, CornerDownLeft, Wrench
+  Palette, UserRound, ArrowRight, Command, CornerDownLeft, Wrench, WandSparkles
 } from 'lucide-react';
 import { Persona, Tab } from '../types';
+import type { CreationBrief } from '../types/creation';
+import { interpretCreationCommand } from '../utils/creationCommand';
 
 interface CommandPaletteProps {
   isOpen: boolean;
@@ -14,6 +16,7 @@ interface CommandPaletteProps {
   onNavigate: (tab: Tab) => void;
   onSelectPersona: (id: string) => void;
   onOpenSubView?: (tab: Tab, subView: string) => void;
+  onCreate: (brief: CreationBrief) => void;
 }
 
 interface CommandItem {
@@ -33,6 +36,7 @@ export default function CommandPalette({
   onNavigate,
   onSelectPersona,
   onOpenSubView,
+  onCreate,
 }: CommandPaletteProps) {
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -63,8 +67,9 @@ export default function CommandPalette({
     }));
 
     const tools: CommandItem[] = [
-      { id: 'tool-image', label: 'Generate Image', description: 'Text-to-image with 30+ models', icon: <ImageIcon size={16} />, category: 'Tools', action: () => onNavigate('create'), keywords: ['photo', 'picture'] },
-      { id: 'tool-video', label: 'Generate Video', description: 'Text/Image-to-video generation', icon: <Video size={16} />, category: 'Tools', action: () => onNavigate('create'), keywords: ['reel', 'clip', 'animate'] },
+      { id: 'tool-image', label: 'Generate Image', description: 'Describe a result and let the studio set it up', icon: <ImageIcon size={16} />, category: 'Tools', action: () => { if (onOpenSubView) onOpenSubView('create', 'image'); else onNavigate('create'); }, keywords: ['photo', 'picture'] },
+      { id: 'tool-video', label: 'Generate Video', description: 'Create motion from a prompt or reference', icon: <Video size={16} />, category: 'Tools', action: () => { if (onOpenSubView) onOpenSubView('create', 'video'); else onNavigate('create'); }, keywords: ['reel', 'clip', 'animate'] },
+      { id: 'tool-avatar', label: 'Create Talking Avatar', description: 'Animate a photo with a voice or script', icon: <UserRound size={16} />, category: 'Tools', action: () => { if (onOpenSubView) onOpenSubView('create', 'talking-avatar'); else onNavigate('create'); }, keywords: ['talking photo', 'lip sync', 'speaking avatar'] },
       { id: 'tool-aitools', label: 'AI Editing Tools', description: 'Beautify, morph, teleport & more', icon: <Wand2 size={16} />, category: 'Tools', action: () => onNavigate('intelligence'), keywords: ['edit', 'beautify', 'enhance', 'retouch', 'toolbox'] },
       { id: 'tool-voice', label: 'Voice Studio', description: 'Text-to-speech & voice cloning', icon: <Mic size={16} />, category: 'Tools', action: () => { if (onOpenSubView) onOpenSubView('create', 'voice'); else onNavigate('create'); }, keywords: ['audio', 'speech', 'tts'] },
       { id: 'tool-planner', label: 'Content Planner', description: '7-day content strategy generator', icon: <Calendar size={16} />, category: 'Tools', action: () => onNavigate('planner'), keywords: ['schedule', 'plan', 'calendar', 'week'] },
@@ -72,6 +77,21 @@ export default function CommandPalette({
 
     return [...nav, ...personaItems, ...tools];
   }, [personas, onNavigate, onSelectPersona, onOpenSubView]);
+
+  const creationBrief = useMemo(() => interpretCreationCommand(query), [query]);
+
+  const creationItem = useMemo<CommandItem | null>(() => {
+    if (!creationBrief) return null;
+    return {
+      id: 'create-from-request',
+      label: creationBrief.title,
+      description: creationBrief.description,
+      icon: <WandSparkles size={16} />,
+      category: 'Quick Actions',
+      action: () => onCreate(creationBrief),
+      keywords: [],
+    };
+  }, [creationBrief, onCreate]);
 
   const filtered = useMemo(() => {
     if (!query.trim()) return allItems;
@@ -82,17 +102,22 @@ export default function CommandPalette({
     });
   }, [allItems, query]);
 
+  const displayItems = useMemo(
+    () => creationItem ? [creationItem, ...filtered] : filtered,
+    [creationItem, filtered],
+  );
+
   // Group by category
   const grouped = useMemo(() => {
     const groups: Record<string, CommandItem[]> = {};
-    filtered.forEach(item => {
+    displayItems.forEach(item => {
       if (!groups[item.category]) groups[item.category] = [];
       groups[item.category].push(item);
     });
     return groups;
-  }, [filtered]);
+  }, [displayItems]);
 
-  const flatFiltered = useMemo(() => filtered, [filtered]);
+  const flatFiltered = displayItems;
 
   // Reset selection when query changes
   useEffect(() => {
@@ -156,22 +181,22 @@ export default function CommandPalette({
           exit={{ opacity: 0, y: -10, scale: 0.98 }}
           transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
           onClick={e => e.stopPropagation()}
-          className="relative w-full max-w-[560px] mx-4 bg-[#111827]/95 border border-white/10 rounded-2xl shadow-2xl shadow-black/40 overflow-hidden backdrop-blur-xl"
+          className="relative mx-4 w-full max-w-[620px] overflow-hidden rounded-2xl border border-[var(--border-default)] bg-[var(--bg-elevated)]/95 shadow-2xl shadow-black/50 backdrop-blur-xl"
         >
           {/* Search Input */}
-          <div className="flex items-center gap-3 px-5 py-4 border-b border-white/5">
-            <Search size={18} className="text-[#94A3B8] shrink-0" />
+          <div className="flex items-center gap-3 border-b border-[var(--border-subtle)] px-5 py-4">
+            <WandSparkles size={18} className="shrink-0 text-[var(--accent-primary)]" />
             <input
               ref={inputRef}
               type="text"
               value={query}
               onChange={e => setQuery(e.target.value)}
-              placeholder="Search personas, tools, or actions..."
-              className="flex-1 bg-transparent text-sm text-white placeholder-[#64748B] outline-none font-medium"
+              placeholder="What do you want to make?"
+              className="flex-1 bg-transparent text-sm font-medium text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
               autoComplete="off"
               spellCheck={false}
             />
-            <kbd className="hidden sm:flex items-center gap-0.5 px-1.5 py-0.5 bg-white/5 border border-white/10 rounded text-[10px] font-bold text-[#64748B]">
+            <kbd className="hidden items-center gap-0.5 rounded border border-[var(--border-default)] bg-[var(--bg-input)] px-1.5 py-0.5 text-[10px] font-bold text-[var(--text-muted)] sm:flex">
               ESC
             </kbd>
           </div>
@@ -180,14 +205,14 @@ export default function CommandPalette({
           <div ref={listRef} className="max-h-[400px] overflow-y-auto p-2">
             {flatFiltered.length === 0 ? (
               <div className="py-12 text-center">
-                <p className="text-sm text-[#64748B] font-medium">No results for "{query}"</p>
-                <p className="text-xs text-[#475569] mt-1">Try searching for a persona, tool, or action</p>
+                <p className="text-sm font-medium text-[var(--text-muted)]">No results for "{query}"</p>
+                <p className="mt-1 text-xs text-[var(--text-muted)]">Try describing an image, video, avatar, tool, or destination</p>
               </div>
             ) : (
               Object.entries(grouped).map(([category, items]) => (
                 <div key={category} className="mb-1">
                   <div className="px-3 py-1.5">
-                    <span className="text-[9px] font-black text-[#475569] uppercase tracking-[0.15em]">{category}</span>
+                    <span className="text-[9px] font-black uppercase tracking-[0.15em] text-[var(--text-muted)]">{category === 'Quick Actions' ? 'Create from your request' : category}</span>
                   </div>
                   {items.map(item => {
                     const idx = flatIdx++;
@@ -200,25 +225,25 @@ export default function CommandPalette({
                         onMouseEnter={() => setSelectedIndex(idx)}
                         className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all duration-100 ${
                           isSelected
-                            ? 'bg-[#00D4FF]/10 border border-[#00D4FF]/20'
+                            ? 'border border-[var(--border-strong)] bg-[var(--accent-muted)]'
                             : 'border border-transparent hover:bg-white/5'
                         }`}
                       >
                         <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-                          isSelected ? 'bg-[#00D4FF]/15 text-[#00D4FF]' : 'bg-white/5 text-[#94A3B8]'
+                          isSelected ? 'bg-[var(--accent-soft)] text-[var(--accent-primary)]' : 'bg-white/5 text-[var(--text-tertiary)]'
                         }`}>
                           {item.icon}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className={`text-sm font-semibold truncate ${isSelected ? 'text-white' : 'text-[#CBD5E1]'}`}>
+                          <p className={`truncate text-sm font-semibold ${isSelected ? 'text-[var(--text-primary)]' : 'text-[var(--text-secondary)]'}`}>
                             {item.label}
                           </p>
                           {item.description && (
-                            <p className="text-[10px] text-[#64748B] truncate mt-0.5">{item.description}</p>
+                            <p className="mt-0.5 truncate text-[10px] text-[var(--text-muted)]">{item.description}</p>
                           )}
                         </div>
                         {isSelected && (
-                          <div className="flex items-center gap-1 text-[#00D4FF] shrink-0">
+                          <div className="flex shrink-0 items-center gap-1 text-[var(--accent-primary)]">
                             <CornerDownLeft size={12} />
                           </div>
                         )}
@@ -231,7 +256,7 @@ export default function CommandPalette({
           </div>
 
           {/* Footer Hints */}
-          <div className="flex items-center justify-between px-4 py-2.5 border-t border-white/5 bg-black/20">
+          <div className="flex items-center justify-between border-t border-[var(--border-subtle)] bg-black/20 px-4 py-2.5">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-1.5 text-[10px] text-[#475569] font-medium">
                 <kbd className="px-1 py-0.5 bg-white/5 border border-white/10 rounded text-[9px]">↑↓</kbd>

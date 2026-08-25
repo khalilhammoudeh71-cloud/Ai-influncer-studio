@@ -54,7 +54,8 @@ import AIToolsView from './AIToolsView';
 import WebcamAvatarCreator from '../components/WebcamAvatarCreator';
 import VideoSamplePreview from '../components/VideoSamplePreview';
 import VideoStitcher from '../components/VideoStitcher';
-import QuickStartHub, { QuickTemplate } from '../components/QuickStartHub';
+import QuickStartHub, { type CreationCapabilityId } from '../components/QuickStartHub';
+import GuidedCreationWorkspace from '../components/GuidedCreationWorkspace';
 import {
   generateImage,
   generateVideo,
@@ -81,9 +82,9 @@ import { accountLocalStorage } from '../utils/accountStorage';
 import toast from 'react-hot-toast';
 import { useRef } from 'react';
 import { ProModeToggle, useProMode } from '../utils/useProMode';
+import type { CreationBrief, CreationOutcome } from '../types/creation';
 
 type CreateMode = 'image' | 'video' | 'talking-avatar' | 'voice' | 'stitcher' | 'ai-tools' | 'planner' | 'prompt' | 'transcript' | 'multi-scene';
-type CreationOutcome = 'quality' | 'realistic' | 'artistic' | 'fast' | 'social' | 'identity' | 'adult' | 'cinematic';
 
 const IMAGE_OUTCOMES: Array<{ id: CreationOutcome; label: string; detail: string; icon: string }> = [
   { id: 'realistic', label: 'Hyper-realistic', detail: 'Natural, photo-like results', icon: '◉' },
@@ -127,6 +128,21 @@ function chooseModelForOutcome(models: ModelInfo[], outcome: CreationOutcome, fa
     })
     .sort((a, b) => b.score - a.score);
   return (scored[0]?.score ? scored[0].model.id : candidates[0]?.id) || fallback || models[0].id;
+}
+
+function findRequestedModel(models: ModelInfo[], request: string) {
+  const normalizedRequest = request.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  if (!normalizedRequest) return undefined;
+  const tokens = normalizedRequest.split(' ').filter(token => token.length > 1 || /^\d+$/.test(token));
+  return models
+    .map(model => {
+      const searchable = `${model.id} ${model.name} ${model.provider || ''}`.toLowerCase().replace(/[^a-z0-9]+/g, ' ');
+      const exactScore = searchable.includes(normalizedRequest) ? 100 : 0;
+      const tokenScore = tokens.reduce((score, token) => score + (searchable.includes(token) ? 12 : 0), 0);
+      return { model, score: exactScore + tokenScore };
+    })
+    .filter(entry => entry.score > 0)
+    .sort((a, b) => b.score - a.score)[0]?.model;
 }
 
 interface LipSyncModel {
@@ -173,6 +189,7 @@ interface CreateViewProps {
   setPersonas: (personas: Persona[]) => void;
   onSelectPersona: (id: string) => void;
   subView?: string;
+  initialBrief?: CreationBrief;
   nav: NavActions;
   billingInfo?: any;
 }
@@ -220,7 +237,7 @@ const PRESET_CATEGORIES = [
 type CreateModeConfig = { id: CreateMode; label: string; icon: any; gradient: string; ringClass: string; desc: string; bgImage: string }[];
 
 const MODE_CONFIG: CreateModeConfig = [
-  { id: 'image', label: 'Generate Images', icon: ImageIcon, gradient: 'from-purple-600 to-blue-600', ringClass: 'focus:ring-purple-500', desc: 'Create persona-consistent images', bgImage: 'https://images.unsplash.com/photo-1509631179647-0177331693ae?auto=format&fit=crop&w=300&q=80' },
+  { id: 'image', label: 'Generate Images', icon: ImageIcon, gradient: 'from-amber-500 to-yellow-600', ringClass: 'focus:ring-amber-400', desc: 'Create persona-consistent images', bgImage: 'https://images.unsplash.com/photo-1509631179647-0177331693ae?auto=format&fit=crop&w=300&q=80' },
   { id: 'video', label: 'Generate Videos', icon: Video, gradient: 'from-pink-600 to-orange-500', ringClass: 'focus:ring-pink-500', desc: 'Turn images into video scenes', bgImage: 'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?auto=format&fit=crop&w=300&q=80' },
   { id: 'talking-avatar', label: 'Talking Avatar', icon: UserRound, gradient: 'from-emerald-600 to-teal-500', ringClass: 'focus:ring-emerald-500', desc: 'Speaking avatar with voice', bgImage: 'https://images.unsplash.com/photo-1478737270239-2f02b77fc618?auto=format&fit=crop&w=300&q=80' },
   { id: 'voice', label: 'Voice', icon: Mic, gradient: 'from-amber-500 to-orange-500', ringClass: 'focus:ring-amber-500', desc: 'Generate audio and clone voice', bgImage: 'https://images.unsplash.com/photo-1478737270239-2f02b77fc618?auto=format&fit=crop&w=300&q=80' },
@@ -228,7 +245,7 @@ const MODE_CONFIG: CreateModeConfig = [
 
 const QUICK_STYLES = [
   { id: 'beach-day',    label: 'Beach Day',     emoji: '🏖️', env: 'Beach Resort',      outfit: 'Fitness Wear',         framing: 'Full Body',   mood: 'Playful',      gradient: 'from-amber-500/20 to-orange-500/10', border: 'border-amber-500/20', glow: 'hover:shadow-amber-500/10' },
-  { id: 'night-out',   label: 'Night Out',      emoji: '🌙', env: 'Upscale Restaurant', outfit: 'Luxury Evening',       framing: 'Portrait',    mood: 'Seductive',    gradient: 'from-indigo-500/20 to-purple-500/10', border: 'border-indigo-500/20', glow: 'hover:shadow-indigo-500/10' },
+  { id: 'night-out',   label: 'Night Out',      emoji: '🌙', env: 'Upscale Restaurant', outfit: 'Luxury Evening',       framing: 'Portrait',    mood: 'Seductive',    gradient: 'from-amber-500/20 to-yellow-500/10', border: 'border-amber-500/20', glow: 'hover:shadow-amber-500/10' },
   { id: 'power-look',  label: 'Power Look',     emoji: '💼', env: 'Modern Apartment',   outfit: 'Business Professional',framing: 'Half Body',   mood: 'Confident',    gradient: 'from-slate-500/20 to-zinc-500/10', border: 'border-slate-400/20', glow: 'hover:shadow-slate-400/10' },
   { id: 'gym-session', label: 'Gym Session',    emoji: '💪', env: 'Private Gym',        outfit: 'Fitness Wear',         framing: 'Full Body',   mood: 'Confident',    gradient: 'from-red-500/20 to-rose-500/10', border: 'border-red-500/20', glow: 'hover:shadow-red-500/10' },
   { id: 'luxury-vibes',label: 'Luxury Vibes',   emoji: '✨', env: 'Penthouse',           outfit: 'Glamorous Gown',       framing: 'Full Body',   mood: 'Professional', gradient: 'from-yellow-500/20 to-amber-500/10', border: 'border-yellow-500/20', glow: 'hover:shadow-yellow-500/10' },
@@ -264,6 +281,20 @@ const ASPECT_RATIO_OPTIONS = [
   { value: '21:9', label: 'Cinematic (21:9)' },
 ];
 
+const VIDEO_ASPECT_RATIO_OPTIONS = [
+  { value: '16:9', label: 'Landscape (16:9)' },
+  { value: '9:16', label: 'Vertical / short-form (9:16)' },
+  { value: '1:1', label: 'Square (1:1)' },
+  { value: '4:3', label: 'Standard (4:3)' },
+  { value: '2:3', label: 'Tall (2:3)' },
+];
+
+const AVATAR_FORMAT_OPTIONS = [
+  { value: 'Medium Shot', label: 'Medium shot' },
+  { value: 'Close Up', label: 'Close-up' },
+  { value: 'Full Body', label: 'Full body' },
+];
+
 const RESOLUTION_OPTIONS: Record<string, { value: 'standard' | 'hd'; label: string }[]> = {
   venice:    [{ value: 'standard', label: 'Standard (~1024px)' }, { value: 'hd', label: 'HD (~1536px)' }],
   wavespeed: [{ value: 'standard', label: 'Standard' }],
@@ -272,10 +303,12 @@ const RESOLUTION_OPTIONS: Record<string, { value: 'standard' | 'hd'; label: stri
   default:   [{ value: 'standard', label: 'Standard' }, { value: 'hd', label: 'HD' }],
 };
 
-export default function CreateView({ persona, personas, setPersonas, onSelectPersona, subView, nav, billingInfo }: CreateViewProps) {
+export default function CreateView({ persona, personas, setPersonas, onSelectPersona, subView, initialBrief, nav, billingInfo }: CreateViewProps) {
   const [isPro, setIsPro] = useProMode();
   const initialPersona = persona && persona.id !== 'empty' ? persona : null;
   const audioPreviewRef = useRef<HTMLAudioElement | null>(null);
+  const appliedBriefRef = useRef<string | null>(null);
+  const appliedModelBriefRef = useRef<string | null>(null);
 
 
   const [localPersonaId, setLocalPersonaId] = useState<string>(initialPersona?.id || 'none');
@@ -321,12 +354,17 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   };
 
   const [mode, setMode] = useState<CreateMode>((subView as CreateMode) || 'image');
+  const [simpleDetailsOpen, setSimpleDetailsOpen] = useState(false);
 
   useEffect(() => {
     if (subView && subView !== mode) {
       setMode(subView as CreateMode);
     }
   }, [subView]);
+
+  useEffect(() => {
+    setSimpleDetailsOpen(false);
+  }, [mode]);
 
   useEffect(() => {
     if (mode !== 'image') return;
@@ -847,6 +885,23 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     }
   }, [activePersona.id, availableImages]);
 
+  useEffect(() => {
+    if (!initialBrief) return;
+    const briefKey = JSON.stringify(initialBrief);
+    if (appliedBriefRef.current === briefKey) return;
+    appliedBriefRef.current = briefKey;
+
+    if (initialBrief.outcome) setSelectedOutcome(initialBrief.outcome);
+    if (initialBrief.aspectRatio) {
+      if (initialBrief.kind === 'video') setSelectedVideoAspectRatio(initialBrief.aspectRatio);
+      else setSelectedAspectRatio(initialBrief.aspectRatio);
+    }
+    if (initialBrief.kind === 'video') setVideoPrompt(initialBrief.prompt);
+    else if (initialBrief.kind === 'talking-avatar') setAvatarScript(initialBrief.prompt);
+    else setImagePrompt(initialBrief.prompt);
+    setSimpleDetailsOpen(false);
+  }, [initialBrief]);
+
   const refPersonaImage = refPersonaId !== 'none' ? (personas.find(p => p.id === refPersonaId)?.referenceImage ?? null) : null;
   const allRefImages: string[] = Array.from(new Set([
     ...(uploadedAvatarImage ? [uploadedAvatarImage] : []),
@@ -889,6 +944,23 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       setSelectedVideoModel(current => chooseModelForOutcome(videoModels, selectedOutcome, current, true));
     }
   }, [isPro, mode, models, selectedOutcome, videoModels]);
+
+  useEffect(() => {
+    if (!isPro || !initialBrief?.requestedModel) return;
+    const briefKey = `${initialBrief.kind}:${initialBrief.requestedModel}`;
+    if (appliedModelBriefRef.current === briefKey) return;
+    const availableModels = initialBrief.kind === 'video' ? videoModels : models;
+    if (availableModels.length === 0) return;
+    const match = findRequestedModel(availableModels, initialBrief.requestedModel);
+    appliedModelBriefRef.current = briefKey;
+    if (!match) {
+      toast(`Model “${initialBrief.requestedModel}” was not found. Your current default is selected.`);
+      return;
+    }
+    if (initialBrief.kind === 'video') setSelectedVideoModel(match.id);
+    else setSelectedModel(match.id);
+    toast.success(`Using ${match.name}`);
+  }, [initialBrief, isPro, models, videoModels]);
 
   useEffect(() => {
     if (!selectedVideoModel) return;
@@ -1619,7 +1691,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             <select
               value={value}
               onChange={e => onChange(e.target.value)}
-              className="w-full bg-[var(--bg-elevated)] border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white focus:ring-2 focus:ring-purple-500 outline-none appearance-none pr-10"
+              className="w-full bg-[var(--bg-elevated)] border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white focus:ring-2 focus:ring-[var(--accent-primary)] outline-none appearance-none pr-10"
             >
               {Object.entries(grouped).map(([provider, providerModels]) => (
                 <optgroup key={provider} label={provider}>
@@ -1714,7 +1786,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     value: string,
     onChange: (v: string) => void,
     options: string[],
-    accentClass = 'bg-gradient-to-r from-purple-600 to-violet-600'
+    accentClass = 'bg-[var(--gradient-primary)]'
   ) => (
     <div className="space-y-1.5">
       <div className="flex items-center gap-1.5">
@@ -1767,7 +1839,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=250&h=350&q=80"
       ],
       badge: "Ultra Quality",
-      badgeColor: "bg-purple-500/10 text-purple-400 border-purple-500/20"
+      badgeColor: "bg-[var(--accent-muted)] text-[var(--accent-primary)] border-[var(--border-strong)]"
     },
     {
       title: "Imagen 4 Ultra",
@@ -1809,7 +1881,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         "/demo-assets/showcase-2.mp4"
       ],
       badge: "Image-to-Video",
-      badgeColor: "bg-purple-500/10 text-purple-400 border-purple-500/20"
+      badgeColor: "bg-[var(--accent-muted)] text-[var(--accent-primary)] border-[var(--border-strong)]"
     },
     {
       title: "Kling AI 1.5",
@@ -2064,7 +2136,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                       }}
                       className="w-full text-left px-3 py-2 rounded-lg text-xs text-slate-200 hover:bg-white/5 hover:text-white flex items-center gap-2 font-bold transition-all"
                     >
-                      <FolderOpen size={14} className="text-violet-400" />
+                      <FolderOpen size={14} className="text-[var(--accent-primary)]" />
                       Files
                     </button>
                     <button
@@ -2098,7 +2170,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               type="button"
               onClick={() => handleEnhanceField(imagePrompt, setImagePrompt, 'imagePrompt')}
               disabled={!imagePrompt.trim() || !!enhancingField}
-              className="p-2 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400 hover:bg-purple-500/20 hover:text-purple-300 transition-all disabled:opacity-30 self-start"
+              className="p-2 rounded-xl bg-[var(--accent-subtle)] border border-[var(--border-strong)] text-[var(--accent-primary)] hover:bg-[var(--accent-muted)] transition-all disabled:opacity-30 self-start"
               title="Enhance prompt with AI"
             >
               {enhancingField === 'imagePrompt' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
@@ -2372,7 +2444,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 <div className="flex items-center justify-between">
                   <p className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase tracking-wide">Preset Templates</p>
                   {activeQuickStyle && (
-                    <button onClick={clearQuickStyle} className="text-[10px] text-purple-400 hover:text-purple-300 transition-colors">Clear</button>
+                    <button onClick={clearQuickStyle} className="text-[10px] text-[var(--accent-primary)] hover:text-[var(--accent-secondary)] transition-colors">Clear</button>
                   )}
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-6 gap-1.5">
@@ -2383,7 +2455,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                       onClick={() => applyQuickStyle(qs)}
                       className={`relative flex flex-col items-center gap-1.5 p-2 rounded-xl text-[9px] font-bold transition-all border overflow-hidden ${
                         activeQuickStyle === qs.id
-                          ? 'bg-gradient-to-br from-purple-600/40 to-violet-600/20 text-white border-purple-500/40 shadow-purple-500/20 shadow-lg'
+                          ? 'bg-[var(--accent-muted)] text-[var(--text-primary)] border-[var(--border-strong)] shadow-[var(--shadow-glow)]'
                           : `bg-gradient-to-br ${qs.gradient} ${qs.border} text-[var(--text-secondary)] hover:text-white ${qs.glow}`
                       }`}
                     >
@@ -2401,7 +2473,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                   {activePresetChips.length > 0 && (
                     <button 
                       onClick={() => setActivePresetChips([])} 
-                      className="text-[10px] text-purple-400 hover:text-purple-300 transition-colors"
+                      className="text-[10px] text-[var(--accent-primary)] hover:text-[var(--accent-secondary)] transition-colors"
                     >
                       Reset Chips
                     </button>
@@ -2426,7 +2498,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                               }}
                               className={`px-2 py-0.5 rounded-lg text-[8px] font-bold transition-all border ${
                                 isActive 
-                                  ? 'bg-purple-600/20 border-purple-500/50 text-white shadow-sm'
+                                  ? 'bg-[var(--accent-muted)] border-[var(--border-strong)] text-[var(--text-primary)] shadow-sm'
                                   : 'bg-white/5 border-white/5 text-[var(--text-tertiary)] hover:border-white/15 hover:text-white'
                               }`}
                             >
@@ -2704,7 +2776,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                       }}
                       className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs text-slate-200 hover:bg-white/5 hover:text-white flex items-center gap-2 font-bold transition-all"
                     >
-                      <FolderOpen size={13} className="text-violet-400" />
+                      <FolderOpen size={13} className="text-[var(--accent-primary)]" />
                       Browse Files
                     </button>
 
@@ -2731,7 +2803,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                       }}
                       className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs text-slate-200 hover:bg-white/5 hover:text-white flex items-center gap-2 font-bold transition-all"
                     >
-                      <FolderOpen size={13} className="text-violet-400" />
+                      <FolderOpen size={13} className="text-[var(--accent-primary)]" />
                       Browse Files
                     </button>
                   </div>
@@ -2810,7 +2882,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               {effectiveVideoSource && (
                 <div className="absolute bottom-2 left-0 flex items-center gap-2 bg-black/60 border border-white/10 rounded-xl p-1.5 pr-3 shadow-lg max-w-[280px]">
                   {videoSourceVideo ? (
-                    <Film className="w-7 h-7 text-violet-400 p-1.5 bg-white/5 rounded-lg shrink-0" />
+                    <Film className="w-7 h-7 text-[var(--accent-primary)] p-1.5 bg-white/5 rounded-lg shrink-0" />
                   ) : (
                     <img src={effectiveVideoSource} className="w-7 h-7 rounded-lg object-cover shrink-0" alt="Ref" />
                   )}
@@ -2986,7 +3058,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 (videoSubMode === 'generate' && isI2V && !effectiveVideoSource) ||
                 (videoSubMode === 'edit' && !effectiveVideoSource)
               }
-              className="px-3.5 py-1 rounded-lg font-black text-[10px] bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 disabled:opacity-40 disabled:cursor-not-allowed text-white flex items-center gap-1 transition-all shadow-md shadow-indigo-600/20 group h-7 shrink-0 cursor-pointer"
+              className="px-3.5 py-1 rounded-lg font-black text-[10px] btn-gold-primary disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 transition-all shadow-md group h-7 shrink-0 cursor-pointer"
             >
               {isExtending ? (
                 <>
@@ -3219,7 +3291,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                   <button
                     key={n}
                     onClick={() => setSceneCount(n)}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-all ${sceneCount === n ? 'bg-violet-600 text-white' : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-white'}`}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-all ${sceneCount === n ? 'bg-[var(--accent-primary)] text-[#15120b]' : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-white'}`}
                   >
                     {n}
                   </button>
@@ -3442,7 +3514,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                     onClick={() => updateMode('image')}
                     className="aspect-square flex flex-col items-center justify-center gap-1.5 glass-card bg-white/5 hover:bg-white/10 transition-colors"
                   >
-                    <Sparkles className="w-5 h-5 text-purple-400" />
+                    <Sparkles className="w-5 h-5 text-[var(--accent-primary)]" />
                     <div className="text-center">
                       <div className="text-[9px] font-bold text-white">AI Generate</div>
                       <div className="text-[7px] text-[var(--text-muted)]">Create from text</div>
@@ -3918,7 +3990,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                    onClick={() => talkingAvatarResult && handleGenerateTalkingAvatar()} 
                    className={`glass-card p-4 flex flex-col items-center justify-center gap-2 hover:bg-white/5 transition-colors cursor-pointer border-white/5 ${!talkingAvatarResult ? 'opacity-50 pointer-events-none' : ''}`}
                  >
-                   <RefreshCw className="w-5 h-5 text-purple-400" />
+                   <RefreshCw className="w-5 h-5 text-[var(--accent-primary)]" />
                    <div className="text-center">
                      <div className="text-[10px] font-bold text-white">Regenerate</div>
                      <div className="text-[8px] text-[var(--text-muted)]">New version</div>
@@ -3966,91 +4038,138 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     );
   };
 
-  const handleSelectTemplate = (tpl: QuickTemplate) => {
-    updateMode(tpl.mode);
-    if (tpl.prompt) {
-      if (tpl.mode === 'video') setVideoPrompt(tpl.prompt);
-      else setImagePrompt(tpl.prompt);
+  const handleSelectCapability = (capability: CreationCapabilityId) => {
+    if (capability === 'edit-upscale') {
+      nav.push({ view: 'intelligence', params: { initialTool: 'upscaler' } });
+      return;
     }
-    if (tpl.modelId) {
-      if (tpl.mode === 'video') setSelectedVideoModel(tpl.modelId);
-      else setSelectedModel(tpl.modelId);
-    }
-    if (tpl.aspectRatio) {
-      if (tpl.mode === 'video') setSelectedVideoAspectRatio(tpl.aspectRatio);
-      else setSelectedAspectRatio(tpl.aspectRatio);
-    }
-    toast.success(`Loaded "${tpl.title}" starter workflow!`);
+
+    updateMode(capability);
+    window.setTimeout(() => {
+      document.getElementById('creation-workspace')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
   };
 
-  const renderOutcomeChooser = () => {
-    if (isPro || (mode !== 'image' && mode !== 'video')) return null;
-    const options = mode === 'video' ? VIDEO_OUTCOMES : IMAGE_OUTCOMES;
+  const renderGuidedCreationWorkspace = () => {
+    if (isPro || !['image', 'video', 'talking-avatar'].includes(mode)) return null;
+
+    const selectedVideoInfo = videoModels.find(model => model.id === selectedVideoModel);
+    const selectedInfo = mode === 'image' ? selectedModelInfo : selectedVideoInfo;
+    const rawCost = selectedInfo?.price || 0;
+    const estimate = modelsLoading
+      ? 'Checking availability and cost…'
+      : selectedInfo
+        ? rawCost > 0
+          ? billingInfo?.isCreator
+            ? `Estimated cost: $${rawCost.toFixed(3)}`
+            : `Estimated cost: ${rawCost} credit${rawCost === 1 ? '' : 's'}`
+          : 'No generation charge shown for this model'
+        : mode === 'talking-avatar'
+          ? 'Final cost appears after the avatar engine is selected'
+          : 'Cost appears before generation';
+    const prompt = mode === 'image' ? imagePrompt : mode === 'video' ? videoPrompt : avatarScript;
+    const format = mode === 'image' ? selectedAspectRatio : mode === 'video' ? selectedVideoAspectRatio : selectedAvatarFraming;
+    const formatOptions = mode === 'image' ? ASPECT_RATIO_OPTIONS : mode === 'video' ? VIDEO_ASPECT_RATIO_OPTIONS : AVATAR_FORMAT_OPTIONS;
+    const outcomes = mode === 'video' ? VIDEO_OUTCOMES : IMAGE_OUTCOMES;
+    const imageNeedsReference = mode === 'image' && Boolean(selectedModelInfo?.isIdentityModel);
+    const hasIdentityReference = Boolean(effectiveRefImage || activePersona.referenceImage || uploadedAvatarImage);
+    const hasSelectedGenerator = mode === 'talking-avatar' || (mode === 'image' ? Boolean(selectedModel) : Boolean(selectedVideoModel));
+    const canGenerate = Boolean(prompt.trim()) && hasSelectedGenerator && (!imageNeedsReference || hasIdentityReference);
+    const hasAvatarSource = Boolean(selectedAvatarSource || activePersona.avatar || (activePersona as any).heygenAvatarId);
+
+    const openFineTune = () => {
+      setSimpleDetailsOpen(true);
+      window.setTimeout(() => document.getElementById('advanced-creation-controls')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+    };
+
     return (
-      <section className="mb-4 rounded-2xl border border-[var(--border-default)] bg-[var(--bg-elevated)]/70 p-3.5 sm:p-4" aria-label="Choose your creative goal">
-        <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--accent-primary)]">Simple mode</p>
-            <h2 className="mt-1 text-sm font-semibold text-[var(--text-primary)]">What kind of result do you want?</h2>
-          </div>
-          <p className="text-[10px] text-[var(--text-muted)]">We’ll choose the best available model and settings.</p>
-        </div>
-        <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar sm:flex-wrap">
-          {options.map(option => (
-            <button
-              key={option.id}
-              type="button"
-              onClick={() => setSelectedOutcome(option.id)}
-              aria-pressed={selectedOutcome === option.id}
-              className={`min-w-[152px] cursor-pointer rounded-xl border px-3 py-2.5 text-left transition-all sm:min-w-0 sm:flex-1 ${selectedOutcome === option.id ? 'border-[var(--border-strong)] bg-[var(--accent-muted)] shadow-[0_8px_24px_rgba(0,0,0,0.16)]' : 'border-[var(--border-subtle)] bg-[var(--bg-input)] hover:border-[var(--border-default)]'}`}
-            >
-              <span className={`mb-1 block text-[11px] font-bold ${selectedOutcome === option.id ? 'text-[var(--accent-primary)]' : 'text-[var(--text-tertiary)]'}`}>{option.icon}</span>
-              <span className="block text-[11px] font-semibold text-[var(--text-primary)]">{option.label}</span>
-              <span className="mt-0.5 block text-[9px] text-[var(--text-muted)]">{option.detail}</span>
-            </button>
-          ))}
-        </div>
-        {selectedOutcome === 'identity' && personas.length === 0 && (
-          <button
-            type="button"
-            onClick={() => nav.push({ view: 'create-persona' })}
-            className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-xl border border-[var(--border-strong)] bg-[var(--accent-muted)] px-3 py-2 text-[10px] font-semibold text-[var(--accent-primary)] transition-colors hover:bg-[var(--accent-soft)]"
-          >
-            <Plus size={13} /> Add a persona to preserve the same identity
-          </button>
-        )}
-      </section>
+      <GuidedCreationWorkspace
+        mode={mode as 'image' | 'video' | 'talking-avatar'}
+        onModeChange={updateMode}
+        onEnhance={() => nav.push({ view: 'intelligence', params: { initialTool: 'upscaler' } })}
+        outcomes={outcomes}
+        outcome={selectedOutcome}
+        onOutcomeChange={setSelectedOutcome}
+        prompt={prompt}
+        onPromptChange={value => {
+          if (mode === 'image') setImagePrompt(value);
+          else if (mode === 'video') setVideoPrompt(value);
+          else setAvatarScript(value);
+        }}
+        promptLabel={mode === 'talking-avatar' ? 'What should the avatar say?' : 'Describe what you want to create'}
+        promptPlaceholder={mode === 'image'
+          ? 'Example: A cinematic portrait at golden hour, natural skin, luxury editorial styling…'
+          : mode === 'video'
+            ? 'Example: A slow camera push-in as the subject turns toward the sunset…'
+            : 'Write the words your avatar should say…'}
+        format={format}
+        formatOptions={formatOptions}
+        onFormatChange={value => {
+          if (mode === 'image') setSelectedAspectRatio(value);
+          else if (mode === 'video') setSelectedVideoAspectRatio(value);
+          else setSelectedAvatarFraming(value);
+        }}
+        personas={personas}
+        selectedPersonaId={localPersonaId}
+        onPersonaChange={personaId => {
+          setLocalPersonaId(personaId);
+          if (mode === 'video') setVideoSourcePersonaId(personaId);
+          if (personaId !== 'none') onSelectPersona(personaId);
+        }}
+        estimate={estimate}
+        timeEstimate={mode === 'video' ? 'Usually 1–4 minutes' : mode === 'talking-avatar' ? 'Usually 1–3 minutes' : 'Usually 10–45 seconds'}
+        isGenerating={isGenerating}
+        canGenerate={canGenerate}
+        actionLabel={mode === 'image' ? 'Generate image' : mode === 'video' ? 'Generate video' : hasAvatarSource ? 'Generate avatar' : 'Continue setup'}
+        onGenerate={() => {
+          if (mode === 'image') void handleImageGenerate();
+          else if (mode === 'video') void handleVideoGenerate();
+          else if (!hasAvatarSource) openFineTune();
+          else void handleGenerateTalkingAvatar();
+        }}
+        fineTuneOpen={simpleDetailsOpen}
+        onToggleFineTune={() => {
+          if (simpleDetailsOpen) setSimpleDetailsOpen(false);
+          else openFineTune();
+        }}
+      />
     );
   };
+
+  const usesGuidedWorkspace = !isPro && ['image', 'video', 'talking-avatar'].includes(mode);
+  const hasGuidedOutput = mode === 'image'
+    ? Boolean(imageResult || isGenerating || isProcessing)
+    : mode === 'video'
+      ? Boolean(videoResult || isGenerating || isExtending)
+      : Boolean(talkingAvatarResult || isGenerating);
+  const showDetailedCreationControls = !usesGuidedWorkspace || simpleDetailsOpen || hasGuidedOutput;
 
   return (
     <div className="flex-1 bg-[var(--bg-base)] text-white p-4 max-w-full mx-auto w-full selection:bg-emerald-500/30 flex flex-col overflow-y-auto overflow-x-hidden custom-scrollbar">
       
-      {/* ── STUDIO HEADER ── */}
+      {/* ── CREATE HUB HEADER ── */}
       <div className="mb-4 flex flex-col md:flex-row md:items-center justify-between gap-3 px-1 border-b border-[#E7C477]/10 pb-3">
         <div>
           <h1 className="text-2xl md:text-3xl font-serif text-[#F5F1E8] tracking-tight flex items-center gap-2">
-            {mode === 'image' && <>Image Studio <span className="text-[#E7C477] text-lg">✨</span></>}
-            {mode === 'video' && <>Video Studio <span className="text-[#E7C477] text-lg">✨</span></>}
-            {mode === 'voice' && <>Voice Studio <span className="text-[#E7C477] text-lg">✨</span></>}
-            {mode === 'talking-avatar' && <>Avatar Studio <span className="text-[#E7C477] text-lg">✨</span></>}
-            {mode === 'stitcher' && <>Video Editor <span className="text-[#E7C477] text-lg">✨</span></>}
+            Create Studio <span className="text-[#E7C477] text-lg">✨</span>
           </h1>
-          <p className="text-xs text-[#8C909A] mt-0.5 font-sans">
-            {mode === 'image' && 'Create stunning, on-brand images with AI. Describe, customize, and generate visuals that elevate your content.'}
-            {mode === 'video' && 'Generate high-fidelity motion videos from prompts or reference images.'}
-            {mode === 'voice' && 'Create, clone, and customize voices that sound uniquely you.'}
-            {mode === 'talking-avatar' && 'Transform photos into talking digital avatars with synchronized speech.'}
-            {mode === 'stitcher' && 'Multi-track video editor and scene stitcher.'}
+          <p className="text-xs text-[#8C909A] mt-0.5 max-w-3xl font-sans">
+            Choose what you want to make, then use the guided workflow or open Pro controls for every model and fine-tuning option.
           </p>
         </div>
         <ProModeToggle isPro={isPro} onToggle={setIsPro} />
       </div>
 
-      {/* 1-Click Starter Workflows Hub */}
-      {isPro && <QuickStartHub onSelectTemplate={handleSelectTemplate} />}
+      <QuickStartHub
+        activeCapability={(['image', 'video', 'talking-avatar', 'voice', 'stitcher'] as string[]).includes(mode)
+          ? mode as CreationCapabilityId
+          : 'image'}
+        onSelectCapability={handleSelectCapability}
+      />
 
-      {renderOutcomeChooser()}
+      <div id="creation-workspace" className="scroll-mt-4">
+        {renderGuidedCreationWorkspace()}
+      </div>
 
       {globalError && !globalError.includes('Failed query:') && !globalError.includes('DrizzleQueryError') && (
         <div className="mb-4 bg-rose-500/10 border border-rose-500/20 rounded-xl p-3 flex items-start gap-2">
@@ -4060,7 +4179,10 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       )}
 
       {/* ── MODE RENDERING ── */}
-      <div className="flex-1 relative flex flex-col">
+      <div
+        id="advanced-creation-controls"
+        className={`flex-1 relative flex-col scroll-mt-4 ${showDetailedCreationControls ? 'flex' : 'hidden'}`}
+      >
         {mode === 'image' && renderImageMode()}
         {mode === 'video' && renderVideoMode()}
         {mode === 'talking-avatar' && renderTalkingAvatarMode()}
@@ -4093,21 +4215,21 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             <div className="flex bg-white/10 p-1 rounded-xl border border-white/10 gap-1">
               <button
                 onClick={() => setLightboxZoomMode('fill')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase transition-all cursor-pointer ${lightboxZoomMode === 'fill' ? 'bg-purple-600 text-white shadow' : 'text-slate-300 hover:text-white'}`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase transition-all cursor-pointer ${lightboxZoomMode === 'fill' ? 'bg-[var(--accent-primary)] text-[#15120b] shadow' : 'text-slate-300 hover:text-white'}`}
                 title="Fill Entire Screen"
               >
                 🖼️ Fill Screen
               </button>
               <button
                 onClick={() => setLightboxZoomMode('fit')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase transition-all cursor-pointer ${lightboxZoomMode === 'fit' ? 'bg-purple-600 text-white shadow' : 'text-slate-300 hover:text-white'}`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase transition-all cursor-pointer ${lightboxZoomMode === 'fit' ? 'bg-[var(--accent-primary)] text-[#15120b] shadow' : 'text-slate-300 hover:text-white'}`}
                 title="Fit Aspect Ratio"
               >
                 📐 Fit Aspect
               </button>
               <button
                 onClick={() => setLightboxZoomMode('zoom')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase transition-all cursor-pointer ${lightboxZoomMode === 'zoom' ? 'bg-purple-600 text-white shadow' : 'text-slate-300 hover:text-white'}`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase transition-all cursor-pointer ${lightboxZoomMode === 'zoom' ? 'bg-[var(--accent-primary)] text-[#15120b] shadow' : 'text-slate-300 hover:text-white'}`}
                 title="150% Super Zoom"
               >
                 🔍 150% Zoom
@@ -4116,7 +4238,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
             <button
               onClick={() => downloadFile(lightboxImageUrl, 'png')}
-              className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-extrabold text-xs uppercase tracking-wider flex items-center gap-2 transition-all shadow-lg cursor-pointer"
+              className="px-4 py-2 rounded-xl btn-gold-primary font-extrabold text-xs uppercase tracking-wider flex items-center gap-2 transition-all shadow-lg cursor-pointer"
             >
               <Download className="w-4 h-4" /> Download HD
             </button>
@@ -4133,7 +4255,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           <div 
             className="absolute top-4 left-4 sm:left-6 flex items-center gap-2 z-[1000000] bg-zinc-950/90 backdrop-blur-xl border border-white/20 px-4 py-2 rounded-2xl shadow-2xl pointer-events-none"
           >
-            <Sparkles className="w-4 h-4 text-purple-400" />
+            <Sparkles className="w-4 h-4 text-[var(--accent-primary)]" />
             <span className="text-xs font-black text-white uppercase tracking-wider">ByteDance SeeDream 5.0 Pro HD</span>
           </div>
 

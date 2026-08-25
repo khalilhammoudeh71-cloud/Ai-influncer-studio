@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { cn } from './utils/cn';
 import { Persona, RevenueEntry, PlannedPost, Tab, NavEntry } from './types';
+import type { CreationBrief } from './types/creation';
 import BackButton from './components/BackButton';
 import { api } from './services/apiService';
 import PersonasView from './views/PersonasView';
@@ -252,7 +253,11 @@ function App() {
 
   // 🎨 Multi-Theme Engine State
   const [activeTheme, setActiveTheme] = useState<string>(() => {
-    return localStorage.getItem('ai_studio_theme') || 'gold';
+    const savedTheme = localStorage.getItem('ai_studio_theme');
+    // Imperial Violet was briefly used as a default during the premium UI
+    // refresh. Move those existing workspaces back to the studio's core
+    // charcoal-and-gold identity without affecting intentional theme choices.
+    return savedTheme === 'violet' ? 'gold' : (savedTheme || 'gold');
   });
   const [showThemeDropdown, setShowThemeDropdown] = useState(false);
   const themeDropdownRef = useRef<HTMLDivElement>(null);
@@ -274,13 +279,12 @@ function App() {
 
   const THEMES = [
     { id: 'graphite', name: 'Graphite Slate (Gray)', desc: 'Smooth Mid-Tone Slate Gray (Executive)', dot: 'bg-slate-400 ring-2 ring-slate-300' },
-    { id: 'light-luxe', name: 'Platinum Slate (Light)', desc: 'Crisp Alabaster & Indigo (Light)', dot: 'bg-indigo-500 ring-2 ring-indigo-300' },
+    { id: 'light-luxe', name: 'Platinum Gold (Light)', desc: 'Crisp Alabaster & Gold (Light)', dot: 'bg-amber-500 ring-2 ring-amber-300' },
     { id: 'light-pearl', name: 'Champagne Pearl (Light)', desc: 'Warm Ivory & Rose Gold (Light)', dot: 'bg-amber-500 ring-2 ring-amber-300' },
-    { id: 'violet', name: 'Imperial Violet', desc: 'Royal Purple & Indigo (Dark)', dot: 'bg-purple-400' },
     { id: 'gold', name: 'Midnight Gold', desc: 'Obsidian & Gold (Dark)', dot: 'bg-amber-400' },
     { id: 'emerald', name: 'Slate Emerald', desc: 'Slate & Mint Emerald (Dark)', dot: 'bg-emerald-400' },
     { id: 'rosegold', name: 'Rose Gold Velvet', desc: 'Rose Gold & Fashion Pink (Dark)', dot: 'bg-rose-400' },
-    { id: 'cyber', name: 'Electric Cyber', desc: 'Neon Cyan & Magenta (Dark)', dot: 'bg-cyan-400' },
+    { id: 'cyber', name: 'Electric Cyber', desc: 'Neon Cyan & Teal (Dark)', dot: 'bg-cyan-400' },
     { id: 'mint', name: 'Matrix Mint', desc: 'Dark Teal & Matrix Green (Dark)', dot: 'bg-teal-400' },
   ];
   
@@ -635,6 +639,30 @@ function App() {
     replaceView(destinations[task]);
   };
 
+  // This callback must stay above every conditional return in App. The auth,
+  // onboarding, and loading screens all render this component before the main
+  // studio, so declaring a hook below those returns changes the hook count when
+  // the session becomes ready and causes React error #310.
+  const handleCreationCommand = useCallback((brief: CreationBrief) => {
+    if (brief.kind === 'enhance' || brief.kind === 'toolbox') {
+      replaceView({ view: 'intelligence', params: { initialTool: brief.initialTool || 'upscaler' } });
+      return;
+    }
+    if (brief.kind === 'planner') {
+      replaceView({ view: 'planner', params: { brief } });
+      return;
+    }
+    if (brief.kind === 'persona') {
+      replaceView({ view: 'create-persona', params: { brief } });
+      return;
+    }
+    replaceView({
+      view: 'create',
+      subView: brief.kind,
+      params: { brief },
+    });
+  }, [replaceView]);
+
   if (authLoading) {
     return (
       <div className="studio-public-theme flex items-center justify-center min-h-screen bg-[var(--bg-base)]">
@@ -848,7 +876,7 @@ function App() {
 
     switch (view) {
       case 'personas': return <PersonasView personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} selectedId={selectedPersonaId} navigateToTab={(t) => replaceView({ view: t })} nav={navActions} billingInfo={billingInfo} />;
-      case 'create': return <CreateView persona={activePersona} personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} nav={navActions} subView={currentNav.subView || params?.subView} billingInfo={billingInfo} />;
+      case 'create': return <CreateView persona={activePersona} personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} nav={navActions} subView={currentNav.subView || params?.subView} initialBrief={params?.brief} billingInfo={billingInfo} />;
       case 'gallery': return <GalleryView personas={personas} activePersona={activePersona} nav={navActions} onPersonasChange={setPersonas} />;
       case 'intelligence': return <CreatorHubView persona={activePersona} personas={personas} nav={navActions} initialTool={params?.initialTool} billingInfo={billingInfo} />;
       case 'planner': return <PlannerView persona={activePersona} personas={personas} onSelectPersona={setSelectedPersonaId} nav={navActions} />;
@@ -943,7 +971,7 @@ function App() {
                 onClick={() => setShowCommandPalette(true)}
                 className="w-full cursor-pointer truncate rounded-xl border border-[var(--border-default)] bg-[var(--bg-input)] py-2.5 pl-10 pr-12 text-left text-xs text-[var(--text-tertiary)] transition-all hover:border-[var(--border-strong)] focus:outline-none"
               >
-                Search personas, content, projects…
+                What do you want to make?
               </button>
               <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none">
                 <kbd className="rounded border border-[var(--border-default)] bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--text-tertiary)]">⌘ K</kbd>
@@ -953,6 +981,16 @@ function App() {
 
           {/* Right Actions: Media Jobs, Create Persona Button, Persona Quick-Switcher */}
           <div className="flex items-center gap-2 sm:gap-3.5 shrink-0">
+
+            <button
+              type="button"
+              onClick={() => setShowCommandPalette(true)}
+              className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-[var(--border-default)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] transition-all hover:border-[var(--border-strong)] hover:text-[var(--accent-primary)] lg:hidden"
+              title="What do you want to make?"
+              aria-label="Open creation command bar"
+            >
+              <Search size={16} />
+            </button>
 
             <ProModeToggle isPro={isProMode} onToggle={setIsProMode} />
 
@@ -1158,6 +1196,7 @@ function App() {
         onNavigate={(tab) => { replaceView({ view: tab }); }}
         onSelectPersona={setSelectedPersonaId}
         onOpenSubView={(tab, subView) => { replaceView({ view: tab, subView }); }}
+        onCreate={handleCreationCommand}
       />
       <MediaJobCenter
         isOpen={showMediaJobCenter}

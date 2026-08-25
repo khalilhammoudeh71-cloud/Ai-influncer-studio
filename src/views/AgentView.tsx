@@ -3308,8 +3308,8 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                 100% { transform: scale(2.5); opacity: 0; }
               }
               @keyframes phoneCallGlow {
-                0%, 100% { box-shadow: 0 0 30px rgba(168, 85, 247, 0.2); }
-                50% { box-shadow: 0 0 60px rgba(168, 85, 247, 0.5); }
+                0%, 100% { box-shadow: 0 0 30px rgba(231,196,119, 0.2); }
+                50% { box-shadow: 0 0 60px rgba(231,196,119, 0.5); }
               }
             `}</style>
 
@@ -3328,12 +3328,12 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                 <>
                   <div style={{
                     position: 'absolute', width: 160, height: 160, borderRadius: '50%',
-                    border: `2px solid ${isUserSpeaking ? 'rgba(34,197,94,0.4)' : 'rgba(168,85,247,0.4)'}`,
+                    border: `2px solid ${isUserSpeaking ? 'rgba(34,197,94,0.4)' : 'rgba(231,196,119,0.4)'}`,
                     animation: 'phoneCallRipple 1.5s ease-out infinite',
                   }} />
                   <div style={{
                     position: 'absolute', width: 160, height: 160, borderRadius: '50%',
-                    border: `2px solid ${isUserSpeaking ? 'rgba(34,197,94,0.3)' : 'rgba(168,85,247,0.3)'}`,
+                    border: `2px solid ${isUserSpeaking ? 'rgba(34,197,94,0.3)' : 'rgba(231,196,119,0.3)'}`,
                     animation: 'phoneCallRipple 1.5s ease-out infinite 0.5s',
                   }} />
                 </>
@@ -3344,12 +3344,12 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                 background: isUserSpeaking
                   ? 'radial-gradient(circle, rgba(34,197,94,0.5) 0%, rgba(34,197,94,0.15) 70%)'
                   : isAgentSpeakingState
-                    ? 'radial-gradient(circle, rgba(168,85,247,0.5) 0%, rgba(168,85,247,0.15) 70%)'
+                    ? 'radial-gradient(circle, rgba(231,196,119,0.5) 0%, rgba(231,196,119,0.15) 70%)'
                     : 'radial-gradient(circle, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 70%)',
                 border: isUserSpeaking
                   ? '2px solid rgba(34,197,94,0.6)'
                   : isAgentSpeakingState
-                    ? '2px solid rgba(168,85,247,0.6)'
+                    ? '2px solid rgba(231,196,119,0.6)'
                     : '2px solid rgba(255,255,255,0.1)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 animation: (isUserSpeaking || isAgentSpeakingState) ? 'phoneCallPulse 1.2s ease-in-out infinite' : 'none',
@@ -3357,10 +3357,10 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                 boxShadow: isUserSpeaking
                   ? '0 0 40px rgba(34,197,94,0.3)'
                   : isAgentSpeakingState
-                    ? '0 0 40px rgba(168,85,247,0.3)'
+                    ? '0 0 40px rgba(231,196,119,0.3)'
                     : '0 0 20px rgba(255,255,255,0.05)',
               }}>
-                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke={isUserSpeaking ? '#22c55e' : isAgentSpeakingState ? '#a855f7' : 'rgba(255,255,255,0.3)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke={isUserSpeaking ? '#22c55e' : isAgentSpeakingState ? '#E7C477' : 'rgba(255,255,255,0.3)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   {isAgentSpeakingState ? (
                     <>{/* Speaker icon */}
                       <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
@@ -3382,7 +3382,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
             {/* Status Text */}
             <div style={{
               fontSize: 14, fontWeight: 700, letterSpacing: 1.5,
-              color: isUserSpeaking ? '#22c55e' : isAgentSpeakingState ? '#a855f7' : 'rgba(255,255,255,0.35)',
+              color: isUserSpeaking ? '#22c55e' : isAgentSpeakingState ? '#E7C477' : 'rgba(255,255,255,0.35)',
               textTransform: 'uppercase',
             }}>
               {isUserSpeaking ? 'Listening...' : isAgentSpeakingState ? 'Speaking...' : 'Connected'}
@@ -4597,7 +4597,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                           <stop offset="100%" stopColor="#ec4899" stopOpacity="0.0" />
                         </linearGradient>
                         <linearGradient id="line-grad" x1="0" y1="0" x2="1" y2="0">
-                          <stop offset="0%" stopColor="#8b5cf6" />
+                          <stop offset="0%" stopColor="#D9B667" />
                           <stop offset="50%" stopColor="#ec4899" />
                           <stop offset="100%" stopColor="#3b82f6" />
                         </linearGradient>
@@ -4621,8 +4621,8 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                       <circle cx="70" cy="45" r="10" fill="#ec4899" fillOpacity="0.15" className="animate-pulse" />
                       <circle cx="70" cy="45" r="4" fill="#ec4899" />
                       <text x="70" y="32" fill="#a1a1aa" fontSize="7" fontWeight="bold" textAnchor="middle">USA (70%)</text>
-                      <circle cx="180" cy="42" r="8" fill="#a78bfa" fillOpacity="0.15" className="animate-pulse" />
-                      <circle cx="180" cy="42" r="3" fill="#a78bfa" />
+                      <circle cx="180" cy="42" r="8" fill="#EECB78" fillOpacity="0.15" className="animate-pulse" />
+                      <circle cx="180" cy="42" r="3" fill="#EECB78" />
                       <text x="180" y="30" fill="#a1a1aa" fontSize="7" fontWeight="bold" textAnchor="middle">EU (20%)</text>
                     </svg>
                   </div>

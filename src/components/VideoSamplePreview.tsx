@@ -42,7 +42,7 @@ const VideoSamplePreview: React.FC<VideoSamplePreviewProps> = ({
         </div>
 
         <div className="relative z-10 flex flex-col items-center gap-3">
-          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#00D4FF]/20 to-[#C084FC]/20 border border-[#00D4FF]/30 flex items-center justify-center shadow-[0_0_40px_rgba(0,212,255,0.25)]">
+          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#00D4FF]/20 to-[#F2D58D]/20 border border-[#00D4FF]/30 flex items-center justify-center shadow-[0_0_40px_rgba(0,212,255,0.25)]">
             <Loader2 className="w-8 h-8 text-[#00D4FF] animate-spin" />
           </div>
           <p className="text-sm font-black text-white/90 animate-pulse tracking-wide">
@@ -90,8 +90,8 @@ const VideoSamplePreview: React.FC<VideoSamplePreviewProps> = ({
 
       {/* Status badge - top left */}
       <div className="absolute top-[7%] left-7 z-20 px-2.5 py-1 bg-black/60 backdrop-blur-md rounded-lg border border-white/10 flex items-center gap-1.5 shadow-lg">
-        <span className={`w-1.5 h-1.5 rounded-full ${previewImage ? 'bg-emerald-500' : 'bg-[#C084FC]'} animate-pulse`} />
-        <span className={`text-[9px] ${previewImage ? 'text-emerald-400' : 'text-[#C084FC]'} font-extrabold tracking-wide uppercase`}>
+        <span className={`w-1.5 h-1.5 rounded-full ${previewImage ? 'bg-emerald-500' : 'bg-[#F2D58D]'} animate-pulse`} />
+        <span className={`text-[9px] ${previewImage ? 'text-emerald-400' : 'text-[#F2D58D]'} font-extrabold tracking-wide uppercase`}>
           {previewImage ? 'Live Preview' : 'Sample Preview'}
         </span>
       </div>
@@ -99,7 +99,7 @@ const VideoSamplePreview: React.FC<VideoSamplePreviewProps> = ({
       {/* Metadata chips - top right */}
       <div className="absolute top-[7%] right-7 z-20 flex items-center gap-1">
         <span className="px-2 py-0.5 bg-black/50 backdrop-blur-md border border-white/10 rounded-md text-[8px] font-bold text-white/60 uppercase tracking-wider">4K Cinematic</span>
-        <span className={`px-2 py-0.5 bg-black/50 backdrop-blur-md border border-white/10 rounded-md text-[8px] font-bold ${previewImage ? 'text-emerald-400/70' : 'text-[#C084FC]/70'} uppercase tracking-wider flex items-center gap-0.5`}>
+        <span className={`px-2 py-0.5 bg-black/50 backdrop-blur-md border border-white/10 rounded-md text-[8px] font-bold ${previewImage ? 'text-emerald-400/70' : 'text-[#F2D58D]/70'} uppercase tracking-wider flex items-center gap-0.5`}>
           <Sparkles className="w-2.5 h-2.5" /> AI Studio
         </span>
       </div>

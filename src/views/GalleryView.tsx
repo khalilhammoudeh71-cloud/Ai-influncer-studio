@@ -333,10 +333,10 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
                   return !prev;
                 });
               }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white transition-all shadow-lg hover:scale-105 ${
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all shadow-lg hover:scale-105 ${
                 isBatchMode
-                  ? 'bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 border border-pink-500/20'
-                  : 'bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500'
+                  ? 'bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 border border-pink-500/20 text-white'
+                  : 'bg-gradient-to-r from-[#E7C477] to-[#B99655] hover:brightness-110 text-[#161108]'
               }`}
             >
               <Sparkles size={14} className={isBatchMode ? 'animate-pulse' : ''} />
@@ -474,7 +474,7 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
                 style={{
                   width: `${40 + i * 30}px`, height: `${40 + i * 30}px`,
                   left: `${15 + i * 12}%`, top: `${10 + (i % 3) * 25}%`,
-                  background: i % 2 === 0 ? '#00D4FF' : '#8b5cf6',
+                  background: i % 2 === 0 ? '#00D4FF' : '#D9B667',
                   animationDelay: `${i * 0.4}s`,
                 }}
               />
@@ -482,7 +482,7 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
           </div>
           <div className="relative z-10 text-center space-y-4">
             <div className="w-20 h-20 mx-auto rounded-3xl flex items-center justify-center"
-              style={{ background: 'linear-gradient(135deg, rgba(0,212,255,0.2) 0%, rgba(139,92,246,0.2) 100%)', border: '1px solid rgba(0,212,255,0.2)' }}>
+              style={{ background: 'linear-gradient(135deg, rgba(0,212,255,0.2) 0%, rgba(217,182,103,0.2) 100%)', border: '1px solid rgba(0,212,255,0.2)' }}>
               <ImageIcon size={36} className="text-[#00D4FF] opacity-60" />
             </div>
             <div>
@@ -506,8 +506,8 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
           animate={{ opacity: 1, y: 0 }}
           className="empty-state flex flex-col items-center justify-center py-20 bg-[var(--bg-elevated)]/30 border border-[var(--border-default)] rounded-3xl"
         >
-          <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4 bg-violet-500/10 border border-violet-500/20">
-            <Filter size={28} className="text-violet-400" />
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4 bg-[var(--accent-muted)] border border-[var(--border-strong)]">
+            <Filter size={28} className="text-[var(--accent-primary)]" />
           </div>
           <h3 className="text-xl font-bold mb-2">No results</h3>
           <p className="text-[var(--text-tertiary)] text-sm max-w-md text-center mb-4">
@@ -515,7 +515,7 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
           </p>
           <button
             onClick={() => { setFilterPersonaId('all'); setFilterType('all'); setSearchQuery(''); }}
-            className="px-6 py-2.5 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 rounded-xl text-sm font-bold text-white transition-all btn-ripple"
+            className="px-6 py-2.5 bg-gradient-to-r from-[#E7C477] to-[#B99655] hover:brightness-110 rounded-xl text-sm font-bold text-[#161108] transition-all btn-ripple"
           >
             Clear Filters
           </button>
@@ -856,7 +856,7 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
                 <span className="text-xs font-bold px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-300">
                   Vault: {selectedIds.size} selected
                 </span>
-                <span className="text-xs font-bold px-3 py-1.5 bg-violet-500/10 border border-violet-500/20 rounded-xl text-violet-300">
+                <span className="text-xs font-bold px-3 py-1.5 bg-[var(--accent-muted)] border border-[var(--border-strong)] rounded-xl text-[var(--accent-secondary)]">
                   Uploads: {uploadedFiles.length} files
                 </span>
               </div>
