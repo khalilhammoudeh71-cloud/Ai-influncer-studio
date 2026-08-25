@@ -639,6 +639,30 @@ function App() {
     replaceView(destinations[task]);
   };
 
+  // This callback must stay above every conditional return in App. The auth,
+  // onboarding, and loading screens all render this component before the main
+  // studio, so declaring a hook below those returns changes the hook count when
+  // the session becomes ready and causes React error #310.
+  const handleCreationCommand = useCallback((brief: CreationBrief) => {
+    if (brief.kind === 'enhance' || brief.kind === 'toolbox') {
+      replaceView({ view: 'intelligence', params: { initialTool: brief.initialTool || 'upscaler' } });
+      return;
+    }
+    if (brief.kind === 'planner') {
+      replaceView({ view: 'planner', params: { brief } });
+      return;
+    }
+    if (brief.kind === 'persona') {
+      replaceView({ view: 'create-persona', params: { brief } });
+      return;
+    }
+    replaceView({
+      view: 'create',
+      subView: brief.kind,
+      params: { brief },
+    });
+  }, [replaceView]);
+
   if (authLoading) {
     return (
       <div className="studio-public-theme flex items-center justify-center min-h-screen bg-[var(--bg-base)]">
@@ -827,26 +851,6 @@ function App() {
       params: Object.keys(restParams).length > 0 ? restParams : undefined,
     });
   };
-
-  const handleCreationCommand = useCallback((brief: CreationBrief) => {
-    if (brief.kind === 'enhance' || brief.kind === 'toolbox') {
-      replaceView({ view: 'intelligence', params: { initialTool: brief.initialTool || 'upscaler' } });
-      return;
-    }
-    if (brief.kind === 'planner') {
-      replaceView({ view: 'planner', params: { brief } });
-      return;
-    }
-    if (brief.kind === 'persona') {
-      replaceView({ view: 'create-persona', params: { brief } });
-      return;
-    }
-    replaceView({
-      view: 'create',
-      subView: brief.kind,
-      params: { brief },
-    });
-  }, [replaceView]);
 
   const navActions = { push: pushView, pop: popView, replace: replaceView };
 
