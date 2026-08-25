@@ -37,6 +37,7 @@ import {
 } from 'lucide-react';
 import { Persona, NavActions } from '../types';
 import { api } from '../services/apiService';
+import { fetchVideoModels, type ModelInfo } from '../services/imageService';
 import { cn } from '../utils/cn';
 import { processImageFile } from '../utils/imageProcessing';
 import { processVoiceSampleFile } from '../utils/audioUtils';
@@ -109,12 +110,12 @@ const GEMINI_VOICES = [
   { id: 'Aoede', name: 'Aoede', desc: 'Bright, energetic, and narrative', gender: 'Female' },
 ];
 
-const VIDEO_MODELS = [
-  { id: 'google:veo-3', name: 'Veo 3.1', price: '$0.025/sec', provider: 'google', desc: '8s 720p, native audio, stunning realism' },
-  { id: 'google:veo-3-fast', name: 'Veo 3.1 Lite', price: '$0.013/sec', provider: 'google', desc: 'Faster generation, 8s 720p' },
-  { id: 'google:veo-2', name: 'Veo 2', price: '$0.006/sec', provider: 'google', desc: '8s 720p, high quality, no audio' },
-  { id: 'wavespeed-i2v:wavespeed-ai/wan-2.1-i2v-720p', name: 'Wan 2.1 I2V 720p', price: '~$0.04/5s', provider: 'wavespeed', desc: 'Image-to-video, 720p, 5s clips' },
-  { id: 'wavespeed-i2v:wavespeed-ai/wan-2.2-i2v-720p', name: 'Wan 2.2 I2V 720p', price: '~$0.05/5s', provider: 'wavespeed', desc: 'Next-gen, improved realism' },
+const FALLBACK_VIDEO_MODELS: ModelInfo[] = [
+  { id: 'google:veo-3', name: 'Veo 3.1', price: 0, provider: 'Google', type: 'image-to-video', description: '8s 720p, native audio, stunning realism', hasEditVariant: false },
+  { id: 'google:veo-3-fast', name: 'Veo 3.1 Lite', price: 0, provider: 'Google', type: 'image-to-video', description: 'Faster generation, 8s 720p', hasEditVariant: false },
+  { id: 'google:veo-2', name: 'Veo 2', price: 0, provider: 'Google', type: 'image-to-video', description: '8s 720p, high quality, no audio', hasEditVariant: false },
+  { id: 'wavespeed-i2v:wavespeed-ai/wan-2.1-i2v-720p', name: 'Wan 2.1 I2V 720p', price: 0, provider: 'Wavespeed', type: 'image-to-video', description: 'Image-to-video, 720p, 5s clips', hasEditVariant: false },
+  { id: 'wavespeed-i2v:wavespeed-ai/wan-2.2-i2v-720p', name: 'Wan 2.2 I2V 720p', price: 0, provider: 'Wavespeed', type: 'image-to-video', description: 'Next-gen, improved realism', hasEditVariant: false },
 ];
 
 const OMNIVOICE_VOICES = [
@@ -147,10 +148,22 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
   const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
   const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
   const [videoError, setVideoError] = useState<string | null>(null);
-  const [selectedVideoModel, setSelectedVideoModel] = useState<string>(VIDEO_MODELS[0].id);
+  const [videoModels, setVideoModels] = useState<ModelInfo[]>([]);
+  const [selectedVideoModel, setSelectedVideoModel] = useState<string>(FALLBACK_VIDEO_MODELS[0].id);
   const [selectedImage, setSelectedImage] = useState<string | null>(persona?.avatar || null);
   const [history, setHistory] = useState<VoiceProduction[]>([]);
   const [previewingVoice, setPreviewingVoice] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchVideoModels().then(models => {
+      setVideoModels(models);
+      if (models.length > 0) {
+        setSelectedVideoModel(current => models.some(model => model.id === current) ? current : models[0].id);
+      }
+    }).catch(error => {
+      console.warn('[VoiceView] Could not load server-priced video models:', error);
+    });
+  }, []);
 
   // ElevenLabs state
   const [voiceEngine, setVoiceEngine] = useState<VoiceEngine>('elevenlabs');
@@ -680,7 +693,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
           type: 'video',
           url: res.videoUrl,
           timestamp: Date.now(),
-          label: `Talking Video (${VIDEO_MODELS.find(m => m.id === selectedVideoModel)?.name || selectedVideoModel})`
+          label: `Talking Video (${videoModels.find(m => m.id === selectedVideoModel)?.name || selectedVideoModel})`
         };
         setHistory(prev => [newProd, ...prev]);
       }
@@ -1724,9 +1737,9 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
               <div className="space-y-3">
                 <label className="text-[11px] font-black text-[var(--text-muted)] uppercase tracking-[0.2em] block">Video Engine</label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {VIDEO_MODELS.map(model => {
+                  {(videoModels.length > 0 ? videoModels : FALLBACK_VIDEO_MODELS).map(model => {
                     const isSelected = selectedVideoModel === model.id;
-                    const isGoogle = model.provider === 'google';
+                    const isGoogle = model.provider.toLowerCase().includes('google');
                     return (
                       <button
                         key={model.id}
@@ -1755,19 +1768,13 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                         <div className="flex items-center gap-2">
                           <span className="text-[10px] font-mono text-emerald-400 font-bold">
                             {(() => {
-                              const isCreator = billingInfo?.isCreator;
-                              if (model.id.startsWith('google:')) {
-                                return isCreator ? 'Free' : '10 credits';
-                              } else if (model.id.includes('wan-2.1')) {
-                                return isCreator ? '$0.040' : '8 credits';
-                              } else if (model.id.includes('wan-2.2')) {
-                                return isCreator ? '$0.050' : '10 credits';
-                              }
-                              return isCreator ? model.price : '10 credits';
+                              if (videoModels.length === 0) return 'Loading price…';
+                              if (billingInfo?.isCreator) return model.price > 0 ? `$${model.price.toFixed(3)}` : 'Free';
+                              return `${model.price} credits`;
                             })()}
                           </span>
                           <span className="text-[9px] text-[var(--text-muted)]">•</span>
-                          <span className="text-[9px] text-[var(--text-muted)] truncate">{model.desc}</span>
+                          <span className="text-[9px] text-[var(--text-muted)] truncate">{model.description}</span>
                         </div>
                         {isSelected && (
                           <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-[#A855F7] shadow-[0_0_8px_rgba(168,85,247,0.5)]" />

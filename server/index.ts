@@ -24,7 +24,9 @@ import { composeMultiPersonaPrompt, getPersonaPrimaryReference, resolveCreatorPe
 import { buildMediaQualityRetryPrompt, parseMediaQualityReport, unavailableMediaQualityReport, type MediaQualityReport } from './media-quality';
 import { normalizeNaturalVoiceGreeting } from './voiceRouting';
 import stripeRoutes, { handleStripeWebhook } from './stripe-routes';
-import { requireAuth, deductCredits, isCreatorUser, AuthenticatedRequest } from './auth';
+import { requireAuth, isCreatorUser, AuthenticatedRequest } from './auth';
+import { finalizeGenerationCredits, reserveGenerationCredits, type GenerationReservation } from './creditBilling';
+import { createGenerationQuote, creditsFromProviderCost, type GenerationKind, type GenerationQuote } from './creditPricing';
 import { db } from './db';
 import { mediaJobs, users } from '../shared/schema';
 import { and, desc, eq, lt, or } from 'drizzle-orm';
@@ -201,36 +203,41 @@ function isNsfwModel(modelId: string): boolean {
          lower.includes('adult');
 }
 
-const ANGLE_MODEL_CONFIGS: Record<string, { name: string; apiPath: string; imageField: 'image' | 'images'; nsfw: boolean }> = {
+const ANGLE_MODEL_CONFIGS: Record<string, { name: string; apiPath: string; imageField: 'image' | 'images'; nsfw: boolean; providerCostUsd: number }> = {
   'angle-qwen-multiple': {
     name: 'Qwen Multiple Angles',
     apiPath: '/api/v3/wavespeed-ai/qwen-image/edit-multiple-angles',
     imageField: 'images',
     nsfw: false,
+    providerCostUsd: 0.025,
   },
   'angle-qwen-multiple-2509': {
     name: 'Qwen Multiple Angles v2',
     apiPath: '/api/v3/wavespeed-ai/qwen-image/edit-2509-multiple-angles',
     imageField: 'images',
     nsfw: false,
+    providerCostUsd: 0.025,
   },
   'angle-seedream5': {
     name: 'SeeDream 5.0 Pro (Uncensored)',
     apiPath: '/api/v3/bytedance/seedream-v5.0-pro/edit',
     imageField: 'images',
     nsfw: true,
+    providerCostUsd: 0.04,
   },
   'angle-seededit-v3': {
     name: 'SeedEdit v3.0 (Uncensored)',
     apiPath: '/api/v3/wavespeed-ai/seededit-v3.0',
     imageField: 'images',
     nsfw: true,
+    providerCostUsd: 0.027,
   },
   'angle-wan22': {
     name: 'Wan 2.1 (Uncensored)',
     apiPath: '/api/v3/wavespeed-ai/wan-2.1/image-to-image',
     imageField: 'image',
     nsfw: true,
+    providerCostUsd: 0.02,
   },
 };
 
@@ -1036,23 +1043,33 @@ function getAllModels(wavespeedModels: ModelInfo[], veniceModels: ModelInfo[] = 
   return [...builtIn, ...filtered, ...veniceModels, ...atlasCloudModels];
 }
 
-async function calculateGenerationCost(
-  email: string,
+async function calculateGenerationQuote(
   modelId: string | undefined,
-  type: 'image' | 'video' | 'speech' | 'avatar',
-  count: number = 1
-): Promise<number> {
-  if (type === 'speech') return 1 * count;
-  if (type === 'avatar') return 2 * count;
+  type: GenerationKind,
+  count: number = 1,
+  details: { textLength?: number; duration?: number; resolution?: string } = {},
+): Promise<GenerationQuote> {
+  let provider = modelId?.split(':')[0] || (type === 'speech' ? 'ElevenLabs' : type === 'avatar' ? 'Wavespeed/HeyGen' : 'unknown');
+  let providerCostUsd = 0.04;
+  let quoteSource = 'configured-fallback';
 
-  let baseCredits = 1;
-
-  if (type === 'image') {
+  if (type === 'speech') {
+    const perThousandChars = Number(process.env.SPEECH_PROVIDER_COST_PER_1000_CHARS_USD) || 0.30;
+    providerCostUsd = Math.max(Number(process.env.SPEECH_MINIMUM_PROVIDER_COST_USD) || 0.005, ((details.textLength || 1) / 1000) * perThousandChars);
+    quoteSource = 'character-estimate';
+  } else if (type === 'avatar') {
+    providerCostUsd = Number(process.env.AVATAR_PROVIDER_COST_USD) || 0.15;
+    quoteSource = 'configured-avatar-estimate';
+  } else if (type === 'image') {
     if (modelId) {
       if (modelId === 'replit:gpt-image-1' || modelId === 'openai:gpt-image-2') {
-        baseCredits = 4; // $0.040 -> 4 credits
+        provider = 'OpenAI';
+        providerCostUsd = 0.04;
+        quoteSource = 'model-catalog';
       } else if (modelId.startsWith('google:')) {
-        baseCredits = 1; // Google images cost 1 credit
+        provider = 'Google';
+        providerCostUsd = Number(process.env.GOOGLE_IMAGE_PROVIDER_COST_USD) || 0.04;
+        quoteSource = 'configured-google-estimate';
       } else {
         try {
           const [wavespeedModels, veniceModels, atlasCloudModels] = await Promise.all([
@@ -1063,51 +1080,48 @@ async function calculateGenerationCost(
           const all = getAllModels(wavespeedModels, veniceModels, atlasCloudModels);
           const found = all.find(m => m.id === modelId);
           if (found) {
-            baseCredits = found.price > 0 ? Math.ceil(found.price * 100) : 1;
+            provider = found.provider;
+            providerCostUsd = found.price > 0 ? found.price : providerCostUsd;
+            quoteSource = found.price > 0 ? 'provider-model-catalog' : quoteSource;
           } else {
             const wavespeedFound = wavespeedModels.find(m => m.id === modelId || `wavespeed-ai/${m.id}` === modelId);
             if (wavespeedFound) {
-              baseCredits = wavespeedFound.price > 0 ? Math.ceil(wavespeedFound.price * 100) : 1;
+              provider = wavespeedFound.provider;
+              providerCostUsd = wavespeedFound.price > 0 ? wavespeedFound.price : providerCostUsd;
+              quoteSource = wavespeedFound.price > 0 ? 'provider-model-catalog' : quoteSource;
             }
           }
         } catch (err) {
-          console.error('[Credit Calc] Failed to fetch model specifications for pricing, using 1 credit fallback:', err);
+          console.error('[Credit Quote] Failed to fetch model pricing, using configured fallback:', err);
         }
       }
     }
   } else if (type === 'video') {
-    baseCredits = 5; // Default for Google Veo/Omni
+    providerCostUsd = Number(process.env.GOOGLE_VIDEO_PROVIDER_COST_USD) || 0.10;
     if (modelId && !modelId.startsWith('google:')) {
       try {
         await fetchWavespeedModels(); // ensures cachedVideoModels is filled
         const allVideo = cachedVideoModels || [];
         const found = allVideo.find(m => m.id === modelId);
         if (found) {
-          baseCredits = found.price > 0 ? Math.ceil(found.price * 100) : 5;
+          provider = found.provider;
+          providerCostUsd = found.price > 0 ? found.price : providerCostUsd;
+          quoteSource = found.price > 0 ? 'provider-model-catalog' : quoteSource;
         } else {
-          baseCredits = 10; // Default baseline for non-google video is 10 credits (if price is $0.10)
+          providerCostUsd = Number(process.env.VIDEO_PROVIDER_COST_USD) || 0.10;
         }
       } catch (err) {
-        console.error('[Credit Calc] Video model price check failed, defaulting to 10:', err);
-        baseCredits = 10;
+        console.error('[Credit Quote] Video model price check failed, using configured fallback:', err);
       }
+    } else if (modelId?.startsWith('google:')) {
+      provider = 'Google';
+      quoteSource = 'configured-google-estimate';
     }
-  } else if (type === 'avatar') {
-    baseCredits = 3; // HeyGen/Wavespeed Talking Avatar baseline
-  } else if (type === 'speech') {
-    baseCredits = 1; // Text-To-Speech baseline
   }
 
-  let finalCost = baseCredits * count;
-
-  // Role-based pricing: Creator pays 1x, other users pay 2x (double cost)
-  const isCreator = isCreatorUser(email);
-  if (!isCreator) {
-    finalCost = finalCost * 2;
-  }
-
-  console.log(`[Credit Calc] Calculated cost: User=${email}, Model=${modelId}, Type=${type}, Count=${count}, Base=${baseCredits}, FinalCost=${finalCost}`);
-  return finalCost;
+  const quote = createGenerationQuote({ kind: type, provider, modelId, count, providerCostUsd, quoteSource });
+  console.log(`[Credit Quote] Type=${type}, Model=${modelId}, ProviderCost=$${providerCostUsd.toFixed(4)}, Credits=${quote.credits}, Source=${quoteSource}`);
+  return quote;
 }
 
 interface ImageGenRequest {
@@ -2832,12 +2846,11 @@ app.get('/api/models', requireAuth, async (req, res) => {
     const mapPriceForUser = (model: ModelInfo) => {
       let finalPrice = model.price;
       if (!isCreator) {
-        if (model.price > 0) {
-          finalPrice = Math.ceil(model.price * 100) * 2;
-        } else {
-          const isVideo = model.type === 'text-to-video' || model.type === 'image-to-video' || model.type === 'reference-to-video';
-          finalPrice = isVideo ? 10 : 2; // Gated Google model pricing for other users: 10 credits for video, 2 credits for image
-        }
+        const isVideo = model.type === 'text-to-video' || model.type === 'image-to-video' || model.type === 'video-to-video' || model.type === 'reference-to-video';
+        const fallbackProviderCost = isVideo
+          ? (Number(process.env.VIDEO_PROVIDER_COST_USD) || 0.10)
+          : (Number(process.env.GOOGLE_IMAGE_PROVIDER_COST_USD) || 0.04);
+        finalPrice = creditsFromProviderCost(model.price > 0 ? model.price : fallbackProviderCost);
       }
       return {
         ...model,
@@ -2883,12 +2896,26 @@ app.get('/api/models', requireAuth, async (req, res) => {
     const sortedVideoModels = [...wavespeedVideoModels, ...WIRO_CURATED_VIDEO_MODELS, ...googleVideoModels, ...localVideoModels]
       .map(mapPriceForUser);
 
+    const angleModels: ModelInfo[] = Object.entries(ANGLE_MODEL_CONFIGS).map(([id, config]) => mapPriceForUser({
+      id,
+      name: config.name,
+      provider: 'Wavespeed',
+      type: 'image-to-image',
+      price: config.providerCostUsd,
+      description: 'Generate a new camera viewpoint while preserving the subject identity.',
+      apiPath: config.apiPath,
+      hasEditVariant: false,
+      hasReferenceImage: true,
+      nsfw: config.nsfw,
+    }));
+
     res.json({
       models: sortedImageModels,
       editModels: sortedEditModels,
       upscaleModels: (cachedUpscaleModels || []).map(mapPriceForUser),
       videoModels: sortedVideoModels,
       threeDModels: (cachedThreeDModels || []).map(mapPriceForUser),
+      angleModels,
     });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to fetch models' });
@@ -4130,6 +4157,27 @@ app.post('/api/angle-image', async (req, res) => {
 
   const prompt = customPrompt || `Change the camera angle to ${horizLabels[String(horizNum)] || 'front'} perspective, ${vertLabels[String(vertNum)] || 'eye level'} elevation, ${distLabels[String(distNum)] || 'medium shot'}. Adjust only the camera viewpoint and framing while preserving all subject details, appearance, clothing, and environment. Maintain consistent facial features, hair, and body proportions. Apply a photorealistic, high-quality rendering.`;
 
+  const authReq = req as AuthenticatedRequest;
+  let creditReservation: GenerationReservation | null = null;
+  try {
+    const quote = createGenerationQuote({
+      kind: 'image',
+      provider: 'Wavespeed',
+      modelId,
+      count: 1,
+      providerCostUsd: config.providerCostUsd,
+      quoteSource: 'angle-model-catalog',
+    });
+    creditReservation = await reserveGenerationCredits({
+      userId: authReq.user.id,
+      email: authReq.user.email,
+      quote,
+      metadata: { horizontalAngle, verticalAngle, distance },
+    });
+  } catch (err) {
+    return res.status(403).json({ error: err instanceof Error ? err.message : 'Credit check failed' });
+  }
+
   try {
     const b64Image = await resolveImageToDataUrl(imageBase64);
     const candidatePaths = [
@@ -4170,6 +4218,7 @@ app.post('/api/angle-image', async (req, res) => {
         if (wsRes.ok && !json.error && (!json.message || !json.message.toLowerCase().includes('model not found'))) {
           const imageUrl = await extractWavespeedOutput(json);
           if (imageUrl) {
+            await finalizeGenerationCredits(creditReservation, { ok: true });
             return res.json({ imageUrl, model: config.name });
           }
         } else {
@@ -4183,6 +4232,7 @@ app.post('/api/angle-image', async (req, res) => {
     throw new Error(lastError);
   } catch (err) {
     console.error('[angle-image] Error:', err instanceof Error ? err.message : err);
+    await finalizeGenerationCredits(creditReservation, { ok: false, error: err instanceof Error ? err.message : 'Angle generation failed' });
     return res.status(500).json({ error: err instanceof Error ? err.message : 'Angle generation failed' });
   }
 });
@@ -4529,10 +4579,16 @@ const generateImageHandler = async (req: any, res: any) => {
   }
 
   const authReq = req as AuthenticatedRequest;
+  let creditReservation: GenerationReservation | null = null;
   if (!req[INTERNAL_MEDIA_QUALITY_RETRY]) {
     try {
-      const cost = await calculateGenerationCost(authReq.user.email, modelId, 'image', count);
-      await deductCredits(authReq.user.id, cost, authReq.user.email);
+      const quote = await calculateGenerationQuote(modelId, 'image', count, { resolution: (rest as any).resolution });
+      creditReservation = await reserveGenerationCredits({
+        userId: authReq.user.id,
+        email: authReq.user.email,
+        quote,
+        metadata: { aspectRatio: (rest as any).aspectRatio, resolution: (rest as any).resolution },
+      });
     } catch (err) {
       return res.status(403).json({ error: err instanceof Error ? err.message : 'Credit check failed' });
     }
@@ -4857,9 +4913,11 @@ const generateImageHandler = async (req: any, res: any) => {
         }
       }
     } else {
+      await finalizeGenerationCredits(creditReservation, { ok: false, error: 'Unknown model ID' });
       return res.status(400).json({ error: 'Unknown model ID' });
     }
 
+    await finalizeGenerationCredits(creditReservation, { ok: true });
     if (count === 1) {
       return res.json({
         imageUrl: imageUrls[0],
@@ -4874,6 +4932,7 @@ const generateImageHandler = async (req: any, res: any) => {
     });
   } catch (err) {
     console.error('[generate-image] Error:', err instanceof Error ? err.message : err);
+    await finalizeGenerationCredits(creditReservation, { ok: false, error: err instanceof Error ? err.message : 'Image generation failed' });
     return res.status(500).json({
       error: err instanceof Error ? err.message : 'Image generation failed',
     });
@@ -5346,9 +5405,15 @@ const generateVideoHandler = async (req: any, res: any) => {
   if (naturalLook === true) prompt += ` ${realismTerms}`;
 
   const authReq = req as AuthenticatedRequest;
+  let creditReservation: GenerationReservation | null = null;
   try {
-    const cost = await calculateGenerationCost(authReq.user.email, modelId, 'video', 1);
-    await deductCredits(authReq.user.id, cost, authReq.user.email);
+    const quote = await calculateGenerationQuote(modelId, 'video', 1, { duration, resolution });
+    creditReservation = await reserveGenerationCredits({
+      userId: authReq.user.id,
+      email: authReq.user.email,
+      quote,
+      metadata: { duration, resolution, aspectRatio },
+    });
   } catch (err) {
     return res.status(403).json({ error: err instanceof Error ? err.message : 'Credit check failed' });
   }
@@ -5368,6 +5433,7 @@ const generateVideoHandler = async (req: any, res: any) => {
       console.log('[Video Gen] Google Veo model:', modelId, '→', geminiModelId, '| hasImage:', !!sourceImage);
       const videoUrl = await generateWithGeminiVideo(geminiModelId, prompt, sourceImage || undefined, aspectRatio, resolution);
       const displayName = modelId.replace('google:', '').replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+      await finalizeGenerationCredits(creditReservation, { ok: true });
       return res.json({ videoUrl, model: displayName });
     }
 
@@ -5410,6 +5476,7 @@ const generateVideoHandler = async (req: any, res: any) => {
           }
           const videoUrl = await runWiroTask(ownerSlug, modelSlug, videoInput);
           const displayName = WIRO_CURATED_VIDEO_MODELS.find(m => m.id === modelId)?.name || `Wiro (${rawWiroId})`;
+          await finalizeGenerationCredits(creditReservation, { ok: true });
           return res.json({ videoUrl, model: displayName });
         } catch (wiroErr) {
           console.warn('[Wiro Video Error - Auto Falling back to Wavespeed]:', wiroErr);
@@ -5458,6 +5525,7 @@ const generateVideoHandler = async (req: any, res: any) => {
       }
     }
     if (!videoModel) {
+      await finalizeGenerationCredits(creditReservation, { ok: false, error: 'Unknown or unavailable video model' });
       return res.status(400).json({ error: 'Unknown or unavailable video model ID: ' + modelId });
     }
 
@@ -5466,9 +5534,11 @@ const generateVideoHandler = async (req: any, res: any) => {
     let activeModel = videoModel;
 
     if (isI2V && !sourceImage && !sourceVideo) {
+      await finalizeGenerationCredits(creditReservation, { ok: false, error: 'Missing source image' });
       return res.status(400).json({ error: 'Image-to-video models require a source image or reference' });
     }
     if (isV2V && !sourceVideo && !sourceImage) {
+      await finalizeGenerationCredits(creditReservation, { ok: false, error: 'Missing source video or image' });
       return res.status(400).json({ error: 'Video-to-video models require a source video or reference image' });
     }
 
@@ -5565,9 +5635,11 @@ const generateVideoHandler = async (req: any, res: any) => {
     const json = await apiRes.json();
     const videoUrl = await extractWavespeedVideoOutput(json);
 
+    await finalizeGenerationCredits(creditReservation, { ok: true });
     return res.json({ videoUrl, model: activeModel.name });
   } catch (err) {
     console.error('[generate-video] Error:', err instanceof Error ? err.message : err);
+    await finalizeGenerationCredits(creditReservation, { ok: false, error: err instanceof Error ? err.message : 'Video generation failed' });
     return res.status(500).json({ error: err instanceof Error ? err.message : 'Video generation failed' });
   }
 };
@@ -6535,15 +6607,30 @@ async function handleTTS(req: express.Request, res: express.Response) {
 
   // Only deduct credits for actual generation, skip for UI previews
   const isPreviewMode = Boolean((req.body as any).isPreview || (req.body as any).preview);
+  let creditReservation: GenerationReservation | null = null;
   if ((req as any).user && !isPreviewMode) {
     try {
       const authReq = req as AuthenticatedRequest;
-      const cost = await calculateGenerationCost(authReq.user.email, undefined, 'speech', 1);
-      await deductCredits(authReq.user.id, cost, authReq.user.email);
+      const quote = await calculateGenerationQuote(String(engine || 'elevenlabs'), 'speech', 1, { textLength: text.length });
+      creditReservation = await reserveGenerationCredits({
+        userId: authReq.user.id,
+        email: authReq.user.email,
+        quote,
+        metadata: { engine, textLength: text.length },
+      });
     } catch (err) {
-      console.warn('[Credit Check Warning]:', err);
+      return res.status(403).json({ error: err instanceof Error ? err.message : 'Credit check failed' });
     }
   }
+
+  const sendSpeechSuccess = async (payload: Record<string, unknown>) => {
+    await finalizeGenerationCredits(creditReservation, { ok: true });
+    return res.json(payload);
+  };
+  const sendSpeechFailure = async (status: number, error: string) => {
+    await finalizeGenerationCredits(creditReservation, { ok: false, error });
+    return res.status(status).json({ error });
+  };
 
   // Voice ID Mapper for ALL models to ensure 100% distinct, realistic human voice actors
   const rawVoiceMap: Record<string, string> = {
@@ -6627,13 +6714,13 @@ async function handleTTS(req: express.Request, res: express.Response) {
     );
     const heygenVoiceId = voiceId || voiceParam;
     if (!isRealCreatorSession) {
-      return res.status(403).json({ error: 'Creator sign-in required to use private HeyGen voices' });
+      return sendSpeechFailure(403, 'Creator sign-in required to use private HeyGen voices');
     }
     if (!HEYGEN_API_KEY) {
-      return res.status(503).json({ error: 'HeyGen API key not configured' });
+      return sendSpeechFailure(503, 'HeyGen API key not configured');
     }
     if (!heygenVoiceId) {
-      return res.status(400).json({ error: 'A HeyGen voice ID is required' });
+      return sendSpeechFailure(400, 'A HeyGen voice ID is required');
     }
 
     try {
@@ -6661,12 +6748,10 @@ async function handleTTS(req: express.Request, res: express.Response) {
         const upstreamMessage = typeof heygenPayload.error === 'string'
           ? heygenPayload.error
           : heygenPayload.error?.message || heygenPayload.message;
-        return res.status(heygenResponse.status || 502).json({
-          error: upstreamMessage || 'HeyGen could not synthesize this voice',
-        });
+        return sendSpeechFailure(heygenResponse.status || 502, upstreamMessage || 'HeyGen could not synthesize this voice');
       }
 
-      return res.json({
+      return sendSpeechSuccess({
         audioUrl: heygenPayload.data.audio_url,
         voice: heygenVoiceId,
         model: 'heygen-starfish',
@@ -6675,9 +6760,7 @@ async function handleTTS(req: express.Request, res: express.Response) {
       });
     } catch (err) {
       console.warn('[HeyGen Starfish TTS Error]:', err);
-      return res.status(502).json({
-        error: err instanceof Error ? err.message : 'HeyGen voice synthesis failed',
-      });
+      return sendSpeechFailure(502, err instanceof Error ? err.message : 'HeyGen voice synthesis failed');
     }
   }
 
@@ -6700,7 +6783,7 @@ async function handleTTS(req: express.Request, res: express.Response) {
       );
 
       if (clonedAudioUrl) {
-        return res.json({
+        return sendSpeechSuccess({
           audioUrl: clonedAudioUrl,
           voice: 'cloned-reference',
           model: currentEngineStr || 'wavespeed-cloner',
@@ -6755,7 +6838,7 @@ async function handleTTS(req: express.Request, res: express.Response) {
   }
 
   if (!elKey) {
-    return res.status(503).json({ error: 'ElevenLabs API key not configured' });
+    return sendSpeechFailure(503, 'ElevenLabs API key not configured');
   }
 
   // 2. Synthesize speech via ElevenLabs Turbo (Fast ~400ms)
@@ -6783,7 +6866,7 @@ async function handleTTS(req: express.Request, res: express.Response) {
     if (ttsRes.ok) {
       const buf = Buffer.from(await ttsRes.arrayBuffer());
       const audioUrl = `data:audio/mpeg;base64,${buf.toString('base64')}`;
-      return res.json({ audioUrl, voice: targetVoiceId, model: 'eleven_turbo_v2_5', engine: currentEngineStr || 'elevenlabs' });
+      return sendSpeechSuccess({ audioUrl, voice: targetVoiceId, model: 'eleven_turbo_v2_5', engine: currentEngineStr || 'elevenlabs' });
     }
   } catch (err) {
     console.warn('[UniversalVoice ElevenLabs note]:', err);
@@ -6803,14 +6886,14 @@ async function handleTTS(req: express.Request, res: express.Response) {
       if (oaiRes.ok) {
         const buf = Buffer.from(await oaiRes.arrayBuffer());
         const audioUrl = `data:audio/mpeg;base64,${buf.toString('base64')}`;
-        return res.json({ audioUrl, voice: oaiVoice, model: 'tts-1', engine: 'openai' });
+        return sendSpeechSuccess({ audioUrl, voice: oaiVoice, model: 'tts-1', engine: 'openai' });
       }
     }
   } catch (oaiErr) {
     console.warn('[UniversalVoice OpenAI Fallback Note]:', oaiErr);
   }
 
-  return res.status(502).json({ error: 'Voice synthesis service failed to generate audio. Please try again.' });
+  return sendSpeechFailure(502, 'Voice synthesis service failed to generate audio. Please try again.');
 }
 
 app.post('/api/generate-speech', handleTTS);
@@ -7585,13 +7668,29 @@ const talkingHeadHandler = async (req: any, res: any) => {
     return res.status(503).json({ error: 'Wavespeed not configured' });
   }
 
+  let creditReservation: GenerationReservation | null = null;
   try {
     const authReq = req as AuthenticatedRequest;
-    const cost = await calculateGenerationCost(authReq.user.email, undefined, 'avatar', 1);
-    await deductCredits(authReq.user.id, cost, authReq.user.email);
+    const avatarModelId = model || (engine === 'heygen' ? `heygen:${heygenEngine}` : 'wavespeed-ai/ai-talking-photos');
+    const quote = await calculateGenerationQuote(avatarModelId, 'avatar', 1, { textLength: script?.length });
+    creditReservation = await reserveGenerationCredits({
+      userId: authReq.user.id,
+      email: authReq.user.email,
+      quote,
+      metadata: { engine, heygenEngine, model: avatarModelId, scriptLength: script?.length || 0 },
+    });
   } catch (err) {
     return res.status(403).json({ error: err instanceof Error ? err.message : 'Credit check failed' });
   }
+
+  const sendAvatarSuccess = async (payload: Record<string, unknown>) => {
+    await finalizeGenerationCredits(creditReservation, { ok: true });
+    return res.json(payload);
+  };
+  const sendAvatarFailure = async (status: number, error: string) => {
+    await finalizeGenerationCredits(creditReservation, { ok: false, error });
+    return res.status(status).json({ error });
+  };
 
   let resolvedAudioUrl = audioUrl || '';
 
@@ -7615,7 +7714,7 @@ const talkingHeadHandler = async (req: any, res: any) => {
         resolvedAudioUrl = `data:${mimeType};base64,${inlineData.data}`;
       }
     } catch {
-      return res.status(500).json({ error: 'Failed to generate TTS audio for talking head' });
+      return sendAvatarFailure(500, 'Failed to generate TTS audio for talking head');
     }
   }
 
@@ -7625,7 +7724,7 @@ const talkingHeadHandler = async (req: any, res: any) => {
       let avatarId = heygenAvatarId;
       if (!avatarId) {
         if (!portraitImage) {
-          return res.status(400).json({ error: 'portraitImage is required to create a new photo avatar' });
+          return sendAvatarFailure(400, 'portraitImage is required to create a new photo avatar');
         }
         console.log('[HeyGen Talking Head] Starting generation from portrait...');
         const imageAssetId = await uploadToHeyGenAsset(portraitImage, finalHeygenKey);
@@ -7646,10 +7745,10 @@ const talkingHeadHandler = async (req: any, res: any) => {
       const videoUrl = await pollHeyGenVideoStatus(videoId, finalHeygenKey);
       console.log('[HeyGen Talking Head] Video completed successfully:', videoUrl);
 
-      return res.json({ videoUrl, model: 'heygen/talking-photo' });
+      return sendAvatarSuccess({ videoUrl, model: 'heygen/talking-photo' });
     } catch (err) {
       console.error('[HeyGen Talking Head] Error:', err);
-      return res.status(500).json({ error: err instanceof Error ? err.message : 'HeyGen talking head generation failed' });
+      return sendAvatarFailure(500, err instanceof Error ? err.message : 'HeyGen talking head generation failed');
     }
   }
 
@@ -7658,7 +7757,7 @@ const talkingHeadHandler = async (req: any, res: any) => {
     const selectedModel = model || 'wavespeed-ai/ai-talking-photos';
     
     if (selectedModel === 'bytedance/lipsync/audio-to-video' || selectedModel === 'veed') {
-      if (!video) return res.status(400).json({ error: 'Reference video is required for Sync 1.0 / VEED' });
+      if (!video) return sendAvatarFailure(400, 'Reference video is required for Sync 1.0 / VEED');
       const resolvedVideo = await resolveVideoUrlOrDataUrl(video);
       const r = await fetch(`${WAVESPEED_BASE}/bytedance/lipsync/audio-to-video`, {
         method: 'POST',
@@ -7667,11 +7766,11 @@ const talkingHeadHandler = async (req: any, res: any) => {
       });
       const json = await r.json() as Record<string, unknown>;
       const videoUrl = await extractWavespeedVideoOutput(json);
-      return res.json({ videoUrl, model: selectedModel });
+      return sendAvatarSuccess({ videoUrl, model: selectedModel });
     }
 
     if (selectedModel === 'kwaivgi/kling-lipsync/audio-to-video' || selectedModel === 'pixverse' || selectedModel === 'veed2') {
-      if (!video) return res.status(400).json({ error: 'Reference video is required for Sync 2.0 / Pixverse / VEED 2.0' });
+      if (!video) return sendAvatarFailure(400, 'Reference video is required for Sync 2.0 / Pixverse / VEED 2.0');
       const resolvedVideo = await resolveVideoUrlOrDataUrl(video);
       const r = await fetch(`${WAVESPEED_BASE}/kwaivgi/kling-lipsync/audio-to-video`, {
         method: 'POST',
@@ -7680,11 +7779,11 @@ const talkingHeadHandler = async (req: any, res: any) => {
       });
       const json = await r.json() as Record<string, unknown>;
       const videoUrl = await extractWavespeedVideoOutput(json);
-      return res.json({ videoUrl, model: selectedModel });
+      return sendAvatarSuccess({ videoUrl, model: selectedModel });
     }
 
     if (selectedModel === 'wavespeed-ai/infinitetalk/video-to-video') {
-      if (!video) return res.status(400).json({ error: 'Reference video is required for Sync 3.0' });
+      if (!video) return sendAvatarFailure(400, 'Reference video is required for Sync 3.0');
       const resolvedVideo = await resolveVideoUrlOrDataUrl(video);
       const r = await fetch(`${WAVESPEED_BASE}/wavespeed-ai/infinitetalk/video-to-video`, {
         method: 'POST',
@@ -7693,11 +7792,11 @@ const talkingHeadHandler = async (req: any, res: any) => {
       });
       const json = await r.json() as Record<string, unknown>;
       const videoUrl = await extractWavespeedVideoOutput(json);
-      return res.json({ videoUrl, model: selectedModel });
+      return sendAvatarSuccess({ videoUrl, model: selectedModel });
     }
 
     if (selectedModel === 'wavespeed-ai/multitalk') {
-      if (!portraitImage) return res.status(400).json({ error: 'Portrait image is required for InfiniteTalk' });
+      if (!portraitImage) return sendAvatarFailure(400, 'Portrait image is required for InfiniteTalk');
       const img = await resolveImageToDataUrl(portraitImage);
       const r = await fetch(`${WAVESPEED_BASE}/wavespeed-ai/multitalk`, {
         method: 'POST',
@@ -7706,11 +7805,11 @@ const talkingHeadHandler = async (req: any, res: any) => {
       });
       const json = await r.json() as Record<string, unknown>;
       const videoUrl = await extractWavespeedVideoOutput(json);
-      return res.json({ videoUrl, model: selectedModel });
+      return sendAvatarSuccess({ videoUrl, model: selectedModel });
     }
 
     if (!portraitImage) {
-      return res.status(400).json({ error: 'portraitImage is required for Wavespeed engine' });
+      return sendAvatarFailure(400, 'portraitImage is required for Wavespeed engine');
     }
     const img = await resolveImageToDataUrl(portraitImage);
     const r = await fetch(`${WAVESPEED_BASE}/wavespeed-ai/ai-talking-photos`, {
@@ -7726,9 +7825,9 @@ const talkingHeadHandler = async (req: any, res: any) => {
     });
     const json = await r.json() as Record<string, unknown>;
     const videoUrl = await extractWavespeedVideoOutput(json);
-    res.json({ videoUrl, model: selectedModel });
+    return sendAvatarSuccess({ videoUrl, model: selectedModel });
   } catch (err) {
-    res.status(500).json({ error: err instanceof Error ? err.message : 'Talking head generation failed' });
+    return sendAvatarFailure(500, err instanceof Error ? err.message : 'Talking head generation failed');
   }
 };
 
@@ -8680,6 +8779,26 @@ async function pushSchema() {
         updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
         completed_at TIMESTAMPTZ
       );
+      CREATE TABLE IF NOT EXISTS generation_costs (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        model_id TEXT,
+        status TEXT NOT NULL DEFAULT 'reserved',
+        quote_source TEXT NOT NULL,
+        estimated_provider_cost_microusd INTEGER NOT NULL,
+        actual_provider_cost_microusd INTEGER,
+        reserved_credits INTEGER NOT NULL,
+        charged_credits INTEGER NOT NULL DEFAULT 0,
+        refunded_credits INTEGER NOT NULL DEFAULT 0,
+        count INTEGER NOT NULL DEFAULT 1,
+        request_metadata TEXT NOT NULL DEFAULT '{}',
+        error TEXT,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        completed_at TIMESTAMPTZ
+      );
+      CREATE INDEX IF NOT EXISTS generation_costs_user_created_idx ON generation_costs (user_id, created_at DESC);
       ALTER TABLE media_jobs ADD COLUMN IF NOT EXISTS progress INTEGER NOT NULL DEFAULT 0;
       ALTER TABLE media_jobs ADD COLUMN IF NOT EXISTS stage TEXT NOT NULL DEFAULT 'Queued';
       ALTER TABLE media_jobs ADD COLUMN IF NOT EXISTS cancel_requested BOOLEAN NOT NULL DEFAULT false;
@@ -8739,7 +8858,9 @@ async function pushSchema() {
       ALTER TABLE revenue_entries ENABLE ROW LEVEL SECURITY;
       ALTER TABLE planned_posts ENABLE ROW LEVEL SECURITY;
       ALTER TABLE media_jobs ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE generation_costs ENABLE ROW LEVEL SECURITY;
       REVOKE ALL ON TABLE personas, generated_images, revenue_entries, planned_posts, media_jobs FROM anon;
+      REVOKE ALL ON TABLE generation_costs FROM anon, authenticated;
       GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE personas, generated_images, revenue_entries, planned_posts, media_jobs TO authenticated;
       REVOKE ALL ON SEQUENCE personas_id_seq, generated_images_id_seq, revenue_entries_id_seq, planned_posts_id_seq FROM anon;
       GRANT USAGE, SELECT ON SEQUENCE personas_id_seq, generated_images_id_seq, revenue_entries_id_seq, planned_posts_id_seq TO authenticated;

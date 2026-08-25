@@ -140,3 +140,25 @@ export const mediaJobs = pgTable("media_jobs", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
 });
+
+// Server-owned audit trail for every billable provider generation. Credits are
+// reserved before the provider call and then finalized or refunded exactly once.
+export const generationCosts = pgTable("generation_costs", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  kind: text("kind").notNull(),
+  provider: text("provider").notNull(),
+  modelId: text("model_id"),
+  status: text("status").notNull().default("reserved"),
+  quoteSource: text("quote_source").notNull(),
+  estimatedProviderCostMicrousd: integer("estimated_provider_cost_microusd").notNull(),
+  actualProviderCostMicrousd: integer("actual_provider_cost_microusd"),
+  reservedCredits: integer("reserved_credits").notNull(),
+  chargedCredits: integer("charged_credits").notNull().default(0),
+  refundedCredits: integer("refunded_credits").notNull().default(0),
+  count: integer("count").notNull().default(1),
+  requestMetadata: text("request_metadata").notNull().default("{}"),
+  error: text("error"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+});

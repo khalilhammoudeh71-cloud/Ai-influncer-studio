@@ -40,7 +40,7 @@ import {
 } from 'lucide-react';
 import { Persona, NavActions } from '../types';
 import { api } from '../services/apiService';
-import { editImage, faceSwap, removeBackground, virtualTryOn, fetchEditModels, upscaleImage, fetchUpscaleModels, fetchVideoModels, generateAngleImage, ANGLE_MODELS, type ModelInfo } from '../services/imageService';
+import { editImage, faceSwap, removeBackground, virtualTryOn, fetchEditModels, upscaleImage, fetchUpscaleModels, fetchVideoModels, fetchAngleModels, generateAngleImage, ANGLE_MODELS, type ModelInfo } from '../services/imageService';
 import BeforeAfterSlider from '../components/BeforeAfterSlider';
 import { processImageFile } from '../utils/imageProcessing';
 import { generatePersonaContent } from '../utils/personaEngine';
@@ -309,6 +309,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
   const [angleVertical, setAngleVertical] = useState(2);
   const [angleDistance, setAngleDistance] = useState(1);
   const [angleModel, setAngleModel] = useState('angle-qwen-multiple');
+  const [angleModels, setAngleModels] = useState<ModelInfo[]>([]);
   const [angleResult, setAngleResult] = useState<{ imageUrl: string; model: string } | null>(null);
   const [angleGenerating, setAngleGenerating] = useState(false);
   const [angleSaved, setAngleSaved] = useState(false);
@@ -592,6 +593,12 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
       setVideoModels(v2vModels);
       if (v2vModels.length > 0) {
         setSelectedVideoModel(v2vModels[0].id);
+      }
+    });
+    fetchAngleModels().then(models => {
+      setAngleModels(models);
+      if (models.length > 0) {
+        setAngleModel(current => models.some(model => model.id === current) ? current : models[0].id);
       }
     });
   }, []);
@@ -1063,7 +1070,8 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
     const hasPersonaRef = persona && persona.id !== 'none' && persona.referenceImage;
     const resolvedSourceType = hasPersonaRef ? angleSourceType : 'custom';
     const angleSourceImg = resolvedSourceType === 'persona' ? (persona.referenceImage || null) : (angleSourceImage || null);
-    const angleModelInfo = ANGLE_MODELS.find(m => m.id === angleModel);
+    const angleModelOptions = angleModels.length > 0 ? angleModels : ANGLE_MODELS;
+    const angleModelInfo = angleModelOptions.find(m => m.id === angleModel);
 
     const grid: (typeof HORIZONTAL_POSITIONS[0] | null)[][] = [
       [null, null, null],
@@ -1291,10 +1299,10 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                     onChange={e => setAngleModel(e.target.value)}
                     className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white focus:ring-2 focus:ring-cyan-500 outline-none appearance-none pr-10"
                   >
-                    {ANGLE_MODELS.map(m => {
+                    {angleModelOptions.map(m => {
                       const displayCost = billingInfo?.isCreator
                         ? `$${m.price.toFixed(3)}`
-                        : `${Math.ceil(m.price * 100) * 2} credits`;
+                        : angleModels.length > 0 ? `${m.price} credits` : 'Loading price…';
                       return (
                         <option key={m.id} value={m.id}>
                           {m.name} ({displayCost}){m.nsfw ? ' 🔞' : ''}
