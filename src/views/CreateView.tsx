@@ -55,6 +55,7 @@ import WebcamAvatarCreator from '../components/WebcamAvatarCreator';
 import VideoSamplePreview from '../components/VideoSamplePreview';
 import VideoStitcher from '../components/VideoStitcher';
 import QuickStartHub, { QuickTemplate } from '../components/QuickStartHub';
+import GuidedCreationWorkspace from '../components/GuidedCreationWorkspace';
 import {
   generateImage,
   generateVideo,
@@ -81,9 +82,9 @@ import { accountLocalStorage } from '../utils/accountStorage';
 import toast from 'react-hot-toast';
 import { useRef } from 'react';
 import { ProModeToggle, useProMode } from '../utils/useProMode';
+import type { CreationBrief, CreationOutcome } from '../types/creation';
 
 type CreateMode = 'image' | 'video' | 'talking-avatar' | 'voice' | 'stitcher' | 'ai-tools' | 'planner' | 'prompt' | 'transcript' | 'multi-scene';
-type CreationOutcome = 'quality' | 'realistic' | 'artistic' | 'fast' | 'social' | 'identity' | 'adult' | 'cinematic';
 
 const IMAGE_OUTCOMES: Array<{ id: CreationOutcome; label: string; detail: string; icon: string }> = [
   { id: 'realistic', label: 'Hyper-realistic', detail: 'Natural, photo-like results', icon: '◉' },
@@ -127,6 +128,21 @@ function chooseModelForOutcome(models: ModelInfo[], outcome: CreationOutcome, fa
     })
     .sort((a, b) => b.score - a.score);
   return (scored[0]?.score ? scored[0].model.id : candidates[0]?.id) || fallback || models[0].id;
+}
+
+function findRequestedModel(models: ModelInfo[], request: string) {
+  const normalizedRequest = request.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  if (!normalizedRequest) return undefined;
+  const tokens = normalizedRequest.split(' ').filter(token => token.length > 1 || /^\d+$/.test(token));
+  return models
+    .map(model => {
+      const searchable = `${model.id} ${model.name} ${model.provider || ''}`.toLowerCase().replace(/[^a-z0-9]+/g, ' ');
+      const exactScore = searchable.includes(normalizedRequest) ? 100 : 0;
+      const tokenScore = tokens.reduce((score, token) => score + (searchable.includes(token) ? 12 : 0), 0);
+      return { model, score: exactScore + tokenScore };
+    })
+    .filter(entry => entry.score > 0)
+    .sort((a, b) => b.score - a.score)[0]?.model;
 }
 
 interface LipSyncModel {
@@ -173,6 +189,7 @@ interface CreateViewProps {
   setPersonas: (personas: Persona[]) => void;
   onSelectPersona: (id: string) => void;
   subView?: string;
+  initialBrief?: CreationBrief;
   nav: NavActions;
   billingInfo?: any;
 }
@@ -264,6 +281,20 @@ const ASPECT_RATIO_OPTIONS = [
   { value: '21:9', label: 'Cinematic (21:9)' },
 ];
 
+const VIDEO_ASPECT_RATIO_OPTIONS = [
+  { value: '16:9', label: 'Landscape (16:9)' },
+  { value: '9:16', label: 'Vertical / short-form (9:16)' },
+  { value: '1:1', label: 'Square (1:1)' },
+  { value: '4:3', label: 'Standard (4:3)' },
+  { value: '2:3', label: 'Tall (2:3)' },
+];
+
+const AVATAR_FORMAT_OPTIONS = [
+  { value: 'Medium Shot', label: 'Medium shot' },
+  { value: 'Close Up', label: 'Close-up' },
+  { value: 'Full Body', label: 'Full body' },
+];
+
 const RESOLUTION_OPTIONS: Record<string, { value: 'standard' | 'hd'; label: string }[]> = {
   venice:    [{ value: 'standard', label: 'Standard (~1024px)' }, { value: 'hd', label: 'HD (~1536px)' }],
   wavespeed: [{ value: 'standard', label: 'Standard' }],
@@ -272,10 +303,12 @@ const RESOLUTION_OPTIONS: Record<string, { value: 'standard' | 'hd'; label: stri
   default:   [{ value: 'standard', label: 'Standard' }, { value: 'hd', label: 'HD' }],
 };
 
-export default function CreateView({ persona, personas, setPersonas, onSelectPersona, subView, nav, billingInfo }: CreateViewProps) {
+export default function CreateView({ persona, personas, setPersonas, onSelectPersona, subView, initialBrief, nav, billingInfo }: CreateViewProps) {
   const [isPro, setIsPro] = useProMode();
   const initialPersona = persona && persona.id !== 'empty' ? persona : null;
   const audioPreviewRef = useRef<HTMLAudioElement | null>(null);
+  const appliedBriefRef = useRef<string | null>(null);
+  const appliedModelBriefRef = useRef<string | null>(null);
 
 
   const [localPersonaId, setLocalPersonaId] = useState<string>(initialPersona?.id || 'none');
@@ -321,12 +354,17 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   };
 
   const [mode, setMode] = useState<CreateMode>((subView as CreateMode) || 'image');
+  const [simpleDetailsOpen, setSimpleDetailsOpen] = useState(false);
 
   useEffect(() => {
     if (subView && subView !== mode) {
       setMode(subView as CreateMode);
     }
   }, [subView]);
+
+  useEffect(() => {
+    setSimpleDetailsOpen(false);
+  }, [mode]);
 
   useEffect(() => {
     if (mode !== 'image') return;
@@ -847,6 +885,23 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     }
   }, [activePersona.id, availableImages]);
 
+  useEffect(() => {
+    if (!initialBrief) return;
+    const briefKey = JSON.stringify(initialBrief);
+    if (appliedBriefRef.current === briefKey) return;
+    appliedBriefRef.current = briefKey;
+
+    if (initialBrief.outcome) setSelectedOutcome(initialBrief.outcome);
+    if (initialBrief.aspectRatio) {
+      if (initialBrief.kind === 'video') setSelectedVideoAspectRatio(initialBrief.aspectRatio);
+      else setSelectedAspectRatio(initialBrief.aspectRatio);
+    }
+    if (initialBrief.kind === 'video') setVideoPrompt(initialBrief.prompt);
+    else if (initialBrief.kind === 'talking-avatar') setAvatarScript(initialBrief.prompt);
+    else setImagePrompt(initialBrief.prompt);
+    setSimpleDetailsOpen(false);
+  }, [initialBrief]);
+
   const refPersonaImage = refPersonaId !== 'none' ? (personas.find(p => p.id === refPersonaId)?.referenceImage ?? null) : null;
   const allRefImages: string[] = Array.from(new Set([
     ...(uploadedAvatarImage ? [uploadedAvatarImage] : []),
@@ -889,6 +944,23 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       setSelectedVideoModel(current => chooseModelForOutcome(videoModels, selectedOutcome, current, true));
     }
   }, [isPro, mode, models, selectedOutcome, videoModels]);
+
+  useEffect(() => {
+    if (!isPro || !initialBrief?.requestedModel) return;
+    const briefKey = `${initialBrief.kind}:${initialBrief.requestedModel}`;
+    if (appliedModelBriefRef.current === briefKey) return;
+    const availableModels = initialBrief.kind === 'video' ? videoModels : models;
+    if (availableModels.length === 0) return;
+    const match = findRequestedModel(availableModels, initialBrief.requestedModel);
+    appliedModelBriefRef.current = briefKey;
+    if (!match) {
+      toast(`Model “${initialBrief.requestedModel}” was not found. Your current default is selected.`);
+      return;
+    }
+    if (initialBrief.kind === 'video') setSelectedVideoModel(match.id);
+    else setSelectedModel(match.id);
+    toast.success(`Using ${match.name}`);
+  }, [initialBrief, isPro, models, videoModels]);
 
   useEffect(() => {
     if (!selectedVideoModel) return;
@@ -3983,45 +4055,99 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     toast.success(`Loaded "${tpl.title}" starter workflow!`);
   };
 
-  const renderOutcomeChooser = () => {
-    if (isPro || (mode !== 'image' && mode !== 'video')) return null;
-    const options = mode === 'video' ? VIDEO_OUTCOMES : IMAGE_OUTCOMES;
+  const renderGuidedCreationWorkspace = () => {
+    if (isPro || !['image', 'video', 'talking-avatar'].includes(mode)) return null;
+
+    const selectedVideoInfo = videoModels.find(model => model.id === selectedVideoModel);
+    const selectedInfo = mode === 'image' ? selectedModelInfo : selectedVideoInfo;
+    const rawCost = selectedInfo?.price || 0;
+    const estimate = modelsLoading
+      ? 'Checking availability and cost…'
+      : selectedInfo
+        ? rawCost > 0
+          ? billingInfo?.isCreator
+            ? `Estimated cost: $${rawCost.toFixed(3)}`
+            : `Estimated cost: ${rawCost} credit${rawCost === 1 ? '' : 's'}`
+          : 'No generation charge shown for this model'
+        : mode === 'talking-avatar'
+          ? 'Final cost appears after the avatar engine is selected'
+          : 'Cost appears before generation';
+    const prompt = mode === 'image' ? imagePrompt : mode === 'video' ? videoPrompt : avatarScript;
+    const format = mode === 'image' ? selectedAspectRatio : mode === 'video' ? selectedVideoAspectRatio : selectedAvatarFraming;
+    const formatOptions = mode === 'image' ? ASPECT_RATIO_OPTIONS : mode === 'video' ? VIDEO_ASPECT_RATIO_OPTIONS : AVATAR_FORMAT_OPTIONS;
+    const outcomes = mode === 'video' ? VIDEO_OUTCOMES : IMAGE_OUTCOMES;
+    const imageNeedsReference = mode === 'image' && Boolean(selectedModelInfo?.isIdentityModel);
+    const hasIdentityReference = Boolean(effectiveRefImage || activePersona.referenceImage || uploadedAvatarImage);
+    const hasSelectedGenerator = mode === 'talking-avatar' || (mode === 'image' ? Boolean(selectedModel) : Boolean(selectedVideoModel));
+    const canGenerate = Boolean(prompt.trim()) && hasSelectedGenerator && (!imageNeedsReference || hasIdentityReference);
+    const hasAvatarSource = Boolean(selectedAvatarSource || activePersona.avatar || (activePersona as any).heygenAvatarId);
+
+    const openFineTune = () => {
+      setSimpleDetailsOpen(true);
+      window.setTimeout(() => document.getElementById('advanced-creation-controls')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+    };
+
     return (
-      <section className="mb-4 rounded-2xl border border-[var(--border-default)] bg-[var(--bg-elevated)]/70 p-3.5 sm:p-4" aria-label="Choose your creative goal">
-        <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--accent-primary)]">Simple mode</p>
-            <h2 className="mt-1 text-sm font-semibold text-[var(--text-primary)]">What kind of result do you want?</h2>
-          </div>
-          <p className="text-[10px] text-[var(--text-muted)]">We’ll choose the best available model and settings.</p>
-        </div>
-        <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar sm:flex-wrap">
-          {options.map(option => (
-            <button
-              key={option.id}
-              type="button"
-              onClick={() => setSelectedOutcome(option.id)}
-              aria-pressed={selectedOutcome === option.id}
-              className={`min-w-[152px] cursor-pointer rounded-xl border px-3 py-2.5 text-left transition-all sm:min-w-0 sm:flex-1 ${selectedOutcome === option.id ? 'border-[var(--border-strong)] bg-[var(--accent-muted)] shadow-[0_8px_24px_rgba(0,0,0,0.16)]' : 'border-[var(--border-subtle)] bg-[var(--bg-input)] hover:border-[var(--border-default)]'}`}
-            >
-              <span className={`mb-1 block text-[11px] font-bold ${selectedOutcome === option.id ? 'text-[var(--accent-primary)]' : 'text-[var(--text-tertiary)]'}`}>{option.icon}</span>
-              <span className="block text-[11px] font-semibold text-[var(--text-primary)]">{option.label}</span>
-              <span className="mt-0.5 block text-[9px] text-[var(--text-muted)]">{option.detail}</span>
-            </button>
-          ))}
-        </div>
-        {selectedOutcome === 'identity' && personas.length === 0 && (
-          <button
-            type="button"
-            onClick={() => nav.push({ view: 'create-persona' })}
-            className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-xl border border-[var(--border-strong)] bg-[var(--accent-muted)] px-3 py-2 text-[10px] font-semibold text-[var(--accent-primary)] transition-colors hover:bg-[var(--accent-soft)]"
-          >
-            <Plus size={13} /> Add a persona to preserve the same identity
-          </button>
-        )}
-      </section>
+      <GuidedCreationWorkspace
+        mode={mode as 'image' | 'video' | 'talking-avatar'}
+        onModeChange={updateMode}
+        onEnhance={() => nav.push({ view: 'intelligence', params: { initialTool: 'upscaler' } })}
+        outcomes={outcomes}
+        outcome={selectedOutcome}
+        onOutcomeChange={setSelectedOutcome}
+        prompt={prompt}
+        onPromptChange={value => {
+          if (mode === 'image') setImagePrompt(value);
+          else if (mode === 'video') setVideoPrompt(value);
+          else setAvatarScript(value);
+        }}
+        promptLabel={mode === 'talking-avatar' ? 'What should the avatar say?' : 'Describe what you want to create'}
+        promptPlaceholder={mode === 'image'
+          ? 'Example: A cinematic portrait at golden hour, natural skin, luxury editorial styling…'
+          : mode === 'video'
+            ? 'Example: A slow camera push-in as the subject turns toward the sunset…'
+            : 'Write the words your avatar should say…'}
+        format={format}
+        formatOptions={formatOptions}
+        onFormatChange={value => {
+          if (mode === 'image') setSelectedAspectRatio(value);
+          else if (mode === 'video') setSelectedVideoAspectRatio(value);
+          else setSelectedAvatarFraming(value);
+        }}
+        personas={personas}
+        selectedPersonaId={localPersonaId}
+        onPersonaChange={personaId => {
+          setLocalPersonaId(personaId);
+          if (mode === 'video') setVideoSourcePersonaId(personaId);
+          if (personaId !== 'none') onSelectPersona(personaId);
+        }}
+        estimate={estimate}
+        timeEstimate={mode === 'video' ? 'Usually 1–4 minutes' : mode === 'talking-avatar' ? 'Usually 1–3 minutes' : 'Usually 10–45 seconds'}
+        isGenerating={isGenerating}
+        canGenerate={canGenerate}
+        actionLabel={mode === 'image' ? 'Generate image' : mode === 'video' ? 'Generate video' : hasAvatarSource ? 'Generate avatar' : 'Continue setup'}
+        onGenerate={() => {
+          if (mode === 'image') void handleImageGenerate();
+          else if (mode === 'video') void handleVideoGenerate();
+          else if (!hasAvatarSource) openFineTune();
+          else void handleGenerateTalkingAvatar();
+        }}
+        fineTuneOpen={simpleDetailsOpen}
+        onToggleFineTune={() => {
+          if (simpleDetailsOpen) setSimpleDetailsOpen(false);
+          else openFineTune();
+        }}
+      />
     );
   };
+
+  const usesGuidedWorkspace = !isPro && ['image', 'video', 'talking-avatar'].includes(mode);
+  const hasGuidedOutput = mode === 'image'
+    ? Boolean(imageResult || isGenerating || isProcessing)
+    : mode === 'video'
+      ? Boolean(videoResult || isGenerating || isExtending)
+      : Boolean(talkingAvatarResult || isGenerating);
+  const showDetailedCreationControls = !usesGuidedWorkspace || simpleDetailsOpen || hasGuidedOutput;
 
   return (
     <div className="flex-1 bg-[var(--bg-base)] text-white p-4 max-w-full mx-auto w-full selection:bg-emerald-500/30 flex flex-col overflow-y-auto overflow-x-hidden custom-scrollbar">
@@ -4050,7 +4176,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       {/* 1-Click Starter Workflows Hub */}
       {isPro && <QuickStartHub onSelectTemplate={handleSelectTemplate} />}
 
-      {renderOutcomeChooser()}
+      {renderGuidedCreationWorkspace()}
 
       {globalError && !globalError.includes('Failed query:') && !globalError.includes('DrizzleQueryError') && (
         <div className="mb-4 bg-rose-500/10 border border-rose-500/20 rounded-xl p-3 flex items-start gap-2">
@@ -4060,7 +4186,10 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       )}
 
       {/* ── MODE RENDERING ── */}
-      <div className="flex-1 relative flex flex-col">
+      <div
+        id="advanced-creation-controls"
+        className={`flex-1 relative flex-col scroll-mt-4 ${showDetailedCreationControls ? 'flex' : 'hidden'}`}
+      >
         {mode === 'image' && renderImageMode()}
         {mode === 'video' && renderVideoMode()}
         {mode === 'talking-avatar' && renderTalkingAvatarMode()}

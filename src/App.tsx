@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { cn } from './utils/cn';
 import { Persona, RevenueEntry, PlannedPost, Tab, NavEntry } from './types';
+import type { CreationBrief } from './types/creation';
 import BackButton from './components/BackButton';
 import { api } from './services/apiService';
 import PersonasView from './views/PersonasView';
@@ -824,6 +825,26 @@ function App() {
     });
   };
 
+  const handleCreationCommand = useCallback((brief: CreationBrief) => {
+    if (brief.kind === 'enhance' || brief.kind === 'toolbox') {
+      replaceView({ view: 'intelligence', params: { initialTool: brief.initialTool || 'upscaler' } });
+      return;
+    }
+    if (brief.kind === 'planner') {
+      replaceView({ view: 'planner', params: { brief } });
+      return;
+    }
+    if (brief.kind === 'persona') {
+      replaceView({ view: 'create-persona', params: { brief } });
+      return;
+    }
+    replaceView({
+      view: 'create',
+      subView: brief.kind,
+      params: { brief },
+    });
+  }, [replaceView]);
+
   const navActions = { push: pushView, pop: popView, replace: replaceView };
 
   // Clear gallery badge when visiting gallery
@@ -848,7 +869,7 @@ function App() {
 
     switch (view) {
       case 'personas': return <PersonasView personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} selectedId={selectedPersonaId} navigateToTab={(t) => replaceView({ view: t })} nav={navActions} billingInfo={billingInfo} />;
-      case 'create': return <CreateView persona={activePersona} personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} nav={navActions} subView={currentNav.subView || params?.subView} billingInfo={billingInfo} />;
+      case 'create': return <CreateView persona={activePersona} personas={personas} setPersonas={setPersonas} onSelectPersona={setSelectedPersonaId} nav={navActions} subView={currentNav.subView || params?.subView} initialBrief={params?.brief} billingInfo={billingInfo} />;
       case 'gallery': return <GalleryView personas={personas} activePersona={activePersona} nav={navActions} onPersonasChange={setPersonas} />;
       case 'intelligence': return <CreatorHubView persona={activePersona} personas={personas} nav={navActions} initialTool={params?.initialTool} billingInfo={billingInfo} />;
       case 'planner': return <PlannerView persona={activePersona} personas={personas} onSelectPersona={setSelectedPersonaId} nav={navActions} />;
@@ -943,7 +964,7 @@ function App() {
                 onClick={() => setShowCommandPalette(true)}
                 className="w-full cursor-pointer truncate rounded-xl border border-[var(--border-default)] bg-[var(--bg-input)] py-2.5 pl-10 pr-12 text-left text-xs text-[var(--text-tertiary)] transition-all hover:border-[var(--border-strong)] focus:outline-none"
               >
-                Search personas, content, projects…
+                What do you want to make?
               </button>
               <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none">
                 <kbd className="rounded border border-[var(--border-default)] bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--text-tertiary)]">⌘ K</kbd>
@@ -953,6 +974,16 @@ function App() {
 
           {/* Right Actions: Media Jobs, Create Persona Button, Persona Quick-Switcher */}
           <div className="flex items-center gap-2 sm:gap-3.5 shrink-0">
+
+            <button
+              type="button"
+              onClick={() => setShowCommandPalette(true)}
+              className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-[var(--border-default)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] transition-all hover:border-[var(--border-strong)] hover:text-[var(--accent-primary)] lg:hidden"
+              title="What do you want to make?"
+              aria-label="Open creation command bar"
+            >
+              <Search size={16} />
+            </button>
 
             <ProModeToggle isPro={isProMode} onToggle={setIsProMode} />
 
@@ -1158,6 +1189,7 @@ function App() {
         onNavigate={(tab) => { replaceView({ view: tab }); }}
         onSelectPersona={setSelectedPersonaId}
         onOpenSubView={(tab, subView) => { replaceView({ view: tab, subView }); }}
+        onCreate={handleCreationCommand}
       />
       <MediaJobCenter
         isOpen={showMediaJobCenter}
