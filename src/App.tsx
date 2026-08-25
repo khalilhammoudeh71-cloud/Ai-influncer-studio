@@ -34,7 +34,7 @@ import PersonaBuilderView from './views/PersonaBuilderView';
 import CreatorHubView from './views/CreatorHubView';
 import RevenueView from './views/RevenueView';
 import AgentView from './views/AgentView';
-import OnboardingTour from './components/OnboardingTour';
+import OnboardingTour, { type LaunchTask } from './components/OnboardingTour';
 import MediaJobCenter from './components/MediaJobCenter';
 import CommandPalette from './components/CommandPalette';
 import LeftSidebar from './components/LeftSidebar';
@@ -51,6 +51,7 @@ import {
   migrateLegacyAccountKey,
   setActiveStorageUserId,
 } from './utils/accountStorage';
+import { ProModeToggle, useProMode } from './utils/useProMode';
 
 configureAccountStorageSync({
   list: api.workspaceState.list,
@@ -155,6 +156,7 @@ import { supabase } from './lib/supabase';
 import toast from 'react-hot-toast';
 
 function App() {
+  const [isProMode, setIsProMode] = useProMode();
   const [user, setUser] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [billingInfo, setBillingInfo] = useState<any>(null);
@@ -590,9 +592,47 @@ function App() {
 
   const [showTour, setShowTour] = useState(false);
 
-  const handleTourComplete = () => {
+  useEffect(() => {
+    if (isLoading || !userId) return;
+    const launcherKey = accountStorageKey('ai_influencer_task_launcher_complete', userId);
+    const forceLauncherKey = accountStorageKey('ai_influencer_force_task_launcher', userId);
+    const shouldForceLauncher = localStorage.getItem(forceLauncherKey) === 'true';
+    const hasSavedPersonas = personas.some(persona => persona.id !== 'empty');
+
+    if (shouldForceLauncher) {
+      setShowTour(true);
+      return;
+    }
+
+    if (hasSavedPersonas) {
+      localStorage.setItem(launcherKey, 'true');
+      setShowTour(false);
+      return;
+    }
+
+    setShowTour(localStorage.getItem(launcherKey) !== 'true');
+  }, [isLoading, personas, userId]);
+
+  const handleTourComplete = (task: LaunchTask, proMode = false) => {
     localStorage.setItem('ai_influencer_tour_complete', 'true');
+    if (userId) {
+      localStorage.setItem(accountStorageKey('ai_influencer_task_launcher_complete', userId), 'true');
+      localStorage.removeItem(accountStorageKey('ai_influencer_force_task_launcher', userId));
+    }
+    setIsProMode(proMode);
     setShowTour(false);
+
+    const destinations: Record<LaunchTask, NavEntry> = {
+      image: { view: 'create', subView: 'image' },
+      video: { view: 'create', subView: 'video' },
+      'talking-avatar': { view: 'create', subView: 'talking-avatar' },
+      edit: { view: 'intelligence', params: { initialTool: 'upscaler' } },
+      planner: { view: 'planner' },
+      'content-pack': { view: 'agent' },
+      explore: { view: 'intelligence' },
+      pro: { view: 'create', subView: 'image' },
+    };
+    replaceView(destinations[task]);
   };
 
   if (authLoading) {
@@ -899,7 +939,7 @@ function App() {
               <div className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-[var(--text-tertiary)]">
                 <Search size={15} />
               </div>
-              <button 
+              <button
                 onClick={() => setShowCommandPalette(true)}
                 className="w-full cursor-pointer truncate rounded-xl border border-[var(--border-default)] bg-[var(--bg-input)] py-2.5 pl-10 pr-12 text-left text-xs text-[var(--text-tertiary)] transition-all hover:border-[var(--border-strong)] focus:outline-none"
               >
@@ -914,6 +954,8 @@ function App() {
           {/* Right Actions: Media Jobs, Create Persona Button, Persona Quick-Switcher */}
           <div className="flex items-center gap-2 sm:gap-3.5 shrink-0">
 
+            <ProModeToggle isPro={isProMode} onToggle={setIsProMode} />
+
             {/* Durable media jobs */}
             <button
               type="button"
@@ -925,13 +967,15 @@ function App() {
               <Sparkles size={16} />
             </button>
 
-            {/* Single Gold Create Persona CTA Button */}
-            <button 
-              onClick={() => pushView({ view: 'create-persona' })}
-              className="btn-gold-primary flex cursor-pointer items-center gap-2 px-3 py-2 text-sm font-bold shadow-lg transition-all hover:shadow-xl active:scale-[0.98] sm:px-5"
-            >
-              <PlusCircle size={16} /> <span className="hidden sm:inline">Create Persona</span>
-            </button>
+            {/* Persona creation appears when identity is relevant, not as the default kickoff. */}
+            {(hasPersonas || activeTab === 'assistant' || activeTab === 'create-persona' || (activeTab === 'create' && currentNav.subView === 'talking-avatar')) && (
+              <button
+                onClick={() => pushView({ view: 'create-persona' })}
+                className="btn-gold-primary flex cursor-pointer items-center gap-2 px-3 py-2 text-sm font-bold shadow-lg transition-all hover:shadow-xl active:scale-[0.98] sm:px-5"
+              >
+                <PlusCircle size={16} /> <span className="hidden sm:inline">{hasPersonas ? 'Create Persona' : 'Add Persona'}</span>
+              </button>
+            )}
 
             {/* Persona Quick-Switcher */}
             {hasPersonas && (

@@ -80,8 +80,54 @@ import { processImageFile } from '../utils/imageProcessing';
 import { accountLocalStorage } from '../utils/accountStorage';
 import toast from 'react-hot-toast';
 import { useRef } from 'react';
+import { ProModeToggle, useProMode } from '../utils/useProMode';
 
 type CreateMode = 'image' | 'video' | 'talking-avatar' | 'voice' | 'stitcher' | 'ai-tools' | 'planner' | 'prompt' | 'transcript' | 'multi-scene';
+type CreationOutcome = 'quality' | 'realistic' | 'artistic' | 'fast' | 'social' | 'identity' | 'adult' | 'cinematic';
+
+const IMAGE_OUTCOMES: Array<{ id: CreationOutcome; label: string; detail: string; icon: string }> = [
+  { id: 'realistic', label: 'Hyper-realistic', detail: 'Natural, photo-like results', icon: '◉' },
+  { id: 'artistic', label: 'Anime / illustrated', detail: 'Stylized creative artwork', icon: '✦' },
+  { id: 'fast', label: 'Fast', detail: 'Quick drafts and ideas', icon: '⚡' },
+  { id: 'quality', label: 'Maximum quality', detail: 'Best available detail', icon: '◆' },
+  { id: 'social', label: 'Social-ready', detail: 'Optimized for posting', icon: '▣' },
+  { id: 'identity', label: 'Identity consistency', detail: 'Prioritize face accuracy', icon: '◎' },
+  { id: 'adult', label: 'Adult / explicit', detail: 'Where provider policies permit', icon: '18+' },
+];
+
+const VIDEO_OUTCOMES: Array<{ id: CreationOutcome; label: string; detail: string; icon: string }> = [
+  { id: 'cinematic', label: 'Cinematic', detail: 'Polished motion and framing', icon: '▶' },
+  { id: 'quality', label: 'Maximum quality', detail: 'Best available fidelity', icon: '◆' },
+  { id: 'fast', label: 'Fast', detail: 'Quick previews and drafts', icon: '⚡' },
+  { id: 'social', label: 'Social-ready', detail: 'Short-form platform output', icon: '▣' },
+  { id: 'identity', label: 'Identity consistency', detail: 'Preserve the subject', icon: '◎' },
+  { id: 'adult', label: 'Adult / explicit', detail: 'Where provider policies permit', icon: '18+' },
+];
+
+function chooseModelForOutcome(models: ModelInfo[], outcome: CreationOutcome, fallback: string, video = false) {
+  if (models.length === 0) return fallback;
+  const terms: Record<CreationOutcome, string[]> = {
+    quality: video ? ['seedance', 'veo', 'kling', 'pro', 'quality'] : ['seedream', 'gpt-image', 'nano-banana', 'pro', 'ultra'],
+    realistic: ['seedream', 'realistic', 'photo', 'flux', 'gpt-image'],
+    artistic: ['anime', 'illustr', 'art', 'qwen', 'flux'],
+    fast: ['mini', 'flash', 'turbo', 'schnell', 'fast'],
+    social: video ? ['seedance', 'mini', 'short', 'social'] : ['seedream', 'flux', 'social'],
+    identity: ['identity', 'consistent', 'face', 'reference', 'pulid', 'i2v'],
+    adult: ['nsfw', 'uncensored'],
+    cinematic: ['seedance', 'cinematic', 'veo', 'kling', 'wan'],
+  };
+  const candidates = outcome === 'adult' ? models.filter(model => model.nsfw) : models;
+  const scored = candidates
+    .map(model => {
+      const searchable = `${model.id} ${model.name} ${model.provider || ''} ${model.type || ''}`.toLowerCase();
+      let score = terms[outcome].reduce((total, term, index) => total + (searchable.includes(term) ? 20 - index : 0), 0);
+      if (outcome === 'identity' && model.isIdentityModel) score += 40;
+      if (video && model.id.toLowerCase().includes('seedance')) score += 12;
+      return { model, score };
+    })
+    .sort((a, b) => b.score - a.score);
+  return (scored[0]?.score ? scored[0].model.id : candidates[0]?.id) || fallback || models[0].id;
+}
 
 interface LipSyncModel {
   id: string;
@@ -227,6 +273,7 @@ const RESOLUTION_OPTIONS: Record<string, { value: 'standard' | 'hd'; label: stri
 };
 
 export default function CreateView({ persona, personas, setPersonas, onSelectPersona, subView, nav, billingInfo }: CreateViewProps) {
+  const [isPro, setIsPro] = useProMode();
   const initialPersona = persona && persona.id !== 'empty' ? persona : null;
   const audioPreviewRef = useRef<HTMLAudioElement | null>(null);
 
@@ -389,10 +436,15 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const [videoModels, setVideoModels] = useState<ModelInfo[]>([]);
   const [selectedModel, setSelectedModel] = useState('');
   const [selectedVideoModel, setSelectedVideoModel] = useState('');
+  const [selectedOutcome, setSelectedOutcome] = useState<CreationOutcome>('quality');
   const [videoSubMode, setVideoSubMode] = useState<'generate' | 'edit' | 'extend'>('generate');
 
   useEffect(() => {
     if (!videoSubMode || videoModels.length === 0) return;
+    if (!isPro) {
+      setSelectedVideoModel(current => chooseModelForOutcome(videoModels, selectedOutcome, current, true));
+      return;
+    }
     if (videoSubMode === 'edit') {
       const found = videoModels.find(m => {
         const id = m.id.toLowerCase();
@@ -406,7 +458,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       const found = videoModels.find(m => m.type === 'text-to-video' || m.id.includes('t2v'));
       setSelectedVideoModel(found?.id || 'wavespeed-t2v:runway-gen3-t2v');
     }
-  }, [videoSubMode, videoModels]);
+  }, [isPro, selectedOutcome, videoSubMode, videoModels]);
 
   const [selectedVideoAspectRatio, setSelectedVideoAspectRatio] = useState('16:9');
   const [selectedVideoDuration, setSelectedVideoDuration] = useState(5);
@@ -827,6 +879,16 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       })
       .finally(() => setModelsLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (isPro) return;
+    if (mode === 'image' && models.length > 0) {
+      setSelectedModel(current => chooseModelForOutcome(models, selectedOutcome, current));
+    }
+    if (mode === 'video' && videoModels.length > 0) {
+      setSelectedVideoModel(current => chooseModelForOutcome(videoModels, selectedOutcome, current, true));
+    }
+  }, [isPro, mode, models, selectedOutcome, videoModels]);
 
   useEffect(() => {
     if (!selectedVideoModel) return;
@@ -1900,7 +1962,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
             {postAction === 'edit' && (
               <div className="bg-[#161618] border border-white/10 rounded-xl p-3.5 space-y-3">
-                {renderModelSelect(selectedEditModel, setSelectedEditModel, groupedEditModels)}
+                {isPro && renderModelSelect(selectedEditModel, setSelectedEditModel, groupedEditModels)}
                 <textarea value={editPrompt} onChange={e => setEditPrompt(e.target.value)} placeholder="Describe what to change in the active image..." className="w-full bg-[#08080A] border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 resize-none h-16 outline-none focus:border-[#E7C477]" />
                 <div className="flex gap-2">
                   <label className="flex-1 flex items-center gap-2 px-3 py-2 bg-[#08080A] rounded-lg cursor-pointer hover:bg-[#1E1E22] text-xs text-slate-300 border border-white/10">
@@ -1917,7 +1979,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
             {postAction === 'upscale' && (
               <div className="bg-[#161618] border border-white/10 rounded-xl p-3.5 space-y-3">
-                {renderModelSelect(selectedUpscaleModel, setSelectedUpscaleModel, groupedUpscaleModels)}
+                {isPro && renderModelSelect(selectedUpscaleModel, setSelectedUpscaleModel, groupedUpscaleModels)}
                 <button onClick={handleUpscale} disabled={isProcessing} className="w-full py-2 btn-gold-primary rounded-lg text-xs font-bold disabled:opacity-50 flex items-center justify-center gap-1.5">
                   {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <><ArrowUpCircle className="w-4 h-4" /> Enhance Resolution</>}
                 </button>
@@ -2095,7 +2157,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0 max-w-full">
               
               {/* 1. Custom Interactive AI Model Selector Trigger Button */}
-              <button
+              {isPro && <button
                 type="button"
                 onClick={() => setIsModelModalOpen(true)}
                 className="bg-[#1E1E22] border border-[#E7C477]/50 hover:border-[#E7C477] text-[#F2D58D] font-bold text-xs px-3 py-1 rounded-xl flex items-center gap-2 transition-all shadow-md hover:bg-[#242428] shrink-0 h-8 cursor-pointer"
@@ -2109,10 +2171,10 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                   </span>
                 </div>
                 <ChevronDown size={13} className="text-[#E7C477] shrink-0 ml-0.5" />
-              </button>
+              </button>}
 
               {/* 2. Community LoRA & Style Booster Popover Button */}
-              <div className="relative shrink-0">
+              {isPro && <div className="relative shrink-0">
                 <button
                   type="button"
                   onClick={() => setLoraPanelOpen(!loraPanelOpen)}
@@ -2209,7 +2271,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                     </div>
                   </div>
                 )}
-              </div>
+              </div>}
 
               {/* 2. Persona Selector Dropdown */}
               <div className="relative shrink-0">
@@ -2245,7 +2307,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               </div>
 
               {/* 4. Resolution Dropdown */}
-              <div className="relative shrink-0">
+              {isPro && <div className="relative shrink-0">
                 <select
                   value={selectedResolution}
                   onChange={e => setSelectedResolution(e.target.value)}
@@ -2258,7 +2320,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                   ))}
                 </select>
                 <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none" />
-              </div>
+              </div>}
 
               {/* 5. Number of Generations Dropdown */}
               <div className="relative shrink-0">
@@ -2812,7 +2874,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               </div>
 
               {/* 2. Video Model Selector Dropdown */}
-              <div className="relative">
+              {isPro && <div className="relative">
                 <select
                   value={selectedVideoModel}
                   onChange={e => setSelectedVideoModel(e.target.value)}
@@ -2866,7 +2928,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                   )}
                 </select>
                 <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
-              </div>
+              </div>}
 
               {/* 3. Duration Selector Dropdown */}
               <div className="relative">
@@ -2885,7 +2947,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               </div>
 
               {/* 4. Aspect Ratio / Resolution Dropdown */}
-              <div className="relative">
+              {isPro && <div className="relative">
                 <select
                   value={selectedVideoResolution}
                   onChange={e => setSelectedVideoResolution(e.target.value)}
@@ -2898,7 +2960,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                   ))}
                 </select>
                 <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
-              </div>
+              </div>}
 
               {/* 5. Toggle Generate Audio Switch */}
               <button
@@ -3921,6 +3983,46 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     toast.success(`Loaded "${tpl.title}" starter workflow!`);
   };
 
+  const renderOutcomeChooser = () => {
+    if (isPro || (mode !== 'image' && mode !== 'video')) return null;
+    const options = mode === 'video' ? VIDEO_OUTCOMES : IMAGE_OUTCOMES;
+    return (
+      <section className="mb-4 rounded-2xl border border-[var(--border-default)] bg-[var(--bg-elevated)]/70 p-3.5 sm:p-4" aria-label="Choose your creative goal">
+        <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--accent-primary)]">Simple mode</p>
+            <h2 className="mt-1 text-sm font-semibold text-[var(--text-primary)]">What kind of result do you want?</h2>
+          </div>
+          <p className="text-[10px] text-[var(--text-muted)]">We’ll choose the best available model and settings.</p>
+        </div>
+        <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar sm:flex-wrap">
+          {options.map(option => (
+            <button
+              key={option.id}
+              type="button"
+              onClick={() => setSelectedOutcome(option.id)}
+              aria-pressed={selectedOutcome === option.id}
+              className={`min-w-[152px] cursor-pointer rounded-xl border px-3 py-2.5 text-left transition-all sm:min-w-0 sm:flex-1 ${selectedOutcome === option.id ? 'border-[var(--border-strong)] bg-[var(--accent-muted)] shadow-[0_8px_24px_rgba(0,0,0,0.16)]' : 'border-[var(--border-subtle)] bg-[var(--bg-input)] hover:border-[var(--border-default)]'}`}
+            >
+              <span className={`mb-1 block text-[11px] font-bold ${selectedOutcome === option.id ? 'text-[var(--accent-primary)]' : 'text-[var(--text-tertiary)]'}`}>{option.icon}</span>
+              <span className="block text-[11px] font-semibold text-[var(--text-primary)]">{option.label}</span>
+              <span className="mt-0.5 block text-[9px] text-[var(--text-muted)]">{option.detail}</span>
+            </button>
+          ))}
+        </div>
+        {selectedOutcome === 'identity' && personas.length === 0 && (
+          <button
+            type="button"
+            onClick={() => nav.push({ view: 'create-persona' })}
+            className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-xl border border-[var(--border-strong)] bg-[var(--accent-muted)] px-3 py-2 text-[10px] font-semibold text-[var(--accent-primary)] transition-colors hover:bg-[var(--accent-soft)]"
+          >
+            <Plus size={13} /> Add a persona to preserve the same identity
+          </button>
+        )}
+      </section>
+    );
+  };
+
   return (
     <div className="flex-1 bg-[var(--bg-base)] text-white p-4 max-w-full mx-auto w-full selection:bg-emerald-500/30 flex flex-col overflow-y-auto overflow-x-hidden custom-scrollbar">
       
@@ -3942,10 +4044,13 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             {mode === 'stitcher' && 'Multi-track video editor and scene stitcher.'}
           </p>
         </div>
+        <ProModeToggle isPro={isPro} onToggle={setIsPro} />
       </div>
 
       {/* 1-Click Starter Workflows Hub */}
-      <QuickStartHub onSelectTemplate={handleSelectTemplate} />
+      {isPro && <QuickStartHub onSelectTemplate={handleSelectTemplate} />}
+
+      {renderOutcomeChooser()}
 
       {globalError && !globalError.includes('Failed query:') && !globalError.includes('DrizzleQueryError') && (
         <div className="mb-4 bg-rose-500/10 border border-rose-500/20 rounded-xl p-3 flex items-start gap-2">

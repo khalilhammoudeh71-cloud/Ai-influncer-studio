@@ -1,184 +1,140 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, Users, PlusCircle, MessageSquare, Settings, Wand2, Calendar, ChevronRight, X, Lightbulb } from 'lucide-react';
+import { motion } from 'framer-motion';
+import {
+  ArrowRight,
+  Bot,
+  Clapperboard,
+  Compass,
+  Image,
+  Layers3,
+  Megaphone,
+  ScanFace,
+  Sparkles,
+  WandSparkles,
+} from 'lucide-react';
+
+export type LaunchTask =
+  | 'image'
+  | 'video'
+  | 'talking-avatar'
+  | 'edit'
+  | 'planner'
+  | 'content-pack'
+  | 'explore'
+  | 'pro';
 
 interface OnboardingTourProps {
-  onComplete: () => void;
+  onComplete: (task: LaunchTask, proMode?: boolean) => void;
 }
 
-const TOUR_STEPS = [
-  {
-    title: 'Welcome to AI Influencer Studio',
-    description: 'Your all-in-one command center for building, managing, and scaling AI-powered digital personas. Let\u2019s take a quick tour!',
-    icon: Sparkles,
-    gradient: 'from-violet-600 to-fuchsia-600',
-    tip: 'This tour takes 30 seconds. You can skip anytime.',
-  },
-  {
-    title: 'Persona Hub',
-    description: 'Create and manage unlimited AI personas. Each persona has its own identity sheet, voice, personality traits, and visual library.',
-    icon: Users,
-    gradient: 'from-cyan-500 to-blue-600',
-    tip: 'Start by creating your first persona with a unique name and niche.',
-  },
-  {
-    title: 'Visual Studio',
-    description: 'Generate stunning images and videos using 30+ AI models. Use the identity sheet to maintain 100% face consistency across all content.',
-    icon: PlusCircle,
-    gradient: 'from-emerald-500 to-teal-600',
-    tip: 'Upload a reference image for the best identity-preserving results.',
-  },
-  {
-    title: 'AI Editing Tools',
-    description: 'Beautify, body morph, teleport, face swap, virtual try-on, and more. Every tool preserves your persona\u2019s exact identity.',
-    icon: Wand2,
-    gradient: 'from-amber-500 to-orange-600',
-    tip: 'Use the Before/After slider to compare edits instantly.',
-  },
-  {
-    title: 'Content Planner',
-    description: 'Generate a 7-day content strategy with hooks, captions, image prompts, and video scripts — all tailored to your persona\u2019s voice.',
-    icon: Calendar,
-    gradient: 'from-pink-500 to-rose-600',
-    tip: 'Click "Generate All Content" after creating a plan to batch-produce every asset.',
-  },
-  {
-    title: 'AI Assistant',
-    description: 'Chat with a persona-aware AI that knows your brand voice, content history, and audience. Get instant ideas, scripts, and feedback.',
-    icon: MessageSquare,
-    gradient: 'from-indigo-500 to-violet-600',
-    tip: 'Ask it to brainstorm viral hooks or refine a caption.',
-  },
-  {
-    title: 'You\u2019re All Set!',
-    description: 'Your studio is ready. Start by exploring the Personas tab and creating your first AI influencer. The future of digital content starts now.',
-    icon: Sparkles,
-    gradient: 'from-cyan-500 to-violet-600',
-    tip: 'Pro tip: Use Settings \u2192 Theme to switch between Dark and Light mode.',
-  },
+const TASKS: Array<{
+  id: Exclude<LaunchTask, 'explore' | 'pro'>;
+  title: string;
+  description: string;
+  icon: typeof Image;
+}> = [
+  { id: 'image', title: 'Generate an image', description: 'Create a polished visual from a simple idea.', icon: Image },
+  { id: 'video', title: 'Create a video', description: 'Turn a concept or image into a short video.', icon: Clapperboard },
+  { id: 'talking-avatar', title: 'Make a talking avatar', description: 'Bring a face and voice to life on camera.', icon: ScanFace },
+  { id: 'edit', title: 'Edit or enhance media', description: 'Upscale, retouch, restyle, or transform a file.', icon: WandSparkles },
+  { id: 'planner', title: 'Plan social content', description: 'Build ideas, captions, hooks, and a posting plan.', icon: Megaphone },
+  { id: 'content-pack', title: 'Create a content pack', description: 'Generate a coordinated mix of creative assets.', icon: Layers3 },
 ];
 
 export default function OnboardingTour({ onComplete }: OnboardingTourProps) {
-  const [step, setStep] = useState(0);
-  const current = TOUR_STEPS[step];
-  const isLast = step === TOUR_STEPS.length - 1;
-
-  const handleNext = useCallback(() => {
-    if (isLast) {
-      onComplete();
-    } else {
-      setStep(s => s + 1);
-    }
-  }, [isLast, onComplete]);
-
-  const handleSkip = () => {
-    onComplete();
-  };
-
-  // Keyboard navigation
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowRight' || e.key === 'Enter') handleNext();
-      if (e.key === 'ArrowLeft' && step > 0) setStep(s => s - 1);
-      if (e.key === 'Escape') handleSkip();
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [handleNext, step]);
-
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-[#0B0F17]/95 backdrop-blur-xl">
-      {/* Background glow */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        <div className={`absolute top-1/4 left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-gradient-to-br ${current.gradient} opacity-10 blur-[120px] rounded-full transition-all duration-700`} />
+    <div className="studio-public-theme fixed inset-0 z-[9999] overflow-y-auto bg-[var(--bg-base)] text-[var(--text-primary)]">
+      <div className="pointer-events-none fixed inset-0 overflow-hidden">
+        <div className="absolute left-[12%] top-[-18%] h-[520px] w-[520px] rounded-full bg-[#E7C477]/10 blur-[140px]" />
+        <div className="absolute bottom-[-26%] right-[8%] h-[560px] w-[560px] rounded-full bg-cyan-500/[0.07] blur-[150px]" />
       </div>
 
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={step}
-          initial={{ opacity: 0, y: 30, scale: 0.95 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: -20, scale: 0.98 }}
-          transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-          className="relative z-10 max-w-lg w-full mx-4"
+      <main className="relative mx-auto flex min-h-full w-full max-w-6xl flex-col justify-center px-5 py-10 sm:px-8 lg:py-14">
+        <motion.header
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mx-auto mb-8 max-w-3xl text-center"
         >
-          {/* Skip button */}
+          <div className="mx-auto mb-5 grid h-14 w-14 place-items-center rounded-2xl border border-[var(--border-strong)] bg-[var(--accent-muted)] text-[var(--accent-primary)] shadow-[0_14px_44px_rgba(0,0,0,0.28)]">
+            <Sparkles size={24} />
+          </div>
+          <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.34em] text-[var(--accent-primary)]">Your studio is ready</p>
+          <h1 className="font-['Cinzel',serif] text-3xl font-bold tracking-[-0.035em] sm:text-4xl lg:text-5xl">
+            What would you like to make?
+          </h1>
+          <p className="mx-auto mt-4 max-w-2xl text-sm leading-6 text-[var(--text-secondary)] sm:text-base">
+            Start with an outcome. We’ll choose the right tools and guide you through the rest—no AI experience needed.
+          </p>
+        </motion.header>
+
+        <motion.section
+          initial={{ opacity: 0, y: 22 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.08 }}
+          aria-label="Choose a task"
+          className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
+        >
+          {TASKS.map((task, index) => {
+            const Icon = task.icon;
+            return (
+              <motion.button
+                key={task.id}
+                type="button"
+                onClick={() => onComplete(task.id, false)}
+                whileHover={{ y: -3 }}
+                whileTap={{ scale: 0.985 }}
+                transition={{ delay: index * 0.025 }}
+                className="group flex min-h-28 cursor-pointer items-center gap-4 rounded-2xl border border-[var(--border-default)] bg-[var(--bg-elevated)]/90 p-4 text-left shadow-[0_16px_42px_rgba(0,0,0,0.16)] transition-colors hover:border-[var(--border-strong)] hover:bg-[var(--accent-subtle)] sm:p-5"
+              >
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-[var(--border-default)] bg-[var(--bg-input)] text-[var(--accent-primary)] transition-colors group-hover:border-[var(--border-strong)] group-hover:bg-[var(--accent-muted)]">
+                  <Icon size={20} strokeWidth={1.8} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[15px] font-semibold tracking-[-0.015em]">{task.title}</span>
+                  <span className="mt-1 block text-xs leading-5 text-[var(--text-muted)]">{task.description}</span>
+                </span>
+                <ArrowRight size={16} className="shrink-0 text-[var(--text-muted)] transition-transform group-hover:translate-x-1 group-hover:text-[var(--accent-primary)]" />
+              </motion.button>
+            );
+          })}
+        </motion.section>
+
+        <motion.section
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="mt-5 grid gap-3 lg:grid-cols-2"
+        >
           <button
-            onClick={handleSkip}
-            className="absolute -top-12 right-0 text-xs font-bold text-white/40 hover:text-white transition-colors flex items-center gap-1"
+            type="button"
+            onClick={() => onComplete('explore', false)}
+            className="group flex cursor-pointer items-center gap-4 rounded-2xl border border-[var(--border-strong)] bg-[linear-gradient(135deg,rgba(231,196,119,0.12),rgba(255,255,255,0.025))] p-5 text-left transition-all hover:bg-[linear-gradient(135deg,rgba(231,196,119,0.18),rgba(255,255,255,0.04))]"
           >
-            Skip Tour <X size={14} />
+            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[var(--accent-primary)] text-[#17130b] shadow-[0_10px_28px_rgba(231,196,119,0.24)]"><Compass size={21} /></span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-semibold">Not sure? Show me what’s possible</span>
+              <span className="mt-1 block text-xs leading-5 text-[var(--text-secondary)]">Explore recommended tools and examples without committing to a workflow.</span>
+            </span>
+            <ArrowRight size={17} className="text-[var(--accent-primary)] transition-transform group-hover:translate-x-1" />
           </button>
 
-          <div className="bg-[#111827]/80 border border-white/10 rounded-3xl p-8 backdrop-blur-xl shadow-2xl">
-            {/* Icon */}
-            <div className="flex justify-center mb-6">
-              <div className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${current.gradient} flex items-center justify-center shadow-xl`}
-                style={{ boxShadow: `0 8px 40px -8px rgba(99, 102, 241, 0.4)` }}
-              >
-                <current.icon size={28} className="text-white" />
-              </div>
-            </div>
+          <button
+            type="button"
+            onClick={() => onComplete('pro', true)}
+            className="group flex cursor-pointer items-center gap-4 rounded-2xl border border-cyan-400/25 bg-[linear-gradient(135deg,rgba(34,211,238,0.1),rgba(255,255,255,0.025))] p-5 text-left transition-all hover:border-cyan-300/40 hover:bg-[linear-gradient(135deg,rgba(34,211,238,0.15),rgba(255,255,255,0.04))]"
+          >
+            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-cyan-300/25 bg-cyan-400/10 text-cyan-300"><Bot size={21} /></span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-semibold">I’m a pro—show me everything</span>
+              <span className="mt-1 block text-xs leading-5 text-[var(--text-secondary)]">Open the complete studio with every model, provider, and advanced control.</span>
+            </span>
+            <ArrowRight size={17} className="text-cyan-300 transition-transform group-hover:translate-x-1" />
+          </button>
+        </motion.section>
 
-            {/* Content */}
-            <h2 className="text-2xl font-black text-center text-white tracking-tight mb-3">
-              {current.title}
-            </h2>
-            <p className="text-sm text-[#94A3B8] text-center leading-relaxed mb-6 max-w-md mx-auto">
-              {current.description}
-            </p>
-
-            {/* Tip */}
-            <div className="flex items-start gap-2.5 p-3 rounded-xl bg-white/5 border border-white/5 mb-6">
-              <Lightbulb size={14} className="text-amber-400 shrink-0 mt-0.5" />
-              <p className="text-[11px] text-amber-200/70 leading-relaxed">{current.tip}</p>
-            </div>
-
-            {/* Progress dots */}
-            <div className="flex justify-center gap-2 mb-6">
-              {TOUR_STEPS.map((_, i) => (
-                <button
-                  key={i}
-                  onClick={() => setStep(i)}
-                  className={`h-1.5 rounded-full transition-all duration-300 ${
-                    i === step
-                      ? 'w-8 bg-gradient-to-r ' + current.gradient
-                      : i < step
-                      ? 'w-3 bg-white/30'
-                      : 'w-3 bg-white/10'
-                  }`}
-                />
-              ))}
-            </div>
-
-            {/* Actions */}
-            <div className="flex items-center justify-between">
-              {step > 0 ? (
-                <button
-                  onClick={() => setStep(s => s - 1)}
-                  className="px-5 py-2.5 rounded-xl text-sm font-bold text-white/50 hover:text-white hover:bg-white/5 transition-all"
-                >
-                  Back
-                </button>
-              ) : (
-                <div />
-              )}
-              <button
-                onClick={handleNext}
-                className={`px-8 py-3 rounded-xl bg-gradient-to-r ${current.gradient} text-white font-black text-sm uppercase tracking-wider shadow-xl hover:scale-105 active:scale-95 transition-all flex items-center gap-2`}
-              >
-                {isLast ? 'Start Creating' : 'Next'}
-                {!isLast && <ChevronRight size={16} />}
-              </button>
-            </div>
-          </div>
-
-          {/* Step counter */}
-          <p className="text-center mt-4 text-[10px] font-bold text-white/20 uppercase tracking-widest">
-            Step {step + 1} of {TOUR_STEPS.length}
-          </p>
-        </motion.div>
-      </AnimatePresence>
+        <p className="mt-6 text-center text-[11px] text-[var(--text-muted)]">
+          You can switch between Simple and Pro at any time. Nothing is permanently hidden.
+        </p>
+      </main>
     </div>
   );
 }

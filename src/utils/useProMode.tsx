@@ -40,14 +40,18 @@ interface ProModeToggleProps {
 
 export const ProModeToggle: React.FC<ProModeToggleProps> = ({ isPro, onToggle }) => {
   return (
-    <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#111827]/80 border border-[#334155]/60 shadow-[0_2px_10px_rgba(0,0,0,0.3)] backdrop-blur-xl transition-all duration-300">
-      <span className="text-[10px] font-black tracking-widest text-[#94A3B8] uppercase">Pro Mode</span>
+    <div className="flex items-center gap-2.5 rounded-xl border border-[var(--border-default)] bg-[var(--bg-elevated)] px-2.5 py-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.18)] backdrop-blur-xl transition-all duration-300">
+      <span className="hidden text-[9px] font-bold uppercase tracking-[0.18em] text-[var(--text-muted)] sm:inline">Experience</span>
       <button
         type="button"
         onClick={() => onToggle(!isPro)}
-        className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${isPro ? 'bg-gradient-to-r from-violet-500 to-fuchsia-500 shadow-[0_0_8px_rgba(168,85,247,0.4)]' : 'bg-white/10'}`}
+        aria-pressed={isPro}
+        aria-label={`Switch to ${isPro ? 'Simple' : 'Pro'} mode`}
+        title={`Switch to ${isPro ? 'Simple' : 'Pro'} mode`}
+        className={`flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)] ${isPro ? 'border-cyan-300/30 bg-cyan-400/10 text-cyan-300' : 'border-[var(--border-strong)] bg-[var(--accent-muted)] text-[var(--accent-primary)]'}`}
       >
-        <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${isPro ? 'translate-x-4' : 'translate-x-0'}`} />
+        <span className={`h-1.5 w-1.5 rounded-full ${isPro ? 'bg-cyan-300' : 'bg-[var(--accent-primary)]'}`} />
+        {isPro ? 'Pro' : 'Simple'}
       </button>
     </div>
   );

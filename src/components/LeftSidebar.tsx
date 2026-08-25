@@ -39,6 +39,7 @@ const primaryItems: NavigationItem[] = [
   { id: 'home', label: 'Home', description: 'Your studio overview', icon: Home, tabTarget: 'personas' },
   { id: 'personas', label: 'Personas', description: 'Create and manage identities', icon: Users, tabTarget: 'create-persona' },
   { id: 'create', label: 'Create', description: 'Images, video, voice, and more', icon: Sparkles, tabTarget: 'create' },
+  { id: 'tools', label: 'AI Toolbox', description: 'Edit, enhance, and build content', icon: Wrench, tabTarget: 'intelligence' },
   { id: 'library', label: 'Library', description: 'Review every generated asset', icon: Images, tabTarget: 'gallery' },
   { id: 'planner', label: 'Planner', description: 'Plan and schedule content', icon: CalendarDays, tabTarget: 'planner' },
 ];
@@ -47,7 +48,6 @@ const secondaryItems: NavigationItem[] = [
   { id: 'chat', label: 'Persona Chat', description: 'Text and live voice conversations', icon: MessageCircle, tabTarget: 'assistant' },
   { id: 'agent', label: 'Super Agent', description: 'Coordinate complex creator tasks', icon: Bot, tabTarget: 'agent' },
   { id: 'analytics', label: 'Analytics', description: 'Performance and audience insights', icon: BarChart3, tabTarget: 'trends' },
-  { id: 'tools', label: 'Advanced Tools', description: 'Specialized AI editing controls', icon: Wrench, tabTarget: 'intelligence' },
 ];
 
 function isItemActive(item: NavigationItem, activeTab: Tab) {
@@ -181,7 +181,7 @@ export default function LeftSidebar({
             </span>
             <span className="min-w-0 flex-1">
               <span className="block text-[13px] font-semibold">More</span>
-              <span className="mt-0.5 block truncate text-[10px] text-[var(--text-muted)]">Chat, analytics, and advanced tools</span>
+              <span className="mt-0.5 block truncate text-[10px] text-[var(--text-muted)]">Chat, agent, and analytics</span>
             </span>
             <ChevronDown size={15} className={cn('transition-transform', moreOpen && 'rotate-180')} />
           </button>
