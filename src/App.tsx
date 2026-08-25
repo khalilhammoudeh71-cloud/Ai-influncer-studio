@@ -253,7 +253,11 @@ function App() {
 
   // 🎨 Multi-Theme Engine State
   const [activeTheme, setActiveTheme] = useState<string>(() => {
-    return localStorage.getItem('ai_studio_theme') || 'gold';
+    const savedTheme = localStorage.getItem('ai_studio_theme');
+    // Imperial Violet was briefly used as a default during the premium UI
+    // refresh. Move those existing workspaces back to the studio's core
+    // charcoal-and-gold identity without affecting intentional theme choices.
+    return savedTheme === 'violet' ? 'gold' : (savedTheme || 'gold');
   });
   const [showThemeDropdown, setShowThemeDropdown] = useState(false);
   const themeDropdownRef = useRef<HTMLDivElement>(null);
@@ -275,13 +279,12 @@ function App() {
 
   const THEMES = [
     { id: 'graphite', name: 'Graphite Slate (Gray)', desc: 'Smooth Mid-Tone Slate Gray (Executive)', dot: 'bg-slate-400 ring-2 ring-slate-300' },
-    { id: 'light-luxe', name: 'Platinum Slate (Light)', desc: 'Crisp Alabaster & Indigo (Light)', dot: 'bg-indigo-500 ring-2 ring-indigo-300' },
+    { id: 'light-luxe', name: 'Platinum Gold (Light)', desc: 'Crisp Alabaster & Gold (Light)', dot: 'bg-amber-500 ring-2 ring-amber-300' },
     { id: 'light-pearl', name: 'Champagne Pearl (Light)', desc: 'Warm Ivory & Rose Gold (Light)', dot: 'bg-amber-500 ring-2 ring-amber-300' },
-    { id: 'violet', name: 'Imperial Violet', desc: 'Royal Purple & Indigo (Dark)', dot: 'bg-purple-400' },
     { id: 'gold', name: 'Midnight Gold', desc: 'Obsidian & Gold (Dark)', dot: 'bg-amber-400' },
     { id: 'emerald', name: 'Slate Emerald', desc: 'Slate & Mint Emerald (Dark)', dot: 'bg-emerald-400' },
     { id: 'rosegold', name: 'Rose Gold Velvet', desc: 'Rose Gold & Fashion Pink (Dark)', dot: 'bg-rose-400' },
-    { id: 'cyber', name: 'Electric Cyber', desc: 'Neon Cyan & Magenta (Dark)', dot: 'bg-cyan-400' },
+    { id: 'cyber', name: 'Electric Cyber', desc: 'Neon Cyan & Teal (Dark)', dot: 'bg-cyan-400' },
     { id: 'mint', name: 'Matrix Mint', desc: 'Dark Teal & Matrix Green (Dark)', dot: 'bg-teal-400' },
   ];
   

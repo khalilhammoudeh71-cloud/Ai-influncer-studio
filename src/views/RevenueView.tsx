@@ -329,7 +329,7 @@ export default function RevenueView({ persona }: RevenueViewProps) {
                         <linearGradient id="chart-stroke" x1="0%" y1="0%" x2="100%" y2="0%">
                           <stop offset="0%" stopColor="#00F5C2" />
                           <stop offset="50%" stopColor="#00D4FF" />
-                          <stop offset="100%" stopColor="#8b5cf6" />
+                          <stop offset="100%" stopColor="#D9B667" />
                         </linearGradient>
                         {/* Fill Area Gradient */}
                         <linearGradient id="chart-fill" x1="0%" y1="0%" x2="0%" y2="100%">

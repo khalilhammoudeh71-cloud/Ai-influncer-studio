@@ -486,7 +486,7 @@ export default function MotionControlStudio({ isOpen, onClose, persona }: Motion
       >
         {/* ── Header ── */}
         <div className="px-6 py-4 border-b border-white/8 flex items-center justify-between shrink-0"
-          style={{ background: 'linear-gradient(135deg, rgba(109,40,217,0.2) 0%, rgba(168,85,247,0.08) 100%)' }}
+          style={{ background: 'linear-gradient(135deg, rgba(185,150,85,0.2) 0%, rgba(231,196,119,0.08) 100%)' }}
         >
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-600 to-fuchsia-600 flex items-center justify-center text-white shadow-lg shadow-violet-500/40">

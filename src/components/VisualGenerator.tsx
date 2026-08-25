@@ -830,7 +830,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
                 onClick={() => { setGenMode('video'); setGlobalError(null); }}
                 className={`flex-1 flex items-center justify-center gap-2 py-1.5 rounded-lg text-xs font-black transition-all duration-300 uppercase tracking-wider select-none ${
                   genMode === 'video'
-                    ? 'bg-gradient-to-r from-[#6366F1]/25 to-[#8B5CF6]/25 text-[#C084FC] border border-[#6366F1]/40 shadow-sm'
+                    ? 'bg-gradient-to-r from-[#B99655]/25 to-[#D9B667]/25 text-[#F2D58D] border border-[#B99655]/40 shadow-sm'
                     : 'text-[#94A3B8] hover:text-white hover:bg-[#111827]'
                 }`}
               >
@@ -1053,7 +1053,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
                 /* Video Model Selection */
                 <div className="space-y-1.5 bg-[#0F172A]/40 border border-[#1E293B]/40 rounded-xl p-3 select-none">
                   <label className="text-[10px] font-black uppercase tracking-wider text-[#CBD5E1] flex items-center gap-1.5 leading-none">
-                    <Video size={12} className="text-[#C084FC]" /> Video AI Model
+                    <Video size={12} className="text-[#F2D58D]" /> Video AI Model
                   </label>
                   <div className="relative">
                     <select
@@ -1123,7 +1123,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
             {genMode === 'video' && isI2VModel && (
               <div className="space-y-1.5 bg-[#0F172A]/40 border border-[#1E293B]/40 rounded-xl p-3 select-none animate-in fade-in">
                 <label className="text-[10px] font-black uppercase tracking-wider text-[#CBD5E1] flex items-center gap-1.5 leading-none">
-                  <ImageIcon size={12} className="text-[#C084FC]" /> Source Image
+                  <ImageIcon size={12} className="text-[#F2D58D]" /> Source Image
                 </label>
                 {videoSourceImage ? (
                   <div className="flex items-center gap-2.5 bg-[#111827]/80 rounded-xl p-2 select-none">
@@ -1142,7 +1142,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
                 ) : (
                   <button
                     onClick={() => overrideRefInputRef.current?.click()}
-                    className="w-full flex items-center gap-2 px-3 py-1.5 bg-[#111827]/40 hover:bg-[#111827]/60 rounded-xl cursor-pointer transition-all border border-dashed border-[#334155]/60 text-[#94A3B8] hover:text-[#C084FC] select-none"
+                    className="w-full flex items-center gap-2 px-3 py-1.5 bg-[#111827]/40 hover:bg-[#111827]/60 rounded-xl cursor-pointer transition-all border border-dashed border-[#334155]/60 text-[#94A3B8] hover:text-[#F2D58D] select-none"
                   >
                     <Upload className="w-3.5 h-3.5" />
                     <span className="text-[10px] font-bold">Upload source image</span>
@@ -1344,7 +1344,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
                 <button
                   onClick={handleGenerate}
                   disabled={isGenerating || isProcessing || !selectedModel}
-                  className="flex-1 bg-gradient-to-r from-[#00F5C2] via-[#00D4FF] to-[#6366F1] text-[#0B0F17] font-black py-3 rounded-xl flex items-center justify-center gap-2 hover:shadow-[0_0_24px_rgba(0,245,194,0.4)] hover:scale-[1.01] transition-all duration-300 disabled:opacity-40 text-xs uppercase tracking-wider cursor-pointer select-none shadow-lg"
+                  className="flex-1 bg-gradient-to-r from-[#00F5C2] via-[#00D4FF] to-[#B99655] text-[#0B0F17] font-black py-3 rounded-xl flex items-center justify-center gap-2 hover:shadow-[0_0_24px_rgba(0,245,194,0.4)] hover:scale-[1.01] transition-all duration-300 disabled:opacity-40 text-xs uppercase tracking-wider cursor-pointer select-none shadow-lg"
                 >
                   {isGenerating ? (
                     <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</>
@@ -1359,7 +1359,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
               <button
                 onClick={handleGenerateVideo}
                 disabled={isGenerating || !selectedVideoModel || !prompt.trim()}
-                className="flex-1 bg-gradient-to-r from-[#C084FC] to-[#8B5CF6] text-white font-black py-3 rounded-xl flex items-center justify-center gap-2 hover:shadow-[0_0_20px_rgba(139,92,246,0.3)] hover:scale-[1.01] transition-all duration-300 disabled:opacity-40 text-xs uppercase tracking-wider cursor-pointer select-none shadow-lg"
+                className="flex-1 bg-gradient-to-r from-[#F2D58D] to-[#D9B667] text-white font-black py-3 rounded-xl flex items-center justify-center gap-2 hover:shadow-[0_0_20px_rgba(217,182,103,0.3)] hover:scale-[1.01] transition-all duration-300 disabled:opacity-40 text-xs uppercase tracking-wider cursor-pointer select-none shadow-lg"
               >
                 {isGenerating ? (
                   <><Loader2 className="w-4 h-4 animate-spin" /> Processing Video...</>
@@ -1395,7 +1395,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
               <span className="text-[9px] font-extrabold px-2 py-0.5 rounded bg-[#111827]/80 text-[#00D4FF] border border-[#334155]/60">
                 {selectedModelInfo?.name || 'Standard AI'}
               </span>
-              <span className="text-[9px] font-extrabold px-2 py-0.5 rounded bg-[#111827]/80 text-[#C084FC] border border-[#334155]/60">
+              <span className="text-[9px] font-extrabold px-2 py-0.5 rounded bg-[#111827]/80 text-[#F2D58D] border border-[#334155]/60">
                 {selectedAspectRatio}
               </span>
             </div>
@@ -1459,7 +1459,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
                 {/* Model B Column */}
                 <div className="relative rounded-xl bg-[#0F172A]/40 border border-[#1E293B]/60 flex flex-col overflow-hidden group">
                   <div className="p-2 border-b border-[#1E293B]/60 bg-black/30 flex justify-between items-center select-none">
-                    <span className="text-[9px] font-black uppercase text-[#C084FC] truncate max-w-[130px]">B: {models.find(m => m.id === modelB)?.name || 'AI Model'}</span>
+                    <span className="text-[9px] font-black uppercase text-[#F2D58D] truncate max-w-[130px]">B: {models.find(m => m.id === modelB)?.name || 'AI Model'}</span>
                     <span className="text-[8px] font-bold text-emerald-400 font-mono">
                       {(() => {
                         const m = models.find(m => m.id === modelB);
@@ -1471,7 +1471,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
                   <div className="flex-1 flex items-center justify-center p-2 relative overflow-hidden">
                     {isGenerating && !resultB && (
                       <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[#0B0F19]/60 backdrop-blur-sm z-10">
-                        <Loader2 className="w-5 h-5 animate-spin text-[#C084FC]" />
+                        <Loader2 className="w-5 h-5 animate-spin text-[#F2D58D]" />
                         <span className="text-[9px] text-gray-400">Generating B...</span>
                       </div>
                     )}
@@ -1489,7 +1489,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
                         disabled={isSavedB}
                         className={cn(
                           "flex-1 py-1 px-2 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all border text-center",
-                          isSavedB ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" : "bg-[#C084FC]/25 hover:bg-[#C084FC]/40 text-[#C084FC] border-[#C084FC]/40"
+                          isSavedB ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" : "bg-[#F2D58D]/25 hover:bg-[#F2D58D]/40 text-[#F2D58D] border-[#F2D58D]/40"
                         )}
                       >
                         {isSavedB ? 'Saved' : 'Save B'}
@@ -1498,7 +1498,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
                         onClick={() => downloadBattleImage(resultB)}
                         className="px-2 py-1 bg-[#111827] border border-[#334155]/60 hover:bg-[#0F172A] rounded-lg text-white transition-all flex items-center justify-center"
                       >
-                        <Download className="w-3.5 h-3.5 text-[#C084FC]" />
+                        <Download className="w-3.5 h-3.5 text-[#F2D58D]" />
                       </button>
                     </div>
                   )}

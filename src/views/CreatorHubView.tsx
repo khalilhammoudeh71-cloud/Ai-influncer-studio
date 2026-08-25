@@ -44,7 +44,7 @@ const TOOLS_CONFIG = [
     desc: 'Generate high-virality short-form hooks categorized by psychological triggers.',
     icon: Zap,
     color: 'from-violet-500 to-indigo-600',
-    glow: 'rgba(139, 92, 246, 0.15)',
+    glow: 'rgba(217,182,103, 0.15)',
   },
   {
     id: 'ab-tester',
@@ -76,7 +76,7 @@ const TOOLS_CONFIG = [
     desc: 'Generate humanized demographic profiles of your ideal audience segments.',
     icon: Target,
     color: 'from-fuchsia-500 to-purple-600',
-    glow: 'rgba(217, 70, 239, 0.15)',
+    glow: 'rgba(217,182,103, 0.15)',
   },
   {
     id: 'repurpose-studio',
@@ -100,7 +100,7 @@ const TOOLS_CONFIG = [
     desc: 'Scan comment sections, extract sentiment ratios, and craft customized context replies.',
     icon: MessageSquare,
     color: 'from-indigo-500 to-purple-600',
-    glow: 'rgba(99, 102, 241, 0.15)',
+    glow: 'rgba(185,150,85, 0.15)',
   }
 ];
 
@@ -1314,7 +1314,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                           {/* Collab Script / Dialogue */}
                           {collabResult.collabDialogue && collabResult.collabDialogue.length > 0 && (
                             <div className="premium-card p-5">
-                              <span className="text-[10px] font-black text-[#8B5CF6] uppercase tracking-wider block mb-3">Collaboration Script Dialogue</span>
+                              <span className="text-[10px] font-black text-[#D9B667] uppercase tracking-wider block mb-3">Collaboration Script Dialogue</span>
                               <div className="space-y-4 bg-white/5 p-4 rounded-xl border border-white/5 max-h-[300px] overflow-y-auto custom-scrollbar">
                                 {collabResult.collabDialogue.map((diag: any, idx: number) => {
                                   const isPersonaA = diag.speaker === activePersona.name;

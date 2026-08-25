@@ -526,12 +526,12 @@ export default function TrendView({ persona: activePersona, nav }: TrendViewProp
                   
                   {/* SVG Map representation */}
                   <svg viewBox="0 0 100 50" className="w-full h-24 overflow-visible">
-                    <path d="M 10 40 Q 25 10 40 30 T 70 20 T 90 10" fill="none" stroke="rgba(139, 92, 246, 0.4)" strokeWidth="2" strokeDasharray="3,3" />
+                    <path d="M 10 40 Q 25 10 40 30 T 70 20 T 90 10" fill="none" stroke="rgba(217,182,103, 0.4)" strokeWidth="2" strokeDasharray="3,3" />
                     <path d="M 10 40 Q 20 20 35 15 T 60 30 T 90 20" fill="none" stroke="rgba(34, 211, 238, 0.7)" strokeWidth="2" />
                     
                     {/* Dots */}
                     <circle cx="90" cy="20" r="3" fill="#00D4FF" />
-                    <circle cx="90" cy="10" r="3" fill="#a78bfa" />
+                    <circle cx="90" cy="10" r="3" fill="#EECB78" />
                     
                     {/* Gridlines */}
                     <line x1="10" y1="40" x2="90" y2="40" stroke="rgba(255,255,255,0.05)" />

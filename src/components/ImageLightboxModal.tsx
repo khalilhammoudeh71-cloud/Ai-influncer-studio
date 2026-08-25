@@ -363,7 +363,7 @@ export default function ImageLightboxModal({
               {persona.referenceImage || persona.avatar ? (
                 <img src={persona.referenceImage || persona.avatar} alt="" className="w-full h-full object-cover" />
               ) : (
-                <div className="w-full h-full bg-violet-600 flex items-center justify-center text-xs font-bold text-white">
+                <div className="w-full h-full bg-[var(--accent-primary)] flex items-center justify-center text-xs font-bold text-[#161108]">
                   {persona.name.charAt(0)}
                 </div>
               )}
@@ -534,10 +534,10 @@ export default function ImageLightboxModal({
                 <button
                   onClick={() => { setActiveTab('edit'); setGeneratedVideo(null); setActionError(''); }}
                   className={`flex flex-shrink-0 items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold whitespace-nowrap transition-all cursor-pointer ${
-                    activeTab === 'edit' ? 'bg-violet-500/20 text-violet-300 border border-violet-500/40 shadow-sm' : 'text-zinc-400 hover:text-white'
+                    activeTab === 'edit' ? 'bg-[var(--accent-muted)] text-[var(--accent-secondary)] border border-[var(--border-strong)] shadow-sm' : 'text-zinc-400 hover:text-white'
                   }`}
                 >
-                  <Wand2 size={13} className="text-violet-400" />
+                  <Wand2 size={13} className="text-[var(--accent-primary)]" />
                   <span>AI Edit / Modify</span>
                 </button>
                 {onAnimateImage && (
@@ -656,7 +656,7 @@ export default function ImageLightboxModal({
                 >
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs font-bold text-zinc-300 flex items-center gap-1">
-                      <Wand2 size={13} className="text-violet-400" /> Edit Model:
+                      <Wand2 size={13} className="text-[var(--accent-primary)]" /> Edit Model:
                     </span>
                     <select
                       value={selectedEditModel}
@@ -671,7 +671,7 @@ export default function ImageLightboxModal({
                     </select>
                   </div>
 
-                  <div className="flex items-center gap-2 bg-[#1c1d22] border border-white/15 focus-within:border-violet-500/50 rounded-xl px-3 py-1.5 shadow-inner">
+                  <div className="flex items-center gap-2 bg-[#1c1d22] border border-white/15 focus-within:border-[var(--border-strong)] rounded-xl px-3 py-1.5 shadow-inner">
                     <input
                       type="text"
                       value={editPromptText}
@@ -685,7 +685,7 @@ export default function ImageLightboxModal({
                       onClick={handleEnhanceEditPrompt}
                       disabled={isEnhancingPrompt || !editPromptText.trim()}
                       title="AI Enhance Prompt"
-                      className="p-1.5 rounded-lg bg-white/[0.06] hover:bg-violet-600/30 text-violet-300 hover:text-violet-200 transition-colors disabled:opacity-40 cursor-pointer flex-shrink-0"
+                      className="p-1.5 rounded-lg bg-white/[0.06] hover:bg-[var(--accent-muted)] text-[var(--accent-primary)] hover:text-[var(--accent-secondary)] transition-colors disabled:opacity-40 cursor-pointer flex-shrink-0"
                     >
                       {isEnhancingPrompt ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
                     </button>
@@ -693,7 +693,7 @@ export default function ImageLightboxModal({
                     <button
                       onClick={handleExecuteEdit}
                       disabled={isProcessing || !editPromptText.trim()}
-                      className="flex items-center gap-1 px-3.5 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-bold text-xs transition-all disabled:opacity-40 cursor-pointer flex-shrink-0 shadow-md"
+                      className="flex items-center gap-1 px-3.5 py-1.5 rounded-lg bg-[var(--accent-primary)] hover:bg-[var(--accent-secondary)] text-[#161108] font-bold text-xs transition-all disabled:opacity-40 cursor-pointer flex-shrink-0 shadow-md"
                     >
                       {isProcessing ? <Loader2 size={12} className="animate-spin" /> : <Wand2 size={12} />}
                       <span>Apply Edit</span>

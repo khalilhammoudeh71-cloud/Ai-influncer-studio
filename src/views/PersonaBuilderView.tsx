@@ -293,7 +293,7 @@ export default function PersonaBuilderView({ persona: initialPersona, onChange, 
 
           {/* Identity Details Form */}
           <div className="bg-[#0F172A]/35 border border-[#334155]/40 backdrop-blur-xl rounded-2xl p-4 shadow-xl relative overflow-hidden group">
-            <div className="absolute inset-0 bg-gradient-to-br from-[#6366F1]/2 via-transparent to-transparent opacity-25" />
+            <div className="absolute inset-0 bg-gradient-to-br from-[#B99655]/2 via-transparent to-transparent opacity-25" />
             <h3 className="flex items-center gap-2 text-[13px] font-black text-white mb-3.5 relative z-10">
               <UserIcon className="text-[#00D4FF]" size={16} /> Identity Details
             </h3>
@@ -419,7 +419,7 @@ export default function PersonaBuilderView({ persona: initialPersona, onChange, 
           {/* Advanced Brand Settings (Pro Mode Only) */}
           {isPro && (
             <div className="bg-[#0F172A]/35 border border-[#334155]/40 backdrop-blur-xl rounded-2xl p-4 shadow-xl relative overflow-hidden group animate-in fade-in duration-300">
-              <div className="absolute inset-0 bg-gradient-to-br from-[#8B5CF6]/2 via-transparent to-transparent opacity-25" />
+              <div className="absolute inset-0 bg-gradient-to-br from-[#D9B667]/2 via-transparent to-transparent opacity-25" />
               <h3 className="flex items-center gap-2 text-[13px] font-black text-white mb-3.5 relative z-10">
                 <Sliders className="text-purple-400" size={16} /> Advanced Brand Settings
               </h3>
@@ -688,7 +688,7 @@ export default function PersonaBuilderView({ persona: initialPersona, onChange, 
 
           {/* What you'll unlock */}
           <div className="bg-[#0F172A]/50 border border-[#334155]/50 backdrop-blur-xl rounded-2xl p-3.5 shadow-xl relative overflow-hidden group">
-            <div className="absolute inset-0 bg-gradient-to-br from-[#6366F1]/5 via-transparent to-transparent opacity-30" />
+            <div className="absolute inset-0 bg-gradient-to-br from-[#B99655]/5 via-transparent to-transparent opacity-30" />
             <h3 className="flex items-center gap-1.5 text-[14px] font-bold text-white mb-3 uppercase tracking-wider relative z-10">
               <Sparkles className="text-[#00D4FF]" size={15} /> What you'll unlock
             </h3>
@@ -729,7 +729,7 @@ export default function PersonaBuilderView({ persona: initialPersona, onChange, 
                 <button onClick={() => onSave(persona)} className="flex items-center gap-1.5 px-4 py-2 rounded-full border border-[#334155]/60 text-white hover:bg-[#1F2937]/80 hover:border-[#94A3B8]/40 transition-all duration-300 text-xs font-black uppercase tracking-wider shadow bg-[#0B0F17]/40 cursor-pointer">
                   <Save size={13} /> Save Draft
                 </button>
-                <button onClick={() => onSave(persona)} className="flex items-center gap-1.5 px-5 py-2 rounded-full bg-gradient-to-r from-[#00F5C2] via-[#00D4FF] to-[#6366F1] text-[#0B0F17] font-black uppercase tracking-wider text-xs shadow-[0_0_16px_rgba(0,212,255,0.3)] hover:shadow-[0_0_24px_rgba(0,245,194,0.5)] hover:scale-[1.015] transition-all duration-300 cursor-pointer">
+                <button onClick={() => onSave(persona)} className="flex items-center gap-1.5 px-5 py-2 rounded-full bg-gradient-to-r from-[#00F5C2] via-[#00D4FF] to-[#B99655] text-[#0B0F17] font-black uppercase tracking-wider text-xs shadow-[0_0_16px_rgba(0,212,255,0.3)] hover:shadow-[0_0_24px_rgba(0,245,194,0.5)] hover:scale-[1.015] transition-all duration-300 cursor-pointer">
                   Continue to Identity Sheet <ArrowRightIcon className="w-3.5 h-3.5 ml-0.5" />
                 </button>
               </div>

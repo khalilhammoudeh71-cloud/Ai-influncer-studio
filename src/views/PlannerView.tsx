@@ -453,7 +453,7 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
 
       {/* ── CONNECTED CHANNELS BAR ── */}
       <section className="premium-card p-4 rounded-2xl mb-6 relative overflow-hidden">
-        <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse at top right, rgba(139,92,246,0.06) 0%, transparent 60%)' }} />
+        <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse at top right, rgba(217,182,103,0.06) 0%, transparent 60%)' }} />
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-10">
           <div>
             <h3 className="text-[10px] font-black text-violet-400 uppercase tracking-widest leading-none mb-1 flex items-center gap-1.5">
@@ -692,7 +692,7 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
                             </>
                           ) : sched?.status === 'Scheduled' ? (
                             <>
-                              <div className="w-2 h-2 rounded-full bg-violet-500 shadow-[0_0_8px_rgba(139,92,246,0.5)] animate-pulse" />
+                              <div className="w-2 h-2 rounded-full bg-violet-500 shadow-[0_0_8px_rgba(217,182,103,0.5)] animate-pulse" />
                               <span className="text-[9px] font-black uppercase tracking-widest text-violet-400">Scheduled ({sched.time})</span>
                             </>
                           ) : (
