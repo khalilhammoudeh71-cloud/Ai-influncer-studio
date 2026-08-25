@@ -10,6 +10,7 @@
   --bg-card: #1E1E22;
   --bg-modal: #242428;
   --bg-input: #18181B;
+  --bg-overlay: #26262B;
 
   --gold-primary: #E7C477;
   --gold-bright: #F2D58D;
@@ -47,6 +48,8 @@
   --accent-primary: #E7C477;
   --accent-secondary: #F2D58D;
   --accent-tertiary: #B99655;
+  --accent-subtle: color-mix(in srgb, var(--accent-primary) 9%, transparent);
+  --accent-muted: color-mix(in srgb, var(--accent-primary) 14%, transparent);
 
   --gradient-primary: linear-gradient(135deg, #F2D58D 0%, #D9B667 100%);
   --gradient-accent: linear-gradient(135deg, #E7C477 0%, #B99655 100%);
@@ -56,6 +59,10 @@
   --shadow-glow: 0 0 20px rgba(231, 196, 119, 0.15);
   --shadow-card: 0 14px 40px rgba(0, 0, 0, 0.6);
   --shadow-elevated: 0 20px 60px rgba(0, 0, 0, 0.7);
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  color-scheme: dark;
 }
 
 /* Keep every public/authentication screen aligned with the studio's
@@ -440,6 +447,33 @@ html, body, #root {
   -moz-osx-font-smoothing: grayscale;
 }
 
+.app-shell {
+  background:
+    radial-gradient(circle at 62% -20%, color-mix(in srgb, var(--accent-primary) 8%, transparent), transparent 38%),
+    var(--bg-base);
+}
+
+.app-sidebar {
+  background: color-mix(in srgb, var(--bg-sidebar) 96%, transparent);
+  box-shadow: 20px 0 50px rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+}
+
+.app-topbar {
+  background: color-mix(in srgb, var(--bg-surface) 91%, transparent);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(22px) saturate(140%);
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+}
+
+.app-mobile-nav {
+  background: color-mix(in srgb, var(--bg-surface) 94%, transparent);
+  box-shadow: 0 -14px 36px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+}
+
 /* Luxury SaaS Design Tokens & Component Classes */
 .btn-gold-primary {
   background: linear-gradient(135deg, #F2D58D 0%, #D9B667 100%);
@@ -500,8 +534,8 @@ html, body, #root {
 }
 
 ::selection {
-  background-color: rgba(0, 245, 194, 0.3);
-  color: white;
+  background-color: color-mix(in srgb, var(--accent-primary) 35%, transparent);
+  color: var(--text-primary);
 }
 
 ::-webkit-scrollbar {
@@ -514,12 +548,12 @@ html, body, #root {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(56, 189, 248, 0.2);
+  background: color-mix(in srgb, var(--accent-primary) 18%, transparent);
   border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 245, 194, 0.35);
+  background: color-mix(in srgb, var(--accent-primary) 32%, transparent);
 }
 
 input, textarea, select {
@@ -557,20 +591,20 @@ input, textarea, select {
 }
 
 .glass {
-  background: rgba(15, 23, 42, 0.65);
+  background: color-mix(in srgb, var(--bg-surface) 84%, transparent);
   backdrop-filter: blur(24px) saturate(180%);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
   border: 1px solid var(--border-subtle);
 }
 
 .glass-strong {
-  background: rgba(11, 15, 23, 0.92);
+  background: color-mix(in srgb, var(--bg-surface) 94%, transparent);
   backdrop-filter: blur(40px) saturate(180%);
   -webkit-backdrop-filter: blur(40px) saturate(180%);
 }
 
 .glass-card {
-  background: rgba(15, 23, 42, 0.72);
+  background: color-mix(in srgb, var(--bg-card) 88%, transparent);
   backdrop-filter: blur(24px) saturate(180%);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
   border: 1px solid var(--border-default);
@@ -579,10 +613,10 @@ input, textarea, select {
 }
 
 .glass-panel {
-  background: linear-gradient(180deg, rgba(15, 23, 42, 0.65) 0%, rgba(11, 15, 23, 0.85) 100%);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-elevated) 82%, transparent) 0%, var(--bg-surface) 100%);
   backdrop-filter: blur(30px) saturate(200%);
   -webkit-backdrop-filter: blur(30px) saturate(200%);
-  border: 1px solid rgba(56, 189, 248, 0.15);
+  border: 1px solid var(--border-default);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), var(--shadow-elevated);
   border-radius: 24px;
 }
@@ -613,23 +647,23 @@ input, textarea, select {
 }
 
 .premium-card {
-  background: linear-gradient(145deg, rgba(15, 23, 42, 0.72) 0%, rgba(11, 15, 23, 0.82) 100%);
+  background: linear-gradient(145deg, var(--bg-card) 0%, var(--bg-surface) 100%);
   border: 1px solid var(--border-default);
   box-shadow: var(--shadow-card);
-  border-radius: 24px;
+  border-radius: var(--radius-lg);
   transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .premium-card:hover {
-  border-color: rgba(0, 245, 194, 0.45);
-  box-shadow: 0 0 32px rgba(0, 245, 194, 0.16);
+  border-color: var(--border-strong);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.42), 0 0 26px color-mix(in srgb, var(--accent-primary) 10%, transparent);
   transform: translateY(-2px);
 }
 
 .premium-card-selected {
-  background: linear-gradient(145deg, rgba(0, 245, 194, 0.08) 0%, rgba(15, 23, 42, 0.75) 100%);
-  border: 1px solid rgba(0, 245, 194, 0.5);
-  box-shadow: 0 0 32px rgba(0, 245, 194, 0.2);
+  background: linear-gradient(145deg, var(--accent-subtle) 0%, var(--bg-card) 100%);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 0 32px color-mix(in srgb, var(--accent-primary) 14%, transparent);
 }
 
 .glass-pink {
@@ -659,7 +693,7 @@ input, textarea, select {
 .premium-header {
   position: relative;
   overflow: hidden;
-  background: rgba(15, 23, 42, 0.5);
+  background: color-mix(in srgb, var(--bg-surface) 84%, transparent);
   backdrop-filter: blur(24px);
 }
 
@@ -671,7 +705,7 @@ input, textarea, select {
   transform: translateX(-50%);
   width: 120%;
   height: 200%;
-  background: radial-gradient(ellipse at center top, rgba(0, 245, 194, 0.08) 0%, transparent 60%);
+  background: radial-gradient(ellipse at center top, var(--accent-subtle) 0%, transparent 60%);
   pointer-events: none;
 }
 
@@ -680,26 +714,26 @@ input, textarea, select {
   border: 1px solid var(--border-default);
   border-radius: 16px;
   transition: all 0.2s ease;
-  color: white;
+  color: var(--text-primary);
 }
 
 .premium-input:focus {
-  border-color: #00D4FF;
-  box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.16);
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-primary) 16%, transparent);
   outline: none;
 }
 
 .premium-button {
-  background: linear-gradient(135deg, #00F5C2 0%, #00D4FF 45%, #6366F1 100%);
-  color: #0B0F17;
+  background: var(--gradient-primary);
+  color: #161108;
   font-weight: 700;
   border-radius: 16px;
-  box-shadow: 0 0 24px rgba(0, 245, 194, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  box-shadow: var(--shadow-glow), inset 0 1px 0 rgba(255, 255, 255, 0.18);
   transition: all 0.2s ease;
 }
 
 .premium-button:hover {
-  box-shadow: 0 0 32px rgba(0, 212, 255, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  box-shadow: 0 0 32px color-mix(in srgb, var(--accent-primary) 28%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.2);
   transform: translateY(-2px);
 }
 
@@ -708,9 +742,9 @@ input, textarea, select {
 }
 
 .tag-pill {
-  background: rgba(0, 245, 194, 0.1);
-  border: 1px solid rgba(0, 245, 194, 0.2);
-  color: #00F5C2;
+  background: var(--accent-subtle);
+  border: 1px solid var(--border-strong);
+  color: var(--accent-primary);
   font-size: 11px;
   font-weight: 600;
   padding: 4px 10px;
@@ -816,12 +850,12 @@ input, textarea, select {
 }
 
 .ring-glow {
-  box-shadow: 0 0 0 2px rgba(0, 245, 194, 0.15), 0 0 20px -4px rgba(0, 245, 194, 0.3);
+  box-shadow: 0 0 0 2px var(--accent-subtle), 0 0 20px -4px color-mix(in srgb, var(--accent-primary) 30%, transparent);
 }
 
 .bubble-user {
-  background: linear-gradient(135deg, #00F5C2 0%, #00D4FF 100%);
-  color: #0B0F17;
+  background: var(--gradient-primary);
+  color: #161108;
   border-radius: 18px 18px 4px 18px;
   font-weight: 500;
 }
@@ -833,10 +867,10 @@ input, textarea, select {
 }
 
 .action-bar {
-  background: rgba(11, 15, 23, 0.7);
+  background: color-mix(in srgb, var(--bg-surface) 88%, transparent);
   backdrop-filter: blur(32px) saturate(160%);
   -webkit-backdrop-filter: blur(32px) saturate(160%);
-  border-top: 1px solid rgba(56, 189, 248, 0.12);
+  border-top: 1px solid var(--border-subtle);
 }
 
 @keyframes hero-float {
@@ -856,13 +890,13 @@ input, textarea, select {
 
 .focus-ring:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px var(--bg-base), 0 0 0 4px rgba(0, 245, 194, 0.5);
+  box-shadow: 0 0 0 2px var(--bg-base), 0 0 0 4px color-mix(in srgb, var(--accent-primary) 55%, transparent);
 }
 
 .chip-gradient {
-  background: linear-gradient(135deg, rgba(0, 245, 194, 0.15) 0%, rgba(0, 212, 255, 0.1) 100%);
-  border: 1px solid rgba(0, 245, 194, 0.25);
-  color: #00F5C2;
+  background: linear-gradient(135deg, var(--accent-muted) 0%, var(--accent-subtle) 100%);
+  border: 1px solid var(--border-strong);
+  color: var(--accent-primary);
   font-size: 11px;
   font-weight: 700;
   padding: 3px 12px;
@@ -877,8 +911,8 @@ input, textarea, select {
 .avatar-ring {
   box-shadow:
     0 0 0 2px var(--bg-base),
-    0 0 0 4px rgba(0, 245, 194, 0.35),
-    0 4px 16px -4px rgba(0, 245, 194, 0.3);
+    0 0 0 4px color-mix(in srgb, var(--accent-primary) 35%, transparent),
+    0 4px 16px -4px color-mix(in srgb, var(--accent-primary) 30%, transparent);
 }
 
 .tabular-nums {
@@ -903,15 +937,15 @@ input, textarea, select {
 .typing-dot:nth-child(3) { animation-delay: 0.4s; }
 
 .stat-chip {
-  background: rgba(0, 245, 194, 0.04);
-  border: 1px solid rgba(0, 245, 194, 0.12);
+  background: var(--accent-subtle);
+  border: 1px solid var(--border-default);
   border-radius: 12px;
   padding: 8px 14px;
 }
 
 .divider-gradient {
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(56, 189, 248, 0.2), transparent);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent-primary) 22%, transparent), transparent);
 }
 
 .card-glow-hover:hover::after {
@@ -919,7 +953,7 @@ input, textarea, select {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: radial-gradient(ellipse at 50% 0%, rgba(0, 245, 194, 0.06) 0%, transparent 70%);
+  background: radial-gradient(ellipse at 50% 0%, var(--accent-subtle) 0%, transparent 70%);
   pointer-events: none;
 }
 
@@ -932,8 +966,8 @@ input, textarea, select {
 
 .neon-line {
   height: 2px;
-  background: linear-gradient(90deg, #00F5C2, #00D4FF);
-  box-shadow: 0 0 8px rgba(0, 245, 194, 0.6), 0 0 16px rgba(0, 212, 255, 0.3);
+  background: var(--gradient-primary);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent-primary) 50%, transparent), 0 0 16px color-mix(in srgb, var(--accent-secondary) 24%, transparent);
   border-radius: 999px;
 }
 
@@ -1050,7 +1084,7 @@ input, textarea, select {
 }
 
 .gradient-text {
-  background: linear-gradient(135deg, #2dd4bf 0%, #0ea5e9 100%);
+  background: var(--gradient-primary);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -1083,8 +1117,8 @@ input, textarea, select {
 /* ── #17 Input focus glow — unified ── */
 input:focus, textarea:focus, select:focus {
   outline: none;
-  border-color: rgba(0, 212, 255, 0.55) !important;
-  box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.14), 0 0 14px -2px rgba(0, 212, 255, 0.22) !important;
+  border-color: color-mix(in srgb, var(--accent-primary) 60%, transparent) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-primary) 14%, transparent), 0 0 14px -2px color-mix(in srgb, var(--accent-primary) 20%, transparent) !important;
   transition: all 0.2s ease;
 }
 

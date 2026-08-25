@@ -16,6 +16,10 @@ import {
   isValidPublicVoiceReference,
   selectElevenLabsPersonaVoice,
 } from './voiceRouting';
+import {
+  normalizePersonaMediaReferences,
+  PersonaMediaPersistenceError,
+} from './personaMediaPersistence';
 
 const require = createRequire(import.meta.url);
 let ffmpegPath: string | null = null;
@@ -331,7 +335,7 @@ router.get('/personas', async (req: AuthenticatedRequest, res: Response) => {
 
 router.post('/personas', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const body = req.body;
+    const body = normalizePersonaMediaReferences(req.body || {}, req.user.id);
     if (!body?.id || typeof body.id !== 'string') {
       return res.status(400).json({ error: 'Persona id is required' });
     }
@@ -401,14 +405,14 @@ router.post('/personas', async (req: AuthenticatedRequest, res: Response) => {
     return res.json(personaToClient(row));
   } catch (err) {
     console.error('[API] POST /personas error:', err);
-    res.status(500).json({ error: err instanceof Error ? err.message : 'Unknown error' });
+    res.status(err instanceof PersonaMediaPersistenceError ? err.statusCode : 500).json({ error: err instanceof Error ? err.message : 'Unknown error' });
   }
 });
 
 router.put('/personas/:clientId', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const clientId = req.params.clientId as string;
-    const body = req.body;
+    const body = normalizePersonaMediaReferences(req.body || {}, req.user.id);
 
     if (!db) return res.status(503).json({ error: 'Database persistence is unavailable' });
     const [row] = await db.update(personas).set({
@@ -455,7 +459,7 @@ router.put('/personas/:clientId', async (req: AuthenticatedRequest, res: Respons
     return res.json(personaToClient(row, imgs));
   } catch (err) {
     console.error('[API] PUT /personas error:', err);
-    res.status(500).json({ error: err instanceof Error ? err.message : 'Unknown error' });
+    res.status(err instanceof PersonaMediaPersistenceError ? err.statusCode : 500).json({ error: err instanceof Error ? err.message : 'Unknown error' });
   }
 });
 
@@ -649,7 +653,8 @@ router.post('/migrate', async (req: AuthenticatedRequest, res: Response) => {
     const { personas: personaList, revenueEntries: revenueMap, plannedPosts: planMap } = req.body;
 
     if (personaList && Array.isArray(personaList)) {
-      for (const p of personaList) {
+      for (const rawPersona of personaList) {
+        const p = normalizePersonaMediaReferences(rawPersona || {}, req.user.id);
         await db.insert(personas).values({
           clientId: p.id,
           name: p.name || 'Unnamed',
@@ -659,6 +664,8 @@ router.post('/migrate', async (req: AuthenticatedRequest, res: Response) => {
           status: p.status || 'Draft',
           avatar: p.avatar || '',
           referenceImage: p.referenceImage || null,
+          additionalReferenceImages: JSON.stringify(p.additionalReferenceImages || []),
+          alternateReferenceImage: p.alternateReferenceImage || null,
           personalityTraits: JSON.stringify(p.personalityTraits || []),
           visualStyle: p.visualStyle || '',
           audienceType: p.audienceType || '',
@@ -682,6 +689,7 @@ router.post('/migrate', async (req: AuthenticatedRequest, res: Response) => {
             avatar: p.avatar || '',
             referenceImage: p.referenceImage || null,
             additionalReferenceImages: JSON.stringify(p.additionalReferenceImages || []),
+            alternateReferenceImage: p.alternateReferenceImage || null,
             personalityTraits: JSON.stringify(p.personalityTraits || []),
             visualStyle: p.visualStyle || '',
             audienceType: p.audienceType || '',
@@ -789,7 +797,7 @@ router.post('/migrate', async (req: AuthenticatedRequest, res: Response) => {
     res.json({ success: true });
   } catch (err) {
     console.error('[API] POST /migrate error:', err);
-    res.status(500).json({ error: err instanceof Error ? err.message : 'Unknown error' });
+    res.status(err instanceof PersonaMediaPersistenceError ? err.statusCode : 500).json({ error: err instanceof Error ? err.message : 'Unknown error' });
   }
 });
 

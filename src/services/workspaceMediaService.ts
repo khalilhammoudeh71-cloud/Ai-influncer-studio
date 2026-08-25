@@ -37,6 +37,14 @@ function storagePathFromReference(value: string): string | null {
     : null;
 }
 
+export function isWorkspaceMediaReference(value?: string | null): boolean {
+  return typeof value === 'string' && value.startsWith(STORAGE_REFERENCE_PREFIX);
+}
+
+export function isTemporaryBrowserMedia(value?: string | null): boolean {
+  return typeof value === 'string' && value.startsWith('blob:');
+}
+
 function storagePathFromSignedUrl(value: string): string | null {
   try {
     const url = new URL(value);
@@ -115,6 +123,17 @@ async function resolveMediaString(value: string): Promise<string> {
   return data.signedUrl;
 }
 
+async function resolveMediaStringSafely(value: string): Promise<string> {
+  try {
+    return await resolveMediaString(value);
+  } catch (error) {
+    // Keep one missing or inaccessible object from preventing every other image
+    // in the same persona/workspace payload from receiving a fresh signed URL.
+    console.warn('[Workspace Media] One saved media item could not be opened:', error);
+    return value;
+  }
+}
+
 async function transformMediaDeep(value: unknown, transform: (value: string) => Promise<string>): Promise<unknown> {
   if (typeof value === 'string') return transform(value);
   if (Array.isArray(value)) return Promise.all(value.map(item => transformMediaDeep(item, transform)));
@@ -140,7 +159,7 @@ export function prepareWorkspaceValueForStorage(value: string): Promise<string> 
 }
 
 export function resolveWorkspaceValueFromStorage(value: string): Promise<string> {
-  return transformSerializedValue(value, resolveMediaString);
+  return transformSerializedValue(value, resolveMediaStringSafely);
 }
 
 export async function preparePersonaMediaForStorage<T>(persona: T): Promise<T> {
@@ -148,7 +167,7 @@ export async function preparePersonaMediaForStorage<T>(persona: T): Promise<T> {
 }
 
 export async function resolvePersonaMediaFromStorage<T>(persona: T): Promise<T> {
-  return await transformMediaDeep(persona, resolveMediaString) as T;
+  return await transformMediaDeep(persona, resolveMediaStringSafely) as T;
 }
 
 export async function persistMediaStringsForPlayback(values: string[]): Promise<string[]> {

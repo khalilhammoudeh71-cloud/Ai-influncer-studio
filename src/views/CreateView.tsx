@@ -2824,7 +2824,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                         {Object.entries(groupedVideoModels.t2v).map(([provider, list]) =>
                           list.map(m => (
                             <option key={m.id} value={m.id}>
-                              {m.name} [T2V] (${(m.price || 0).toFixed(3)}) {m.nsfw ? '🌶️' : ''}
+                              {m.name} [T2V] ({billingInfo?.isCreator ? `$${(m.price || 0).toFixed(3)}` : `${m.price || 0} credits`}) {m.nsfw ? '🌶️' : ''}
                             </option>
                           ))
                         )}
@@ -2833,7 +2833,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                         {Object.entries(groupedVideoModels.i2v).map(([provider, list]) =>
                           list.map(m => (
                             <option key={m.id} value={m.id}>
-                              {m.name} [I2V] (${(m.price || 0).toFixed(3)}) {m.nsfw ? '🌶️' : ''}
+                              {m.name} [I2V] ({billingInfo?.isCreator ? `$${(m.price || 0).toFixed(3)}` : `${m.price || 0} credits`}) {m.nsfw ? '🌶️' : ''}
                             </option>
                           ))
                         )}
@@ -2842,12 +2842,12 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                   )}
                   {videoSubMode === 'edit' && (
                     <optgroup label="Video-to-Video">
-                      <option value="wavespeed-v2v:runway-gen3-v2v">Runway Gen-3 V2V ($0.080) 🌶️</option>
-                      <option value="wavespeed-v2v:kling-v2v">Kling v2v Editing ($0.060)</option>
+                      <option value="wavespeed-v2v:runway-gen3-v2v">Runway Gen-3 V2V ({billingInfo?.isCreator ? '$0.080' : '5 credits'}) 🌶️</option>
+                      <option value="wavespeed-v2v:kling-v2v">Kling v2v Editing ({billingInfo?.isCreator ? '$0.060' : '5 credits'})</option>
                       {Object.entries(groupedVideoModels.v2v).map(([provider, list]) =>
                         list.map(m => (
                           <option key={m.id} value={m.id}>
-                            {m.name} [V2V] (${(m.price || 0).toFixed(3)}) {m.nsfw ? '🌶️' : ''}
+                            {m.name} [V2V] ({billingInfo?.isCreator ? `$${(m.price || 0).toFixed(3)}` : `${m.price || 0} credits`}) {m.nsfw ? '🌶️' : ''}
                           </option>
                         ))
                       )}
@@ -2858,7 +2858,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                       {Object.entries(groupedVideoModels.i2v).map(([provider, list]) =>
                         list.map(m => (
                           <option key={m.id} value={m.id}>
-                            {m.name} [Extend] (${(m.price || 0).toFixed(3)}) {m.nsfw ? '🌶️' : ''}
+                            {m.name} [Extend] ({billingInfo?.isCreator ? `$${(m.price || 0).toFixed(3)}` : `${m.price || 0} credits`}) {m.nsfw ? '🌶️' : ''}
                           </option>
                         ))
                       )}
@@ -4221,7 +4221,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                           </div>
                         </div>
                         <span className="text-[10px] font-bold text-[#F2D58D] bg-[#E7C477]/10 px-2 py-0.5 rounded-lg border border-[#E7C477]/20 shrink-0">
-                          {m.price > 0 ? `$${m.price.toFixed(3)}` : 'Free'}
+                          {m.price > 0 ? (billingInfo?.isCreator ? `$${m.price.toFixed(3)}` : `${m.price} credits`) : 'Free'}
                         </span>
                       </div>
                       <p className="text-[10px] text-slate-400 line-clamp-2 leading-relaxed">{m.description || 'High-precision photorealistic AI image generation model.'}</p>

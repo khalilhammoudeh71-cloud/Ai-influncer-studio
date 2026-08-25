@@ -151,6 +151,15 @@ export async function fetchVideoModels(): Promise<ModelInfo[]> {
   return data.videoModels || [];
 }
 
+export async function fetchAngleModels(): Promise<ModelInfo[]> {
+  const response = await authFetch('/api/models');
+  if (!response.ok) {
+    throw new Error('Failed to fetch camera angle models');
+  }
+  const data = await response.json();
+  return data.angleModels || [];
+}
+
 export async function fetch3DModels(): Promise<ModelInfo[]> {
   const response = await authFetch('/api/models');
   if (!response.ok) {
