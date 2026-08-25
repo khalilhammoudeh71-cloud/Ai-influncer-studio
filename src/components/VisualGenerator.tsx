@@ -131,8 +131,8 @@ const GOAL_CARDS: GoalCard[] = [
   },
   {
     key: 'uncensored',
-    label: 'Uncensored',
-    description: 'Adult / no restrictions',
+    label: 'Adult / explicit',
+    description: 'Where provider policies permit',
     icon: <span className="text-base leading-none">🔞</span>,
     nsfw: true,
   },
@@ -793,7 +793,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
           </div>
           <div>
             <h3 className="text-base font-black text-white flex items-center gap-2 tracking-tight">
-              Visual Studio <span className="px-2 py-0.5 bg-[#00F5C2]/10 border border-[#00F5C2]/20 rounded text-[9px] font-extrabold text-[#00F5C2] tracking-wider uppercase select-none shadow-[0_0_8px_rgba(0,245,194,0.15)]">Pro</span>
+              Visual Studio <span className="px-2 py-0.5 bg-[#00F5C2]/10 border border-[#00F5C2]/20 rounded text-[9px] font-extrabold text-[#00F5C2] tracking-wider uppercase select-none shadow-[0_0_8px_rgba(0,245,194,0.15)]">{isPro ? 'Pro' : 'Simple'}</span>
             </h3>
             <p className="text-xs text-[#94A3B8] font-medium">
               Ultimate high-end generation with or without a persona
@@ -837,6 +837,37 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
                 <Video className="w-3.5 h-3.5" /> Video
               </button>
             </div>
+
+            {!isPro && genMode === 'image' && (
+              <section className="space-y-2 rounded-xl border border-[#E7C477]/20 bg-[#E7C477]/[0.055] p-3" aria-label="Choose an image goal">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-wider text-[#F2D58D]">What result do you want?</p>
+                  <p className="mt-0.5 text-[9px] text-[#94A3B8]">We’ll choose the model automatically.</p>
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {GOAL_CARDS.map(goal => (
+                    <button
+                      key={goal.key}
+                      type="button"
+                      onClick={() => handleGoalSelect(goal.key)}
+                      aria-pressed={selectedGoal === goal.key}
+                      className={cn(
+                        'flex min-h-16 cursor-pointer items-center gap-2 rounded-lg border p-2 text-left transition-all',
+                        selectedGoal === goal.key
+                          ? 'border-[#E7C477]/55 bg-[#E7C477]/15 text-white'
+                          : 'border-[#334155]/50 bg-[#111827]/45 text-[#CBD5E1] hover:border-[#E7C477]/35',
+                      )}
+                    >
+                      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-black/20 text-[#F2D58D]">{goal.icon}</span>
+                      <span className="min-w-0">
+                        <span className="block text-[10px] font-bold">{goal.label}</span>
+                        <span className="mt-0.5 block text-[8px] leading-3 text-[#94A3B8]">{goal.description}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
 
             {/* Context: Persona or References */}
             <div className="space-y-1.5 bg-[#0F172A]/40 border border-[#1E293B]/40 rounded-xl p-3 select-none">
@@ -1647,4 +1678,3 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
     </div>
   );
 };
-

@@ -1,4 +1,4 @@
-import { Home, Images, Menu, Sparkles, Users } from 'lucide-react';
+import { Home, Images, Menu, Sparkles, Wrench } from 'lucide-react';
 import { Tab } from '../types';
 import { cn } from '../utils/cn';
 
@@ -11,15 +11,15 @@ interface MobileNavigationProps {
 
 const items: Array<{ label: string; tab: Tab; icon: typeof Home }> = [
   { label: 'Home', tab: 'personas', icon: Home },
-  { label: 'Personas', tab: 'create-persona', icon: Users },
   { label: 'Create', tab: 'create', icon: Sparkles },
+  { label: 'Toolbox', tab: 'intelligence', icon: Wrench },
   { label: 'Library', tab: 'gallery', icon: Images },
 ];
 
 export default function MobileNavigation({ activeTab, onNavigate, onOpenMenu, newAssetsCount }: MobileNavigationProps) {
   return (
     <nav aria-label="Mobile navigation" className="app-mobile-nav fixed inset-x-0 bottom-0 z-[9990] grid h-[68px] grid-cols-5 border-t border-[var(--border-default)] px-2 pb-[env(safe-area-inset-bottom)] lg:hidden">
-      {items.map((item, index) => {
+      {items.map((item) => {
         const active = activeTab === item.tab;
         const ItemIcon = item.icon;
         const emphasized = item.tab === 'create';
@@ -49,7 +49,7 @@ export default function MobileNavigation({ activeTab, onNavigate, onOpenMenu, ne
                 </span>
               )}
             </span>
-            <span className={cn(index === 2 && '-mt-0.5 text-[var(--accent-primary)]')}>{item.label}</span>
+            <span className={cn(emphasized && '-mt-0.5 text-[var(--accent-primary)]')}>{item.label}</span>
           </button>
         );
       })}

@@ -12,7 +12,7 @@ import { fetchAllModelTypes, ModelInfo } from '../services/imageService';
 import { supabase } from '../lib/supabase';
 import { useCreatorProfile, saveCreatorProfile } from '../utils/creatorProfile';
 import { processImageFile } from '../utils/imageProcessing';
-import { accountLocalStorage } from '../utils/accountStorage';
+import { accountLocalStorage, accountStorageKey } from '../utils/accountStorage';
 import toast from 'react-hot-toast';
 
 interface Props {
@@ -900,15 +900,31 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
             {[
               {
                 icon: Sparkles,
-                label: 'View Landing Page',
-                desc: 'Replay the onboarding flow',
-                onClick: () => { localStorage.removeItem('ai_influencer_onboarding_complete'); window.location.reload(); }
+                label: 'Replay Getting Started',
+                desc: 'Choose a new starting task or switch experience level',
+                onClick: () => {
+                  localStorage.removeItem('ai_influencer_onboarding_complete');
+                  localStorage.removeItem('ai_influencer_tour_complete');
+                  if (user?.id) {
+                    localStorage.removeItem(accountStorageKey('ai_influencer_task_launcher_complete', user.id));
+                    localStorage.setItem(accountStorageKey('ai_influencer_force_task_launcher', user.id), 'true');
+                  }
+                  window.location.reload();
+                }
               },
               {
                 icon: HelpCircle,
                 label: 'Replay Feature Tour',
                 desc: 'Walk through all features again',
-                onClick: () => { localStorage.removeItem('ai_influencer_tour_complete'); localStorage.removeItem('ai_influencer_onboarding_complete'); window.location.reload(); }
+                onClick: () => {
+                  localStorage.removeItem('ai_influencer_tour_complete');
+                  localStorage.removeItem('ai_influencer_onboarding_complete');
+                  if (user?.id) {
+                    localStorage.removeItem(accountStorageKey('ai_influencer_task_launcher_complete', user.id));
+                    localStorage.setItem(accountStorageKey('ai_influencer_force_task_launcher', user.id), 'true');
+                  }
+                  window.location.reload();
+                }
               },
               {
                 icon: LogOut,
