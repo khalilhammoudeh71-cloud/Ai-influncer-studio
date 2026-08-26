@@ -45,6 +45,7 @@ import {
   FolderOpen,
   VideoOff,
   FolderHeart,
+  ArrowLeft,
 } from 'lucide-react';
 import { AssetPickerModal } from '../components/AssetPickerModal';
 import { Persona, GeneratedImage, NavActions, Tab, NavEntry } from '../types';
@@ -4044,10 +4045,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       return;
     }
 
-    updateMode(capability);
-    window.setTimeout(() => {
-      document.getElementById('creation-workspace')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 50);
+    setMode(capability);
+    nav.push({ view: 'create', subView: capability });
   };
 
   const renderGuidedCreationWorkspace = () => {
@@ -4143,6 +4142,35 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       ? Boolean(videoResult || isGenerating || isExtending)
       : Boolean(talkingAvatarResult || isGenerating);
   const showDetailedCreationControls = !usesGuidedWorkspace || simpleDetailsOpen || hasGuidedOutput;
+  const isCapabilityWorkspace = Boolean(
+    subView && ['image', 'video', 'talking-avatar', 'voice', 'stitcher'].includes(subView),
+  );
+  const workspaceMeta: Record<string, { title: string; description: string }> = {
+    image: {
+      title: 'Image Studio',
+      description: 'Generate polished images with optional persona identity lock.',
+    },
+    video: {
+      title: 'Video Studio',
+      description: 'Turn a prompt or reference image into cinematic motion.',
+    },
+    'talking-avatar': {
+      title: 'Talking Avatar Studio',
+      description: 'Combine a face, script, and voice into a speaking avatar.',
+    },
+    voice: {
+      title: 'Voice & Audio Studio',
+      description: 'Create voiceovers, use saved voices, or clone a new voice.',
+    },
+    stitcher: {
+      title: 'Video Editor',
+      description: 'Stitch scenes together and shape them into one final video.',
+    },
+  };
+  const activeWorkspaceMeta = workspaceMeta[mode] || {
+    title: 'Create Studio',
+    description: 'Build your next AI-powered asset.',
+  };
 
   return (
     <div className="flex-1 bg-[var(--bg-base)] text-white p-4 max-w-full mx-auto w-full selection:bg-emerald-500/30 flex flex-col overflow-y-auto overflow-x-hidden custom-scrollbar">
@@ -4150,26 +4178,42 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       {/* ── CREATE HUB HEADER ── */}
       <div className="mb-4 flex flex-col md:flex-row md:items-center justify-between gap-3 px-1 border-b border-[#E7C477]/10 pb-3">
         <div>
+          {isCapabilityWorkspace && (
+            <button
+              type="button"
+              onClick={() => nav.replace({ view: 'create' })}
+              className="mb-3 inline-flex cursor-pointer items-center gap-2 rounded-full border border-[var(--gold-border-active)] bg-[var(--gold-bg-subtle)] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--gold-bright)] transition-colors hover:bg-[var(--gold-bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]"
+            >
+              <ArrowLeft size={13} />
+              All creation tools
+            </button>
+          )}
           <h1 className="text-2xl md:text-3xl font-serif text-[#F5F1E8] tracking-tight flex items-center gap-2">
-            Create Studio <span className="text-[#E7C477] text-lg">✨</span>
+            {isCapabilityWorkspace ? activeWorkspaceMeta.title : 'Create Studio'} <span className="text-[#E7C477] text-lg">✨</span>
           </h1>
           <p className="text-xs text-[#8C909A] mt-0.5 max-w-3xl font-sans">
-            Choose what you want to make, then use the guided workflow or open Pro controls for every model and fine-tuning option.
+            {isCapabilityWorkspace
+              ? activeWorkspaceMeta.description
+              : 'Choose what you want to make, then use the guided workflow or open Pro controls for every model and fine-tuning option.'}
           </p>
         </div>
         <ProModeToggle isPro={isPro} onToggle={setIsPro} />
       </div>
 
-      <QuickStartHub
-        activeCapability={(['image', 'video', 'talking-avatar', 'voice', 'stitcher'] as string[]).includes(mode)
-          ? mode as CreationCapabilityId
-          : 'image'}
-        onSelectCapability={handleSelectCapability}
-      />
+      {!isCapabilityWorkspace && (
+        <QuickStartHub
+          activeCapability={(['image', 'video', 'talking-avatar', 'voice', 'stitcher'] as string[]).includes(mode)
+            ? mode as CreationCapabilityId
+            : 'image'}
+          onSelectCapability={handleSelectCapability}
+        />
+      )}
 
-      <div id="creation-workspace" className="scroll-mt-4">
-        {renderGuidedCreationWorkspace()}
-      </div>
+      {isCapabilityWorkspace && (
+        <div id="creation-workspace">
+          {renderGuidedCreationWorkspace()}
+        </div>
+      )}
 
       {globalError && !globalError.includes('Failed query:') && !globalError.includes('DrizzleQueryError') && (
         <div className="mb-4 bg-rose-500/10 border border-rose-500/20 rounded-xl p-3 flex items-start gap-2">
@@ -4181,7 +4225,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       {/* ── MODE RENDERING ── */}
       <div
         id="advanced-creation-controls"
-        className={`flex-1 relative flex-col scroll-mt-4 ${showDetailedCreationControls ? 'flex' : 'hidden'}`}
+        className={`flex-1 relative flex-col scroll-mt-4 ${isCapabilityWorkspace && showDetailedCreationControls ? 'flex' : 'hidden'}`}
       >
         {mode === 'image' && renderImageMode()}
         {mode === 'video' && renderVideoMode()}
