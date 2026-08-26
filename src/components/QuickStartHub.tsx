@@ -1,7 +1,6 @@
 import { motion } from 'framer-motion';
 import {
   ArrowRight,
-  AudioLines,
   Film,
   Image as ImageIcon,
   Mic2,
@@ -95,7 +94,7 @@ interface QuickStartHubProps {
 export default function QuickStartHub({ activeCapability, onSelectCapability }: QuickStartHubProps) {
   return (
     <section className="mb-5 overflow-hidden rounded-[24px] border border-[var(--border-default)] bg-[var(--bg-elevated)] shadow-[0_24px_80px_rgba(0,0,0,0.24)]">
-      <div className="flex flex-col gap-3 border-b border-[var(--border-subtle)] bg-[linear-gradient(135deg,rgba(231,196,119,0.11),transparent_58%)] px-4 py-4 sm:flex-row sm:items-end sm:justify-between sm:px-6">
+      <div className="border-b border-[var(--border-subtle)] bg-[linear-gradient(135deg,rgba(231,196,119,0.11),transparent_58%)] px-4 py-4 sm:px-6">
         <div>
           <div className="mb-1 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--accent-primary)]">
             <Sparkles size={13} /> Creation formats
@@ -106,9 +105,6 @@ export default function QuickStartHub({ activeCapability, onSelectCapability }: 
           <p className="mt-1 max-w-2xl text-[11px] leading-relaxed text-[var(--text-muted)]">
             Start with the outcome. The studio opens the right workflow, while Pro mode keeps every model and fine-tuning control available.
           </p>
-        </div>
-        <div className="inline-flex w-fit items-center gap-2 rounded-full border border-[var(--gold-border-active)] bg-[var(--gold-bg-subtle)] px-3 py-1.5 text-[9px] font-bold uppercase tracking-[0.16em] text-[var(--gold-bright)]">
-          <AudioLines size={12} /> All creation tools in one place
         </div>
       </div>
 
