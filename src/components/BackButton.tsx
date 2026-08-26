@@ -19,13 +19,13 @@ export default function BackButton({ onClick, className, label = "Back" }: BackB
       onClick={onClick}
       className={cn(
         "flex items-center gap-2 px-3 py-1.5 rounded-xl transition-all duration-300",
-        "bg-[#111827]/50 backdrop-blur-md border border-[#334155] hover:border-[#00D4FF]/40",
-        "text-[#CBD5E1] hover:text-white group",
+        "bg-[var(--bg-elevated)] backdrop-blur-md border border-[var(--border-default)] hover:border-[var(--gold-border-active)]",
+        "text-[var(--text-secondary)] hover:text-[var(--gold-bright)] group",
         className
       )}
     >
-      <div className="w-6 h-6 rounded-lg bg-[#00D4FF]/10 flex items-center justify-center group-hover:bg-[#00D4FF]/20 transition-colors">
-        <ChevronLeft size={16} className="text-[#00D4FF] group-hover:text-[#00F5C2] transition-colors" />
+      <div className="w-6 h-6 rounded-lg border border-[var(--gold-border-active)] bg-[var(--gold-bg-subtle)] flex items-center justify-center group-hover:bg-[var(--gold-bg-hover)] transition-colors">
+        <ChevronLeft size={16} className="text-[var(--gold-primary)] group-hover:text-[var(--gold-bright)] transition-colors" />
       </div>
       <span className="text-xs font-bold uppercase tracking-widest">{label}</span>
     </motion.button>

@@ -2,6 +2,82 @@ import type { Persona, GeneratedImage, RevenueEntry, PlannedPost } from '../type
 import { supabase } from '../lib/supabase';
 import { preparePersonaMediaForStorage, resolvePersonaMediaFromStorage } from './workspaceMediaService';
 
+export type SocialPlatform = 'instagram' | 'tiktok';
+
+export interface SocialTrend {
+  id: string;
+  platform: SocialPlatform;
+  title: string;
+  description: string;
+  sourceUrl: string;
+  thumbnailUrl: string | null;
+  videoUrl: string | null;
+  authorName: string;
+  authorHandle: string;
+  authorAvatarUrl: string | null;
+  publishedAt: string | null;
+  views: number | null;
+  likes: number | null;
+  comments: number | null;
+  shares: number | null;
+  engagementRate: number | null;
+  trendScore: number;
+  region: string | null;
+}
+
+export interface SocialCreatorSignal {
+  id: string;
+  platform: SocialPlatform;
+  name: string;
+  handle: string;
+  avatarUrl: string | null;
+  profileUrl: string;
+  postsObserved: number;
+  averageViews: number | null;
+  averageEngagementRate: number | null;
+  topPostUrl: string;
+}
+
+export interface SocialTrendsResponse {
+  trends: SocialTrend[];
+  creators: SocialCreatorSignal[];
+  collectedAt: string;
+  cached: boolean;
+  partial: boolean;
+  sources: SocialPlatform[];
+  errors: Array<{ platform: SocialPlatform; message: string }>;
+  credits: Partial<Record<SocialPlatform, { charged: number | null; remaining: number | null }>>;
+  methodology: string;
+}
+
+export type ChannelPostPerformance = 'top' | 'typical' | 'needs-attention';
+
+export interface SocialChannelPost extends SocialTrend {
+  performance: ChannelPostPerformance;
+  performanceVsMedian: number | null;
+}
+
+export interface SocialChannelAnalysisResponse {
+  platform: SocialPlatform;
+  handle: string;
+  profileUrl: string;
+  collectedAt: string;
+  cached: boolean;
+  postsAnalyzed: number;
+  averageViews: number | null;
+  medianViews: number | null;
+  averageLikes: number | null;
+  averageComments: number | null;
+  averageShares: number | null;
+  averageEngagementRate: number | null;
+  posts: SocialChannelPost[];
+  topPosts: SocialChannelPost[];
+  opportunityPosts: SocialChannelPost[];
+  insights: string[];
+  credits: { charged: number | null; remaining: number | null };
+  methodology: string;
+}
+
 export async function getAuthHeaders(): Promise<HeadersInit> {
   try {
     const sessionRes = await supabase.auth.getSession();
@@ -25,7 +101,7 @@ async function extractErrorMessage(res: Response): Promise<string> {
     }
   } catch {}
   if (res.status >= 500) {
-    return `Voice synthesis service temporarily unavailable (${res.status} ${res.statusText || 'Server Error'})`;
+    return `The service is temporarily unavailable (${res.status} ${res.statusText || 'Server Error'}). Please try again.`;
   }
   return res.statusText ? `${res.statusText} (${res.status})` : `Request failed with status ${res.status}`;
 }
@@ -174,12 +250,45 @@ export const api = {
         wavespeed: boolean;
         elevenlabs: boolean;
         heygen: boolean;
+        scrapeCreators: boolean;
         database: boolean;
         databaseConnected: boolean;
       }>('/config-status');
     } catch {
-      return { openai: false, gemini: false, wavespeed: false, elevenlabs: false, heygen: false, database: false, databaseConnected: false };
+      return { openai: false, gemini: false, wavespeed: false, elevenlabs: false, heygen: false, scrapeCreators: false, database: false, databaseConnected: false };
     }
+  },
+
+  social: {
+    getTrends: (params?: { platform?: 'all' | SocialPlatform; region?: string; refresh?: boolean }) => {
+      const query = new URLSearchParams({
+        platform: params?.platform || 'all',
+        region: params?.region || 'US',
+      });
+      if (params?.refresh) query.set('refresh', 'true');
+      return request<SocialTrendsResponse>(`/social/trends?${query.toString()}`);
+    },
+    getChannelAnalysis: (params: { platform: SocialPlatform; handle: string; region?: string; refresh?: boolean }) => {
+      const query = new URLSearchParams({
+        platform: params.platform,
+        handle: params.handle,
+        region: params.region || 'US',
+      });
+      if (params.refresh) query.set('refresh', 'true');
+      return request<SocialChannelAnalysisResponse>(`/social/channel-analysis?${query.toString()}`);
+    },
+    generateTrendScript: (params: {
+      trendName: string;
+      trendDescription: string;
+      trendNiche: string;
+      persona: Persona | null;
+    }) => requestWithBody<{
+      concept: string;
+      hook: string;
+      voiceoverScript: string;
+      visualPrompts: string[];
+      hashtags: string[];
+    }>('/generate-trend-script', params),
   },
 
   voice: {

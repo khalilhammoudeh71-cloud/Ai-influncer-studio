@@ -1,560 +1,698 @@
-import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  TrendingUp, Users, Target, Zap, Volume2, Sparkles, 
-  ArrowUpRight, Copy, Check, Loader2, RefreshCw, BarChart2,
-  LineChart, Compass, MessageSquare, AlertCircle, Play
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { motion } from 'framer-motion';
+import {
+  AlertCircle,
+  ArrowUpRight,
+  BarChart2,
+  Check,
+  Clock3,
+  Copy,
+  Eye,
+  ExternalLink,
+  Heart,
+  Instagram,
+  Loader2,
+  MessageCircle,
+  RefreshCw,
+  Search,
+  Sparkles,
+  Target,
+  TrendingUp,
+  Users,
 } from 'lucide-react';
 import { Persona, NavActions } from '../types';
 import toast from 'react-hot-toast';
 import { cn } from '../utils/cn';
+import {
+  api,
+  type SocialChannelAnalysisResponse,
+  type SocialChannelPost,
+  type SocialCreatorSignal,
+  type SocialPlatform,
+  type SocialTrend,
+  type SocialTrendsResponse,
+} from '../services/apiService';
 
 interface TrendViewProps {
   persona: Persona | null;
   nav: NavActions;
 }
 
-interface TrendCard {
-  id: string;
-  title: string;
-  category: 'topic' | 'sound' | 'niche';
-  niche: string;
-  velocity: string;
-  velocityNum: number;
-  reach: string;
-  desc: string;
-  soundUrl?: string;
+type PlatformFilter = 'all' | SocialPlatform;
+
+interface TrendScriptResult {
+  concept: string;
+  hook: string;
+  voiceoverScript: string;
+  visualPrompts: string[];
+  hashtags: string[];
 }
 
-const SAMPLE_TRENDS: TrendCard[] = [
-  {
-    id: 'trend-1',
-    title: 'Quiet Luxury Gym Aesthetics',
-    category: 'niche',
-    niche: 'Fitness & Lifestyle',
-    velocity: '+320%',
-    velocityNum: 320,
-    reach: '1.2M weekly',
-    desc: 'High-contrast, warm gym lighting showing micro-workouts in neutral outfits. Focuses on premium, minimalist vibes rather than loud music.',
-  },
-  {
-    id: 'trend-2',
-    title: 'ASMR Desk Setup & Tech Snaps',
-    category: 'niche',
-    niche: 'Tech & Lifestyle',
-    velocity: '+240%',
-    velocityNum: 240,
-    reach: '890K weekly',
-    desc: 'Slowing down keycap clicks, mouse snaps, and warm fairy lights. Short vertical videos showing typing soundscapes with soft lifestyle voiceovers.',
-  },
-  {
-    id: 'trend-3',
-    title: 'Dopamine Dressing Glow-up',
-    category: 'topic',
-    niche: 'Fashion & Beauty',
-    velocity: '+190%',
-    velocityNum: 190,
-    reach: '2.5M weekly',
-    desc: 'Rapid wardrobe transition cuts syncing colors with the ambient mood. Highly cinematic color-graded reels showing confidence and outfit matches.',
-  },
-  {
-    id: 'trend-4',
-    title: 'Ambient Wavespeed Lofi Beats',
-    category: 'sound',
-    niche: 'Aesthetic / General',
-    velocity: '+140%',
-    velocityNum: 140,
-    reach: '650K weekly',
-    desc: 'A calming, high-fidelity lofi audio track suitable for motivational background narratives, vlogs, and office studies.',
-    soundUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'
-  },
-  {
-    id: 'trend-5',
-    title: 'Phonk Core Gym Motivation',
-    category: 'sound',
-    niche: 'Fitness / Aggressive',
-    velocity: '+285%',
-    velocityNum: 285,
-    reach: '3.1M weekly',
-    desc: 'Fast, high-energy Phonk music track synced with hard visual transitions, posing slips, and epic gym lighting.',
-    soundUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3'
-  },
-  {
-    id: 'trend-6',
-    title: 'AI Day in the Life Vlogs',
-    category: 'topic',
-    niche: 'AI Art & Tech',
-    velocity: '+410%',
-    velocityNum: 410,
-    reach: '4.8M weekly',
-    desc: 'Highly aesthetic hyperrealistic daily vlogs displaying morning routines, rendering setups, and virtual lifestyle segments.',
-  }
+const REGIONS = [
+  { code: 'US', label: 'United States' },
+  { code: 'CA', label: 'Canada' },
+  { code: 'GB', label: 'United Kingdom' },
+  { code: 'AU', label: 'Australia' },
+  { code: 'AE', label: 'United Arab Emirates' },
 ];
 
-interface Competitor {
-  name: string;
-  avatar: string;
-  followers: string;
-  followersNum: number;
-  engagement: string;
-  engagementNum: number;
-  niche: string;
-  avgViews: string;
-  monthlyEarnings: string;
+function formatMetric(value: number | null): string {
+  if (value === null) return 'Not returned';
+  return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(value);
 }
 
-const COMPETITORS: Competitor[] = [
-  {
-    name: 'Lil Miquela',
-    avatar: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=150&auto=format&fit=crop&q=80',
-    followers: '2.6M',
-    followersNum: 2600000,
-    engagement: '3.4%',
-    engagementNum: 3.4,
-    niche: 'Virtual Fashion & Pop Art',
-    avgViews: '120K',
-    monthlyEarnings: '$15K - $22K'
-  },
-  {
-    name: 'Milla Sofia',
-    avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80',
-    followers: '150K',
-    followersNum: 150000,
-    engagement: '5.8%',
-    engagementNum: 5.8,
-    niche: 'AI Travel & Lifestyle',
-    avgViews: '45K',
-    monthlyEarnings: '$4K - $7K'
-  },
-  {
-    name: 'Rozy (Virtual)',
-    avatar: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&auto=format&fit=crop&q=80',
-    followers: '170K',
-    followersNum: 170000,
-    engagement: '4.2%',
-    engagementNum: 4.2,
-    niche: 'South Korean Virtual Creator',
-    avgViews: '30K',
-    monthlyEarnings: '$5K - $9K'
-  }
-];
+function formatCollectedAt(value?: string): string {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+function platformLabel(platform: SocialPlatform): string {
+  return platform === 'instagram' ? 'Instagram' : 'TikTok';
+}
+
+function PlatformMark({ platform }: { platform: SocialPlatform }) {
+  if (platform === 'instagram') return <Instagram className="h-3.5 w-3.5" aria-hidden="true" />;
+  return <span className="text-[11px] font-black" aria-hidden="true">TT</span>;
+}
 
 export default function TrendView({ persona: activePersona, nav }: TrendViewProps) {
-  const [selectedCategory, setSelectedCategory] = useState<'all' | 'topic' | 'sound' | 'niche'>('all');
-  const [selectedTrend, setSelectedTrend] = useState<TrendCard | null>(SAMPLE_TRENDS[0]);
-  const [selectedCompetitor, setSelectedCompetitor] = useState<Competitor>(COMPETITORS[0]);
-  const [loading, setLoading] = useState(false);
-  const [scriptResult, setScriptResult] = useState<any>(null);
-  const [isPlaying, setIsPlaying] = useState<string | null>(null);
-  const [audio] = useState(() => new Audio());
+  const [platform, setPlatform] = useState<PlatformFilter>('all');
+  const [region, setRegion] = useState('US');
+  const [data, setData] = useState<SocialTrendsResponse | null>(null);
+  const [selectedTrendId, setSelectedTrendId] = useState<string | null>(null);
+  const [selectedCreatorId, setSelectedCreatorId] = useState<string | null>(null);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [scriptLoading, setScriptLoading] = useState(false);
+  const [scriptResult, setScriptResult] = useState<TrendScriptResult | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
 
-  const handlePlaySound = (url: string, id: string) => {
-    if (isPlaying === id) {
-      audio.pause();
-      setIsPlaying(null);
-    } else {
-      audio.src = url;
-      audio.play().catch(e => console.warn('Audio play failed:', e));
-      setIsPlaying(id);
-      audio.onended = () => setIsPlaying(null);
+  const loadTrends = useCallback(async (force = false) => {
+    force ? setRefreshing(true) : setInitialLoading(true);
+    setLoadError(null);
+    try {
+      const response = await api.social.getTrends({ platform, region, refresh: force });
+      setData(response);
+      setSelectedTrendId(current => response.trends.some(item => item.id === current) ? current : response.trends[0]?.id || null);
+      setSelectedCreatorId(current => response.creators.some(item => item.id === current) ? current : response.creators[0]?.id || null);
+      if (force) toast.success('Live social signals refreshed');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to load live social data.';
+      setLoadError(message);
+      setData(null);
+    } finally {
+      setInitialLoading(false);
+      setRefreshing(false);
+    }
+  }, [platform, region]);
+
+  useEffect(() => {
+    void loadTrends(false);
+  }, [loadTrends]);
+
+  const selectedTrend = useMemo(
+    () => data?.trends.find(item => item.id === selectedTrendId) || data?.trends[0] || null,
+    [data, selectedTrendId],
+  );
+
+  const selectedCreator = useMemo(
+    () => data?.creators.find(item => item.id === selectedCreatorId) || data?.creators[0] || null,
+    [data, selectedCreatorId],
+  );
+
+  const handleGenerateBrief = async (trend: SocialTrend) => {
+    setScriptLoading(true);
+    setScriptResult(null);
+    try {
+      const result = await api.social.generateTrendScript({
+        trendName: trend.title,
+        trendDescription: `${trend.description}\nSource: ${trend.sourceUrl}\nObserved public metrics: ${formatMetric(trend.views)} views, ${formatMetric(trend.likes)} likes, ${formatMetric(trend.comments)} comments.`,
+        trendNiche: `${platformLabel(trend.platform)}${trend.region ? ` · ${trend.region}` : ''}`,
+        persona: activePersona,
+      });
+      setScriptResult(result);
+      toast.success('Content brief created from the live signal');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to create the content brief');
+    } finally {
+      setScriptLoading(false);
     }
   };
 
-  const handleHijackTrend = async (trend: TrendCard) => {
+  const copyToClipboard = async (text: string, key: string) => {
+    await navigator.clipboard.writeText(text);
+    setCopied(key);
+    toast.success('Copied');
+    window.setTimeout(() => setCopied(current => current === key ? null : current), 1_500);
+  };
+
+  return (
+    <div className="mx-auto max-w-7xl space-y-7 p-6 select-none">
+      <header className="flex flex-col gap-4 border-b border-[#E7C477]/15 pb-5 md:flex-row md:items-end md:justify-between">
+        <div>
+          <div className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-[#E7C477]">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#00F5C2]" />
+            Public social intelligence
+          </div>
+          <h1 className="flex items-center gap-3 font-serif text-3xl tracking-tight text-[#F5F1E8] md:text-4xl">
+            Trend Radar <span className="text-xl text-[#E7C477]">✨</span>
+          </h1>
+          <p className="mt-1 max-w-2xl text-xs text-[#8C909A] md:text-sm">
+            Live public Instagram and TikTok signals, ranked from the metrics actually returned by each platform.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={region}
+            onChange={event => setRegion(event.target.value)}
+            aria-label="Trend region"
+            className="rounded-xl border border-white/10 bg-[#0B0F17] px-3 py-2.5 text-xs font-bold text-white outline-none focus:border-[#E7C477]/50"
+          >
+            {REGIONS.map(option => <option key={option.code} value={option.code}>{option.label}</option>)}
+          </select>
+          <button
+            type="button"
+            onClick={() => void loadTrends(true)}
+            disabled={refreshing || initialLoading}
+            className="flex items-center gap-2 rounded-xl border border-[#E7C477]/25 bg-[#E7C477]/10 px-4 py-2.5 text-xs font-black text-[#F0D48A] transition hover:bg-[#E7C477]/15 disabled:opacity-50"
+          >
+            <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} />
+            Refresh live data
+          </button>
+        </div>
+      </header>
+
+      <section className="flex flex-col gap-3 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex gap-1 rounded-xl bg-black/20 p-1">
+          {(['all', 'instagram', 'tiktok'] as const).map(value => (
+            <button
+              type="button"
+              key={value}
+              onClick={() => setPlatform(value)}
+              className={cn(
+                'rounded-lg px-4 py-2 text-[10px] font-black uppercase tracking-wider transition',
+                platform === value
+                  ? 'border border-[#E7C477]/30 bg-[#E7C477]/12 text-[#F0D48A]'
+                  : 'border border-transparent text-zinc-400 hover:text-white',
+              )}
+            >
+              {value === 'all' ? 'All live signals' : value}
+            </button>
+          ))}
+        </div>
+
+        {data && (
+          <div className="flex flex-wrap items-center gap-3 px-2 text-[10px] font-bold text-zinc-400">
+            <span className="flex items-center gap-1.5 text-[#71E6C1]">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#00F5C2]" />
+              {data.cached ? 'Cached live pull' : 'Fresh live pull'}
+            </span>
+            <span className="flex items-center gap-1"><Clock3 className="h-3 w-3" /> {formatCollectedAt(data.collectedAt)}</span>
+            <span>{data.trends.length} public posts</span>
+          </div>
+        )}
+      </section>
+
+      <ChannelAnalyzer region={region} />
+
+      {initialLoading && (
+        <div className="premium-card flex min-h-[420px] flex-col items-center justify-center gap-4 p-8 text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-[#E7C477]" />
+          <div>
+            <p className="font-bold text-white">Collecting live social signals</p>
+            <p className="mt-1 text-xs text-zinc-400">Checking public Instagram Reels and TikTok trends…</p>
+          </div>
+        </div>
+      )}
+
+      {!initialLoading && loadError && (
+        <div className="premium-card flex min-h-[360px] flex-col items-center justify-center gap-4 border border-amber-500/20 p-8 text-center">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-300">
+            <AlertCircle className="h-6 w-6" />
+          </div>
+          <div className="max-w-lg">
+            <h2 className="font-serif text-2xl text-white">Live data is not available yet</h2>
+            <p className="mt-2 text-sm leading-relaxed text-zinc-400">{loadError}</p>
+          </div>
+          <button type="button" onClick={() => void loadTrends(true)} className="premium-button px-5 py-2.5 text-xs font-black">
+            Try again
+          </button>
+        </div>
+      )}
+
+      {!initialLoading && data && (
+        <>
+          {data.partial && (
+            <div className="flex items-start gap-3 rounded-2xl border border-amber-500/20 bg-amber-500/[0.06] px-4 py-3 text-xs text-amber-100">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+              <div>
+                <p className="font-bold">Partial live results</p>
+                <p className="mt-0.5 text-amber-100/70">{data.errors.map(item => `${platformLabel(item.platform)}: ${item.message}`).join(' ')}</p>
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 gap-7 lg:grid-cols-3">
+            <div className="space-y-6 lg:col-span-2">
+              <div className="premium-card space-y-5 p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h2 className="flex items-center gap-2 text-sm font-black uppercase tracking-wider text-white">
+                      <TrendingUp className="h-4 w-4 text-[#00F5C2]" />
+                      Live trend signals
+                    </h2>
+                    <p className="mt-1 text-[11px] text-[var(--text-muted)]">Select a public post to inspect it and turn it into an original content brief.</p>
+                  </div>
+                  <span className="rounded-lg border border-[#E7C477]/20 bg-[#E7C477]/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-[#F0D48A]">
+                    No sample data
+                  </span>
+                </div>
+
+                {data.trends.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-white/10 px-5 py-12 text-center text-sm text-zinc-400">
+                    The provider returned no public trend posts for this selection. Try another region or platform.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    {data.trends.slice(0, 16).map(trend => {
+                      const isSelected = selectedTrend?.id === trend.id;
+                      return (
+                        <button
+                          type="button"
+                          key={trend.id}
+                          onClick={() => { setSelectedTrendId(trend.id); setScriptResult(null); }}
+                          className={cn(
+                            'group relative overflow-hidden rounded-2xl border p-4 text-left transition',
+                            isSelected
+                              ? 'border-[#E7C477]/45 bg-[#E7C477]/[0.07] shadow-lg shadow-black/20'
+                              : 'border-white/[0.07] bg-white/[0.015] hover:border-white/15 hover:bg-white/[0.03]',
+                          )}
+                        >
+                          {trend.thumbnailUrl && (
+                            <img src={trend.thumbnailUrl} alt="" className="mb-4 h-32 w-full rounded-xl object-cover" loading="lazy" referrerPolicy="no-referrer" />
+                          )}
+                          <div className="flex items-start justify-between gap-3">
+                            <span className="flex items-center gap-1.5 rounded-md border border-white/10 bg-black/20 px-2 py-1 text-[9px] font-black uppercase tracking-wider text-zinc-200">
+                              <PlatformMark platform={trend.platform} /> {platformLabel(trend.platform)}
+                            </span>
+                            <div className="text-right">
+                              <p className="text-lg font-black text-[#00F5C2]">{trend.trendScore}</p>
+                              <p className="text-[8px] font-black uppercase tracking-wider text-zinc-500">Signal score</p>
+                            </div>
+                          </div>
+                          <h3 className="mt-3 line-clamp-2 text-sm font-bold leading-snug text-white">{trend.title}</h3>
+                          <p className="mt-2 line-clamp-2 text-[11px] leading-relaxed text-zinc-400">{trend.description}</p>
+                          <div className="mt-4 flex items-center justify-between border-t border-white/[0.06] pt-3 text-[10px] font-bold text-zinc-400">
+                            <span>@{trend.authorHandle}</span>
+                            <span>{formatMetric(trend.views)} views</span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {selectedTrend && (
+                <div className="premium-card space-y-6 border border-[#E7C477]/20 p-5">
+                  <div className="flex flex-col gap-4 border-b border-white/[0.07] pb-5 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <span className="text-[9px] font-black uppercase tracking-[0.2em] text-[#E7C477]">Selected live signal</span>
+                      <h2 className="mt-1 text-lg font-bold text-white">{selectedTrend.title}</h2>
+                      <p className="mt-1 text-xs text-zinc-400">By @{selectedTrend.authorHandle} · {formatMetric(selectedTrend.views)} views · {selectedTrend.engagementRate ?? '—'}% public engagement</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <a href={selectedTrend.sourceUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 rounded-xl border border-white/10 px-4 py-2.5 text-xs font-bold text-white hover:bg-white/5">
+                        View source <ExternalLink className="h-3.5 w-3.5" />
+                      </a>
+                      <button
+                        type="button"
+                        disabled={scriptLoading}
+                        onClick={() => void handleGenerateBrief(selectedTrend)}
+                        className="premium-button flex items-center gap-2 px-5 py-2.5 text-xs font-black"
+                      >
+                        {scriptLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                        Build my version
+                      </button>
+                    </div>
+                  </div>
+
+                  {scriptLoading && (
+                    <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
+                      <Loader2 className="h-7 w-7 animate-spin text-[#E7C477]" />
+                      <p className="text-xs font-bold text-zinc-400">Turning this live signal into an original brief for {activePersona?.name || 'your studio'}…</p>
+                    </div>
+                  )}
+
+                  {!scriptLoading && scriptResult && (
+                    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
+                      <div className="rounded-2xl border border-[#E7C477]/15 bg-[#E7C477]/[0.05] p-4">
+                        <p className="text-[9px] font-black uppercase tracking-wider text-[#E7C477]">Concept</p>
+                        <p className="mt-2 text-sm font-bold leading-relaxed text-[#F5F1E8]">{scriptResult.concept}</p>
+                      </div>
+
+                      <CopyBlock label="Opening hook" value={scriptResult.hook} copyKey="hook" copied={copied} onCopy={copyToClipboard} />
+                      <CopyBlock label="Vertical video script" value={scriptResult.voiceoverScript} copyKey="script" copied={copied} onCopy={copyToClipboard} multiline />
+
+                      <div>
+                        <p className="mb-3 text-[10px] font-black uppercase tracking-wider text-zinc-500">Visual prompts</p>
+                        <div className="grid gap-3 md:grid-cols-3">
+                          {scriptResult.visualPrompts?.map((prompt, index) => (
+                            <CopyBlock key={`${prompt}-${index}`} label={`Scene ${index + 1}`} value={prompt} copyKey={`visual-${index}`} copied={copied} onCopy={copyToClipboard} />
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.07] pt-4">
+                        <div className="flex flex-wrap gap-1.5">
+                          {scriptResult.hashtags?.map(tag => <span key={tag} className="rounded-md border border-[#E7C477]/15 bg-[#E7C477]/[0.05] px-2.5 py-1 text-[10px] font-bold text-[#F0D48A]">{tag}</span>)}
+                        </div>
+                        <button type="button" onClick={() => nav.push({ view: 'create', subView: 'image' })} className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-[#E7C477]">
+                          Open Create <ArrowUpRight className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <aside className="space-y-5">
+              <div className="premium-card space-y-5 p-5">
+                <div>
+                  <h2 className="flex items-center gap-2 text-sm font-black uppercase tracking-wider text-white">
+                    <Users className="h-4 w-4 text-[#E7C477]" />
+                    Creator signals
+                  </h2>
+                  <p className="mt-1 text-[11px] leading-relaxed text-[var(--text-muted)]">Creators appearing in this live pull, ranked by average public views observed.</p>
+                </div>
+
+                <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
+                  {data.creators.map(creator => (
+                    <button
+                      type="button"
+                      key={creator.id}
+                      onClick={() => setSelectedCreatorId(creator.id)}
+                      className={cn(
+                        'flex w-full items-center gap-3 rounded-xl border p-2.5 text-left transition',
+                        selectedCreator?.id === creator.id
+                          ? 'border-[#E7C477]/35 bg-[#E7C477]/[0.07]'
+                          : 'border-white/[0.06] hover:border-white/15',
+                      )}
+                    >
+                      {creator.avatarUrl ? (
+                        <img src={creator.avatarUrl} alt="" className="h-10 w-10 rounded-xl object-cover" loading="lazy" referrerPolicy="no-referrer" />
+                      ) : (
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/5 text-xs font-black text-[#E7C477]">{creator.name.charAt(0)}</div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-bold text-white">{creator.name}</p>
+                        <p className="truncate text-[10px] text-zinc-500">@{creator.handle}</p>
+                      </div>
+                      <span className="flex items-center gap-1 text-[9px] font-black uppercase text-zinc-400"><PlatformMark platform={creator.platform} /></span>
+                    </button>
+                  ))}
+                </div>
+
+                {selectedCreator && <CreatorDetails creator={selectedCreator} />}
+              </div>
+
+              <div className="premium-card space-y-4 p-5">
+                <h3 className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-white"><BarChart2 className="h-4 w-4 text-[#00F5C2]" /> How ranking works</h3>
+                <p className="text-[11px] leading-relaxed text-zinc-400">{data.methodology}</p>
+                <div className="rounded-xl border border-white/[0.06] bg-black/15 p-3 text-[10px] leading-relaxed text-zinc-500">
+                  These are public-content signals—not private reach, retention, saves, demographics, income, or follower/non-follower insights. Connect official Meta and TikTok account analytics later for those private metrics.
+                </div>
+              </div>
+            </aside>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ChannelAnalyzer({ region }: { region: string }) {
+  const [platform, setPlatform] = useState<SocialPlatform>('instagram');
+  const [handle, setHandle] = useState('');
+  const [analysis, setAnalysis] = useState<SocialChannelAnalysisResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const analyze = async (refresh = false) => {
+    const cleanHandle = handle.trim();
+    if (!cleanHandle) {
+      setError('Enter an Instagram or TikTok username first.');
+      return;
+    }
     setLoading(true);
-    setScriptResult(null);
+    setError(null);
     try {
-      const response = await fetch('/api/generate-trend-script', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          trendName: trend.title,
-          trendDescription: trend.desc,
-          trendNiche: trend.niche,
-          persona: activePersona
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to generate trend script');
-      }
-
-      const data = await response.json();
-      setScriptResult(data);
-      toast.success('Trend script generated successfully!');
-    } catch (err: any) {
-      console.error(err);
-      toast.error(err.message || 'Failed to generate trend script');
+      const result = await api.social.getChannelAnalysis({ platform, handle: cleanHandle, region, refresh });
+      setAnalysis(result);
+      setHandle(result.handle);
+      toast.success(`Analyzed ${result.postsAnalyzed} public posts`);
+    } catch (requestError) {
+      setAnalysis(null);
+      setError(requestError instanceof Error ? requestError.message : 'Unable to analyze this public channel.');
     } finally {
       setLoading(false);
     }
   };
 
-  const filteredTrends = SAMPLE_TRENDS.filter(t => 
-    selectedCategory === 'all' ? true : t.category === selectedCategory
-  );
-
-  const copyToClipboard = (text: string, label = 'Copied to clipboard!') => {
-    navigator.clipboard.writeText(text);
-    toast.success(label);
-  };
-
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-8 select-none">
-      {/* Page Header */}
-      <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-[#E7C477]/10 pb-4">
+    <section className="premium-card overflow-hidden border border-[#E7C477]/15">
+      <div className="grid gap-5 border-b border-white/[0.07] p-5 lg:grid-cols-[1fr_auto] lg:items-end">
         <div>
-          <h1 className="text-3xl md:text-4xl font-serif text-[#F5F1E8] tracking-tight flex items-center gap-3">
-            Trend Radar
-            <span className="text-[#E7C477] text-xl font-normal">✨</span>
-          </h1>
-          <p className="text-xs md:text-sm text-[#8C909A] mt-1 font-sans">
-            Monitor real-time social metrics and hijack high-virality trends automatically.
+          <div className="mb-2 flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.2em] text-[#E7C477]">
+            <Target className="h-3.5 w-3.5" /> Your channel
+          </div>
+          <h2 className="font-serif text-2xl text-[#F5F1E8]">See what is actually working</h2>
+          <p className="mt-1 max-w-2xl text-xs leading-relaxed text-zinc-400">
+            Enter a public username to compare recent posts, find the strongest performers, and spot content that needs a new hook.
           </p>
         </div>
-        {activePersona && activePersona.id !== 'empty' ? (
-          <div className="flex items-center gap-2.5 bg-cyan-950/20 border border-cyan-500/20 px-4 py-2 rounded-2xl shadow-inner">
-            <div className="w-8 h-8 rounded-xl overflow-hidden border border-cyan-400/20 shrink-0">
-              {activePersona.avatar || activePersona.referenceImage ? (
-                <img src={activePersona.avatar || activePersona.referenceImage} alt="" className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full bg-[#1e293b] flex items-center justify-center text-cyan-400 font-bold text-xs">
-                  {activePersona.name.charAt(0)}
-                </div>
-              )}
-            </div>
-            <div>
-              <p className="text-xs font-black text-white">{activePersona.name}</p>
-              <p className="text-[10px] text-cyan-400 font-bold uppercase tracking-widest">{activePersona.niche}</p>
-            </div>
-          </div>
-        ) : (
-          <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 px-4 py-2 rounded-2xl">
-            <AlertCircle className="w-4 h-4 text-amber-400" />
-            <span className="text-xs font-bold text-amber-300">No Persona Selected (General Mode)</span>
-          </div>
-        )}
-      </header>
 
-      {/* Main Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
-        {/* Left 2 Columns: Heatmap & Hijacker */}
-        <div className="lg:col-span-2 space-y-6">
-          
-          {/* Trend Heatmap Grid */}
-          <div className="premium-card p-5 space-y-4">
-            <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-              <div>
-                <h2 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-[#00F5C2]" />
-                  Viral Trend Heatmap
-                </h2>
-                <p className="text-[11px] text-[var(--text-muted)]">Select a trend card to analyze and draft content.</p>
-              </div>
+        <form
+          onSubmit={event => { event.preventDefault(); void analyze(false); }}
+          className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto"
+        >
+          <select
+            value={platform}
+            onChange={event => { setPlatform(event.target.value as SocialPlatform); setAnalysis(null); setError(null); }}
+            aria-label="Channel platform"
+            className="rounded-xl border border-white/10 bg-[#0B0F17] px-3 py-3 text-xs font-bold text-white outline-none focus:border-[#E7C477]/50"
+          >
+            <option value="instagram">Instagram</option>
+            <option value="tiktok">TikTok</option>
+          </select>
+          <label className="relative min-w-0 sm:w-64">
+            <span className="sr-only">Public username</span>
+            <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-zinc-500">@</span>
+            <input
+              value={handle}
+              onChange={event => setHandle(event.target.value)}
+              placeholder="username"
+              autoComplete="off"
+              spellCheck={false}
+              className="w-full rounded-xl border border-white/10 bg-[#0B0F17] py-3 pl-8 pr-3 text-xs font-bold text-white outline-none placeholder:text-zinc-600 focus:border-[#E7C477]/50"
+            />
+          </label>
+          <button type="submit" disabled={loading || !handle.trim()} className="premium-button flex items-center justify-center gap-2 px-5 py-3 text-xs font-black disabled:opacity-50">
+            {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
+            {loading ? 'Analyzing…' : 'Analyze channel'}
+          </button>
+        </form>
+      </div>
 
-              {/* Category Filter Tabs */}
-              <div className="flex gap-1.5 bg-[#0B0F17]/50 border border-white/5 p-1 rounded-xl overflow-x-auto scrollbar-hide">
-                {(['all', 'topic', 'sound', 'niche'] as const).map(cat => (
-                  <button
-                    key={cat}
-                    onClick={() => setSelectedCategory(cat)}
-                    className={cn(
-                      "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all",
-                      selectedCategory === cat
-                        ? "bg-cyan-500/15 border border-cyan-500/20 text-cyan-400"
-                        : "text-zinc-400 hover:text-white border border-transparent"
-                    )}
-                  >
-                    {cat}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Heatmap Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {filteredTrends.map(trend => {
-                const isSelected = selectedTrend?.id === trend.id;
-                return (
-                  <div
-                    key={trend.id}
-                    onClick={() => setSelectedTrend(trend)}
-                    className={cn(
-                      "premium-card p-4 flex flex-col justify-between gap-4 cursor-pointer transition-all border relative overflow-hidden group",
-                      isSelected 
-                        ? "border-cyan-500/40 bg-cyan-950/5 shadow-md shadow-cyan-950/20" 
-                        : "border-white/5 hover:border-white/10 hover:bg-white/[0.01]"
-                    )}
-                  >
-                    {/* Glowing highlight indicator */}
-                    {isSelected && (
-                      <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-cyan-400 to-violet-500" />
-                    )}
-
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-start gap-2">
-                        <span className={cn(
-                          "px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest border",
-                          trend.category === 'topic' ? "bg-violet-500/10 text-violet-400 border-violet-500/20" :
-                          trend.category === 'sound' ? "bg-amber-500/10 text-amber-400 border-amber-500/20" :
-                          "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                        )}>
-                          {trend.category}
-                        </span>
-                        <div className="flex items-center gap-1">
-                          <span className="text-xs font-black text-[#00F5C2]">{trend.velocity}</span>
-                          <ArrowUpRight className="w-3.5 h-3.5 text-[#00F5C2] group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-                        </div>
-                      </div>
-                      
-                      <h3 className="text-sm font-bold text-white leading-snug">{trend.title}</h3>
-                      <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed line-clamp-2">{trend.desc}</p>
-                    </div>
-
-                    <div className="flex justify-between items-center pt-2 border-t border-white/5 text-[10px] text-[var(--text-muted)] font-bold">
-                      <span>Niche: <span className="text-white">{trend.niche}</span></span>
-                      <span>{trend.reach}</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Hijacker Details Panel */}
-          {selectedTrend && (
-            <div className="premium-card p-5 space-y-6 border border-cyan-500/15">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/5 pb-4">
-                <div>
-                  <span className="text-[10px] font-black text-cyan-400 uppercase tracking-widest">Active Trend Target</span>
-                  <h2 className="text-lg font-bold text-white mt-1">{selectedTrend.title}</h2>
-                </div>
-                
-                <div className="flex gap-2 w-full sm:w-auto">
-                  {selectedTrend.soundUrl && (
-                    <button
-                      onClick={() => handlePlaySound(selectedTrend.soundUrl!, selectedTrend.id)}
-                      className="px-4 py-2.5 rounded-xl border border-white/10 hover:bg-white/5 text-xs text-white font-bold flex items-center justify-center gap-2 transition-all"
-                    >
-                      <Play className={cn("w-3.5 h-3.5", isPlaying === selectedTrend.id ? "text-cyan-400 animate-pulse" : "text-white")} />
-                      {isPlaying === selectedTrend.id ? 'Pause Sound' : 'Play Reference Sound'}
-                    </button>
-                  )}
-                  <button
-                    disabled={loading}
-                    onClick={() => handleHijackTrend(selectedTrend)}
-                    className="premium-button flex-1 sm:flex-initial flex items-center justify-center gap-2 py-2.5 px-5 text-xs font-black uppercase tracking-wider"
-                  >
-                    {loading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                    Hijack Trend {activePersona?.name ? `with ${activePersona.name}` : ''}
-                  </button>
-                </div>
-              </div>
-
-              {/* Simulated Loading State */}
-              {loading && (
-                <div className="py-12 flex flex-col items-center justify-center gap-3">
-                  <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
-                  <p className="text-xs text-[var(--text-secondary)] font-bold animate-pulse">
-                    Gemini Co-Pilot is analyzing hooks and visual matches...
-                  </p>
-                </div>
-              )}
-
-              {/* Script Generation Result */}
-              {!loading && scriptResult && (
-                <motion.div 
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="space-y-6"
-                >
-                  <div className="bg-cyan-500/5 border border-cyan-500/10 rounded-2xl p-4 space-y-2">
-                    <span className="text-[9px] font-black text-cyan-400 uppercase tracking-wider block">Script Concept & Angle</span>
-                    <p className="text-xs text-cyan-300 font-bold leading-relaxed">"{scriptResult.concept}"</p>
-                  </div>
-
-                  <div className="space-y-3">
-                    <div className="flex justify-between items-center">
-                      <span className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-wider">Hook Line (1st 3s)</span>
-                      <button
-                        onClick={() => copyToClipboard(scriptResult.hook, 'Hook copied!')}
-                        className="text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
-                      >
-                        <Copy size={12} /> Copy Hook
-                      </button>
-                    </div>
-                    <div className="bg-white/[0.01] border border-white/5 rounded-xl p-4">
-                      <p className="text-sm font-black text-white italic">"{scriptResult.hook}"</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    <div className="flex justify-between items-center">
-                      <span className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-wider">Vertical Video Script</span>
-                      <button
-                        onClick={() => copyToClipboard(scriptResult.voiceoverScript, 'Script copied!')}
-                        className="text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
-                      >
-                        <Copy size={12} /> Copy Script
-                      </button>
-                    </div>
-                    <textarea
-                      rows={6}
-                      readOnly
-                      value={scriptResult.voiceoverScript}
-                      className="w-full bg-[var(--bg-input)] border border-white/5 rounded-xl py-3 px-4 outline-none text-[var(--text-secondary)] text-xs leading-relaxed"
-                    />
-                  </div>
-
-                  <div className="space-y-3">
-                    <span className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-wider block">Recommended Visual Prompts (Use in Image/Video Studio)</span>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      {scriptResult.visualPrompts?.map((prompt: string, idx: number) => (
-                        <div key={idx} className="premium-card p-3 flex flex-col justify-between gap-3 border border-white/5">
-                          <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed line-clamp-4">"{prompt}"</p>
-                          <button
-                            onClick={() => copyToClipboard(prompt, `Prompt ${idx+1} copied!`)}
-                            className="w-full py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[10px] text-white font-bold transition-all flex items-center justify-center gap-1.5"
-                          >
-                            <Copy size={10} /> Copy Prompt
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="flex justify-between items-center pt-4 border-t border-white/5">
-                    <div className="flex flex-wrap gap-1.5">
-                      {scriptResult.hashtags?.map((tag: string, idx: number) => (
-                        <span key={idx} className="text-[10px] text-cyan-400 bg-cyan-400/5 px-2.5 py-1 rounded border border-cyan-500/10 font-bold">{tag}</span>
-                      ))}
-                    </div>
-                    
-                    <button
-                      onClick={() => nav.push({ view: 'create', subView: 'image' })}
-                      className="flex items-center gap-1 text-[10px] font-black text-cyan-400 hover:text-cyan-300 uppercase tracking-widest"
-                    >
-                      Open Creator Studio <ArrowUpRight className="w-3 h-3" />
-                    </button>
-                  </div>
-                </motion.div>
-              )}
-            </div>
-          )}
-
+      {error && (
+        <div className="flex items-start gap-3 border-b border-amber-500/15 bg-amber-500/[0.05] px-5 py-4 text-xs text-amber-100">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+          <p>{error}</p>
         </div>
+      )}
 
-        {/* Right 1 Column: Competitor Matchup */}
-        <div className="space-y-6">
-          <div className="premium-card p-5 space-y-6">
+      {loading && !analysis && (
+        <div className="flex min-h-40 flex-col items-center justify-center gap-3 p-6 text-center">
+          <Loader2 className="h-7 w-7 animate-spin text-[#E7C477]" />
+          <p className="text-xs font-bold text-zinc-400">Reading recent public posts and comparing their performance…</p>
+        </div>
+      )}
+
+      {analysis && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
-                <Users className="w-4 h-4 text-violet-400" />
-                Competitor Analysis
-              </h2>
-              <p className="text-[11px] text-[var(--text-muted)]">Benchmark metrics against top virtual influencers.</p>
-            </div>
-
-            {/* Select Competitor */}
-            <div className="grid grid-cols-3 gap-2">
-              {COMPETITORS.map(comp => (
-                <button
-                  key={comp.name}
-                  onClick={() => setSelectedCompetitor(comp)}
-                  className={cn(
-                    "p-2 rounded-xl border flex flex-col items-center gap-1.5 transition-all text-center",
-                    selectedCompetitor.name === comp.name
-                      ? "border-violet-500/40 bg-violet-950/10 text-white"
-                      : "border-white/5 hover:border-white/10 hover:bg-white/[0.01] text-zinc-400"
-                  )}
-                >
-                  <img src={comp.avatar} alt="" className="w-8 h-8 rounded-lg object-cover border border-white/10" />
-                  <span className="text-[9px] font-black leading-none truncate max-w-full">{comp.name}</span>
-                </button>
-              ))}
-            </div>
-
-            {/* Competitor Profile Details */}
-            <div className="premium-card p-4 border border-white/5 bg-[#0B0F17]/40 space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-wider">Niche / Target</span>
-                <span className="text-[10px] font-bold text-violet-400">{selectedCompetitor.niche}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-wider">Est. Brand Income</span>
-                <span className="text-xs font-black text-white">{selectedCompetitor.monthlyEarnings}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-wider">Avg. Video Views</span>
-                <span className="text-xs font-black text-white">{selectedCompetitor.avgViews}</span>
-              </div>
-            </div>
-
-            {/* Head-to-Head Stats Comparison */}
-            {activePersona && activePersona.id !== 'empty' ? (
-              <div className="space-y-5">
-                <span className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-wider block">Head-to-Head Comparison</span>
-                
-                {/* Followers Comparison */}
-                <div className="space-y-1.5">
-                  <div className="flex justify-between text-[10px] font-bold">
-                    <span className="text-cyan-400">{activePersona.name} (75K)</span>
-                    <span className="text-violet-400">{selectedCompetitor.name} ({selectedCompetitor.followers})</span>
-                  </div>
-                  <div className="h-1.5 rounded-full bg-white/5 overflow-hidden flex">
-                    <div className="bg-gradient-to-r from-cyan-500 to-cyan-400 h-full" style={{ width: `${(75000 / (75000 + selectedCompetitor.followersNum)) * 100}%` }} />
-                    <div className="bg-gradient-to-r from-violet-500 to-violet-400 h-full" style={{ width: `${(selectedCompetitor.followersNum / (75000 + selectedCompetitor.followersNum)) * 100}%` }} />
-                  </div>
-                </div>
-
-                {/* Engagement Comparison */}
-                <div className="space-y-1.5">
-                  <div className="flex justify-between text-[10px] font-bold">
-                    <span className="text-cyan-400">{activePersona.name} (4.8%)</span>
-                    <span className="text-violet-400">{selectedCompetitor.name} ({selectedCompetitor.engagement})</span>
-                  </div>
-                  <div className="h-1.5 rounded-full bg-white/5 overflow-hidden flex">
-                    <div className="bg-gradient-to-r from-cyan-500 to-cyan-400 h-full" style={{ width: `${(4.8 / (4.8 + selectedCompetitor.engagementNum)) * 100}%` }} />
-                    <div className="bg-gradient-to-r from-violet-500 to-violet-400 h-full" style={{ width: `${(selectedCompetitor.engagementNum / (4.8 + selectedCompetitor.engagementNum)) * 100}%` }} />
-                  </div>
-                </div>
-
-                {/* Simulated Competitor SVG Chart */}
-                <div className="border border-white/5 rounded-2xl p-4 space-y-3 bg-[#0B0F17]/30">
-                  <span className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-wider block">Audience Demographics Match</span>
-                  
-                  {/* SVG Map representation */}
-                  <svg viewBox="0 0 100 50" className="w-full h-24 overflow-visible">
-                    <path d="M 10 40 Q 25 10 40 30 T 70 20 T 90 10" fill="none" stroke="rgba(217,182,103, 0.4)" strokeWidth="2" strokeDasharray="3,3" />
-                    <path d="M 10 40 Q 20 20 35 15 T 60 30 T 90 20" fill="none" stroke="rgba(34, 211, 238, 0.7)" strokeWidth="2" />
-                    
-                    {/* Dots */}
-                    <circle cx="90" cy="20" r="3" fill="#00D4FF" />
-                    <circle cx="90" cy="10" r="3" fill="#EECB78" />
-                    
-                    {/* Gridlines */}
-                    <line x1="10" y1="40" x2="90" y2="40" stroke="rgba(255,255,255,0.05)" />
-                    <line x1="10" y1="10" x2="90" y2="10" stroke="rgba(255,255,255,0.05)" />
-                  </svg>
-                  
-                  <div className="flex justify-between text-[8px] text-[var(--text-muted)] font-black uppercase tracking-widest pt-1">
-                    <div className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-cyan-400" /> Isabella (US / EU focus)</div>
-                    <div className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-violet-400" /> {selectedCompetitor.name}</div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="py-6 flex flex-col items-center justify-center gap-2 border border-dashed border-white/5 rounded-2xl text-center bg-white/[0.01]">
-                <AlertCircle className="w-5 h-5 text-zinc-500" />
-                <span className="text-[11px] text-zinc-400 font-bold px-4 leading-relaxed">
-                  Select a persona in the top header switcher to enable head-to-head metrics comparison.
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-lg font-black text-white">@{analysis.handle}</h3>
+                <span className="flex items-center gap-1 rounded-md border border-[#00F5C2]/20 bg-[#00F5C2]/[0.06] px-2 py-1 text-[9px] font-black uppercase tracking-wider text-[#71E6C1]">
+                  <PlatformMark platform={analysis.platform} /> Live public data
                 </span>
               </div>
-            )}
+              <p className="mt-1 text-[10px] font-bold text-zinc-500">
+                {analysis.postsAnalyzed} posts analyzed · {analysis.cached ? 'Cached pull' : 'Fresh pull'} · {formatCollectedAt(analysis.collectedAt)}
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <a href={analysis.profileUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 rounded-xl border border-white/10 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-zinc-300 hover:text-white">
+                Open profile <ExternalLink className="h-3 w-3" />
+              </a>
+              <button type="button" disabled={loading} onClick={() => void analyze(true)} className="flex items-center gap-1.5 rounded-xl border border-[#E7C477]/20 bg-[#E7C477]/[0.06] px-3 py-2 text-[10px] font-black uppercase tracking-wider text-[#F0D48A] disabled:opacity-50">
+                <RefreshCw className={cn('h-3 w-3', loading && 'animate-spin')} /> Refresh
+              </button>
+            </div>
           </div>
-        </div>
 
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <ChannelMetric label="Median views" value={formatMetric(analysis.medianViews)} icon={<BarChart2 className="h-4 w-4" />} />
+            <ChannelMetric label="Average views" value={formatMetric(analysis.averageViews)} icon={<Eye className="h-4 w-4" />} />
+            <ChannelMetric label="Average likes" value={formatMetric(analysis.averageLikes)} icon={<Heart className="h-4 w-4" />} />
+            <ChannelMetric label="Engagement" value={analysis.averageEngagementRate === null ? 'Not returned' : `${analysis.averageEngagementRate}%`} icon={<MessageCircle className="h-4 w-4" />} />
+          </div>
+
+          <div className="grid gap-5 lg:grid-cols-[0.85fr_1.15fr]">
+            <div className="rounded-2xl border border-[#E7C477]/15 bg-[#E7C477]/[0.04] p-4">
+              <h4 className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-white">
+                <Sparkles className="h-4 w-4 text-[#E7C477]" /> What the data says
+              </h4>
+              <ul className="mt-4 space-y-3">
+                {analysis.insights.map(insight => (
+                  <li key={insight} className="flex gap-2 text-[11px] leading-relaxed text-zinc-300">
+                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#00F5C2]" /> {insight}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <ChannelPostList title="Top performers" subtitle="Repeat the winning format—not the exact post." posts={analysis.topPosts} tone="top" />
+              <ChannelPostList title="Needs attention" subtitle="Test a stronger opening or clearer payoff." posts={analysis.opportunityPosts} tone="needs-attention" />
+            </div>
+          </div>
+
+          <p className="border-t border-white/[0.06] pt-4 text-[10px] leading-relaxed text-zinc-500">{analysis.methodology}</p>
+        </motion.div>
+      )}
+
+      {!loading && !analysis && !error && (
+        <div className="flex items-center gap-3 px-5 py-4 text-[10px] leading-relaxed text-zinc-500">
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#00F5C2]" />
+          Public profiles work without connecting the account. Private reach, retention, saves, demographics, and follower conversion require official account authorization.
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ChannelMetric({ label, value, icon }: { label: string; value: string; icon: ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-white/[0.07] bg-black/15 p-4">
+      <div className="mb-3 text-[#E7C477]">{icon}</div>
+      <p className="text-lg font-black text-white">{value}</p>
+      <p className="mt-1 text-[9px] font-black uppercase tracking-wider text-zinc-500">{label}</p>
+    </div>
+  );
+}
+
+function ChannelPostList({
+  title,
+  subtitle,
+  posts,
+  tone,
+}: {
+  title: string;
+  subtitle: string;
+  posts: SocialChannelPost[];
+  tone: 'top' | 'needs-attention';
+}) {
+  return (
+    <div className="rounded-2xl border border-white/[0.07] bg-black/15 p-4">
+      <h4 className="text-xs font-black text-white">{title}</h4>
+      <p className="mt-1 text-[9px] text-zinc-500">{subtitle}</p>
+      <div className="mt-3 space-y-2">
+        {posts.map(post => (
+          <a key={post.id} href={post.sourceUrl} target="_blank" rel="noreferrer" className="group flex items-center gap-3 rounded-xl border border-white/[0.06] p-2 transition hover:border-white/15 hover:bg-white/[0.025]">
+            {post.thumbnailUrl ? (
+              <img src={post.thumbnailUrl} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover" loading="lazy" referrerPolicy="no-referrer" />
+            ) : (
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-white/5 text-zinc-500"><PlatformMark platform={post.platform} /></div>
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="line-clamp-1 text-[10px] font-bold text-zinc-200 group-hover:text-white">{post.title}</p>
+              <p className="mt-1 text-[9px] font-black text-zinc-500">{formatMetric(post.views)} views</p>
+            </div>
+            <span className={cn(
+              'text-[9px] font-black',
+              tone === 'top' ? 'text-[#71E6C1]' : 'text-amber-300',
+            )}>
+              {post.performanceVsMedian === null ? '—' : `${post.performanceVsMedian > 0 ? '+' : ''}${post.performanceVsMedian}%`}
+            </span>
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CopyBlock({
+  label,
+  value,
+  copyKey,
+  copied,
+  onCopy,
+  multiline = false,
+}: {
+  label: string;
+  value: string;
+  copyKey: string;
+  copied: string | null;
+  onCopy: (value: string, key: string) => Promise<void>;
+  multiline?: boolean;
+}) {
+  return (
+    <div className="rounded-xl border border-white/[0.07] bg-white/[0.015] p-4">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <p className="text-[9px] font-black uppercase tracking-wider text-zinc-500">{label}</p>
+        <button type="button" onClick={() => void onCopy(value, copyKey)} className="flex items-center gap-1 text-[10px] font-bold text-[#E7C477]">
+          {copied === copyKey ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+          {copied === copyKey ? 'Copied' : 'Copy'}
+        </button>
+      </div>
+      <p className={cn('text-xs leading-relaxed text-zinc-200', !multiline && 'font-bold')}>{value}</p>
+    </div>
+  );
+}
+
+function CreatorDetails({ creator }: { creator: SocialCreatorSignal }) {
+  return (
+    <div className="space-y-3 rounded-2xl border border-white/[0.07] bg-black/15 p-4">
+      <div className="flex items-center justify-between text-[10px]">
+        <span className="font-black uppercase tracking-wider text-zinc-500">Platform</span>
+        <span className="font-bold text-white">{platformLabel(creator.platform)}</span>
+      </div>
+      <div className="flex items-center justify-between text-[10px]">
+        <span className="font-black uppercase tracking-wider text-zinc-500">Posts observed</span>
+        <span className="font-bold text-white">{creator.postsObserved}</span>
+      </div>
+      <div className="flex items-center justify-between text-[10px]">
+        <span className="font-black uppercase tracking-wider text-zinc-500">Average public views</span>
+        <span className="font-bold text-white">{formatMetric(creator.averageViews)}</span>
+      </div>
+      <div className="flex items-center justify-between text-[10px]">
+        <span className="font-black uppercase tracking-wider text-zinc-500">Observed engagement</span>
+        <span className="font-bold text-white">{creator.averageEngagementRate === null ? 'Not returned' : `${creator.averageEngagementRate}%`}</span>
+      </div>
+      <div className="grid grid-cols-2 gap-2 pt-2">
+        <a href={creator.profileUrl} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-1.5 rounded-lg border border-white/10 px-2 py-2 text-[9px] font-black uppercase tracking-wider text-zinc-300 hover:text-white">
+          Profile <ExternalLink className="h-3 w-3" />
+        </a>
+        <a href={creator.topPostUrl} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-1.5 rounded-lg border border-[#E7C477]/20 bg-[#E7C477]/[0.06] px-2 py-2 text-[9px] font-black uppercase tracking-wider text-[#F0D48A]">
+          Top post <ExternalLink className="h-3 w-3" />
+        </a>
       </div>
     </div>
   );

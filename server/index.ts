@@ -23,6 +23,7 @@ import apiRoutes, { globalDefaultVoiceRef, readCreatorProfileForUser, readPerson
 import { composeMultiPersonaPrompt, getPersonaPrimaryReference, resolveCreatorPersona, resolveMediaParticipants, type MediaPersonaContext } from './persona-media';
 import { buildMediaQualityRetryPrompt, parseMediaQualityReport, unavailableMediaQualityReport, type MediaQualityReport } from './media-quality';
 import { normalizeNaturalVoiceGreeting } from './voiceRouting';
+import { getSocialChannelAnalysis, getSocialTrends, isSocialIntelligenceConfigured } from './social-intelligence';
 import stripeRoutes, { handleStripeWebhook } from './stripe-routes';
 import { requireAuth, isCreatorUser, AuthenticatedRequest } from './auth';
 import { finalizeGenerationCredits, reserveGenerationCredits, type GenerationReservation } from './creditBilling';
@@ -6094,7 +6095,58 @@ app.get('/api/config-status', (_req, res) => {
     database: !!process.env.DATABASE_URL,
     databaseConnected: !!process.env.DATABASE_URL,
     heygen: !!HEYGEN_API_KEY,
+    scrapeCreators: isSocialIntelligenceConfigured(),
   });
+});
+
+// ─── Public Social Intelligence ──────────────────────────────────────────────
+app.get('/api/social/trends', async (req, res) => {
+  const requestedPlatform = String(req.query.platform || 'all').toLowerCase();
+  const platform = requestedPlatform === 'instagram' || requestedPlatform === 'tiktok'
+    ? requestedPlatform
+    : 'all';
+  const rawRegion = String(req.query.region || 'US').trim().toUpperCase();
+  const region = /^[A-Z]{2}$/.test(rawRegion) ? rawRegion : 'US';
+  const refresh = String(req.query.refresh || '').toLowerCase() === 'true';
+
+  try {
+    const data = await getSocialTrends({ platform, region, refresh });
+    res.setHeader('Cache-Control', 'private, max-age=60');
+    return res.json(data);
+  } catch (error) {
+    const status = Number((error as any)?.statusCode) || 500;
+    console.error('[social-trends]', error instanceof Error ? error.message : error);
+    return res.status(status).json({
+      error: error instanceof Error ? error.message : 'Unable to load social trends.',
+    });
+  }
+});
+
+app.get('/api/social/channel-analysis', async (req, res) => {
+  const platform = String(req.query.platform || '').toLowerCase();
+  const handle = String(req.query.handle || '').trim();
+  const rawRegion = String(req.query.region || 'US').trim().toUpperCase();
+  const region = /^[A-Z]{2}$/.test(rawRegion) ? rawRegion : 'US';
+  const refresh = String(req.query.refresh || '').toLowerCase() === 'true';
+
+  if (platform !== 'instagram' && platform !== 'tiktok') {
+    return res.status(400).json({ error: 'Choose Instagram or TikTok.' });
+  }
+  if (!handle) {
+    return res.status(400).json({ error: 'Enter a public account username.' });
+  }
+
+  try {
+    const data = await getSocialChannelAnalysis({ platform, handle, region, refresh });
+    res.setHeader('Cache-Control', 'private, max-age=60');
+    return res.json(data);
+  } catch (error) {
+    const status = Number((error as any)?.statusCode) || 500;
+    console.error('[social-channel-analysis]', error instanceof Error ? error.message : error);
+    return res.status(status).json({
+      error: error instanceof Error ? error.message : 'Unable to analyze this channel.',
+    });
+  }
 });
 
 // ─── ElevenLabs Voices ────────────────────────────────────────────────────────
