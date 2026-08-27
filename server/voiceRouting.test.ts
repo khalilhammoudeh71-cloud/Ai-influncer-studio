@@ -1,11 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  createSpokenDialogueStream,
   isElevenLabsVoiceEngine,
   isDirectElevenLabsVoiceId,
   isProviderAccountUnavailableStatus,
   isValidPublicVoiceReference,
   normalizeNaturalVoiceGreeting,
+  sanitizeSpokenDialogue,
   selectElevenLabsPersonaVoice,
 } from './voiceRouting';
 
@@ -17,6 +19,36 @@ const voices = [
 
 test('keeps an existing saved ElevenLabs voice id', () => {
   assert.equal(selectElevenLabsPersonaVoice(voices, 'leen-current', 'Leen Hassan')?.voice_id, 'leen-current');
+});
+
+test('removes stage directions and delivery instructions from spoken dialogue', () => {
+  assert.equal(
+    sanitizeSpokenDialogue('*shy giggles* Oh, wow. (in a breathy tone) You remembered?'),
+    'Oh, wow. You remembered?',
+  );
+  assert.equal(
+    sanitizeSpokenDialogue('Tone: playful and slightly breathy. That is actually really sweet.'),
+    'That is actually really sweet.',
+  );
+  assert.equal(
+    sanitizeSpokenDialogue('<think>I should change the subject.</think> I missed you too.'),
+    'I missed you too.',
+  );
+  assert.equal(
+    sanitizeSpokenDialogue('Shy giggles, okay, you caught me. My voice softens into a breathy tone. What did you expect?'),
+    'Okay, you caught me. What did you expect?',
+  );
+});
+
+test('streams only complete sanitized speech while preserving natural dialogue', () => {
+  const chunks: string[] = [];
+  const stream = createSpokenDialogueStream(chunk => chunks.push(chunk));
+  stream.push('*shy ');
+  stream.push('giggles* Mm, I missed you. Tone: soft and intimate. ');
+  stream.push('How was your day?');
+
+  assert.equal(stream.flush(), 'Mm, I missed you. How was your day?');
+  assert.deepEqual(chunks, ['Mm, I missed you.', ' How was your day?']);
 });
 
 test('remaps a stale id to the same persona by name', () => {
