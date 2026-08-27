@@ -2183,15 +2183,31 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       };
 
       const flushSpeechBuffer = (force = false, allowEarlyPartial = false) => {
-        while (speechBuffer.trim()) {
-          const extracted = takeSpeakableSpeechChunk(speechBuffer, {
-            force,
-            firstChunk: !streamingSpeechQueued,
-            allowEarlyPartial,
-          });
-          speechBuffer = extracted.remainder;
-          if (!extracted.chunk) break;
-          queueSpeechSegment(extracted.chunk);
+        // Speak one short opening phrase as soon as it is ready, then keep the
+        // remainder together as one continuous clip. Starting a new TTS request
+        // for every sentence made the same ElevenLabs voice change pitch and
+        // prosody several times inside a single response.
+        if (streamingSpeechQueued) {
+          if (force) {
+            const finalSegment = speechBuffer.replace(/\s+/g, ' ').trim();
+            speechBuffer = '';
+            if (finalSegment) queueSpeechSegment(finalSegment);
+          }
+          return;
+        }
+
+        const extracted = takeSpeakableSpeechChunk(speechBuffer, {
+          force,
+          firstChunk: true,
+          allowEarlyPartial,
+        });
+        speechBuffer = extracted.remainder;
+        if (extracted.chunk) queueSpeechSegment(extracted.chunk);
+
+        if (force && speechBuffer.trim()) {
+          const finalSegment = speechBuffer.replace(/\s+/g, ' ').trim();
+          speechBuffer = '';
+          queueSpeechSegment(finalSegment);
         }
       };
 
@@ -2208,8 +2224,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         }, 180);
       };
 
-      // Stream LLM text immediately, and synthesize each complete phrase while
-      // the rest of the response is still being generated.
+      // Stream text immediately. Synthesize one opening phrase for a fast first
+      // response, then one continuous tail so the voice remains consistent.
       const res = await authFetch('/api/agent/voice-chat-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
