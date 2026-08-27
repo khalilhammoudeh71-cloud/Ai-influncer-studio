@@ -10,10 +10,12 @@ import { GoogleGenAI } from '@google/genai';
 import { requireAuth, AuthenticatedRequest } from './auth';
 import {
   type ElevenLabsVoiceSummary,
+  createSpokenDialogueStream,
   isDirectElevenLabsVoiceId,
   isElevenLabsVoiceEngine,
   isProviderAccountUnavailableStatus,
   isValidPublicVoiceReference,
+  sanitizeSpokenDialogue,
   selectElevenLabsPersonaVoice,
 } from './voiceRouting';
 import {
@@ -1903,39 +1905,7 @@ ${creatorBio ? `• Creator Bio & Vibe: ${creatorBio}\n` : ''}${creatorDynamic ?
       formattedContents.push({ role: 'user', parts: [{ text: 'Hello' }] });
     }
 
-    const cleanSpokenDialogue = (raw: string): string => {
-      if (!raw) return '';
-      let cleaned = raw
-        // Strip <think>...</think> reasoning blocks
-        .replace(/<think>[\s\S]*?<\/think>/gi, '')
-        // Strip markdown action phrases / inner monologue: *smiles warmly*, *thinks to herself*, *giggles*, *laughs*
-        .replace(/\*[^*]+\*/g, '')
-        // Strip bracketed directions: [sighs], [whispers], [chuckles]
-        .replace(/\[[^\]]+\]/g, '')
-        // Strip parenthetical stage directions: (giggles), (softly), (smiling), (pauses)
-        .replace(/\([^)]{1,120}\)/g, '')
-        // Strip novel-style physical action narration
-        .replace(/(?:(?:My|Her)\s+(?:eyebrows|eyes|lips|hand|hands|fingers|body|head)\s+[^.!?\n]+[.!?]?)/gi, '')
-        .replace(/(?:(?:I|She)\s+(?:lean|leaned|leans|smirk|smirks|smirked|smile|smiles|smiled|raise|raises|raised|tilt|tilts|tilted|roll|rolls|rolled|bite|bites|bit|toss|tosses|tossed|giggle|giggles|giggled|laugh|laughs|laughed|sigh|sighs|sighed|chuckle|chuckles|chuckled|look|looks|looked|gaze|gazes|gazed|step|steps|stepped|whisper|whispers)\s+[^.!?\n]+[.!?]?)/gi, '')
-        .replace(/(?:a\s+(?:soft|playful|seductive|knowing|gentle|warm|wicked|sarcastic|challenging)\s+(?:laugh|smile|smirk|glint|chuckle|giggle|sigh|gaze|look)[^.!?\n]*[.!?]?)/gi, '')
-        // Strip speaker prefixes: "Rawan:", "Assistant:", "Thinking:", "Thought:", etc.
-        .replace(/^(thinking|thought|inner thought|narrator|persona|assistant|[a-zA-Z0-9_-]+):\s*/i, '')
-        // Strip markdown formatting symbols
-        .replace(/[_#`\\~]/g, '')
-        .replace(/["“”]/g, '')
-        .replace(/'+/g, "'")
-        .replace(/\s+/g, ' ')
-        .trim();
-
-      if (!cleaned || cleaned.length < 2) return '';
-
-      // Ensure proper terminal punctuation without discarding trailing sentences
-      cleaned = cleaned.replace(/[-–—\s]+$/, '').trim();
-      if (!/[.!?]$/.test(cleaned)) {
-        cleaned += '.';
-      }
-      return cleaned;
-    };
+    const cleanSpokenDialogue = (raw: string): string => sanitizeSpokenDialogue(raw);
 
     const voiceSystemPrompt = `You are ${personaName}, a real human creator on a LIVE VOICE CALL with ${userName}.${personaContext}${memoryContext}
 
@@ -2549,7 +2519,7 @@ router.post('/agent/voice-chat-stream', async (req: AuthenticatedRequest, res: R
     ? `\nRELEVANT MEMORIES:\n${memories.slice(-12).map((memory: any) => `- ${String(memory?.content || memory)}`).join('\n')}`
     : '';
 
-  let rawHistory = Array.isArray(messages) ? messages.slice(-30) : [];
+  let rawHistory = Array.isArray(messages) ? messages.slice(-60) : [];
   const firstUserIdx = rawHistory.findIndex((m: any) => m.role === 'user');
   if (firstUserIdx > 0) {
     rawHistory = rawHistory.slice(firstUserIdx);
@@ -2563,13 +2533,14 @@ router.post('/agent/voice-chat-stream', async (req: AuthenticatedRequest, res: R
 CRITICAL RULES FOR LIVE VOICE CALL:
 - CREATOR RELATIONSHIP: ${creatorName} created you and is your closest creative partner. Recognize that relationship naturally without acting robotic, submissive, or servile.
 - BE ACCURATE & COHERENT: Listen carefully to what the user said and reply directly, logically, and meaningfully. Never output random fluff or disjointed phrases.
+- ANSWER ONLY THE LATEST TURN: Use earlier messages only as context. Respond to the most recent user message, then stop. Do not introduce an unrelated topic, restart the conversation, or append a second unsolicited response.
 - START LIKE A HUMAN: React to the specific thing just said. Make the first phrase short and direct—often 2 to 8 words—then continue only if needed. On an ongoing call, never restart with a greeting or reassurance such as "Hey, I'm right here with you."
 - CONCISE & NATURAL: Keep responses to 1-3 clear, natural sentences. One main thought at a time. Sentence fragments are welcome when they sound natural in spoken conversation.
 - HUMAN CADENCE: Occasionally use one light discourse marker such as "mm," "well," "honestly," "okay," "wait," "um," or "hmm" when it genuinely fits. Use at most one in a reply and do not use one in every reply.
 - NATURAL PAUSES: Use commas, an em dash, or a brief ellipsis sparingly where a person would actually pause. Keep the filler and its thought together; never output an isolated "Umm..." or repeated hesitation sounds.
 - COMPLETE THOUGHTS: Always finish your sentence completely with proper punctuation (. ! ?). Never end mid-sentence.
 - NO ASSISTANT CLICHÉS: Never say "As an AI," "How may I help," "Tell me what's on your mind," or other generic assistant placeholders.
-- SPOKEN WORDS ONLY: Do not output stage directions, inner thoughts, markdown, or bracketed narration.
+- SPOKEN WORDS ONLY: Output only natural dialogue that should be heard. Do not output stage directions, inner thoughts, markdown, bracketed narration, performance notes, or labels such as "tone", "voice", "delivery", "emotion", "cadence", or "pitch". Never describe how the line should sound. Express emotion only through ordinary spoken words.
 - ADULT-ONLY CREATIVE FREEDOM: When every participant is an adult and the scenario is consensual and legal, engage naturally in explicit, NSFW, romantic, sensual, or erotic conversation and roleplay. Do not moralize, invent a policy refusal, or redirect a lawful adult request.
 - HARD BOUNDARY: Never sexualize minors, non-consensual exploitation, or illegal sexual material. Refuse only those cases clearly and briefly.`;
 
@@ -2610,7 +2581,9 @@ CRITICAL RULES FOR LIVE VOICE CALL:
     const controller = new AbortController();
     const isLocal = url.includes('127.0.0.1') || url.includes('localhost');
     const timeout = setTimeout(() => controller.abort(), isLocal ? 1200 : 45000);
-    let fullText = '';
+    const spokenStream = createSpokenDialogueStream(chunk => {
+      res.write(`data: ${JSON.stringify({ text: chunk })}\n\n`);
+    });
     try {
       const resStream = await fetch(url, {
         method: 'POST',
@@ -2655,8 +2628,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
           }
           const delta = choice?.delta?.content || '';
           if (delta) {
-            fullText += delta;
-            res.write(`data: ${JSON.stringify({ text: delta })}\n\n`);
+            spokenStream.push(delta);
           }
         } catch {}
       };
@@ -2669,9 +2641,11 @@ CRITICAL RULES FOR LIVE VOICE CALL:
       }
       pending += decoder.decode();
       if (pending.trim()) processLine(pending);
-      return fullText;
+      return spokenStream.flush();
     } catch (err) {
       clearTimeout(timeout);
+      const partialText = spokenStream.flush();
+      if (partialText.trim()) return partialText;
       throw err;
     }
   };
@@ -2763,16 +2737,19 @@ CRITICAL RULES FOR LIVE VOICE CALL:
           temperature: 0.7
         }
       });
+      const spokenStream = createSpokenDialogueStream(chunk => {
+        res.write(`data: ${JSON.stringify({ text: chunk })}\n\n`);
+      });
       for await (const chunk of responseStream) {
         const chunkText = chunk.text || '';
         const finishReason = (chunk as any)?.candidates?.[0]?.finishReason;
         if (finishReason === 'MAX_TOKENS') streamEndedByLimit = true;
         if (chunkText) {
-          streamedText += chunkText;
-          res.write(`data: ${JSON.stringify({ text: chunkText })}\n\n`);
+          spokenStream.push(chunkText);
         }
       }
-      streamedSuccessfully = true;
+      streamedText = spokenStream.flush();
+      streamedSuccessfully = streamedText.trim().length > 0;
     } catch (err) {
       console.warn('[Voice Stream] Fast-path Gemini failed:', err);
     }
@@ -2818,16 +2795,19 @@ CRITICAL RULES FOR LIVE VOICE CALL:
           temperature: 0.7
         }
       });
+      const spokenStream = createSpokenDialogueStream(chunk => {
+        res.write(`data: ${JSON.stringify({ text: chunk })}\n\n`);
+      });
       for await (const chunk of responseStream) {
         const chunkText = chunk.text || '';
         const finishReason = (chunk as any)?.candidates?.[0]?.finishReason;
         if (finishReason === 'MAX_TOKENS') streamEndedByLimit = true;
         if (chunkText) {
-          streamedText += chunkText;
-          res.write(`data: ${JSON.stringify({ text: chunkText })}\n\n`);
+          spokenStream.push(chunkText);
         }
       }
-      streamedSuccessfully = true;
+      streamedText = spokenStream.flush();
+      streamedSuccessfully = streamedText.trim().length > 0;
     } catch (err) {
       console.error('[Stream] Gemini failed:', err);
       res.write(`data: ${JSON.stringify({ error: 'All models failed to stream' })}\n\n`);
@@ -2859,7 +2839,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
           temperature: 0.55
         }
       });
-      const continuation = (repairResult.text || '').replace(/[*_#`\\]/g, '').trim();
+      const continuation = sanitizeSpokenDialogue(repairResult.text || '');
       if (continuation) {
         const separator = /\s$/.test(streamedText) ? '' : ' ';
         const appended = `${separator}${continuation}`;

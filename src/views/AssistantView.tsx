@@ -1795,14 +1795,16 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     return milliseconds < 1000 ? `${milliseconds}ms` : `${(milliseconds / 1000).toFixed(1)}s`;
   };
 
-  // ── Web Speech Fallback Engine (Robotic Voice Suppressed) ──
-  const speakWithWebSpeech = (text: string, onStart?: () => void, onEnd?: () => void) => {
-    console.log('[Web Speech] Robotic synthesis suppressed to preserve cloned voice identity');
-    onEnd?.();
+  // ── Play TTS Helper ─────────────────────────────────────
+  type FrozenVoiceRouting = {
+    persona: Persona;
+    voiceId?: string;
+    voiceReference?: string;
+    voiceModel: string;
   };
 
-  // ── Play TTS Helper ─────────────────────────────────────
-  const playTTS = async (text: string, onStart?: () => void) => {
+  const playTTS = async (text: string, onStart?: () => void, voiceRouting?: FrozenVoiceRouting) => {
+    const speechPersona = voiceRouting?.persona || activePersona;
     currentPersonaSpeechRef.current = text.toLowerCase().trim();
     if (!speakerOn) {
       isAgentSpeakingRef.current = false;
@@ -1842,7 +1844,11 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     };
 
     try {
-      const { voiceId: targetVoiceId, voiceReference: targetVoiceRef } = getActivePersonaVoice(activePersona);
+      const currentVoice = voiceRouting || {
+        persona: speechPersona,
+        ...getActivePersonaVoice(speechPersona),
+        voiceModel: selectedVoiceEngine,
+      };
       controller = new AbortController();
       activeCallAbortControllerRef.current = controller;
 
@@ -1850,19 +1856,19 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          activePersona,
+          activePersona: speechPersona,
           directTTS: text,
-          voiceId: targetVoiceId,
-          voiceReference: targetVoiceRef,
-          voiceModel: selectedVoiceEngine,
-          ttsModel: selectedVoiceEngine,
+          voiceId: currentVoice.voiceId,
+          voiceReference: currentVoice.voiceReference,
+          voiceModel: currentVoice.voiceModel,
+          ttsModel: currentVoice.voiceModel,
         }),
         signal: controller.signal,
       });
       const ttsData = await ttsRes.json().catch(() => ({}));
       if (!ttsRes.ok) {
         if (ttsData.code === 'PERSONA_VOICE_UNAVAILABLE') {
-          const message = ttsData.error || `${activePersona.name}'s saved voice is unavailable. Reselect it in Voice Studio.`;
+          const message = ttsData.error || `${speechPersona.name}'s saved voice is unavailable. Reselect it in Voice Studio.`;
           toast.error(message, { id: 'persona-voice-unavailable', duration: 7000 });
           onPlaybackComplete();
           return;
@@ -1933,8 +1939,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         onPlaybackComplete();
         return;
       }
-      console.warn("TTS fetch failed, falling back to Web Speech Synthesis", err);
-      speakWithWebSpeech(text, onStart, onPlaybackComplete);
+      console.warn('Persona TTS failed; browser voice substitution is suppressed', err);
+      onPlaybackComplete();
     }
   };
 
@@ -2061,6 +2067,12 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       let terminalTtsError: string | undefined;
       let streamingPlayback = Promise.resolve();
       const { voiceId: targetVoiceId, voiceReference: targetVoiceRef } = getActivePersonaVoice(activePersona);
+      const targetVoiceRouting: FrozenVoiceRouting = {
+        persona: activePersona,
+        voiceId: targetVoiceId,
+        voiceReference: targetVoiceRef,
+        voiceModel: selectedVoiceEngine,
+      };
 
       const reportTerminalTtsError = (message: string) => {
         if (terminalTtsError) return;
@@ -2082,10 +2094,10 @@ export default function AssistantView({ personas, persona: propActivePersona, on
               body: JSON.stringify({
                 activePersona,
                 directTTS: segment,
-                voiceId: targetVoiceId,
-                voiceReference: targetVoiceRef,
-                voiceModel: selectedVoiceEngine,
-                ttsModel: selectedVoiceEngine,
+                voiceId: targetVoiceRouting.voiceId,
+                voiceReference: targetVoiceRouting.voiceReference,
+                voiceModel: targetVoiceRouting.voiceModel,
+                ttsModel: targetVoiceRouting.voiceModel,
               }),
               signal: controller.signal,
             });
@@ -2220,10 +2232,10 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           priorChatHistory: [],
           memories: personaMemories,
           voiceLlmModel,
-          voiceId: getActivePersonaVoice(activePersona).voiceId,
-          voiceReference: getActivePersonaVoice(activePersona).voiceReference,
-          voiceModel: selectedVoiceEngine,
-          ttsModel: selectedVoiceEngine,
+          voiceId: targetVoiceRouting.voiceId,
+          voiceReference: targetVoiceRouting.voiceReference,
+          voiceModel: targetVoiceRouting.voiceModel,
+          ttsModel: targetVoiceRouting.voiceModel,
         }),
         signal: controller.signal,
       });
@@ -2395,7 +2407,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
             { ...resultMessage, timestamp: new Date(), source: 'voice' },
           ]);
           if (callTurnId === callTurnIdRef.current && isCallActiveRef.current) {
-            streamingPlayback.then(() => playTTS(resultText)).catch(() => {});
+            streamingPlayback.then(() => playTTS(resultText, undefined, targetVoiceRouting)).catch(() => {});
           }
         }).catch(err => {
           const failureMessage = err?.message || `I couldn't finish that ${mediaType}.`;
@@ -2409,7 +2421,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
             source: 'voice',
           }]);
           if (callTurnId === callTurnIdRef.current && isCallActiveRef.current) {
-            streamingPlayback.then(() => playTTS(failureMessage)).catch(() => {});
+            streamingPlayback.then(() => playTTS(failureMessage, undefined, targetVoiceRouting)).catch(() => {});
           }
         });
       } else {
@@ -2503,7 +2515,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
             recordFirstAudioLatency();
             setCallStatus('speaking');
             isAgentSpeakingRef.current = true;
-          });
+          }, targetVoiceRouting);
         } else {
           isAgentSpeakingRef.current = false;
           voiceCallBusyRef.current = false;
@@ -2522,7 +2534,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           recordFirstAudioLatency();
           setCallStatus('speaking');
           isAgentSpeakingRef.current = true;
-        });
+        }, targetVoiceRouting);
       }
     } catch (err: any) {
       if (earlySpeechTimer) {

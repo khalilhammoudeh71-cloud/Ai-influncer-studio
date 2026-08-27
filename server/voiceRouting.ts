@@ -105,3 +105,151 @@ export function normalizeNaturalVoiceGreeting(value: unknown, fallback: string):
   // Fall back to a deliberately short local line if a provider ignores the cap.
   return wordCount >= 2 && wordCount <= 18 ? candidate : fallback;
 }
+
+const META_DIRECTION_LABEL = /(?:voice|tone|delivery|emotion|cadence|pitch|speaking style|voice direction|stage direction|performance note|instruction)s?/i;
+
+/**
+ * Converts a model reply into text that is safe to show as dialogue and send
+ * to a speech provider. This is deliberately server-side so every client and
+ * every TTS engine receives the same spoken-only response.
+ */
+export function sanitizeSpokenDialogue(value: unknown): string {
+  if (typeof value !== 'string' || !value.trim()) return '';
+
+  let cleaned = value
+    // Private reasoning and fenced prompt/instruction blocks.
+    .replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, ' ')
+    .replace(/```[\s\S]*?```/g, ' ')
+    // Remove explicit delivery labels without throwing away dialogue that
+    // follows the label sentence.
+    .replace(new RegExp(`(?:^|\\n)\\s*${META_DIRECTION_LABEL.source}\\s*:\\s*[^.!?\\n]*(?:[.!?]\\s*|$)`, 'gi'), ' ')
+    // Markdown, bracketed, and parenthetical stage directions. The open-ended
+    // alternatives also protect TTS when a provider closes a malformed reply.
+    .replace(/\*{1,3}[^*\n]*(?:\*{1,3}|$)/g, ' ')
+    .replace(/\[[^\]\n]*(?:\]|$)/g, ' ')
+    .replace(/\((?=[^)]*(?:giggl|laugh|chuckl|smil|sigh|pause|whisper|murmur|breath|tone|voice|delivery|cadence|pitch|emotion|shy|playful|seductive|softly|quietly))[^)\n]*(?:\)|$)/gi, ' ')
+    // Model-authored prose about how the line should sound.
+    .replace(/^\s*(?:(?:speaking|responding|replying|saying)\s+(?:in|with)|(?:in|with))\s+(?:an?\s+)?[^:,.!?\n]{0,90}(?:voice|tone|delivery|cadence)\s*[:,.-]?\s*/i, '')
+    // Novel-style physical narration that occasionally escapes role-play
+    // models even when the prompt asks for spoken words only.
+    .replace(/(?:(?:My|Her)\s+(?:eyebrows|eyes|lips|hand|hands|fingers|body|head)\s+[^.!?\n]+[.!?]?)/gi, ' ')
+    .replace(/(?:(?:I|She)\s+(?:lean|leaned|leans|smirk|smirks|smirked|smile|smiles|smiled|raise|raises|raised|tilt|tilts|tilted|roll|rolls|rolled|bite|bites|bit|toss|tosses|tossed|giggle|giggles|giggled|laugh|laughs|laughed|sigh|sighs|sighed|chuckle|chuckles|chuckled|gaze|gazes|gazed|step|steps|stepped|whisper|whispers)\s+[^.!?\n]+[.!?]?)/gi, ' ')
+    .replace(/(?:a\s+(?:soft|playful|seductive|knowing|gentle|warm|wicked|sarcastic|challenging|shy)\s+(?:laugh|smile|smirk|glint|chuckle|giggle|sigh|gaze|look)[^.!?\n]*[.!?]?)/gi, ' ')
+    .replace(/(?:^|(?<=[.!?])\s+)(?:(?:My|Her|The)\s+voice\s+(?:turns?|becomes?|drops?|softens?|shifts?|takes?\s+on|is)\s+(?:[^.!?\n]{0,80}\s)?(?:soft|breathy|playful|seductive|warm|gentle|quiet|low|shy|teasing)[^.!?\n]*[.!?]?)/gi, ' ')
+    .replace(/(?:^|(?<=[.!?])\s+)(?:I\s+(?:say|reply|respond|answer|continue)\s+(?:it\s+)?(?:in|with)\s+(?:an?\s+)?[^.!?\n]{0,90}(?:voice|tone|delivery|cadence)[^.!?\n]*[.!?]?)/gi, ' ')
+    // Standalone stage directions sometimes arrive without punctuation or
+    // wrappers (for example: "shy giggles").
+    .replace(/(?:^|\n)\s*(?:(?:shy|soft|playful|nervous|quiet|gentle|seductive)\s+)?(?:giggles?|laughs?|chuckles?|sighs?|pauses?|whispers?|smiles?)(?:\s+(?:softly|quietly|shyly|nervously))?\s*(?:[:,.\-–—]|$)/gim, ' ')
+    // Speaker and instruction prefixes.
+    .replace(/^\s*(?:thinking|thought|inner thought|narrator|persona|assistant|response|dialogue)\s*:\s*/i, '')
+    .replace(/<\/?[a-z][^>]*>/gi, ' ')
+    .replace(/[_#`\\~]/g, '')
+    .replace(/^\s*["“”]+|["“”]+\s*$/g, '')
+    .replace(/'+/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (cleaned.length < 2) return '';
+
+  cleaned = cleaned.replace(/[-–—\s]+$/, '').trim();
+  if (!cleaned) return '';
+  cleaned = cleaned.replace(/^([a-z])/, (_, firstLetter: string) => firstLetter.toUpperCase());
+  if (!/[.!?]$/.test(cleaned)) cleaned += '.';
+  return cleaned;
+}
+
+export interface SpokenDialogueStream {
+  push(delta: string): void;
+  flush(): string;
+  getText(): string;
+}
+
+function findSafeSpeechBoundary(value: string): number {
+  let squareDepth = 0;
+  let parenDepth = 0;
+  let inAsterisks = false;
+  let inThink = false;
+
+  for (let index = 0; index < value.length; index += 1) {
+    const remainder = value.slice(index).toLowerCase();
+    if (remainder.startsWith('<think>')) {
+      inThink = true;
+      index += '<think>'.length - 1;
+      continue;
+    }
+    if (remainder.startsWith('</think>')) {
+      inThink = false;
+      index += '</think>'.length - 1;
+      continue;
+    }
+    if (inThink) continue;
+
+    const character = value[index];
+    if (character === '*') {
+      let runLength = 1;
+      while (value[index + runLength] === '*') runLength += 1;
+      if (runLength % 2 === 1 || runLength <= 3) inAsterisks = !inAsterisks;
+      index += runLength - 1;
+      continue;
+    }
+    if (inAsterisks) continue;
+    if (character === '[') squareDepth += 1;
+    else if (character === ']' && squareDepth > 0) squareDepth -= 1;
+    else if (character === '(') parenDepth += 1;
+    else if (character === ')' && parenDepth > 0) parenDepth -= 1;
+
+    if (squareDepth > 0 || parenDepth > 0) continue;
+    if (character === '\n') return index + 1;
+    if (/[.!?]/.test(character)) {
+      const next = value[index + 1];
+      if (!next || /\s/.test(next)) return index + 1;
+    }
+  }
+
+  return -1;
+}
+
+/**
+ * Buffers raw model deltas until a complete phrase exists, then emits only its
+ * sanitized spoken form. This prevents partial stage directions from reaching
+ * TTS while retaining sentence-level streaming latency.
+ */
+export function createSpokenDialogueStream(onChunk: (chunk: string) => void): SpokenDialogueStream {
+  let pending = '';
+  const spokenParts: string[] = [];
+
+  const emit = (rawPart: string) => {
+    const safePart = sanitizeSpokenDialogue(rawPart);
+    if (!safePart) return;
+    const streamedPart = spokenParts.length > 0 ? ` ${safePart}` : safePart;
+    spokenParts.push(safePart);
+    onChunk(streamedPart);
+  };
+
+  const drain = () => {
+    let boundary = findSafeSpeechBoundary(pending);
+    while (boundary >= 0) {
+      const rawPart = pending.slice(0, boundary);
+      pending = pending.slice(boundary);
+      emit(rawPart);
+      boundary = findSafeSpeechBoundary(pending);
+    }
+  };
+
+  return {
+    push(delta: string) {
+      if (!delta) return;
+      pending += delta;
+      drain();
+    },
+    flush() {
+      drain();
+      if (pending.trim()) emit(pending);
+      pending = '';
+      return spokenParts.join(' ').trim();
+    },
+    getText() {
+      return spokenParts.join(' ').trim();
+    },
+  };
+}
