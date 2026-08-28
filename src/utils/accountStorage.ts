@@ -40,6 +40,8 @@ const SYNCABLE_KEY_PREFIXES = [
   'vox_vault_',
   'connected_accounts_',
   'planner_schedules_',
+  'planner_social_handles_',
+  'planner_pending_asset_',
 ];
 
 interface WorkspaceStateEntry {

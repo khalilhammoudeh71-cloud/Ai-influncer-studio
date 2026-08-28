@@ -27,10 +27,8 @@ import {
   Copy,
   ChevronUp,
   UserRound,
-  Link as LinkIcon,
   Globe,
   Settings,
-  Eye,
   EyeOff,
   Check,
   ExternalLink,
@@ -40,7 +38,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Persona, PlannedPost, NavActions } from '../types';
-import { api } from '../services/apiService';
+import { api, type SocialChannelAnalysisResponse, type SocialPlatform } from '../services/apiService';
 import { accountLocalStorage } from '../utils/accountStorage';
 import toast from 'react-hot-toast';
 
@@ -53,6 +51,25 @@ interface PlannerViewProps {
 
 type GoalType = 'Grow followers' | 'Boost engagement' | 'Promote offer' | 'Build authority' | 'Drive DMs';
 type FrequencyType = '1 post/day' | '2 posts/day' | '3 posts/week' | 'Custom';
+type PlannerScheduleStatus = 'Draft' | 'Scheduled' | 'Ready' | 'Published';
+type PlannerSchedule = { status: PlannerScheduleStatus; date?: string; time?: string; caption?: string };
+type PlannerImportedAsset = {
+  url: string;
+  title: string;
+  platform: string;
+  kind: 'video' | 'image';
+  createdAt: string;
+};
+
+const PUBLIC_SOCIAL_CHANNELS: Array<{ label: 'Instagram' | 'TikTok'; platform: SocialPlatform }> = [
+  { label: 'Instagram', platform: 'instagram' },
+  { label: 'TikTok', platform: 'tiktok' },
+];
+
+const formatMetric = (value: number | null | undefined) => {
+  if (value === null || value === undefined) return '—';
+  return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(value);
+};
 
 const GOALS: GoalType[] = ['Grow followers', 'Boost engagement', 'Promote offer', 'Build authority', 'Drive DMs'];
 const FREQUENCIES: FrequencyType[] = ['1 post/day', '2 posts/day', '3 posts/week', 'Custom'];
@@ -125,31 +142,66 @@ export default function PlannerView({ persona, personas, onSelectPersona, nav }:
   // ── Tab State ──
   const [activeTab, setActiveTab] = useState<'roadmap' | 'feed'>('roadmap');
 
-  // ── Connected Accounts State ──
-  const [connectedAccounts, setConnectedAccounts] = useState<Record<string, boolean>>(() => {
+  // ── Public channel intelligence ──
+  const [socialHandles, setSocialHandles] = useState<Record<SocialPlatform, string>>(() => {
     try {
-      const saved = accountLocalStorage.getItem(`connected_accounts_${persona.id}`);
-      return saved ? JSON.parse(saved) : {
-        Instagram: true,
-        TikTok: false,
-        YouTube: false,
-        'Twitter/X': true,
-        Threads: false,
-        OnlyFans: false
-      };
+      const saved = accountLocalStorage.getItem(`planner_social_handles_${persona.id}`);
+      return saved ? JSON.parse(saved) : { instagram: '', tiktok: '' };
     } catch {
-      return { Instagram: true, TikTok: false, YouTube: false, 'Twitter/X': true, Threads: false, OnlyFans: false };
+      return { instagram: '', tiktok: '' };
     }
   });
+  const [channelAnalytics, setChannelAnalytics] = useState<Partial<Record<SocialPlatform, SocialChannelAnalysisResponse>>>({});
+  const [channelAnalyticsLoading, setChannelAnalyticsLoading] = useState<Partial<Record<SocialPlatform, boolean>>>({});
+  const [channelAnalyticsError, setChannelAnalyticsError] = useState<Partial<Record<SocialPlatform, string>>>({});
+  const [importedAsset, setImportedAsset] = useState<PlannerImportedAsset | null>(null);
 
-  // Save connected accounts when they change
   useEffect(() => {
-    accountLocalStorage.setItem(`connected_accounts_${persona.id}`, JSON.stringify(connectedAccounts));
-  }, [connectedAccounts, persona.id]);
+    try {
+      const saved = accountLocalStorage.getItem(`planner_social_handles_${persona.id}`);
+      setSocialHandles(saved ? JSON.parse(saved) : { instagram: '', tiktok: '' });
+    } catch {
+      setSocialHandles({ instagram: '', tiktok: '' });
+    }
+    setChannelAnalytics({});
+    setChannelAnalyticsError({});
+    try {
+      const savedAsset = accountLocalStorage.getItem(`planner_pending_asset_${persona.id}`);
+      setImportedAsset(savedAsset ? JSON.parse(savedAsset) : null);
+    } catch {
+      setImportedAsset(null);
+    }
+  }, [persona.id]);
+
+  useEffect(() => {
+    accountLocalStorage.setItem(`planner_social_handles_${persona.id}`, JSON.stringify(socialHandles));
+  }, [socialHandles, persona.id]);
+
+  const loadChannelAnalytics = async (socialPlatform: SocialPlatform, refresh = false) => {
+    const handle = socialHandles[socialPlatform].trim().replace(/^@/, '');
+    if (!handle) {
+      setChannelAnalyticsError(prev => ({ ...prev, [socialPlatform]: 'Enter a public handle first.' }));
+      return;
+    }
+
+    setChannelAnalyticsLoading(prev => ({ ...prev, [socialPlatform]: true }));
+    setChannelAnalyticsError(prev => ({ ...prev, [socialPlatform]: '' }));
+    try {
+      const analysis = await api.social.getChannelAnalysis({ platform: socialPlatform, handle, refresh });
+      setChannelAnalytics(prev => ({ ...prev, [socialPlatform]: analysis }));
+    } catch (error) {
+      setChannelAnalyticsError(prev => ({
+        ...prev,
+        [socialPlatform]: error instanceof Error ? error.message : 'Could not load public channel data.',
+      }));
+    } finally {
+      setChannelAnalyticsLoading(prev => ({ ...prev, [socialPlatform]: false }));
+    }
+  };
 
   // ── Post Scheduling State ──
   // Key format: `${platform}_day_${post.day}`
-  const [schedules, setSchedules] = useState<Record<string, { status: 'Draft' | 'Scheduled' | 'Published'; date?: string; time?: string; caption?: string }>>(() => {
+  const [schedules, setSchedules] = useState<Record<string, PlannerSchedule>>(() => {
     try {
       const saved = accountLocalStorage.getItem(`planner_schedules_${persona.id}`);
       return saved ? JSON.parse(saved) : {};
@@ -157,9 +209,27 @@ export default function PlannerView({ persona, personas, onSelectPersona, nav }:
       return {};
     }
   });
+  const schedulesPersonaRef = useRef(persona.id);
+  const skipNextScheduleSaveRef = useRef(false);
+
+  useEffect(() => {
+    skipNextScheduleSaveRef.current = true;
+    schedulesPersonaRef.current = persona.id;
+    try {
+      const saved = accountLocalStorage.getItem(`planner_schedules_${persona.id}`);
+      setSchedules(saved ? JSON.parse(saved) : {});
+    } catch {
+      setSchedules({});
+    }
+  }, [persona.id]);
 
   // Save schedules when they change
   useEffect(() => {
+    if (skipNextScheduleSaveRef.current) {
+      skipNextScheduleSaveRef.current = false;
+      return;
+    }
+    if (schedulesPersonaRef.current !== persona.id) return;
     accountLocalStorage.setItem(`planner_schedules_${persona.id}`, JSON.stringify(schedules));
   }, [schedules, persona.id]);
 
@@ -168,7 +238,6 @@ export default function PlannerView({ persona, personas, onSelectPersona, nav }:
   const [scheduleDate, setScheduleDate] = useState('');
   const [scheduleTime, setScheduleTime] = useState('');
   const [scheduleCaption, setScheduleCaption] = useState('');
-  const [isSchedulingAction, setIsSchedulingAction] = useState(false);
   
   useEffect(() => {
     setPlatform(persona.platform);
@@ -345,46 +414,32 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
 
   const handleConfirmSchedule = () => {
     if (!schedulingPost) return;
-    setIsSchedulingAction(true);
     const scheduleKey = `${platform}_day_${schedulingPost.day}`;
-    
-    // Simulate API delay
-    setTimeout(() => {
-      setSchedules(prev => ({
-        ...prev,
-        [scheduleKey]: {
-          status: 'Scheduled',
-          date: scheduleDate,
-          time: scheduleTime,
-          caption: scheduleCaption
-        }
-      }));
-      setIsSchedulingAction(false);
-      setSchedulingPost(null);
-      toast.success('📅 Post successfully scheduled!');
-    }, 800);
+    setSchedules(prev => ({
+      ...prev,
+      [scheduleKey]: {
+        status: 'Scheduled',
+        date: scheduleDate,
+        time: scheduleTime,
+        caption: scheduleCaption
+      }
+    }));
+    setSchedulingPost(null);
+    toast.success('Saved to your content calendar.');
   };
 
-  const handlePublishNow = () => {
+  const handleSaveReady = () => {
     if (!schedulingPost) return;
-    setIsSchedulingAction(true);
     const scheduleKey = `${platform}_day_${schedulingPost.day}`;
-
-    // Simulate API delay
-    setTimeout(() => {
-      setSchedules(prev => ({
-        ...prev,
-        [scheduleKey]: {
-          status: 'Published',
-          date: new Date().toISOString().split('T')[0],
-          time: new Date().toTimeString().split(' ')[0].slice(0, 5),
-          caption: scheduleCaption
-        }
-      }));
-      setIsSchedulingAction(false);
-      setSchedulingPost(null);
-      toast.success('🚀 Post published live successfully!');
-    }, 1000);
+    setSchedules(prev => ({
+      ...prev,
+      [scheduleKey]: {
+        status: 'Ready',
+        caption: scheduleCaption,
+      }
+    }));
+    setSchedulingPost(null);
+    toast(`Official ${platform} authorization is required for direct publishing. Saved as ready to publish.`, { icon: '🔒' });
   };
 
   const getContentTypeIcon = (type: string) => {
@@ -451,37 +506,122 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
         </div>
       </header>
 
-      {/* ── CONNECTED CHANNELS BAR ── */}
-      <section className="premium-card p-4 rounded-2xl mb-6 relative overflow-hidden">
+      {/* ── LIVE PUBLIC CHANNEL INTELLIGENCE ── */}
+      <section className="premium-card p-5 rounded-2xl mb-6 relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse at top right, rgba(217,182,103,0.06) 0%, transparent 60%)' }} />
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-10">
+        <div className="relative z-10 space-y-4">
           <div>
-            <h3 className="text-[10px] font-black text-violet-400 uppercase tracking-widest leading-none mb-1 flex items-center gap-1.5">
-              <LinkIcon size={12} /> Connected Accounts
+            <h3 className="text-[10px] font-black text-[var(--gold-primary)] uppercase tracking-widest leading-none mb-1 flex items-center gap-1.5">
+              <BarChart3 size={12} /> Public Channel Intelligence
             </h3>
-            <p className="text-[9px] text-[var(--text-muted)] mt-0.5">Toggle connections to enable direct publishing mockup</p>
+            <p className="text-[10px] text-[var(--text-muted)] mt-1">
+              Analyze real public Instagram and TikTok performance. This does not authorize direct publishing or private account insights.
+            </p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {['Instagram', 'TikTok', 'YouTube', 'Twitter/X', 'Threads', 'OnlyFans'].map(p => {
-              const connected = connectedAccounts[p];
+
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+            {PUBLIC_SOCIAL_CHANNELS.map(({ label, platform: socialPlatform }) => {
+              const analysis = channelAnalytics[socialPlatform];
+              const loading = channelAnalyticsLoading[socialPlatform];
+              const error = channelAnalyticsError[socialPlatform];
               return (
-                <button
-                  key={p}
-                  onClick={() => setConnectedAccounts(prev => ({ ...prev, [p]: !prev[p] }))}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
-                    connected
-                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.15)]'
-                      : 'bg-white/5 border-white/5 text-[var(--text-muted)] hover:bg-white/10 hover:text-[var(--text-secondary)]'
-                  }`}
-                >
-                  <div className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-emerald-400 animate-pulse' : 'bg-white/20'}`} />
-                  {p}
-                </button>
+                <div key={socialPlatform} className="rounded-2xl border border-white/10 bg-black/20 p-4 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                    <div className="flex-1">
+                      <label className="text-[9px] font-black uppercase tracking-widest text-[var(--text-tertiary)]">{label} public handle</label>
+                      <div className="mt-1 flex items-center rounded-xl border border-white/10 bg-black/30 px-3 focus-within:border-[var(--gold-border-active)]">
+                        <span className="text-[var(--text-muted)] text-xs">@</span>
+                        <input
+                          value={socialHandles[socialPlatform]}
+                          onChange={event => setSocialHandles(prev => ({ ...prev, [socialPlatform]: event.target.value }))}
+                          onKeyDown={event => {
+                            if (event.key === 'Enter') void loadChannelAnalytics(socialPlatform, Boolean(analysis));
+                          }}
+                          placeholder={`${label.toLowerCase()} handle`}
+                          className="w-full bg-transparent px-1.5 py-2.5 text-xs text-white outline-none placeholder:text-[var(--text-muted)]"
+                        />
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void loadChannelAnalytics(socialPlatform, Boolean(analysis))}
+                      disabled={loading}
+                      className="sm:self-end px-4 py-2.5 rounded-xl border border-[var(--gold-border-active)] bg-[var(--gold-bg-subtle)] text-[var(--gold-primary)] text-[10px] font-black uppercase tracking-wider hover:bg-[var(--gold-bg-hover)] disabled:opacity-50"
+                    >
+                      {loading ? <Loader2 size={13} className="animate-spin" /> : analysis ? 'Refresh' : 'Analyze'}
+                    </button>
+                  </div>
+
+                  {error && <p className="text-[10px] text-rose-400">{error}</p>}
+
+                  {analysis && (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        {[
+                          ['Posts', analysis.postsAnalyzed],
+                          ['Avg views', analysis.averageViews],
+                          ['Avg likes', analysis.averageLikes],
+                          ['Engagement', analysis.averageEngagementRate === null ? null : `${analysis.averageEngagementRate.toFixed(2)}%`],
+                        ].map(([metricLabel, value]) => (
+                          <div key={metricLabel as string} className="rounded-xl border border-white/5 bg-white/[0.03] p-2.5">
+                            <span className="block text-[8px] uppercase tracking-widest text-[var(--text-muted)]">{metricLabel}</span>
+                            <strong className="mt-1 block text-sm text-white">{typeof value === 'string' ? value : formatMetric(value as number | null)}</strong>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[9px] text-[var(--text-muted)]">
+                        <span>{analysis.cached ? 'Cached public data' : 'Live public data'} · {new Date(analysis.collectedAt).toLocaleString()}</span>
+                        <a href={analysis.profileUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[var(--gold-primary)] hover:text-white">
+                          Open profile <ExternalLink size={10} />
+                        </a>
+                      </div>
+                      {analysis.insights[0] && <p className="text-[10px] leading-relaxed text-[var(--text-secondary)]">{analysis.insights[0]}</p>}
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>
+
+          <div className="flex items-start gap-2 rounded-xl border border-white/5 bg-white/[0.02] px-3 py-2.5 text-[9px] leading-relaxed text-[var(--text-muted)]">
+            <Globe size={13} className="mt-0.5 shrink-0 text-[var(--gold-primary)]" />
+            <span>YouTube, X, Threads, OnlyFans, and direct posting remain manual until their official APIs are authorized. Planner will never claim a post is live without platform confirmation.</span>
+          </div>
         </div>
       </section>
+
+      {importedAsset && (
+        <section className="premium-card p-5 rounded-2xl mb-6">
+          <div className="flex flex-col md:flex-row gap-4 md:items-center">
+            <div className="w-full md:w-44 aspect-video overflow-hidden rounded-xl border border-white/10 bg-black/30">
+              {importedAsset.kind === 'video' ? (
+                <video src={importedAsset.url} controls className="h-full w-full object-cover" />
+              ) : (
+                <img src={importedAsset.url} alt={importedAsset.title} className="h-full w-full object-cover" />
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <span className="text-[9px] font-black uppercase tracking-widest text-[var(--gold-primary)]">Imported Planner Draft</span>
+              <h3 className="mt-1 truncate text-sm font-bold text-white">{importedAsset.title}</h3>
+              <p className="mt-1 text-[10px] text-[var(--text-muted)]">
+                From {importedAsset.platform} · saved {new Date(importedAsset.createdAt).toLocaleString()}
+              </p>
+              <p className="mt-2 text-[10px] text-[var(--text-secondary)]">Draft only · not published</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                accountLocalStorage.removeItem(`planner_pending_asset_${persona.id}`);
+                setImportedAsset(null);
+                toast.success('Planner draft cleared.');
+              }}
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-rose-500/20 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-rose-300 hover:bg-rose-500/10"
+            >
+              <Trash2 size={12} /> Clear
+            </button>
+          </div>
+        </section>
+      )}
 
       {/* ── SETUP ROW ── */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
@@ -692,8 +832,13 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
                             </>
                           ) : sched?.status === 'Scheduled' ? (
                             <>
-                              <div className="w-2 h-2 rounded-full bg-violet-500 shadow-[0_0_8px_rgba(217,182,103,0.5)] animate-pulse" />
-                              <span className="text-[9px] font-black uppercase tracking-widest text-violet-400">Scheduled ({sched.time})</span>
+                              <div className="w-2 h-2 rounded-full bg-[var(--gold-primary)] shadow-[0_0_8px_rgba(217,182,103,0.5)] animate-pulse" />
+                              <span className="text-[9px] font-black uppercase tracking-widest text-[var(--gold-primary)]">Scheduled ({sched.time})</span>
+                            </>
+                          ) : sched?.status === 'Ready' ? (
+                            <>
+                              <div className="w-2 h-2 rounded-full bg-amber-400" />
+                              <span className="text-[9px] font-black uppercase tracking-widest text-amber-300">Ready · manual publish</span>
                             </>
                           ) : (
                             <>
@@ -758,7 +903,7 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
                                 setScheduleDate(new Date(Date.now() + 86400000 * (post.day - 1)).toISOString().split('T')[0]);
                                 setSchedulingPost(post);
                               }}
-                              className="flex-1 py-2 bg-gradient-to-r from-cyan-600 to-violet-600 hover:brightness-110 text-white rounded-xl text-[10px] font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-cyan-600/10"
+                              className="flex-1 py-2 bg-[var(--gold-primary)] hover:brightness-110 text-black rounded-xl text-[10px] font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-black/20"
                             >
                               <CalendarDays size={12} />
                               {sched?.status ? 'Reschedule Post' : 'Schedule Post'}
@@ -811,10 +956,10 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
                 </div>
               ) : (
                 <>
-                  {/* Platform-Specific Mock Feed Grids */}
+                  {/* Platform-specific feed previews */}
                   {(platform === 'Instagram' || platform === 'OnlyFans') && (
                     <div className="max-w-md mx-auto bg-[#06080d]/80 rounded-3xl border border-white/5 overflow-hidden shadow-2xl p-4">
-                      {/* Instagram Header Mock */}
+                      {/* Instagram preview header */}
                       <div className="flex items-center justify-between pb-3 border-b border-white/5 mb-4">
                         <div className="flex items-center gap-2">
                           {persona.avatar ? (
@@ -838,9 +983,6 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
                           const hasContent = !!batchContent[post.id];
                           const imageUrl = PREVIEW_IMAGES[index % PREVIEW_IMAGES.length] + '?auto=format&fit=crop&w=400&h=400&q=80';
                           
-                          const mockLikes = Math.floor(125 + (post.day * 15.5) + (index * 8));
-                          const mockComments = Math.floor(22 + (post.day * 3.4) + (index * 2));
-
                           return (
                             <div key={post.id} className="aspect-square relative group overflow-hidden bg-white/5 border border-white/5">
                               <img src={imageUrl} alt="" className={`w-full h-full object-cover transition-transform duration-300 group-hover:scale-105 ${hasContent ? 'opacity-100' : 'opacity-20 blur-[2px]'}`} />
@@ -854,15 +996,12 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
                                 </div>
                                 
                                 <div className="space-y-1.5">
-                                  <div className="flex gap-2 text-[9px] text-[var(--text-secondary)] font-bold">
-                                    <span>❤️ {mockLikes}</span>
-                                    <span>💬 {mockComments}</span>
-                                  </div>
-                                  
                                   {sched?.status === 'Published' ? (
                                     <span className="text-[8px] font-black uppercase text-emerald-400 block">Published</span>
                                   ) : sched?.status === 'Scheduled' ? (
-                                    <span className="text-[8px] font-black uppercase text-violet-400 block">Sched: {sched.time}</span>
+                                    <span className="text-[8px] font-black uppercase text-[var(--gold-primary)] block">Sched: {sched.time}</span>
+                                  ) : sched?.status === 'Ready' ? (
+                                    <span className="text-[8px] font-black uppercase text-amber-300 block">Ready · manual publish</span>
                                   ) : (
                                     <span className="text-[8px] font-black uppercase text-[var(--text-muted)] block">{hasContent ? 'Draft' : 'Pending Content'}</span>
                                   )}
@@ -877,7 +1016,7 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
 
                   {(platform === 'TikTok' || platform === 'YouTube') && (
                     <div className="max-w-xl mx-auto bg-[#06080d]/80 rounded-3xl border border-white/5 overflow-hidden shadow-2xl p-4">
-                      {/* Mock Vertical Video Feed Header */}
+                      {/* Vertical video preview header */}
                       <div className="flex items-center justify-between pb-3 border-b border-white/5 mb-4">
                         <div className="flex items-center gap-2">
                           {persona.avatar ? (
@@ -900,16 +1039,13 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
                           const hasContent = !!batchContent[post.id];
                           const imageUrl = PREVIEW_IMAGES[(index + 3) % PREVIEW_IMAGES.length] + '?auto=format&fit=crop&w=400&h=711&q=80';
                           
-                          const mockViews = ((1.2 + (post.day * 0.4) + (index * 0.2))).toFixed(1);
-                          const mockLikes = Math.floor(82 + (post.day * 11) + (index * 5));
-
                           return (
                             <div key={post.id} className="aspect-[9/16] relative group overflow-hidden bg-white/5 border border-white/5 rounded-2xl">
                               <img src={imageUrl} alt="" className={`w-full h-full object-cover transition-transform duration-300 group-hover:scale-105 ${hasContent ? 'opacity-100' : 'opacity-20 blur-[2px]'}`} />
                               
-                              {/* Bottom visual overlay (views always visible) */}
+                              {/* Bottom visual overlay */}
                               <div className="absolute bottom-2 left-2 px-1.5 py-0.5 rounded bg-black/60 text-[9px] font-bold text-white flex items-center gap-1 pointer-events-none group-hover:opacity-0 transition-opacity">
-                                <Eye size={10} /> {mockViews}K views
+                                Preview only
                               </div>
 
                               {/* Hover Details overlay */}
@@ -920,15 +1056,12 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
                                 </div>
                                 
                                 <div className="space-y-2">
-                                  <div className="space-y-0.5 text-[10px] text-[var(--text-secondary)] font-bold">
-                                    <p>👁️ {mockViews}K views</p>
-                                    <p>❤️ {mockLikes} likes</p>
-                                  </div>
-                                  
                                   {sched?.status === 'Published' ? (
                                     <span className="text-[9px] font-black uppercase text-emerald-400 block">Published</span>
                                   ) : sched?.status === 'Scheduled' ? (
-                                    <span className="text-[9px] font-black uppercase text-violet-400 block">Sched: {sched.time}</span>
+                                    <span className="text-[9px] font-black uppercase text-[var(--gold-primary)] block">Sched: {sched.time}</span>
+                                  ) : sched?.status === 'Ready' ? (
+                                    <span className="text-[9px] font-black uppercase text-amber-300 block">Ready · manual publish</span>
                                   ) : (
                                     <span className="text-[9px] font-black uppercase text-[var(--text-muted)] block">{hasContent ? 'Draft' : 'Pending Content'}</span>
                                   )}
@@ -943,7 +1076,7 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
 
                   {(platform === 'Twitter/X' || platform === 'Threads') && (
                     <div className="max-w-xl mx-auto bg-[#06080d]/80 rounded-3xl border border-white/5 overflow-hidden shadow-2xl p-4 space-y-4">
-                      {/* Mock Feed Header */}
+                      {/* Text feed preview header */}
                       <div className="flex items-center justify-between pb-3 border-b border-white/5">
                         <span className="text-xs font-bold text-white">Latest Thread Posts</span>
                         <span className="text-[10px] font-black text-cyan-500 bg-cyan-500/10 border border-cyan-500/20 px-2.5 py-0.5 rounded-full uppercase tracking-wider">Twitter Mix</span>
@@ -956,9 +1089,6 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
                           const hasContent = !!batchContent[post.id];
                           const imageUrl = PREVIEW_IMAGES[(index + 5) % PREVIEW_IMAGES.length] + '?auto=format&fit=crop&w=800&h=450&q=80';
                           
-                          const mockLikes = Math.floor(45 + (post.day * 8) + (index * 2));
-                          const mockReposts = Math.floor(8 + (post.day * 1.5) + (index * 0.5));
-
                           return (
                             <div key={post.id} className="p-4 rounded-2xl bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] transition-colors relative group">
                               {/* Schedule indicator badge */}
@@ -966,7 +1096,9 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
                                 {sched?.status === 'Published' ? (
                                   <span className="text-[8px] font-black uppercase text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded-full">Published</span>
                                 ) : sched?.status === 'Scheduled' ? (
-                                  <span className="text-[8px] font-black uppercase text-violet-400 bg-violet-500/10 border border-violet-500/20 px-1.5 py-0.5 rounded-full">Scheduled ({sched.time})</span>
+                                  <span className="text-[8px] font-black uppercase text-[var(--gold-primary)] bg-[var(--gold-bg-subtle)] border border-[var(--gold-border-active)] px-1.5 py-0.5 rounded-full">Scheduled ({sched.time})</span>
+                                ) : sched?.status === 'Ready' ? (
+                                  <span className="text-[8px] font-black uppercase text-amber-300 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded-full">Ready · manual publish</span>
                                 ) : (
                                   <span className="text-[8px] font-black uppercase text-[var(--text-muted)] bg-white/5 border border-white/5 px-1.5 py-0.5 rounded-full">Draft</span>
                                 )}
@@ -997,11 +1129,8 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
                                     </div>
                                   )}
 
-                                  {/* Mock actions bar */}
-                                  <div className="flex gap-6 mt-4 text-[10px] text-[var(--text-muted)] font-bold">
-                                    <span>💬 {mockReposts + 4} Comments</span>
-                                    <span>🔁 {mockReposts} Reposts</span>
-                                    <span>❤️ {mockLikes} Likes</span>
+                                  <div className="mt-4 text-[10px] text-[var(--text-muted)] font-bold">
+                                    Preview only · no live engagement data
                                   </div>
                                 </div>
                               </div>
@@ -1163,9 +1292,7 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => {
-                if (!isSchedulingAction) setSchedulingPost(null);
-              }}
+              onClick={() => setSchedulingPost(null)}
               className="absolute inset-0"
             />
 
@@ -1183,8 +1310,7 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
               {/* Close Button */}
               <button
                 onClick={() => setSchedulingPost(null)}
-                disabled={isSchedulingAction}
-                className="absolute top-6 right-6 p-2 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 text-[var(--text-secondary)] hover:text-white transition-colors cursor-pointer disabled:opacity-50"
+                className="absolute top-6 right-6 p-2 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 text-[var(--text-secondary)] hover:text-white transition-colors cursor-pointer"
               >
                 <X size={18} />
               </button>
@@ -1204,17 +1330,20 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
 
               {/* Form Fields */}
               <div className="space-y-5">
-                {/* Connected Platforms indicator */}
+                {/* Publishing capability indicator */}
                 <div>
                   <label className="text-[9px] font-black text-[var(--text-tertiary)] uppercase tracking-widest block mb-2">
                     Publishing Target
                   </label>
                   <div className="flex items-center gap-2">
                     <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs font-bold text-white">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]" />
-                      {platform} Account Connected
+                      <span className="w-2 h-2 rounded-full bg-[var(--gold-primary)]" />
+                      Manual workflow · OAuth not connected
                     </span>
                   </div>
+                  <p className="mt-2 text-[10px] leading-relaxed text-[var(--text-muted)]">
+                    This saves a draft or calendar reminder only. Direct publishing requires an official {platform} authorization flow.
+                  </p>
                 </div>
 
                 {/* Edit Caption */}
@@ -1225,7 +1354,6 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
                   <textarea
                     value={scheduleCaption}
                     onChange={(e) => setScheduleCaption(e.target.value)}
-                    disabled={isSchedulingAction}
                     rows={4}
                     placeholder="Enter the post caption..."
                     className="w-full bg-[#06080d]/80 border border-[#334155] rounded-2xl p-4 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all resize-none disabled:opacity-50 leading-relaxed"
@@ -1242,7 +1370,6 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
                       type="date"
                       value={scheduleDate}
                       onChange={(e) => setScheduleDate(e.target.value)}
-                      disabled={isSchedulingAction}
                       className="w-full bg-[#06080d]/80 border border-[#334155] rounded-2xl px-4 py-3 text-xs text-white focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all disabled:opacity-50"
                     />
                   </div>
@@ -1254,7 +1381,6 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
                       type="time"
                       value={scheduleTime}
                       onChange={(e) => setScheduleTime(e.target.value)}
-                      disabled={isSchedulingAction}
                       className="w-full bg-[#06080d]/80 border border-[#334155] rounded-2xl px-4 py-3 text-xs text-white focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all disabled:opacity-50"
                     />
                   </div>
@@ -1266,8 +1392,7 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
                 <button
                   type="button"
                   onClick={() => setSchedulingPost(null)}
-                  disabled={isSchedulingAction}
-                  className="order-3 sm:order-1 w-full sm:w-auto px-5 py-3 bg-white/5 border border-white/5 hover:bg-white/10 text-white font-bold rounded-2xl text-xs transition-all cursor-pointer disabled:opacity-50 text-center"
+                  className="order-3 sm:order-1 w-full sm:w-auto px-5 py-3 bg-white/5 border border-white/5 hover:bg-white/10 text-white font-bold rounded-2xl text-xs transition-all cursor-pointer text-center"
                 >
                   Cancel
                 </button>
@@ -1275,22 +1400,20 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
                 <div className="order-2 flex-1 flex flex-col sm:flex-row gap-3">
                   <button
                     type="button"
-                    onClick={handlePublishNow}
-                    disabled={isSchedulingAction}
-                    className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:brightness-110 text-white font-bold rounded-2xl text-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 shadow-lg shadow-emerald-600/10"
+                    onClick={handleSaveReady}
+                    className="w-full py-3 border border-[var(--gold-border-active)] bg-[var(--gold-bg-subtle)] hover:bg-[var(--gold-bg-hover)] text-[var(--gold-primary)] font-bold rounded-2xl text-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
                   >
-                    {isSchedulingAction ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                    Publish Now
+                    <Send size={14} />
+                    Save as Ready
                   </button>
 
                   <button
                     type="button"
                     onClick={handleConfirmSchedule}
-                    disabled={isSchedulingAction}
-                    className="w-full py-3 bg-gradient-to-r from-cyan-500 to-violet-500 hover:brightness-110 text-white font-bold rounded-2xl text-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 shadow-lg shadow-cyan-500/10"
+                    className="w-full py-3 bg-[var(--gold-primary)] hover:brightness-110 text-black font-bold rounded-2xl text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-black/20"
                   >
-                    {isSchedulingAction ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-                    Schedule Post
+                    <Check size={14} />
+                    Save Schedule
                   </button>
                 </div>
               </div>
