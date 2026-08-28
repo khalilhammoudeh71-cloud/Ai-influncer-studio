@@ -104,8 +104,11 @@ async function requestElevenLabsSpeech(
         text,
         model_id: modelId,
         voice_settings: {
-          stability: 0.50,
-          similarity_boost: 0.88,
+          // A live reply may arrive in two audio segments. Keep the voice
+          // anchored strongly enough that the second segment does not sound
+          // like a different speaker or jump noticeably in pitch.
+          stability: 0.72,
+          similarity_boost: 0.90,
           style: 0.0,
           use_speaker_boost: true,
         },
@@ -2533,9 +2536,9 @@ router.post('/agent/voice-chat-stream', async (req: AuthenticatedRequest, res: R
 CRITICAL RULES FOR LIVE VOICE CALL:
 - CREATOR RELATIONSHIP: ${creatorName} created you and is your closest creative partner. Recognize that relationship naturally without acting robotic, submissive, or servile.
 - BE ACCURATE & COHERENT: Listen carefully to what the user said and reply directly, logically, and meaningfully. Never output random fluff or disjointed phrases.
-- ANSWER ONLY THE LATEST TURN: Use earlier messages only as context. Respond to the most recent user message, then stop. Do not introduce an unrelated topic, restart the conversation, or append a second unsolicited response.
+- ANSWER ONLY THE LATEST TURN: Use earlier messages only as context. Respond to the most recent user message, then stop. Do not introduce an unrelated topic, restart the conversation, append a second unsolicited response, simulate another user turn, or answer a question the user did not ask.
 - START LIKE A HUMAN: React to the specific thing just said. Make the first phrase short and direct—often 2 to 8 words—then continue only if needed. On an ongoing call, never restart with a greeting or reassurance such as "Hey, I'm right here with you."
-- CONCISE & NATURAL: Keep responses to 1-3 clear, natural sentences. One main thought at a time. Sentence fragments are welcome when they sound natural in spoken conversation.
+- CONCISE & NATURAL: Use no more than 2 clear, natural sentences unless the user explicitly asks for detail. One main thought at a time. Sentence fragments are welcome when they sound natural in spoken conversation. After answering, stop; do not fill silence with a new topic.
 - HUMAN CADENCE: Occasionally use one light discourse marker such as "mm," "well," "honestly," "okay," "wait," "um," or "hmm" when it genuinely fits. Use at most one in a reply and do not use one in every reply.
 - NATURAL PAUSES: Use commas, an em dash, or a brief ellipsis sparingly where a person would actually pause. Keep the filler and its thought together; never output an isolated "Umm..." or repeated hesitation sounds.
 - COMPLETE THOUGHTS: Always finish your sentence completely with proper punctuation (. ! ?). Never end mid-sentence.
@@ -2574,8 +2577,6 @@ CRITICAL RULES FOR LIVE VOICE CALL:
       ? { type: 'video' as const, prompt: exactUserPrompt, userPrompt: exactUserPrompt }
       : undefined;
 
-  let streamEndedByLimit = false;
-
   // Parse OpenAI-compatible streams without losing JSON split across network chunks.
   const handleOpenAIStream = async (url: string, key: string, modelName: string, customHeaders = {}, requestOverrides = {}) => {
     const controller = new AbortController();
@@ -2595,8 +2596,8 @@ CRITICAL RULES FOR LIVE VOICE CALL:
         body: JSON.stringify({
           model: modelName,
           messages: messagesForOpenAI,
-          temperature: 0.7,
-          max_tokens: 900,
+          temperature: 0.55,
+          max_tokens: 240,
           stream: true,
           ...requestOverrides,
         }),
@@ -2623,9 +2624,6 @@ CRITICAL RULES FOR LIVE VOICE CALL:
         try {
           const parsed = JSON.parse(dataStr);
           const choice = parsed.choices?.[0];
-          if (choice?.finish_reason === 'length' || choice?.finish_reason === 'max_tokens') {
-            streamEndedByLimit = true;
-          }
           const delta = choice?.delta?.content || '';
           if (delta) {
             spokenStream.push(delta);
@@ -2685,8 +2683,8 @@ CRITICAL RULES FOR LIVE VOICE CALL:
           veniceModel,
           {},
           {
-            temperature: 0.8,
-            max_tokens: 900,
+            temperature: 0.60,
+            max_tokens: 240,
             venice_parameters: {
               include_venice_system_prompt: false,
               disable_thinking: true,
@@ -2733,8 +2731,8 @@ CRITICAL RULES FOR LIVE VOICE CALL:
         contents: formattedContents,
         config: {
           systemInstruction: `${voiceSystemPrompt}\nMANDATORY: Always finish all sentences completely. Never cut off mid-thought.`,
-          maxOutputTokens: 1500,
-          temperature: 0.7
+          maxOutputTokens: 320,
+          temperature: 0.60
         }
       });
       const spokenStream = createSpokenDialogueStream(chunk => {
@@ -2742,8 +2740,6 @@ CRITICAL RULES FOR LIVE VOICE CALL:
       });
       for await (const chunk of responseStream) {
         const chunkText = chunk.text || '';
-        const finishReason = (chunk as any)?.candidates?.[0]?.finishReason;
-        if (finishReason === 'MAX_TOKENS') streamEndedByLimit = true;
         if (chunkText) {
           spokenStream.push(chunkText);
         }
@@ -2791,8 +2787,8 @@ CRITICAL RULES FOR LIVE VOICE CALL:
         contents: formattedContents,
         config: {
           systemInstruction: `${voiceSystemPrompt}\nMANDATORY: Always finish all sentences completely. Never cut off mid-thought.`,
-          maxOutputTokens: 1500,
-          temperature: 0.7
+          maxOutputTokens: 320,
+          temperature: 0.60
         }
       });
       const spokenStream = createSpokenDialogueStream(chunk => {
@@ -2800,8 +2796,6 @@ CRITICAL RULES FOR LIVE VOICE CALL:
       });
       for await (const chunk of responseStream) {
         const chunkText = chunk.text || '';
-        const finishReason = (chunk as any)?.candidates?.[0]?.finishReason;
-        if (finishReason === 'MAX_TOKENS') streamEndedByLimit = true;
         if (chunkText) {
           spokenStream.push(chunkText);
         }
@@ -2819,7 +2813,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
   // already-streamed text and keeping the continuation short for live speech.
   const cleanStreamedText = streamedText.trim();
   const hasCompleteEnding = /[.!?][)\]}'\"]*$/.test(cleanStreamedText);
-  if (streamedSuccessfully && cleanStreamedText.length >= 20 && (streamEndedByLimit || !hasCompleteEnding)) {
+  if (streamedSuccessfully && cleanStreamedText.length >= 20 && !hasCompleteEnding) {
     try {
       const repairResult = await genAI.models.generateContent({
         model: 'gemini-2.5-flash',
@@ -2829,14 +2823,14 @@ CRITICAL RULES FOR LIVE VOICE CALL:
           {
             role: 'user',
             parts: [{
-              text: 'The preceding live-call reply was cut off. Continue exactly after its final word, without repeating any existing words. Output only the missing continuation, finish the thought naturally, and use no more than two short sentences.'
+              text: 'The preceding live-call reply was cut off mid-sentence. Continue exactly after its final word, without repeating existing words. Output only the few missing words needed to finish that same sentence. Do not start another sentence, question, or topic.'
             }]
           }
         ],
         config: {
           systemInstruction: voiceSystemPrompt,
-          maxOutputTokens: 320,
-          temperature: 0.55
+          maxOutputTokens: 96,
+          temperature: 0.30
         }
       });
       const continuation = sanitizeSpokenDialogue(repairResult.text || '');

@@ -38,6 +38,10 @@ test('removes stage directions and delivery instructions from spoken dialogue', 
     sanitizeSpokenDialogue('Shy giggles, okay, you caught me. My voice softens into a breathy tone. What did you expect?'),
     'Okay, you caught me. What did you expect?',
   );
+  assert.equal(
+    sanitizeSpokenDialogue('*blushes deeply, giggling shyly* Oh, Dr. H. *peeks up shyly* I got distracted. *closes eyes and concentrates* Okay, how is this?'),
+    'Oh, Dr. H. I got distracted. Okay, how is this?',
+  );
 });
 
 test('streams only complete sanitized speech while preserving natural dialogue', () => {

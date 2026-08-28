@@ -114,18 +114,6 @@ interface CustomPreset {
   prompt: string;
 }
 
-interface SimulatedPost {
-  id: string;
-  imageUrl: string;
-  caption: string;
-  platform: string;
-  timestamp: number;
-  views: number;
-  likes: number;
-  comments: string[];
-  tips: { user: string; amount: number }[];
-}
-
 const GenerationProgressFrame: React.FC<{
   stepType: string;
   modelId?: string;
@@ -250,18 +238,6 @@ const BASE_PRESETS: CustomPreset[] = [
     name: "📈 7-Day Content Plan",
     prompt: "Architect a 7-day content schedule for Instagram with high-converting hooks, viral caption ideas, and revenue strategies."
   }
-];
-
-const MOCK_NAMES = ["Alex99", "Sarah_m", "DavidK", "Jane_D", "OnlyCoolUser", "GamerX", "RichTrader", "BeachFan"];
-const MOCK_COMMENT_TEXTS = [
-  "Wow, this looks absolutely stunning!",
-  "Brand representation on point! 💎",
-  "Love the style and tone here.",
-  "Which model did you use for this visual?",
-  "Perfect representation! Keep it up!",
-  "Outstanding aesthetics and presentation.",
-  "OnlyFans link is in bio? 👀",
-  "Elite mindset indeed!"
 ];
 
 // Helper to extract the last frame of a video segment in the browser
@@ -623,9 +599,6 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
   const [personaChatInput, setPersonaChatInput] = useState('');
   const [isPersonaTyping, setIsPersonaTyping] = useState(false);
 
-  // Social Feed Simulator States
-  const [publishedPosts, setPublishedPosts] = useState<SimulatedPost[]>([]);
-
   // In-chat swap context
   const [activeSwapTarget, setActiveSwapTarget] = useState<{ msgId: string; stepIdx: number } | null>(null);
 
@@ -750,7 +723,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
   const onboardingSteps = [
     {
       title: "👋 Welcome to AI Influencer Studio!",
-      desc: "This studio empowers you to manage virtual personas, clone voices, synthesize videos, download watermark-free Reels/TikToks, and analyze simulated social traffic."
+      desc: "This studio empowers you to manage virtual personas, clone voices, synthesize videos, download public Reels/TikToks, and analyze real public channel performance."
     },
     {
       title: "🤖 The Step Pipeline (Left Panel)",
@@ -762,49 +735,13 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
     },
     {
       title: "📲 Reels & TikTok Downloader",
-      desc: "Paste any public Instagram Reels or TikTok video link. The studio extracts the raw video file watermark-free and allows direct download or import."
+      desc: "Paste any public Instagram Reels or TikTok video link. The studio extracts the available video file for direct download or saves it as a Planner draft."
     },
     {
-      title: "📊 Simulated Analytics & Demographic Maps",
-      desc: "Track simulated daily follower growth curves, monthly revenue breakdowns by stream, and geographic traffic concentrations on the global map."
+      title: "📊 Live Social Intelligence & Planning",
+      desc: "Analyze public Instagram and TikTok channels, identify content outliers, and prepare honest drafts or manual schedules. Direct publishing requires an official connected platform account."
     }
   ];
-
-  // Timer to increment mock feed stats dynamically
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setPublishedPosts(prev => prev.map(post => {
-        const isOnlyFans = post.platform.toLowerCase().includes('onlyfans');
-        
-        const viewsDiff = Math.floor(Math.random() * 8) + 2;
-        const likesDiff = Math.random() > 0.5 ? Math.floor(Math.random() * 3) + 1 : 0;
-        
-        const newComments = [...post.comments];
-        if (Math.random() > 0.92) {
-          const user = MOCK_NAMES[Math.floor(Math.random() * MOCK_NAMES.length)];
-          const txt = MOCK_COMMENT_TEXTS[Math.floor(Math.random() * MOCK_COMMENT_TEXTS.length)];
-          newComments.push(`${user}: ${txt}`);
-        }
-
-        const newTips = [...post.tips];
-        if (isOnlyFans && Math.random() > 0.95) {
-          const user = MOCK_NAMES[Math.floor(Math.random() * MOCK_NAMES.length)];
-          const amount = Math.floor(Math.random() * 25) + 5;
-          newTips.push({ user, amount });
-        }
-
-        return {
-          ...post,
-          views: post.views + viewsDiff,
-          likes: post.likes + likesDiff,
-          comments: newComments,
-          tips: newTips
-        };
-      }));
-    }, 2500);
-
-    return () => clearInterval(timer);
-  }, []);
 
   // Initialize Speech Recognition
   useEffect(() => {
@@ -2302,25 +2239,25 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
     }
   };
 
-  // ─── Social Feed Publishing Simulator ──────────────────────────────────────
-  const publishToFeed = (imageUrl: string) => {
-    if (!activeDraft?.createStep) return;
+  const saveVideoToPlanner = (result: NonNullable<typeof downloaderResult>) => {
+    const targetPersona = effectiveSelectedPersonaId && effectiveSelectedPersonaId !== 'empty'
+      ? personas.find(persona => persona.id === effectiveSelectedPersonaId)
+      : personas[0];
 
-    const newPost: SimulatedPost = {
-      id: Math.random().toString(),
-      imageUrl,
-      caption: `Hey everyone! Starting my new aesthetic journey today on ${activeDraft.createStep.params.platform}. Thanks for all the support! 💖 #influencer #newvibes`,
-      platform: activeDraft.createStep.params.platform,
-      timestamp: Date.now(),
-      views: 0,
-      likes: 0,
-      comments: [],
-      tips: []
-    };
+    if (!targetPersona) {
+      toast.error('Select a persona before saving this Planner draft.');
+      return;
+    }
 
-    setPublishedPosts(prev => [newPost, ...prev]);
-    toast.success(`Published post to mock ${activeDraft.createStep.params.platform} feed!`);
-    setCanvasTab('marketing');
+    accountLocalStorage.setItem(`planner_pending_asset_${targetPersona.id}`, JSON.stringify({
+      url: result.videoUrl,
+      title: result.title || `${result.platform} video`,
+      platform: result.platform,
+      kind: 'video',
+      createdAt: new Date().toISOString(),
+    }));
+    toast.success('Saved as a Planner draft. It has not been published.');
+    nav.push({ view: 'planner' });
   };
 
   // ─── Pipeline runner execution ──────────────────────────────────────────────
@@ -4556,12 +4493,10 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                           📥 Download File
                         </a>
                         <button
-                          onClick={() => {
-                            publishToFeed(downloaderResult.videoUrl);
-                          }}
-                          className="flex-1 py-2 rounded-lg bg-pink-500/20 hover:bg-pink-500/30 border border-pink-500/30 font-black text-[9px] uppercase tracking-wider text-pink-300 flex items-center justify-center gap-1 transition-all"
+                          onClick={() => saveVideoToPlanner(downloaderResult)}
+                          className="flex-1 py-2 rounded-lg bg-[#E7C477]/15 hover:bg-[#E7C477]/25 border border-[#E7C477]/30 font-black text-[9px] uppercase tracking-wider text-[#EECB78] flex items-center justify-center gap-1 transition-all"
                         >
-                          🚀 Import to Feed
+                          <CalendarRange className="w-3.5 h-3.5" /> Save to Planner
                         </button>
                       </div>
                     </div>
@@ -4572,9 +4507,12 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
               {/* PREDICTIVE ANALYTICS GRAPH */}
               {activeDraft ? (
                 <div className="space-y-4 bg-[var(--bg-elevated)] p-6 rounded-2xl border border-white/5 shadow-xl relative">
-                  <span className="text-xs font-black text-violet-400 uppercase tracking-widest flex items-center gap-1.5">
-                    <TrendingUp className="w-4 h-4 text-violet-400" /> Predictive Analytics & Audience
+                  <span className="text-xs font-black text-[#EECB78] uppercase tracking-widest flex items-center gap-1.5">
+                    <TrendingUp className="w-4 h-4 text-[#EECB78]" /> Planning Estimates & Audience
                   </span>
+                  <p className="text-[10px] text-zinc-500 leading-relaxed">
+                    Planning estimate only — these figures are not live platform analytics.
+                  </p>
                   
                   {/* Scorecards */}
                   <div className="grid grid-cols-2 gap-3.5 mt-3">
@@ -4797,12 +4735,10 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                         📥 Download File
                       </a>
                       <button
-                        onClick={() => {
-                          publishToFeed(downloaderResult.videoUrl);
-                        }}
-                        className="flex-1 py-2 rounded-lg bg-pink-500/20 hover:bg-pink-500/30 border border-pink-500/30 font-black text-[9px] uppercase tracking-wider text-pink-300 flex items-center justify-center gap-1 transition-all"
+                        onClick={() => saveVideoToPlanner(downloaderResult)}
+                        className="flex-1 py-2 rounded-lg bg-[#E7C477]/15 hover:bg-[#E7C477]/25 border border-[#E7C477]/30 font-black text-[9px] uppercase tracking-wider text-[#EECB78] flex items-center justify-center gap-1 transition-all"
                       >
-                        🚀 Import to Feed
+                        <CalendarRange className="w-3.5 h-3.5" /> Save to Planner
                       </button>
                     </div>
                   </div>
