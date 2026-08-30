@@ -76,6 +76,7 @@ import {
   type VoiceLatencySnapshot,
   type VoiceTurnTiming,
 } from '../utils/voiceStability';
+import { buildVoiceConversationHistory } from '../../shared/voiceConversationContext';
 import { CommitStrategy, RealtimeEvents, Scribe, type RealtimeConnection } from '@elevenlabs/client';
 
 // ── Typewriter hook ──────────────────────────────────────
@@ -257,6 +258,13 @@ function savePersonaMemory(personaId: string, memoryText: string) {
   try {
     const trimmed = memoryText.trim();
     if (!trimmed) return;
+
+    // Generation instructions are conversation turns, not durable personal
+    // facts. Saving them as memories made old one-time requests reappear in
+    // unrelated future calls.
+    if (/\b(?:send|show|take|snap|generate|create|make|render|record|edit|change|remove|undress|strip)\b[\s\S]{0,80}\b(?:image|photo|picture|selfie|video|clip|clothes|nude|naked|topless)\b/i.test(trimmed)) {
+      return;
+    }
 
     // Only extract name if user explicitly introduces their name ("my name is John", "call me John")
     const nameMatch = trimmed.match(/\b(?:my name is|call me)\s+([a-zA-Z]{2,20})\b/i);
@@ -2050,11 +2058,13 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     try {
       const personaMemories = loadPersonaMemories(activePersona.id);
       const creator = getCreatorProfile();
-      const conversationContext = mergeUniqueConversationRecords(
-        searchConversationMemories(activePersona.id, text, 12),
-        loadConversationContext(activePersona.id, 60),
-        messagesRef.current.slice(-60) as ConversationRecord[],
-      ).filter(record => record.type !== 'loading');
+      // Voice turns use only the active call transcript. Mixing a one-word
+      // acknowledgement with account-wide semantic history let an old image
+      // request become the apparent current instruction (for example, "Yeah"
+      // was interpreted as approval of a request from an earlier chat).
+      const conversationContext = buildVoiceConversationHistory(updatedHistory, text, {
+        maxMessages: 10,
+      });
 
       const controller = new AbortController();
       activeCallAbortControllerRef.current = controller;
@@ -2234,6 +2244,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           creatorProfile: creator,
           userName: creator.name || getStoredUserName(),
           attachedImage: sentCallAttachment?.type === 'image' ? sentCallAttachment.base64 : undefined,
+          userMessage: text,
           messages: conversationContext.map(m => ({
             id: m.id,
             role: m.role === 'user' ? 'user' : 'model',
@@ -2787,16 +2798,17 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     const fallbackGreeting = fallbackPool[Math.floor(Math.random() * fallbackPool.length)];
 
     try {
-      const priorHistory = loadConversationContext(persona.id, 20);
-      const memories = loadPersonaMemories(persona.id);
       const res = await authFetch('/api/persona-greeting', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           persona,
           creatorProfile: creator,
-          priorChatHistory: priorHistory.slice(-12),
-          memories,
+          // A call greeting must not resume or imply consent to an old media
+          // request. Durable memories remain available after the user states a
+          // meaningful new turn; the greeting itself stays socially neutral.
+          priorChatHistory: [],
+          memories: [],
           mode,
           timeSinceLastInteractionSeconds: timeSinceLastSec,
         }),

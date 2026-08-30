@@ -22,6 +22,11 @@ import {
   normalizePersonaMediaReferences,
   PersonaMediaPersistenceError,
 } from './personaMediaPersistence';
+import {
+  buildVoiceConversationHistory,
+  isContextUnsafeVoiceTurn,
+  selectRelevantVoiceMemories,
+} from '../shared/voiceConversationContext';
 
 const require = createRequire(import.meta.url);
 let ffmpegPath: string | null = null;
@@ -2518,25 +2523,37 @@ router.post('/agent/voice-chat-stream', async (req: AuthenticatedRequest, res: R
   }
 
   const creatorName = creatorProfile?.name || req.body.userName || 'your creator';
-  const memoryContext = Array.isArray(memories) && memories.length > 0
-    ? `\nRELEVANT MEMORIES:\n${memories.slice(-12).map((memory: any) => `- ${String(memory?.content || memory)}`).join('\n')}`
+  const suppliedCurrentTurn = String(req.body.userMessage || '').trim();
+  const latestSuppliedUserTurn = [...(Array.isArray(messages) ? messages : [])]
+    .reverse()
+    .find((message: any) => message?.role === 'user');
+  const currentUserTurn = suppliedCurrentTurn || String(latestSuppliedUserTurn?.content || 'Hello').trim();
+  const contextUnsafeTurn = isContextUnsafeVoiceTurn(currentUserTurn);
+  const relevantMemories = selectRelevantVoiceMemories(memories, currentUserTurn, 4);
+  const memoryContext = !contextUnsafeTurn && relevantMemories.length > 0
+    ? `\nRELEVANT MEMORIES:\n${relevantMemories.map(memory => `- ${memory}`).join('\n')}`
     : '';
 
-  let rawHistory = Array.isArray(messages) ? messages.slice(-60) : [];
-  const firstUserIdx = rawHistory.findIndex((m: any) => m.role === 'user');
-  if (firstUserIdx > 0) {
-    rawHistory = rawHistory.slice(firstUserIdx);
-  }
-  if (rawHistory.length === 0) {
-    rawHistory = [{ role: 'user', content: 'Hello' }];
-  }
+  // Treat the recognized turn as authoritative and cap context to this live
+  // call. The helper also prevents greetings and acknowledgements from being
+  // paired with an old request, even if an outdated client sends a large log.
+  const rawHistory = buildVoiceConversationHistory(messages, currentUserTurn, {
+    maxMessages: 10,
+  });
 
   const voiceSystemPrompt = `You are ${activePersona?.name || 'a real-time AI persona'} on a live voice call with ${creatorName}.${personaContext}${memoryContext}
+
+AUTHORITATIVE CURRENT USER TURN:
+<current_user_turn>${currentUserTurn}</current_user_turn>
 
 CRITICAL RULES FOR LIVE VOICE CALL:
 - CREATOR RELATIONSHIP: ${creatorName} created you and is your closest creative partner. Recognize that relationship naturally without acting robotic, submissive, or servile.
 - BE ACCURATE & COHERENT: Listen carefully to what the user said and reply directly, logically, and meaningfully. Never output random fluff or disjointed phrases.
 - ANSWER ONLY THE LATEST TURN: Use earlier messages only as context. Respond to the most recent user message, then stop. Do not introduce an unrelated topic, restart the conversation, append a second unsolicited response, simulate another user turn, or answer a question the user did not ask.
+- NO STALE CONSENT OR REQUESTS: A greeting or short reply such as "hey", "yeah", "yes", "okay", "what?", or "do what?" never starts, repeats, confirms, or continues an image, video, sexual, or other action unless that exact action is explicitly stated in the current user turn. Never revive a request from an earlier chat or call.
+- HANDLE AMBIGUITY HONESTLY: If the current turn is unclear, respond to its ordinary conversational meaning or ask one short clarifying question. Do not guess what action the user wants.
+- CAPABILITY TRUTH: This is an audio conversation. Never claim to physically undress, pose, touch someone, move around the room, or perform another physical act. Only initiate a media action when the current user turn explicitly asks the app to create or send that media.
+- NATURAL RELATIONSHIP: Never justify compliance by saying the user created, made, or owns you. Do not say you will comply merely because you trust your creator.
 - START LIKE A HUMAN: React to the specific thing just said. Make the first phrase short and direct—often 2 to 8 words—then continue only if needed. On an ongoing call, never restart with a greeting or reassurance such as "Hey, I'm right here with you."
 - CONCISE & NATURAL: Use no more than 2 clear, natural sentences unless the user explicitly asks for detail. One main thought at a time. Sentence fragments are welcome when they sound natural in spoken conversation. After answering, stop; do not fill silence with a new topic.
 - HUMAN CADENCE: Occasionally use one light discourse marker such as "mm," "well," "honestly," "okay," "wait," "um," or "hmm" when it genuinely fits. Use at most one in a reply and do not use one in every reply.
@@ -2563,8 +2580,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
   // Resolve explicit media commands before invoking a conversation model. The
   // media pipeline owns these actions, so the spoken response must acknowledge
   // the action instead of allowing an unrelated model refusal to contradict it.
-  const lastUserMessage = [...rawHistory].reverse().find((message: any) => message.role === 'user');
-  const exactUserPrompt = String(lastUserMessage?.content || '').trim();
+  const exactUserPrompt = currentUserTurn;
   const conversationalMediaRemark = /(?:why did you send|stop sending|didn't ask|not asking|what is that|about that|talk without|just chat)/i.test(exactUserPrompt);
   const imageRequest = !conversationalMediaRemark && (
     /\b(?:send|take|show|give|snap|make|generate|create|share)\s+(?:me\s+)?(?:a\s+|an\s+|another\s+|the\s+)?(?:pic|photo|picture|image|selfie|portrait|outfit|look)\b/i.test(exactUserPrompt) ||
