@@ -214,12 +214,15 @@ function findSafeSpeechBoundary(value: string): number {
  * sanitized spoken form. This prevents partial stage directions from reaching
  * TTS while retaining sentence-level streaming latency.
  */
-export function createSpokenDialogueStream(onChunk: (chunk: string) => void): SpokenDialogueStream {
+export function createSpokenDialogueStream(
+  onChunk: (chunk: string) => void,
+  transformPart: (spokenPart: string) => string = spokenPart => spokenPart,
+): SpokenDialogueStream {
   let pending = '';
   const spokenParts: string[] = [];
 
   const emit = (rawPart: string) => {
-    const safePart = sanitizeSpokenDialogue(rawPart);
+    const safePart = transformPart(sanitizeSpokenDialogue(rawPart)).trim();
     if (!safePart) return;
     const streamedPart = spokenParts.length > 0 ? ` ${safePart}` : safePart;
     spokenParts.push(safePart);

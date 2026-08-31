@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   buildVoiceConversationHistory,
+  getGroundedShortVoiceReply,
   isContextUnsafeVoiceTurn,
   selectRelevantVoiceMemories,
 } from './voiceConversationContext';
@@ -42,6 +43,40 @@ test('acknowledgements do not include an older user instruction', () => {
     'Yeah.',
   ]);
   assert.equal(isContextUnsafeVoiceTurn('yeah'), true);
+});
+
+test('do what cannot invent an action after an ordinary question', () => {
+  const history = [
+    { role: 'user', type: 'text', content: 'Hey.' },
+    { role: 'persona', type: 'text', content: 'Hey Dr. H... Um, how are you?' },
+    { role: 'user', type: 'text', content: 'Do what?' },
+  ];
+
+  assert.equal(
+    getGroundedShortVoiceReply(history, 'Do what?'),
+    "Nothing—I wasn't asking you to do anything.",
+  );
+});
+
+test('a short acknowledgement cannot continue an invented request', () => {
+  const history = [
+    { role: 'persona', type: 'text', content: "Nothing—I wasn't asking you to do anything." },
+    { role: 'user', type: 'text', content: 'Yeah.' },
+  ];
+
+  assert.equal(getGroundedShortVoiceReply(history, 'Yeah.'), 'Okay.');
+});
+
+test('do what may restate only an explicit immediately preceding action', () => {
+  const history = [
+    { role: 'persona', type: 'text', content: 'I can send the photo you requested.' },
+    { role: 'user', type: 'text', content: 'Do what?' },
+  ];
+
+  assert.equal(
+    getGroundedShortVoiceReply(history, 'Do what?'),
+    'I meant I can send the photo you requested.',
+  );
 });
 
 test('a meaningful follow-up keeps the bounded current-call conversation', () => {

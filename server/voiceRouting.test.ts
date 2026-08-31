@@ -55,6 +55,19 @@ test('streams only complete sanitized speech while preserving natural dialogue',
   assert.deepEqual(chunks, ['Mm, I missed you.', ' How was your day?']);
 });
 
+test('allows a final identity guard before each spoken stream segment is emitted', () => {
+  const chunks: string[] = [];
+  const stream = createSpokenDialogueStream(
+    chunk => chunks.push(chunk),
+    spokenPart => spokenPart.replace(/^Leen,\s*/i, 'Dr. H, '),
+  );
+  stream.push('Leen, I am sorry. ');
+  stream.push('I misunderstood you.');
+
+  assert.equal(stream.flush(), 'Dr. H, I am sorry. I misunderstood you.');
+  assert.deepEqual(chunks, ['Dr. H, I am sorry.', ' I misunderstood you.']);
+});
+
 test('remaps a stale id to the same persona by name', () => {
   assert.equal(selectElevenLabsPersonaVoice(voices, 'stale-rawan-id', 'Rawan Hassan')?.voice_id, 'rawan-current');
 });

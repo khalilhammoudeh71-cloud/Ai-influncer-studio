@@ -15,7 +15,10 @@ export interface VoiceConversationHistoryOptions {
 const GREETING_ONLY = /^(?:hey|hi|hello|hiya|yo|good (?:morning|afternoon|evening)|what'?s up|sup)$/i;
 const SHORT_ACKNOWLEDGEMENT = /^(?:yeah|yes|yep|yup|okay|ok|sure|fine|right|alright|all right|mhm|mm-?hmm|uh-?huh|no|nope|nah|maybe|i guess|go ahead)$/i;
 const SHORT_CLARIFICATION = /^(?:what|huh|sorry|do what|what do you mean|what are you talking about|say what|say that again|come again|you can do what|why)$/i;
+const ACTION_CLARIFICATION = /^(?:do what|you can do what|what are you talking about)$/i;
 const ACTION_MEMORY = /\b(?:send|show|take|snap|generate|create|make|render|record|edit|change|remove|undress|strip|nude|naked|topless|image|photo|picture|selfie|video|clip)\b/i;
+const EXPLICIT_ACTION_CLAIM = /\b(?:send|show|take|snap|generate|create|make|render|record|edit|change|remove|start|open|upload|download)\b/i;
+const VAGUE_ACTION_CLAIM = /\b(?:do|doing|did|try|trying|ready)\s+(?:that|it|this|something|anything|out)\b/i;
 const MEMORY_STOP_WORDS = new Set([
   'about', 'again', 'and', 'are', 'can', 'could', 'did', 'does', 'for', 'from', 'have', 'how',
   'just', 'like', 'mean', 'remember', 'said', 'say', 'that', 'the', 'this', 'was', 'were', 'what',
@@ -60,6 +63,59 @@ export function isContextUnsafeVoiceTurn(value: unknown): boolean {
   return GREETING_ONLY.test(normalized)
     || SHORT_ACKNOWLEDGEMENT.test(normalized)
     || SHORT_CLARIFICATION.test(normalized);
+}
+
+/**
+ * Ultra-short clarifications and acknowledgements are common when speech
+ * recognition drops a word or the user is reacting in real time. Letting a
+ * generative model invent the missing object can turn "Do what?" into a made-up
+ * request, then make "Yeah" look like consent to it. These replies deliberately
+ * stay small, human, and grounded in only the immediately preceding call line.
+ */
+export function getGroundedShortVoiceReply(
+  messages: VoiceConversationMessage[] | undefined,
+  currentUserMessage: string,
+): string | undefined {
+  const normalizedCurrent = normalizeTurn(currentUserMessage);
+  const clean = (Array.isArray(messages) ? messages : [])
+    .filter(isDialogueMessage)
+    .map(message => ({ ...message, content: String(message.content || '').trim() }));
+
+  let currentIndex = clean.length;
+  for (let index = clean.length - 1; index >= 0; index -= 1) {
+    if (isUserRole(clean[index].role) && normalizeTurn(clean[index].content) === normalizedCurrent) {
+      currentIndex = index;
+      break;
+    }
+  }
+  const previousAssistant = clean
+    .slice(0, currentIndex)
+    .reverse()
+    .find(message => isAssistantRole(message.role));
+  const previousLine = String(previousAssistant?.content || '').replace(/\s+/g, ' ').trim();
+
+  if (SHORT_ACKNOWLEDGEMENT.test(normalizedCurrent)) {
+    if (/^(?:no|nope|nah)$/.test(normalizedCurrent)) return 'Okay, no problem.';
+    if (/^(?:maybe|i guess)$/.test(normalizedCurrent)) return 'That\'s fair.';
+    return previousLine ? 'Okay.' : undefined;
+  }
+
+  if (!ACTION_CLARIFICATION.test(normalizedCurrent)) return undefined;
+  if (!previousLine) return 'What do you mean?';
+
+  if (!EXPLICIT_ACTION_CLAIM.test(previousLine) || VAGUE_ACTION_CLAIM.test(previousLine)) {
+    return "Nothing—I wasn't asking you to do anything.";
+  }
+
+  const restatement = previousLine
+    .replace(/^(?:oh|um|uh|well|okay|ok|sorry)[,\s.…-]*/i, '')
+    .slice(0, 180)
+    .trim();
+  if (!restatement) return 'What do you mean?';
+  const naturalRestatement = /^I\b/.test(restatement)
+    ? restatement
+    : `${restatement.charAt(0).toLowerCase()}${restatement.slice(1)}`;
+  return `I meant ${naturalRestatement}`;
 }
 
 /**

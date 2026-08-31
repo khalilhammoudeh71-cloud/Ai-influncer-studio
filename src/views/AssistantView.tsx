@@ -380,6 +380,22 @@ const VOICE_CALIBRATION_TERMS = [
   'Qwen 3.0 Pro',
 ];
 
+function detectIncompleteMediaCreationRequest(message: string): 'image' | 'video' | undefined {
+  const match = message.trim().match(
+    /\b(?:generate|create|make|render|produce)\s+(?:me\s+)?(?:(?:a|an|the|some|another|new)\s+)*(image|photo|picture|pic|portrait|video|clip|reel|animation)\b([\s\S]*)$/i,
+  );
+  if (!match) return undefined;
+
+  const remainder = String(match[2] || '')
+    .toLowerCase()
+    .replace(/[.,!?;:]+/g, ' ')
+    .replace(/\b(?:please|for me|for us|right now|now|quickly|real quick|if you can|if you could)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (remainder && !/^(?:of|with|showing|featuring)$/.test(remainder)) return undefined;
+  return /^(?:video|clip|reel|animation)$/i.test(match[1]) ? 'video' : 'image';
+}
+
 function detectIntent(message: string): 'image' | 'video' | 'chat' {
   const lower = message.toLowerCase().trim();
 
@@ -387,6 +403,7 @@ function detectIntent(message: string): 'image' | 'video' | 'chat' {
   const isConversationalRemark = /(?:why did you send|why are you sending|why do you keep sending|stop sending (?:photos|pics|images|videos|selfies)|don't send (?:photos|pics|images)|not asking for (?:a |an )?(?:photo|image|picture|video)|didn't ask for (?:a |an )?(?:photo|image|picture|video)|why is there (?:a |an )?(?:photo|image)|what is that (?:photo|image|picture)|did you like (?:that|the) (?:photo|image|picture)|talk about something else|let's just talk|let's chat without photos)\b/i.test(lower) ||
     /(?:while generating|about that photo|about this photo|look at the photo|what do you think of the photo|let's talk about something else|let's just chat|keep talking|continue talking)\b/i.test(lower);
   if (isConversationalRemark) return 'chat';
+  if (detectIncompleteMediaCreationRequest(message)) return 'chat';
 
   // 2. Explicit video commands
   if (/\b(?:send|record|make|generate|shoot|create)\s+(?:me\s+)?(?:a\s+|an\s+|another\s+)?(?:new\s+)?(?:video|clip|reel|animation)\b/i.test(lower) ||
@@ -2348,15 +2365,25 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       }]);
 
       const voiceImageRevisionCandidate = resolveImageRevisionContext(text, messagesRef.current, callRevisionSource);
-      const isVoiceImageIntent = voiceImageRevisionCandidate.isRevision || data.action?.type === 'image' ||
-        detectIntent(text) === 'image' || 
+      const incompleteVoiceMediaRequest = detectIncompleteMediaCreationRequest(text);
+      if (incompleteVoiceMediaRequest) {
+        // Do not let an older completed asset look like the answer to the new,
+        // still-underspecified request while we ask the user for details.
+        setActiveCallMedia(null);
+      }
+      const isVoiceImageIntent = voiceImageRevisionCandidate.isRevision || data.action?.type === 'image' || (!incompleteVoiceMediaRequest && (
+        detectIntent(text) === 'image' ||
         (/\b(?:photo|pic|picture|selfie|image)\b/i.test(text) && /\b(?:take|send|snap|show|generate|make|see|want|wearing|exposed|nude|naked|bedroom|bed)\b/i.test(text)) ||
-        /\b(?:sending it|try again right now.*sending it|sending you a (?:photo|selfie|pic|image)|sending a (?:photo|selfie|pic|image)|taking a (?:photo|selfie)|take a quick (?:photo|selfie)|here is the (?:photo|selfie)|snap that for you|take that for you|snapping (?:this|that|a photo)|let me take|give me one second.*(?:snap|take|photo|pic)|here you go.*(?:pic|photo))\b/i.test(reply);
+        /\b(?:sending it|try again right now.*sending it|sending you a (?:photo|selfie|pic|image)|sending a (?:photo|selfie|pic|image)|taking a (?:photo|selfie)|take a quick (?:photo|selfie)|here is the (?:photo|selfie)|snap that for you|take that for you|snapping (?:this|that|a photo)|let me take|give me one second.*(?:snap|take|photo|pic)|here you go.*(?:pic|photo))\b/i.test(reply)
+      ));
 
-      const isVoiceVideoIntent = !isVoiceImageIntent && (data.action?.type === 'video' || detectIntent(text) === 'video' || /\b(?:sending you a video|recorded a video|sending the video)\b/i.test(reply));
+      const isVoiceVideoIntent = !isVoiceImageIntent && (data.action?.type === 'video' || (!incompleteVoiceMediaRequest && (
+        detectIntent(text) === 'video' || /\b(?:sending you a video|recorded a video|sending the video)\b/i.test(reply)
+      )));
 
       if (isVoiceImageIntent || isVoiceVideoIntent) {
         const mediaType = isVoiceImageIntent ? 'image' as const : 'video' as const;
+        setActiveCallMedia(null);
         const loadingMsgId = uid();
         const callGenerationLabel = mediaType === 'image'
           ? 'Generating your image...'
@@ -2367,7 +2394,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           type: 'loading',
           content: callGenerationLabel,
         }]);
-        const exactMediaRequest = text.trim();
+        const exactMediaRequest = String(data.action?.prompt || text).trim();
         const rawMediaPrompt = exactMediaRequest || `${activePersona.name}, ${activePersona.niche}, ${mediaType === 'image' ? 'photorealistic portrait' : 'cinematic motion video clip'}`;
         const modelSelection = resolveMediaModelFromPrompt(
           rawMediaPrompt,
@@ -2830,6 +2857,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     setShowSpeakerLockSetup(false);
     const greetingTurnId = ++callTurnIdRef.current;
     setIsCallActive(true);
+    setActiveCallMedia(null);
     isCallActiveRef.current = true;
     lastCommittedTranscriptRef.current = { text: '', at: 0 };
     voiceSpeechStartedAtRef.current = null;
@@ -2928,6 +2956,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       activeCallAbortControllerRef.current = null;
     }
     setIsCallActive(false);
+    setActiveCallMedia(null);
     isCallActiveRef.current = false;
     setCallStatus('disconnected');
     isAgentSpeakingRef.current = false;
@@ -3368,8 +3397,9 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       if (!replyText) throw new Error('The persona returned an empty reply. Please try again.');
 
       // Determine if a photo, video, or voice note was requested or returned as an action:
+      const incompleteMediaRequest = detectIncompleteMediaCreationRequest(effectiveText);
       const explicitVisualKeywords = /\b(image|photo|pic|picture|selfie|pose|portrait|photoshoot|video|clip|recording)\b/i.test(effectiveText);
-      const isExplicitVisualRequest = /\b(send|take|generate|show|give|snap|make|create|post|capture)\b/i.test(effectiveText) && explicitVisualKeywords;
+      const isExplicitVisualRequest = !incompleteMediaRequest && /\b(send|take|generate|show|give|snap|make|create|post|capture)\b/i.test(effectiveText) && explicitVisualKeywords;
       const isConversationalQuestion = !isExplicitVisualRequest && /(?:\b(?:why did you send|why are you sending|what is that picture|who is that in the photo|stop sending)\b)/i.test(effectiveText);
       const detectedIntent = isConversationalQuestion ? 'chat' : detectIntent(effectiveText);
       const imageRevisionCandidate = resolveImageRevisionContext(effectiveText, messagesRef.current, pastedRevisionSource);
@@ -3407,7 +3437,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         }
       } else if (isImageAction || isVideoAction) {
         const mediaType = isImageAction ? 'image' as const : 'video' as const;
-        const rawMediaPrompt = effectiveText.trim() || data.action?.prompt || '';
+        const rawMediaPrompt = String(data.action?.prompt || effectiveText).trim();
         const modelSelection = resolveMediaModelFromPrompt(
           rawMediaPrompt,
           mediaType === 'image' ? editModels : videoModels,

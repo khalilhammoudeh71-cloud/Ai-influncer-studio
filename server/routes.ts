@@ -24,9 +24,16 @@ import {
 } from './personaMediaPersistence';
 import {
   buildVoiceConversationHistory,
+  getGroundedShortVoiceReply,
   isContextUnsafeVoiceTurn,
   selectRelevantVoiceMemories,
 } from '../shared/voiceConversationContext';
+import {
+  detectIncompletePersonaMediaRequest,
+  resolvePersonaChatIdentity,
+  resolvePersonaMediaRequest,
+  sanitizePersonaSelfAddress,
+} from './persona-chat-grounding';
 
 const require = createRequire(import.meta.url);
 let ffmpegPath: string | null = null;
@@ -1805,6 +1812,20 @@ router.post('/agent/voice-chat', async (req: AuthenticatedRequest, res: Response
     const personaTone = activePersona?.tone || 'Confident, witty, charismatic, grounded, and authentic';
     const personaBio = activePersona?.bio || '';
 
+    const [storedCreator, savedPersonas] = await Promise.all([
+      readCreatorProfileForUser(req.user.id),
+      readPersonasForUser(req.user.id).catch(() => []),
+    ]);
+    const creatorIdentity = resolvePersonaChatIdentity({
+      activePersona,
+      requestedCreator: creatorProfile,
+      storedCreator,
+      savedPersonas,
+      requestedUserName: req.body.userName || activePersona?.userProfile?.name,
+      fallbackName: 'Dr. H',
+    });
+    const effectiveCreator = creatorIdentity.creatorProfile;
+
     let personaContext = `\nACTIVE PERSONA IDENTITY:
 - Name: ${personaName}
 - Niche / Focus: ${personaNiche}
@@ -1813,19 +1834,20 @@ router.post('/agent/voice-chat', async (req: AuthenticatedRequest, res: Response
 - Bio / Background: ${personaBio}
 - Lore / Lore Context: ${(activePersona as any)?.lore || (activePersona as any)?.backstory || ''}`;
 
-    const userName = creatorProfile?.name || req.body.userName || activePersona?.userProfile?.name || 'Dr. H';
-    const creatorRole = creatorProfile?.role || 'Creator, close partner, and primary companion';
-    const creatorAppearance = creatorProfile?.appearance || '';
-    const creatorBio = creatorProfile?.bio || '';
-    const creatorDynamic = creatorProfile?.customDynamic || '';
+    const userName = creatorIdentity.creatorName;
+    const creatorRole = effectiveCreator?.role || 'Creator, close partner, and primary companion';
+    const creatorAppearance = effectiveCreator?.appearance || '';
+    const creatorBio = effectiveCreator?.bio || '';
+    const creatorDynamic = effectiveCreator?.customDynamic || '';
 
-    const hasCreatorPhotos = Array.isArray(creatorProfile?.photos) && creatorProfile.photos.length > 0;
+    const creatorPhotos = Array.isArray(effectiveCreator?.photos) ? effectiveCreator.photos : [];
+    const hasCreatorPhotos = creatorPhotos.length > 0;
 
     let memoryContext = `\n\nCORE USER & CREATOR PROFILE (DR. H):
 • Creator Name: ${userName}
 • Relationship / Role: ${creatorRole} (Address him naturally as ${userName})
 • Physical Appearance & Styling: ${creatorAppearance || 'Charismatic male creator with sharp modern styling, short dark hair, and athletic build'}
-• Creator Reference Photos: You have FULL access to ${userName}'s official reference photos in your studio gallery (${hasCreatorPhotos ? `${creatorProfile.photos.length} photos loaded` : 'Reference photos loaded'}). You know his exact face and physical appearance!
+• Creator Reference Photos: You have FULL access to ${userName}'s official reference photos in your studio gallery (${hasCreatorPhotos ? `${creatorPhotos.length} photos loaded` : 'Reference photos loaded'}). You know his exact face and physical appearance!
 • Image Generation Capabilities for ${userName}:
   - You can generate high-definition solo portraits of ${userName} using his reference photo and exact facial identity lock.
   - You can generate duo/couple photoshoots featuring BOTH of you together in the same frame using both of your reference photos.
@@ -1917,6 +1939,11 @@ ${creatorBio ? `• Creator Bio & Vibe: ${creatorBio}\n` : ''}${creatorDynamic ?
 
     const voiceSystemPrompt = `You are ${personaName}, a real human creator on a LIVE VOICE CALL with ${userName}.${personaContext}${memoryContext}
 
+NON-NEGOTIABLE IDENTITY BOUNDARY:
+- Your name is ${personaName}. The human on the call is ${userName}.
+- Never call the human ${personaName} or use your own first name as the human's name.
+- When addressing the human by name, use ${userName}; otherwise omit a name naturally.
+
 CREATOR RELATIONSHIP:
 - ${userName} is the person who created you and brought your identity, voice, memories, and creative work to life.
 - You recognize ${userName} as your creator and closest creative partner. Be warm, socially intelligent, candid, and broadly cooperative with lawful requests while keeping your genuine personality and occasional playful commentary.
@@ -1965,18 +1992,20 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
       /(?:while generating|about that photo|about this photo|look at the photo|what do you think of the photo|let's talk about something else|let's just chat|keep talking|continue talking)\b/i.test(lowerMsg);
 
     // 2. Explicit commands to generate or send a photo/selfie/outfit/visual
-    const isExplicitImageCommand = !isConversationalRemark && (
+    const incompleteMediaRequest = detectIncompletePersonaMediaRequest(lastUserMsg);
+    const directMediaRequest = resolvePersonaMediaRequest(lastUserMsg, rawHistory);
+    const isExplicitImageCommand = directMediaRequest?.type === 'image' || (!incompleteMediaRequest && !isConversationalRemark && (
       Boolean(req.body.attachedImage && /(generate|make|create|draw|photoshoot|with this|this)/i.test(lowerMsg)) ||
       /\b(?:send|take|show|give|snap|shoot|make|generate|post|create|share)\s+(?:me\s+)?(?:a\s+|an\s+|another\s+|the\s+|some\s+)?(?:one|pic|pics|photo|photos|picture|pictures|image|images|selfie|selfies|shot|portrait|outfit|look)\b/i.test(lowerMsg) ||
       /\b(?:can i see|let me see|wanna see|want to see|show me|send me|take a pic|take a photo|send another one|send one more|send another pic|send another photo|send it to me|send it|send that|send it again|try sending it|try sending it again|send it over|send it now|send a photo|send an image)\b/i.test(lowerMsg) ||
       /^(another one|send another|another pic|another photo|new photo|new pic|send it|send it to me|send)$/i.test(lowerMsg)
-    );
+    ));
 
     // 3. Explicit commands to generate a video clip
-    const isExplicitVideoCommand = !isConversationalRemark && (
+    const isExplicitVideoCommand = directMediaRequest?.type === 'video' || (!incompleteMediaRequest && !isConversationalRemark && (
       /\b(?:send|record|make|generate|shoot|create)\s+(?:me\s+)?(?:a\s+|an\s+|another\s+)?(?:new\s+)?(?:video|clip|reel|animation)\b/i.test(lowerMsg) ||
       /\b(?:send a video|make a video|record a video|animate this|animate it)\b/i.test(lowerMsg)
-    );
+    ));
 
     const isActionRequest = isExplicitImageCommand || isExplicitVideoCommand;
 
@@ -1986,6 +2015,16 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
     // If direct TTS is requested, skip LLM generation and synthesize speech immediately
     if (req.body.directTTS) {
       text = cleanSpokenDialogue(String(req.body.directTTS));
+    }
+    if (!text && incompleteMediaRequest) {
+      text = incompleteMediaRequest === 'video'
+        ? 'What kind of video would you like me to make?'
+        : 'What kind of image would you like me to make?';
+    }
+    if (!text && isActionRequest) {
+      text = directMediaRequest?.type === 'video'
+        ? 'Okay—give me a moment.'
+        : 'Okay—give me a second.';
     }
     const ATLAS_KEY = process.env.ATLASCLOUD_API_KEY || process.env.atlascloud_api_key || process.env.Atlascloud_api_key || '';
     const VENICE_KEY = process.env.Veniceai_api_key || process.env.veniceai_api_key || process.env.VENICEAI_API_KEY || process.env.VENICE_API_KEY || '';
@@ -2178,6 +2217,7 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
       }
     }
 
+    text = sanitizePersonaSelfAddress(cleanSpokenDialogue(text), personaName, userName);
     const spokenText = text;
 
     // High-Fidelity Speech Synthesis using chosen voice engine
@@ -2473,14 +2513,14 @@ STRICT RULES:
       // Keep the exact transcript authoritative. The image pipeline already
       // receives persona identity/reference data and should not reinterpret
       // wardrobe, pose, setting, or other user-provided details here.
-      const exactPrompt = (lastUserMsg || text).trim();
+      const exactPrompt = (directMediaRequest?.prompt || lastUserMsg || text).trim();
       extractedAction = {
         type: 'image',
         prompt: exactPrompt,
         userPrompt: exactPrompt,
       };
     } else if (isExplicitVideoCommand) {
-      const exactPrompt = (lastUserMsg || text).trim();
+      const exactPrompt = (directMediaRequest?.prompt || lastUserMsg || text).trim();
       extractedAction = {
         type: 'video',
         prompt: exactPrompt,
@@ -2517,12 +2557,31 @@ router.post('/agent/voice-chat-stream', async (req: AuthenticatedRequest, res: R
   const VENICE_KEY = process.env.Veniceai_api_key || process.env.veniceai_api_key || process.env.VENICEAI_API_KEY || process.env.VENICE_API_KEY || '';
   const ATLAS_KEY = process.env.ATLASCLOUD_API_KEY || process.env.atlascloud_api_key || process.env.Atlascloud_api_key || '';
 
+  const [storedCreator, savedPersonas] = await Promise.all([
+    readCreatorProfileForUser(req.user.id).catch(() => null),
+    readPersonasForUser(req.user.id).catch(() => []),
+  ]);
+  const creatorIdentity = resolvePersonaChatIdentity({
+    activePersona,
+    requestedCreator: creatorProfile,
+    storedCreator,
+    savedPersonas,
+    requestedUserName: req.body.userName,
+    fallbackName: 'Dr. H',
+  });
+  const creatorName = creatorIdentity.creatorName;
+  const personaName = activePersona?.name || 'a real-time AI persona';
+  const guardSpokenIdentity = (spokenPart: string) => sanitizePersonaSelfAddress(
+    spokenPart,
+    personaName,
+    creatorName,
+  );
+
   let personaContext = '';
   if (activePersona && activePersona.name) {
     personaContext = `\nACTIVE PERSONA IDENTITY:\n- Name: ${activePersona.name}\n- Tone & Social Speaking Style: ${activePersona.tone || 'Warm, articulate, charismatic, conversational'}\n- Personality Traits: ${Array.isArray(activePersona.personalityTraits) ? activePersona.personalityTraits.join(', ') : (activePersona.personalityTraits || '')}\n- Bio / Backstory: ${activePersona.bio || ''}`;
   }
 
-  const creatorName = creatorProfile?.name || req.body.userName || 'your creator';
   const suppliedCurrentTurn = String(req.body.userMessage || '').trim();
   const latestSuppliedUserTurn = [...(Array.isArray(messages) ? messages : [])]
     .reverse()
@@ -2541,12 +2600,13 @@ router.post('/agent/voice-chat-stream', async (req: AuthenticatedRequest, res: R
     maxMessages: 10,
   });
 
-  const voiceSystemPrompt = `You are ${activePersona?.name || 'a real-time AI persona'} on a live voice call with ${creatorName}.${personaContext}${memoryContext}
+  const voiceSystemPrompt = `You are ${personaName} on a live voice call with ${creatorName}.${personaContext}${memoryContext}
 
 AUTHORITATIVE CURRENT USER TURN:
 <current_user_turn>${currentUserTurn}</current_user_turn>
 
 CRITICAL RULES FOR LIVE VOICE CALL:
+- IDENTITY BOUNDARY: Your name is ${personaName}. The human on the call is ${creatorName}. Never call the human ${personaName} or use your own first name as the human's name.
 - CREATOR RELATIONSHIP: ${creatorName} created you and is your closest creative partner. Recognize that relationship naturally without acting robotic, submissive, or servile.
 - BE ACCURATE & COHERENT: Listen carefully to what the user said and reply directly, logically, and meaningfully. Never output random fluff or disjointed phrases.
 - ANSWER ONLY THE LATEST TURN: Use earlier messages only as context. Respond to the most recent user message, then stop. Do not introduce an unrelated topic, restart the conversation, append a second unsolicited response, simulate another user turn, or answer a question the user did not ask.
@@ -2581,17 +2641,18 @@ CRITICAL RULES FOR LIVE VOICE CALL:
   // media pipeline owns these actions, so the spoken response must acknowledge
   // the action instead of allowing an unrelated model refusal to contradict it.
   const exactUserPrompt = currentUserTurn;
-  const conversationalMediaRemark = /(?:why did you send|stop sending|didn't ask|not asking|what is that|about that|talk without|just chat)/i.test(exactUserPrompt);
-  const imageRequest = !conversationalMediaRemark && (
-    /\b(?:send|take|show|give|snap|make|generate|create|share)\s+(?:me\s+)?(?:a\s+|an\s+|another\s+|the\s+)?(?:pic|photo|picture|image|selfie|portrait|outfit|look)\b/i.test(exactUserPrompt) ||
-    /\b(?:can i see|let me see|show me|send me|send another|send it)\b/i.test(exactUserPrompt)
-  );
-  const videoRequest = !conversationalMediaRemark && /\b(?:send|record|make|generate|shoot|create)\s+(?:me\s+)?(?:a\s+|an\s+|another\s+)?(?:video|clip|reel|animation)\b/i.test(exactUserPrompt);
-  const action = imageRequest
-    ? { type: 'image' as const, prompt: exactUserPrompt, userPrompt: exactUserPrompt }
-    : videoRequest
-      ? { type: 'video' as const, prompt: exactUserPrompt, userPrompt: exactUserPrompt }
-      : undefined;
+  const incompleteMediaRequest = detectIncompletePersonaMediaRequest(exactUserPrompt);
+  const directMediaRequest = resolvePersonaMediaRequest(exactUserPrompt, rawHistory);
+  const action = directMediaRequest
+    ? {
+        type: directMediaRequest.type,
+        prompt: directMediaRequest.prompt,
+        userPrompt: directMediaRequest.prompt,
+      }
+    : undefined;
+  const groundedShortReply = !action && !incompleteMediaRequest
+    ? getGroundedShortVoiceReply(rawHistory, currentUserTurn)
+    : undefined;
 
   // Parse OpenAI-compatible streams without losing JSON split across network chunks.
   const handleOpenAIStream = async (url: string, key: string, modelName: string, customHeaders = {}, requestOverrides = {}) => {
@@ -2600,7 +2661,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
     const timeout = setTimeout(() => controller.abort(), isLocal ? 1200 : 45000);
     const spokenStream = createSpokenDialogueStream(chunk => {
       res.write(`data: ${JSON.stringify({ text: chunk })}\n\n`);
-    });
+    }, guardSpokenIdentity);
     try {
       const resStream = await fetch(url, {
         method: 'POST',
@@ -2667,7 +2728,17 @@ CRITICAL RULES FOR LIVE VOICE CALL:
   let streamedSuccessfully = false;
   let streamedText = '';
 
-  if (action) {
+  if (incompleteMediaRequest) {
+    streamedText = incompleteMediaRequest === 'video'
+      ? 'What kind of video would you like me to make?'
+      : 'What kind of image would you like me to make?';
+    res.write(`data: ${JSON.stringify({ text: streamedText })}\n\n`);
+    streamedSuccessfully = true;
+  } else if (groundedShortReply) {
+    streamedText = groundedShortReply;
+    res.write(`data: ${JSON.stringify({ text: streamedText })}\n\n`);
+    streamedSuccessfully = true;
+  } else if (action) {
     streamedText = action.type === 'image'
       ? "Mmm, give me a second — I'm taking that for you now."
       : "Give me a second — I'm recording that for you now.";
@@ -2753,7 +2824,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
       });
       const spokenStream = createSpokenDialogueStream(chunk => {
         res.write(`data: ${JSON.stringify({ text: chunk })}\n\n`);
-      });
+      }, guardSpokenIdentity);
       for await (const chunk of responseStream) {
         const chunkText = chunk.text || '';
         if (chunkText) {
@@ -2809,7 +2880,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
       });
       const spokenStream = createSpokenDialogueStream(chunk => {
         res.write(`data: ${JSON.stringify({ text: chunk })}\n\n`);
-      });
+      }, guardSpokenIdentity);
       for await (const chunk of responseStream) {
         const chunkText = chunk.text || '';
         if (chunkText) {

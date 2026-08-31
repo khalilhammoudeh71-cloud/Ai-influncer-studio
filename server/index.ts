@@ -21,6 +21,12 @@ import { Jimp } from 'jimp';
 // Pool is imported dynamically in pushSchema to support different environments
 import apiRoutes, { globalDefaultVoiceRef, readCreatorProfileForUser, readPersonasForUser, synthesizeClonedAudioWithWavespeed, writeCreatorProfileForUser } from './routes';
 import { composeMultiPersonaPrompt, getPersonaPrimaryReference, resolveCreatorPersona, resolveMediaParticipants, type MediaPersonaContext } from './persona-media';
+import {
+  detectIncompletePersonaMediaRequest,
+  resolvePersonaChatIdentity,
+  resolvePersonaMediaRequest,
+  sanitizePersonaSelfAddress,
+} from './persona-chat-grounding';
 import { buildMediaQualityRetryPrompt, parseMediaQualityReport, unavailableMediaQualityReport, type MediaQualityReport } from './media-quality';
 import { normalizeNaturalVoiceGreeting } from './voiceRouting';
 import { getSocialChannelAnalysis, getSocialTrends, isSocialIntelligenceConfigured } from './social-intelligence';
@@ -3267,9 +3273,21 @@ app.post('/api/persona-greeting', async (req, res) => {
     const personaName = persona?.name || 'Creator';
     const personaNiche = persona?.niche || 'Lifestyle';
     const personaTone = persona?.tone || 'Confident, alluring, witty';
-    const storedCreator = await readCreatorProfileForUser((req as AuthenticatedRequest).user.id);
-    const effectiveCreator = creatorProfile || storedCreator;
-    const effectiveUserName = effectiveCreator?.name || 'Creator';
+    const userId = (req as AuthenticatedRequest).user.id;
+    const [storedCreator, savedPersonas] = await Promise.all([
+      readCreatorProfileForUser(userId),
+      readPersonasForUser(userId).catch(() => []),
+    ]);
+    const creatorIdentity = resolvePersonaChatIdentity({
+      activePersona: persona,
+      requestedCreator: creatorProfile,
+      storedCreator,
+      savedPersonas,
+      requestedUserName: req.body.userName,
+      fallbackName: 'Creator',
+    });
+    const effectiveCreator = creatorIdentity.creatorProfile;
+    const effectiveUserName = creatorIdentity.creatorName;
     const creatorDynamic = effectiveCreator?.customDynamic || '';
 
     // Extract recent messages to understand the last conversation vibe
@@ -3395,7 +3413,10 @@ RULES:
       }
     }
 
-    greetingText = normalizeNaturalVoiceGreeting(greetingText, isImmediateContinuation ? 'Hey—where were we?' : `Hey, ${effectiveUserName}. What's up?`);
+    greetingText = normalizeNaturalVoiceGreeting(
+      sanitizePersonaSelfAddress(greetingText, personaName, effectiveUserName),
+      isImmediateContinuation ? 'Hey—where were we?' : `Hey, ${effectiveUserName}. What's up?`,
+    );
 
     return res.json({ greeting: greetingText });
   } catch (err: any) {
@@ -3554,22 +3575,35 @@ app.post('/api/chat', async (req, res) => {
     const boundaries = persona.contentBoundaries ? `\nBoundaries: ${persona.contentBoundaries}` : '';
     const visualStyle = persona?.visualStyle || 'High fashion, natural photography';
 
-    const storedCreator = await readCreatorProfileForUser((req as AuthenticatedRequest).user.id);
-    const effectiveCreator = creatorProfile || storedCreator;
-    const effectiveUserName = effectiveCreator?.name || req.body.userName || persona?.userProfile?.name || 'Creator';
+    const userId = (req as AuthenticatedRequest).user.id;
+    const [storedCreator, savedPersonas] = await Promise.all([
+      readCreatorProfileForUser(userId),
+      readPersonasForUser(userId).catch(() => []),
+    ]);
+    const creatorIdentity = resolvePersonaChatIdentity({
+      activePersona: persona,
+      requestedCreator: creatorProfile,
+      storedCreator,
+      savedPersonas,
+      requestedUserName: req.body.userName || persona?.userProfile?.name,
+      fallbackName: 'Creator',
+    });
+    const effectiveCreator = creatorIdentity.creatorProfile;
+    const effectiveUserName = creatorIdentity.creatorName;
     const creatorRole = effectiveCreator?.role || 'Creator, close partner, and primary companion';
     const creatorAppearance = effectiveCreator?.appearance || '';
     const creatorBio = effectiveCreator?.bio || '';
     const creatorDynamic = effectiveCreator?.customDynamic || '';
 
-    const hasCreatorPhotos = Array.isArray(effectiveCreator?.photos) && effectiveCreator.photos.length > 0;
-    const creatorPrimaryPhoto = effectiveCreator?.primaryPhoto || (hasCreatorPhotos ? effectiveCreator.photos[0] : '');
+    const creatorPhotos = Array.isArray(effectiveCreator?.photos) ? effectiveCreator.photos : [];
+    const hasCreatorPhotos = creatorPhotos.length > 0;
+    const creatorPrimaryPhoto = effectiveCreator?.primaryPhoto || creatorPhotos[0] || '';
 
     let memoryContext = `\n\nCORE USER & CREATOR PROFILE (${effectiveUserName.toUpperCase()}):
 • Creator Name: ${effectiveUserName}
 • Relationship / Role: ${creatorRole} (Address him naturally as ${effectiveUserName})
 • Physical Appearance & Styling: ${creatorAppearance || 'Charismatic male creator with sharp modern styling, short dark hair, and athletic build'}
-• Creator Reference Photos: You have FULL access to ${effectiveUserName}'s official reference photos in your studio gallery (${hasCreatorPhotos ? `${effectiveCreator.photos.length} photos loaded` : 'Reference photos loaded'}). You know his exact face and physical appearance!
+• Creator Reference Photos: You have FULL access to ${effectiveUserName}'s official reference photos in your studio gallery (${hasCreatorPhotos ? `${creatorPhotos.length} photos loaded` : 'Reference photos loaded'}). You know his exact face and physical appearance!
 • Image Generation Capabilities for ${effectiveUserName}:
   - You can generate high-definition solo portraits of ${effectiveUserName} using his reference photo and exact facial identity lock.
   - You can generate duo/couple photoshoots featuring BOTH of you together in the same frame using both of your reference photos.
@@ -3613,6 +3647,11 @@ Visual Style: ${visualStyle}
 Bio: ${personaBio || 'No bio provided'}
 Personality Traits: ${traits}
 Lore / Backstory: ${personaLore || 'None'}${voiceRules}${boundaries}${memoryContext}
+
+NON-NEGOTIABLE IDENTITY BOUNDARY:
+- Your name is ${personaName}. The human speaking with you is ${effectiveUserName}.
+- Never call the human ${personaName} or use your own first name as the human's name.
+- When addressing the human by name, use ${effectiveUserName}; otherwise omit a name naturally.
 
 CRITICAL SOCIAL INTELLIGENCE, PERSONALITY & CONVERSATIONAL DIRECTIVES:
 ${companionDirective ? `${companionDirective}\n` : ''}1. EQUAL CONFIDANTE & CHARISMATIC PARTNER (NEVER SUBSERVIENT/SLAVE):
@@ -3742,7 +3781,17 @@ ${companionDirective ? `${companionDirective}\n` : ''}1. EQUAL CONFIDANTE & CHAR
 
     chatMsgs.push({ role: 'user', content: effectiveUserMsg });
 
-    let finalReply = '';
+    const incompleteMediaRequest = detectIncompletePersonaMediaRequest(effectiveUserMsg);
+    const directMediaAction = resolvePersonaMediaRequest(effectiveUserMsg, allHistory);
+    let finalReply = incompleteMediaRequest
+      ? incompleteMediaRequest === 'video'
+        ? 'What kind of video would you like me to make?'
+        : 'What kind of image would you like me to make?'
+      : directMediaAction
+        ? directMediaAction.type === 'image'
+          ? 'Okay—give me a second.'
+          : 'Okay—give me a moment.'
+        : '';
 
     const isRefusal = (raw: string): boolean => {
       if (!raw || raw.length < 5) return true;
@@ -3889,8 +3938,16 @@ ${companionDirective ? `${companionDirective}\n` : ''}1. EQUAL CONFIDANTE & CHAR
       }
     }
 
-    let extractedAction: { type: 'image' | 'video' | 'voice_note'; prompt?: string; text?: string; audioUrl?: string; duration?: number } | undefined;
-    const actionMatch = finalReply.match(/\[ACTION:(IMAGE|VIDEO|VOICE_NOTE):\s*([\s\S]*?)\]/i);
+    let extractedAction: { type: 'image' | 'video' | 'voice_note'; prompt?: string; text?: string; audioUrl?: string; duration?: number } | undefined = directMediaAction
+      ? {
+          type: directMediaAction.type,
+          prompt: directMediaAction.prompt,
+          text: directMediaAction.prompt,
+        }
+      : undefined;
+    const actionMatch = !extractedAction
+      ? finalReply.match(/\[ACTION:(IMAGE|VIDEO|VOICE_NOTE):\s*([\s\S]*?)\]/i)
+      : null;
     if (actionMatch) {
       const aType = actionMatch[1].toLowerCase() as 'image' | 'video' | 'voice_note';
       const aPrompt = actionMatch[2].trim();
@@ -3902,7 +3959,11 @@ ${companionDirective ? `${companionDirective}\n` : ''}1. EQUAL CONFIDANTE & CHAR
       finalReply = finalReply.replace(/\[ACTION:(IMAGE|VIDEO|VOICE_NOTE):[\s\S]*?\]/gi, '').trim();
     }
 
-    finalReply = sanitizeReply(finalReply);
+    finalReply = sanitizePersonaSelfAddress(
+      sanitizeReply(finalReply),
+      personaName,
+      effectiveUserName,
+    );
 
     // If the reply is an artificial technical status message like "Generating image of...", replace with in-character dialogue
     if (!finalReply || /^(?:generating|creating|rendering|loading|producing|processing|taking)\s+(?:image|photo|video|picture|visual|content|look|selfie)/i.test(finalReply) || /^take a look at this (?:image|photo|picture)/i.test(finalReply)) {
