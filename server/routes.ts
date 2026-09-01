@@ -3256,7 +3256,7 @@ Do not wrap your response in markdown code blocks or HTML tags. Return ONLY the 
       try {
         console.log('[Super Agent Router] Direct-routing prompt via Venice.ai API (100% Uncensored Engine)');
         const veniceModel = chatLlmModel === 'venice'
-          ? 'venice-uncensored-role-play'
+          ? 'venice-uncensored-1-2'
           : chatLlmModel === 'qwen'
             ? 'qwen-2.5-qwq-32b'
             : chatLlmModel === 'deepseek'
