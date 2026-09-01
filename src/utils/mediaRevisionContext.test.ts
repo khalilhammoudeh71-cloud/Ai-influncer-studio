@@ -27,6 +27,23 @@ test('recognizes natural image revision instructions only when an image exists',
   assert.equal(isImageRevisionRequest('generate a completely new image at the gym', true), false);
 });
 
+test('does not reinterpret ordinary conversation as an old image revision', () => {
+  assert.equal(isImageRevisionRequest('What would you change next time?', true), false);
+  assert.equal(isImageRevisionRequest('How did your plans change after school?', true), false);
+  assert.equal(isImageRevisionRequest('I tried baking another cake today.', true), false);
+  assert.equal(
+    resolveImageRevisionContext('Blue. What went wrong with the cake, and what would you change next time?', [originalImage]).isRevision,
+    false,
+  );
+});
+
+test('keeps direct and polite image edit commands working', () => {
+  assert.equal(isImageRevisionRequest('change the dresses to gold', true), true);
+  assert.equal(isImageRevisionRequest('Could you change the background to sunset?', true), true);
+  assert.equal(isImageRevisionRequest('make the lighting warmer', true), true);
+  assert.equal(isImageRevisionRequest('Please remove the person on the left', true), true);
+});
+
 test('combines the original request with the latest modification', () => {
   const context = resolveImageRevisionContext('change the dresses to gold', [originalImage]);
 

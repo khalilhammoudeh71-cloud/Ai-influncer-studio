@@ -72,7 +72,6 @@ import {
   isLikelyPersonaEcho,
   shouldInterruptPersonaSpeech,
   summarizeVoiceLatency,
-  takeSpeakableSpeechChunk,
   type VoiceLatencySnapshot,
   type VoiceTurnTiming,
 } from '../utils/voiceStability';
@@ -2070,8 +2069,6 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     
     setCallStatus('thinking');
 
-    let earlySpeechTimer: ReturnType<typeof setTimeout> | null = null;
-
     try {
       const personaMemories = loadPersonaMemories(activePersona.id);
       const creator = getCreatorProfile();
@@ -2200,59 +2197,20 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       const queueSpeechSegment = (segment: string) => {
         const cleanSegment = segment.replace(/\s+/g, ' ').trim();
         if (!speakerOn || cleanSegment.length < 2) return;
-        if (earlySpeechTimer) {
-          clearTimeout(earlySpeechTimer);
-          earlySpeechTimer = null;
-        }
         streamingSpeechQueued = true;
         const audioPromise = synthesizeSpeechSegment(cleanSegment);
         streamingPlayback = streamingPlayback.then(() => playPreparedSegment(cleanSegment, audioPromise));
       };
 
-      const flushSpeechBuffer = (force = false, allowEarlyPartial = false) => {
-        // Speak one short opening phrase as soon as it is ready, then keep the
-        // remainder together as one continuous clip. Starting a new TTS request
-        // for every sentence made the same ElevenLabs voice change pitch and
-        // prosody several times inside a single response.
-        if (streamingSpeechQueued) {
-          if (force) {
-            const finalSegment = speechBuffer.replace(/\s+/g, ' ').trim();
-            speechBuffer = '';
-            if (finalSegment) queueSpeechSegment(finalSegment);
-          }
-          return;
-        }
-
-        const extracted = takeSpeakableSpeechChunk(speechBuffer, {
-          force,
-          firstChunk: true,
-          allowEarlyPartial,
-        });
-        speechBuffer = extracted.remainder;
-        if (extracted.chunk) queueSpeechSegment(extracted.chunk);
-
-        if (force && speechBuffer.trim()) {
-          const finalSegment = speechBuffer.replace(/\s+/g, ' ').trim();
-          speechBuffer = '';
-          queueSpeechSegment(finalSegment);
-        }
+      const flushSpeechBuffer = () => {
+        if (streamingSpeechQueued) return;
+        const finalSegment = speechBuffer.replace(/\s+/g, ' ').trim();
+        speechBuffer = '';
+        if (finalSegment) queueSpeechSegment(finalSegment);
       };
 
-      const scheduleEarlySpeech = () => {
-        if (!speakerOn || streamingSpeechQueued || earlySpeechTimer || !speechBuffer.trim()) return;
-        earlySpeechTimer = setTimeout(() => {
-          earlySpeechTimer = null;
-          flushSpeechBuffer(false, true);
-          // A very small initial token may not yet be safe to speak. Check it
-          // again shortly without resetting the timer on every streamed token.
-          if (!streamingSpeechQueued && speechBuffer.trim()) {
-            scheduleEarlySpeech();
-          }
-        }, 180);
-      };
-
-      // Stream text immediately. Synthesize one opening phrase for a fast first
-      // response, then one continuous tail so the voice remains consistent.
+      // Buffer the short, shaped reply and synthesize it once. Two independent
+      // clips made the same cloned speaker change cadence at the seam.
       const res = await authFetch('/api/agent/voice-chat-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2301,8 +2259,6 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           streamedReply += payload.text;
           speechBuffer += payload.text;
           currentPersonaSpeechRef.current = streamedReply.toLowerCase().trim();
-          flushSpeechBuffer(false);
-          scheduleEarlySpeech();
         }
         if (payload.done) streamMetadata = payload;
       };
@@ -2316,11 +2272,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       }
       eventBuffer += decoder.decode();
       drainSseData(eventBuffer, true).data.forEach(processVoiceStreamPayload);
-      if (earlySpeechTimer) {
-        clearTimeout(earlySpeechTimer);
-        earlySpeechTimer = null;
-      }
-      flushSpeechBuffer(true);
+      flushSpeechBuffer();
 
       const data = {
         ...streamMetadata,
@@ -2364,7 +2316,9 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         source: 'voice',
       }]);
 
-      const voiceImageRevisionCandidate = resolveImageRevisionContext(text, messagesRef.current, callRevisionSource);
+      // Voice-call image edits may only inherit media from this active call (or
+      // an explicitly attached generated image), never from archived chats.
+      const voiceImageRevisionCandidate = resolveImageRevisionContext(text, updatedHistory, callRevisionSource);
       const incompleteVoiceMediaRequest = detectIncompleteMediaCreationRequest(text);
       if (incompleteVoiceMediaRequest) {
         // Do not let an older completed asset look like the answer to the new,
@@ -2403,7 +2357,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         );
         const mediaPrompt = modelSelection.prompt;
         const imageRevision = mediaType === 'image'
-          ? resolveImageRevisionContext(mediaPrompt, messagesRef.current, callRevisionSource)
+          ? resolveImageRevisionContext(mediaPrompt, updatedHistory, callRevisionSource)
           : { isRevision: false, prompt: mediaPrompt, source: undefined, rootPrompt: undefined, revisionHistory: undefined };
         const requestPrompt = imageRevision.prompt;
         const requestedModelId = modelSelection.explicit && modelSelection.matched
@@ -2591,10 +2545,6 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         }, targetVoiceRouting);
       }
     } catch (err: any) {
-      if (earlySpeechTimer) {
-        clearTimeout(earlySpeechTimer);
-        earlySpeechTimer = null;
-      }
       clearTimeout(watchdogTimer);
       if (err?.name !== 'AbortError') {
         console.error('[Call Voice Network Error, recovering]:', err);

@@ -2599,6 +2599,15 @@ router.post('/agent/voice-chat-stream', async (req: AuthenticatedRequest, res: R
   const rawHistory = buildVoiceConversationHistory(messages, currentUserTurn, {
     maxMessages: 10,
   });
+  const voiceReplySentenceLimit = /\b(?:explain|in detail|walk me through|tell me more|give me the steps)\b/i.test(currentUserTurn)
+    ? 4
+    : 2;
+  const spokenStreamOptions = {
+    deferUntilFlush: true,
+    maxSentences: voiceReplySentenceLimit,
+    maxWords: voiceReplySentenceLimit > 2 ? 90 : 48,
+    maxFillers: 1,
+  } as const;
 
   const voiceSystemPrompt = `You are ${personaName} on a live voice call with ${creatorName}.${personaContext}${memoryContext}
 
@@ -2661,7 +2670,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
     const timeout = setTimeout(() => controller.abort(), isLocal ? 1200 : 45000);
     const spokenStream = createSpokenDialogueStream(chunk => {
       res.write(`data: ${JSON.stringify({ text: chunk })}\n\n`);
-    }, guardSpokenIdentity);
+    }, guardSpokenIdentity, spokenStreamOptions);
     try {
       const resStream = await fetch(url, {
         method: 'POST',
@@ -2824,7 +2833,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
       });
       const spokenStream = createSpokenDialogueStream(chunk => {
         res.write(`data: ${JSON.stringify({ text: chunk })}\n\n`);
-      }, guardSpokenIdentity);
+      }, guardSpokenIdentity, spokenStreamOptions);
       for await (const chunk of responseStream) {
         const chunkText = chunk.text || '';
         if (chunkText) {
@@ -2880,7 +2889,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
       });
       const spokenStream = createSpokenDialogueStream(chunk => {
         res.write(`data: ${JSON.stringify({ text: chunk })}\n\n`);
-      }, guardSpokenIdentity);
+      }, guardSpokenIdentity, spokenStreamOptions);
       for await (const chunk of responseStream) {
         const chunkText = chunk.text || '';
         if (chunkText) {

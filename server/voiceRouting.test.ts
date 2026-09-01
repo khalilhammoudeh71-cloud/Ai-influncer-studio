@@ -9,6 +9,7 @@ import {
   normalizeNaturalVoiceGreeting,
   sanitizeSpokenDialogue,
   selectElevenLabsPersonaVoice,
+  shapeNaturalSpokenReply,
 } from './voiceRouting';
 
 const voices = [
@@ -66,6 +67,30 @@ test('allows a final identity guard before each spoken stream segment is emitted
 
   assert.equal(stream.flush(), 'Dr. H, I am sorry. I misunderstood you.');
   assert.deepEqual(chunks, ['Dr. H, I am sorry.', ' I misunderstood you.']);
+});
+
+test('shapes a roleplay model reply into concise human dialogue', () => {
+  assert.equal(
+    shapeNaturalSpokenReply(
+      "Uh, well... I guess one thing I did today was try to bake a cake, but it didn't turn out so great. The frosting was lumpy and the cake was dry. I'm not really a good baker. Wait, um, so Dr. H, what's your favorite color?",
+    ),
+    "Uh, I guess one thing I did today was try to bake a cake, but it didn't turn out so great. So Dr. H, what's your favorite color?",
+  );
+});
+
+test('can defer voice streaming until one shaped continuous reply is ready', () => {
+  const chunks: string[] = [];
+  const stream = createSpokenDialogueStream(
+    chunk => chunks.push(chunk),
+    spokenPart => spokenPart,
+    { deferUntilFlush: true, maxSentences: 2, maxFillers: 1 },
+  );
+  stream.push('Well, I tried baking today. ');
+  stream.push('Um, it went badly. ');
+  stream.push('Wait, what did you do today?');
+
+  assert.equal(stream.flush(), 'Well, I tried baking today. What did you do today?');
+  assert.deepEqual(chunks, ['Well, I tried baking today. What did you do today?']);
 });
 
 test('remaps a stale id to the same persona by name', () => {

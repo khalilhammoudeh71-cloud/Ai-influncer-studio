@@ -19,14 +19,15 @@ export interface ImageRevisionContext {
   revisionHistory?: string[];
 }
 
+const POLITE_EDIT_PREFIX = String.raw`(?:please\s+|can\s+you\s+|could\s+you\s+|would\s+you\s+|will\s+you\s+|i\s+want\s+you\s+to\s+|let(?:'s|\s+us)\s+)?`;
+
 const IMAGE_REVISION_LANGUAGE = [
-  /\b(?:another|again|redo|retry|regenerate|recreate)\b/i,
+  /\b(?:another|again|redo|retry|regenerate|recreate)\s+(?:image|photo|pic|picture|shot|one)\b/i,
   /\b(?:same|previous|last|original)\s+(?:image|photo|pic|picture|shot|scene|people|faces?)\b/i,
   /\b(?:this|that|the)\s+(?:image|photo|pic|picture|shot)\b/i,
-  /\b(?:change|replace|remove|add|keep|retain|preserve|adjust|modify|edit|fix|correct|crop|reframe|zoom)\b/i,
-  /\b(?:only|just)\s+change\b/i,
-  /\b(?:keep everything|leave everything|same faces?|exact faces?|profile (?:image|photo)s?|instead|make it)\b/i,
-  /\bmake\b(?!\s+(?:me\s+)?(?:a\s+|an\s+|new\s+)?(?:image|photo|pic|picture)\b)/i,
+  new RegExp(`^${POLITE_EDIT_PREFIX}(?:(?:only|just)\\s+)?(?:change|replace|remove|add|keep|retain|preserve|adjust|modify|edit|fix|correct|crop|reframe|zoom)\\b`, 'i'),
+  /^(?:keep everything|leave everything|same faces?|exact faces?|profile (?:image|photo)s?|instead|make it)\b/i,
+  new RegExp(`^${POLITE_EDIT_PREFIX}make\\b(?!\\s+(?:me\\s+)?(?:a\\s+|an\\s+|new\\s+)?(?:image|photo|pic|picture)\\b)`, 'i'),
   /^(?:more|less|closer|wider|brighter|darker|warmer|cooler)\b/i,
 ];
 

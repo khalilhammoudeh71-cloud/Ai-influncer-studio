@@ -164,6 +164,68 @@ export interface SpokenDialogueStream {
   getText(): string;
 }
 
+export interface SpokenDialogueStreamOptions {
+  deferUntilFlush?: boolean;
+  maxSentences?: number;
+  maxWords?: number;
+  maxFillers?: number;
+}
+
+const SPOKEN_FILLER_CLUSTER = /(^|[.!?]\s+)((?:(?:uh|um|hmm|mm|well|honestly|okay|wait)\b\s*(?:,{1,2}|\.{2,3}|…|—|-)\s*)+)/gi;
+const SPOKEN_FILLER_TOKEN = /\b(?:uh|um|hmm|mm|well|honestly|okay|wait)\b/gi;
+const SPOKEN_ABBREVIATION_PERIOD = /\b(Mr|Mrs|Ms|Dr|Prof|Sr|Jr)\./gi;
+const SPOKEN_PERIOD_PLACEHOLDER = '\uE000';
+
+export function shapeNaturalSpokenReply(
+  value: unknown,
+  options: Pick<SpokenDialogueStreamOptions, 'maxSentences' | 'maxWords' | 'maxFillers'> = {},
+): string {
+  const sanitized = sanitizeSpokenDialogue(value);
+  if (!sanitized) return '';
+
+  const maxSentences = Math.max(1, options.maxSentences ?? 2);
+  const maxWords = Math.max(8, options.maxWords ?? 48);
+  const maxFillers = Math.max(0, options.maxFillers ?? 1);
+  let fillerCount = 0;
+  const withoutRepeatedFillers = sanitized.replace(
+    SPOKEN_FILLER_CLUSTER,
+    (_match, prefix: string, cluster: string) => {
+      const firstFiller = cluster.match(SPOKEN_FILLER_TOKEN)?.[0];
+      if (!firstFiller || fillerCount >= maxFillers) return prefix;
+      fillerCount += 1;
+      return `${prefix}${firstFiller}, `;
+    },
+  ).replace(/\s+/g, ' ').trim();
+
+  const protectedReply = withoutRepeatedFillers.replace(
+    SPOKEN_ABBREVIATION_PERIOD,
+    (_match, title: string) => `${title}${SPOKEN_PERIOD_PLACEHOLDER}`,
+  );
+  const sentences = protectedReply.match(/[^.!?]+(?:[.!?]+|$)/g)
+    ?.map(sentence => sentence.split(SPOKEN_PERIOD_PLACEHOLDER).join('.').trim())
+    .filter(Boolean) || [];
+  if (sentences.length === 0) return '';
+
+  let selected = sentences.slice(0, maxSentences);
+  if (sentences.length > maxSentences) {
+    const finalQuestion = [...sentences].reverse().find(sentence => /\?$/.test(sentence));
+    if (finalQuestion && !selected.includes(finalQuestion)) {
+      selected = [...selected.slice(0, Math.max(0, maxSentences - 1)), finalQuestion];
+    }
+  }
+
+  selected = selected.map(sentence => sentence.replace(
+    /^([a-z])/,
+    (_match: string, firstLetter: string) => firstLetter.toUpperCase(),
+  ));
+
+  const selectedWords = selected.join(' ').split(/\s+/).filter(Boolean);
+  if (selectedWords.length <= maxWords) return selected.join(' ').trim();
+
+  const shortened = selectedWords.slice(0, maxWords).join(' ').replace(/[,;:\s]+$/, '').trim();
+  return /[.!?]$/.test(shortened) ? shortened : `${shortened}.`;
+}
+
 function findSafeSpeechBoundary(value: string): number {
   let squareDepth = 0;
   let parenDepth = 0;
@@ -217,13 +279,19 @@ function findSafeSpeechBoundary(value: string): number {
 export function createSpokenDialogueStream(
   onChunk: (chunk: string) => void,
   transformPart: (spokenPart: string) => string = spokenPart => spokenPart,
+  options: SpokenDialogueStreamOptions = {},
 ): SpokenDialogueStream {
   let pending = '';
   const spokenParts: string[] = [];
+  const deferredParts: string[] = [];
 
   const emit = (rawPart: string) => {
     const safePart = transformPart(sanitizeSpokenDialogue(rawPart)).trim();
     if (!safePart) return;
+    if (options.deferUntilFlush) {
+      deferredParts.push(safePart);
+      return;
+    }
     const streamedPart = spokenParts.length > 0 ? ` ${safePart}` : safePart;
     spokenParts.push(safePart);
     onChunk(streamedPart);
@@ -249,6 +317,16 @@ export function createSpokenDialogueStream(
       drain();
       if (pending.trim()) emit(pending);
       pending = '';
+      if (options.deferUntilFlush) {
+        const shaped = shapeNaturalSpokenReply(deferredParts.join(' '), options);
+        if (shaped) {
+          const transformed = transformPart(shaped).trim();
+          if (transformed) {
+            spokenParts.push(transformed);
+            onChunk(transformed);
+          }
+        }
+      }
       return spokenParts.join(' ').trim();
     },
     getText() {
