@@ -530,10 +530,9 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     const savedModel = localStorage.getItem('agent_voice_llm');
     const userSelectedModel = localStorage.getItem('agent_voice_llm_user_selected') === '1';
 
-    // Existing installs defaulted to Gemini. Migrate that inherited default once
-    // so persona chat uses the adult-friendly roleplay engine without overriding
-    // a model the creator deliberately selected.
-    if (!userSelectedModel && (!savedModel || savedModel === 'gemini')) {
+    // Migrate inherited defaults once so Persona Chat uses Venice first without
+    // overriding a model the creator deliberately selected.
+    if (!userSelectedModel && (!savedModel || savedModel === 'gemini' || savedModel === 'qwen')) {
       localStorage.setItem('agent_voice_llm', 'venice');
       return 'venice';
     }
@@ -5124,7 +5123,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                       Reasoning & Conversation Engine
                     </span>
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">
-                      Fast & Uncensored
+                      Venice + DeepSeek fallback
                     </span>
                   </div>
                   <div className="relative">
@@ -5140,7 +5139,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                           'ollama:llama3.3': 'Meta Llama 3.3 70B (Local GPU)',
                           venice: 'Venice Uncensored 1.2',
                           grok: 'xAI Grok 2',
-                          deepseek: 'DeepSeek R1 Reasoner',
+                          deepseek: 'WaveSpeed DeepSeek V4 Flash',
                           qwen: 'Qwen 2.5 72B Instruct',
                           gemini: 'Gemini 2.5 Flash'
                         };
@@ -5151,7 +5150,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                       <option value="gemini" className="bg-[#1c1d22] text-white">⚡ Gemini 2.5 Flash (Ultra Fast & Conversational)</option>
                       <option value="qwen" className="bg-[#1c1d22] text-white">🔮 Qwen 2.5 72B Instruct (Deep Roleplay & Creative)</option>
                       <option value="venice" className="bg-[#1c1d22] text-white">🔓 Venice Uncensored 1.2</option>
-                      <option value="deepseek" className="bg-[#1c1d22] text-white">🧠 DeepSeek R1 Reasoner (Complex Logic & Analysis)</option>
+                      <option value="deepseek" className="bg-[#1c1d22] text-white">⚡ WaveSpeed DeepSeek V4 Flash (Fast Fallback)</option>
                       <option value="grok" className="bg-[#1c1d22] text-white">🚀 xAI Grok 2 (Direct & Unfiltered)</option>
                       <option value="llama3.3" className="bg-[#1c1d22] text-white">🦙 Meta Llama 3.3 70B (Cloud API)</option>
                     </select>

@@ -28,7 +28,14 @@ import {
   sanitizePersonaSelfAddress,
 } from './persona-chat-grounding';
 import { buildMediaQualityRetryPrompt, parseMediaQualityReport, unavailableMediaQualityReport, type MediaQualityReport } from './media-quality';
-import { getVenicePersonaModelCandidates, isVoiceProviderRefusal, normalizeNaturalVoiceGreeting } from './voiceRouting';
+import {
+  DEFAULT_WAVESPEED_PERSONA_FALLBACK_MODEL,
+  getVenicePersonaModelCandidates,
+  isVoiceProviderRefusal,
+  normalizeNaturalVoiceGreeting,
+  shouldUseVenicePersonaLlm,
+  shouldUseWaveSpeedDeepSeekFallback,
+} from './voiceRouting';
 import { isPublicApiPath } from './publicApiPaths';
 import { getSocialChannelAnalysis, getSocialTrends, isSocialIntelligenceConfigured } from './social-intelligence';
 import stripeRoutes, { handleStripeWebhook } from './stripe-routes';
@@ -121,6 +128,7 @@ function getOpenAIClient(): OpenAI {
 
 const WAVESPEED_API_KEY = process.env.WAVESPEED_API_KEY || '';
 const WAVESPEED_BASE = 'https://api.wavespeed.ai/api/v3';
+const WAVESPEED_LLM_BASE = 'https://llm.wavespeed.ai/v1';
 
 const HEYGEN_API_KEY = process.env.HEYGEN_API_KEY || process.env.heygen_api_key || '';
 
@@ -3325,7 +3333,68 @@ RULES:
 
     let greetingText = '';
 
-    if (ATLASCLOUD_API_KEY) {
+    if (VENICE_API_KEY) {
+      const veniceModels = getVenicePersonaModelCandidates(
+        process.env.VENICE_VOICE_MODEL || process.env.VENICE_PERSONA_MODEL,
+      );
+      for (const veniceModel of veniceModels) {
+        try {
+          const resAi = await fetch(`${VENICE_BASE}/chat/completions`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${VENICE_API_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: veniceModel,
+              messages: [{ role: 'user', content: prompt }],
+              temperature: 0.85,
+              max_tokens: 60,
+              venice_parameters: {
+                include_venice_system_prompt: false,
+                disable_thinking: true,
+              },
+            }),
+            signal: AbortSignal.timeout(6000),
+          });
+          if (resAi.ok) {
+            const d = await resAi.json() as any;
+            const r = d.choices?.[0]?.message?.content?.trim();
+            if (r && r.length > 2) {
+              greetingText = r;
+              break;
+            }
+          }
+        } catch (err) {
+          console.warn(`[persona-greeting] Venice ${veniceModel} error:`, err);
+        }
+      }
+    }
+
+    if (!greetingText && WAVESPEED_API_KEY) {
+      try {
+        const waveSpeedModel = process.env.WAVESPEED_PERSONA_FALLBACK_MODEL || DEFAULT_WAVESPEED_PERSONA_FALLBACK_MODEL;
+        const resAi = await fetch(`${WAVESPEED_LLM_BASE}/chat/completions`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${WAVESPEED_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: waveSpeedModel,
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.85,
+            max_tokens: 60,
+            reasoning: { enabled: false },
+            include_reasoning: false,
+          }),
+          signal: AbortSignal.timeout(6000),
+        });
+        if (resAi.ok) {
+          const d = await resAi.json() as any;
+          const r = d.choices?.[0]?.message?.content?.trim();
+          if (r && r.length > 2) greetingText = r;
+        }
+      } catch (err) {
+        console.warn('[persona-greeting] WaveSpeed DeepSeek error:', err);
+      }
+    }
+
+    if (!greetingText && ATLASCLOUD_API_KEY) {
       try {
         const resAi = await fetch(`${ATLASCLOUD_BASE}/v1/chat/completions`, {
           method: 'POST',
@@ -3719,15 +3788,6 @@ ${companionDirective ? `${companionDirective}\n` : ''}1. EQUAL CONFIDANTE & CHAR
     - You must track and remember everything ${effectiveUserName} said previously in this session. When he asks a follow-up question or references what was just discussed (e.g. "what do you think?", "why?", "tell me more about that", "like I said earlier", "what did you say about X?"), you MUST understand and directly build upon the exact prior topic without forgetting or restarting!`;
 
     const modelTarget = (voiceLlmModel || '').toLowerCase();
-    const isAdultPersona = (personaNiche || '').toLowerCase().includes('adult') || 
-                          (personaNiche || '').toLowerCase().includes('nsfw') || 
-                          (personaNiche || '').toLowerCase().includes('18+') || 
-                          (personaNiche || '').toLowerCase().includes('erotic') || 
-                          (personaNiche || '').toLowerCase().includes('romance') ||
-                          (personaNiche || '').toLowerCase().includes('sensual') ||
-                          (personaTone || '').toLowerCase().includes('seductive') ||
-                          /\b(sex|sexy|cock|dick|pussy|ass|tits|boobs|nude|naked|horny|kinky|cucumbers)\b/i.test(effectiveUserMsg.toLowerCase());
-
     const openAiKey = process.env.Openai_api_key || process.env.openai_api_key || process.env.OPENAI_API_KEY || '';
     const atlasKey = ATLASCLOUD_API_KEY || process.env.ATLASCLOUD_API_KEY || process.env.atlascloud_api_key || '';
     const xaiApiKey = process.env.XAI_API_KEY || process.env.xai_api_key || '';
@@ -3800,13 +3860,13 @@ ${companionDirective ? `${companionDirective}\n` : ''}1. EQUAL CONFIDANTE & CHAR
       return isVoiceProviderRefusal(raw);
     };
 
-    // Use Venice's current general uncensored model for persona chat. The older
-    // role-play model repeatedly invented moral objections in adult dialogue.
-    const shouldUseVenice = Boolean(VENICE_API_KEY) && (
-      modelTarget.includes('venice') ||
-      ((!modelTarget || modelTarget === 'default') && isAdultPersona)
-    );
+    // Venice Uncensored 1.2 is the primary Persona Chat and voice-call model.
+    // The older role-play model repeatedly invented moral objections in adult
+    // dialogue, so the candidate helper excludes that legacy override.
+    const shouldUseVenice = Boolean(VENICE_API_KEY) && shouldUseVenicePersonaLlm(modelTarget);
+    let attemptedVenice = false;
     if (!finalReply && shouldUseVenice) {
+      attemptedVenice = true;
       const veniceModels = getVenicePersonaModelCandidates(
         process.env.VENICE_VOICE_MODEL || process.env.VENICE_PERSONA_MODEL,
       );
@@ -3850,29 +3910,73 @@ ${companionDirective ? `${companionDirective}\n` : ''}1. EQUAL CONFIDANTE & CHAR
       }
     }
 
+    // If Venice is unavailable or returns a recognizable refusal, retry the
+    // same complete persona context through DeepSeek V4 Flash on WaveSpeed.
+    const shouldUseWaveSpeedDeepSeek = Boolean(WAVESPEED_API_KEY) && shouldUseWaveSpeedDeepSeekFallback({
+      modelTarget,
+      attemptedVenice,
+      veniceConfigured: Boolean(VENICE_API_KEY),
+    });
+    let attemptedWaveSpeedDeepSeek = false;
+    if (!finalReply && shouldUseWaveSpeedDeepSeek) {
+      attemptedWaveSpeedDeepSeek = true;
+      try {
+        const waveSpeedModel = process.env.WAVESPEED_PERSONA_FALLBACK_MODEL || DEFAULT_WAVESPEED_PERSONA_FALLBACK_MODEL;
+        console.log(`[Persona Chat] Routing fallback to WaveSpeed ${waveSpeedModel}...`);
+        const waveSpeedRes = await fetch(`${WAVESPEED_LLM_BASE}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${WAVESPEED_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: waveSpeedModel,
+            messages: chatMsgs,
+            temperature: 0.85,
+            max_tokens: 500,
+            reasoning: { enabled: false },
+            include_reasoning: false,
+          }),
+          signal: AbortSignal.timeout(12000),
+        });
+
+        if (waveSpeedRes.ok) {
+          const waveSpeedData = await waveSpeedRes.json() as any;
+          const reply = waveSpeedData.choices?.[0]?.message?.content?.trim();
+          if (reply && !isRefusal(reply)) finalReply = reply;
+        } else {
+          console.warn(`[Persona Chat] WaveSpeed ${waveSpeedModel} returned ${waveSpeedRes.status}`);
+        }
+      } catch (waveSpeedError) {
+        console.warn('[Persona Chat] WaveSpeed DeepSeek fallback failed:', waveSpeedError);
+      }
+    }
+
     // Atlas Cloud remains the next provider fallback when configured.
     if (!finalReply && atlasKey) {
       // Branch A: DeepSeek-V3.2
-      try {
-        console.log('[Persona Chat] 🧠 Routing to Atlas Cloud DeepSeek-V3.2 High-EQ Engine...');
-        const dsRes = await fetch(`${ATLASCLOUD_BASE}/v1/chat/completions`, {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${atlasKey}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: 'deepseek-ai/deepseek-v3.2',
-            messages: chatMsgs,
-            temperature: 0.85,
-            max_tokens: 1500,
-          }),
-          signal: AbortSignal.timeout(9000),
-        });
-        if (dsRes.ok) {
-          const dsData = await dsRes.json() as any;
-          const r = dsData.choices?.[0]?.message?.content?.trim();
-          if (r && !isRefusal(r)) finalReply = r;
+      if (!attemptedWaveSpeedDeepSeek) {
+        try {
+          console.log('[Persona Chat] 🧠 Routing to Atlas Cloud DeepSeek-V3.2 High-EQ Engine...');
+          const dsRes = await fetch(`${ATLASCLOUD_BASE}/v1/chat/completions`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${atlasKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: 'deepseek-ai/deepseek-v3.2',
+              messages: chatMsgs,
+              temperature: 0.85,
+              max_tokens: 1500,
+            }),
+            signal: AbortSignal.timeout(9000),
+          });
+          if (dsRes.ok) {
+            const dsData = await dsRes.json() as any;
+            const r = dsData.choices?.[0]?.message?.content?.trim();
+            if (r && !isRefusal(r)) finalReply = r;
+          }
+        } catch (dsErr) {
+          console.warn('[Persona Chat] DeepSeek-V3.2 error, trying Qwen 3.x:', dsErr);
         }
-      } catch (dsErr) {
-        console.warn('[Persona Chat] DeepSeek-V3.2 error, trying Qwen 3.x:', dsErr);
       }
 
       // Branch B: Qwen 3.6 Plus (Qwen 3.x Series)

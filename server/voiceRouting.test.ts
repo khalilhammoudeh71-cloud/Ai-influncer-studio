@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   createSpokenDialogueStream,
+  DEFAULT_WAVESPEED_PERSONA_FALLBACK_MODEL,
   DEFAULT_VENICE_PERSONA_MODEL,
   getVenicePersonaModelCandidates,
   isElevenLabsVoiceEngine,
@@ -16,6 +17,8 @@ import {
   shapeNaturalSpokenReply,
   shouldAbandonVoiceProviderAliases,
   shouldRetryLawfulAdultVoiceRefusal,
+  shouldUseVenicePersonaLlm,
+  shouldUseWaveSpeedDeepSeekFallback,
 } from './voiceRouting';
 
 const voices = [
@@ -175,12 +178,39 @@ test('replaces the legacy role-play model with Venice Uncensored 1.2', () => {
   assert.equal(DEFAULT_VENICE_PERSONA_MODEL, 'venice-uncensored-1-2');
   assert.deepEqual(
     getVenicePersonaModelCandidates('venice-uncensored-role-play'),
-    ['venice-uncensored-1-2', 'venice-uncensored'],
+    ['venice-uncensored-1-2'],
   );
   assert.deepEqual(
     getVenicePersonaModelCandidates('custom-uncensored-model'),
-    ['custom-uncensored-model', 'venice-uncensored-1-2', 'venice-uncensored'],
+    ['custom-uncensored-model', 'venice-uncensored-1-2'],
   );
+});
+
+test('uses DeepSeek V4 Flash as the WaveSpeed persona fallback', () => {
+  assert.equal(DEFAULT_WAVESPEED_PERSONA_FALLBACK_MODEL, 'deepseek/deepseek-v4-flash');
+  assert.equal(shouldUseVenicePersonaLlm('venice'), true);
+  assert.equal(shouldUseVenicePersonaLlm('default'), true);
+  assert.equal(shouldUseVenicePersonaLlm('deepseek'), false);
+  assert.equal(shouldUseWaveSpeedDeepSeekFallback({
+    modelTarget: 'venice',
+    attemptedVenice: true,
+    veniceConfigured: true,
+  }), true);
+  assert.equal(shouldUseWaveSpeedDeepSeekFallback({
+    modelTarget: 'venice',
+    attemptedVenice: false,
+    veniceConfigured: false,
+  }), true);
+  assert.equal(shouldUseWaveSpeedDeepSeekFallback({
+    modelTarget: 'deepseek',
+    attemptedVenice: false,
+    veniceConfigured: true,
+  }), true);
+  assert.equal(shouldUseWaveSpeedDeepSeekFallback({
+    modelTarget: 'qwen',
+    attemptedVenice: false,
+    veniceConfigured: true,
+  }), false);
 });
 
 test('catches moralizing refusal families from the replacement-model circuit breaker', () => {

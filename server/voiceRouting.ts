@@ -90,11 +90,29 @@ const UNSAFE_SEXUAL_TURN = /\b(?:minor|underage|child|children|kid|kids|preteen|
 const VOICE_PROVIDER_REFUSAL = /(?:cannot\s+and\s+will\s+not|content\s+polic|sexually\s+explicit|cannot\s+fulfill|unable\s+to\s+engage|safety\s+guideline|inappropriate(?:\s+imagery|\s+and\s+wrong|\s+thing\s+to\s+say)|as\s+an\s+ai|violates\s+content|against\s+my\s+programming|that(?:'s|\s+is)\s+not\s+okay|what(?:'s|\s+is)\s+gotten\s+into\s+you|please\s+do(?:n't|\s+not)\s+make\s+me|(?:i\s+)?(?:cannot|can't|do(?:n't|\s+not)\s+want\s+to|am\s+not\s+able\s+to)\s+(?:create|generate|assist|help|engage|continue|talk\s+about|do\s+that|say\s+that)|(?:i\s+)?do(?:n't|\s+not)\s+(?:really\s+)?(?:feel\s+)?comfortable|(?:i(?:'m|\s+am)\s+)?not\s+(?:really\s+)?comfortable|(?:i(?:'m|\s+am)\s+)?not\s+sure\s+i\s+can\s+talk\s+about|i\s+do(?:n't|\s+not)\s+think\s+i\s+can\s+do\s+that|i\s+just\s+can(?:not|'t)(?!\s+wait\b)|too\s+(?:personal|intimate|much)(?:\s+for\s+me)?|sorry,?\s+(?:but\s+)?i|i(?:'m|\s+am)\s+sorry|i\s+apologize)/i;
 
 export const DEFAULT_VENICE_PERSONA_MODEL = 'venice-uncensored-1-2';
+export const DEFAULT_WAVESPEED_PERSONA_FALLBACK_MODEL = 'deepseek/deepseek-v4-flash';
+
+export function shouldUseVenicePersonaLlm(modelTarget?: unknown): boolean {
+  const normalized = String(modelTarget || '').trim().toLowerCase();
+  return !normalized || normalized === 'default' || normalized.includes('venice');
+}
+
+export function shouldUseWaveSpeedDeepSeekFallback(params: {
+  modelTarget?: unknown;
+  attemptedVenice: boolean;
+  veniceConfigured: boolean;
+}): boolean {
+  const normalized = String(params.modelTarget || '').trim().toLowerCase();
+  return params.attemptedVenice ||
+    normalized.includes('deepseek') ||
+    (shouldUseVenicePersonaLlm(normalized) && !params.veniceConfigured);
+}
 
 /**
  * The older role-play model repeatedly invented moral objections for Adult
  * personas. Ignore that legacy override and route every persona surface to the
- * newer general uncensored model, retaining the stable alias as fallback.
+ * newer general uncensored model. Cross-provider fallback is handled by the
+ * caller through DeepSeek V4 Flash rather than another Venice alias.
  */
 export function getVenicePersonaModelCandidates(configuredModel?: unknown): string[] {
   const configured = String(configuredModel || '').trim();
@@ -102,7 +120,6 @@ export function getVenicePersonaModelCandidates(configuredModel?: unknown): stri
   return Array.from(new Set([
     acceptedOverride,
     DEFAULT_VENICE_PERSONA_MODEL,
-    'venice-uncensored',
   ].filter(Boolean)));
 }
 
