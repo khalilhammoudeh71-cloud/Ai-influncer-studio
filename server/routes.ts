@@ -30,6 +30,7 @@ import {
   selectRelevantVoiceMemories,
 } from '../shared/voiceConversationContext';
 import { isPublicApiPath } from './publicApiPaths';
+import { requestedExactReply } from './agentReplyConstraints';
 import {
   detectIncompletePersonaMediaRequest,
   resolvePersonaChatIdentity,
@@ -2982,6 +2983,10 @@ router.post('/agent/chat', async (req: AuthenticatedRequest, res: Response) => {
     // 1. Trend Analysis Engine
     const lastUserMessage = messages[messages.length - 1];
     const userPrompt = lastUserMessage?.content || '';
+    const exactReply = requestedExactReply(userPrompt);
+    if (exactReply) {
+      return res.json({ text: exactReply, status: 'normal', suggestedSteps: [] });
+    }
     const needsTrends = /trend|viral|popular|hype/i.test(userPrompt);
     let trendContext = '';
     if (needsTrends) {
