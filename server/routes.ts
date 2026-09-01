@@ -3197,7 +3197,12 @@ Do not wrap your response in markdown code blocks or HTML tags. Return ONLY the 
                 content: typeof m.content === 'string' ? m.content : (m.content?.text || JSON.stringify(m.content || ''))
               }))
             ],
-            temperature: 0.7
+            temperature: 0.7,
+            max_tokens: 2048,
+            venice_parameters: {
+              include_venice_system_prompt: false,
+              disable_thinking: true,
+            },
           })
         });
 
