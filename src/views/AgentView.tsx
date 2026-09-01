@@ -3039,7 +3039,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
               }`}
               title="Toggle Human-in-the-Loop review queue vs direct publishing"
             >
-              <span>{autoApprove ? '⚡ Auto-Publish' : '🛡️ Approval Queue ON'}</span>
+              <span>{autoApprove ? 'Auto-publish' : 'Review required'}</span>
             </button>
 
             {/* Uncensored NSFW Toggle */}
@@ -3058,10 +3058,15 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
               title="When ON, Super Agent uses fully uncensored Venice / Atlas Cloud models and OmniVoice audio directly"
             >
               <Flame size={13} className={allowNsfw ? 'text-cyan-400' : 'text-zinc-400'} />
-              <span>{allowNsfw ? '🔥 NSFW Mode' : '🛡️ Safe Mode'}</span>
+              <span>{allowNsfw ? 'Adult mode' : 'Standard mode'}</span>
             </button>
 
-            {/* LLM Engine Selector (Gemini 2.5 Flash vs xAI Grok 2) */}
+            <details className="group relative z-40">
+              <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-bold text-zinc-300 transition-colors hover:border-white/20 hover:bg-white/10">
+                <Sliders size={13} className="text-cyan-400" /> Agent setup
+              </summary>
+              <div className="absolute right-0 top-full mt-2 flex w-[min(92vw,430px)] flex-col gap-2 rounded-2xl border border-white/10 bg-[#11131a]/98 p-3 shadow-2xl backdrop-blur-xl">
+            {/* LLM Engine Selector */}
             <div className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-cyan-500/40 rounded-xl px-3 py-1.5 text-xs font-bold shadow-sm transition-all">
               <span className="text-[10px] text-zinc-400 font-extrabold uppercase tracking-wider hidden sm:inline">Engine:</span>
               <select
@@ -3072,7 +3077,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                   localStorage.setItem('agent_voice_llm', selected);
                   const labels: Record<string, string> = {
                     grok: '🚀 Switched to xAI Grok 2 (Cloud API)!',
-                    venice: '🔓 Switched to Venice AI Llama 3.3 70B (Cloud API)!',
+                    venice: 'Switched to Venice Uncensored Roleplay (Cloud)',
                     deepseek: '🧠 Switched to DeepSeek R1 Reasoner (Cloud API)!',
                     qwen: '🔮 Switched to Qwen 2.5 72B (Cloud API)!',
                     gemini: '🤖 Switched to Gemini 2.5 Flash (Cloud API)!',
@@ -3097,7 +3102,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                 <optgroup label="☁️ CLOUD API ENGINES (HIGH-SPEED CLOUD GPU)">
                   <option value="qwen" className="bg-zinc-900 text-white">🔮 Qwen 2.5 72B (Cloud API)</option>
                   <option value="deepseek" className="bg-zinc-900 text-white">🧠 DeepSeek R1 Reasoner (Cloud API)</option>
-                  <option value="venice" className="bg-zinc-900 text-white">🔓 Venice AI Llama 3.3 70B (Cloud API)</option>
+                  <option value="venice" className="bg-zinc-900 text-white">Venice Uncensored Roleplay (Cloud)</option>
                   <option value="grok" className="bg-zinc-900 text-white">🚀 xAI Grok 2 (Cloud API)</option>
                   <option value="gemini" className="bg-zinc-900 text-white">🤖 Gemini 2.5 Flash (Cloud API)</option>
                 </optgroup>
@@ -3164,6 +3169,8 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
             >
               <RotateCcw size={14} />
             </button>
+              </div>
+            </details>
           </div>
         </div>
 

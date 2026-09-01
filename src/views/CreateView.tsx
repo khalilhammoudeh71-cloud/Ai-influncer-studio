@@ -82,7 +82,7 @@ import { processImageFile } from '../utils/imageProcessing';
 import { accountLocalStorage } from '../utils/accountStorage';
 import toast from 'react-hot-toast';
 import { useRef } from 'react';
-import { ProModeToggle, useProMode } from '../utils/useProMode';
+import { useProMode } from '../utils/useProMode';
 import type { CreationBrief, CreationOutcome } from '../types/creation';
 import {
   getVideoModelType,
@@ -316,7 +316,7 @@ const RESOLUTION_OPTIONS: Record<string, { value: 'standard' | 'hd'; label: stri
 };
 
 export default function CreateView({ persona, personas, setPersonas, onSelectPersona, subView, initialBrief, nav, billingInfo }: CreateViewProps) {
-  const [isPro, setIsPro] = useProMode();
+  const [isPro] = useProMode();
   const initialPersona = persona && persona.id !== 'empty' ? persona : null;
   const audioPreviewRef = useRef<HTMLAudioElement | null>(null);
   const appliedBriefRef = useRef<string | null>(null);
@@ -448,12 +448,16 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const [refPersonaId, setRefPersonaId] = useState<string>('none');
+  const [refPersonaId, setRefPersonaId] = useState<string>(initialPersona?.id || 'none');
   const [refImages, setRefImages] = useState<{ id: string; url: string; name: string }[]>([]);
 
   const [videoPrompt, setVideoPrompt] = useState(() => {
     try { return accountLocalStorage.getItem('ai_influencer_draft_video_prompt') || ''; } catch { return ''; }
   });
+
+  useEffect(() => {
+    setRefPersonaId(initialPersona?.id || 'none');
+  }, [initialPersona?.id]);
   const [videoResult, setVideoResult] = useState<{ videoUrl: string; model: string } | null>(null);
   const [isExtending, setIsExtending] = useState(false);
   const [extendResult, setExtendResult] = useState<{ videoUrl: string; model: string } | null>(null);
@@ -908,7 +912,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     setSimpleDetailsOpen(false);
   }, [initialBrief]);
 
-  const refPersonaImage = refPersonaId !== 'none' ? (personas.find(p => p.id === refPersonaId)?.referenceImage ?? null) : null;
+  const selectedReferencePersona = refPersonaId !== 'none' ? personas.find(p => p.id === refPersonaId) : null;
+  const refPersonaImage = selectedReferencePersona?.referenceImage || selectedReferencePersona?.avatar || null;
   const allRefImages: string[] = Array.from(new Set([
     ...(uploadedAvatarImage ? [uploadedAvatarImage] : []),
     ...(!excludePersonaRef && refPersonaImage ? [refPersonaImage] : []),
@@ -1918,7 +1923,14 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
   const renderImageMode = () => {
     const isIdentityModel = selectedModelInfo?.isIdentityModel ?? false;
-    const refPersonaImage = refPersonaId !== 'none' ? (personas.find(p => p.id === refPersonaId)?.referenceImage ?? null) : null;
+    const selectedReferencePersona = refPersonaId !== 'none' ? personas.find(p => p.id === refPersonaId) : null;
+    const refPersonaImage = selectedReferencePersona?.referenceImage || selectedReferencePersona?.avatar || null;
+    const estimatedImageCost = (selectedModelInfo?.price || 0) * imageCount;
+    const estimatedImageCostLabel = estimatedImageCost > 0
+      ? billingInfo?.isCreator
+        ? `$${estimatedImageCost.toFixed(3)} estimated`
+        : `${estimatedImageCost} credit${estimatedImageCost === 1 ? '' : 's'} estimated`
+      : 'No generation charge';
 
     return (
       <div className="flex flex-col gap-4 w-full max-w-5xl mx-auto pb-10">
@@ -2357,7 +2369,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                   onChange={(e) => setRefPersonaId(e.target.value)}
                   className="bg-[#141416] border border-white/10 rounded-xl px-2.5 py-1 text-xs font-semibold text-slate-200 outline-none appearance-none pr-6 hover:bg-[#1E1E22] hover:border-white/20 transition-all cursor-pointer h-8 text-ellipsis overflow-hidden max-w-[140px]"
                 >
-                  <option value="none">No Persona Ref</option>
+                  <option value="none">No identity reference</option>
                   {personas.map(p => (
                     <option key={p.id} value={p.id}>{p.name}</option>
                   ))}
@@ -2429,11 +2441,15 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               </button>
             </div>
 
-            {/* Big CTA Generate Button */}
+            {/* Cost and timing remain visible at the point of commitment. */}
+            <div className="ml-auto hidden shrink-0 text-right md:block">
+              <p className="text-[10px] font-semibold text-slate-300">{estimatedImageCostLabel}</p>
+              <p className="text-[9px] text-slate-500">Usually under 1 minute</p>
+            </div>
             <button
               onClick={handleImageGenerate}
               disabled={isGenerating || !selectedModel || (selectedModelInfo?.isIdentityModel && !refPersonaImage && refImages.length === 0)}
-              className="px-4 py-1 rounded-xl font-bold text-xs btn-gold-primary disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 transition-all shadow-md group h-8 shrink-0 ml-auto cursor-pointer z-10"
+              className="btn-gold-primary group z-10 flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-xl px-4 py-1 text-xs font-bold shadow-md transition-all disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Sparkles size={13} className="group-hover:animate-pulse" />
               Generate {imageCount > 1 ? `x${imageCount}` : ''}
@@ -4202,7 +4218,6 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               : 'Choose what you want to make, then use the guided workflow or open Pro controls for every model and fine-tuning option.'}
           </p>
         </div>
-        <ProModeToggle isPro={isPro} onToggle={setIsPro} />
       </div>
 
       {!isCapabilityWorkspace && (

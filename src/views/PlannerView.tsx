@@ -506,18 +506,22 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
         </div>
       </header>
 
-      {/* ── LIVE PUBLIC CHANNEL INTELLIGENCE ── */}
-      <section className="premium-card p-5 rounded-2xl mb-6 relative overflow-hidden">
-        <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse at top right, rgba(217,182,103,0.06) 0%, transparent 60%)' }} />
-        <div className="relative z-10 space-y-4">
+      {/* Secondary analytics stay available without displacing the planning workflow. */}
+      <details className="premium-card group relative mb-6 overflow-hidden rounded-2xl">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-4 p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--gold-primary)]">
           <div>
-            <h3 className="text-[10px] font-black text-[var(--gold-primary)] uppercase tracking-widest leading-none mb-1 flex items-center gap-1.5">
-              <BarChart3 size={12} /> Public Channel Intelligence
+            <h3 className="flex items-center gap-1.5 text-xs font-black uppercase tracking-widest text-[var(--gold-primary)]">
+              <BarChart3 size={13} /> Public Channel Intelligence
             </h3>
-            <p className="text-[10px] text-[var(--text-muted)] mt-1">
-              Analyze real public Instagram and TikTok performance. This does not authorize direct publishing or private account insights.
-            </p>
+            <p className="mt-1 text-[10px] text-[var(--text-muted)]">Optional public Instagram and TikTok analysis</p>
           </div>
+          <ChevronDown size={16} className="text-[var(--text-muted)] transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse at top right, rgba(217,182,103,0.06) 0%, transparent 60%)' }} />
+        <div className="relative z-10 space-y-4 border-t border-white/[0.06] p-5 pt-4">
+          <p className="text-[10px] text-[var(--text-muted)]">
+            Analyze real public Instagram and TikTok performance. This does not authorize direct publishing or private account insights.
+          </p>
 
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
             {PUBLIC_SOCIAL_CHANNELS.map(({ label, platform: socialPlatform }) => {
@@ -588,7 +592,7 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
             <span>YouTube, X, Threads, OnlyFans, and direct posting remain manual until their official APIs are authorized. Planner will never claim a post is live without platform confirmation.</span>
           </div>
         </div>
-      </section>
+      </details>
 
       {importedAsset && (
         <section className="premium-card p-5 rounded-2xl mb-6">

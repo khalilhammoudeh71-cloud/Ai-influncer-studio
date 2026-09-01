@@ -36,7 +36,10 @@ import {
   FolderHeart,
   Pencil,
   Users,
-  ZoomIn
+  ZoomIn,
+  Search,
+  Star,
+  Clock
 } from 'lucide-react';
 import { Persona, NavActions } from '../types';
 import { api } from '../services/apiService';
@@ -226,10 +229,37 @@ const DISTANCE_OPTIONS = [
 
 export default function AIToolsView({ persona, personas, onSelectPersona, nav, initialTool, billingInfo }: AIToolsViewProps) {
   const [activeTool, setActiveTool] = useState<ToolType>(initialTool || null);
+  const [toolSearch, setToolSearch] = useState('');
+  const [toolListMode, setToolListMode] = useState<'all' | 'favorites' | 'recent'>('all');
+  const [favoriteTools, setFavoriteTools] = useState<string[]>(() => {
+    try { return JSON.parse(accountLocalStorage.getItem('ai_toolbox_favorites') || '[]'); } catch { return []; }
+  });
+  const [recentTools, setRecentTools] = useState<string[]>(() => {
+    try { return JSON.parse(accountLocalStorage.getItem('ai_toolbox_recent') || '[]'); } catch { return []; }
+  });
 
   useEffect(() => {
     setActiveTool(initialTool || null);
   }, [initialTool]);
+
+  const openTool = (toolId: ToolType) => {
+    if (toolId) {
+      setRecentTools(previous => {
+        const next = [toolId, ...previous.filter(id => id !== toolId)].slice(0, 6);
+        accountLocalStorage.setItem('ai_toolbox_recent', JSON.stringify(next));
+        return next;
+      });
+    }
+    setActiveTool(toolId);
+  };
+
+  const toggleFavoriteTool = (toolId: string) => {
+    setFavoriteTools(previous => {
+      const next = previous.includes(toolId) ? previous.filter(id => id !== toolId) : [...previous, toolId];
+      accountLocalStorage.setItem('ai_toolbox_favorites', JSON.stringify(next));
+      return next;
+    });
+  };
 
   const [toolCategory, setToolCategory] = useState<'editor' | 'studios'>('editor');
   
@@ -1426,29 +1456,73 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
   }
 
   if (!activeTool) {
+    const visibleTools = TOOLS.filter(tool => {
+      const matchesSearch = !toolSearch.trim() || `${tool.title} ${tool.desc}`.toLowerCase().includes(toolSearch.toLowerCase());
+      const matchesMode = toolListMode === 'all'
+        || (toolListMode === 'favorites' && favoriteTools.includes(tool.id))
+        || (toolListMode === 'recent' && recentTools.includes(tool.id));
+      return matchesSearch && matchesMode;
+    }).sort((a, b) => toolListMode === 'recent' ? recentTools.indexOf(a.id) - recentTools.indexOf(b.id) : 0);
+
     return (
       <>
       <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar pb-20 px-6 lg:px-12 py-8 bg-[#0E0E10]">
         <div className="max-w-6xl mx-auto space-y-8">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-[#E7C477]/10 pb-6">
+          <div className="flex flex-col gap-4 border-b border-[#E7C477]/10 pb-6">
             <div>
-              <h1 className="text-3xl font-serif text-[#F5F1E8] tracking-tight flex items-center gap-3">
-                AI Studio <span className="text-[#E7C477] italic">Toolbox</span>
-              </h1>
+              <h2 className="text-2xl font-serif text-[#F5F1E8] tracking-tight">Creative tools</h2>
               <p className="text-xs md:text-sm text-[#8C909A] mt-1.5 font-medium">Unified AI visual creation and neural editing suite for your creator personas</p>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="relative w-full sm:max-w-sm">
+                <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+                <input
+                  value={toolSearch}
+                  onChange={event => setToolSearch(event.target.value)}
+                  placeholder="Search creative tools…"
+                  className="w-full rounded-xl border border-white/10 bg-[#141416] py-2.5 pl-9 pr-3 text-sm text-white outline-none transition-colors placeholder:text-zinc-600 focus:border-[#E7C477]/50"
+                />
+              </div>
+              <div className="flex gap-1 rounded-xl border border-white/10 bg-[#141416] p-1">
+                {([
+                  ['all', Sparkles, 'All'],
+                  ['favorites', Star, 'Favorites'],
+                  ['recent', Clock, 'Recent'],
+                ] as const).map(([id, Icon, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setToolListMode(id)}
+                    className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-bold transition-colors ${toolListMode === id ? 'bg-[#E7C477]/15 text-[#F2D58D]' : 'text-zinc-400 hover:text-white'}`}
+                  >
+                    <Icon size={12} /> {label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {/* Core Editor Tools */}
-            {TOOLS.map((tool) => {
+            {visibleTools.map((tool) => {
               const Icon = tool.icon;
               return (
-                <button
+                <div
                   key={tool.id}
-                  onClick={() => setActiveTool(tool.id as ToolType)}
-                  className="group relative flex flex-col rounded-2xl bg-[#18181B] border border-white/10 hover:border-[#E7C477]/40 transition-all overflow-hidden text-left shadow-lg hover:shadow-2xl hover:shadow-black/50 hover:-translate-y-1 cursor-pointer"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => openTool(tool.id as ToolType)}
+                  onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') openTool(tool.id as ToolType); }}
+                  className="group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#18181B] text-left shadow-lg transition-all hover:-translate-y-1 hover:border-[#E7C477]/40 hover:shadow-2xl hover:shadow-black/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E7C477]"
                 >
+                  <button
+                    type="button"
+                    onClick={event => { event.stopPropagation(); toggleFavoriteTool(tool.id); }}
+                    aria-label={favoriteTools.includes(tool.id) ? `Remove ${tool.title} from favorites` : `Add ${tool.title} to favorites`}
+                    className={`absolute right-3 top-3 z-20 grid h-8 w-8 place-items-center rounded-lg border backdrop-blur-md transition-colors ${favoriteTools.includes(tool.id) ? 'border-[#E7C477]/50 bg-[#E7C477]/20 text-[#F2D58D]' : 'border-white/15 bg-black/55 text-white hover:bg-black/80'}`}
+                  >
+                    <Star size={14} fill={favoriteTools.includes(tool.id) ? 'currentColor' : 'none'} />
+                  </button>
                   <div className="relative h-48 w-full flex bg-black overflow-hidden shrink-0">
                     {/* Before Image */}
                     <div className="relative w-1/2 h-full border-r border-white/10 overflow-hidden">
@@ -1484,9 +1558,17 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                     </div>
                     <p className="text-xs text-[#8C909A] font-normal leading-relaxed">{tool.desc}</p>
                   </div>
-                </button>
+                </div>
               );
             })}
+
+            {visibleTools.length === 0 && (
+              <div className="col-span-full rounded-2xl border border-dashed border-white/10 px-6 py-12 text-center">
+                <Search size={22} className="mx-auto text-zinc-600" />
+                <p className="mt-3 text-sm font-semibold text-zinc-300">No tools match this view</p>
+                <button type="button" onClick={() => { setToolSearch(''); setToolListMode('all'); }} className="mt-2 text-xs font-bold text-[#E7C477]">Clear filters</button>
+              </div>
+            )}
 
             {/* Voice Studio */}
             <button

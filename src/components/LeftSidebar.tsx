@@ -5,7 +5,6 @@ import {
   Bot,
   CalendarDays,
   ChevronDown,
-  Home,
   Images,
   MessageCircle,
   MoreHorizontal,
@@ -30,14 +29,13 @@ interface NavigationItem {
   id: string;
   label: string;
   description: string;
-  icon: typeof Home;
+  icon: typeof Users;
   tabTarget: Tab;
   badge?: number;
 }
 
 const primaryItems: NavigationItem[] = [
-  { id: 'home', label: 'Home', description: 'Your studio overview', icon: Home, tabTarget: 'personas' },
-  { id: 'personas', label: 'Personas', description: 'Create and manage identities', icon: Users, tabTarget: 'create-persona' },
+  { id: 'personas', label: 'Personas', description: 'Create and manage identities', icon: Users, tabTarget: 'personas' },
   { id: 'create', label: 'Create', description: 'Images, video, voice, and more', icon: Sparkles, tabTarget: 'create' },
   { id: 'tools', label: 'AI Toolbox', description: 'Edit, enhance, and build content', icon: Wrench, tabTarget: 'intelligence' },
   { id: 'library', label: 'Library', description: 'Review every generated asset', icon: Images, tabTarget: 'gallery' },
@@ -103,7 +101,7 @@ export default function LeftSidebar({
         </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[13px] font-semibold tracking-[-0.01em]">{item.label}</span>
-          <span className="mt-0.5 block truncate text-[10px] text-[var(--text-muted)]">{item.description}</span>
+          <span className="mt-0.5 block truncate text-[11px] text-[var(--text-muted)]">{item.description}</span>
         </span>
         {Boolean(badge) && (
           <span className="rounded-full border border-[var(--border-strong)] bg-[var(--accent-muted)] px-2 py-0.5 text-[10px] font-bold text-[var(--accent-primary)]">
@@ -159,7 +157,7 @@ export default function LeftSidebar({
           </button>
         </div>
 
-        <nav aria-label="Main navigation" className="custom-scrollbar flex-1 overflow-y-auto px-3 py-4">
+        <nav aria-label="Main navigation" className="custom-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4">
           <p className="mb-2 px-3 text-[9px] font-bold uppercase tracking-[0.25em] text-[var(--text-muted)]">Workspace</p>
           <div className="space-y-1">{primaryItems.map(renderNavigationItem)}</div>
 
@@ -181,7 +179,7 @@ export default function LeftSidebar({
             </span>
             <span className="min-w-0 flex-1">
               <span className="block text-[13px] font-semibold">More</span>
-              <span className="mt-0.5 block truncate text-[10px] text-[var(--text-muted)]">Chat, agent, and analytics</span>
+              <span className="mt-0.5 block truncate text-[11px] text-[var(--text-muted)]">Chat, agent, and analytics</span>
             </span>
             <ChevronDown size={15} className={cn('transition-transform', moreOpen && 'rotate-180')} />
           </button>
@@ -220,7 +218,7 @@ export default function LeftSidebar({
             </span>
             <span>
               <span className="block text-[13px] font-semibold">Settings</span>
-              <span className="mt-0.5 block text-[10px] text-[var(--text-muted)]">Providers and preferences</span>
+              <span className="mt-0.5 block text-[11px] text-[var(--text-muted)]">Providers and preferences</span>
             </span>
           </button>
         </div>

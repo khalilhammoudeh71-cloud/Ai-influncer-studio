@@ -33,7 +33,7 @@
   --text-primary: #F5F1E8;
   --text-secondary: #D4D4D8;
   --text-tertiary: #A1A1AA;
-  --text-muted: #71717A;
+  --text-muted: #8B8B95;
   --text-gold: #D9BA72;
 
   --status-success: #70C98B;
@@ -127,7 +127,7 @@
   --text-primary: #F5F1E8;
   --text-secondary: #D4D4D8;
   --text-tertiary: #A1A1AA;
-  --text-muted: #71717A;
+  --text-muted: #8B8B95;
   --accent-primary: #E7C477;
   --accent-secondary: #F2D58D;
   --accent-tertiary: #B99655;
@@ -1334,4 +1334,19 @@ input:focus, textarea:focus, select:focus {
   background-image: 
     radial-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 0);
   background-size: 24px 24px;
+}
+/* Consistent keyboard affordance across the studio's many compact controls. */
+.app-shell :where(button, a, input, textarea, select, summary):focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.app-shell :where(button, summary) {
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (pointer: coarse) {
+  .app-shell :where(button, summary) {
+    min-height: 36px;
+  }
 }

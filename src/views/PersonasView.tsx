@@ -1,4 +1,4 @@
-import { Plus, Search, Edit2, Trash2, X, Check, Camera, Upload, Image as ImageIcon, AlertTriangle, Sparkles, ArrowLeft, Download, Heart, Trash, Eye, Loader2, ChevronDown, Cpu, Wand2, Pencil, ArrowUpCircle, Film, LayoutGrid, MessageSquare, Mic, Users, ChevronRight, DollarSign, Wrench, PlusCircle, Calendar, TrendingUp, CheckCircle2, Clock, Share2, Play, ExternalLink, ArrowUpRight, ArrowDownRight, Layers, Sliders } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, X, Check, Camera, Upload, Image as ImageIcon, AlertTriangle, Sparkles, ArrowLeft, Download, Heart, Trash, Eye, Loader2, ChevronDown, Cpu, Wand2, Pencil, ArrowUpCircle, Film, LayoutGrid, MessageSquare, Mic, Users, ChevronRight, DollarSign, Wrench, PlusCircle, Calendar, TrendingUp, CheckCircle2, Clock, Share2, Play, ExternalLink, ArrowUpRight, ArrowDownRight, Layers, Sliders, MoreVertical } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../utils/cn';
@@ -19,6 +19,7 @@ interface PersonasViewProps {
 
 export default function PersonasView({ personas, setPersonas, onSelectPersona, selectedId, navigateToTab, nav, billingInfo }: PersonasViewProps) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
   const handleAddPersona = () => {
     nav.push({ view: 'create-persona' });
@@ -55,8 +56,8 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
   return (
     <div className="p-6 md:p-10 max-w-[1500px] mx-auto space-y-10 select-none pb-24">
       
-      {/* ── HERO SECTION (RESTORED LANDING PAGE IN CHARCOAL & GOLD) ── */}
-      <div className="relative rounded-[28px] overflow-hidden border border-[#E7C477]/15 shadow-2xl bg-[#1E1E22]">
+      {/* Keep the aspirational hero for an empty workspace. Returning creators land on their roster. */}
+      {activePersonas.length === 0 && <div className="relative rounded-[28px] overflow-hidden border border-[#E7C477]/15 shadow-2xl bg-[#1E1E22]">
         {/* Background Ambient Layers */}
         <div className="absolute inset-0 bg-gradient-to-br from-[#1E1E22] via-[#161618] to-[#121214]" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,rgba(231,196,119,0.08),transparent_50%)]" />
@@ -174,7 +175,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
             />
           </div>
         </div>
-      </div>
+      </div>}
 
       {/* ── AI PERSONA ROSTER GRID (PLACED PROMINENTLY ABOVE OTHER SECTIONS) ── */}
       <div className="space-y-5 pt-2">
@@ -279,6 +280,35 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                       Active
                     </span>
                   )}
+                  <div className="absolute left-2 top-2 z-20">
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setOpenMenuId(current => current === p.id ? null : p.id);
+                      }}
+                      aria-label={`More actions for ${p.name}`}
+                      aria-expanded={openMenuId === p.id}
+                      className="grid h-8 w-8 place-items-center rounded-lg border border-white/15 bg-black/55 text-white backdrop-blur-md transition-colors hover:bg-black/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E7C477]"
+                    >
+                      <MoreVertical size={15} />
+                    </button>
+                    {openMenuId === p.id && (
+                      <div className="absolute left-0 top-10 w-40 overflow-hidden rounded-xl border border-white/10 bg-[#18181B] p-1 shadow-2xl">
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setOpenMenuId(null);
+                            handleDeletePersona(p);
+                          }}
+                          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-rose-300 transition-colors hover:bg-rose-500/10"
+                        >
+                          <Trash2 size={13} /> Delete persona
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <div>
@@ -286,7 +316,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                     <p className="text-[10px] text-[#A1A1AA] truncate">{p.niche || 'Digital Creator'}</p>
                   </div>
                   
-                  {/* 3 CTA Buttons: Chat, Edit, Delete */}
+                  {/* Primary actions stay visible; destructive actions live in the overflow menu. */}
                   <div className="pt-2 border-t border-white/10 flex items-center gap-1.5 w-full">
                     {/* Chat Button */}
                     <button
@@ -315,20 +345,6 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                     >
                       <Pencil size={11} className="text-slate-300" />
                       <span>Edit</span>
-                    </button>
-
-                    {/* Delete Button */}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeletePersona(p);
-                      }}
-                      className="flex-1 py-1.5 px-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 text-[10px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
-                      title="Delete Persona"
-                    >
-                      <Trash2 size={11} className="text-rose-400" />
-                      <span>Delete</span>
                     </button>
                   </div>
                 </div>

@@ -10,7 +10,7 @@ interface MobileNavigationProps {
 }
 
 const items: Array<{ label: string; tab: Tab; icon: typeof Home }> = [
-  { label: 'Home', tab: 'personas', icon: Home },
+  { label: 'Personas', tab: 'personas', icon: Home },
   { label: 'Create', tab: 'create', icon: Sparkles },
   { label: 'Toolbox', tab: 'intelligence', icon: Wrench },
   { label: 'Library', tab: 'gallery', icon: Images },

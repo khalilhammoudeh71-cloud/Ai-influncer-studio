@@ -11,7 +11,7 @@ import { Persona, NavActions } from '../types';
 import toast from 'react-hot-toast';
 import { cn } from '../utils/cn';
 import AIToolsView from './AIToolsView';
-import { ProModeToggle, useProMode } from '../utils/useProMode';
+import { useProMode } from '../utils/useProMode';
 
 interface CreatorHubViewProps {
   persona: Persona;
@@ -105,7 +105,7 @@ const TOOLS_CONFIG = [
 ];
 
 export default function CreatorHubView({ persona: activePersona, personas, nav, initialTool, billingInfo }: CreatorHubViewProps) {
-  const [isPro, setIsPro] = useProMode();
+  const [isPro] = useProMode();
   const [toolboxSection, setToolboxSection] = useState<'all' | 'creative' | 'marketing'>('all');
   const [simpleTool, setSimpleTool] = useState<any>(null);
   const [showAllSimpleTools, setShowAllSimpleTools] = useState(false);
@@ -313,28 +313,6 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
             Unified suite of visual creative editing and strategic marketing tools for{' '}
             <span className="text-[#F2D58D] font-medium">{activePersona.name || 'your persona'}</span>.
           </p>
-        </div>
-        <div className="mt-4 flex flex-wrap items-center gap-3 md:mt-0 md:justify-end">
-          <ProModeToggle isPro={isPro} onToggle={setIsPro} />
-          <div className="flex items-center gap-3 rounded-2xl border border-[#E7C477]/15 bg-[#0A101C] px-4 py-2">
-            <div className="w-8 h-8 rounded-lg overflow-hidden border border-[#E7C477]/30 shrink-0">
-              {activePersona.avatar ? (
-                <img
-                  src={activePersona.avatar}
-                  alt=""
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div className="w-full h-full bg-[#0E1523] flex items-center justify-center text-[#8C909A]">
-                  <Users size={16} />
-                </div>
-              )}
-            </div>
-            <div className="text-left">
-              <p className="text-[10px] font-semibold text-[#D9BA72] uppercase tracking-wider leading-none">Active Persona</p>
-              <p className="text-xs font-bold text-[#F5F1E8] mt-1 leading-tight">{activePersona.name || 'Select a Persona'}</p>
-            </div>
-          </div>
         </div>
       </header>
 

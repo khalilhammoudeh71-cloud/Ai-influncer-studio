@@ -45,6 +45,7 @@ type ApiStatus = { openai: boolean; gemini: boolean; wavespeed: boolean; elevenl
 
 export default function SettingsView({ nav, personas, user, billingInfo, onBillingUpdate, activeTheme, setActiveTheme }: Props) {
   const [theme, setTheme] = useState<'dark' | 'light'>(() => (localStorage.getItem('ai_studio_theme') as 'dark' | 'light') || 'dark');
+  const [activeSettingsTab, setActiveSettingsTab] = useState<'identity' | 'models' | 'integrations' | 'billing' | 'appearance' | 'account'>('identity');
 
   // Creator Profile State
   const [creatorProfile, updateCreatorProfile] = useCreatorProfile();
@@ -82,6 +83,8 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
   // API status
   const [apiStatus, setApiStatus] = useState<ApiStatus | null>(null);
   const [loadingStatus, setLoadingStatus] = useState(false);
+  const [lastStatusCheckedAt, setLastStatusCheckedAt] = useState<number | null>(null);
+  const [lastStatusLatencyMs, setLastStatusLatencyMs] = useState<number | null>(null);
 
   // HeyGen key
   const [heygenKeyInput, setHeygenKeyInput] = useState<string>(() => loadPrefs().heygenApiKey || '');
@@ -146,14 +149,22 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
 
   const checkApiStatus = async () => {
     setLoadingStatus(true);
-    const status = await api.getConfigStatus();
-    const clientKey = loadPrefs().heygenApiKey;
-    const fullStatus: ApiStatus = {
-      ...status,
-      heygen: !!clientKey
-    };
-    setApiStatus(fullStatus);
-    setLoadingStatus(false);
+    const startedAt = performance.now();
+    try {
+      const status = await api.getConfigStatus();
+      const clientKey = loadPrefs().heygenApiKey;
+      const fullStatus: ApiStatus = {
+        ...status,
+        heygen: !!clientKey
+      };
+      setApiStatus(fullStatus);
+      setLastStatusCheckedAt(Date.now());
+      setLastStatusLatencyMs(Math.round(performance.now() - startedAt));
+    } catch {
+      toast.error('Could not refresh provider configuration');
+    } finally {
+      setLoadingStatus(false);
+    }
   };
 
   const toggleTheme = () => {
@@ -282,6 +293,15 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
     'Creative Collaborator'
   ];
 
+  const creatorProfileDirty = creatorName !== creatorProfile.name
+    || creatorRole !== creatorProfile.role
+    || creatorAppearance !== creatorProfile.appearance
+    || creatorBio !== creatorProfile.bio
+    || creatorGender !== (creatorProfile.gender || 'Male')
+    || customDynamic !== (creatorProfile.customDynamic || '')
+    || primaryPhoto !== creatorProfile.primaryPhoto
+    || JSON.stringify(creatorPhotos) !== JSON.stringify(creatorProfile.photos || []);
+
   return (
     <div className="h-full overflow-y-auto custom-scrollbar pb-20 select-none">
       <div className="p-6 max-w-3xl mx-auto space-y-8">
@@ -294,11 +314,38 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
           <p className="text-xs md:text-sm text-[#8C909A] mt-1 font-sans">Manage your studio, creator identity, preferences, and integrations.</p>
         </header>
 
+        <nav aria-label="Settings sections" className="sticky top-0 z-30 -mx-2 overflow-x-auto border-b border-white/[0.06] bg-[var(--bg-base)]/95 px-2 py-2 backdrop-blur-xl">
+          <div className="flex min-w-max gap-1.5">
+            {[
+              ['identity', 'Identity'],
+              ['models', 'Models'],
+              ['integrations', 'Integrations'],
+              ['billing', 'Billing'],
+              ['appearance', 'Appearance'],
+              ['account', 'Account'],
+            ].map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setActiveSettingsTab(id as typeof activeSettingsTab)}
+                aria-current={activeSettingsTab === id ? 'page' : undefined}
+                className={`rounded-xl border px-3.5 py-2 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E7C477] ${
+                  activeSettingsTab === id
+                    ? 'border-[#E7C477]/40 bg-[#E7C477]/15 text-[#F2D58D]'
+                    : 'border-transparent text-zinc-400 hover:border-white/10 hover:bg-white/[0.04] hover:text-white'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </nav>
+
         {/* ── Creator Identity & Reference Vault Card ── */}
         <motion.section
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          className="premium-card rounded-2xl p-6 relative overflow-hidden space-y-6 border border-[#E7C477]/20"
+          className={`${activeSettingsTab === 'identity' ? 'block' : 'hidden'} premium-card rounded-2xl p-6 relative overflow-hidden space-y-6 border border-[#E7C477]/20`}
         >
           <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse at top right, rgba(231,196,119,0.08) 0%, transparent 70%)' }} />
           
@@ -354,10 +401,10 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
             <button
               onClick={handleSaveCreatorIdentity}
               disabled={isSavingCreatorProfile}
-              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#E7C477] to-amber-500 hover:from-[#F2D58D] hover:to-amber-400 text-zinc-950 text-xs font-bold tracking-wide transition-all shadow-md shadow-amber-950/40 border border-[#E7C477]/40 flex items-center justify-center gap-1.5 shrink-0 active:scale-95 disabled:opacity-50 cursor-pointer"
+              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#E7C477] to-amber-500 hover:from-[#F2D58D] hover:to-amber-400 text-zinc-950 text-xs font-bold tracking-wide transition-all shadow-md shadow-amber-950/40 border border-[#E7C477]/40 flex items-center justify-center gap-1.5 shrink-0 active:scale-95 disabled:opacity-50 cursor-pointer sm:sticky sm:top-16"
             >
               {isSavingCreatorProfile ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-              <span>Save Creator Identity</span>
+              <span>{creatorProfileDirty ? 'Save changes' : 'Saved'}</span>
             </button>
           </div>
 
@@ -581,7 +628,7 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
           initial={{ opacity: 0, y: 12 }} 
           animate={{ opacity: 1, y: 0 }} 
           transition={{ delay: 0.08 }}
-          className="premium-card rounded-2xl p-6 relative overflow-hidden"
+          className={`${activeSettingsTab === 'billing' ? 'block' : 'hidden'} premium-card rounded-2xl p-6 relative overflow-hidden`}
         >
           <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse at bottom right, rgba(0,212,255,0.06) 0%, transparent 70%)' }} />
           
@@ -683,7 +730,7 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
         </motion.section>
 
         {/* ── Usage Stats ── */}
-        <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
+        <motion.section className={activeSettingsTab === 'billing' ? 'block' : 'hidden'} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
           <h3 className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-[0.15em] ml-4 mb-3">Your Studio Stats</h3>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
@@ -702,7 +749,7 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
         </motion.section>
 
         {/* ── Theme & Visual Aesthetics ── */}
-        <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+        <motion.section className={activeSettingsTab === 'appearance' ? 'block' : 'hidden'} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
           <h3 className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-[0.15em] ml-4 mb-3 flex items-center gap-1.5">
             <Sparkles size={12} className="text-cyan-400" /> Studio Color Theme & Aesthetics
           </h3>
@@ -759,7 +806,7 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
         </motion.section>
 
         {/* ── Default Model Preferences ── */}
-        <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
+        <motion.section className={activeSettingsTab === 'models' ? 'block' : 'hidden'} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
           <h3 className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-[0.15em] ml-4 mb-3">Default AI Models</h3>
           <div className="premium-card rounded-2xl p-5 space-y-4">
             <p className="text-xs text-[var(--text-tertiary)]">These models are used as defaults in Create Studio and the AI Assistant when no specific model is selected.</p>
@@ -806,7 +853,7 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
         </motion.section>
 
         {/* ── HeyGen AI Integration ── */}
-        <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.18 }}>
+        <motion.section className={activeSettingsTab === 'integrations' ? 'block' : 'hidden'} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.18 }}>
           <h3 className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-[0.15em] ml-4 mb-3">HeyGen AI Integration</h3>
           <div className="premium-card rounded-2xl p-5 space-y-4">
             <p className="text-xs text-[var(--text-tertiary)]">HeyGen is specialized in highly photorealistic talking avatars. Add your personal HeyGen API Key below to enable it in the Talking Head Studio.</p>
@@ -839,7 +886,7 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
         </motion.section>
 
         {/* ── API / Service Status ── */}
-        <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+        <motion.section className={activeSettingsTab === 'integrations' ? 'block' : 'hidden'} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
           <div className="flex items-center justify-between mb-3 ml-4">
             <h3 className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-[0.15em]">Service Status</h3>
             <button
@@ -848,10 +895,15 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
               className="flex items-center gap-1 text-[10px] font-bold text-[var(--text-muted)] hover:text-white transition-colors"
             >
               <RefreshCcw size={11} className={loadingStatus ? 'animate-spin' : ''} />
-              Refresh
+              {lastStatusCheckedAt
+                ? `Config checked ${new Date(lastStatusCheckedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}${lastStatusLatencyMs !== null ? ` · ${lastStatusLatencyMs} ms` : ''}`
+                : 'Refresh configuration'}
             </button>
           </div>
           <div className="premium-card rounded-2xl overflow-hidden">
+            <p className="border-b border-[var(--border-subtle)] px-4 py-3 text-[10px] leading-relaxed text-[var(--text-tertiary)]">
+              Configured means the required app setting or API key was detected. It does not guarantee that a generation request will succeed.
+            </p>
             {[
               { key: 'gemini', label: 'Google Gemini', desc: 'Chat, content generation' },
               { key: 'openai', label: 'OpenAI', desc: 'TTS, fallback generation' },
@@ -880,7 +932,7 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
                     <>
                       <StatusDot ok={!!(apiStatus as any)[svc.key]} />
                       <span className={`text-[10px] font-bold ${(apiStatus as any)[svc.key] ? 'text-emerald-400' : 'text-rose-400/70'}`}>
-                        {(apiStatus as any)[svc.key] ? 'Connected' : 'Not configured'}
+                        {(apiStatus as any)[svc.key] ? 'Configured' : 'Not configured'}
                       </span>
                     </>
                   ) : (
@@ -893,7 +945,7 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
         </motion.section>
 
         {/* ── Support / Dev ── */}
-        <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
+        <motion.section className={activeSettingsTab === 'account' ? 'block' : 'hidden'} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
           <h3 className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-[0.15em] ml-4 mb-3">Support & Account</h3>
           <div className="premium-card rounded-2xl overflow-hidden">
             {[

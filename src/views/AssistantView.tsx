@@ -3543,7 +3543,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
   }
 
   return (
-    <div className="w-full h-[calc(100vh-70px)] p-2 sm:p-3.5 md:p-4 flex flex-col justify-center items-center bg-[#121316]">
+    <div className="flex h-full w-full flex-col items-center justify-center bg-[#121316] p-2 sm:p-3.5 md:p-4">
       {/* Framed Chatting Window Box with Visible Border */}
       <div className="w-full h-full max-w-[1320px] flex flex-col bg-[#16171b] border border-white/[0.14] rounded-2xl sm:rounded-3xl shadow-[0_16px_48px_rgba(0,0,0,0.85)] overflow-hidden ring-1 ring-white/[0.04]">
         
@@ -3637,20 +3637,11 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                 <span className="hidden sm:inline">Memory</span>
               </button>
 
-              <button
-                onClick={() => setShowMediaJobCenter(true)}
-                title="Open Media Job Center"
-                aria-label="Open Media Job Center"
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#24252b] hover:bg-[#2b2c33] border border-white/[0.09] text-zinc-200 hover:text-white text-xs font-semibold transition-all cursor-pointer shadow-sm"
-              >
-                <Sparkles size={13} className="text-[#E7C477]" />
-                <span className="hidden sm:inline">Jobs</span>
-              </button>
-
               {/* New Chat */}
               <button
                 onClick={clearHistory}
                 title="Start a fresh conversation"
+                aria-label="Start a fresh conversation"
                 className="p-2 rounded-xl bg-[#24252b] hover:bg-[#2b2c33] border border-white/[0.09] text-zinc-300 hover:text-white transition-all cursor-pointer"
               >
                 <Plus size={14} />
@@ -3660,6 +3651,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
               <button
                 onClick={clearHistory}
                 title="Clear message history"
+                aria-label="Clear message history"
                 className="p-2 rounded-xl bg-[#24252b] hover:bg-rose-500/10 border border-white/[0.09] hover:border-rose-500/20 text-zinc-400 hover:text-rose-400 transition-all cursor-pointer"
               >
                 <Trash2 size={14} />
@@ -5591,7 +5583,7 @@ function MessageBubble({ msg, persona, isLatest, onSaveToVault, isSaving, isSave
               <img
                 src={msg.content}
                 alt="Generated photoshoot"
-                className="w-full h-auto object-contain transition-transform duration-300 group-hover:scale-[1.01]"
+                className="h-[260px] w-full object-cover object-top transition-transform duration-300 group-hover:scale-[1.01] sm:h-[300px]"
                 onError={e => { (e.target as HTMLImageElement).alt = 'Failed to load image'; }}
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-4">

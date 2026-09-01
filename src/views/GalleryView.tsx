@@ -27,6 +27,15 @@ interface GalleryItem extends GeneratedImage {
 
 type SortMode = 'newest' | 'oldest' | 'persona' | 'type';
 
+function getDisplayPrompt(prompt: string) {
+  const lines = (prompt || '').split(/\n+/).map(line => line.trim()).filter(Boolean);
+  const explicitUserPrompt = lines.find(line => /^(?:user prompt|original prompt|request)\s*:/i.test(line));
+  if (explicitUserPrompt) return explicitUserPrompt.replace(/^[^:]+:\s*/, '');
+
+  const cleaned = lines.filter(line => !/(AUTHORITATIVE USER REQUEST|IDENTITY LOCK|SYSTEM INSTRUCTION|PRESERVE (?:THE )?IDENTITY|REFERENCE IMAGE)/i.test(line));
+  return cleaned.join(' ').trim() || 'Identity-consistent studio generation';
+}
+
 export default function GalleryView({ personas, activePersona, nav, onPersonasChange }: GalleryViewProps) {
   const [filterPersonaId, setFilterPersonaId] = useState<string>('all');
   const [filterType, setFilterType] = useState<'all' | 'image' | 'video' | 'favorites'>('all');
@@ -280,7 +289,7 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
             <h1 className="text-3xl font-extrabold tracking-tight">
-              Vault <span className="gradient-text">Gallery</span>
+              <span className="gradient-text">Library</span>
             </h1>
             <p className="text-[var(--text-tertiary)] text-sm mt-1.5 font-medium">
               {allMedia.length} assets across {personas.filter(p => p.visualLibrary?.length).length} personas
@@ -312,16 +321,6 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
               </select>
             </div>
 
-            {/* Persona filter */}
-            <select
-              value={filterPersonaId}
-              onChange={e => setFilterPersonaId(e.target.value)}
-              className="bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-4 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-emerald-500"
-            >
-              <option value="all">All Personas</option>
-              {personas.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-
             {/* Batch Upscale Toggle */}
             <button
               onClick={() => {
@@ -340,11 +339,11 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
               }`}
             >
               <Sparkles size={14} className={isBatchMode ? 'animate-pulse' : ''} />
-              {isBatchMode ? 'Cancel Upscale' : '🚀 Batch Upscale'}
+              {isBatchMode ? 'Done selecting' : 'Select to upscale'}
             </button>
 
             {/* Download All */}
-            {filteredMedia.length > 0 && (
+            {isBatchMode && filteredMedia.length > 0 && (
               <button
                 onClick={async () => {
                   setIsExporting(true);
@@ -371,6 +370,8 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
             <div className="flex items-center gap-1 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl p-1">
               <button
                 onClick={() => setLayoutMode('grid')}
+                aria-label="Use grid layout"
+                aria-pressed={layoutMode === 'grid'}
                 className={`p-1.5 rounded-lg transition-colors ${layoutMode === 'grid' ? 'bg-emerald-600 text-white' : 'text-[var(--text-muted)] hover:text-white'}`}
                 title="Grid layout"
               >
@@ -378,6 +379,8 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
               </button>
               <button
                 onClick={() => setLayoutMode('masonry')}
+                aria-label="Use masonry layout"
+                aria-pressed={layoutMode === 'masonry'}
                 className={`p-1.5 rounded-lg transition-colors ${layoutMode === 'masonry' ? 'bg-emerald-600 text-white' : 'text-[var(--text-muted)] hover:text-white'}`}
                 title="Masonry layout"
               >
@@ -391,7 +394,7 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
         <div className="flex gap-2 mt-4 flex-wrap items-center pt-2 border-t border-white/5">
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1 flex items-center gap-1.5">
             <FolderHeart size={13} className="text-[#D9BA72]" />
-            Persona Vaults:
+            Personas:
           </span>
           <button
             onClick={() => setFilterPersonaId('all')}
@@ -425,7 +428,7 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
                 {p.avatar && (
                   <img src={p.avatar} alt="" className="w-4 h-4 rounded-full object-cover" />
                 )}
-                <span>{p.name}'s Vault</span>
+                <span>{p.name}</span>
                 <span className={cn("text-[10px] px-1.5 py-0.2 rounded-full", isSelected ? "bg-black/20" : "bg-white/10")}>
                   {count}
                 </span>
@@ -592,18 +595,21 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
                       <div className="flex gap-1">
                         <button
                           onClick={(e) => { e.stopPropagation(); toggleFavorite(item.id); }}
+                          aria-label={isFav ? 'Remove from favorites' : 'Add to favorites'}
                           className={`p-1.5 rounded-lg transition-colors ${isFav ? 'bg-rose-500 text-white' : 'bg-black/50 hover:bg-rose-500 text-white'}`}
                         >
                           <Heart size={12} fill={isFav ? 'currentColor' : 'none'} />
                         </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); downloadFile(item.url, isVideo ? 'video' : 'image', item.personaName); }}
+                          aria-label={`Download ${isVideo ? 'video' : 'image'}`}
                           className="p-1.5 bg-black/50 hover:bg-emerald-500 rounded-lg text-white transition-colors"
                         >
                           <Download className="w-3 h-3" />
                         </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); handleDelete(item); }}
+                          aria-label={`Delete ${isVideo ? 'video' : 'image'}`}
                           disabled={deletingId === item.id}
                           className="p-1.5 bg-black/50 hover:bg-rose-600 rounded-lg text-white transition-colors disabled:opacity-50"
                         >
@@ -612,7 +618,7 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
                       </div>
                     </div>
                     <p className="text-xs text-white line-clamp-2 leading-snug">
-                      {item.prompt}
+                      {getDisplayPrompt(item.prompt)}
                     </p>
                   </div>
 
@@ -703,6 +709,7 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
                   </div>
                   <button
                     onClick={() => toggleFavorite(selectedItem.id)}
+                    aria-label={favorites.has(selectedItem.id) ? 'Remove from favorites' : 'Add to favorites'}
                     className={`p-2.5 rounded-xl transition-colors border ${
                       favorites.has(selectedItem.id)
                         ? 'bg-rose-500/20 border-rose-500/30 text-rose-400'
@@ -716,8 +723,14 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
                 <div className="mb-4">
                   <span className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-wider mb-2 block">Prompt</span>
                   <div className="p-3 bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-xl">
-                    <p className="text-sm text-white/90 leading-relaxed">{selectedItem.prompt}</p>
+                    <p className="text-sm text-white/90 leading-relaxed">{getDisplayPrompt(selectedItem.prompt)}</p>
                   </div>
+                  {getDisplayPrompt(selectedItem.prompt) !== selectedItem.prompt && (
+                    <details className="mt-2 rounded-xl border border-white/[0.07] bg-black/15 px-3 py-2">
+                      <summary className="cursor-pointer text-[10px] font-bold uppercase tracking-wider text-[var(--text-tertiary)]">Technical prompt</summary>
+                      <p className="mt-2 whitespace-pre-wrap text-[11px] leading-relaxed text-zinc-400">{selectedItem.prompt}</p>
+                    </details>
+                  )}
                 </div>
 
                 {(selectedItem.environment || selectedItem.outfit || selectedItem.framing) && (

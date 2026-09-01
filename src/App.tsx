@@ -80,8 +80,55 @@ const EMPTY_PERSONA: Persona = {
   personaNotes: '',
 };
 
+function StudioLoadingShell() {
+  return (
+    <div className="app-shell flex min-h-screen w-full overflow-hidden bg-[var(--bg-base)] text-[var(--text-primary)]" aria-busy="true" aria-label="Loading your studio">
+      <aside className="app-sidebar hidden w-[272px] shrink-0 border-r border-[var(--border-subtle)] lg:flex lg:flex-col">
+        <div className="flex h-20 items-center gap-3 border-b border-[var(--border-subtle)] px-4">
+          <div className="h-11 w-11 rounded-[14px] border border-[var(--border-strong)] bg-[var(--accent-muted)] p-2">
+            <img src="/logo.png" alt="" className="h-full w-full object-contain" />
+          </div>
+          <div className="space-y-2">
+            <div className="h-3 w-28 animate-pulse rounded bg-white/10" />
+            <div className="h-2 w-16 animate-pulse rounded bg-[var(--accent-muted)]" />
+          </div>
+        </div>
+        <div className="space-y-3 p-4">
+          {Array.from({ length: 7 }).map((_, index) => (
+            <div key={index} className="flex items-center gap-3 rounded-xl border border-white/[0.04] p-2.5">
+              <div className="h-9 w-9 animate-pulse rounded-xl bg-white/[0.055]" />
+              <div className="flex-1 space-y-2">
+                <div className="h-2.5 w-24 animate-pulse rounded bg-white/10" />
+                <div className="h-2 w-32 animate-pulse rounded bg-white/[0.055]" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </aside>
+      <div className="min-w-0 flex-1">
+        <div className="flex h-16 items-center justify-between border-b border-[var(--border-subtle)] px-5">
+          <div className="h-9 w-full max-w-md animate-pulse rounded-xl bg-white/[0.055]" />
+          <div className="ml-4 h-9 w-36 animate-pulse rounded-xl bg-[var(--accent-muted)]" />
+        </div>
+        <main className="mx-auto max-w-7xl space-y-6 p-5 sm:p-8">
+          <div className="flex items-center gap-3 text-sm font-semibold text-[var(--text-secondary)]">
+            <Sparkles size={18} className="animate-pulse text-[var(--accent-primary)]" />
+            Loading your studio…
+          </div>
+          <div className="h-48 animate-pulse rounded-3xl border border-[var(--border-subtle)] bg-white/[0.035]" />
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div key={index} className="aspect-[4/3] animate-pulse rounded-2xl border border-[var(--border-subtle)] bg-white/[0.035]" />
+            ))}
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+}
+
 const SECTION_LABELS: Record<Tab, string> = {
-  personas: 'Home',
+  personas: 'Personas',
   'create-persona': 'Personas',
   create: 'Create',
   gallery: 'Library',
@@ -664,28 +711,7 @@ function App() {
   }, [replaceView]);
 
   if (authLoading) {
-    return (
-      <div className="studio-public-theme flex items-center justify-center min-h-screen bg-[var(--bg-base)]">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-          className="flex flex-col items-center gap-5"
-        >
-          <div className="relative">
-            <div className="w-16 h-16 rounded-2xl flex items-center justify-center"
-              style={{ background: 'var(--gradient-primary)', boxShadow: '0 8px 40px -8px rgba(231, 196, 119, 0.45)' }}
-            >
-              <Sparkles size={28} className="text-[#161108]" />
-            </div>
-            <div className="absolute -inset-1 rounded-2xl border border-[var(--border-strong)] animate-pulse" />
-          </div>
-          <div className="flex flex-col items-center gap-2">
-            <p className="text-[var(--text-primary)] text-sm font-semibold">Loading your studio</p>
-          </div>
-        </motion.div>
-      </div>
-    );
+    return <StudioLoadingShell />;
   }
 
   if (isPasswordRecovery && user) {
@@ -788,35 +814,7 @@ function App() {
   }
 
   if (isLoading) {
-    return (
-      <div className="studio-public-theme flex items-center justify-center min-h-screen bg-[var(--bg-base)]">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-          className="flex flex-col items-center gap-5"
-        >
-          <div className="relative">
-            <div className="w-16 h-16 rounded-2xl flex items-center justify-center"
-              style={{ background: 'var(--gradient-primary)', boxShadow: '0 8px 40px -8px rgba(231, 196, 119, 0.45)' }}
-            >
-              <Sparkles size={28} className="text-[#161108]" />
-            </div>
-            <div className="absolute -inset-1 rounded-2xl border border-[var(--border-strong)] animate-pulse" />
-          </div>
-          <div className="flex flex-col items-center gap-2">
-            <p className="text-[var(--text-primary)] text-sm font-semibold">Loading your studio</p>
-            <div className="flex gap-1.5">
-              {[0,1,2].map(i => (
-                <div key={i} className="w-1.5 h-1.5 rounded-full bg-[#E7C477]/70 animate-bounce"
-                  style={{ animationDelay: `${i * 0.15}s` }}
-                />
-              ))}
-            </div>
-          </div>
-        </motion.div>
-      </div>
-    );
+    return <StudioLoadingShell />;
   }
 
   const activePersona = personas.find(p => p.id === selectedPersonaId) || EMPTY_PERSONA;
@@ -944,7 +942,7 @@ function App() {
               <Menu size={18} />
             </button>
             <AnimatePresence>
-              {(navStack.length > 1 || activeTab !== 'personas') && (
+              {navStack.length > 1 && (
                 <BackButton 
                   onClick={() => {
                     if (navStack.length > 1) {
@@ -1006,7 +1004,7 @@ function App() {
             </button>
 
             {/* Persona creation appears when identity is relevant, not as the default kickoff. */}
-            {(hasPersonas || activeTab === 'assistant' || activeTab === 'create-persona' || (activeTab === 'create' && currentNav.subView === 'talking-avatar')) && (
+            {(activeTab === 'assistant' || (activeTab === 'create' && currentNav.subView === 'talking-avatar')) && (
               <button
                 onClick={() => pushView({ view: 'create-persona' })}
                 className="btn-gold-primary flex cursor-pointer items-center gap-2 px-3 py-2 text-sm font-bold shadow-lg transition-all hover:shadow-xl active:scale-[0.98] sm:px-5"
@@ -1133,8 +1131,9 @@ function App() {
         <div className="scrollbar-hide flex flex-none items-center gap-1.5 overflow-x-auto border-b border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-2 text-[10px] font-bold backdrop-blur-sm sm:px-6">
           {deduped.map((entry, i) => {
             const viewLabels: Record<string, string> = {
-              'personas': 'Personas', 'create': 'Create', 'gallery': 'Gallery',
-              'assistant': 'Assistant', 'settings': 'Settings', 'persona-builder': 'Persona Builder',
+              'personas': 'Personas', 'create': 'Create', 'gallery': 'Library',
+              'assistant': 'Persona Chat', 'intelligence': 'AI Toolbox', 'agent': 'Super Agent',
+              'settings': 'Settings', 'persona-builder': 'Persona Builder',
               'trends': 'Trend Radar',
             };
             const subViewLabels: Record<string, string> = {
