@@ -81,6 +81,7 @@ import {
   type VoiceTurnTiming,
 } from '../utils/voiceStability';
 import { buildVoiceConversationHistory } from '../../shared/voiceConversationContext';
+import { detectIncompleteMediaCreationRequest } from '../../shared/personaMediaIntent';
 import {
   DEFAULT_IMAGE_MODEL_ID,
   DEFAULT_IMAGE_MODEL_NAME,
@@ -391,22 +392,6 @@ const VOICE_CALIBRATION_TERMS = [
   'GPT Image 2',
   'Qwen 3.0 Pro',
 ];
-
-function detectIncompleteMediaCreationRequest(message: string): 'image' | 'video' | undefined {
-  const match = message.trim().match(
-    /\b(?:generate|create|make|render|produce)\s+(?:me\s+)?(?:(?:a|an|the|some|another|new)\s+)*(image|photo|picture|pic|portrait|video|clip|reel|animation)\b([\s\S]*)$/i,
-  );
-  if (!match) return undefined;
-
-  const remainder = String(match[2] || '')
-    .toLowerCase()
-    .replace(/[.,!?;:]+/g, ' ')
-    .replace(/\b(?:please|for me|for us|right now|now|quickly|real quick|if you can|if you could)\b/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (remainder && !/^(?:of|with|showing|featuring)$/.test(remainder)) return undefined;
-  return /^(?:video|clip|reel|animation)$/i.test(match[1]) ? 'video' : 'image';
-}
 
 function detectIntent(message: string): 'image' | 'video' | 'chat' {
   const lower = message.toLowerCase().trim();

@@ -3,6 +3,7 @@ import {
   type CreatorIdentityContext,
   type MediaPersonaContext,
 } from './persona-media';
+import { detectIncompleteMediaCreationRequest } from '../shared/personaMediaIntent';
 
 type CreatorProfile = CreatorIdentityContext & Record<string, any>;
 
@@ -196,21 +197,7 @@ function isLikelyMediaClarificationAnswer(prompt: string, type: 'image' | 'video
 export function detectIncompletePersonaMediaRequest(value: unknown): 'image' | 'video' | undefined {
   const prompt = typeof value === 'string' ? value.trim() : '';
   if (!prompt || isConversationalMediaRemark(prompt)) return undefined;
-
-  const match = prompt.match(
-    /\b(?:generate|create|make|render|produce)\s+(?:me\s+)?(?:(?:a|an|the|some|another|new)\s+)*(image|photo|picture|pic|portrait|video|clip|reel|animation)\b([\s\S]*)$/i,
-  );
-  if (!match) return undefined;
-
-  const remainder = String(match[2] || '')
-    .toLowerCase()
-    .replace(/[.,!?;:]+/g, ' ')
-    .replace(/\b(?:please|for me|for us|right now|now|quickly|real quick|if you can|if you could)\b/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (remainder && !/^(?:of|with|showing|featuring)$/.test(remainder)) return undefined;
-
-  return /^(?:video|clip|reel|animation)$/i.test(match[1]) ? 'video' : 'image';
+  return detectIncompleteMediaCreationRequest(prompt);
 }
 
 /**
@@ -226,14 +213,14 @@ export function detectExplicitPersonaMediaRequest(value: unknown): PersonaMediaA
 
   const videoRequest = (
     /\b(?:send|record|make|generate|shoot|create|render|show|give)\s+(?:me\s+)?(?:a\s+|an\s+|another\s+|the\s+|some\s+|your\s+)?(?:new\s+)?(?:video|clip|reel|animation)\b/i.test(prompt)
-    || /\b(?:want|need|would like|i'?d like|can i (?:get|have|see)|could i (?:get|have|see))\b[^.!?]{0,100}\b(?:video|clip|reel|animation)\b/i.test(prompt)
+    || /\b(?:want|need|would like|would love|i['’]?d like|i['’]?d love|can i (?:get|have|see)|could i (?:get|have|see))\b[^.!?]{0,100}\b(?:video|clip|reel|animation)\b/i.test(prompt)
     || /\banimate\s+(?:this|that|it)\b/i.test(prompt)
   );
   if (videoRequest) return { type: 'video', prompt };
 
   const imageRequest = (
     /\b(?:send|take|show|give|snap|shoot|make|generate|post|create|share|render)\s+(?:me\s+)?(?:a\s+|an\s+|another\s+|the\s+|some\s+|your\s+)?(?:new\s+)?(?:one|pic|pics|photo|photos|picture|pictures|image|images|selfie|selfies|shot|portrait|headshot|avatar|profile image|profile pic|profile photo|outfit|look)\b/i.test(prompt)
-    || /\b(?:want|need|would like|i'?d like|can i (?:get|have|see)|could i (?:get|have|see)|let me see)\b[^.!?]{0,120}\b(?:pic|photo|picture|image|selfie|shot|portrait|headshot|avatar|profile image|profile pic|profile photo)\b/i.test(prompt)
+    || /\b(?:want|need|would like|would love|i['’]?d like|i['’]?d love|can i (?:get|have|see)|could i (?:get|have|see)|let me see)\b[^.!?]{0,120}\b(?:pic|photo|picture|image|selfie|shot|portrait|headshot|avatar|profile image|profile pic|profile photo)\b/i.test(prompt)
     || /\b(?:profile image|profile pic|profile photo|portrait|headshot|selfie|photo|picture|image)\b[^.!?]{0,80}\b(?:please|now|nude|naked|topless|wearing|dressed|exposed)\b/i.test(prompt)
     || /^(?:another one|send another|another pic|another photo|new photo|new pic|send it|send it to me|send)$/i.test(prompt)
   );

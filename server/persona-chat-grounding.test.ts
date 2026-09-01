@@ -74,13 +74,25 @@ test('detects direct video requests while leaving media discussion as chat', () 
 });
 
 test('a generic creation request asks for details instead of starting an arbitrary job', () => {
-  assert.equal(
-    detectIncompletePersonaMediaRequest('Listen, I need you to, to generate an image for me.'),
-    'image',
-  );
-  assert.equal(detectExplicitPersonaMediaRequest('Generate an image for me.'), undefined);
+  const vagueRequests = [
+    'Listen, I need you to, to generate an image for me.',
+    'Generate an image for me.',
+    'Send me an image.',
+    'I want an image of u.',
+    "I'd love to see an image.",
+    'Could I see a photo of you?',
+  ];
+  for (const request of vagueRequests) {
+    assert.equal(detectIncompletePersonaMediaRequest(request), 'image', request);
+    assert.equal(detectExplicitPersonaMediaRequest(request), undefined, request);
+  }
+
   assert.equal(detectIncompletePersonaMediaRequest('Generate an image of me standing by the window.'), undefined);
   assert.equal(detectExplicitPersonaMediaRequest('Generate an image of me standing by the window.')?.type, 'image');
+  assert.equal(detectIncompletePersonaMediaRequest('Send me an image of you in a red dress at the beach.'), undefined);
+  assert.equal(detectExplicitPersonaMediaRequest('Send me an image of you in a red dress at the beach.')?.type, 'image');
+  assert.equal(detectIncompletePersonaMediaRequest("I'd love to see an explicit nude image of you in the bedroom."), undefined);
+  assert.equal(detectExplicitPersonaMediaRequest("I'd love to see an explicit nude image of you in the bedroom.")?.type, 'image');
 });
 
 test('the immediate answer to an image clarification becomes the generation prompt', () => {
