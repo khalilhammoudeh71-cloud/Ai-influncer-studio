@@ -208,9 +208,11 @@ export function shapeNaturalSpokenReply(
 
   let selected = sentences.slice(0, maxSentences);
   if (sentences.length > maxSentences) {
-    const finalQuestion = [...sentences].reverse().find(sentence => /\?$/.test(sentence));
-    if (finalQuestion && !selected.includes(finalQuestion)) {
-      selected = [...selected.slice(0, Math.max(0, maxSentences - 1)), finalQuestion];
+    // Prefer the first complete question. A later follow-up such as "Like, a
+    // hobby?" often depends on a dropped lead-in and sounds abruptly edited.
+    const firstQuestion = sentences.find(sentence => /\?$/.test(sentence));
+    if (firstQuestion && !selected.includes(firstQuestion)) {
+      selected = [...selected.slice(0, Math.max(0, maxSentences - 1)), firstQuestion];
     }
   }
 

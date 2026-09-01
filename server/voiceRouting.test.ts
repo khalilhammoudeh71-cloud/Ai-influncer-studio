@@ -93,6 +93,15 @@ test('can defer voice streaming until one shaped continuous reply is ready', () 
   assert.deepEqual(chunks, ['Well, I tried baking today. What did you do today?']);
 });
 
+test('keeps the first complete question instead of an orphaned follow-up fragment', () => {
+  assert.equal(
+    shapeNaturalSpokenReply(
+      'I spent most of the day painting. It was relaxing. What about you? Like, a hobby or interest you are excited about?',
+    ),
+    'I spent most of the day painting. What about you?',
+  );
+});
+
 test('remaps a stale id to the same persona by name', () => {
   assert.equal(selectElevenLabsPersonaVoice(voices, 'stale-rawan-id', 'Rawan Hassan')?.voice_id, 'rawan-current');
 });

@@ -2599,9 +2599,14 @@ router.post('/agent/voice-chat-stream', async (req: AuthenticatedRequest, res: R
   const rawHistory = buildVoiceConversationHistory(messages, currentUserTurn, {
     maxMessages: 10,
   });
-  const voiceReplySentenceLimit = /\b(?:explain|in detail|walk me through|tell me more|give me the steps)\b/i.test(currentUserTurn)
+  const voiceReplyNeedsDetail = /\b(?:explain|in detail|walk me through|tell me more|give me the steps)\b/i.test(currentUserTurn);
+  const voiceReplySentenceLimit = voiceReplyNeedsDetail
     ? 4
     : 2;
+  // A role-play provider may ignore a sentence-count instruction and keep
+  // generating. Cap ordinary call turns near the amount we can actually speak;
+  // otherwise the user waits for discarded prose before TTS can begin.
+  const voiceReplyTokenLimit = voiceReplyNeedsDetail ? 220 : 96;
   const spokenStreamOptions = {
     deferUntilFlush: true,
     maxSentences: voiceReplySentenceLimit,
@@ -2683,7 +2688,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
           model: modelName,
           messages: messagesForOpenAI,
           temperature: 0.55,
-          max_tokens: 240,
+          max_tokens: voiceReplyTokenLimit,
           stream: true,
           ...requestOverrides,
         }),
@@ -2780,7 +2785,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
           {},
           {
             temperature: 0.60,
-            max_tokens: 240,
+            max_tokens: voiceReplyTokenLimit,
             venice_parameters: {
               include_venice_system_prompt: false,
               disable_thinking: true,
@@ -2827,7 +2832,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
         contents: formattedContents,
         config: {
           systemInstruction: `${voiceSystemPrompt}\nMANDATORY: Always finish all sentences completely. Never cut off mid-thought.`,
-          maxOutputTokens: 320,
+          maxOutputTokens: voiceReplyTokenLimit,
           temperature: 0.60
         }
       });
@@ -2883,7 +2888,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
         contents: formattedContents,
         config: {
           systemInstruction: `${voiceSystemPrompt}\nMANDATORY: Always finish all sentences completely. Never cut off mid-thought.`,
-          maxOutputTokens: 320,
+          maxOutputTokens: voiceReplyTokenLimit,
           temperature: 0.60
         }
       });
