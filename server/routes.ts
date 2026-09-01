@@ -33,6 +33,7 @@ import { isPublicApiPath } from './publicApiPaths';
 import { requestedExactReply } from './agentReplyConstraints';
 import {
   detectIncompletePersonaMediaRequest,
+  hasDistinctRequestedCreatorIdentity,
   resolvePersonaChatIdentity,
   resolvePersonaMediaRequest,
   sanitizePersonaSelfAddress,
@@ -1813,6 +1814,40 @@ router.post('/text-to-speech', handleGenerateSpeech);
 router.post('/agent/voice-chat', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { messages, conversationHistory, userMessage, activePersona, voiceLlmModel, memories, priorChatHistory, creatorProfile } = req.body;
+    const voiceRequestStartedAt = Date.now();
+
+    // Direct speech is the hot path after a streamed dialogue reply. When the
+    // persona already has an authoritative ElevenLabs voice ID, synthesize it
+    // before loading creator/persona records or constructing an unused LLM
+    // prompt. The slower catalog/remap path below remains the fallback.
+    const directSpeech = sanitizeSpokenDialogue(String(req.body.directTTS || ''));
+    const directTtsModel = String(req.body.ttsModel || req.body.voiceModel || 'eleven_turbo_v2_5');
+    const directVoiceId = String(req.body.voiceId || activePersona?.voiceId || '').trim();
+    const directElevenLabsKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key;
+    if (directSpeech && directElevenLabsKey && isElevenLabsVoiceEngine(directTtsModel) && isDirectElevenLabsVoiceId(directVoiceId)) {
+      const directModelId = directTtsModel.includes('flash')
+        ? 'eleven_flash_v2_5'
+        : directTtsModel.includes('multilingual')
+          ? 'eleven_multilingual_v2'
+          : 'eleven_turbo_v2_5';
+      const directResult = await requestElevenLabsSpeech(
+        directElevenLabsKey,
+        directVoiceId,
+        directSpeech,
+        directModelId,
+      );
+      if (directResult.audioUrl) {
+        console.log(`[Voice Latency] direct-tts=${Date.now() - voiceRequestStartedAt}ms model=${directModelId}`);
+        return res.json({
+          text: directSpeech,
+          audioUrl: directResult.audioUrl,
+          resolvedVoiceId: directVoiceId,
+          status: 'normal',
+        });
+      }
+      console.warn(`[Voice Chat ElevenLabs] Fast direct synthesis failed with status ${directResult.response.status}; using full fallback path.`);
+    }
+
     const genAI = getGeminiClientForRoutes();
     const xaiApiKey = process.env.XAI_API_KEY || process.env.xai_api_key || process.env.X_AI_API_KEY || '';
 
@@ -1821,10 +1856,17 @@ router.post('/agent/voice-chat', async (req: AuthenticatedRequest, res: Response
     const personaTone = activePersona?.tone || 'Confident, witty, charismatic, grounded, and authentic';
     const personaBio = activePersona?.bio || '';
 
-    const [storedCreator, savedPersonas] = await Promise.all([
-      readCreatorProfileForUser(req.user.id),
-      readPersonasForUser(req.user.id).catch(() => []),
-    ]);
+    const useRequestedCreatorFastPath = hasDistinctRequestedCreatorIdentity({
+      activePersona,
+      requestedCreator: creatorProfile,
+      requestedUserName: req.body.userName || activePersona?.userProfile?.name,
+    });
+    const [storedCreator, savedPersonas] = useRequestedCreatorFastPath
+      ? [null, []]
+      : await Promise.all([
+          readCreatorProfileForUser(req.user.id),
+          readPersonasForUser(req.user.id).catch(() => []),
+        ]);
     const creatorIdentity = resolvePersonaChatIdentity({
       activePersona,
       requestedCreator: creatorProfile,
@@ -2554,6 +2596,9 @@ STRICT RULES:
 
 // Real-Time SSE Text Streaming Endpoint for Conversational Voice
 router.post('/agent/voice-chat-stream', async (req: AuthenticatedRequest, res: Response) => {
+  const voiceRequestStartedAt = Date.now();
+  let providerFirstTokenAt: number | undefined;
+  let firstSafeTextAt: number | undefined;
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
   res.setHeader('Connection', 'keep-alive');
@@ -2566,10 +2611,18 @@ router.post('/agent/voice-chat-stream', async (req: AuthenticatedRequest, res: R
   const VENICE_KEY = process.env.Veniceai_api_key || process.env.veniceai_api_key || process.env.VENICEAI_API_KEY || process.env.VENICE_API_KEY || '';
   const ATLAS_KEY = process.env.ATLASCLOUD_API_KEY || process.env.atlascloud_api_key || process.env.Atlascloud_api_key || '';
 
-  const [storedCreator, savedPersonas] = await Promise.all([
-    readCreatorProfileForUser(req.user.id).catch(() => null),
-    readPersonasForUser(req.user.id).catch(() => []),
-  ]);
+  const useRequestedCreatorFastPath = hasDistinctRequestedCreatorIdentity({
+    activePersona,
+    requestedCreator: creatorProfile,
+    requestedUserName: req.body.userName,
+  });
+  const [storedCreator, savedPersonas] = useRequestedCreatorFastPath
+    ? [null, []]
+    : await Promise.all([
+        readCreatorProfileForUser(req.user.id).catch(() => null),
+        readPersonasForUser(req.user.id).catch(() => []),
+      ]);
+  const identityResolvedAt = Date.now();
   const creatorIdentity = resolvePersonaChatIdentity({
     activePersona,
     requestedCreator: creatorProfile,
@@ -2622,6 +2675,11 @@ router.post('/agent/voice-chat-stream', async (req: AuthenticatedRequest, res: R
     maxWords: voiceReplySentenceLimit > 2 ? 90 : 48,
     maxFillers: 1,
   } as const;
+  const voicePromptCacheKey = `persona-voice-${String(req.user.id).slice(0, 48)}-${String(activePersona?.id || personaName).slice(0, 48)}`;
+  const writeVoiceText = (text: string) => {
+    if (!firstSafeTextAt) firstSafeTextAt = Date.now();
+    res.write(`data: ${JSON.stringify({ text })}\n\n`);
+  };
 
   const voiceSystemPrompt = `You are ${personaName} on a live voice call with ${creatorName}.${personaContext}${memoryContext}
 
@@ -2690,7 +2748,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
     const isLocal = url.includes('127.0.0.1') || url.includes('localhost');
     const timeout = setTimeout(() => controller.abort(), timeoutMs ?? (isLocal ? 1200 : 45000));
     const spokenStream = createSpokenDialogueStream(chunk => {
-      res.write(`data: ${JSON.stringify({ text: chunk })}\n\n`);
+      writeVoiceText(chunk);
     }, guardSpokenIdentity, spokenStreamOptions);
     try {
       const resStream = await fetch(url, {
@@ -2731,6 +2789,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
           const choice = parsed.choices?.[0];
           const delta = choice?.delta?.content || '';
           if (delta) {
+            if (!providerFirstTokenAt) providerFirstTokenAt = Date.now();
             spokenStream.push(delta);
           }
         } catch {}
@@ -2761,17 +2820,17 @@ CRITICAL RULES FOR LIVE VOICE CALL:
     streamedText = incompleteMediaRequest === 'video'
       ? 'What kind of video would you like me to make?'
       : 'What kind of image would you like me to make?';
-    res.write(`data: ${JSON.stringify({ text: streamedText })}\n\n`);
+    writeVoiceText(streamedText);
     streamedSuccessfully = true;
   } else if (groundedShortReply) {
     streamedText = groundedShortReply;
-    res.write(`data: ${JSON.stringify({ text: streamedText })}\n\n`);
+    writeVoiceText(streamedText);
     streamedSuccessfully = true;
   } else if (action) {
     streamedText = action.type === 'image'
       ? "Mmm, give me a second — I'm taking that for you now."
       : "Give me a second — I'm recording that for you now.";
-    res.write(`data: ${JSON.stringify({ text: streamedText })}\n\n`);
+    writeVoiceText(streamedText);
     streamedSuccessfully = true;
   }
 
@@ -2801,6 +2860,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
           {
             temperature: 0.60,
             max_tokens: voiceReplyTokenLimit,
+            prompt_cache_key: voicePromptCacheKey,
             venice_parameters: {
               include_venice_system_prompt: false,
               disable_thinking: true,
@@ -2857,7 +2917,8 @@ CRITICAL RULES FOR LIVE VOICE CALL:
         }
       });
       const spokenStream = createSpokenDialogueStream(chunk => {
-        res.write(`data: ${JSON.stringify({ text: chunk })}\n\n`);
+        if (!providerFirstTokenAt) providerFirstTokenAt = Date.now();
+        writeVoiceText(chunk);
       }, guardSpokenIdentity, spokenStreamOptions);
       for await (const chunk of responseStream) {
         const chunkText = chunk.text || '';
@@ -2913,7 +2974,8 @@ CRITICAL RULES FOR LIVE VOICE CALL:
         }
       });
       const spokenStream = createSpokenDialogueStream(chunk => {
-        res.write(`data: ${JSON.stringify({ text: chunk })}\n\n`);
+        if (!providerFirstTokenAt) providerFirstTokenAt = Date.now();
+        writeVoiceText(chunk);
       }, guardSpokenIdentity, spokenStreamOptions);
       for await (const chunk of responseStream) {
         const chunkText = chunk.text || '';
@@ -2959,14 +3021,22 @@ CRITICAL RULES FOR LIVE VOICE CALL:
         const separator = /\s$/.test(streamedText) ? '' : ' ';
         const appended = `${separator}${continuation}`;
         streamedText += appended;
-        res.write(`data: ${JSON.stringify({ text: appended })}\n\n`);
+        writeVoiceText(appended);
       }
     } catch (repairError) {
       console.warn('[Voice Stream] Could not repair an incomplete final sentence:', repairError);
     }
   }
 
-  res.write(`data: ${JSON.stringify({ done: true, text: streamedText.trim(), action })}\n\n`);
+  const voiceRequestCompletedAt = Date.now();
+  const serverTiming = {
+    identityMs: identityResolvedAt - voiceRequestStartedAt,
+    firstTokenMs: providerFirstTokenAt ? providerFirstTokenAt - voiceRequestStartedAt : undefined,
+    firstTextMs: firstSafeTextAt ? firstSafeTextAt - voiceRequestStartedAt : undefined,
+    totalMs: voiceRequestCompletedAt - voiceRequestStartedAt,
+  };
+  console.log(`[Voice Latency] identity=${serverTiming.identityMs}ms first-token=${serverTiming.firstTokenMs ?? '-'}ms first-text=${serverTiming.firstTextMs ?? '-'}ms total=${serverTiming.totalMs}ms fast-identity=${useRequestedCreatorFastPath}`);
+  res.write(`data: ${JSON.stringify({ done: true, text: streamedText.trim(), action, serverTiming })}\n\n`);
   res.end();
 });
 

@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   detectIncompletePersonaMediaRequest,
   detectExplicitPersonaMediaRequest,
+  hasDistinctRequestedCreatorIdentity,
   resolvePersonaChatIdentity,
   resolvePersonaMediaRequest,
   sanitizePersonaSelfAddress,
@@ -11,6 +12,21 @@ import {
 const leen = { id: 'leen', name: 'Leen Hassan', referenceImage: 'leen.jpg' };
 const rawan = { id: 'rawan', name: 'Rawan Hassan', referenceImage: 'rawan.jpg' };
 const drH = { id: 'dr-h', name: 'Dr. H', referenceImage: 'dr-h.jpg', isCreator: true };
+
+test('uses a distinct requested creator for the low-latency voice identity path', () => {
+  assert.equal(hasDistinctRequestedCreatorIdentity({
+    activePersona: leen,
+    requestedCreator: { name: 'Dr. H' },
+  }), true);
+  assert.equal(hasDistinctRequestedCreatorIdentity({
+    activePersona: leen,
+    requestedCreator: { name: 'Leen Hasan' },
+  }), false);
+  assert.equal(hasDistinctRequestedCreatorIdentity({
+    activePersona: leen,
+    requestedUserName: '',
+  }), false);
+});
 
 test('a saved creator persona overrides a stale client profile named after the active persona', () => {
   const identity = resolvePersonaChatIdentity({

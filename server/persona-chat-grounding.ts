@@ -44,6 +44,23 @@ function isSameNamedIdentity(left: unknown, right: unknown): boolean {
   return leftFirst.length >= 3 && leftFirst === rightFirst;
 }
 
+/**
+ * A current browser creator profile is sufficient for latency-sensitive voice
+ * turns when it names someone other than the active persona. Database fallback
+ * remains mandatory for missing or self-conflicting identity data.
+ */
+export function hasDistinctRequestedCreatorIdentity(input: {
+  activePersona?: MediaPersonaContext | null;
+  requestedCreator?: CreatorProfile | null;
+  requestedUserName?: unknown;
+}): boolean {
+  const candidates = [input.requestedCreator?.name, input.requestedUserName];
+  return candidates.some(candidate => (
+    String(candidate || '').trim().length > 0
+    && !isSameNamedIdentity(candidate, input.activePersona?.name)
+  ));
+}
+
 function isActivePersona(persona: MediaPersonaContext | undefined, activePersona?: MediaPersonaContext | null): boolean {
   if (!persona || !activePersona) return false;
   if (persona.id && activePersona.id && persona.id === activePersona.id) return true;
