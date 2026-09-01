@@ -85,6 +85,7 @@ import { useRef } from 'react';
 import { ProModeToggle, useProMode } from '../utils/useProMode';
 import type { CreationBrief, CreationOutcome } from '../types/creation';
 import {
+  getVideoModelType,
   pickDefaultImageModel,
   pickDefaultVideoModelForType,
 } from '../../shared/mediaDefaults';
@@ -1071,11 +1072,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     const i2v: Record<string, ModelInfo[]> = {};
     const v2v: Record<string, ModelInfo[]> = {};
     videoModels.forEach(m => {
-      const typeStr = (m.type || '').toLowerCase();
-      const idStr = (m.id || '').toLowerCase();
-      const isV2V = typeStr === 'video-to-video' || idStr.includes('v2v') || idStr.includes('edit') || idStr.includes('seedance') || idStr.includes('wan') || idStr.includes('qwen') || idStr.includes('veo-omni');
-      const isI2V = typeStr === 'image-to-video' || idStr.includes('i2v');
-      const target = isV2V ? v2v : (isI2V ? i2v : t2v);
+      const modelType = getVideoModelType(m);
+      const target = modelType === 'video-to-video' ? v2v : (modelType === 'image-to-video' ? i2v : t2v);
       if (!target[m.provider]) target[m.provider] = [];
       target[m.provider].push(m);
     });
@@ -1311,8 +1309,10 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     setExtendResult(null);
     setExtendError(null);
 
-    const isI2V = selectedVideoModel.includes('i2v');
-    const isV2V = selectedVideoModel.toLowerCase().includes('v2v') || selectedVideoModel.toLowerCase().includes('video-to-video') || selectedVideoModel.toLowerCase().includes('edit') || selectedVideoModel.toLowerCase().includes('pulid') || selectedVideoModel.toLowerCase().includes('consist') || selectedVideoModel.toLowerCase().includes('seedance') || selectedVideoModel.toLowerCase().includes('wan') || selectedVideoModel.toLowerCase().includes('qwen') || selectedVideoModel.toLowerCase().includes('veo-omni');
+    const selectedVideoInfo = videoModels.find(m => m.id === selectedVideoModel);
+    const selectedVideoType = getVideoModelType(selectedVideoInfo || { id: selectedVideoModel });
+    const isI2V = selectedVideoType === 'image-to-video';
+    const isV2V = selectedVideoType === 'video-to-video';
 
     try {
       const effectiveRef = videoSourceVideo || videoSourceImage || (videoSourcePersonaId !== 'none' ? personas.find(p => p.id === videoSourcePersonaId)?.referenceImage : null);
@@ -1326,7 +1326,6 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         throw new Error('Video-to-video/editing models require an uploaded source reference.');
       }
       
-      const selectedVideoInfo = videoModels.find(m => m.id === selectedVideoModel);
       const supportsAspectRatio = selectedVideoInfo?.supportedProperties?.some(p => ['aspect_ratio', 'aspectRatio', 'ratio'].includes(p)) ?? false;
       const supportsDuration = selectedVideoInfo?.supportedProperties?.some(p => ['duration', 'length', 'seconds'].includes(p)) ?? false;
       const supportsResolution = selectedVideoInfo?.supportedProperties?.some(p => ['resolution', 'quality', 'size'].includes(p)) ?? false;
@@ -2556,8 +2555,9 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const renderVideoMode = () => {
     const selectedVideoInfo = videoModels.find(m => m.id === selectedVideoModel);
     const isGoogleVideo = selectedVideoInfo?.provider?.toLowerCase().includes('google') || false;
-    const isI2V = selectedVideoInfo?.type === 'image-to-video' || selectedVideoModel.includes('i2v');
-    const isV2V = selectedVideoModel.toLowerCase().includes('v2v') || selectedVideoModel.toLowerCase().includes('video-to-video') || selectedVideoModel.toLowerCase().includes('edit') || selectedVideoModel.toLowerCase().includes('pulid') || selectedVideoModel.toLowerCase().includes('consist') || selectedVideoModel.toLowerCase().includes('seedance') || selectedVideoModel.toLowerCase().includes('wan') || selectedVideoModel.toLowerCase().includes('qwen') || selectedVideoModel.toLowerCase().includes('veo-omni');
+    const selectedVideoType = getVideoModelType(selectedVideoInfo || { id: selectedVideoModel });
+    const isI2V = selectedVideoType === 'image-to-video';
+    const isV2V = selectedVideoType === 'video-to-video';
 
     const videoAspectRatioOptions = [
       { value: '16:9', label: '16:9 Landscape' },

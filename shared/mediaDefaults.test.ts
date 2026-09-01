@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   DEFAULT_IMAGE_MODEL_ID,
   DEFAULT_VIDEO_MODEL_ID,
+  getVideoModelType,
   pickDefaultImageModel,
   pickDefaultVideoModel,
   pickDefaultVideoModelForType,
@@ -14,6 +15,21 @@ test('uses WaveSpeed Seedream 5.0 Pro as the image default', () => {
     { id: DEFAULT_IMAGE_MODEL_ID, name: 'Seedream 5.0 Pro', provider: 'WaveSpeed AI' },
   ];
   assert.equal(pickDefaultImageModel(models)?.id, DEFAULT_IMAGE_MODEL_ID);
+});
+
+test('classifies Wan generation models by endpoint type instead of the Wan brand name', () => {
+  assert.equal(getVideoModelType({
+    id: 'wavespeed-t2v:alibaba/wan-3.0-t2v-1080p',
+    name: 'Wan 3.0 T2V',
+  }), 'text-to-video');
+  assert.equal(getVideoModelType({
+    id: 'wavespeed-i2v:alibaba/wan-3.0/image-to-video',
+    name: 'Wan 3.0 I2V',
+  }), 'image-to-video');
+  assert.equal(getVideoModelType({
+    id: 'wavespeed-v2v:alibaba/wan-3.0-v2v-1080p/edit',
+    name: 'Wan 3.0 Edit',
+  }), 'video-to-video');
 });
 
 test('uses the matching WaveSpeed Wan 3.0 mode in the standalone video studio', () => {

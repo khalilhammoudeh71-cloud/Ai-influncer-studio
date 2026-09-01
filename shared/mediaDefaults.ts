@@ -13,6 +13,8 @@ type MediaModelLike = {
   type?: string;
 };
 
+export type VideoModelType = 'text-to-video' | 'image-to-video' | 'video-to-video';
+
 const normalized = (value?: string) => (value || '').toLowerCase();
 
 export function isWaveSpeedModel(model: MediaModelLike): boolean {
@@ -39,6 +41,20 @@ export function isWan3VideoModel(model: MediaModelLike): boolean {
   );
 }
 
+export function getVideoModelType(model: MediaModelLike): VideoModelType {
+  if (model.type === 'text-to-video' || model.type === 'image-to-video' || model.type === 'video-to-video') {
+    return model.type;
+  }
+  const id = normalized(model.id);
+  if (id.startsWith('wavespeed-v2v:') || id.includes('video-to-video') || id.includes('/edit') || id.includes('-v2v')) {
+    return 'video-to-video';
+  }
+  if (id.startsWith('wavespeed-i2v:') || id.includes('image-to-video') || id.includes('-i2v')) {
+    return 'image-to-video';
+  }
+  return 'text-to-video';
+}
+
 export function pickDefaultImageModel<T extends MediaModelLike>(models: T[]): T | undefined {
   return models.find(model => model.id === DEFAULT_IMAGE_MODEL_ID)
     || models.find(model => isWaveSpeedModel(model) && isSeedream5ProModel(model))
@@ -58,15 +74,9 @@ export function pickDefaultVideoModel<T extends MediaModelLike>(models: T[]): T 
 
 export function pickDefaultVideoModelForType<T extends MediaModelLike>(
   models: T[],
-  type: 'text-to-video' | 'image-to-video' | 'video-to-video',
+  type: VideoModelType,
 ): T | undefined {
-  const typedModels = models.filter(model => {
-    const id = normalized(model.id);
-    if (model.type === type) return true;
-    if (type === 'text-to-video') return id.includes('t2v') || id.includes('text-to-video');
-    if (type === 'image-to-video') return id.includes('i2v') || id.includes('image-to-video');
-    return id.includes('v2v') || id.includes('video-to-video') || id.includes('/edit');
-  });
+  const typedModels = models.filter(model => getVideoModelType(model) === type);
 
   return typedModels.find(isWan3VideoModel)
     || typedModels.find(isWaveSpeedModel)
