@@ -43,7 +43,11 @@ import {
   type PersonaMemoryNote,
 } from '../utils/personaMemory';
 import { resolveMediaModelFromPrompt } from '../utils/mediaModelResolver';
-import { resolveImageRevisionContext, type GeneratedImageMessage } from '../utils/mediaRevisionContext';
+import {
+  isConversationalMediaMention,
+  resolveImageRevisionContext,
+  type GeneratedImageMessage,
+} from '../utils/mediaRevisionContext';
 import {
   VOICE_IDENTITY_ONBOARDING_STORAGE_KEY,
   VOICE_IDENTITY_STORAGE_KEY,
@@ -2318,6 +2322,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 
       // Voice-call image edits may only inherit media from this active call (or
       // an explicitly attached generated image), never from archived chats.
+      const voiceMediaConversationOnly = isConversationalMediaMention(text);
       const voiceImageRevisionCandidate = resolveImageRevisionContext(text, updatedHistory, callRevisionSource);
       const incompleteVoiceMediaRequest = detectIncompleteMediaCreationRequest(text);
       if (incompleteVoiceMediaRequest) {
@@ -2325,13 +2330,13 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         // still-underspecified request while we ask the user for details.
         setActiveCallMedia(null);
       }
-      const isVoiceImageIntent = voiceImageRevisionCandidate.isRevision || data.action?.type === 'image' || (!incompleteVoiceMediaRequest && (
+      const isVoiceImageIntent = !voiceMediaConversationOnly && (voiceImageRevisionCandidate.isRevision || data.action?.type === 'image' || (!incompleteVoiceMediaRequest && (
         detectIntent(text) === 'image' ||
         (/\b(?:photo|pic|picture|selfie|image)\b/i.test(text) && /\b(?:take|send|snap|show|generate|make|see|want|wearing|exposed|nude|naked|bedroom|bed)\b/i.test(text)) ||
         /\b(?:sending it|try again right now.*sending it|sending you a (?:photo|selfie|pic|image)|sending a (?:photo|selfie|pic|image)|taking a (?:photo|selfie)|take a quick (?:photo|selfie)|here is the (?:photo|selfie)|snap that for you|take that for you|snapping (?:this|that|a photo)|let me take|give me one second.*(?:snap|take|photo|pic)|here you go.*(?:pic|photo))\b/i.test(reply)
-      ));
+      )));
 
-      const isVoiceVideoIntent = !isVoiceImageIntent && (data.action?.type === 'video' || (!incompleteVoiceMediaRequest && (
+      const isVoiceVideoIntent = !voiceMediaConversationOnly && !isVoiceImageIntent && (data.action?.type === 'video' || (!incompleteVoiceMediaRequest && (
         detectIntent(text) === 'video' || /\b(?:sending you a video|recorded a video|sending the video)\b/i.test(reply)
       )));
 
@@ -3279,7 +3284,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     // Show useful feedback immediately instead of waiting for the chat model to
     // finish classifying the request. The label becomes more specific once the
     // selected provider/model is known below.
-    const immediateIntent = detectIntent(effectiveText);
+    const mediaConversationOnly = isConversationalMediaMention(effectiveText);
+    const immediateIntent = mediaConversationOnly ? 'chat' : detectIntent(effectiveText);
     const immediateImageRevision = resolveImageRevisionContext(
       effectiveText,
       messagesRef.current,
@@ -3355,8 +3361,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       const imageRevisionCandidate = resolveImageRevisionContext(effectiveText, messagesRef.current, pastedRevisionSource);
       
       const isVoiceNoteAction = data.action?.type === 'voice_note' || (/\b(voice note|audio memo|voice message|audio message|whisper to me)\b/i.test(effectiveText) && !isConversationalQuestion);
-      const isVideoAction = data.action?.type === 'video' || detectedIntent === 'video';
-      const isImageAction = !isVideoAction && (imageRevisionCandidate.isRevision || data.action?.type === 'image' || isExplicitVisualRequest || detectedIntent === 'image');
+      const isVideoAction = !mediaConversationOnly && (data.action?.type === 'video' || detectedIntent === 'video');
+      const isImageAction = !mediaConversationOnly && !isVideoAction && (imageRevisionCandidate.isRevision || data.action?.type === 'image' || isExplicitVisualRequest || detectedIntent === 'image');
 
       if (isVoiceNoteAction) {
         replaceMessage(loadingId, { type: 'text', content: replyText });

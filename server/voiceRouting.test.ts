@@ -10,6 +10,7 @@ import {
   sanitizeSpokenDialogue,
   selectElevenLabsPersonaVoice,
   shapeNaturalSpokenReply,
+  shouldAbandonVoiceProviderAliases,
 } from './voiceRouting';
 
 const voices = [
@@ -78,6 +79,14 @@ test('shapes a roleplay model reply into concise human dialogue', () => {
   );
 });
 
+test('preserves natural ellipses and normalizes creator-name spacing', () => {
+  assert.equal(
+    shapeNaturalSpokenReply("Well, I'd make it look a little more... real, I guess?"),
+    "Well, I'd make it look a little more... real, I guess?",
+  );
+  assert.equal(sanitizeSpokenDialogue('It is good to see you again, Dr.H!'), 'It is good to see you again, Dr. H!');
+});
+
 test('can defer voice streaming until one shaped continuous reply is ready', () => {
   const chunks: string[] = [];
   const stream = createSpokenDialogueStream(
@@ -127,6 +136,13 @@ test('recognizes terminal provider account statuses and ElevenLabs models', () =
   assert.equal(isElevenLabsVoiceEngine('cartesia-sonic'), false);
   assert.equal(isDirectElevenLabsVoiceId('7jFje9BJoTWzqZzouT0j'), true);
   assert.equal(isDirectElevenLabsVoiceId('elevenlabs:rawan'), false);
+});
+
+test('abandons provider aliases after timeouts and upstream failures', () => {
+  assert.equal(shouldAbandonVoiceProviderAliases({ name: 'AbortError' }), true);
+  assert.equal(shouldAbandonVoiceProviderAliases({ status: 504 }), true);
+  assert.equal(shouldAbandonVoiceProviderAliases({ status: 429 }), true);
+  assert.equal(shouldAbandonVoiceProviderAliases({ status: 404 }), false);
 });
 
 test('keeps live-call greetings short, spoken, and free of stage directions', () => {

@@ -75,6 +75,15 @@ export function isProviderAccountUnavailableStatus(status: unknown): boolean {
   return status === 401 || status === 402 || status === 403;
 }
 
+export function shouldAbandonVoiceProviderAliases(error: unknown): boolean {
+  const providerError = error as { name?: unknown; status?: unknown } | null;
+  const status = Number(providerError?.status);
+  return providerError?.name === 'AbortError' ||
+    status === 408 ||
+    status === 429 ||
+    (status >= 500 && status <= 599);
+}
+
 export function isElevenLabsVoiceEngine(value: unknown): boolean {
   const model = String(value || '').toLowerCase();
   return model.startsWith('eleven_') || model.includes('elevenlabs');
@@ -153,6 +162,7 @@ export function sanitizeSpokenDialogue(value: unknown): string {
 
   cleaned = cleaned.replace(/[-–—\s]+$/, '').trim();
   if (!cleaned) return '';
+  cleaned = cleaned.replace(/\bDr\.\s*H\b/gi, 'Dr. H');
   cleaned = cleaned.replace(/^([a-z])/, (_, firstLetter: string) => firstLetter.toUpperCase());
   if (!/[.!?]$/.test(cleaned)) cleaned += '.';
   return cleaned;
@@ -175,6 +185,7 @@ const SPOKEN_FILLER_CLUSTER = /(^|[.!?]\s+)((?:(?:uh|um|hmm|mm|well|honestly|oka
 const SPOKEN_FILLER_TOKEN = /\b(?:uh|um|hmm|mm|well|honestly|okay|wait)\b/gi;
 const SPOKEN_ABBREVIATION_PERIOD = /\b(Mr|Mrs|Ms|Dr|Prof|Sr|Jr)\./gi;
 const SPOKEN_PERIOD_PLACEHOLDER = '\uE000';
+const SPOKEN_ELLIPSIS_PLACEHOLDER = '\uE001';
 
 export function shapeNaturalSpokenReply(
   value: unknown,
@@ -197,12 +208,17 @@ export function shapeNaturalSpokenReply(
     },
   ).replace(/\s+/g, ' ').trim();
 
-  const protectedReply = withoutRepeatedFillers.replace(
-    SPOKEN_ABBREVIATION_PERIOD,
-    (_match, title: string) => `${title}${SPOKEN_PERIOD_PLACEHOLDER}`,
-  );
+  const protectedReply = withoutRepeatedFillers
+    .replace(/\.{3}|…/g, SPOKEN_ELLIPSIS_PLACEHOLDER)
+    .replace(
+      SPOKEN_ABBREVIATION_PERIOD,
+      (_match, title: string) => `${title}${SPOKEN_PERIOD_PLACEHOLDER}`,
+    );
   const sentences = protectedReply.match(/[^.!?]+(?:[.!?]+|$)/g)
-    ?.map(sentence => sentence.split(SPOKEN_PERIOD_PLACEHOLDER).join('.').trim())
+    ?.map(sentence => sentence
+      .split(SPOKEN_PERIOD_PLACEHOLDER).join('.')
+      .split(SPOKEN_ELLIPSIS_PLACEHOLDER).join('...')
+      .trim())
     .filter(Boolean) || [];
   if (sentences.length === 0) return '';
 

@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { findLatestGeneratedImage, isImageRevisionRequest, resolveImageRevisionContext } from './mediaRevisionContext';
+import {
+  findLatestGeneratedImage,
+  isConversationalMediaMention,
+  isImageRevisionRequest,
+  resolveImageRevisionContext,
+} from './mediaRevisionContext';
 
 const originalImage = {
   id: 'image-1',
@@ -35,6 +40,26 @@ test('does not reinterpret ordinary conversation as an old image revision', () =
     resolveImageRevisionContext('Blue. What went wrong with the cake, and what would you change next time?', [originalImage]).isRevision,
     false,
   );
+});
+
+test('keeps negated and conversational media mentions out of the generation pipeline', () => {
+  const optOuts = [
+    "I don't want another image. Let's just talk about the weather.",
+    'Do not regenerate that image.',
+    'Stop sending photos.',
+    'I am not asking for a picture.',
+    'Why did you send that image?',
+    'No more images, please.',
+  ];
+
+  for (const instruction of optOuts) {
+    assert.equal(isConversationalMediaMention(instruction), true, instruction);
+    assert.equal(isImageRevisionRequest(instruction, true), false, instruction);
+    assert.equal(resolveImageRevisionContext(instruction, [originalImage]).isRevision, false, instruction);
+  }
+
+  assert.equal(isConversationalMediaMention('Send another image with a blue jacket.'), false);
+  assert.equal(isImageRevisionRequest('Send another image with a blue jacket.', true), true);
 });
 
 test('keeps direct and polite image edit commands working', () => {

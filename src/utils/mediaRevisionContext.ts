@@ -31,6 +31,21 @@ const IMAGE_REVISION_LANGUAGE = [
   /^(?:more|less|closer|wider|brighter|darker|warmer|cooler)\b/i,
 ];
 
+const CONVERSATIONAL_MEDIA_MENTION = [
+  /\b(?:do\s+not|don't|dont|never)\s+(?:want|need)\s+(?:(?:an?|any|another|more|the)\s+)?(?:image|photo|pic|picture|selfie|video|clip)s?\b/i,
+  /\b(?:do\s+not|don't|dont|never)\s+(?:send|make|generate|regenerate|create|recreate|redo|retry|edit|take|show|give|share)\b[^.!?]{0,40}\b(?:image|photo|pic|picture|selfie|video|clip)s?\b/i,
+  /\b(?:stop|quit)\s+(?:sending|making|generating|creating|showing|sharing)\b[^.!?]{0,32}\b(?:image|photo|pic|picture|selfie|video|clip)s?\b/i,
+  /\b(?:i(?:'m|\s+am)?\s+not|wasn't|weren't|we(?:'re|\s+are)\s+not)\s+(?:asking|requesting)\b[^.!?]{0,40}\b(?:image|photo|pic|picture|selfie|video|clip)s?\b/i,
+  /\b(?:no\s+more|without\s+(?:an?|any|more))\s+(?:image|photo|pic|picture|selfie|video|clip)s?\b/i,
+  /\b(?:why\s+(?:did|are|do)\s+you|what\s+is)\b[^.!?]{0,40}\b(?:image|photo|pic|picture|selfie|video|clip)s?\b/i,
+  /\b(?:let(?:'s|\s+us))\s+(?:just\s+)?(?:talk|chat)\b/i,
+];
+
+export function isConversationalMediaMention(instruction: string): boolean {
+  const normalized = instruction.trim();
+  return Boolean(normalized) && CONVERSATIONAL_MEDIA_MENTION.some(pattern => pattern.test(normalized));
+}
+
 export function findLatestGeneratedImage(messages: GeneratedImageMessage[]): GeneratedImageMessage | undefined {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
@@ -45,6 +60,7 @@ export function isImageRevisionRequest(instruction: string, hasPreviousImage: bo
   if (!hasPreviousImage) return false;
   const normalized = instruction.trim();
   if (!normalized) return false;
+  if (isConversationalMediaMention(normalized)) return false;
 
   // A fully specified "new image" request starts a fresh generation unless the
   // creator also uses explicit continuation/edit language.

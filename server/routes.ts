@@ -17,6 +17,7 @@ import {
   isValidPublicVoiceReference,
   sanitizeSpokenDialogue,
   selectElevenLabsPersonaVoice,
+  shouldAbandonVoiceProviderAliases,
 } from './voiceRouting';
 import {
   normalizePersonaMediaReferences,
@@ -2669,10 +2670,17 @@ CRITICAL RULES FOR LIVE VOICE CALL:
     : undefined;
 
   // Parse OpenAI-compatible streams without losing JSON split across network chunks.
-  const handleOpenAIStream = async (url: string, key: string, modelName: string, customHeaders = {}, requestOverrides = {}) => {
+  const handleOpenAIStream = async (
+    url: string,
+    key: string,
+    modelName: string,
+    customHeaders = {},
+    requestOverrides = {},
+    timeoutMs?: number,
+  ) => {
     const controller = new AbortController();
     const isLocal = url.includes('127.0.0.1') || url.includes('localhost');
-    const timeout = setTimeout(() => controller.abort(), isLocal ? 1200 : 45000);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs ?? (isLocal ? 1200 : 45000));
     const spokenStream = createSpokenDialogueStream(chunk => {
       res.write(`data: ${JSON.stringify({ text: chunk })}\n\n`);
     }, guardSpokenIdentity, spokenStreamOptions);
@@ -2694,8 +2702,6 @@ CRITICAL RULES FOR LIVE VOICE CALL:
         }),
         signal: controller.signal
       });
-      clearTimeout(timeout);
-
       if (!resStream.ok) {
         const responseError = new Error(`OpenAI stream response error ${resStream.status}`) as Error & { status?: number };
         responseError.status = resStream.status;
@@ -2732,10 +2738,11 @@ CRITICAL RULES FOR LIVE VOICE CALL:
       if (pending.trim()) processLine(pending);
       return spokenStream.flush();
     } catch (err) {
-      clearTimeout(timeout);
       const partialText = spokenStream.flush();
       if (partialText.trim()) return partialText;
       throw err;
+    } finally {
+      clearTimeout(timeout);
     }
   };
 
@@ -2790,7 +2797,8 @@ CRITICAL RULES FOR LIVE VOICE CALL:
               include_venice_system_prompt: false,
               disable_thinking: true,
             },
-          }
+          },
+          8000,
         );
         streamedSuccessfully = streamedText.trim().length > 0;
         if (streamedSuccessfully) break;
@@ -2799,6 +2807,10 @@ CRITICAL RULES FOR LIVE VOICE CALL:
         if (isProviderAccountUnavailableStatus(status)) {
           veniceUnavailableUntil = Date.now() + VENICE_ACCOUNT_COOLDOWN_MS;
           console.warn(`[Voice Stream] Venice account unavailable (${status}); pausing retries for 10 minutes.`);
+          break;
+        }
+        if (shouldAbandonVoiceProviderAliases(err)) {
+          console.warn(`[Voice Stream] Venice ${veniceModel} failed (${status || (err as { name?: string })?.name || 'network'}); skipping remaining aliases and using the global fallback.`);
           break;
         }
         console.warn(`[Voice Stream] Venice ${veniceModel} failed, trying fallback:`, err);
