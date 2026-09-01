@@ -24,6 +24,7 @@ const {
   clearConversationHistory,
   deleteConversationRecord,
   loadConversationContext,
+  mergeConversationUiRecords,
   mergeUniqueConversationRecords,
   saveRecentConversation,
   searchConversationMemories,
@@ -60,6 +61,16 @@ test('does not archive loading placeholders', () => {
     record('u1', 'hello', '2026-08-23T20:00:01.000Z'),
   ]);
   assert.deepEqual(merged.map(item => item.id), ['u1']);
+});
+
+test('keeps loading placeholders in the live UI timeline so replies can replace them', () => {
+  const loading = { ...record('loading', 'Thinking...', '2026-08-23T20:00:01.000Z'), type: 'loading' };
+  const merged = mergeConversationUiRecords([
+    record('u1', 'Hello', '2026-08-23T20:00:00.000Z'),
+    loading,
+  ]);
+  assert.deepEqual(merged.map(item => item.id), ['u1', 'loading']);
+  assert.equal(merged[1].type, 'loading');
 });
 
 test('restores a shared voice and text timeline after reload', () => {

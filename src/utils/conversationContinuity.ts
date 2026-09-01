@@ -87,6 +87,28 @@ export function mergeUniqueConversationRecords(
   });
 }
 
+/**
+ * Merge the live UI timeline without dropping transient loading records.
+ * Durable history intentionally excludes loading placeholders, but the UI
+ * must retain them so an async reply can replace the exact placeholder by id.
+ */
+export function mergeConversationUiRecords(
+  ...groups: ConversationRecord[][]
+): ConversationRecord[] {
+  const byId = new Map<string, ConversationRecord>();
+  for (const group of groups) {
+    for (const record of group) {
+      if (!record || !record.id) continue;
+      byId.set(record.id, record);
+    }
+  }
+  return [...byId.values()].sort((a, b) => {
+    const aTime = new Date(a.timestamp).getTime();
+    const bTime = new Date(b.timestamp).getTime();
+    return (Number.isFinite(aTime) ? aTime : 0) - (Number.isFinite(bTime) ? bTime : 0);
+  });
+}
+
 export function loadRecentConversation(personaId: string): ConversationRecord[] {
   return parseRecords(accountLocalStorage.getItem(historyKey(personaId))).map(record => ({
     ...record,

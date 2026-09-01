@@ -27,6 +27,7 @@ import {
   loadConversationArchive,
   loadConversationContext,
   loadRecentConversation,
+  mergeConversationUiRecords,
   mergeUniqueConversationRecords,
   migrateRecentConversationToArchive,
   saveRecentConversation,
@@ -80,6 +81,14 @@ import {
   type VoiceTurnTiming,
 } from '../utils/voiceStability';
 import { buildVoiceConversationHistory } from '../../shared/voiceConversationContext';
+import {
+  DEFAULT_IMAGE_MODEL_ID,
+  DEFAULT_IMAGE_MODEL_NAME,
+  DEFAULT_VIDEO_MODEL_ID,
+  DEFAULT_VIDEO_MODEL_NAME,
+  pickDefaultImageModel,
+  pickDefaultVideoModel,
+} from '../../shared/mediaDefaults';
 import { CommitStrategy, RealtimeEvents, Scribe, type RealtimeConnection } from '@elevenlabs/client';
 
 // ── Typewriter hook ──────────────────────────────────────
@@ -968,8 +977,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         type: 'video',
         persona: activePersona,
         prompt: input.prompt,
-        imageModelId: selectedEditModelId || 'wavespeed:bytedance/seedream-v5.0-pro',
-        videoModelId: selectedVideoModelId || 'wavespeed-i2v:bytedance/seedance-2-mini',
+        imageModelId: selectedEditModelId || DEFAULT_IMAGE_MODEL_ID,
+        videoModelId: selectedVideoModelId || DEFAULT_VIDEO_MODEL_ID,
         referenceImage: input.imageUrl,
         aspectRatio: input.aspectRatio,
         allowNsfw: true,
@@ -1071,8 +1080,11 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   const handleSendVoiceNoteRequest = async () => {
     if (isGenerating) return;
     setIsGenerating(true);
-    const loadingId = uid();
-    addMessage({ role: 'persona', type: 'loading', content: `Recording voice note for you...` });
+    const loadingId = addMessage({
+      role: 'persona',
+      type: 'loading',
+      content: `Recording voice note for you...`,
+    });
     try {
       const res = await authFetch('/api/chat', {
         method: 'POST',
@@ -2368,8 +2380,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         const requestedModelId = modelSelection.explicit && modelSelection.matched
           ? modelSelection.modelId
           : mediaType === 'image'
-            ? imageRevision.source?.modelId || selectedEditModelId || 'wavespeed:bytedance/seedream-v5.0-pro'
-            : selectedVideoModelId || 'wavespeed-i2v:bytedance/seedance-2-mini';
+            ? imageRevision.source?.modelId || selectedEditModelId || DEFAULT_IMAGE_MODEL_ID
+            : selectedVideoModelId || DEFAULT_VIDEO_MODEL_ID;
         const extraImages = [
           sentCallAttachment?.type === 'image' && !sentCallAttachment.sourceMessageId ? sentCallAttachment.base64 : undefined,
           !sentCallAttachment && lastUploadedReference ? lastUploadedReference : undefined,
@@ -2383,8 +2395,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
               type: mediaType,
               persona: activePersona,
               prompt: requestPrompt,
-              imageModelId: mediaType === 'image' ? requestedModelId : selectedEditModelId || 'wavespeed:bytedance/seedream-v5.0-pro',
-              videoModelId: mediaType === 'video' ? requestedModelId : selectedVideoModelId || 'wavespeed-i2v:bytedance/seedance-2-mini',
+              imageModelId: mediaType === 'image' ? requestedModelId : selectedEditModelId || DEFAULT_IMAGE_MODEL_ID,
+              videoModelId: mediaType === 'video' ? requestedModelId : selectedVideoModelId || DEFAULT_VIDEO_MODEL_ID,
               aspectRatio: '9:16',
               allowNsfw: true,
               revisionImage: imageRevision.isRevision ? imageRevision.source?.content : undefined,
@@ -3016,23 +3028,12 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       setEditModels(em);
       setVideoModels(vm);
       if (em.length > 0) {
-        // Priority 1: ByteDance Seedream 5.0 Pro from Wavespeed (Specifically PRO, not Lite)
-        const seedream5Pro = em.find(m => {
-          const id = (m.id || '').toLowerCase();
-          const name = (m.name || '').toLowerCase();
-          return (id.includes('seedream-v5.0-pro') || id.includes('seedream-5.0-pro') || id.includes('seedream-5-pro') || name.includes('seedream 5.0 pro') || name.includes('seedream 5 pro')) && !id.includes('lite') && !name.includes('lite');
-        }) || em.find(m => (m.id.includes('seedream-v5') || m.name.toLowerCase().includes('seedream 5')) && !m.id.includes('lite') && !m.name.toLowerCase().includes('lite')) || em[0];
-        setSelectedEditModelId(seedream5Pro.id);
+        const seedream5Pro = pickDefaultImageModel(em);
+        if (seedream5Pro) setSelectedEditModelId(seedream5Pro.id);
       }
-          if (vm.length > 0) {
-        // Priority 1: ByteDance Seedance 2.0 Mini (Wavespeed - Uncensored)
-        const seedanceMini = vm.find(m => {
-          const id = (m.id || '').toLowerCase();
-          const name = (m.name || '').toLowerCase();
-          return (id.includes('wavespeed') || m.provider?.toLowerCase().includes('wavespeed')) && 
-            (id.includes('seedance-2-mini') || id.includes('seedance-2.0-mini') || id.includes('seedance-mini') || name.includes('seedance 2.0 mini') || name.includes('seedance 2 mini') || id.includes('seedance-2.0') || name.includes('seedance 2.0') || id.includes('seedance'));
-        }) || vm.find(m => m.id.includes('seedance')) || vm.find(m => m.id.startsWith('wavespeed')) || vm[0];
-        setSelectedVideoModelId(seedanceMini.id);
+      if (vm.length > 0) {
+        const wan3 = pickDefaultVideoModel(vm);
+        if (wan3) setSelectedVideoModelId(wan3.id);
       }
       setModelsLoaded(true);
     }).catch(() => setModelsLoaded(true));
@@ -3092,7 +3093,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   }, [messages, activeSegment]);
 
   const appendConversationMessages = useCallback((records: ChatMessage[]): ChatMessage[] => {
-    const next = mergeUniqueConversationRecords(
+    const next = mergeConversationUiRecords(
       messagesRef.current as ConversationRecord[],
       records as ConversationRecord[],
     ).map(record => ({
@@ -3407,8 +3408,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         const requestedModelId = modelSelection.explicit && modelSelection.matched
           ? modelSelection.modelId
           : mediaType === 'image'
-            ? imageRevision.source?.modelId || selectedEditModelId || 'wavespeed:bytedance/seedream-v5.0-pro'
-            : selectedVideoModelId || 'wavespeed-i2v:bytedance/seedance-2-mini';
+            ? imageRevision.source?.modelId || selectedEditModelId || DEFAULT_IMAGE_MODEL_ID
+            : selectedVideoModelId || DEFAULT_VIDEO_MODEL_ID;
         replaceMessage(loadingId, {
           type: 'loading',
           content: modelSelection.explicit && modelSelection.matched
@@ -3429,8 +3430,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
             type: mediaType,
             prompt: requestPrompt,
             persona: activePersona,
-            imageModelId: mediaType === 'image' ? requestedModelId : selectedEditModelId || 'wavespeed:bytedance/seedream-v5.0-pro',
-            videoModelId: mediaType === 'video' ? requestedModelId : selectedVideoModelId || 'wavespeed-i2v:bytedance/seedance-2-mini',
+            imageModelId: mediaType === 'image' ? requestedModelId : selectedEditModelId || DEFAULT_IMAGE_MODEL_ID,
+            videoModelId: mediaType === 'video' ? requestedModelId : selectedVideoModelId || DEFAULT_VIDEO_MODEL_ID,
             referenceImage: activePersona.referenceImage || activePersona.avatar || activePersona.alternateReferenceImage,
             revisionImage: imageRevision.isRevision ? imageRevision.source?.content : undefined,
             additionalImages: extraImages.length > 0 ? extraImages : undefined,
@@ -5230,7 +5231,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                         <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
                       </div>
                       <p className="text-[10px] text-zinc-500">
-                        Default: <strong className="text-zinc-300">ByteDance Seedream 5.0 Pro</strong>
+                        Default: <strong className="text-zinc-300">ByteDance {DEFAULT_IMAGE_MODEL_NAME} (WaveSpeed)</strong>
                       </p>
                     </div>
 
@@ -5257,7 +5258,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                         <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
                       </div>
                       <p className="text-[10px] text-zinc-500">
-                        Default: <strong className="text-zinc-300">Seedance 2.0 Mini (Wavespeed • Uncensored)</strong>
+                        Default: <strong className="text-zinc-300">{DEFAULT_VIDEO_MODEL_NAME} (WaveSpeed)</strong>
                       </p>
                     </div>
                   </div>
@@ -5270,20 +5271,11 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                 <button
                   type="button"
                   onClick={() => {
-                    const seedream5Pro = editModels.find(m => {
-                      const id = (m.id || '').toLowerCase();
-                      const name = (m.name || '').toLowerCase();
-                      return (id.includes('seedream-v5.0-pro') || id.includes('seedream-5.0-pro') || id.includes('seedream-5-pro') || name.includes('seedream 5.0 pro') || name.includes('seedream 5 pro')) && !id.includes('lite') && !name.includes('lite');
-                    }) || editModels[0];
+                    const seedream5Pro = pickDefaultImageModel(editModels);
                     if (seedream5Pro) setSelectedEditModelId(seedream5Pro.id);
                     
-                    const seedanceMini = videoModels.find(m => {
-                      const id = (m.id || '').toLowerCase();
-                      const name = (m.name || '').toLowerCase();
-                      return (id.includes('wavespeed') || m.provider?.toLowerCase().includes('wavespeed')) && 
-                        (id.includes('seedance-2-mini') || id.includes('seedance-2.0-mini') || id.includes('seedance-mini') || name.includes('seedance 2.0 mini') || name.includes('seedance 2 mini') || id.includes('seedance-2.0') || name.includes('seedance 2.0') || id.includes('seedance'));
-                    }) || videoModels[0];
-                    if (seedanceMini) setSelectedVideoModelId(seedanceMini.id);
+                    const wan3 = pickDefaultVideoModel(videoModels);
+                    if (wan3) setSelectedVideoModelId(wan3.id);
                     
                     setVoiceLlmModel('gemini');
                     localStorage.setItem('agent_voice_llm', 'gemini');

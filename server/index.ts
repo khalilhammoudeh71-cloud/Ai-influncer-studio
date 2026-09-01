@@ -29,18 +29,21 @@ import {
 } from './persona-chat-grounding';
 import { buildMediaQualityRetryPrompt, parseMediaQualityReport, unavailableMediaQualityReport, type MediaQualityReport } from './media-quality';
 import { normalizeNaturalVoiceGreeting } from './voiceRouting';
+import { isPublicApiPath } from './publicApiPaths';
 import { getSocialChannelAnalysis, getSocialTrends, isSocialIntelligenceConfigured } from './social-intelligence';
 import stripeRoutes, { handleStripeWebhook } from './stripe-routes';
 import { requireAuth, isCreatorUser, AuthenticatedRequest } from './auth';
 import { finalizeGenerationCredits, reserveGenerationCredits, type GenerationReservation } from './creditBilling';
 import { createGenerationQuote, creditsFromProviderCost, type GenerationKind, type GenerationQuote } from './creditPricing';
 import { db } from './db';
-import { mediaJobs, users } from '../shared/schema';
+import { generatedImages, mediaJobs, users } from '../shared/schema';
+import { DEFAULT_IMAGE_MODEL_ID, DEFAULT_VIDEO_MODEL_ID } from '../shared/mediaDefaults';
 import { and, desc, eq, lt, or } from 'drizzle-orm';
 import {
   fallbackModelForJob,
   isMediaJobStale,
   isRetryableMediaJobFailure,
+  mediaJobLibraryAssets,
   parseMediaJobJson,
   publicMediaJob,
   type MediaJobKind,
@@ -98,7 +101,7 @@ app.use(async (req, res, next) => {
 
 // Protect all /api endpoints except Stripe webhooks
 app.use('/api', (req, res, next) => {
-  if (req.path === '/stripe/webhook' || req.path === '/media-jobs/worker') {
+  if (isPublicApiPath(req.path)) {
     return next();
   }
   requireAuth(req as any, res, next);
@@ -660,13 +663,13 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
     const hasWan3I2V = videoModels.some(m => m.id.includes('wan-3.0') && m.type === 'image-to-video');
     if (!hasWan3I2V) {
       videoModels.push({
-        id: 'wavespeed-i2v:alibaba/wan-3.0-i2v-1080p',
-        name: 'Wan 3.0 I2V (Alibaba - Flagship Uncensored 1080p)',
-        provider: 'Alibaba',
+        id: DEFAULT_VIDEO_MODEL_ID,
+        name: 'Wan 3.0 Image to Video (Alibaba / WaveSpeed)',
+        provider: 'Alibaba / WaveSpeed',
         type: 'image-to-video' as const,
         price: 0.15,
         description: 'Flagship 1080p high-realism video generation from text or image with uncensored prompt support',
-        apiPath: '/api/v3/alibaba/wan-3.0-i2v-1080p',
+        apiPath: '/api/v3/alibaba/wan-3.0/image-to-video',
         hasEditVariant: false,
         nsfw: true,
         supportedProperties: ['image', 'prompt', 'duration', 'aspect_ratio'],
@@ -5892,7 +5895,7 @@ const personaMediaHandler = async (req: AuthenticatedRequest, res: any) => {
     }
 
     const commonImageBody = {
-      modelId: imageModelId || 'wavespeed:bytedance/seedream-v5.0-pro',
+      modelId: imageModelId || DEFAULT_IMAGE_MODEL_ID,
       prompt,
       chatPrompt: prompt,
       personaId: activePersona.id,
@@ -5973,7 +5976,7 @@ const personaMediaHandler = async (req: AuthenticatedRequest, res: any) => {
 
     const generation = await runJsonGenerationHandler(generateVideoHandler, req, {
       prompt,
-      modelId: videoModelId || 'wavespeed-i2v:bytedance/seedance-2-mini',
+      modelId: videoModelId || DEFAULT_VIDEO_MODEL_ID,
       sourceImage: videoSourceImage,
       identityLock: true,
       naturalLook: true,
@@ -8139,6 +8142,27 @@ async function executeMediaJob(jobId: string, userId: string, user: any, request
       updatedAt: new Date(),
       completedAt: new Date(),
     }).where(and(eq(mediaJobs.id, jobId), eq(mediaJobs.userId, userId)));
+
+    const libraryAssets = mediaJobLibraryAssets(jobId, job.personaClientId, kind, storedRequest, output);
+    for (const asset of libraryAssets) {
+      try {
+        await db.insert(generatedImages).values({
+          ...asset,
+          userId,
+        }).onConflictDoUpdate({
+          target: [generatedImages.userId, generatedImages.clientId],
+          set: {
+            url: asset.url,
+            prompt: asset.prompt,
+            timestamp: asset.timestamp,
+            model: asset.model,
+            mediaType: asset.mediaType,
+          },
+        });
+      } catch (libraryError) {
+        console.warn(`[media-jobs] Could not add ${jobId} result to the library:`, libraryError);
+      }
+    }
   } catch (error) {
     const [latestState] = await db.select({ cancelRequested: mediaJobs.cancelRequested }).from(mediaJobs).where(and(
       eq(mediaJobs.id, jobId),

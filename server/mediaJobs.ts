@@ -98,3 +98,36 @@ export function publicMediaJob(record: MediaJobRecordLike, now = Date.now()) {
     completedAt: record.completedAt || null,
   };
 }
+
+export function mediaJobLibraryAssets(
+  jobId: string,
+  personaClientId: string | null | undefined,
+  kind: MediaJobKind,
+  request: Record<string, any>,
+  output: Record<string, any>,
+) {
+  if (!personaClientId || request.requestMode === 'studio') return [];
+  const prompt = String(output.promptUsed || request.prompt || request.script || '').trim();
+  const mediaType = kind === 'video' || kind === 'avatar' || output.type === 'video' ? 'video' : 'image';
+  const model = output.model || request.modelId || request.imageModelId || request.videoModelId || null;
+  const timestamp = Date.now();
+  const images = Array.isArray(output.images)
+    ? output.images.filter((image: any) => image && typeof image.imageUrl === 'string' && image.imageUrl)
+    : [];
+  const results = images.length > 0
+    ? images.map((image: any) => ({ url: image.imageUrl, model: image.model || model, prompt: image.promptUsed || prompt, mediaType: 'image' }))
+    : typeof output.url === 'string' && output.url
+      ? [{ url: output.url, model, prompt, mediaType }]
+      : [];
+
+  return results.map((result, index) => ({
+    clientId: `media-job-${jobId}-${index}`,
+    personaClientId,
+    url: result.url,
+    prompt: result.prompt,
+    timestamp,
+    isFavorite: false,
+    model: result.model,
+    mediaType: result.mediaType,
+  }));
+}

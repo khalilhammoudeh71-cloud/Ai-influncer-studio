@@ -63,6 +63,8 @@ import { cn } from '../utils/cn';
 import { trimAudioBase64To10Sec } from '../utils/audioUtils';
 import { accountLocalStorage } from '../utils/accountStorage';
 import toast from 'react-hot-toast';
+import { DEFAULT_VIDEO_MODEL_ID } from '../../shared/mediaDefaults';
+import { normalizeAgentSteps } from '../utils/agentStepValidation';
 
 interface AgentViewProps {
   personas: Persona[];
@@ -1792,7 +1794,18 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
       }
 
       const data = await res.json();
-      const finalSuggestedSteps = data.suggestedSteps || undefined;
+      const normalizedSteps = normalizeAgentSteps(data.suggestedSteps);
+      const finalSuggestedSteps = normalizedSteps.length > 0 ? normalizedSteps : undefined;
+      const finalCritiqueLogs = Array.isArray(data.critiqueLogs)
+        ? data.critiqueLogs.filter((entry: unknown): entry is string => typeof entry === 'string')
+        : undefined;
+      const finalCollaborationLogs = Array.isArray(data.collaborationLogs)
+        ? data.collaborationLogs.filter((entry: unknown): entry is CollaborationMsg => Boolean(
+            entry && typeof entry === 'object'
+            && typeof (entry as CollaborationMsg).agent === 'string'
+            && typeof (entry as CollaborationMsg).message === 'string',
+          ))
+        : undefined;
 
       const newMsgId = Math.random().toString();
       const newMsgObj: Message = {
@@ -1801,8 +1814,8 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
         content: data.text || '',
         status: data.status || 'normal',
         suggestedSteps: finalSuggestedSteps,
-        critiqueLogs: data.critiqueLogs || undefined,
-        collaborationLogs: data.collaborationLogs || undefined,
+        critiqueLogs: finalCritiqueLogs,
+        collaborationLogs: finalCollaborationLogs,
         execSteps: finalSuggestedSteps 
           ? finalSuggestedSteps.map((s: any) => ({ ...s, status: 'pending', resultUrl: undefined, isActionLoading: null }))
           : undefined,
@@ -1903,7 +1916,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
       const result = await api.images.generateVideo({
         personaClientId: propSelectedPersonaId || personas[0]?.id,
         prompt: `Cinematic motion video clip of influencer avatar, subtle camera movement, photorealistic`,
-        modelId: 'google:veo-omni',
+        modelId: DEFAULT_VIDEO_MODEL_ID,
         strength: 0.6,
         sourceImage: imageUrl
       });
@@ -2546,7 +2559,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
             addLocalLog(`🧠 [Memory System]: Applying uploaded reference video from conversation history for editing.`);
           }
 
-          let modelId = step.params.modelId || 'google:veo-omni';
+          let modelId = step.params.modelId || DEFAULT_VIDEO_MODEL_ID;
           if (finalSourceVideo && !modelId.startsWith('wavespeed-v2v:')) {
             modelId = 'wavespeed-v2v:wavespeed-ai/wan-2.2-v2v-720p';
           }
@@ -2801,7 +2814,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
               const res = await api.images.generateVideo({
                 personaClientId: createdPersonaId,
                 prompt: sc.prompt || 'Cinematic motion shot of persona',
-                modelId: sc.modelId || 'google:veo-omni',
+                modelId: sc.modelId || DEFAULT_VIDEO_MODEL_ID,
                 sourceImage: createdPersona.avatar
               });
               const vidUrl = (res as any).videoUrl || (res as any).url;
@@ -3485,7 +3498,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                                     }`}>
                                       {step.status === 'done' || step.status === 'success' ? <Check size={12} /> : sIdx + 1}
                                     </div>
-                                    <span className="text-xs font-bold text-white capitalize">{step.type.replace(/_/g, ' ')}</span>
+                                    <span className="text-xs font-bold text-white capitalize">{String(step.type || 'task').replace(/_/g, ' ')}</span>
                                   </div>
                                 </div>
 

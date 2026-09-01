@@ -84,6 +84,10 @@ import toast from 'react-hot-toast';
 import { useRef } from 'react';
 import { ProModeToggle, useProMode } from '../utils/useProMode';
 import type { CreationBrief, CreationOutcome } from '../types/creation';
+import {
+  pickDefaultImageModel,
+  pickDefaultVideoModelForType,
+} from '../../shared/mediaDefaults';
 
 type CreateMode = 'image' | 'video' | 'talking-avatar' | 'voice' | 'stitcher' | 'ai-tools' | 'planner' | 'prompt' | 'transcript' | 'multi-scene';
 
@@ -108,6 +112,12 @@ const VIDEO_OUTCOMES: Array<{ id: CreationOutcome; label: string; detail: string
 
 function chooseModelForOutcome(models: ModelInfo[], outcome: CreationOutcome, fallback: string, video = false) {
   if (models.length === 0) return fallback;
+  if (outcome === 'quality') {
+    const preferred = video
+      ? pickDefaultVideoModelForType(models, 'text-to-video')
+      : pickDefaultImageModel(models);
+    if (preferred) return preferred.id;
+  }
   const terms: Record<CreationOutcome, string[]> = {
     quality: video ? ['seedance', 'veo', 'kling', 'pro', 'quality'] : ['seedream', 'gpt-image', 'nano-banana', 'pro', 'ultra'],
     realistic: ['seedream', 'realistic', 'photo', 'flux', 'gpt-image'],
@@ -480,24 +490,18 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
   useEffect(() => {
     if (!videoSubMode || videoModels.length === 0) return;
-    if (!isPro) {
+    if (!isPro && selectedOutcome !== 'quality') {
       setSelectedVideoModel(current => chooseModelForOutcome(videoModels, selectedOutcome, current, true));
       return;
     }
-    if (videoSubMode === 'edit') {
-      const found = videoModels.find(m => {
-        const id = m.id.toLowerCase();
-        return id.includes('v2v') || id.includes('edit') || id.includes('seedance') || id.includes('wan') || id.includes('qwen') || id.includes('veo-omni');
-      });
-      setSelectedVideoModel(found?.id || 'wavespeed-v2v:runway-gen3-v2v');
-    } else if (videoSubMode === 'extend') {
-      const found = videoModels.find(m => m.type === 'image-to-video' || m.id.includes('i2v'));
-      setSelectedVideoModel(found?.id || 'wavespeed-i2v:runway-gen3-i2v');
-    } else {
-      const found = videoModels.find(m => m.type === 'text-to-video' || m.id.includes('t2v'));
-      setSelectedVideoModel(found?.id || 'wavespeed-t2v:runway-gen3-t2v');
-    }
-  }, [isPro, selectedOutcome, videoSubMode, videoModels]);
+    const sourceType = videoSubMode === 'edit'
+      ? 'video-to-video'
+      : videoSubMode === 'extend' || Boolean(videoSourceImage) || videoSourcePersonaId !== 'none'
+        ? 'image-to-video'
+        : 'text-to-video';
+    const preferred = pickDefaultVideoModelForType(videoModels, sourceType);
+    setSelectedVideoModel(preferred?.id || '');
+  }, [isPro, selectedOutcome, videoSubMode, videoModels, videoSourceImage, videoSourcePersonaId]);
 
   const [selectedVideoAspectRatio, setSelectedVideoAspectRatio] = useState('16:9');
   const [selectedVideoDuration, setSelectedVideoDuration] = useState(5);
@@ -923,11 +927,12 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         setEditModels(em);
         setUpscaleModels(um);
         setVideoModels(vm);
-        const preferred = hasRefImage ? m.find(x => x.hasEditVariant) || m[0] : m[0];
+        const preferred = pickDefaultImageModel(m);
         if (preferred) setSelectedModel(preferred.id);
         if (em.length > 0) setSelectedEditModel(em[0].id);
         if (um.length > 0) setSelectedUpscaleModel(um[0].id);
-        if (vm.length > 0) setSelectedVideoModel(vm[0].id);
+        const preferredVideo = pickDefaultVideoModelForType(vm, 'text-to-video');
+        if (preferredVideo) setSelectedVideoModel(preferredVideo.id);
         setGlobalError(null);
       })
       .catch(() => {

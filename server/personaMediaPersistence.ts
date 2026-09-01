@@ -71,7 +71,7 @@ export function normalizePersonaMediaReference(value: unknown, userId: string): 
 }
 
 export function normalizePersonaMediaReferences<T extends Record<string, any>>(body: T, userId: string): T {
-  const normalized = { ...body };
+  const normalized: Record<string, any> = { ...body };
 
   for (const field of PERSONA_SINGLE_MEDIA_FIELDS) {
     if (field in normalized) {
@@ -91,5 +91,5 @@ export function normalizePersonaMediaReferences<T extends Record<string, any>>(b
     });
   }
 
-  return normalized;
+  return normalized as T;
 }

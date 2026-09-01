@@ -30,7 +30,7 @@ interface ExtendVideoModalProps {
 }
 
 const EXTEND_MODELS = [
-  { id: 'wavespeed-i2v:alibaba/wan-3.0-i2v-1080p', name: 'Wan 3.0 I2V (Alibaba - Flagship Uncensored 1080p)' },
+  { id: 'wavespeed-i2v:alibaba/wan-3.0/image-to-video', name: 'Wan 3.0 Image to Video (Alibaba / WaveSpeed)' },
   { id: 'wavespeed-i2v:bytedance/seedance-2.5', name: 'Seedance 2.5 (ByteDance - Flagship Uncensored / 4K Realism)' },
   { id: 'wavespeed-i2v:bytedance/seedance-2.0', name: 'Seedance 2.0 (ByteDance - Uncensored / High Realism)' },
   { id: 'wavespeed-i2v:bytedance/seedance-2-mini', name: 'Seedance 2.0 Mini (ByteDance - Uncensored / Fast)' },

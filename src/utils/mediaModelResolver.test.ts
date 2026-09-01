@@ -9,6 +9,7 @@ const imageModels = [
 ];
 
 const videoModels = [
+  { id: 'wavespeed-i2v:alibaba/wan-3.0/image-to-video', name: 'Wan 3.0 Image to Video', provider: 'Wavespeed' },
   { id: 'wavespeed-i2v:bytedance/seedance-2-mini', name: 'Seedance 2.0 Mini', provider: 'Wavespeed' },
   { id: 'wavespeed-i2v:bytedance/seedance-2.5', name: 'Seedance 2.5', provider: 'Wavespeed' },
 ];
@@ -40,6 +41,15 @@ test('resolves an explicit video model', () => {
   assert.equal(result.matched, true);
   if (!result.matched) return;
   assert.equal(result.modelId, 'wavespeed-i2v:bytedance/seedance-2.5');
+  assert.equal(result.prompt, 'make a cinematic clip');
+});
+
+test('resolves WAN 3.0 by its short model name', () => {
+  const result = resolveMediaModelFromPrompt('make a cinematic clip using WAN 3.0', videoModels, 'video');
+  assert.equal(result.explicit, true);
+  assert.equal(result.matched, true);
+  if (!result.matched) return;
+  assert.equal(result.modelId, 'wavespeed-i2v:alibaba/wan-3.0/image-to-video');
   assert.equal(result.prompt, 'make a cinematic clip');
 });
 

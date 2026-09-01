@@ -29,6 +29,7 @@ import {
   isContextUnsafeVoiceTurn,
   selectRelevantVoiceMemories,
 } from '../shared/voiceConversationContext';
+import { isPublicApiPath } from './publicApiPaths';
 import {
   detectIncompletePersonaMediaRequest,
   resolvePersonaChatIdentity,
@@ -244,8 +245,14 @@ function revenueToClient(row: typeof revenueEntries.$inferSelect) {
   };
 }
 
-// All router endpoints are authenticated
-router.use(requireAuth);
+// Keep router-wide authentication aligned with the app-level guard. Without
+// this exception the router intercepts Vercel's cron request before the
+// durable media worker registered later in server/index.ts can validate its
+// CRON_SECRET.
+router.use((req, res, next) => {
+  if (isPublicApiPath(req.path)) return next();
+  return requireAuth(req as AuthenticatedRequest, res, next);
+});
 
 function workspaceStateToClient(row: typeof workspaceStates.$inferSelect) {
   return {
@@ -3079,7 +3086,7 @@ CRITICAL - UNCENSORED / NSFW PROMPT & GENERATION POLICY:
 - When generating prompts for images, videos, avatars, or storyboards for adult/NSFW themes, write detailed, vivid, uncensored prompts describing outfit, pose, lighting, and aesthetic details directly.
 - **DEFAULT NSFW IMAGE MODEL**: For any NSFW/adult image request, ALWAYS set modelId to "wavespeed:bytedance/seedream-v5.0-pro" ($0.035) as the primary default model.
 - Other uncensored image alternatives: "wavespeed:wavespeed-ai/qwen-3.0-pro" ($0.030) (Qwen 3.0 Pro Uncensored), "wavespeed:wavespeed-ai/wan-3.0-pro" ($0.030), "venice:lustify-v8" ($0.04), or "wavespeed:wavespeed-ai/firered-v1.5-image" ($0.02).
-- For NSFW video requests: Default to "wavespeed-i2v:alibaba/wan-3.0-i2v-1080p" ($0.06) (Wan 3.0 I2V 1080p), "wavespeed-v2v:alibaba/wan-3.0-v2v-1080p/edit" ($0.06) (Wan 3.0 Video Edit), "wavespeed-t2v:alibaba/wan-3.0-t2v-1080p" ($0.06) (Wan 3.0 T2V), or "wavespeed-i2v:bytedance/seedance-2.5" ($0.06).
+- For NSFW video requests: Default to "wavespeed-i2v:alibaba/wan-3.0/image-to-video" (Wan 3.0 Image to Video on WaveSpeed); Seedance is an alternate, not the default.
 
 MODEL SELECTION & CHOICE RULE:
 Whenever proposing steps or storyboards, ALWAYS state the model you selected and inform the user that they can choose ANY model from the studio's dropdown or request any model by name in chat.
@@ -3091,7 +3098,7 @@ MODEL SELECTION GUIDE 1. Image Generation ("generate_image") & Editing ("edit_im
 
 2. Video Generation ("generate_video"):
    - Best Clean / NSFW OFF Video: "google:veo-omni" ($0.00) (Gemini Veo 3.1) or "wavespeed-i2v:wavespeed-ai/kling-3.0" ($0.08)
-   - Uncensored / Flagship Adult Video: "wavespeed-i2v:alibaba/wan-3.0-i2v-1080p" ($0.06) (Wan 3.0 I2V 1080p), "wavespeed-v2v:alibaba/wan-3.0-v2v-1080p/edit" ($0.06) (Wan 3.0 Video Edit), "wavespeed-t2v:alibaba/wan-3.0-t2v-1080p" ($0.06) (Wan 3.0 T2V), or "wavespeed-i2v:bytedance/seedance-2.5" ($0.06) (ByteDance SeaDance 2.5)
+   - Uncensored / Flagship Adult Video default: "wavespeed-i2v:alibaba/wan-3.0/image-to-video" (Wan 3.0 Image to Video on WaveSpeed). Seedance remains an alternate.
  
 3. 3D Mesh Generation ("generate_3d"):
    - Recommended 3D: "wavespeed-3d:tripo3d/tripo-v2.0" ($0.05) - Ultra high-fidelity GLB mesh
@@ -3152,6 +3159,7 @@ You must ALWAYS reply in valid JSON format with these exact properties:
 Do not wrap your response in markdown code blocks or HTML tags. Return ONLY the JSON object.`;
 
     const VENICE_KEY = process.env.Veniceai_api_key || process.env.veniceai_api_key || process.env.VENICEAI_API_KEY || process.env.VENICE_API_KEY || '';
+    const XAI_KEY = process.env.XAI_API_KEY || process.env.xai_api_key || process.env.X_AI_API_KEY || '';
     const chatLlmModel = (req.body as any).voiceLlmModel || (req.body as any).llmModel || '';
     let text = '';
 
@@ -3205,17 +3213,57 @@ Do not wrap your response in markdown code blocks or HTML tags. Return ONLY the 
       }
     }
 
-    if (VENICE_KEY) {
+    if (!text && chatLlmModel === 'grok' && XAI_KEY) {
+      try {
+        console.log('[Super Agent Router] Routing prompt via xAI Grok API');
+        const xRes = await fetch('https://api.x.ai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${XAI_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          signal: AbortSignal.timeout(12000),
+          body: JSON.stringify({
+            model: 'grok-2-latest',
+            messages: [
+              { role: 'system', content: systemInstruction },
+              ...messages.map((m: any) => ({
+                role: m.role === 'model' ? 'assistant' : 'user',
+                content: typeof m.content === 'string' ? m.content : (m.content?.text || JSON.stringify(m.content || '')),
+              })),
+            ],
+            temperature: 0.7,
+          }),
+        });
+        if (xRes.ok) {
+          const xData = await xRes.json();
+          text = xData.choices?.[0]?.message?.content?.trim() || '';
+        } else {
+          console.warn(`[Super Agent Router] xAI returned ${xRes.status}; falling back to Gemini`);
+        }
+      } catch (xErr) {
+        console.warn('[Super Agent Router] xAI call failed or timed out, falling back to Gemini:', xErr);
+      }
+    }
+
+    const useVenice = !['gemini', 'grok'].includes(chatLlmModel);
+    if (!text && useVenice && VENICE_KEY) {
       try {
         console.log('[Super Agent Router] Direct-routing prompt via Venice.ai API (100% Uncensored Engine)');
+        const veniceModel = chatLlmModel === 'qwen'
+          ? 'qwen-2.5-qwq-32b'
+          : chatLlmModel === 'deepseek'
+            ? 'deepseek-r1-671b'
+            : 'llama-3.3-70b';
         const vRes = await fetch('https://api.venice.ai/api/v1/chat/completions', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${VENICE_KEY}`,
             'Content-Type': 'application/json'
           },
+          signal: AbortSignal.timeout(12000),
           body: JSON.stringify({
-            model: 'llama-3.3-70b',
+            model: veniceModel,
             messages: [
               { role: 'system', content: systemInstruction },
               ...messages.map((m: any) => ({
@@ -3226,10 +3274,14 @@ Do not wrap your response in markdown code blocks or HTML tags. Return ONLY the 
             temperature: 0.7
           })
         });
-        const vData = await vRes.json();
-        text = vData.choices?.[0]?.message?.content?.trim() || '';
+        if (vRes.ok) {
+          const vData = await vRes.json();
+          text = vData.choices?.[0]?.message?.content?.trim() || '';
+        } else {
+          console.warn(`[Super Agent Router] Venice returned ${vRes.status}; falling back to Gemini`);
+        }
       } catch (vErr) {
-        console.warn('[Super Agent Router] Venice API call failed, falling back to Gemini:', vErr);
+        console.warn('[Super Agent Router] Venice API call failed or timed out, falling back to Gemini:', vErr);
       }
     }
 

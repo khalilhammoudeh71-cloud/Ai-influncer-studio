@@ -111,6 +111,7 @@ const GEMINI_VOICES = [
 ];
 
 const FALLBACK_VIDEO_MODELS: ModelInfo[] = [
+  { id: 'wavespeed-i2v:alibaba/wan-3.0/image-to-video', name: 'Wan 3.0 Image to Video', price: 0, provider: 'WaveSpeed', type: 'image-to-video', description: 'Current WaveSpeed default with 480p, 720p, and 1080p output', hasEditVariant: false },
   { id: 'google:veo-3', name: 'Veo 3.1', price: 0, provider: 'Google', type: 'image-to-video', description: '8s 720p, native audio, stunning realism', hasEditVariant: false },
   { id: 'google:veo-3-fast', name: 'Veo 3.1 Lite', price: 0, provider: 'Google', type: 'image-to-video', description: 'Faster generation, 8s 720p', hasEditVariant: false },
   { id: 'google:veo-2', name: 'Veo 2', price: 0, provider: 'Google', type: 'image-to-video', description: '8s 720p, high quality, no audio', hasEditVariant: false },
