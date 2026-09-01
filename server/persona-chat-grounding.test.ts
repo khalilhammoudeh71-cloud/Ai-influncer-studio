@@ -92,6 +92,22 @@ test('the immediate answer to an image clarification becomes the generation prom
   ]);
 
   assert.deepEqual(action, { type: 'image', prompt: currentTurn });
+
+  assert.deepEqual(resolvePersonaMediaRequest('A waist-up portrait of you wearing a red jacket outdoors in daylight.', [
+    { role: 'persona', type: 'text', content: 'What kind of image would you like me to make?' },
+  ]), {
+    type: 'image',
+    prompt: 'A waist-up portrait of you wearing a red jacket outdoors in daylight.',
+  });
+});
+
+test('an unrelated answer does not become an image prompt after clarification', () => {
+  const clarification = { role: 'persona', type: 'text', content: 'What kind of image would you like me to make?' };
+
+  assert.equal(resolvePersonaMediaRequest("Quick check: what's your name, and what's my name?", [clarification]), undefined);
+  assert.equal(resolvePersonaMediaRequest('Actually, never mind. Tell me about your day.', [clarification]), undefined);
+  assert.equal(resolvePersonaMediaRequest("I don't want one anymore. Let's just talk about the weather.", [clarification]), undefined);
+  assert.equal(resolvePersonaMediaRequest('Blue.', [clarification]), undefined);
 });
 
 test('an older clarification cannot revive a stale media request', () => {

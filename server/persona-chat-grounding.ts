@@ -168,6 +168,26 @@ function isConversationalMediaRemark(prompt: string): boolean {
   return /(?:why did you send|why are you sending|why do you keep sending|stop sending|do not send|don't send|not asking for|didn't ask for|do not want|don't want|what is that (?:photo|image|picture|video)|about (?:that|this|the) (?:photo|image|picture|video)|talk about (?:that|this|the)?\s*(?:photo|image|picture|video)|let'?s (?:just )?(?:talk|chat)|keep talking|continue talking)/i.test(prompt);
 }
 
+function isLikelyMediaClarificationAnswer(prompt: string, type: 'image' | 'video'): boolean {
+  if (/[?]/.test(prompt) || /\b(?:never mind|nevermind|forget it|cancel that|actually,?\s+(?:don't|do not))\b/i.test(prompt)) {
+    return false;
+  }
+  if (/^(?:quick check|tell me|answer|reply|what(?:'s| is)|who|why|how|when|where|can you|could you|would you|let'?s)\b/i.test(prompt.trim())) {
+    return false;
+  }
+
+  const mediaNoun = type === 'video'
+    ? /\b(?:video|clip|reel|animation|movie|footage)\b/i
+    : /\b(?:image|photo|picture|pic|portrait|selfie|headshot|avatar|shot)\b/i;
+  if (mediaNoun.test(prompt)) return true;
+
+  const visualDescription = /\b(?:standing|sitting|seated|kneeling|walking|running|dancing|wearing|dressed|posing|looking at (?:the )?camera|close[- ]?up|waist[- ]?up|full[- ]?body|from behind|outdoors?|indoors?|daylight|sunset|sunrise|background|foreground|scene|camera|bedroom|beach|gym|window|street|studio|lighting)\b/i;
+  if (type === 'image') return visualDescription.test(prompt);
+
+  const motionDescription = /\b(?:speaking|talking|singing|turning|moving|waving|smiling|laughing|walking|running|dancing|camera pans?|camera moves?|slow motion|seconds? long|cinematic)\b/i;
+  return visualDescription.test(prompt) || motionDescription.test(prompt);
+}
+
 /**
  * A creation verb plus only a media noun is an intent to create, not a usable
  * generation prompt. Starting a provider job here produces an arbitrary image
@@ -272,5 +292,7 @@ export function resolvePersonaMediaRequest(
     : /\bwhat (?:kind|type) of (?:image|photo|picture|pic|portrait)\b|\bwhat should be in (?:the|your) (?:image|photo|picture)\b/i.test(previous.content)
       ? 'image'
       : undefined;
-  return clarificationType ? { type: clarificationType, prompt } : undefined;
+  return clarificationType && isLikelyMediaClarificationAnswer(prompt, clarificationType)
+    ? { type: clarificationType, prompt }
+    : undefined;
 }
