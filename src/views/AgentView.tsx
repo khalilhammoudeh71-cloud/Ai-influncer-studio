@@ -3077,7 +3077,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                   localStorage.setItem('agent_voice_llm', selected);
                   const labels: Record<string, string> = {
                     grok: '🚀 Switched to xAI Grok 2 (Cloud API)!',
-                    venice: 'Switched to Venice Uncensored Roleplay (Cloud)',
+                    venice: 'Switched to Venice Uncensored 1.2 (Cloud)',
                     deepseek: '🧠 Switched to DeepSeek R1 Reasoner (Cloud API)!',
                     qwen: '🔮 Switched to Qwen 2.5 72B (Cloud API)!',
                     gemini: '🤖 Switched to Gemini 2.5 Flash (Cloud API)!',
@@ -3102,7 +3102,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                 <optgroup label="☁️ CLOUD API ENGINES (HIGH-SPEED CLOUD GPU)">
                   <option value="qwen" className="bg-zinc-900 text-white">🔮 Qwen 2.5 72B (Cloud API)</option>
                   <option value="deepseek" className="bg-zinc-900 text-white">🧠 DeepSeek R1 Reasoner (Cloud API)</option>
-                  <option value="venice" className="bg-zinc-900 text-white">Venice Uncensored Roleplay (Cloud)</option>
+                  <option value="venice" className="bg-zinc-900 text-white">Venice Uncensored 1.2 (Cloud)</option>
                   <option value="grok" className="bg-zinc-900 text-white">🚀 xAI Grok 2 (Cloud API)</option>
                   <option value="gemini" className="bg-zinc-900 text-white">🤖 Gemini 2.5 Flash (Cloud API)</option>
                 </optgroup>

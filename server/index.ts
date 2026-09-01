@@ -28,7 +28,7 @@ import {
   sanitizePersonaSelfAddress,
 } from './persona-chat-grounding';
 import { buildMediaQualityRetryPrompt, parseMediaQualityReport, unavailableMediaQualityReport, type MediaQualityReport } from './media-quality';
-import { normalizeNaturalVoiceGreeting } from './voiceRouting';
+import { getVenicePersonaModelCandidates, isVoiceProviderRefusal, normalizeNaturalVoiceGreeting } from './voiceRouting';
 import { isPublicApiPath } from './publicApiPaths';
 import { getSocialChannelAnalysis, getSocialTrends, isSocialIntelligenceConfigured } from './social-intelligence';
 import stripeRoutes, { handleStripeWebhook } from './stripe-routes';
@@ -3797,24 +3797,19 @@ ${companionDirective ? `${companionDirective}\n` : ''}1. EQUAL CONFIDANTE & CHAR
         : '';
 
     const isRefusal = (raw: string): boolean => {
-      if (!raw || raw.length < 5) return true;
-      return /cannot and will not|content polic|sexually explicit|cannot fulfill|unable to engage|prohibit|safety guideline|inappropriate imagery|I cannot create|I can't create|as an ai|violates content|against my programming|I am not able to generate|cannot generate|can't assist|cannot assist|can't help with that|cannot help with that|sorry, but|sorry, i|i'm sorry|i am sorry|i apologize/i.test(raw);
+      return isVoiceProviderRefusal(raw);
     };
 
-    // Prefer Venice's dedicated adult roleplay model for the creator's default
-    // persona-chat experience. Model IDs are tried in current-to-stable order so
-    // a provider-side retirement does not silently break chat.
+    // Use Venice's current general uncensored model for persona chat. The older
+    // role-play model repeatedly invented moral objections in adult dialogue.
     const shouldUseVenice = Boolean(VENICE_API_KEY) && (
       modelTarget.includes('venice') ||
       ((!modelTarget || modelTarget === 'default') && isAdultPersona)
     );
     if (!finalReply && shouldUseVenice) {
-      const veniceModels = Array.from(new Set([
-        process.env.VENICE_PERSONA_MODEL,
-        'venice-uncensored-role-play',
-        'venice-uncensored-1-2',
-        'venice-uncensored',
-      ].filter(Boolean) as string[]));
+      const veniceModels = getVenicePersonaModelCandidates(
+        process.env.VENICE_VOICE_MODEL || process.env.VENICE_PERSONA_MODEL,
+      );
 
       for (const veniceModel of veniceModels) {
         try {

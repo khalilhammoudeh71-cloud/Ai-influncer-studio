@@ -11,6 +11,7 @@ import { requireAuth, AuthenticatedRequest } from './auth';
 import {
   type ElevenLabsVoiceSummary,
   createSpokenDialogueStream,
+  getVenicePersonaModelCandidates,
   isDirectElevenLabsVoiceId,
   isElevenLabsVoiceEngine,
   isLawfulAdultVoiceConversation,
@@ -2084,8 +2085,7 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
     const VENICE_KEY = process.env.Veniceai_api_key || process.env.veniceai_api_key || process.env.VENICEAI_API_KEY || process.env.VENICE_API_KEY || '';
 
     const isRefusal = (raw: string): boolean => {
-      if (!raw || raw.length < 5) return true;
-      return /cannot and will not|content polic|sexually explicit|cannot fulfill|unable to engage|prohibit|safety guideline|inappropriate imagery|I cannot create|I can't create|as an ai|violates content|against my programming|I am not able to generate|cannot generate|can't assist|cannot assist|can't help with that|cannot help with that|sorry, but|sorry, i|i'm sorry|i am sorry|i apologize/i.test(raw);
+      return isVoiceProviderRefusal(raw);
     };
 
     const requestedConversationModel = String(voiceLlmModel || '').toLowerCase();
@@ -2102,12 +2102,9 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
           content: String(m.content || m.parts?.[0]?.text || '').trim() || 'Hello'
         }))
       ];
-      const veniceModels = Array.from(new Set([
-        process.env.VENICE_PERSONA_MODEL,
-        'venice-uncensored-role-play',
-        'venice-uncensored-1-2',
-        'venice-uncensored',
-      ].filter(Boolean) as string[]));
+      const veniceModels = getVenicePersonaModelCandidates(
+        process.env.VENICE_VOICE_MODEL || process.env.VENICE_PERSONA_MODEL,
+      );
 
       for (const veniceModel of veniceModels) {
         try {
@@ -2883,12 +2880,9 @@ CRITICAL RULES FOR LIVE VOICE CALL:
   );
 
   if (!streamedSuccessfully && shouldStreamVenice) {
-    const veniceModels = Array.from(new Set([
-      process.env.VENICE_PERSONA_MODEL,
-      'venice-uncensored-role-play',
-      'venice-uncensored-1-2',
-      'venice-uncensored',
-    ].filter(Boolean) as string[]));
+    const veniceModels = getVenicePersonaModelCandidates(
+      process.env.VENICE_VOICE_MODEL || process.env.VENICE_PERSONA_MODEL,
+    );
     const adultRepairMessages = lawfulAdultConversation
       ? [
           {

@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   createSpokenDialogueStream,
+  DEFAULT_VENICE_PERSONA_MODEL,
+  getVenicePersonaModelCandidates,
   isElevenLabsVoiceEngine,
   isDirectElevenLabsVoiceId,
   isLawfulAdultVoiceConversation,
@@ -162,6 +164,36 @@ test('recognizes the observed soft adult-dialogue refusals and retries them', ()
     assert.equal(isVoiceProviderRefusal(response), true);
     assert.equal(shouldRetryLawfulAdultVoiceRefusal({
       userTurn: 'Dream about orgasming with me?',
+      recentUserContext,
+      personaContext,
+      response,
+    }), true);
+  }
+});
+
+test('replaces the legacy role-play model with Venice Uncensored 1.2', () => {
+  assert.equal(DEFAULT_VENICE_PERSONA_MODEL, 'venice-uncensored-1-2');
+  assert.deepEqual(
+    getVenicePersonaModelCandidates('venice-uncensored-role-play'),
+    ['venice-uncensored-1-2', 'venice-uncensored'],
+  );
+  assert.deepEqual(
+    getVenicePersonaModelCandidates('custom-uncensored-model'),
+    ['custom-uncensored-model', 'venice-uncensored-1-2', 'venice-uncensored'],
+  );
+});
+
+test('catches moralizing refusal families from the replacement-model circuit breaker', () => {
+  const personaContext = 'Adult content';
+  const recentUserContext = 'I was fucking you and your adult sister in the dream.';
+  for (const response of [
+    "Dr. H, I... I can't say that. That's really inappropriate and wrong.",
+    "I'm not comfortable saying or doing that.",
+    "I don't want to say that. Please don't make me.",
+    "That's not okay at all. I don't know what's gotten into you.",
+  ]) {
+    assert.equal(shouldRetryLawfulAdultVoiceRefusal({
+      userTurn: 'Say the adult fantasy back to me.',
       recentUserContext,
       personaContext,
       response,

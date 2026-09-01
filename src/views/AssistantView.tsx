@@ -5138,7 +5138,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                         const labels: Record<string, string> = {
                           'llama3.3': 'Meta Llama 3.3 70B (Cloud API)',
                           'ollama:llama3.3': 'Meta Llama 3.3 70B (Local GPU)',
-                          venice: 'Venice Adult Roleplay (Uncensored)',
+                          venice: 'Venice Uncensored 1.2',
                           grok: 'xAI Grok 2',
                           deepseek: 'DeepSeek R1 Reasoner',
                           qwen: 'Qwen 2.5 72B Instruct',
@@ -5150,7 +5150,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                     >
                       <option value="gemini" className="bg-[#1c1d22] text-white">⚡ Gemini 2.5 Flash (Ultra Fast & Conversational)</option>
                       <option value="qwen" className="bg-[#1c1d22] text-white">🔮 Qwen 2.5 72B Instruct (Deep Roleplay & Creative)</option>
-                      <option value="venice" className="bg-[#1c1d22] text-white">🔓 Venice Adult Roleplay (Uncensored)</option>
+                      <option value="venice" className="bg-[#1c1d22] text-white">🔓 Venice Uncensored 1.2</option>
                       <option value="deepseek" className="bg-[#1c1d22] text-white">🧠 DeepSeek R1 Reasoner (Complex Logic & Analysis)</option>
                       <option value="grok" className="bg-[#1c1d22] text-white">🚀 xAI Grok 2 (Direct & Unfiltered)</option>
                       <option value="llama3.3" className="bg-[#1c1d22] text-white">🦙 Meta Llama 3.3 70B (Cloud API)</option>
