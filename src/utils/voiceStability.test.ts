@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   drainSseData,
+  getVoiceTurnCommitDelay,
   isLikelyPersonaEcho,
+  mergeVoiceTranscriptSegments,
   shouldInterruptPersonaSpeech,
   summarizeVoiceLatency,
   takeSpeakableSpeechChunk,
@@ -35,6 +37,40 @@ test('allows a new utterance to cancel a pending response before audio begins', 
     personaIsSpeaking: false,
     responseIsPending: true,
   }), true);
+});
+
+test('commits complete voice turns quickly but gives unfinished thoughts breathing room', () => {
+  assert.equal(getVoiceTurnCommitDelay('Yes, that works.', {
+    source: 'realtime',
+  }), 140);
+  assert.equal(getVoiceTurnCommitDelay('I was thinking', {
+    source: 'realtime',
+  }), 900);
+  assert.equal(getVoiceTurnCommitDelay('Can you make an image with', {
+    source: 'browser',
+  }), 1200);
+  assert.equal(getVoiceTurnCommitDelay('Actually stop', {
+    source: 'realtime',
+  }), 90);
+});
+
+test('merges recognition commits without repeating overlapping words', () => {
+  assert.equal(
+    mergeVoiceTranscriptSegments('I want an image of', 'an image of Leen by the window'),
+    'I want an image of Leen by the window',
+  );
+  assert.equal(
+    mergeVoiceTranscriptSegments('Tell me about tonight', 'Tell me about tonight'),
+    'Tell me about tonight',
+  );
+  assert.equal(
+    mergeVoiceTranscriptSegments('Yes, that works.', 'Yes that works'),
+    'Yes, that works.',
+  );
+  assert.equal(
+    mergeVoiceTranscriptSegments('I was thinking', 'maybe we could go outside'),
+    'I was thinking maybe we could go outside',
+  );
 });
 
 test('drains complete SSE events and preserves a split tail', () => {

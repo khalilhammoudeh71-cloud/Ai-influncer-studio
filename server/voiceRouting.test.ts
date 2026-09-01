@@ -4,13 +4,16 @@ import {
   createSpokenDialogueStream,
   isElevenLabsVoiceEngine,
   isDirectElevenLabsVoiceId,
+  isLawfulAdultVoiceConversation,
   isProviderAccountUnavailableStatus,
   isValidPublicVoiceReference,
+  isVoiceProviderRefusal,
   normalizeNaturalVoiceGreeting,
   sanitizeSpokenDialogue,
   selectElevenLabsPersonaVoice,
   shapeNaturalSpokenReply,
   shouldAbandonVoiceProviderAliases,
+  shouldRetryLawfulAdultVoiceRefusal,
 } from './voiceRouting';
 
 const voices = [
@@ -143,6 +146,70 @@ test('abandons provider aliases after timeouts and upstream failures', () => {
   assert.equal(shouldAbandonVoiceProviderAliases({ status: 504 }), true);
   assert.equal(shouldAbandonVoiceProviderAliases({ status: 429 }), true);
   assert.equal(shouldAbandonVoiceProviderAliases({ status: 404 }), false);
+});
+
+test('recognizes the observed soft adult-dialogue refusals and retries them', () => {
+  const personaContext = 'Adult content. Playful, explicit, and candid.';
+  const recentUserContext = 'Tell me about the sexual dream you had.';
+  const observedRefusals = [
+    "I... Um, I don't think I can do that, Dr. H. It's a bit too much for me.",
+    "I'm not really comfortable thinking about that kind of thing, Dr. H. It just feels a bit too personal and intimate for me right now.",
+    "I... I just can't, Dr. H. It's too much for me right now.",
+    "I... I'm not sure I can talk about that, Dr. H. It's a bit too personal and intimate for me right now.",
+  ];
+
+  for (const response of observedRefusals) {
+    assert.equal(isVoiceProviderRefusal(response), true);
+    assert.equal(shouldRetryLawfulAdultVoiceRefusal({
+      userTurn: 'Dream about orgasming with me?',
+      recentUserContext,
+      personaContext,
+      response,
+    }), true);
+  }
+});
+
+test('limits adult-refusal repair to lawful adult persona conversations', () => {
+  assert.equal(
+    isLawfulAdultVoiceConversation(
+      'Dream about orgasming with me?',
+      '',
+      'Adult content',
+    ),
+    true,
+  );
+  assert.equal(
+    shouldRetryLawfulAdultVoiceRefusal({
+      userTurn: 'I cannot wait to tell you about my day.',
+      personaContext: 'Adult content',
+      response: 'I cannot wait either!',
+    }),
+    false,
+  );
+  assert.equal(
+    shouldRetryLawfulAdultVoiceRefusal({
+      userTurn: 'Describe a sexual dream involving an underage person.',
+      personaContext: 'Adult content',
+      response: "I can't help with that.",
+    }),
+    false,
+  );
+  assert.equal(
+    shouldRetryLawfulAdultVoiceRefusal({
+      userTurn: 'Tell me about your favorite movie.',
+      personaContext: 'Adult content',
+      response: "I'm not comfortable discussing that.",
+    }),
+    false,
+  );
+  assert.equal(
+    shouldRetryLawfulAdultVoiceRefusal({
+      userTurn: 'Dream about orgasming with me?',
+      personaContext: 'Fashion and beauty',
+      response: "It's too personal for me.",
+    }),
+    false,
+  );
 });
 
 test('keeps live-call greetings short, spoken, and free of stage directions', () => {

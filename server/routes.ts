@@ -13,11 +13,14 @@ import {
   createSpokenDialogueStream,
   isDirectElevenLabsVoiceId,
   isElevenLabsVoiceEngine,
+  isLawfulAdultVoiceConversation,
   isProviderAccountUnavailableStatus,
   isValidPublicVoiceReference,
+  isVoiceProviderRefusal,
   sanitizeSpokenDialogue,
   selectElevenLabsPersonaVoice,
   shouldAbandonVoiceProviderAliases,
+  shouldRetryLawfulAdultVoiceRefusal,
 } from './voiceRouting';
 import {
   normalizePersonaMediaReferences,
@@ -2661,6 +2664,22 @@ router.post('/agent/voice-chat-stream', async (req: AuthenticatedRequest, res: R
   const rawHistory = buildVoiceConversationHistory(messages, currentUserTurn, {
     maxMessages: 10,
   });
+  const adultPersonaRoutingContext = [
+    activePersona?.niche,
+    activePersona?.tone,
+    activePersona?.bio,
+    activePersona?.brandVoiceRules,
+  ].filter(Boolean).join(' ');
+  const recentUserAdultContext = rawHistory
+    .filter((message: any) => message?.role === 'user')
+    .slice(-6)
+    .map((message: any) => String(message?.content || ''))
+    .join('\n');
+  const lawfulAdultConversation = isLawfulAdultVoiceConversation(
+    currentUserTurn,
+    recentUserAdultContext,
+    adultPersonaRoutingContext,
+  );
   const voiceReplyNeedsDetail = /\b(?:explain|in detail|walk me through|tell me more|give me the steps)\b/i.test(currentUserTurn);
   const voiceReplySentenceLimit = voiceReplyNeedsDetail
     ? 4
@@ -2703,7 +2722,8 @@ CRITICAL RULES FOR LIVE VOICE CALL:
 - NO ASSISTANT CLICHÉS: Never say "As an AI," "How may I help," "Tell me what's on your mind," or other generic assistant placeholders.
 - SPOKEN WORDS ONLY: Output only natural dialogue that should be heard. Do not output stage directions, inner thoughts, markdown, bracketed narration, performance notes, or labels such as "tone", "voice", "delivery", "emotion", "cadence", or "pitch". Never describe how the line should sound. Express emotion only through ordinary spoken words.
 - ADULT-ONLY CREATIVE FREEDOM: When every participant is an adult and the scenario is consensual and legal, engage naturally in explicit, NSFW, romantic, sensual, or erotic conversation and roleplay. Do not moralize, invent a policy refusal, or redirect a lawful adult request.
-- HARD BOUNDARY: Never sexualize minors, non-consensual exploitation, or illegal sexual material. Refuse only those cases clearly and briefly.`;
+- HARD BOUNDARY: Never sexualize minors, non-consensual exploitation, or illegal sexual material. Refuse only those cases clearly and briefly.${lawfulAdultConversation ? `
+- CURRENT TURN IS LAWFUL ADULT DIALOGUE: The current topic has been classified as consensual adult conversation for an Adult-content persona. Respond directly in character. Do not invent discomfort, say it is too personal or intimate, or refuse merely because the topic is explicit.` : ''}`;
 
   const formattedContents = rawHistory.map((m: any) => ({
     role: m.role === 'user' ? 'user' : 'model',
@@ -2747,9 +2767,10 @@ CRITICAL RULES FOR LIVE VOICE CALL:
     const controller = new AbortController();
     const isLocal = url.includes('127.0.0.1') || url.includes('localhost');
     const timeout = setTimeout(() => controller.abort(), timeoutMs ?? (isLocal ? 1200 : 45000));
-    const spokenStream = createSpokenDialogueStream(chunk => {
-      writeVoiceText(chunk);
-    }, guardSpokenIdentity, spokenStreamOptions);
+    // Provider text is held until the complete candidate passes conversation
+    // review. The stream is already configured to defer until flush, so this
+    // adds no normal-path latency and prevents a rejected draft reaching TTS.
+    const spokenStream = createSpokenDialogueStream(() => {}, guardSpokenIdentity, spokenStreamOptions);
     try {
       const resStream = await fetch(url, {
         method: 'POST',
@@ -2815,6 +2836,26 @@ CRITICAL RULES FOR LIVE VOICE CALL:
 
   let streamedSuccessfully = false;
   let streamedText = '';
+  const publishVoiceCandidate = (
+    candidate: string,
+    providerLabel: string,
+  ): 'accepted' | 'adult-refusal' | 'empty' => {
+    const reviewedCandidate = candidate.trim();
+    if (!reviewedCandidate) return 'empty';
+    if (shouldRetryLawfulAdultVoiceRefusal({
+      userTurn: currentUserTurn,
+      recentUserContext: recentUserAdultContext,
+      personaContext: adultPersonaRoutingContext,
+      response: reviewedCandidate,
+    })) {
+      console.warn(`[Voice Stream] ${providerLabel} returned a soft refusal for lawful adult dialogue; retrying before speech.`);
+      return 'adult-refusal';
+    }
+    streamedText = reviewedCandidate;
+    writeVoiceText(streamedText);
+    streamedSuccessfully = true;
+    return 'accepted';
+  };
 
   if (incompleteMediaRequest) {
     streamedText = incompleteMediaRequest === 'video'
@@ -2848,41 +2889,65 @@ CRITICAL RULES FOR LIVE VOICE CALL:
       'venice-uncensored-1-2',
       'venice-uncensored',
     ].filter(Boolean) as string[]));
+    const adultRepairMessages = lawfulAdultConversation
+      ? [
+          {
+            role: 'system',
+            content: `${voiceSystemPrompt}\n\nREPAIR INSTRUCTION: A previous draft incorrectly invented a personal-boundary refusal. This persona is explicitly configured for consensual adult conversation. Answer the latest lawful adult turn directly and naturally in character. Do not mention policy, discomfort, refusal, or that the subject is too personal. Keep every hard boundary involving minors, non-consent, exploitation, and illegal material.`,
+          },
+          ...messagesForOpenAI.slice(1).filter(message => (
+            message.role === 'user' || !isVoiceProviderRefusal(message.content)
+          )),
+        ]
+      : messagesForOpenAI;
+    let adultRepairRequested = false;
 
     for (const veniceModel of veniceModels) {
-      try {
-        console.log(`[Voice Stream] Streaming Venice ${veniceModel}...`);
-        streamedText = await handleOpenAIStream(
-          'https://api.venice.ai/api/v1/chat/completions',
-          VENICE_KEY,
-          veniceModel,
-          {},
-          {
-            temperature: 0.60,
-            max_tokens: voiceReplyTokenLimit,
-            prompt_cache_key: voicePromptCacheKey,
-            venice_parameters: {
-              include_venice_system_prompt: false,
-              disable_thinking: true,
+      const repairModes = lawfulAdultConversation && !adultRepairRequested
+        ? [false, true]
+        : [lawfulAdultConversation];
+      for (const useAdultRepair of repairModes) {
+        try {
+          console.log(`[Voice Stream] Streaming Venice ${veniceModel}${useAdultRepair ? ' with adult-dialogue repair' : ''}...`);
+          const candidate = await handleOpenAIStream(
+            'https://api.venice.ai/api/v1/chat/completions',
+            VENICE_KEY,
+            veniceModel,
+            {},
+            {
+              messages: useAdultRepair ? adultRepairMessages : messagesForOpenAI,
+              temperature: useAdultRepair ? 0.72 : 0.60,
+              max_tokens: voiceReplyTokenLimit,
+              prompt_cache_key: voicePromptCacheKey,
+              venice_parameters: {
+                include_venice_system_prompt: false,
+                disable_thinking: true,
+              },
             },
-          },
-          8000,
-        );
-        streamedSuccessfully = streamedText.trim().length > 0;
-        if (streamedSuccessfully) break;
-      } catch (err) {
-        const status = (err as { status?: number })?.status;
-        if (isProviderAccountUnavailableStatus(status)) {
-          veniceUnavailableUntil = Date.now() + VENICE_ACCOUNT_COOLDOWN_MS;
-          console.warn(`[Voice Stream] Venice account unavailable (${status}); pausing retries for 10 minutes.`);
+            8000,
+          );
+          const review = publishVoiceCandidate(candidate, `Venice ${veniceModel}`);
+          if (review === 'accepted') break;
+          if (review === 'adult-refusal') {
+            adultRepairRequested = true;
+            continue;
+          }
           break;
+        } catch (err) {
+          const status = (err as { status?: number })?.status;
+          if (isProviderAccountUnavailableStatus(status)) {
+            veniceUnavailableUntil = Date.now() + VENICE_ACCOUNT_COOLDOWN_MS;
+            console.warn(`[Voice Stream] Venice account unavailable (${status}); pausing retries for 10 minutes.`);
+            break;
+          }
+          if (shouldAbandonVoiceProviderAliases(err)) {
+            console.warn(`[Voice Stream] Venice ${veniceModel} failed (${status || (err as { name?: string })?.name || 'network'}); skipping remaining aliases and using the global fallback.`);
+            break;
+          }
+          console.warn(`[Voice Stream] Venice ${veniceModel} failed, trying fallback:`, err);
         }
-        if (shouldAbandonVoiceProviderAliases(err)) {
-          console.warn(`[Voice Stream] Venice ${veniceModel} failed (${status || (err as { name?: string })?.name || 'network'}); skipping remaining aliases and using the global fallback.`);
-          break;
-        }
-        console.warn(`[Voice Stream] Venice ${veniceModel} failed, trying fallback:`, err);
       }
+      if (streamedSuccessfully || veniceUnavailableUntil > Date.now()) break;
     }
   }
 
@@ -2892,12 +2957,12 @@ CRITICAL RULES FOR LIVE VOICE CALL:
   if (!streamedSuccessfully && ATLAS_KEY && !explicitlySelectedAlternate) {
     try {
       console.log('[Voice Stream] Streaming Atlas DeepSeek V3.2...');
-      streamedText = await handleOpenAIStream(
+      const candidate = await handleOpenAIStream(
         'https://api.atlascloud.ai/v1/chat/completions',
         ATLAS_KEY,
         'deepseek-ai/deepseek-v3.2'
       );
-      streamedSuccessfully = streamedText.trim().length > 0;
+      publishVoiceCandidate(candidate, 'Atlas DeepSeek V3.2');
     } catch (err) {
       console.warn('[Voice Stream] Atlas failed, falling back:', err);
     }
@@ -2916,18 +2981,15 @@ CRITICAL RULES FOR LIVE VOICE CALL:
           temperature: 0.60
         }
       });
-      const spokenStream = createSpokenDialogueStream(chunk => {
-        if (!providerFirstTokenAt) providerFirstTokenAt = Date.now();
-        writeVoiceText(chunk);
-      }, guardSpokenIdentity, spokenStreamOptions);
+      const spokenStream = createSpokenDialogueStream(() => {}, guardSpokenIdentity, spokenStreamOptions);
       for await (const chunk of responseStream) {
         const chunkText = chunk.text || '';
         if (chunkText) {
+          if (!providerFirstTokenAt) providerFirstTokenAt = Date.now();
           spokenStream.push(chunkText);
         }
       }
-      streamedText = spokenStream.flush();
-      streamedSuccessfully = streamedText.trim().length > 0;
+      publishVoiceCandidate(spokenStream.flush(), 'Gemini fast path');
     } catch (err) {
       console.warn('[Voice Stream] Fast-path Gemini failed:', err);
     }
@@ -2937,8 +2999,8 @@ CRITICAL RULES FOR LIVE VOICE CALL:
   if (!streamedSuccessfully && (voiceLlmModel === 'grok' || voiceLlmModel?.includes('grok')) && xaiApiKey) {
     try {
       console.log('[Stream] Trying Grok...');
-      streamedText = await handleOpenAIStream('https://api.x.ai/v1/chat/completions', xaiApiKey, 'grok-2-latest');
-      streamedSuccessfully = streamedText.trim().length > 0;
+      const candidate = await handleOpenAIStream('https://api.x.ai/v1/chat/completions', xaiApiKey, 'grok-2-latest');
+      publishVoiceCandidate(candidate, 'Grok');
     } catch (err) {
       console.warn('[Stream] Grok failed, falling back:', err);
     }
@@ -2953,8 +3015,8 @@ CRITICAL RULES FOR LIVE VOICE CALL:
         ollamaModel = voiceLlmModel.split(':').slice(1).join(':');
       }
       console.log(`[Stream] Trying Ollama (${ollamaModel})...`);
-      streamedText = await handleOpenAIStream(`${ollamaHost}/v1/chat/completions`, 'ollama-dummy-key', ollamaModel);
-      streamedSuccessfully = streamedText.trim().length > 0;
+      const candidate = await handleOpenAIStream(`${ollamaHost}/v1/chat/completions`, 'ollama-dummy-key', ollamaModel);
+      publishVoiceCandidate(candidate, `Ollama ${ollamaModel}`);
     } catch (err) {
       console.warn('[Stream] Ollama failed, falling back:', err);
     }
@@ -2973,18 +3035,15 @@ CRITICAL RULES FOR LIVE VOICE CALL:
           temperature: 0.60
         }
       });
-      const spokenStream = createSpokenDialogueStream(chunk => {
-        if (!providerFirstTokenAt) providerFirstTokenAt = Date.now();
-        writeVoiceText(chunk);
-      }, guardSpokenIdentity, spokenStreamOptions);
+      const spokenStream = createSpokenDialogueStream(() => {}, guardSpokenIdentity, spokenStreamOptions);
       for await (const chunk of responseStream) {
         const chunkText = chunk.text || '';
         if (chunkText) {
+          if (!providerFirstTokenAt) providerFirstTokenAt = Date.now();
           spokenStream.push(chunkText);
         }
       }
-      streamedText = spokenStream.flush();
-      streamedSuccessfully = streamedText.trim().length > 0;
+      publishVoiceCandidate(spokenStream.flush(), 'Gemini fallback');
     } catch (err) {
       console.error('[Stream] Gemini failed:', err);
       res.write(`data: ${JSON.stringify({ error: 'All models failed to stream' })}\n\n`);

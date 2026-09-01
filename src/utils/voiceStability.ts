@@ -35,7 +35,16 @@ export interface SpeakableChunkResult {
   remainder: string;
 }
 
+export interface VoiceTurnCommitOptions {
+  source: VoiceTranscriptSource;
+  hasTerminalPunctuation?: boolean;
+}
+
 const INTERRUPT_PREFIX = /^(?:stop|wait|hold on|pause|no|actually|cancel|never mind|nevermind)\b/i;
+
+const OPEN_ENDED_TURN_ENDING = /(?:\b(?:and|or|but|so|because|then|when|if|that|which|who|where|while|although|unless|with|without|for|about|to|the|a|an|my|your|our|their|this|these|those|i|we|you|he|she|they|it|is|are|was|were|do|does|did|can|could|would|should|will|just|like|um|uh)\b|[,;:\-\u2014\u2013])$/i;
+
+const OPEN_ENDED_PHRASE = /\b(?:i (?:was|am|have been) (?:thinking|wondering|trying)|can you|could you|would you|do you|what if|the thing is|it is because|it's because|i mean|for example)\s*$/i;
 
 const ECHO_STOP_WORDS = new Set([
   'a', 'an', 'and', 'are', 'as', 'at', 'be', 'but', 'for', 'from', 'i', 'if', 'in',
@@ -115,6 +124,62 @@ export function shouldInterruptPersonaSpeech(
   // The browser recognizer needs a separate acoustic confidence signal while
   // speaker audio is playing. During a silent model request there is no echo.
   return !context.personaIsSpeaking || Boolean(context.hasFreshVoiceEnergy);
+}
+
+/**
+ * Returns a short, transcript-aware grace period before a recognized phrase is
+ * committed as a complete user turn. Complete questions and commands move on
+ * quickly; fillers and open clauses get enough room for a natural breath.
+ */
+export function getVoiceTurnCommitDelay(
+  transcript: string,
+  options: VoiceTurnCommitOptions,
+): number {
+  const clean = transcript.replace(/\s+/g, ' ').trim();
+  if (!clean) return 0;
+  if (INTERRUPT_PREFIX.test(clean)) return 90;
+
+  const terminalPunctuation = options.hasTerminalPunctuation ?? /[.!?]["')\]]?$/.test(clean);
+  if (terminalPunctuation) return options.source === 'realtime' ? 140 : 220;
+  if (OPEN_ENDED_TURN_ENDING.test(clean) || OPEN_ENDED_PHRASE.test(clean)) {
+    return options.source === 'realtime' ? 900 : 1200;
+  }
+
+  const words = normalizeVoiceWords(clean);
+  if (words.length <= 2) return options.source === 'realtime' ? 380 : 520;
+  if (words.length >= 10) return options.source === 'realtime' ? 220 : 360;
+  return options.source === 'realtime' ? 300 : 460;
+}
+
+/**
+ * Merges consecutive committed recognition segments without duplicating text
+ * when a provider repeats the whole utterance on its next commit event.
+ */
+export function mergeVoiceTranscriptSegments(previous: string, next: string): string {
+  const left = previous.replace(/\s+/g, ' ').trim();
+  const right = next.replace(/\s+/g, ' ').trim();
+  if (!left) return right;
+  if (!right) return left;
+
+  const normalizedLeft = normalizeVoiceWords(left).join(' ');
+  const normalizedRight = normalizeVoiceWords(right).join(' ');
+  if (normalizedLeft === normalizedRight || normalizedLeft.endsWith(normalizedRight)) return left;
+  if (normalizedRight.startsWith(normalizedLeft)) return right;
+
+  const leftWords = left.split(' ');
+  const rightWords = right.split(' ');
+  const normalizedLeftWords = normalizeVoiceWords(left);
+  const normalizedRightWords = normalizeVoiceWords(right);
+  const maxOverlap = Math.min(leftWords.length, rightWords.length, 8);
+  for (let overlap = maxOverlap; overlap >= 1; overlap--) {
+    const leftTail = normalizedLeftWords.slice(-overlap).join(' ');
+    const rightHead = normalizedRightWords.slice(0, overlap).join(' ');
+    if (leftTail === rightHead) {
+      return [...leftWords, ...rightWords.slice(overlap)].join(' ');
+    }
+  }
+
+  return `${left} ${right}`;
 }
 
 /**

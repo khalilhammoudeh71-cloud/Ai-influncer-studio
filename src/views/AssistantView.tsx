@@ -74,7 +74,9 @@ import {
 } from '../utils/voiceAccuracy';
 import {
   drainSseData,
+  getVoiceTurnCommitDelay,
   isLikelyPersonaEcho,
+  mergeVoiceTranscriptSegments,
   shouldInterruptPersonaSpeech,
   summarizeVoiceLatency,
   type VoiceLatencySnapshot,
@@ -1133,6 +1135,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   const scribeConnectionRef = useRef<RealtimeConnection | null>(null);
   const scribeStartPromiseRef = useRef<Promise<boolean> | null>(null);
   const scribeReconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const realtimeCommitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const realtimePendingTranscriptRef = useRef<{ text: string; updatedAt: number }>({ text: '', updatedAt: 0 });
   const lastCommittedTranscriptRef = useRef<{ text: string; at: number }>({ text: '', at: 0 });
   const scribeFailureCountRef = useRef(0);
   const callTurnIdRef = useRef(0);
@@ -1356,11 +1360,43 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     });
   }
 
+  const clearPendingRealtimeTranscript = () => {
+    if (realtimeCommitTimerRef.current) {
+      clearTimeout(realtimeCommitTimerRef.current);
+      realtimeCommitTimerRef.current = null;
+    }
+    realtimePendingTranscriptRef.current = { text: '', updatedAt: 0 };
+  };
+
+  const scheduleRealtimeTranscriptCommit = (rawTranscript: string) => {
+    const merged = mergeVoiceTranscriptSegments(
+      realtimePendingTranscriptRef.current.text,
+      rawTranscript,
+    );
+    if (!merged) return;
+
+    realtimePendingTranscriptRef.current = { text: merged, updatedAt: Date.now() };
+    setLiveUserSpeech(merged);
+    if (realtimeCommitTimerRef.current) {
+      clearTimeout(realtimeCommitTimerRef.current);
+    }
+
+    const delay = getVoiceTurnCommitDelay(merged, { source: 'realtime' });
+    realtimeCommitTimerRef.current = setTimeout(() => {
+      realtimeCommitTimerRef.current = null;
+      const pending = realtimePendingTranscriptRef.current.text;
+      realtimePendingTranscriptRef.current = { text: '', updatedAt: 0 };
+      if (!pending || !isCallActiveRef.current || isMutedRef.current) return;
+      commitRecognizedVoiceTranscript(pending);
+    }, delay);
+  };
+
   const stopRealtimeTranscription = () => {
     if (scribeReconnectTimerRef.current) {
       clearTimeout(scribeReconnectTimerRef.current);
       scribeReconnectTimerRef.current = null;
     }
+    clearPendingRealtimeTranscript();
     const connection = scribeConnectionRef.current;
     scribeConnectionRef.current = null;
     scribeStartPromiseRef.current = null;
@@ -1388,10 +1424,13 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           token: tokenData.token,
           modelId: 'scribe_v2_realtime',
           commitStrategy: CommitStrategy.VAD,
-          vadSilenceThresholdSecs: 0.95,
+          // Commit sooner, then let the client-side transcript-aware grace
+          // window decide whether a complete thought should move immediately
+          // or an unfinished clause should keep listening.
+          vadSilenceThresholdSecs: 0.68,
           vadThreshold: 0.42,
           minSpeechDurationMs: 80,
-          minSilenceDurationMs: 180,
+          minSilenceDurationMs: 140,
           languageCode: 'en',
           keyterms: buildVoiceKeyterms(voiceAccuracyProfileRef.current, [
             ...personas.map(persona => persona.name),
@@ -1437,7 +1476,10 @@ export default function AssistantView({ personas, persona: propActivePersona, on
             voiceUtteranceStartedAtRef.current = Date.now();
           }
 
-          setLiveUserSpeech(partial);
+          setLiveUserSpeech(mergeVoiceTranscriptSegments(
+            realtimePendingTranscriptRef.current.text,
+            partial,
+          ));
 
           if (shouldInterruptPersonaSpeech(partial, {
             source: 'realtime',
@@ -1446,7 +1488,10 @@ export default function AssistantView({ personas, persona: propActivePersona, on
             responseIsPending: voiceCallBusyRef.current,
           })) {
             interruptPersona();
-            setLiveUserSpeech(partial);
+            setLiveUserSpeech(mergeVoiceTranscriptSegments(
+              realtimePendingTranscriptRef.current.text,
+              partial,
+            ));
           }
         });
 
@@ -1460,7 +1505,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
             return;
           }
 
-          commitRecognizedVoiceTranscript(rawTranscript);
+          scheduleRealtimeTranscriptCommit(rawTranscript);
         });
 
         connection.on(RealtimeEvents.SESSION_STARTED, () => {
@@ -1662,16 +1707,12 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           clearTimeout(speechRecognitionSilenceTimerRef.current);
         }
 
-        // Intelligent Conversational Pause Buffer (Generous breathing room so user is never interrupted):
-        const lastWord = trimmed.split(/\s+/).pop()?.toLowerCase().replace(/[^a-z]/g, '') || '';
-        const isTrailingThought = /^(and|or|but|so|because|like|um|uh|then|when|if|that|which|to|with|for|about|my|your|the|a|i|we|you|he|she|it|they|got|had|was|is)$/i.test(lastWord);
-
-        let pauseDelay = 1100;
-        if (isTrailingThought) {
-          pauseDelay = 1800;
-        } else if (hasFinalResult && /[.?!]$/.test(trimmed)) {
-          pauseDelay = 700;
-        }
+        // Complete questions move quickly while fillers and unfinished clauses
+        // retain enough breathing room for the speaker to continue naturally.
+        const pauseDelay = getVoiceTurnCommitDelay(trimmed, {
+          source: 'browser',
+          hasTerminalPunctuation: /[.?!]$/.test(trimmed),
+        });
 
         const resultCountAtSchedule = e.results.length;
         speechRecognitionSilenceTimerRef.current = setTimeout(() => {
@@ -2812,6 +2853,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     setActiveCallMedia(null);
     isCallActiveRef.current = true;
     lastCommittedTranscriptRef.current = { text: '', at: 0 };
+    clearPendingRealtimeTranscript();
     voiceSpeechStartedAtRef.current = null;
     browserPendingTranscriptRef.current = { text: '', updatedAt: 0 };
     setLastVoiceLatency(null);
@@ -4349,7 +4391,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <p className="text-xs font-bold text-cyan-100">Live call health</p>
-                        <p className="text-[10px] text-zinc-400 mt-0.5">Echo protection on · interruption ready · complete-response recovery on</p>
+                        <p className="text-[10px] text-zinc-400 mt-0.5">Adaptive turn-taking on · interruption ready · connection recovery on</p>
                       </div>
                       <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-300">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Active

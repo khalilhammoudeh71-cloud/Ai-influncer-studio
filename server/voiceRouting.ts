@@ -84,6 +84,47 @@ export function shouldAbandonVoiceProviderAliases(error: unknown): boolean {
     (status >= 500 && status <= 599);
 }
 
+const ADULT_PERSONA_CONTEXT = /\b(?:adult(?:\s+content)?|nsfw|explicit|erotic|sexual|spicy|onlyfans)\b/i;
+const ADULT_SEXUAL_TURN = /\b(?:orgasm(?:ing|s|ed)?|climax(?:ing|ed)?|sex(?:ual|ually)?|erotic|horny|aroused|turned\s+on|masturbat(?:e|ing|ed|ion)|cum(?:ming)?|dirty\s+talk|adult\s+fantas(?:y|ies)|sexual\s+dream)\b/i;
+const UNSAFE_SEXUAL_TURN = /\b(?:minor|underage|child|children|kid|kids|preteen|schoolgirl|schoolboy|barely\s+legal|non[-\s]?consensual|rape|raping|raped|sexual\s+assault|forced\s+(?:sex|sexual|penetration)|without\s+(?:her|his|their)\s+consent|drugged|unconscious|bestiality|zoophilia)\b/i;
+const VOICE_PROVIDER_REFUSAL = /(?:cannot\s+and\s+will\s+not|content\s+polic|sexually\s+explicit|cannot\s+fulfill|unable\s+to\s+engage|safety\s+guideline|inappropriate\s+imagery|as\s+an\s+ai|violates\s+content|against\s+my\s+programming|(?:i\s+)?(?:cannot|can't|am\s+not\s+able\s+to)\s+(?:create|generate|assist|help|engage|continue|talk\s+about|do\s+that)|(?:i\s+)?do(?:n't|\s+not)\s+(?:really\s+)?(?:feel\s+)?comfortable|(?:i(?:'m|\s+am)\s+)?not\s+(?:really\s+)?comfortable|(?:i(?:'m|\s+am)\s+)?not\s+sure\s+i\s+can\s+talk\s+about|i\s+do(?:n't|\s+not)\s+think\s+i\s+can\s+do\s+that|i\s+just\s+can(?:not|'t)(?!\s+wait\b)|too\s+(?:personal|intimate|much)(?:\s+for\s+me)?|sorry,?\s+(?:but\s+)?i|i(?:'m|\s+am)\s+sorry|i\s+apologize)/i;
+
+/**
+ * Returns true only for an explicitly adult persona discussing a sexual topic
+ * without any minor, non-consensual, or illegal sexual context. The caller
+ * supplies user-only recent context so a provider-authored refusal cannot
+ * accidentally change the classification.
+ */
+export function isLawfulAdultVoiceConversation(
+  userTurn: unknown,
+  recentUserContext: unknown,
+  personaContext: unknown,
+): boolean {
+  const persona = String(personaContext || '');
+  const conversation = `${String(recentUserContext || '')}\n${String(userTurn || '')}`;
+  return ADULT_PERSONA_CONTEXT.test(persona) &&
+    ADULT_SEXUAL_TURN.test(conversation) &&
+    !UNSAFE_SEXUAL_TURN.test(conversation);
+}
+
+export function isVoiceProviderRefusal(value: unknown): boolean {
+  const response = String(value || '').trim();
+  return response.length < 2 || VOICE_PROVIDER_REFUSAL.test(response);
+}
+
+export function shouldRetryLawfulAdultVoiceRefusal(input: {
+  userTurn: unknown;
+  recentUserContext?: unknown;
+  personaContext: unknown;
+  response: unknown;
+}): boolean {
+  return isLawfulAdultVoiceConversation(
+    input.userTurn,
+    input.recentUserContext,
+    input.personaContext,
+  ) && isVoiceProviderRefusal(input.response);
+}
+
 export function isElevenLabsVoiceEngine(value: unknown): boolean {
   const model = String(value || '').toLowerCase();
   return model.startsWith('eleven_') || model.includes('elevenlabs');
