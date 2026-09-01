@@ -3250,11 +3250,13 @@ Do not wrap your response in markdown code blocks or HTML tags. Return ONLY the 
     if (!text && useVenice && VENICE_KEY) {
       try {
         console.log('[Super Agent Router] Direct-routing prompt via Venice.ai API (100% Uncensored Engine)');
-        const veniceModel = chatLlmModel === 'qwen'
-          ? 'qwen-2.5-qwq-32b'
-          : chatLlmModel === 'deepseek'
-            ? 'deepseek-r1-671b'
-            : 'llama-3.3-70b';
+        const veniceModel = chatLlmModel === 'venice'
+          ? 'venice-uncensored-role-play'
+          : chatLlmModel === 'qwen'
+            ? 'qwen-2.5-qwq-32b'
+            : chatLlmModel === 'deepseek'
+              ? 'deepseek-r1-671b'
+              : 'llama-3.3-70b';
         const vRes = await fetch('https://api.venice.ai/api/v1/chat/completions', {
           method: 'POST',
           headers: {
