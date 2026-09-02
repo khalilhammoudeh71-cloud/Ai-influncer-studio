@@ -168,7 +168,18 @@ export function isDirectElevenLabsVoiceId(value: unknown): value is string {
   return typeof value === 'string' && /^[a-zA-Z0-9]{18,24}$/.test(value.trim());
 }
 
-export function normalizeNaturalVoiceGreeting(value: unknown, fallback: string): string {
+export interface NaturalVoiceGreetingOptions {
+  sharedHistoryContext?: unknown;
+}
+
+const UNSUPPORTED_SHARED_HISTORY_GREETING = /(?:\b(?:our|the)\s+(?:last|previous|earlier|recent)\s+(?:project|conversation|chat|call|plan|idea|trip|date|meeting|experiment|study|work)\b|\b(?:we|you\s+and\s+i)\s+(?:talked|discussed|planned|worked|explored|studied|decided|agreed|created|started|did|went|met)\b|\bremember\s+(?:when|our|the\s+time)\b)/i;
+const SHARED_HISTORY_GREETING_SUBJECT = /\b(project|conversation|chat|call|plan|idea|trip|date|meeting|experiment|study|work)\b/i;
+
+export function normalizeNaturalVoiceGreeting(
+  value: unknown,
+  fallback: string,
+  options: NaturalVoiceGreetingOptions = {},
+): string {
   if (typeof value !== 'string') return fallback;
 
   const cleaned = value
@@ -180,6 +191,11 @@ export function normalizeNaturalVoiceGreeting(value: unknown, fallback: string):
     .trim();
 
   if (!cleaned) return fallback;
+  if (UNSUPPORTED_SHARED_HISTORY_GREETING.test(cleaned)) {
+    const claimedSubject = cleaned.match(SHARED_HISTORY_GREETING_SUBJECT)?.[1]?.toLowerCase();
+    const groundingContext = String(options.sharedHistoryContext || '').toLowerCase();
+    if (!claimedSubject || !groundingContext.includes(claimedSubject)) return fallback;
+  }
 
   const sentences = cleaned.match(/[^.!?]+[.!?]?/g)?.map(sentence => sentence.trim()).filter(Boolean) || [];
   const candidate = sentences.slice(0, 2).join(' ').trim();

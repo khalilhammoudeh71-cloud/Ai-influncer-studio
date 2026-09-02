@@ -286,4 +286,23 @@ test('keeps live-call greetings short, spoken, and free of stage directions', ()
     ),
     'Hey—what\'s up?',
   );
+  assert.equal(
+    normalizeNaturalVoiceGreeting(
+      "Oh—hi Dr. H, I've been thinking about our last project.",
+      "Hey, Dr. H. What's up?",
+    ),
+    "Hey, Dr. H. What's up?",
+  );
+  assert.equal(
+    normalizeNaturalVoiceGreeting(
+      "Oh—hi Dr. H, I've been thinking about our last project.",
+      "Hey, Dr. H. What's up?",
+      { sharedHistoryContext: 'Dr. H: We finished a photography project together.' },
+    ),
+    "Oh—hi Dr. H, I've been thinking about our last project.",
+  );
+  assert.equal(
+    normalizeNaturalVoiceGreeting("Mm, I've been thinking about you.", "Hey—what's up?"),
+    "Mm, I've been thinking about you.",
+  );
 });

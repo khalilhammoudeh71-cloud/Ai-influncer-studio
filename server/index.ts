@@ -3329,7 +3329,8 @@ RULES:
 3. A small human pause or discourse marker such as "Mm," or "Oh—" is welcome when it fits, but use no more than one.
 4. FORBIDDEN ROBOTIC CLICHÉS: Never say "How may I assist you today?", "Welcome back, what are we tackling?", "I'm right here with you", "Tell me what's on your mind", "I was hoping you'd call", "Perfect timing", or "Good to connect with you".
 5. Do not stack questions, explain the relationship, narrate an action, or give a mini speech.
-6. Return ONLY the spoken greeting text without quotes, emojis, stage directions, or markdown.`;
+6. Never invent shared history. Do not mention a past project, conversation, plan, trip, date, meeting, experiment, memory, or event unless it appears explicitly in the supplied recent context or known memories. When no such context is supplied, keep the greeting entirely in the present moment.
+7. Return ONLY the spoken greeting text without quotes, emojis, stage directions, or markdown.`;
 
     let greetingText = '';
 
@@ -3488,6 +3489,12 @@ RULES:
     greetingText = normalizeNaturalVoiceGreeting(
       sanitizePersonaSelfAddress(greetingText, personaName, effectiveUserName),
       isImmediateContinuation ? 'Hey—where were we?' : `Hey, ${effectiveUserName}. What's up?`,
+      {
+        sharedHistoryContext: [
+          recentContext,
+          ...(Array.isArray(memories) ? memories : [memories]),
+        ].filter(Boolean).join('\n'),
+      },
     );
 
     return res.json({ greeting: greetingText });

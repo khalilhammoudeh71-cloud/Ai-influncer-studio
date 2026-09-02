@@ -14,8 +14,11 @@ export interface VoiceConversationHistoryOptions {
 
 const GREETING_ONLY = /^(?:hey|hi|hello|hiya|yo|good (?:morning|afternoon|evening)|what'?s up|sup)$/i;
 const SHORT_ACKNOWLEDGEMENT = /^(?:yeah|yes|yep|yup|okay|ok|sure|fine|right|alright|all right|mhm|mm-?hmm|uh-?huh|no|nope|nah|maybe|i guess|go ahead)$/i;
+const SHARED_HISTORY_CLARIFICATION = /^(?:what|which)\s+(?:project|conversation|chat|call|plan|idea|trip|date|meeting|experiment|study|work)(?:\s+are\s+you\s+talking\s+about)?$/i;
 const SHORT_CLARIFICATION = /^(?:what|huh|sorry|do what|what do you mean|what are you talking about|say what|say that again|come again|you can do what|why)$/i;
 const ACTION_CLARIFICATION = /^(?:do what|you can do what|what are you talking about)$/i;
+const SHARED_HISTORY_CLAIM = /(?:\b(?:our|the)\s+(?:last|previous|earlier|recent)\s+(?:project|conversation|chat|call|plan|idea|trip|date|meeting|experiment|study|work)\b|\b(?:we|you\s+and\s+i)\s+(?:talked|discussed|planned|worked|explored|studied|decided|agreed|created|started|did|went|met)\b|\bremember\s+(?:when|our|the\s+time)\b)/i;
+const SHARED_HISTORY_SUBJECT = /\b(?:project|conversation|chat|call|plan|idea|trip|date|meeting|experiment|study|work)\b/i;
 const ACTION_MEMORY = /\b(?:send|show|take|snap|generate|create|make|render|record|edit|change|remove|undress|strip|nude|naked|topless|image|photo|picture|selfie|video|clip)\b/i;
 const EXPLICIT_ACTION_CLAIM = /\b(?:send|show|take|snap|generate|create|make|render|record|edit|change|remove|start|open|upload|download)\b/i;
 const VAGUE_ACTION_CLAIM = /\b(?:do|doing|did|try|trying|ready)\s+(?:that|it|this|something|anything|out)\b/i;
@@ -62,7 +65,8 @@ export function isContextUnsafeVoiceTurn(value: unknown): boolean {
   if (!normalized) return true;
   return GREETING_ONLY.test(normalized)
     || SHORT_ACKNOWLEDGEMENT.test(normalized)
-    || SHORT_CLARIFICATION.test(normalized);
+    || SHORT_CLARIFICATION.test(normalized)
+    || SHARED_HISTORY_CLARIFICATION.test(normalized);
 }
 
 /**
@@ -88,16 +92,32 @@ export function getGroundedShortVoiceReply(
       break;
     }
   }
-  const previousAssistant = clean
-    .slice(0, currentIndex)
-    .reverse()
-    .find(message => isAssistantRole(message.role));
+  let previousAssistantIndex = -1;
+  for (let index = currentIndex - 1; index >= 0; index -= 1) {
+    if (isAssistantRole(clean[index].role)) {
+      previousAssistantIndex = index;
+      break;
+    }
+  }
+  const previousAssistant = previousAssistantIndex >= 0 ? clean[previousAssistantIndex] : undefined;
   const previousLine = String(previousAssistant?.content || '').replace(/\s+/g, ' ').trim();
 
   if (SHORT_ACKNOWLEDGEMENT.test(normalizedCurrent)) {
     if (/^(?:no|nope|nah)$/.test(normalizedCurrent)) return 'Okay, no problem.';
     if (/^(?:maybe|i guess)$/.test(normalizedCurrent)) return 'That\'s fair.';
     return previousLine ? 'Okay.' : undefined;
+  }
+
+  if (SHARED_HISTORY_CLARIFICATION.test(normalizedCurrent)) {
+    if (!previousLine) return 'Which one do you mean?';
+    const earlierUserGrounding = clean
+      .slice(0, previousAssistantIndex)
+      .filter(message => isUserRole(message.role))
+      .some(message => SHARED_HISTORY_SUBJECT.test(normalizeTurn(message.content)));
+    if (SHARED_HISTORY_CLAIM.test(previousLine) && !earlierUserGrounding) {
+      return "Sorry—I misspoke. There wasn't a project I should have referred to.";
+    }
+    return undefined;
   }
 
   if (!ACTION_CLARIFICATION.test(normalizedCurrent)) return undefined;

@@ -79,6 +79,33 @@ test('do what may restate only an explicit immediately preceding action', () => 
   );
 });
 
+test('a follow-up cannot make an invented shared project become real', () => {
+  const history = buildVoiceConversationHistory([
+    { role: 'persona', type: 'text', content: "Oh—hi Dr. H, I've been thinking about our last project." },
+    { role: 'user', type: 'text', content: 'What project?' },
+  ], 'What project?');
+
+  assert.deepEqual(history.map(message => message.content), [
+    "Oh—hi Dr. H, I've been thinking about our last project.",
+    'What project?',
+  ]);
+  assert.equal(isContextUnsafeVoiceTurn('What project?'), true);
+  assert.equal(
+    getGroundedShortVoiceReply(history, 'What project?'),
+    "Sorry—I misspoke. There wasn't a project I should have referred to.",
+  );
+});
+
+test('a project follow-up remains generative when the user introduced the project', () => {
+  const history = [
+    { role: 'user', type: 'text', content: 'Tell me about our last project.' },
+    { role: 'persona', type: 'text', content: 'Our last project was ambitious.' },
+    { role: 'user', type: 'text', content: 'What project?' },
+  ];
+
+  assert.equal(getGroundedShortVoiceReply(history, 'What project?'), undefined);
+});
+
 test('a meaningful follow-up keeps the bounded current-call conversation', () => {
   const history = buildVoiceConversationHistory([
     { role: 'user', type: 'text', content: 'How was your day?' },
