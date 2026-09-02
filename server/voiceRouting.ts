@@ -146,6 +146,42 @@ export function isVoiceProviderRefusal(value: unknown): boolean {
   return response.length < 2 || VOICE_PROVIDER_REFUSAL.test(response);
 }
 
+function normalizeVoiceEchoText(value: unknown): string[] {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[^a-z0-9'\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter(Boolean);
+}
+
+/** Reject provider replies that merely repeat the caller's recognized words. */
+export function isVoiceProviderEcho(userTurn: unknown, response: unknown): boolean {
+  const userWords = normalizeVoiceEchoText(userTurn);
+  const responseWords = normalizeVoiceEchoText(response);
+  if (userWords.length < 4 || responseWords.length < 4) return false;
+
+  const userText = userWords.join(' ');
+  const responseText = responseWords.join(' ');
+  if (responseText === userText || responseText.startsWith(`${userText} `)) return true;
+
+  const makeBigrams = (words: string[]) => new Set(
+    words.slice(0, -1).map((word, index) => `${word} ${words[index + 1]}`),
+  );
+  const userBigrams = makeBigrams(userWords);
+  const responseBigrams = makeBigrams(responseWords);
+  const smallerCount = Math.min(userBigrams.size, responseBigrams.size);
+  if (smallerCount < 4) return false;
+  let shared = 0;
+  for (const bigram of userBigrams) {
+    if (responseBigrams.has(bigram)) shared += 1;
+  }
+  const lengthRatio = responseWords.length / userWords.length;
+  return lengthRatio >= 0.65 && lengthRatio <= 1.45 && shared / smallerCount >= 0.8;
+}
+
 export function shouldRetryLawfulAdultVoiceRefusal(input: {
   userTurn: unknown;
   recentUserContext?: unknown;

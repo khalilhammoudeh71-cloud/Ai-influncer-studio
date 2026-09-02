@@ -67,6 +67,22 @@ test('a short acknowledgement cannot continue an invented request', () => {
   assert.equal(getGroundedShortVoiceReply(history, 'Yeah.'), 'Okay.');
 });
 
+test('hold on yields the floor without inviting another turn', () => {
+  const history = buildVoiceConversationHistory([
+    { role: 'persona', type: 'text', content: 'So you remember the dream?' },
+    { role: 'user', type: 'text', content: 'Hold on, hold on.' },
+  ], 'Hold on, hold on.');
+
+  assert.equal(isContextUnsafeVoiceTurn('Hold on.'), true);
+  assert.equal(isContextUnsafeVoiceTurn('Hold on, hold on.'), true);
+  assert.deepEqual(history.map(message => message.content), [
+    'So you remember the dream?',
+    'Hold on, hold on.',
+  ]);
+  assert.equal(getGroundedShortVoiceReply(history, 'Hold on, hold on.'), 'Okay.');
+  assert.equal(getGroundedShortVoiceReply(history, 'Hold on.'), 'Okay.');
+});
+
 test('do what may restate only an explicit immediately preceding action', () => {
   const history = [
     { role: 'persona', type: 'text', content: 'I can send the photo you requested.' },

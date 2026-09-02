@@ -2120,6 +2120,15 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       const conversationContext = buildVoiceConversationHistory(updatedHistory, text, {
         maxMessages: 10,
       });
+      const activeCallIds = new Set(updatedHistory.map(message => message.id));
+      const recalledConversation = searchConversationMemories(activePersona.id, text, 12)
+        .filter(record => record.type === 'text' && !activeCallIds.has(record.id));
+      const recalledConversationMemory = recalledConversation.length > 0
+        ? [`PAST CONVERSATION RECALL:\n${recalledConversation.map(record => (
+            `${record.role === 'user' ? (creator.name || getStoredUserName()) : activePersona.name}: ${record.content}`
+          )).join('\n')}`]
+        : [];
+      const voiceMemories = [...personaMemories, ...recalledConversationMemory];
 
       const controller = new AbortController();
       activeCallAbortControllerRef.current = controller;
@@ -2273,7 +2282,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
             timestamp: m.timestamp,
           })),
           priorChatHistory: [],
-          memories: personaMemories,
+          memories: voiceMemories,
           voiceLlmModel,
           voiceId: targetVoiceRouting.voiceId,
           voiceReference: targetVoiceRouting.voiceReference,

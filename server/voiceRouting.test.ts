@@ -11,6 +11,7 @@ import {
   isProviderAccountUnavailableStatus,
   isValidPublicVoiceReference,
   isVoiceProviderRefusal,
+  isVoiceProviderEcho,
   normalizeNaturalVoiceGreeting,
   sanitizeSpokenDialogue,
   selectElevenLabsPersonaVoice,
@@ -20,6 +21,21 @@ import {
   shouldUseVenicePersonaLlm,
   shouldUseWaveSpeedDeepSeekFallback,
 } from './voiceRouting';
+
+test('detects exact and near-verbatim voice response echoes', () => {
+  assert.equal(isVoiceProviderEcho(
+    'Uh, not too bad. Uh, listen, do you remember the dream I, I told you that I, uh, had, uh, yesterday?',
+    'Uh, not too bad. Listen, do you remember the dream I, I told you that I, uh, had, uh, yesterday?',
+  ), true);
+  assert.equal(isVoiceProviderEcho(
+    'No, I told you a dream.',
+    "No, I told you a dream. So, I guess I don't know what you're talking about.",
+  ), true);
+  assert.equal(isVoiceProviderEcho(
+    'Do you remember the dream I told you about yesterday?',
+    "I remember that you mentioned a dream, but I don't have its details.",
+  ), false);
+});
 
 const voices = [
   { voice_id: 'rawan-current', name: 'Rawan Hasan (Authentic Clone)', category: 'cloned' },

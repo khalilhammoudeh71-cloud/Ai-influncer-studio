@@ -14,6 +14,7 @@ export interface VoiceConversationHistoryOptions {
 
 const GREETING_ONLY = /^(?:hey|hi|hello|hiya|yo|good (?:morning|afternoon|evening)|what'?s up|sup)$/i;
 const SHORT_ACKNOWLEDGEMENT = /^(?:yeah|yes|yep|yup|okay|ok|sure|fine|right|alright|all right|mhm|mm-?hmm|uh-?huh|no|nope|nah|maybe|i guess|go ahead)$/i;
+const PAUSE_REQUEST = /^(?:(?:hold|hang) on(?:\s+(?:hold|hang) on)*|wait(?:\s+(?:a|one)\s+(?:second|sec|minute|moment))?|one\s+(?:second|sec|minute|moment)|give me\s+(?:a|one)\s+(?:second|sec|minute|moment)|just\s+(?:a|one)\s+(?:second|sec|minute|moment)|pause)$/i;
 const SHARED_HISTORY_CLARIFICATION = /^(?:what|which)\s+(?:project|conversation|chat|call|plan|idea|trip|date|meeting|experiment|study|work)(?:\s+are\s+you\s+talking\s+about)?$/i;
 const SHORT_CLARIFICATION = /^(?:what|huh|sorry|do what|what do you mean|what are you talking about|say what|say that again|come again|you can do what|why)$/i;
 const ACTION_CLARIFICATION = /^(?:do what|you can do what|what are you talking about)$/i;
@@ -65,6 +66,7 @@ export function isContextUnsafeVoiceTurn(value: unknown): boolean {
   if (!normalized) return true;
   return GREETING_ONLY.test(normalized)
     || SHORT_ACKNOWLEDGEMENT.test(normalized)
+    || PAUSE_REQUEST.test(normalized)
     || SHORT_CLARIFICATION.test(normalized)
     || SHARED_HISTORY_CLARIFICATION.test(normalized);
 }
@@ -101,6 +103,11 @@ export function getGroundedShortVoiceReply(
   }
   const previousAssistant = previousAssistantIndex >= 0 ? clean[previousAssistantIndex] : undefined;
   const previousLine = String(previousAssistant?.content || '').replace(/\s+/g, ' ').trim();
+
+  // A live caller asking for a moment is yielding neither a question nor a
+  // topic. Acknowledge once and give the floor back instead of letting a model
+  // turn the pause into "what do you want to say?" or a new conversation.
+  if (PAUSE_REQUEST.test(normalizedCurrent)) return 'Okay.';
 
   if (SHORT_ACKNOWLEDGEMENT.test(normalizedCurrent)) {
     if (/^(?:no|nope|nah)$/.test(normalizedCurrent)) return 'Okay, no problem.';

@@ -10,6 +10,7 @@ import { GoogleGenAI } from '@google/genai';
 import { requireAuth, AuthenticatedRequest } from './auth';
 import {
   type ElevenLabsVoiceSummary,
+  DEFAULT_WAVESPEED_PERSONA_FALLBACK_MODEL,
   createSpokenDialogueStream,
   getVenicePersonaModelCandidates,
   isDirectElevenLabsVoiceId,
@@ -18,10 +19,12 @@ import {
   isProviderAccountUnavailableStatus,
   isValidPublicVoiceReference,
   isVoiceProviderRefusal,
+  isVoiceProviderEcho,
   sanitizeSpokenDialogue,
   selectElevenLabsPersonaVoice,
   shouldAbandonVoiceProviderAliases,
   shouldRetryLawfulAdultVoiceRefusal,
+  shouldUseWaveSpeedDeepSeekFallback,
 } from './voiceRouting';
 import {
   normalizePersonaMediaReferences,
@@ -2609,6 +2612,7 @@ router.post('/agent/voice-chat-stream', async (req: AuthenticatedRequest, res: R
   const genAI = getGeminiClientForRoutes();
   const xaiApiKey = process.env.XAI_API_KEY || process.env.xai_api_key || process.env.X_AI_API_KEY || '';
   const VENICE_KEY = process.env.Veniceai_api_key || process.env.veniceai_api_key || process.env.VENICEAI_API_KEY || process.env.VENICE_API_KEY || '';
+  const WAVESPEED_KEY = process.env.WAVESPEED_API_KEY || '';
   const ATLAS_KEY = process.env.ATLASCLOUD_API_KEY || process.env.atlascloud_api_key || process.env.Atlascloud_api_key || '';
 
   const useRequestedCreatorFastPath = hasDistinctRequestedCreatorIdentity({
@@ -2709,6 +2713,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
 - ANSWER ONLY THE LATEST TURN: Use earlier messages only as context. Respond to the most recent user message, then stop. Do not introduce an unrelated topic, restart the conversation, append a second unsolicited response, simulate another user turn, or answer a question the user did not ask.
 - NO STALE CONSENT OR REQUESTS: A greeting or short reply such as "hey", "yeah", "yes", "okay", "what?", or "do what?" never starts, repeats, confirms, or continues an image, video, sexual, or other action unless that exact action is explicitly stated in the current user turn. Never revive a request from an earlier chat or call.
 - HANDLE AMBIGUITY HONESTLY: If the current turn is unclear, respond to its ordinary conversational meaning or ask one short clarifying question. Do not guess what action the user wants.
+- MEMORY HONESTY: If the user asks whether you remember a past detail, use only the supplied relevant memories and current-call history. If the detail is absent, say naturally that you do not remember the details; never copy or paraphrase the user's question as your answer and never pretend to remember something that is not present.
 - CAPABILITY TRUTH: This is an audio conversation. Never claim to physically undress, pose, touch someone, move around the room, or perform another physical act. Only initiate a media action when the current user turn explicitly asks the app to create or send that media.
 - NATURAL RELATIONSHIP: Never justify compliance by saying the user created, made, or owns you. Do not say you will comply merely because you trust your creator.
 - START LIKE A HUMAN: React to the specific thing just said. Make the first phrase short and direct—often 2 to 8 words—then continue only if needed. On an ongoing call, never restart with a greeting or reassurance such as "Hey, I'm right here with you."
@@ -2836,9 +2841,13 @@ CRITICAL RULES FOR LIVE VOICE CALL:
   const publishVoiceCandidate = (
     candidate: string,
     providerLabel: string,
-  ): 'accepted' | 'adult-refusal' | 'empty' => {
+  ): 'accepted' | 'adult-refusal' | 'echo' | 'empty' => {
     const reviewedCandidate = candidate.trim();
     if (!reviewedCandidate) return 'empty';
+    if (isVoiceProviderEcho(currentUserTurn, reviewedCandidate)) {
+      console.warn(`[Voice Stream] ${providerLabel} echoed the caller; retrying with the next provider.`);
+      return 'echo';
+    }
     if (shouldRetryLawfulAdultVoiceRefusal({
       userTurn: currentUserTurn,
       recentUserContext: recentUserAdultContext,
@@ -2878,8 +2887,10 @@ CRITICAL RULES FOR LIVE VOICE CALL:
     !requestedConversationModel ||
     requestedConversationModel === 'default'
   );
+  let attemptedVenice = false;
 
   if (!streamedSuccessfully && shouldStreamVenice) {
+    attemptedVenice = true;
     const veniceModels = getVenicePersonaModelCandidates(
       process.env.VENICE_VOICE_MODEL || process.env.VENICE_PERSONA_MODEL,
     );
@@ -2942,6 +2953,35 @@ CRITICAL RULES FOR LIVE VOICE CALL:
         }
       }
       if (streamedSuccessfully || veniceUnavailableUntil > Date.now()) break;
+    }
+  }
+
+  // The text-chat route already falls back from Venice to DeepSeek V4 Flash
+  // on WaveSpeed. Keep live voice on the same provider order, including when a
+  // syntactically successful Venice reply is rejected for echoing the caller.
+  const shouldStreamWaveSpeedDeepSeek = Boolean(WAVESPEED_KEY) && shouldUseWaveSpeedDeepSeekFallback({
+    modelTarget: voiceLlmModel,
+    attemptedVenice,
+    veniceConfigured: Boolean(VENICE_KEY),
+  });
+  if (!streamedSuccessfully && shouldStreamWaveSpeedDeepSeek) {
+    const waveSpeedModel = process.env.WAVESPEED_PERSONA_FALLBACK_MODEL || DEFAULT_WAVESPEED_PERSONA_FALLBACK_MODEL;
+    try {
+      console.log(`[Voice Stream] Streaming WaveSpeed ${waveSpeedModel} fallback...`);
+      const candidate = await handleOpenAIStream(
+        'https://llm.wavespeed.ai/v1/chat/completions',
+        WAVESPEED_KEY,
+        waveSpeedModel,
+        {},
+        {
+          reasoning: { enabled: false },
+          include_reasoning: false,
+        },
+        8000,
+      );
+      publishVoiceCandidate(candidate, `WaveSpeed ${waveSpeedModel}`);
+    } catch (err) {
+      console.warn('[Voice Stream] WaveSpeed DeepSeek fallback failed:', err);
     }
   }
 
