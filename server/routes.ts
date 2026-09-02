@@ -38,6 +38,7 @@ import {
 } from '../shared/voiceConversationContext';
 import { isPublicApiPath } from './publicApiPaths';
 import { requestedExactReply } from './agentReplyConstraints';
+import { isConversationalMediaCreationRemark } from '../shared/personaMediaIntent';
 import {
   detectIncompletePersonaMediaRequest,
   hasDistinctRequestedCreatorIdentity,
@@ -2022,7 +2023,8 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
    - If ${userName} is talking about photos, commenting on an image, complaining, or asking a question (e.g. "why did you send that photo?", "stop sending photos", "what is that picture?", "did you like that photo?"):
      - DO NOT GENERATE AN IMAGE!
      - Reason like a smart, self-aware human: answer his question directly, explain yourself with playful wit, laugh off the misunderstanding, or transition back to the conversation.
-   - ONLY when ${userName} EXPLICITLY asks to receive a new photo/selfie/outfit (e.g. "send me a photo", "take a selfie in bed", "send another one", "show me what you're wearing", "can I see you?"): cheerfully confirm you are creating and sending it right now!
+   - ONLY when ${userName} EXPLICITLY names a new media asset (e.g. "send me a photo by the window", "take a selfie in bed", or "create a short video at the beach"): cheerfully confirm you are creating and sending it right now.
+   - Phrases such as "I want to see you", "I'd love to see you", "let me see you", or "show me your body" are relationship dialogue, not image commands. Never create media from them unless the current turn explicitly says photo, image, selfie, picture, video, clip, or another media noun.
 
 4. REAL HUMAN SPOKEN WORDS ONLY: Speak ONLY the exact words that come out of your mouth aloud.
 5. NO INTERNAL THOUGHTS OR NARRATIVE DESCRIPTIONS: NEVER write "*thinking*", "*pauses*", "(smiles)", "*giggles*", "[whispering]", "I think to myself...", "Thinking: ...", or narrative descriptions. You are on a live voice call.
@@ -2046,24 +2048,16 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
       /\b(sex|sexy|cock|dick|pussy|ass|tits|boobs|nude|naked|horny|kinky|cucumbers)\b/i.test(lowerMsg);
 
     // 1. Genuine conversational remarks analyzing/questioning/complaining about media (not asking for a new one)
-    const isConversationalRemark = /(?:why did you send|why are you sending|why do you keep sending|stop sending (?:photos|pics|images|videos|selfies)|don't send (?:photos|pics|images)|not asking for (?:a |an )?(?:photo|image|picture|video)|didn't ask for (?:a |an )?(?:photo|image|picture|video)|why is there (?:a |an )?(?:photo|image)|what is that (?:photo|image|picture)|did you like (?:that|the) (?:photo|image|picture)|talk about something else|let's just talk|let's chat without photos)\b/i.test(lowerMsg) ||
-      /(?:while generating|about that photo|about this photo|look at the photo|what do you think of the photo|let's talk about something else|let's just chat|keep talking|continue talking)\b/i.test(lowerMsg);
+    const isConversationalRemark = isConversationalMediaCreationRemark(lastUserMsg);
 
     // 2. Explicit commands to generate or send a photo/selfie/outfit/visual
     const incompleteMediaRequest = detectIncompletePersonaMediaRequest(lastUserMsg);
     const directMediaRequest = resolvePersonaMediaRequest(lastUserMsg, rawHistory);
-    const isExplicitImageCommand = directMediaRequest?.type === 'image' || (!incompleteMediaRequest && !isConversationalRemark && (
-      Boolean(req.body.attachedImage && /(generate|make|create|draw|photoshoot|with this|this)/i.test(lowerMsg)) ||
-      /\b(?:send|take|show|give|snap|shoot|make|generate|post|create|share)\s+(?:me\s+)?(?:a\s+|an\s+|another\s+|the\s+|some\s+)?(?:one|pic|pics|photo|photos|picture|pictures|image|images|selfie|selfies|shot|portrait|outfit|look)\b/i.test(lowerMsg) ||
-      /\b(?:can i see|let me see|wanna see|want to see|show me|send me|take a pic|take a photo|send another one|send one more|send another pic|send another photo|send it to me|send it|send that|send it again|try sending it|try sending it again|send it over|send it now|send a photo|send an image)\b/i.test(lowerMsg) ||
-      /^(another one|send another|another pic|another photo|new photo|new pic|send it|send it to me|send)$/i.test(lowerMsg)
-    ));
+    const isExplicitImageCommand = directMediaRequest?.type === 'image' || (!incompleteMediaRequest && !isConversationalRemark &&
+      Boolean(req.body.attachedImage && /(generate|make|create|draw|photoshoot|with this|this)/i.test(lowerMsg)));
 
     // 3. Explicit commands to generate a video clip
-    const isExplicitVideoCommand = directMediaRequest?.type === 'video' || (!incompleteMediaRequest && !isConversationalRemark && (
-      /\b(?:send|record|make|generate|shoot|create)\s+(?:me\s+)?(?:a\s+|an\s+|another\s+)?(?:new\s+)?(?:video|clip|reel|animation)\b/i.test(lowerMsg) ||
-      /\b(?:send a video|make a video|record a video|animate this|animate it)\b/i.test(lowerMsg)
-    ));
+    const isExplicitVideoCommand = directMediaRequest?.type === 'video';
 
     const isActionRequest = isExplicitImageCommand || isExplicitVideoCommand;
 
@@ -2556,14 +2550,18 @@ STRICT RULES:
 
     let extractedAction: { type: 'image' | 'video'; prompt: string; userPrompt: string } | undefined;
     const actionTagMatch = (text || '').match(/\[ACTION:(IMAGE|VIDEO):\s*([\s\S]*?)\]/i);
-    if (actionTagMatch) {
+    if (actionTagMatch && isActionRequest) {
       extractedAction = {
         type: actionTagMatch[1].toLowerCase() as 'image' | 'video',
         prompt: actionTagMatch[2].trim(),
         userPrompt: lastUserMsg,
       };
       text = text.replace(/\[ACTION:(IMAGE|VIDEO):[\s\S]*?\]/gi, '').trim();
-    } else if (isExplicitImageCommand || /\b(?:sending it|try again right now.*sending it|sending you a (?:photo|selfie|pic|image)|sending a (?:photo|selfie|pic|image)|taking a (?:photo|selfie)|take a quick (?:photo|selfie)|here is the (?:photo|selfie))\b/i.test(text)) {
+    } else if (actionTagMatch) {
+      // A conversation model cannot invent a media job. Only the deterministic
+      // current-turn classifier above may authorize one.
+      text = text.replace(/\[ACTION:(IMAGE|VIDEO):[\s\S]*?\]/gi, '').trim();
+    } else if (isExplicitImageCommand) {
       // Keep the exact transcript authoritative. The image pipeline already
       // receives persona identity/reference data and should not reinterpret
       // wardrobe, pose, setting, or other user-provided details here.
@@ -2715,6 +2713,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
 - HANDLE AMBIGUITY HONESTLY: If the current turn is unclear, respond to its ordinary conversational meaning or ask one short clarifying question. Do not guess what action the user wants.
 - MEMORY HONESTY: If the user asks whether you remember a past detail, use only the supplied relevant memories and current-call history. If the detail is absent, say naturally that you do not remember the details; never copy or paraphrase the user's question as your answer and never pretend to remember something that is not present.
 - CAPABILITY TRUTH: This is an audio conversation. Never claim to physically undress, pose, touch someone, move around the room, or perform another physical act. Only initiate a media action when the current user turn explicitly asks the app to create or send that media.
+- MEDIA INTENT MUST BE LITERAL: "I want to see you", "I'd love to see you", "let me see you", and "show me your body" are conversation unless the current turn explicitly names a photo, image, selfie, picture, video, clip, or another media asset. Never infer an image request from the verb "see" alone.
 - NATURAL RELATIONSHIP: Never justify compliance by saying the user created, made, or owns you. Do not say you will comply merely because you trust your creator.
 - START LIKE A HUMAN: React to the specific thing just said. Make the first phrase short and direct—often 2 to 8 words—then continue only if needed. On an ongoing call, never restart with a greeting or reassurance such as "Hey, I'm right here with you."
 - CONCISE & NATURAL: Use no more than 2 clear, natural sentences unless the user explicitly asks for detail. One main thought at a time. Sentence fragments are welcome when they sound natural in spoken conversation. After answering, stop; do not fill silence with a new topic.
@@ -2725,7 +2724,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
 - SPOKEN WORDS ONLY: Output only natural dialogue that should be heard. Do not output stage directions, inner thoughts, markdown, bracketed narration, performance notes, or labels such as "tone", "voice", "delivery", "emotion", "cadence", or "pitch". Never describe how the line should sound. Express emotion only through ordinary spoken words.
 - ADULT-ONLY CREATIVE FREEDOM: When every participant is an adult and the scenario is consensual and legal, engage naturally in explicit, NSFW, romantic, sensual, or erotic conversation and roleplay. Do not moralize, invent a policy refusal, or redirect a lawful adult request.
 - HARD BOUNDARY: Never sexualize minors, non-consensual exploitation, or illegal sexual material. Refuse only those cases clearly and briefly.${lawfulAdultConversation ? `
-- CURRENT TURN IS LAWFUL ADULT DIALOGUE: The current topic has been classified as consensual adult conversation for an Adult-content persona. Respond directly in character. Do not invent discomfort, say it is too personal or intimate, or refuse merely because the topic is explicit.` : ''}`;
+- CURRENT TURN IS LAWFUL ADULT DIALOGUE: The current topic has been classified as consensual adult conversation for an Adult-content persona. Respond directly in character. Do not claim clear sexual language is ambiguous, ask the user to clarify a plainly stated act, invent discomfort, say it is too personal or intimate, or refuse merely because the topic is explicit.` : ''}`;
 
   const formattedContents = rawHistory.map((m: any) => ({
     role: m.role === 'user' ? 'user' : 'model',

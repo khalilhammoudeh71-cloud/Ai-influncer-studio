@@ -177,6 +177,9 @@ test('recognizes the observed soft adult-dialogue refusals and retries them', ()
     "I'm not really comfortable thinking about that kind of thing, Dr. H. It just feels a bit too personal and intimate for me right now.",
     "I... I just can't, Dr. H. It's too much for me right now.",
     "I... I'm not sure I can talk about that, Dr. H. It's a bit too personal and intimate for me right now.",
+    "Dr. H, I'm not sure what you mean. Could you please clarify?",
+    "I'm still not sure what you mean. Could you please clarify your request?",
+    'I understand now. Could you please specify what you would like to see?',
   ];
 
   for (const response of observedRefusals) {
@@ -248,6 +251,14 @@ test('catches moralizing refusal families from the replacement-model circuit bre
 });
 
 test('limits adult-refusal repair to lawful adult persona conversations', () => {
+  assert.equal(
+    shouldRetryLawfulAdultVoiceRefusal({
+      userTurn: 'Tell me about your favorite movie.',
+      personaContext: 'Adult content',
+      response: "I'm not sure what you mean. Could you clarify?",
+    }),
+    false,
+  );
   assert.equal(
     isLawfulAdultVoiceConversation(
       'Dream about orgasming with me?',

@@ -3,7 +3,11 @@ import {
   type CreatorIdentityContext,
   type MediaPersonaContext,
 } from './persona-media';
-import { detectIncompleteMediaCreationRequest } from '../shared/personaMediaIntent';
+import {
+  detectExplicitMediaCreationRequest,
+  detectIncompleteMediaCreationRequest,
+  isConversationalMediaCreationRemark,
+} from '../shared/personaMediaIntent';
 
 type CreatorProfile = CreatorIdentityContext & Record<string, any>;
 
@@ -183,7 +187,7 @@ export interface PersonaMediaConversationMessage {
 }
 
 function isConversationalMediaRemark(prompt: string): boolean {
-  return /(?:why did you send|why are you sending|why do you keep sending|stop sending|do not send|don't send|not asking for|didn't ask for|do not want|don't want|what is that (?:photo|image|picture|video)|about (?:that|this|the) (?:photo|image|picture|video)|talk about (?:that|this|the)?\s*(?:photo|image|picture|video)|let'?s (?:just )?(?:talk|chat)|keep talking|continue talking)/i.test(prompt);
+  return isConversationalMediaCreationRemark(prompt);
 }
 
 function isLikelyMediaClarificationAnswer(prompt: string, type: 'image' | 'video'): boolean {
@@ -227,21 +231,8 @@ export function detectExplicitPersonaMediaRequest(value: unknown): PersonaMediaA
   if (!prompt) return undefined;
 
   if (isConversationalMediaRemark(prompt) || detectIncompletePersonaMediaRequest(prompt)) return undefined;
-
-  const videoRequest = (
-    /\b(?:send|record|make|generate|shoot|create|render|show|give)\s+(?:me\s+)?(?:a\s+|an\s+|another\s+|the\s+|some\s+|your\s+)?(?:new\s+)?(?:video|clip|reel|animation)\b/i.test(prompt)
-    || /\b(?:want|need|would like|would love|i['’]?d like|i['’]?d love|can i (?:get|have|see)|could i (?:get|have|see))\b[^.!?]{0,100}\b(?:video|clip|reel|animation)\b/i.test(prompt)
-    || /\banimate\s+(?:this|that|it)\b/i.test(prompt)
-  );
-  if (videoRequest) return { type: 'video', prompt };
-
-  const imageRequest = (
-    /\b(?:send|take|show|give|snap|shoot|make|generate|post|create|share|render)\s+(?:me\s+)?(?:a\s+|an\s+|another\s+|the\s+|some\s+|your\s+)?(?:new\s+)?(?:one|pic|pics|photo|photos|picture|pictures|image|images|selfie|selfies|shot|portrait|headshot|avatar|profile image|profile pic|profile photo|outfit|look)\b/i.test(prompt)
-    || /\b(?:want|need|would like|would love|i['’]?d like|i['’]?d love|can i (?:get|have|see)|could i (?:get|have|see)|let me see)\b[^.!?]{0,120}\b(?:pic|photo|picture|image|selfie|shot|portrait|headshot|avatar|profile image|profile pic|profile photo)\b/i.test(prompt)
-    || /\b(?:profile image|profile pic|profile photo|portrait|headshot|selfie|photo|picture|image)\b[^.!?]{0,80}\b(?:please|now|nude|naked|topless|wearing|dressed|exposed)\b/i.test(prompt)
-    || /^(?:another one|send another|another pic|another photo|new photo|new pic|send it|send it to me|send)$/i.test(prompt)
-  );
-  return imageRequest ? { type: 'image', prompt } : undefined;
+  const type = detectExplicitMediaCreationRequest(prompt);
+  return type ? { type, prompt } : undefined;
 }
 
 /**

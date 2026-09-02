@@ -83,7 +83,10 @@ import {
   type VoiceTurnTiming,
 } from '../utils/voiceStability';
 import { buildVoiceConversationHistory } from '../../shared/voiceConversationContext';
-import { detectIncompleteMediaCreationRequest } from '../../shared/personaMediaIntent';
+import {
+  detectExplicitMediaCreationRequest,
+  detectIncompleteMediaCreationRequest,
+} from '../../shared/personaMediaIntent';
 import {
   DEFAULT_IMAGE_MODEL_ID,
   DEFAULT_IMAGE_MODEL_NAME,
@@ -396,31 +399,11 @@ const VOICE_CALIBRATION_TERMS = [
 ];
 
 function detectIntent(message: string): 'image' | 'video' | 'chat' {
-  const lower = message.toLowerCase().trim();
-
-  // 1. Strict conversational override: Genuine questions, complaints, or discussions about media are ALWAYS chat
-  const isConversationalRemark = /(?:why did you send|why are you sending|why do you keep sending|stop sending (?:photos|pics|images|videos|selfies)|don't send (?:photos|pics|images)|not asking for (?:a |an )?(?:photo|image|picture|video)|didn't ask for (?:a |an )?(?:photo|image|picture|video)|why is there (?:a |an )?(?:photo|image)|what is that (?:photo|image|picture)|did you like (?:that|the) (?:photo|image|picture)|talk about something else|let's just talk|let's chat without photos)\b/i.test(lower) ||
-    /(?:while generating|about that photo|about this photo|look at the photo|what do you think of the photo|let's talk about something else|let's just chat|keep talking|continue talking)\b/i.test(lower);
-  if (isConversationalRemark) return 'chat';
   if (detectIncompleteMediaCreationRequest(message)) return 'chat';
 
-  // 2. Explicit video commands
-  if (/\b(?:send|record|make|generate|shoot|create)\s+(?:me\s+)?(?:a\s+|an\s+|another\s+)?(?:new\s+)?(?:video|clip|reel|animation)\b/i.test(lower) ||
-      /\b(?:send a video|make a video|record a video|animate this|animate it)\b/i.test(lower)) {
-    return 'video';
-  }
-
-  // 3. Strict explicit visual & photo intent detection
-  if (
-    /\b(?:send|take|show|give|snap|shoot|make|generate|post|create|share|get|see)\s+(?:me\s+)?(?:a\s+|an\s+|another\s+|the\s+|some\s+|your\s+)?(?:one|pic|pics|photo|photos|picture|pictures|image|images|selfie|selfies|shot|portrait|outfit|look|tits|boobs|cleavage|body)\b/i.test(lower) ||
-    /\b(?:can i see|let me see|wanna see|want to see|show me|send me|take a pic|take a photo|take a picture|snap a photo|snap a pic|take photo|take pic|picture of you|photo of you|pic of you|selfie of you|image of you|photos of you|pics of you|pictures of you|photo in|pic in|picture in|photo wearing|pic wearing|picture wearing|send another one|send one more|send another pic|send another photo|send it to me|send it|send that|send it again|try sending it|try sending it again|send it over|send it now|send a photo|send an image)\b/i.test(lower) ||
-    /\b(?:photo|pic|picture|selfie|image)\s+(?:please|now|right now|of you|wearing|dressed|naked|exposed)\b/i.test(lower) ||
-    /^(another one|send another|another pic|another photo|new photo|new pic|send it|send it to me|send|photo|pic|selfie)$/i.test(lower)
-  ) {
-    return 'image';
-  }
-
-  return 'chat';
+  // Generation requires both a creation/request phrase and an actual media
+  // noun. "I want to see you" is ordinary relationship dialogue.
+  return detectExplicitMediaCreationRequest(message) || 'chat';
 }
 
 export const VOICE_CALL_ENGINES = [
@@ -2376,14 +2359,14 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         // still-underspecified request while we ask the user for details.
         setActiveCallMedia(null);
       }
-      const isVoiceImageIntent = !voiceMediaConversationOnly && (voiceImageRevisionCandidate.isRevision || data.action?.type === 'image' || (!incompleteVoiceMediaRequest && (
-        detectIntent(text) === 'image' ||
-        (/\b(?:photo|pic|picture|selfie|image)\b/i.test(text) && /\b(?:take|send|snap|show|generate|make|see|want|wearing|exposed|nude|naked|bedroom|bed)\b/i.test(text)) ||
-        /\b(?:sending it|try again right now.*sending it|sending you a (?:photo|selfie|pic|image)|sending a (?:photo|selfie|pic|image)|taking a (?:photo|selfie)|take a quick (?:photo|selfie)|here is the (?:photo|selfie)|snap that for you|take that for you|snapping (?:this|that|a photo)|let me take|give me one second.*(?:snap|take|photo|pic)|here you go.*(?:pic|photo))\b/i.test(reply)
-      )));
+      const isVoiceImageIntent = !voiceMediaConversationOnly && (
+        voiceImageRevisionCandidate.isRevision ||
+        data.action?.type === 'image' ||
+        (!incompleteVoiceMediaRequest && detectIntent(text) === 'image')
+      );
 
       const isVoiceVideoIntent = !voiceMediaConversationOnly && !isVoiceImageIntent && (data.action?.type === 'video' || (!incompleteVoiceMediaRequest && (
-        detectIntent(text) === 'video' || /\b(?:sending you a video|recorded a video|sending the video)\b/i.test(reply)
+        detectIntent(text) === 'video'
       )));
 
       if (isVoiceImageIntent || isVoiceVideoIntent) {

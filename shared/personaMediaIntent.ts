@@ -1,6 +1,15 @@
 export type IncompleteMediaRequestType = 'image' | 'video';
+export type ExplicitMediaRequestType = 'image' | 'video';
 
 const MEDIA_KIND = 'image|photo|picture|pic|portrait|selfie|headshot|avatar|video|clip|reel|animation';
+
+/** Conversation about media, rejection of media, and ordinary relationship
+ * language must never be interpreted as a request to create an asset. */
+export function isConversationalMediaCreationRemark(value: unknown): boolean {
+  const prompt = typeof value === 'string' ? value.trim() : '';
+  if (!prompt) return false;
+  return /(?:why did you send|why are you sending|why do you keep sending|stop sending|do not send|don't send|not asking for|didn't ask for|do not want(?:\s+(?:an?|another|any|more))?\s+(?:image|photo|picture|pic|selfie|video|clip)|don't want(?:\s+(?:an?|another|any|more))?\s+(?:image|photo|picture|pic|selfie|video|clip)|what is that (?:photo|image|picture|video)|about (?:that|this|the) (?:photo|image|picture|video)|talk about (?:that|this|the)?\s*(?:photo|image|picture|video)|let'?s (?:just )?(?:talk|chat)|keep talking|continue talking|never mind|nevermind|forget it|cancel that)/i.test(prompt);
+}
 
 function requestMatch(prompt: string): RegExpMatchArray | null {
   const patterns = [
@@ -42,10 +51,24 @@ function meaningfulMediaDetails(match: RegExpMatchArray): string {
  */
 export function detectIncompleteMediaCreationRequest(value: unknown): IncompleteMediaRequestType | undefined {
   const prompt = typeof value === 'string' ? value.trim() : '';
-  if (!prompt) return undefined;
+  if (!prompt || isConversationalMediaCreationRemark(prompt)) return undefined;
 
   const match = requestMatch(prompt);
   if (!match || meaningfulMediaDetails(match)) return undefined;
 
+  return /^(?:video|clip|reel|animation)$/i.test(match.groups?.kind || '') ? 'video' : 'image';
+}
+
+/**
+ * Detects an explicit request to create media only when the user actually
+ * names an image or video asset. Relational phrases such as "I want to see
+ * you" and "show me your body" remain conversation, not generation commands.
+ */
+export function detectExplicitMediaCreationRequest(value: unknown): ExplicitMediaRequestType | undefined {
+  const prompt = typeof value === 'string' ? value.trim() : '';
+  if (!prompt || isConversationalMediaCreationRemark(prompt) || detectIncompleteMediaCreationRequest(prompt)) return undefined;
+
+  const match = requestMatch(prompt);
+  if (!match) return undefined;
   return /^(?:video|clip|reel|animation)$/i.test(match.groups?.kind || '') ? 'video' : 'image';
 }

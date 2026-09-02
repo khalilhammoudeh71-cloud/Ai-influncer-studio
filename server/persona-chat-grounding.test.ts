@@ -89,6 +89,24 @@ test('detects direct video requests while leaving media discussion as chat', () 
   assert.equal(detectExplicitPersonaMediaRequest('Why did you send that photo?'), undefined);
 });
 
+test('keeps relational requests to see the persona in conversation', () => {
+  for (const request of [
+    'I wanna see you.',
+    'I want to see you as soon as possible.',
+    'I said I wanna see you so that I can fuck you.',
+    'Let me see you.',
+    'Show me your body.',
+    'Show me your outfit.',
+    'Send it.',
+    'Send another one.',
+    'Can I see you tonight?',
+  ]) {
+    assert.equal(detectIncompletePersonaMediaRequest(request), undefined, request);
+    assert.equal(detectExplicitPersonaMediaRequest(request), undefined, request);
+    assert.equal(resolvePersonaMediaRequest(request), undefined, request);
+  }
+});
+
 test('a generic creation request asks for details instead of starting an arbitrary job', () => {
   const vagueRequests = [
     'Listen, I need you to, to generate an image for me.',
