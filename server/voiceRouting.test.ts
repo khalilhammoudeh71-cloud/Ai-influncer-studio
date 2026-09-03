@@ -18,6 +18,7 @@ import {
   shapeNaturalSpokenReply,
   shouldAbandonVoiceProviderAliases,
   shouldRetryLawfulAdultVoiceRefusal,
+  shouldRetryVoiceCandidateOnPrimary,
   shouldUseVenicePersonaLlm,
   shouldUseWaveSpeedDeepSeekFallback,
 } from './voiceRouting';
@@ -35,6 +36,14 @@ test('detects exact and near-verbatim voice response echoes', () => {
     'Do you remember the dream I told you about yesterday?',
     "I remember that you mentioned a dream, but I don't have its details.",
   ), false);
+});
+
+test('repairs a rejected primary voice candidate once before cross-provider fallback', () => {
+  assert.equal(shouldRetryVoiceCandidateOnPrimary('echo', false), true);
+  assert.equal(shouldRetryVoiceCandidateOnPrimary('adult-refusal', false), true);
+  assert.equal(shouldRetryVoiceCandidateOnPrimary('empty', false), false);
+  assert.equal(shouldRetryVoiceCandidateOnPrimary('accepted', false), false);
+  assert.equal(shouldRetryVoiceCandidateOnPrimary('echo', true), false);
 });
 
 const voices = [

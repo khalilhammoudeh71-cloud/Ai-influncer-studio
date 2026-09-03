@@ -35,6 +35,15 @@ export interface SpeakableChunkResult {
   remainder: string;
 }
 
+export type RealtimeTranscriptionRecoveryAction = 'reconnect' | 'browser-fallback';
+
+export function getRealtimeTranscriptionRecoveryAction(
+  failureCount: number,
+  maxReconnects = 2,
+): RealtimeTranscriptionRecoveryAction {
+  return failureCount <= Math.max(0, maxReconnects) ? 'reconnect' : 'browser-fallback';
+}
+
 export interface VoiceTurnCommitOptions {
   source: VoiceTranscriptSource;
   hasTerminalPunctuation?: boolean;
@@ -140,15 +149,15 @@ export function getVoiceTurnCommitDelay(
   if (INTERRUPT_PREFIX.test(clean)) return 90;
 
   const terminalPunctuation = options.hasTerminalPunctuation ?? /[.!?]["')\]]?$/.test(clean);
-  if (terminalPunctuation) return options.source === 'realtime' ? 140 : 220;
+  if (terminalPunctuation) return options.source === 'realtime' ? 90 : 160;
   if (OPEN_ENDED_TURN_ENDING.test(clean) || OPEN_ENDED_PHRASE.test(clean)) {
-    return options.source === 'realtime' ? 900 : 1200;
+    return options.source === 'realtime' ? 700 : 900;
   }
 
   const words = normalizeVoiceWords(clean);
-  if (words.length <= 2) return options.source === 'realtime' ? 380 : 520;
-  if (words.length >= 10) return options.source === 'realtime' ? 220 : 360;
-  return options.source === 'realtime' ? 300 : 460;
+  if (words.length <= 2) return options.source === 'realtime' ? 260 : 380;
+  if (words.length >= 10) return options.source === 'realtime' ? 150 : 260;
+  return options.source === 'realtime' ? 200 : 340;
 }
 
 /**

@@ -98,6 +98,17 @@ interface Message {
   suggestedSteps?: any[];
   critiqueLogs?: string[];
   collaborationLogs?: CollaborationMsg[];
+  agentMode?: {
+    provider: string;
+    model: string;
+    effort: string;
+    research: boolean;
+    toolRounds: number;
+    promptTokens?: number;
+    completionTokens?: number;
+    costUsd?: number;
+  };
+  replanDepth?: number;
   planCard?: { title: string; steps: { title: string; estimatedCost: string }[]; totalCost: string };
   isExecuting?: boolean;
   execLogs?: string[];
@@ -483,8 +494,14 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
   const [autoApprove, setAutoApprove] = useState(false);
   const [allowNsfw, setAllowNsfw] = useState(() => localStorage.getItem('agent_allow_nsfw') === 'true');
   const [voiceLlmModel, setVoiceLlmModel] = useState<string>(() => {
+    const brainVersion = localStorage.getItem('super_agent_brain_version');
     const saved = localStorage.getItem('agent_voice_llm');
-    if (!saved || saved.includes('ollama')) return 'gemini';
+    if (brainVersion !== '3') {
+      localStorage.setItem('super_agent_brain_version', '3');
+      localStorage.setItem('agent_voice_llm', 'adaptive');
+      return 'adaptive';
+    }
+    if (!saved || saved.includes('ollama') || saved.startsWith('venice-')) return 'adaptive';
     return saved;
   });
   const [deepResearchActive, setDeepResearchActive] = useState(false);
@@ -1729,16 +1746,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
       speechDebounceTimerRef.current = null;
     }
 
-    let augmentedText = textToSend;
-    if (deepResearchActive) {
-      augmentedText = `[DEEP RESEARCH ACTIVE: Use live search engine & synthesize fresh web data]\n${augmentedText}`;
-    }
-    if (socialResearchActive) {
-      augmentedText = `[SOCIAL MEDIA RESEARCH ACTIVE: Analyze trending Instagram reels, TikTok audio, and X viral hooks]\n${augmentedText}`;
-    }
-    if (webpageResearchActive) {
-      augmentedText = `[WEBPAGE RESEARCH ACTIVE: Extract & analyze website content from URL: ${webpageUrlInput || 'target URL'}]\n${augmentedText}`;
-    }
+    const augmentedText = textToSend;
 
     const userMessage: Message = {
       id: Math.random().toString(),
@@ -1785,6 +1793,12 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
           messages: history, 
           allowNsfw,
           voiceLlmModel,
+          researchMode: {
+            deepResearch: deepResearchActive,
+            socialResearch: socialResearchActive,
+            webpageResearch: webpageResearchActive,
+            webpageUrl: webpageUrlInput.trim() || undefined,
+          },
           activePersona: (effectiveSelectedPersonaId && effectiveSelectedPersonaId !== 'empty') ? personas.find(p => p.id === effectiveSelectedPersonaId) : undefined
         })
       });
@@ -1816,6 +1830,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
         suggestedSteps: finalSuggestedSteps,
         critiqueLogs: finalCritiqueLogs,
         collaborationLogs: finalCollaborationLogs,
+        agentMode: data.agentMode && typeof data.agentMode === 'object' ? data.agentMode : undefined,
         execSteps: finalSuggestedSteps 
           ? finalSuggestedSteps.map((s: any) => ({ ...s, status: 'pending', resultUrl: undefined, isActionLoading: null }))
           : undefined,
@@ -2278,7 +2293,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
     const targetMsg = directMsg || messages.find(m => m.id === messageId);
     if (!targetMsg || !targetMsg.execSteps || targetMsg.isExecuting) return;
 
-    setMessages(prev => prev.map(m => m.id === messageId ? { ...m, isExecuting: true } : m));
+    setMessages(prev => prev.map(m => m.id === messageId ? { ...m, isExecuting: true, status: 'executing' } : m));
 
     const addLocalLog = (msg: string, success = true, isModel = false) => {
       setMessages(prev => prev.map(m => {
@@ -2307,6 +2322,10 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
 
     addLocalLog('🤖 Auto-Pilot Pipeline initialized...', true);
     
+    let activeStepIndex = -1;
+    const executionReport: Array<{ index: number; type: string; status: 'success' | 'error'; error?: string }> = [];
+    const stepsList = targetMsg.execSteps || targetMsg.suggestedSteps || [];
+
     try {
       let memoryFaceImage: string | null = null;
       for (let mIdx = messages.length - 1; mIdx >= 0; mIdx--) {
@@ -2335,7 +2354,6 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
       let createdPersona: Persona | null = null;
       let createdPersonaId = '';
 
-      let stepsList = targetMsg.execSteps || targetMsg.suggestedSteps || [];
       if (!stepsList || stepsList.length === 0) {
         return;
       }
@@ -2386,6 +2404,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
 
       for (let i = 0; i < stepsList.length; i++) {
         const step = stepsList[i];
+        activeStepIndex = i;
         updateStepStatus(i, 'running');
 
         if (step.type === 'create_persona') {
@@ -2926,13 +2945,24 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
           addLocalLog(`✅ Financial transaction logged successfully.`);
           updateStepStatus(i, 'success');
         }
+
+        executionReport.push({ index: i, type: step.type, status: 'success' });
       }
 
       addLocalLog('🏆 Auto-Pilot pipeline executions finished successfully!');
+      setMessages(prev => prev.map(m => m.id === messageId ? { ...m, status: 'done' } : m));
       toast.success('Agent completed all tasks successfully!');
       
     } catch (err: any) {
-      addLocalLog(`❌ Error: ${err.message || 'Workflow execution halted.'}`);
+      const failureMessage = err.message || 'Workflow execution halted.';
+      const failedStep = stepsList[activeStepIndex];
+      executionReport.push({
+        index: activeStepIndex,
+        type: failedStep?.type || 'unknown',
+        status: 'error',
+        error: failureMessage,
+      });
+      addLocalLog(`❌ Error: ${failureMessage}`);
       setMessages(prev => prev.map(m => {
         if (m.id === messageId && m.execSteps) {
           const updated = m.execSteps.map(s => s.status === 'running' ? { ...s, status: 'error' as const } : s);
@@ -2940,7 +2970,65 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
         }
         return m;
       }));
-      toast.error('Workflow failed.');
+      toast.error('Workflow failed. Super Agent is reviewing the result.');
+
+      if (!targetMsg.replanDepth) {
+        try {
+          let authHeader: Record<string, string> = {};
+          try {
+            const { supabase } = await import('../lib/supabase');
+            const sessionRes = await supabase.auth.getSession();
+            const token = sessionRes?.data?.session?.access_token;
+            if (token) authHeader = { Authorization: `Bearer ${token}` };
+          } catch (_) {}
+
+          const originalUserMessage = [...messages].reverse().find(message => message.role === 'user');
+          const recoveryPrompt = `The previous studio workflow failed. Review the execution report and create a corrected plan containing only the failed and unfinished work. Do not repeat successful steps. Execution report: ${JSON.stringify(executionReport)}`;
+          const recoveryResponse = await fetch('/api/agent/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...authHeader },
+            body: JSON.stringify({
+              messages: [
+                ...(originalUserMessage ? [{ role: 'user', content: originalUserMessage.content }] : []),
+                { role: 'model', content: targetMsg.content },
+                { role: 'user', content: recoveryPrompt },
+              ],
+              allowNsfw,
+              voiceLlmModel,
+              researchMode: {
+                deepResearch: false,
+                socialResearch: false,
+                webpageResearch: false,
+              },
+              activePersona: (effectiveSelectedPersonaId && effectiveSelectedPersonaId !== 'empty')
+                ? personas.find(persona => persona.id === effectiveSelectedPersonaId)
+                : undefined,
+            }),
+          });
+          if (recoveryResponse.ok) {
+            const recoveryData = await recoveryResponse.json();
+            const recoverySteps = normalizeAgentSteps(recoveryData.suggestedSteps);
+            if (recoverySteps.length > 0) {
+              const recoveryMessage: Message = {
+                id: `replan-${Date.now()}`,
+                role: 'model',
+                content: recoveryData.text || 'I reviewed the failure and prepared a corrected plan.',
+                status: 'clarifying',
+                suggestedSteps: recoverySteps,
+                execSteps: recoverySteps.map(step => ({ ...step, status: 'pending' })),
+                critiqueLogs: ['Execution feedback reviewed. Revised plan is waiting for approval.'],
+                collaborationLogs: recoveryData.collaborationLogs,
+                agentMode: recoveryData.agentMode,
+                replanDepth: 1,
+              };
+              setMessages(prev => [...prev.slice(-35), recoveryMessage]);
+              toast.success('A corrected plan is ready for review.');
+            }
+          }
+        } catch (replanError) {
+          console.warn('[Super Agent] Recovery planning failed:', replanError);
+        }
+      }
     } finally {
       setMessages(prev => prev.map(m => m.id === messageId ? { ...m, isExecuting: false } : m));
     }
@@ -3048,14 +3136,14 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                 const next = !allowNsfw;
                 setAllowNsfw(next);
                 localStorage.setItem('agent_allow_nsfw', String(next));
-                toast(next ? '🔥 Uncensored Mode Activated — Venice/Atlas & OmniVoice uncensored models' : '🛡️ Standard Safe Mode Active');
+                toast(next ? '🔥 Adult Mode Activated — adaptive refusal-reduced text and uncensored media routes' : '🛡️ Standard Safe Mode Active');
               }}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold tracking-wide border transition-all flex items-center gap-1.5 cursor-pointer ${
                 allowNsfw
                   ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50 shadow-md shadow-cyan-500/10'
                   : 'bg-white/5 text-zinc-300 border-white/10 hover:border-white/20 hover:bg-white/10'
               }`}
-              title="When ON, Super Agent uses fully uncensored Venice / Atlas Cloud models and OmniVoice audio directly"
+              title="When ON, Adaptive Agent prefers available refusal-reduced text models and the studio's uncensored media routes"
             >
               <Flame size={13} className={allowNsfw ? 'text-cyan-400' : 'text-zinc-400'} />
               <span>{allowNsfw ? 'Adult mode' : 'Standard mode'}</span>
@@ -3076,6 +3164,14 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                   setVoiceLlmModel(selected);
                   localStorage.setItem('agent_voice_llm', selected);
                   const labels: Record<string, string> = {
+                    adaptive: 'Adaptive Agent enabled — the best-value configured provider is selected automatically.',
+                    'adaptive-fast': 'Adaptive Fast enabled — optimized for the lowest latency and cost.',
+                    'adaptive-smart': 'Adaptive Smart enabled — balanced quality and cost.',
+                    'adaptive-deep': 'Adaptive Deep enabled — stronger models and deeper reasoning.',
+                    runware: 'Runware LLM route enabled.',
+                    wiro: 'Wiro LLM route enabled with live capability discovery.',
+                    atlas: 'Atlas Cloud LLM route enabled.',
+                    wavespeed: 'WaveSpeed LLM route enabled.',
                     grok: '🚀 Switched to xAI Grok 2 (Cloud API)!',
                     venice: 'Switched to Venice Uncensored 1.2 (Cloud)',
                     deepseek: '🧠 Switched to DeepSeek R1 Reasoner (Cloud API)!',
@@ -3096,6 +3192,18 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                 className="bg-transparent text-cyan-300 text-xs font-extrabold outline-none cursor-pointer"
                 title="Select Conversational Intelligence LLM Engine for Super Agent & Voice Call"
               >
+                <optgroup label="ADAPTIVE AGENT">
+                  <option value="adaptive" className="bg-zinc-900 text-white">Adaptive Auto — Best value</option>
+                  <option value="adaptive-fast" className="bg-zinc-900 text-white">Adaptive Fast — Lowest latency / cost</option>
+                  <option value="adaptive-smart" className="bg-zinc-900 text-white">Adaptive Smart — Balanced</option>
+                  <option value="adaptive-deep" className="bg-zinc-900 text-white">Adaptive Deep — Maximum reasoning</option>
+                </optgroup>
+                <optgroup label="PROVIDER ROUTES">
+                  <option value="runware" className="bg-zinc-900 text-white">Runware — Open-model value</option>
+                  <option value="wiro" className="bg-zinc-900 text-white">Wiro — Dynamic model catalog</option>
+                  <option value="atlas" className="bg-zinc-900 text-white">Atlas Cloud</option>
+                  <option value="wavespeed" className="bg-zinc-900 text-white">WaveSpeed LLM</option>
+                </optgroup>
                 <optgroup label="🦙 META LLAMA MODELS">
                   <option value="llama3.3" className="bg-zinc-900 text-white">🦙 Meta Llama 3.3 70B (Cloud API)</option>
                 </optgroup>
@@ -3391,6 +3499,13 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                   >
                     <span className="text-[9px] font-black text-zinc-400 uppercase tracking-wider mb-1 px-1">
                       {msg.role === 'model' ? '🤖 Agent' : '👤 You'}
+                      {msg.role === 'model' && msg.agentMode && (
+                        <span className="ml-2 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2 py-0.5 text-cyan-300">
+                          {msg.agentMode.provider} · {msg.agentMode.effort}
+                          {msg.agentMode.research ? ' · research' : ''}
+                          {typeof msg.agentMode.costUsd === 'number' ? ` · $${msg.agentMode.costUsd.toFixed(5)}` : ''}
+                        </span>
+                      )}
                     </span>
 
                     <div className={`p-4 rounded-2xl relative overflow-hidden shadow-lg border text-xs sm:text-sm leading-relaxed ${
@@ -3521,6 +3636,15 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                               </div>
                             ))}
                           </div>
+                          {msg.status === 'clarifying' && !msg.isExecuting && (
+                            <button
+                              type="button"
+                              onClick={() => runPipeline(msg.id, msg)}
+                              className="flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-400/40 bg-cyan-500/15 px-4 py-2.5 text-xs font-extrabold text-cyan-200 transition-colors hover:bg-cyan-500/25"
+                            >
+                              <RefreshCw size={14} /> Run corrected plan
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>

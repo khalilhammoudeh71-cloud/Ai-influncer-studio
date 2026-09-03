@@ -224,6 +224,21 @@ export function searchConversationMemories(personaId: string, query: string, lim
   return [...selected].sort((left, right) => left - right).map(index => archive[index]);
 }
 
+/**
+ * Voice memory can quote the caller's archived words, but must not feed an old
+ * model reply back into the model as ground truth. This prevents a prior echo
+ * or hallucination from becoming a persistent fact on a later call.
+ */
+export function selectGroundedVoiceRecall(
+  records: ConversationRecord[],
+  excludedIds: ReadonlySet<string> = new Set(),
+  limit = 6,
+): ConversationRecord[] {
+  return records
+    .filter(record => record.role === 'user' && record.type === 'text' && !excludedIds.has(record.id))
+    .slice(-Math.max(0, limit));
+}
+
 export function migrateRecentConversationToArchive(personaId: string) {
   if (parseIndex(accountLocalStorage.getItem(archiveIndexKey(personaId))).chunks > 0) return;
   archiveConversationRecords(personaId, loadRecentConversation(personaId));

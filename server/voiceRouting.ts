@@ -195,6 +195,20 @@ export function shouldRetryLawfulAdultVoiceRefusal(input: {
   ) && isVoiceProviderRefusal(input.response);
 }
 
+export type VoiceCandidateReview = 'accepted' | 'adult-refusal' | 'echo' | 'empty';
+
+/**
+ * A syntactically successful primary-model reply can still be unusable. Give
+ * the fast primary provider one tightly bounded repair attempt before paying
+ * the latency cost of switching providers.
+ */
+export function shouldRetryVoiceCandidateOnPrimary(
+  review: VoiceCandidateReview,
+  repairAlreadyAttempted: boolean,
+): boolean {
+  return !repairAlreadyAttempted && (review === 'adult-refusal' || review === 'echo');
+}
+
 export function isElevenLabsVoiceEngine(value: unknown): boolean {
   const model = String(value || '').toLowerCase();
   return model.startsWith('eleven_') || model.includes('elevenlabs');

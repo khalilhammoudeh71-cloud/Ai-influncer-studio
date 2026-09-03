@@ -28,6 +28,7 @@ const {
   mergeUniqueConversationRecords,
   saveRecentConversation,
   searchConversationMemories,
+  selectGroundedVoiceRecall,
 } = await import('./conversationContinuity');
 const { setActiveStorageUserId } = await import('./accountStorage');
 
@@ -126,6 +127,19 @@ test('recalls a relevant older conversation beyond the recent window', () => {
   const recalled = searchConversationMemories(personaId, 'Do you remember the marathon with my son?', 6);
   assert.ok(recalled.some(item => item.id === 'u12'));
   assert.ok(recalled.some(item => item.id === 'p11' || item.id === 'p13'));
+});
+
+test('voice recall trusts archived caller words but excludes old persona output', () => {
+  const recalled = [
+    record('u1', 'I told you about my Cairo trip.', '2026-08-23T20:00:00.000Z'),
+    record('p1', 'You said the trip was to Rome.', '2026-08-23T20:00:01.000Z'),
+    record('u2', 'The trip was in November.', '2026-08-23T20:00:02.000Z'),
+  ];
+
+  assert.deepEqual(
+    selectGroundedVoiceRecall(recalled, new Set(['u2'])).map(item => item.id),
+    ['u1'],
+  );
 });
 
 test('deletes an image from recent history and the durable archive', () => {

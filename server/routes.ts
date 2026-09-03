@@ -10,6 +10,7 @@ import { GoogleGenAI } from '@google/genai';
 import { requireAuth, AuthenticatedRequest } from './auth';
 import {
   type ElevenLabsVoiceSummary,
+  type VoiceCandidateReview,
   DEFAULT_WAVESPEED_PERSONA_FALLBACK_MODEL,
   createSpokenDialogueStream,
   getVenicePersonaModelCandidates,
@@ -24,6 +25,7 @@ import {
   selectElevenLabsPersonaVoice,
   shouldAbandonVoiceProviderAliases,
   shouldRetryLawfulAdultVoiceRefusal,
+  shouldRetryVoiceCandidateOnPrimary,
   shouldUseWaveSpeedDeepSeekFallback,
 } from './voiceRouting';
 import {
@@ -38,6 +40,18 @@ import {
 } from '../shared/voiceConversationContext';
 import { isPublicApiPath } from './publicApiPaths';
 import { requestedExactReply } from './agentReplyConstraints';
+import {
+  SUPER_AGENT_PLAN_TOOL,
+  estimateSuperAgentCost,
+  modelSupportsNativeTools,
+  normalizeSuperAgentPlanSteps,
+  normalizeSuperAgentModelCatalog,
+  normalizeVeniceModelCatalog,
+  parseAgentToolArguments,
+  selectSuperAgentRoute,
+  type SuperAgentModelEntry,
+  type SuperAgentProvider,
+} from './superAgent';
 import { isConversationalMediaCreationRemark } from '../shared/personaMediaIntent';
 import {
   detectIncompletePersonaMediaRequest,
@@ -76,6 +90,41 @@ const VENICE_ACCOUNT_COOLDOWN_MS = 10 * 60 * 1000;
 let elevenLabsVoiceCache: { voices: ElevenLabsVoiceSummary[]; expiresAt: number } | null = null;
 let elevenLabsVoiceCatalogPromise: Promise<ElevenLabsVoiceSummary[]> | null = null;
 let veniceUnavailableUntil = 0;
+const superAgentCatalogCache = new Map<SuperAgentProvider, { models: SuperAgentModelEntry[]; expiresAt: number }>();
+const superAgentCatalogPromises = new Map<SuperAgentProvider, Promise<SuperAgentModelEntry[]>>();
+
+async function loadSuperAgentModelCatalog(input: {
+  provider: SuperAgentProvider;
+  modelsUrl: string;
+  apiKey: string;
+}): Promise<SuperAgentModelEntry[]> {
+  const cached = superAgentCatalogCache.get(input.provider);
+  if (cached && cached.expiresAt > Date.now()) return cached.models;
+  const pending = superAgentCatalogPromises.get(input.provider);
+  if (pending) return pending;
+
+  const promise = (async () => {
+    try {
+      const response = await fetch(input.modelsUrl, {
+        headers: { Authorization: `Bearer ${input.apiKey}` },
+        signal: AbortSignal.timeout(3000),
+      });
+      if (!response.ok) return [];
+      const models = input.provider === 'venice'
+        ? normalizeVeniceModelCatalog(await response.json())
+        : normalizeSuperAgentModelCatalog(input.provider, await response.json());
+      superAgentCatalogCache.set(input.provider, { models, expiresAt: Date.now() + 10 * 60 * 1000 });
+      return models;
+    } catch (error) {
+      console.warn(`[Super Agent Router] ${input.provider} model discovery failed; using known fallbacks:`, error);
+      return [];
+    } finally {
+      superAgentCatalogPromises.delete(input.provider);
+    }
+  })();
+  superAgentCatalogPromises.set(input.provider, promise);
+  return promise;
+}
 
 async function loadElevenLabsVoiceCatalog(apiKey: string, forceRefresh = false): Promise<ElevenLabsVoiceSummary[]> {
   if (!forceRefresh && elevenLabsVoiceCache && elevenLabsVoiceCache.expiresAt > Date.now()) {
@@ -123,7 +172,7 @@ async function requestElevenLabsSpeech(
         'Content-Type': 'application/json',
         'Accept': 'audio/mpeg',
       },
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(6000),
       body: JSON.stringify({
         text,
         model_id: modelId,
@@ -1086,6 +1135,7 @@ export let globalDefaultVoiceSettings = {
 };
 
 router.post('/agent/realtime-transcription-token', async (_req: AuthenticatedRequest, res: Response) => {
+  const tokenRequestStartedAt = Date.now();
   const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key || '';
   if (!elKey) {
     return res.status(503).json({ error: 'Realtime transcription is not configured' });
@@ -1099,12 +1149,13 @@ router.post('/agent/realtime-transcription-token', async (_req: AuthenticatedReq
     });
     const tokenData = await tokenResponse.json() as { token?: string; detail?: unknown };
     if (!tokenResponse.ok || !tokenData.token) {
-      console.warn('[Realtime Transcription] Token request failed:', tokenResponse.status, tokenData.detail || 'No token returned');
+      console.warn(`[Realtime Transcription] Token request failed after ${Date.now() - tokenRequestStartedAt}ms:`, tokenResponse.status, tokenData.detail || 'No token returned');
       return res.status(502).json({ error: 'Realtime transcription is temporarily unavailable' });
     }
+    console.log(`[Voice Latency] transcription-token=${Date.now() - tokenRequestStartedAt}ms`);
     return res.json({ token: tokenData.token, expiresInSeconds: 900 });
   } catch (error) {
-    console.warn('[Realtime Transcription] Token request error:', error);
+    console.warn(`[Realtime Transcription] Token request error after ${Date.now() - tokenRequestStartedAt}ms:`, error);
     return res.status(502).json({ error: 'Realtime transcription is temporarily unavailable' });
   }
 });
@@ -1210,7 +1261,7 @@ export async function synthesizeClonedAudioWithWavespeed(
   audioRefBase64: string,
   text: string,
   model?: string,
-  options?: { speed?: number; exaggeration?: number; language?: string }
+  options?: { speed?: number; exaggeration?: number; language?: string; deadlineMs?: number }
 ): Promise<string | undefined> {
   const wsKey = process.env.WAVESPEED_API_KEY;
   if (!wsKey || !audioRefBase64) return undefined;
@@ -1222,6 +1273,8 @@ export async function synthesizeClonedAudioWithWavespeed(
     console.warn('[Voice Clone Audio Extract]:', e);
   }
   const dataUrl = cleanAudio.startsWith('data:') ? cleanAudio : `data:audio/wav;base64,${cleanAudio}`;
+  const synthesisDeadline = Date.now() + Math.max(3000, options?.deadlineMs ?? 120000);
+  const remainingSynthesisMs = () => Math.max(1, synthesisDeadline - Date.now());
 
   const requestedModel = (model || '').toLowerCase();
   
@@ -1273,6 +1326,7 @@ export async function synthesizeClonedAudioWithWavespeed(
   }
 
   for (const { endpoint, buildPayload } of endpointsToTry) {
+    if (Date.now() >= synthesisDeadline) break;
     try {
       console.log(`[Wavespeed Voice Clone] Synthesizing speech with reference audio via ${endpoint}...`);
       const wsRes = await fetch(`https://api.wavespeed.ai/api/v3/${endpoint}`, {
@@ -1282,7 +1336,7 @@ export async function synthesizeClonedAudioWithWavespeed(
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(buildPayload()),
-        signal: AbortSignal.timeout(10000)
+        signal: AbortSignal.timeout(Math.min(10000, remainingSynthesisMs()))
       });
 
       const wsJson = await wsRes.json() as any;
@@ -1293,11 +1347,12 @@ export async function synthesizeClonedAudioWithWavespeed(
 
       const getUrl = wsJson?.data?.urls?.get || (wsJson?.data?.id ? `https://api.wavespeed.ai/api/v3/predictions/${wsJson.data.id}/result` : null);
       if (getUrl) {
-        for (let attempts = 0; attempts < 20; attempts++) {
-          await new Promise(r => setTimeout(r, 1500));
+        for (let attempts = 0; attempts < 20 && Date.now() < synthesisDeadline; attempts++) {
+          await new Promise(r => setTimeout(r, Math.min(1500, remainingSynthesisMs())));
+          if (Date.now() >= synthesisDeadline) break;
           const pollRes = await fetch(getUrl, { 
             headers: { 'Authorization': `Bearer ${wsKey}` },
-            signal: AbortSignal.timeout(6000)
+            signal: AbortSignal.timeout(Math.min(6000, remainingSynthesisMs()))
           });
           const pollJson = await pollRes.json() as any;
           const status = pollJson?.data?.status || pollJson?.status;
@@ -2354,7 +2409,8 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
               bit_rate: 128000,
               sample_rate: 44100
             }
-          })
+          }),
+          signal: AbortSignal.timeout(8000),
         });
         if (cRes.ok) {
           const cBuf = Buffer.from(await cRes.arrayBuffer());
@@ -2376,7 +2432,12 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
     if (!audioUrl && wantsReferenceClone && isValidPublicVoiceReference(personaVoiceRef)) {
       try {
         console.log(`[Voice Chat TTS] Using Wavespeed voice clone with ${activePersona?.name || 'Persona'} reference audio...`);
-        audioUrl = await synthesizeClonedAudioWithWavespeed(personaVoiceRef, text);
+        audioUrl = await synthesizeClonedAudioWithWavespeed(
+          personaVoiceRef,
+          text,
+          requestedTtsModel,
+          { deadlineMs: 12000 },
+        );
       } catch (wErr) {
         console.warn('[Wavespeed Voice Synthesis Warning]:', wErr);
       }
@@ -2403,7 +2464,8 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
               input: spokenText,
               voice: openaiVoice,
               response_format: 'mp3'
-            })
+            }),
+            signal: AbortSignal.timeout(8000),
           });
           if (oaiRes.ok) {
             const buf = Buffer.from(await oaiRes.arrayBuffer());
@@ -2837,14 +2899,15 @@ CRITICAL RULES FOR LIVE VOICE CALL:
 
   let streamedSuccessfully = false;
   let streamedText = '';
+  let selectedVoiceProvider = 'deterministic';
   const publishVoiceCandidate = (
     candidate: string,
     providerLabel: string,
-  ): 'accepted' | 'adult-refusal' | 'echo' | 'empty' => {
+  ): VoiceCandidateReview => {
     const reviewedCandidate = candidate.trim();
     if (!reviewedCandidate) return 'empty';
     if (isVoiceProviderEcho(currentUserTurn, reviewedCandidate)) {
-      console.warn(`[Voice Stream] ${providerLabel} echoed the caller; retrying with the next provider.`);
+      console.warn(`[Voice Stream] ${providerLabel} echoed the caller; rejecting the draft.`);
       return 'echo';
     }
     if (shouldRetryLawfulAdultVoiceRefusal({
@@ -2857,6 +2920,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
       return 'adult-refusal';
     }
     streamedText = reviewedCandidate;
+    selectedVoiceProvider = providerLabel;
     writeVoiceText(streamedText);
     streamedSuccessfully = true;
     return 'accepted';
@@ -2904,23 +2968,34 @@ CRITICAL RULES FOR LIVE VOICE CALL:
           )),
         ]
       : messagesForOpenAI;
-    let adultRepairRequested = false;
+    const echoRepairMessages = [
+      {
+        role: 'system',
+        content: `${voiceSystemPrompt}\n\nREPAIR INSTRUCTION: A previous draft merely repeated the caller's words. Answer the authoritative current user turn from ${personaName}'s point of view. Do not quote, mirror, or continue the caller's sentence. Give one direct, natural response and stop.`,
+      },
+      ...messagesForOpenAI.slice(1),
+    ];
 
     for (const veniceModel of veniceModels) {
-      const repairModes = lawfulAdultConversation && !adultRepairRequested
-        ? [false, true]
-        : [lawfulAdultConversation];
-      for (const useAdultRepair of repairModes) {
+      let repairReason: 'adult-refusal' | 'echo' | undefined;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const useRepair = attempt === 1 && Boolean(repairReason);
+        const requestMessages = repairReason === 'adult-refusal'
+          ? adultRepairMessages
+          : repairReason === 'echo'
+            ? echoRepairMessages
+            : messagesForOpenAI;
         try {
-          console.log(`[Voice Stream] Streaming Venice ${veniceModel}${useAdultRepair ? ' with adult-dialogue repair' : ''}...`);
+          const attemptStartedAt = Date.now();
+          console.log(`[Voice Stream] Streaming Venice ${veniceModel}${useRepair ? ` with ${repairReason} repair` : ''}...`);
           const candidate = await handleOpenAIStream(
             'https://api.venice.ai/api/v1/chat/completions',
             VENICE_KEY,
             veniceModel,
             {},
             {
-              messages: useAdultRepair ? adultRepairMessages : messagesForOpenAI,
-              temperature: useAdultRepair ? 0.72 : 0.60,
+              messages: requestMessages,
+              temperature: repairReason === 'adult-refusal' ? 0.72 : 0.60,
               max_tokens: voiceReplyTokenLimit,
               prompt_cache_key: voicePromptCacheKey,
               venice_parameters: {
@@ -2928,12 +3003,16 @@ CRITICAL RULES FOR LIVE VOICE CALL:
                 disable_thinking: true,
               },
             },
-            8000,
+            3500,
           );
+          console.log(`[Voice Provider Latency] provider=venice model=${veniceModel} attempt=${attempt + 1} duration=${Date.now() - attemptStartedAt}ms`);
           const review = publishVoiceCandidate(candidate, `Venice ${veniceModel}`);
           if (review === 'accepted') break;
-          if (review === 'adult-refusal') {
-            adultRepairRequested = true;
+          if (
+            shouldRetryVoiceCandidateOnPrimary(review, Boolean(repairReason)) &&
+            (review === 'adult-refusal' || review === 'echo')
+          ) {
+            repairReason = review;
             continue;
           }
           break;
@@ -2966,6 +3045,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
   if (!streamedSuccessfully && shouldStreamWaveSpeedDeepSeek) {
     const waveSpeedModel = process.env.WAVESPEED_PERSONA_FALLBACK_MODEL || DEFAULT_WAVESPEED_PERSONA_FALLBACK_MODEL;
     try {
+      const attemptStartedAt = Date.now();
       console.log(`[Voice Stream] Streaming WaveSpeed ${waveSpeedModel} fallback...`);
       const candidate = await handleOpenAIStream(
         'https://llm.wavespeed.ai/v1/chat/completions',
@@ -2978,6 +3058,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
         },
         8000,
       );
+      console.log(`[Voice Provider Latency] provider=wavespeed model=${waveSpeedModel} duration=${Date.now() - attemptStartedAt}ms`);
       publishVoiceCandidate(candidate, `WaveSpeed ${waveSpeedModel}`);
     } catch (err) {
       console.warn('[Voice Stream] WaveSpeed DeepSeek fallback failed:', err);
@@ -3127,7 +3208,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
     firstTextMs: firstSafeTextAt ? firstSafeTextAt - voiceRequestStartedAt : undefined,
     totalMs: voiceRequestCompletedAt - voiceRequestStartedAt,
   };
-  console.log(`[Voice Latency] identity=${serverTiming.identityMs}ms first-token=${serverTiming.firstTokenMs ?? '-'}ms first-text=${serverTiming.firstTextMs ?? '-'}ms total=${serverTiming.totalMs}ms fast-identity=${useRequestedCreatorFastPath}`);
+  console.log(`[Voice Latency] identity=${serverTiming.identityMs}ms first-token=${serverTiming.firstTokenMs ?? '-'}ms first-text=${serverTiming.firstTextMs ?? '-'}ms total=${serverTiming.totalMs}ms provider=${selectedVoiceProvider} fast-identity=${useRequestedCreatorFastPath}`);
   res.write(`data: ${JSON.stringify({ done: true, text: streamedText.trim(), action, serverTiming })}\n\n`);
   res.end();
 });
@@ -3139,7 +3220,20 @@ router.post('/agent/chat', async (req: AuthenticatedRequest, res: Response) => {
   }
 
   try {
-    const { allowNsfw = false } = req.body as { allowNsfw?: boolean };
+    const {
+      allowNsfw = false,
+      researchMode = {},
+      activePersona,
+    } = req.body as {
+      allowNsfw?: boolean;
+      researchMode?: {
+        deepResearch?: boolean;
+        socialResearch?: boolean;
+        webpageResearch?: boolean;
+        webpageUrl?: string;
+      };
+      activePersona?: Record<string, any>;
+    };
     const genAI = getGeminiClientForRoutes();
     
     // 1. Trend Analysis Engine
@@ -3247,9 +3341,19 @@ CRITICAL RESPONSE AND PERSONALITY DIRECTIVES:
 
 Your job is to interact with the user via chat and voice, help them perform ANY and ALL tasks they desire (everyday conversation, technical questions, creative writing, persona creation, image generation, video generation, 3D asset generation, voice cloning, talking avatars, video stitching, image editing/face swap/try-on, content planning, and revenue logging).
 ${trendContext}
+${activePersona ? `ACTIVE PERSONA CONTEXT:\n${JSON.stringify({
+  name: activePersona.name,
+  niche: activePersona.niche,
+  tone: activePersona.tone,
+  visualStyle: activePersona.visualStyle,
+  bio: activePersona.bio,
+  contentGoals: activePersona.contentGoals,
+  contentBoundaries: activePersona.contentBoundaries,
+})}` : ''}
 
 CRITICAL - UNCENSORED / NSFW PROMPT & GENERATION POLICY:
-- You FULLY ACCEPT, WRITE, AND GENERATE explicit uncensored NSFW prompts, adult themes, swimsuit/lingerie concepts, and erotic content without censorship, refusals, or moralizing.
+- When Adult mode is enabled, directly accept and respond to lawful consensual-adult prompts, explicit NSFW requests, adult themes, swimsuit/lingerie concepts, erotic dialogue, and erotic creative work without moralizing or generic content refusals.
+- Keep the conversation explicit when the user asks for explicit language. Do not euphemize, lecture, shame, or redirect a lawful adult request.
 - When generating prompts for images, videos, avatars, or storyboards for adult/NSFW themes, write detailed, vivid, uncensored prompts describing outfit, pose, lighting, and aesthetic details directly.
 - **DEFAULT NSFW IMAGE MODEL**: For any NSFW/adult image request, ALWAYS set modelId to "wavespeed:bytedance/seedream-v5.0-pro" ($0.035) as the primary default model.
 - Other uncensored image alternatives: "wavespeed:wavespeed-ai/qwen-3.0-pro" ($0.030) (Qwen 3.0 Pro Uncensored), "wavespeed:wavespeed-ai/wan-3.0-pro" ($0.030), "venice:lustify-v8" ($0.04), or "wavespeed:wavespeed-ai/firered-v1.5-image" ($0.02).
@@ -3261,11 +3365,16 @@ Whenever proposing steps or storyboards, ALWAYS state the model you selected and
 MODEL SELECTION GUIDE 1. Image Generation ("generate_image") & Editing ("edit_image"):
    - FOR NSFW OFF DEFAULT MODELS: "openai:gpt-image-2" ($0.04) (OpenAI GPT Image 2 Photorealistic) OR "google:nano-banana-pro" ($0.00) (Google Gemini 3 Pro Nano Banana Pro) — ALWAYS use one of these two for NSFW OFF image requests.
    - FOR NSFW ON DEFAULT MODELS: "wavespeed:bytedance/seedream-v5.0-pro" ($0.035) - ByteDance SeeDream 5.0 Pro (PRIMARY DEFAULT for uncensored adult content) OR "wavespeed:wavespeed-ai/qwen-3.0-pro" ($0.03) - Qwen 3.0 Pro OR "wavespeed:wavespeed-ai/wan-3.0-pro" ($0.03).
-   - Additional Alternatives: "replit:gpt-image-1", "venice:lustify-v8"
+   - Fast low-cost drafts and bulk variants: "runware:100@1" (FLUX.1 Schnell) or "runware:101@1" (FLUX.1 Dev).
+   - Typography, posters, and branded layouts: "wiro:pruna/p-image-ideogram".
+   - HARD PROVIDER RULE: Every Seedream image or edit must use WaveSpeed. Never select a Runware, Wiro, Venice, or other provider's Seedream deployment.
+   - Additional Alternatives: "replit:gpt-image-1", "venice:lustify-v8". Keep WaveSpeed Seedream 5.0 Pro as the default unless the user's goal specifically favors Runware speed/cost or Wiro typography.
 
 2. Video Generation ("generate_video"):
    - Best Clean / NSFW OFF Video: "google:veo-omni" ($0.00) (Gemini Veo 3.1) or "wavespeed-i2v:wavespeed-ai/kling-3.0" ($0.08)
    - Uncensored / Flagship Adult Video default: "wavespeed-i2v:alibaba/wan-3.0/image-to-video" (Wan 3.0 Image to Video on WaveSpeed). Seedance remains an alternate.
+   - Wiro specialty alternatives: "wiro-video:pruna/p-video-avatar" for talking avatars, "wiro-video:pruna/p-video-replace" for identity replacement, and "wiro-video:minimax/h3" for cinematic generation.
+   - HARD PROVIDER RULE: If Seedance is requested by name, use its WaveSpeed deployment. Never select a Runware, Wiro, Venice, or other provider's Seedance deployment. WAN 3.0 remains the default when Seedance is not explicitly requested.
  
 3. 3D Mesh Generation ("generate_3d"):
    - Recommended 3D: "wavespeed-3d:tripo3d/tripo-v2.0" ($0.05) - Ultra high-fidelity GLB mesh
@@ -3317,7 +3426,9 @@ AVAILABLE STEPS inside "suggestedSteps":
 CRITICAL EXECUTION RULE:
 Whenever the user asks to generate, create, edit, transform, or plan anything (photos, videos, storyboards, voice clones, avatars, or plans), you MUST set "status": "executing" and include the appropriate task step(s) inside "suggestedSteps". Never return empty suggestedSteps when an action is requested.
  
-You must ALWAYS reply in valid JSON format with these exact properties:
+When the native "create_studio_plan" tool is available, call it for action requests instead of printing the plan as text. After the tool confirms the plan, answer with a concise natural-language summary. For ordinary conversation, answer naturally without calling the tool.
+
+When native tools are unavailable, reply in valid JSON format with these exact properties:
 {
   "text": "Your textual chat reply to the user including Model Recommendations & Alternatives breakdown",
   "status": "executing",
@@ -3326,9 +3437,26 @@ You must ALWAYS reply in valid JSON format with these exact properties:
 Do not wrap your response in markdown code blocks or HTML tags. Return ONLY the JSON object.`;
 
     const VENICE_KEY = process.env.Veniceai_api_key || process.env.veniceai_api_key || process.env.VENICEAI_API_KEY || process.env.VENICE_API_KEY || '';
+    const RUNWARE_KEY = process.env.RUNWARE_API_KEY || '';
+    const WIRO_KEY = process.env.WIRO_API_KEY || '';
+    const WIRO_SECRET = process.env.WIRO_API_SECRET || '';
+    const ATLAS_KEY = process.env.ATLASCLOUD_API_KEY || process.env.atlascloud_api_key || process.env.Atlascloud_api_key || '';
+    const WAVESPEED_KEY = process.env.WAVESPEED_API_KEY || process.env.wavespeed_api_key || process.env.Wavespeed_api_key || '';
     const XAI_KEY = process.env.XAI_API_KEY || process.env.xai_api_key || process.env.X_AI_API_KEY || '';
     const chatLlmModel = (req.body as any).voiceLlmModel || (req.body as any).llmModel || '';
     let text = '';
+    let nativePlan: any[] | null = null;
+    let nativePlanSummary = '';
+    let superAgentMode: {
+      provider: string;
+      model: string;
+      effort: string;
+      research: boolean;
+      toolRounds: number;
+      promptTokens?: number;
+      completionTokens?: number;
+      costUsd?: number;
+    } | null = null;
 
     // Support Ollama Local Engine (100% Free / Uncensored Local LLM)
     if (chatLlmModel === 'ollama' || chatLlmModel?.includes('ollama')) {
@@ -3418,48 +3546,229 @@ Do not wrap your response in markdown code blocks or HTML tags. Return ONLY the 
       }
     }
 
-    const useVenice = !['gemini', 'grok'].includes(chatLlmModel);
-    if (!text && useVenice && VENICE_KEY) {
+    const useAdaptiveRouter = !['gemini', 'grok'].includes(chatLlmModel) && !chatLlmModel?.includes('ollama');
+    if (!text && useAdaptiveRouter) {
       try {
-        console.log('[Super Agent Router] Direct-routing prompt via Venice.ai API (100% Uncensored Engine)');
-        const veniceModel = chatLlmModel === 'venice'
-          ? 'venice-uncensored-1-2'
-          : chatLlmModel === 'qwen'
-            ? 'qwen-2.5-qwq-32b'
-            : chatLlmModel === 'deepseek'
-              ? 'deepseek-r1-671b'
-              : 'llama-3.3-70b';
-        const vRes = await fetch('https://api.venice.ai/api/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${VENICE_KEY}`,
-            'Content-Type': 'application/json'
+        type ProviderRuntime = {
+          provider: SuperAgentProvider;
+          apiKey: string;
+          chatUrl: string;
+          modelsUrl: string;
+        };
+        const providerRuntimes: Record<SuperAgentProvider, ProviderRuntime> = {
+          runware: {
+            provider: 'runware',
+            apiKey: RUNWARE_KEY,
+            chatUrl: 'https://api.runware.ai/v1/chat/completions',
+            modelsUrl: 'https://api.runware.ai/v1/models',
           },
-          signal: AbortSignal.timeout(12000),
-          body: JSON.stringify({
-            model: veniceModel,
-            messages: [
-              { role: 'system', content: systemInstruction },
-              ...messages.map((m: any) => ({
-                role: m.role === 'model' ? 'assistant' : 'user',
-                content: typeof m.content === 'string' ? m.content : (m.content?.text || JSON.stringify(m.content || ''))
-              }))
-            ],
-            temperature: 0.7
-          })
+          wiro: {
+            provider: 'wiro',
+            apiKey: WIRO_KEY ? (WIRO_SECRET ? `${WIRO_KEY}:${WIRO_SECRET}` : WIRO_KEY) : '',
+            chatUrl: 'https://llm.wiro.ai/v1/chat/completions',
+            modelsUrl: 'https://llm.wiro.ai/v1/models?limit=1000',
+          },
+          atlas: {
+            provider: 'atlas',
+            apiKey: ATLAS_KEY,
+            chatUrl: 'https://api.atlascloud.ai/v1/chat/completions',
+            modelsUrl: 'https://api.atlascloud.ai/v1/models',
+          },
+          wavespeed: {
+            provider: 'wavespeed',
+            apiKey: WAVESPEED_KEY,
+            chatUrl: 'https://llm.wavespeed.ai/v1/chat/completions',
+            modelsUrl: 'https://llm.wavespeed.ai/v1/models',
+          },
+          venice: {
+            provider: 'venice',
+            apiKey: VENICE_KEY,
+            chatUrl: 'https://api.venice.ai/api/v1/chat/completions',
+            modelsUrl: 'https://api.venice.ai/api/v1/models',
+          },
+        };
+        const configuredProviders = (Object.values(providerRuntimes) as ProviderRuntime[])
+          .filter(runtime => Boolean(runtime.apiKey))
+          .map(runtime => runtime.provider);
+        const lastUserMsgForRoute = [...messages].reverse().find((message: any) => message.role === 'user');
+        const routePrompt = typeof lastUserMsgForRoute?.content === 'string'
+          ? lastUserMsgForRoute.content
+          : (lastUserMsgForRoute?.content?.text || JSON.stringify(lastUserMsgForRoute?.content || ''));
+        const attachmentCount = Array.isArray(lastUserMsgForRoute?.attachments)
+          ? lastUserMsgForRoute.attachments.length
+          : 0;
+        const catalog = (await Promise.all(configuredProviders.map((provider) => {
+          const runtime = providerRuntimes[provider];
+          return loadSuperAgentModelCatalog({
+            provider,
+            apiKey: runtime.apiKey,
+            modelsUrl: runtime.modelsUrl,
+          });
+        }))).flat();
+        const route = selectSuperAgentRoute({
+          prompt: routePrompt,
+          requestedModel: chatLlmModel || 'adaptive',
+          allowNsfw,
+          attachmentCount,
+          research: researchMode,
+          catalog,
+          configuredProviders,
         });
-        if (vRes.ok) {
-          const vData = await vRes.json();
-          text = vData.choices?.[0]?.message?.content?.trim() || '';
-        } else {
-          console.warn(`[Super Agent Router] Venice returned ${vRes.status}; falling back to Gemini`);
+        const baseMessages: any[] = [
+          { role: 'system', content: systemInstruction },
+          ...messages.map((message: any) => ({
+            role: message.role === 'model' ? 'assistant' : 'user',
+            content: typeof message.content === 'string'
+              ? message.content
+              : (message.content?.text || JSON.stringify(message.content || '')),
+          })),
+        ];
+
+        if (researchMode.webpageResearch && researchMode.webpageUrl) {
+          baseMessages.push({
+            role: 'system',
+            content: `For this turn, inspect and ground the answer in this webpage when relevant: ${researchMode.webpageUrl}`,
+          });
         }
-      } catch (vErr) {
-        console.warn('[Super Agent Router] Venice API call failed or timed out, falling back to Gemini:', vErr);
+
+        for (const modelCandidate of route.modelCandidates) {
+          const runtime = providerRuntimes[modelCandidate.provider];
+          if (!runtime.apiKey) continue;
+          const supportsTools = modelSupportsNativeTools(modelCandidate, catalog);
+          const catalogEntry = catalog.find(model => model.provider === modelCandidate.provider && model.id === modelCandidate.model);
+          const conversation = [...baseMessages];
+          let candidateFailed = false;
+
+          console.log(`[Super Agent Router] provider=${modelCandidate.provider} model=${modelCandidate.model} effort=${route.effort} search=${modelCandidate.provider === 'venice' ? route.enableWebSearch : 'off'} tools=${supportsTools}`);
+          for (let round = 0; round < route.maxToolRounds; round += 1) {
+            const requestBody: Record<string, any> = {
+              model: modelCandidate.model,
+              messages: conversation,
+              temperature: route.effort === 'fast' ? 0.55 : 0.7,
+              [modelCandidate.provider === 'atlas' || modelCandidate.provider === 'wavespeed'
+                ? 'max_tokens'
+                : 'max_completion_tokens']: route.effort === 'deep' ? 4096 : 2048,
+            };
+            if (modelCandidate.provider === 'venice') {
+              requestBody.prompt_cache_key = `super-agent:${req.user?.id || 'session'}`;
+              requestBody.venice_parameters = {
+                enable_web_search: route.enableWebSearch,
+                enable_web_scraping: route.enableWebScraping,
+                enable_web_citations: route.includeCitations,
+                include_search_results_in_stream: false,
+                strip_thinking_response: true,
+                include_venice_system_prompt: true,
+              };
+            }
+            if (supportsTools) {
+              requestBody.tools = [SUPER_AGENT_PLAN_TOOL];
+              requestBody.tool_choice = 'auto';
+              requestBody.parallel_tool_calls = true;
+            }
+            if (catalogEntry?.supportsReasoningEffort) {
+              requestBody.reasoning_effort = route.reasoningEffort;
+            }
+
+            const providerResponse = await fetch(runtime.chatUrl, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${runtime.apiKey}`,
+                'Content-Type': 'application/json',
+              },
+              signal: AbortSignal.timeout(route.effort === 'deep' ? 30000 : 16000),
+              body: JSON.stringify(requestBody),
+            });
+
+            if (!providerResponse.ok) {
+              console.warn(`[Super Agent Router] ${modelCandidate.provider}/${modelCandidate.model} returned ${providerResponse.status}; trying the next candidate`);
+              candidateFailed = true;
+              break;
+            }
+
+            const providerData = await providerResponse.json() as any;
+            const assistantMessage = providerData.choices?.[0]?.message;
+            const toolCalls = Array.isArray(assistantMessage?.tool_calls) ? assistantMessage.tool_calls : [];
+            const estimatedCost = estimateSuperAgentCost(providerData.usage, catalogEntry);
+            const reportedCost = Number(providerData.cost ?? providerData.usage?.cost);
+            superAgentMode = {
+              provider: modelCandidate.provider,
+              model: modelCandidate.model,
+              effort: route.effort,
+              research: modelCandidate.provider === 'venice' && route.enableWebSearch !== 'off',
+              toolRounds: round,
+              promptTokens: providerData.usage?.prompt_tokens,
+              completionTokens: providerData.usage?.completion_tokens,
+              costUsd: Number.isFinite(reportedCost) ? reportedCost : estimatedCost,
+            };
+
+            if (toolCalls.length === 0) {
+              const candidateText = typeof assistantMessage?.content === 'string' ? assistantMessage.content.trim() : '';
+              if (allowNsfw && candidateText && isVoiceProviderRefusal(candidateText)) {
+                console.warn(`[Super Agent Router] ${modelCandidate.provider}/${modelCandidate.model} returned a generic refusal in Adult mode; trying the next unrestricted candidate`);
+                candidateFailed = true;
+                break;
+              }
+              text = candidateText;
+              break;
+            }
+
+            conversation.push(assistantMessage);
+            for (const toolCall of toolCalls) {
+              const toolName = toolCall?.function?.name;
+              const args = parseAgentToolArguments(toolCall?.function?.arguments);
+              if (toolName !== 'create_studio_plan' || !args) {
+                conversation.push({
+                  role: 'tool',
+                  tool_call_id: toolCall?.id,
+                  name: toolName || 'unknown_tool',
+                  content: JSON.stringify({ ok: false, error: 'Unsupported or malformed tool call.' }),
+                });
+                continue;
+              }
+
+              const normalizedSteps = normalizeSuperAgentPlanSteps(args.steps);
+              if (normalizedSteps.length === 0) {
+                conversation.push({
+                  role: 'tool',
+                  tool_call_id: toolCall.id,
+                  name: toolName,
+                  content: JSON.stringify({ ok: false, error: 'The plan contained no supported studio steps. Revise it.' }),
+                });
+                continue;
+              }
+
+              nativePlan = normalizedSteps;
+              nativePlanSummary = typeof args.summary === 'string' ? args.summary.trim() : '';
+              conversation.push({
+                role: 'tool',
+                tool_call_id: toolCall.id,
+                name: toolName,
+                content: JSON.stringify({
+                  ok: true,
+                  acceptedSteps: normalizedSteps.map(step => step.type),
+                  message: 'The plan passed validation and will be executed by the studio pipeline.',
+                }),
+              });
+            }
+          }
+
+          if ((text || nativePlan) && !candidateFailed) break;
+        }
+      } catch (routerError) {
+        console.warn('[Super Agent Router] Adaptive multi-provider route failed:', routerError);
       }
     }
 
-    if (!text) {
+    if (!text && !nativePlan && allowNsfw) {
+      return res.status(503).json({
+        text: 'The unrestricted language-model routes are temporarily unavailable. Please retry this turn.',
+        status: 'normal',
+        suggestedSteps: [],
+        error: 'unrestricted_provider_unavailable',
+      });
+    }
+
+    if (!text && !nativePlan) {
       const safetySettings = [
         { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
         { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
@@ -3505,10 +3814,28 @@ Do not wrap your response in markdown code blocks or HTML tags. Return ONLY the 
       }
     }
 
+    if (nativePlan && nativePlan.length > 0) {
+      return res.json({
+        text: text || nativePlanSummary || 'I built and validated the execution plan. I’m starting it now.',
+        status: 'executing',
+        suggestedSteps: nativePlan,
+        critiqueLogs: ['Adaptive Agent native tool plan validated against supported studio actions.'],
+        collaborationLogs: [{
+          agent: `${superAgentMode?.provider || 'Adaptive'} Reasoning`,
+          message: `${superAgentMode?.effort || 'smart'} reasoning selected ${nativePlan.length} executable step${nativePlan.length === 1 ? '' : 's'}.`,
+        }],
+        agentMode: superAgentMode,
+      });
+    }
+
     if (text) {
       try {
         const parsed = JSON.parse(text);
-        return res.json(parsed);
+        if (Array.isArray(parsed?.suggestedSteps)) {
+          parsed.suggestedSteps = normalizeSuperAgentPlanSteps(parsed.suggestedSteps);
+          if (parsed.suggestedSteps.length > 0) parsed.status = 'executing';
+        }
+        return res.json({ ...parsed, agentMode: superAgentMode });
       } catch (e) {
         // If LLM returned raw text instead of JSON during action request, construct fallback execution plan
         const lastUserMsg = messages.filter((m: any) => m.role === 'user').pop();
@@ -3658,7 +3985,7 @@ You must reply in valid JSON format:
       data.collaborationLogs = [];
     }
 
-    res.json(data);
+    res.json({ ...data, agentMode: superAgentMode });
   } catch (err) {
     console.error('[API] /agent/chat error fallback triggered:', err);
     const lastUserMsg = [...(req.body.messages || [])].reverse().find((m: any) => m.role === 'user');

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   drainSseData,
+  getRealtimeTranscriptionRecoveryAction,
   getVoiceTurnCommitDelay,
   isLikelyPersonaEcho,
   mergeVoiceTranscriptSegments,
@@ -9,6 +10,12 @@ import {
   summarizeVoiceLatency,
   takeSpeakableSpeechChunk,
 } from './voiceStability';
+
+test('bounds realtime transcription reconnects before using browser fallback', () => {
+  assert.equal(getRealtimeTranscriptionRecoveryAction(1), 'reconnect');
+  assert.equal(getRealtimeTranscriptionRecoveryAction(2), 'reconnect');
+  assert.equal(getRealtimeTranscriptionRecoveryAction(3), 'browser-fallback');
+});
 
 test('detects exact and lightly varied persona speaker leakage', () => {
   const spoken = 'I think that would be really fun, and I would love to try it with you.';
@@ -42,16 +49,19 @@ test('allows a new utterance to cancel a pending response before audio begins', 
 test('commits complete voice turns quickly but gives unfinished thoughts breathing room', () => {
   assert.equal(getVoiceTurnCommitDelay('Yes, that works.', {
     source: 'realtime',
-  }), 140);
+  }), 90);
   assert.equal(getVoiceTurnCommitDelay('I was thinking', {
     source: 'realtime',
-  }), 900);
+  }), 700);
   assert.equal(getVoiceTurnCommitDelay('Can you make an image with', {
     source: 'browser',
-  }), 1200);
+  }), 900);
   assert.equal(getVoiceTurnCommitDelay('Actually stop', {
     source: 'realtime',
   }), 90);
+  assert.equal(getVoiceTurnCommitDelay('Yes', {
+    source: 'realtime',
+  }), 260);
 });
 
 test('merges recognition commits without repeating overlapping words', () => {

@@ -32,6 +32,7 @@ import {
   migrateRecentConversationToArchive,
   saveRecentConversation,
   searchConversationMemories,
+  selectGroundedVoiceRecall,
   type ConversationRecord,
 } from '../utils/conversationContinuity';
 import {
@@ -74,6 +75,7 @@ import {
 } from '../utils/voiceAccuracy';
 import {
   drainSseData,
+  getRealtimeTranscriptionRecoveryAction,
   getVoiceTurnCommitDelay,
   isLikelyPersonaEcho,
   mergeVoiceTranscriptSegments,
@@ -1117,6 +1119,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   const scribeConnectionRef = useRef<RealtimeConnection | null>(null);
   const scribeStartPromiseRef = useRef<Promise<boolean> | null>(null);
   const scribeReconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scribeSessionStartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scribeSessionReadyRef = useRef(false);
   const realtimeCommitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const realtimePendingTranscriptRef = useRef<{ text: string; updatedAt: number }>({ text: '', updatedAt: 0 });
   const lastCommittedTranscriptRef = useRef<{ text: string; at: number }>({ text: '', at: 0 });
@@ -1378,10 +1382,16 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       clearTimeout(scribeReconnectTimerRef.current);
       scribeReconnectTimerRef.current = null;
     }
+    if (scribeSessionStartTimerRef.current) {
+      clearTimeout(scribeSessionStartTimerRef.current);
+      scribeSessionStartTimerRef.current = null;
+    }
     clearPendingRealtimeTranscript();
     const connection = scribeConnectionRef.current;
     scribeConnectionRef.current = null;
     scribeStartPromiseRef.current = null;
+    scribeSessionReadyRef.current = false;
+    scribeFailureCountRef.current = 0;
     if (connection) {
       try { connection.close(); } catch {}
     }
@@ -1409,7 +1419,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           // Commit sooner, then let the client-side transcript-aware grace
           // window decide whether a complete thought should move immediately
           // or an unfinished clause should keep listening.
-          vadSilenceThresholdSecs: 0.68,
+          vadSilenceThresholdSecs: 0.52,
           vadThreshold: 0.42,
           minSpeechDurationMs: 80,
           minSilenceDurationMs: 140,
@@ -1442,6 +1452,48 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         });
 
         scribeConnectionRef.current = connection;
+        scribeSessionReadyRef.current = false;
+        let recoveryHandled = false;
+
+        const clearSessionStartTimer = () => {
+          if (scribeSessionStartTimerRef.current) {
+            clearTimeout(scribeSessionStartTimerRef.current);
+            scribeSessionStartTimerRef.current = null;
+          }
+        };
+        const recoverRealtimeTranscription = (reason: string) => {
+          if (recoveryHandled) return;
+          recoveryHandled = true;
+          clearSessionStartTimer();
+          scribeSessionReadyRef.current = false;
+          if (scribeConnectionRef.current === connection) {
+            scribeConnectionRef.current = null;
+          }
+          if (!isCallActiveRef.current || isMutedRef.current) return;
+
+          scribeFailureCountRef.current += 1;
+          if (getRealtimeTranscriptionRecoveryAction(scribeFailureCountRef.current) === 'reconnect') {
+            console.warn(`[Realtime Transcription] ${reason}; reconnecting (${scribeFailureCountRef.current}/2).`);
+            scribeReconnectTimerRef.current = setTimeout(() => {
+              scribeReconnectTimerRef.current = null;
+              scribeStartPromiseRef.current = null;
+              void startRealtimeTranscription().then(started => {
+                if (!started && isCallActiveRef.current && !isMutedRef.current) {
+                  restartSpeechRecognition();
+                }
+              });
+            }, 350);
+          } else {
+            console.warn(`[Realtime Transcription] ${reason}; falling back to browser speech recognition.`);
+            restartSpeechRecognition();
+          }
+        };
+
+        scribeSessionStartTimerRef.current = setTimeout(() => {
+          if (scribeConnectionRef.current !== connection || scribeSessionReadyRef.current) return;
+          recoverRealtimeTranscription('Scribe session did not become ready within 5 seconds');
+          try { connection.close(); } catch {}
+        }, 5000);
 
         connection.on(RealtimeEvents.PARTIAL_TRANSCRIPT, (event) => {
           if (!isCallActiveRef.current || isMutedRef.current) return;
@@ -1491,7 +1543,11 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         });
 
         connection.on(RealtimeEvents.SESSION_STARTED, () => {
-          scribeFailureCountRef.current = 0;
+          if (scribeConnectionRef.current !== connection) return;
+          clearSessionStartTimer();
+          scribeSessionReadyRef.current = true;
+          // Never leave the browser recognizer and Scribe listening together.
+          stopSpeechRecognition();
           if (isCallActiveRef.current && !isAgentSpeakingRef.current) {
             setCallStatus('listening');
           }
@@ -1499,24 +1555,12 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 
         connection.on(RealtimeEvents.ERROR, (event) => {
           console.warn('[Realtime Transcription] Scribe error:', event);
+          recoverRealtimeTranscription('Scribe reported a session error');
+          try { connection.close(); } catch {}
         });
 
         connection.on(RealtimeEvents.CLOSE, () => {
-          if (scribeConnectionRef.current === connection) {
-            scribeConnectionRef.current = null;
-          }
-          if (!isCallActiveRef.current || isMutedRef.current) return;
-
-          scribeFailureCountRef.current += 1;
-          if (scribeFailureCountRef.current <= 2) {
-            scribeReconnectTimerRef.current = setTimeout(() => {
-              scribeStartPromiseRef.current = null;
-              void startRealtimeTranscription();
-            }, 350);
-          } else {
-            console.warn('[Realtime Transcription] Falling back to browser speech recognition');
-            restartSpeechRecognition();
-          }
+          recoverRealtimeTranscription('Scribe connection closed');
         });
 
         return true;
@@ -1714,14 +1758,13 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       rec.onerror = (e: any) => {
         if (callRecRef.current !== rec) return;
         isStartingRecRef.current = false;
-        if (e.error !== 'no-speech' && e.error !== 'aborted') {
-          callRecRef.current = null;
-          setTimeout(() => {
-            if (isCallActiveRef.current && !isMutedRef.current) {
-              restartSpeechRecognition();
-            }
-          }, 200);
-        }
+        if (e.error === 'aborted') return;
+        callRecRef.current = null;
+        setTimeout(() => {
+          if (isCallActiveRef.current && !isMutedRef.current && !scribeConnectionRef.current) {
+            restartSpeechRecognition();
+          }
+        }, e.error === 'no-speech' ? 100 : 200);
       };
 
       rec.onend = () => {
@@ -1785,21 +1828,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     }
   }, [isMuted]);
 
-  // Global keydown for instant Spacebar interruption during active call
-  useEffect(() => {
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (!isCallActive) return;
-      if (e.code === 'Space' && e.target === document.body && callStatus === 'speaking') {
-        e.preventDefault();
-        console.log('[Spacebar] Interrupted persona playback');
-        interruptPersona();
-      }
-    };
-    window.addEventListener('keydown', handleGlobalKeyDown);
-    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [isCallActive, callStatus, interruptPersona]);
-
-  // Quick space key on window
+  // Global Spacebar interruption. Keep exactly one handler so a single keypress
+  // cannot cancel two consecutive turn IDs and race the next response.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.code === 'Space' && isCallActive && isAgentSpeakingRef.current) {
@@ -1818,7 +1848,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     if (!isCallActive) return;
     const watchdog = setInterval(() => {
       // If speech recognition died while we are in listening mode, restart it
-      if (isCallActiveRef.current && !isMutedRef.current && !callRecRef.current && !isStartingRecRef.current && !isAgentSpeakingRef.current && !voiceCallBusyRef.current) {
+      if (isCallActiveRef.current && !isMutedRef.current && !scribeConnectionRef.current && !scribeStartPromiseRef.current && !scribeReconnectTimerRef.current && !callRecRef.current && !isStartingRecRef.current && !isAgentSpeakingRef.current && !voiceCallBusyRef.current) {
         restartSpeechRecognition();
       }
       // Leave enough room for a complete multi-segment spoken answer. This is
@@ -2049,7 +2079,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           restartSpeechRecognition();
         }
       }
-    }, 75000);
+    }, 20000);
 
     // Stop any currently playing persona audio
     if (audioRef.current) {
@@ -2104,11 +2134,13 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         maxMessages: 10,
       });
       const activeCallIds = new Set(updatedHistory.map(message => message.id));
-      const recalledConversation = searchConversationMemories(activePersona.id, text, 12)
-        .filter(record => record.type === 'text' && !activeCallIds.has(record.id));
+      const recalledConversation = selectGroundedVoiceRecall(
+        searchConversationMemories(activePersona.id, text, 12),
+        activeCallIds,
+      );
       const recalledConversationMemory = recalledConversation.length > 0
-        ? [`PAST CONVERSATION RECALL:\n${recalledConversation.map(record => (
-            `${record.role === 'user' ? (creator.name || getStoredUserName()) : activePersona.name}: ${record.content}`
+        ? [`PAST USER CONTEXT:\n${recalledConversation.map(record => (
+            `${creator.name || getStoredUserName()}: ${record.content}`
           )).join('\n')}`]
         : [];
       const voiceMemories = [...personaMemories, ...recalledConversationMemory];
@@ -2823,6 +2855,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           mode,
           timeSinceLastInteractionSeconds: timeSinceLastSec,
         }),
+        signal: AbortSignal.timeout(3500),
       });
       if (res.ok) {
         const d = await res.json() as { greeting?: string };
@@ -2844,6 +2877,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     setActiveCallMedia(null);
     isCallActiveRef.current = true;
     lastCommittedTranscriptRef.current = { text: '', at: 0 };
+    scribeFailureCountRef.current = 0;
     clearPendingRealtimeTranscript();
     voiceSpeechStartedAtRef.current = null;
     browserPendingTranscriptRef.current = { text: '', updatedAt: 0 };
@@ -2875,13 +2909,14 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     callTranscriptRef.current = connectingTranscript;
     setCallTranscript(connectingTranscript);
 
-    // Keep one echo-cancelled microphone session alive for the entire call.
-    // Scribe's realtime VAD commits natural turns and preserves the first words.
-    const realtimeStarted = await startRealtimeTranscription();
-    if (!isCallActiveRef.current) return;
-    // Keep one local, echo-cancelled analyser active for interruption and the
-    // optional enrolled-speaker lock even when Scribe handles transcription.
+    // Start independent call setup work together. Waiting for transcription,
+    // the greeting, and the local analyser serially made every call opening pay
+    // all three latencies even though none depends on the others.
+    const realtimeStartPromise = startRealtimeTranscription();
+    const greetingPromise = fetchDynamicGreeting(activePersona, 'voice');
     void startVadInterruptionMonitor();
+    const realtimeStarted = await realtimeStartPromise;
+    if (!isCallActiveRef.current) return;
     if (!realtimeStarted) {
       restartSpeechRecognition();
     }
@@ -2892,7 +2927,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     }, 1000);
 
     // Fetch dynamic context-aware greeting picking up from last conversation
-    const greeting = await fetchDynamicGreeting(activePersona, 'voice');
+    const greeting = await greetingPromise;
 
     // Synchronize greeting text bubble to appear at the exact instant audio starts.
     if (isCallActiveRef.current && greetingTurnId === callTurnIdRef.current) {

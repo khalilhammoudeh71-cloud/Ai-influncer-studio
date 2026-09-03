@@ -2468,17 +2468,6 @@ function generateWiroAuthHeaders() {
 
 export const WIRO_CURATED_MODELS: ModelInfo[] = [
   {
-    id: 'wiro:bytedance/seedream-v5-pro',
-    name: 'ByteDance Seedream 5.0 Pro (Wiro)',
-    provider: 'Wiro ByteDance',
-    type: 'text-to-image',
-    price: 0.045,
-    description: 'ByteDance Seedream V5 Pro generates and edits images with strong layout control and typography.',
-    apiPath: '',
-    hasEditVariant: true,
-    hasReferenceImage: true,
-  },
-  {
     id: 'wiro:pruna/p-image-ideogram',
     name: 'P-Image Ideogram Typography (Wiro)',
     provider: 'Wiro Pruna',
@@ -2503,16 +2492,6 @@ export const WIRO_CURATED_MODELS: ModelInfo[] = [
 ];
 
 export const WIRO_CURATED_VIDEO_MODELS: ModelInfo[] = [
-  {
-    id: 'wiro-video:bytedance/seedance-2.5',
-    name: 'ByteDance Seedance 2.5 AI Video (Wiro)',
-    provider: 'Wiro ByteDance',
-    type: 'text-to-video',
-    price: 0.08,
-    description: 'ByteDance Seedance 2.5 cinematic AI video generator with high motion fidelity.',
-    apiPath: '',
-    hasEditVariant: false,
-  },
   {
     id: 'wiro-video:minimax/h3',
     name: 'MiniMax H3 Video Generator (Wiro)',
@@ -4720,6 +4699,10 @@ const generateImageHandler = async (req: any, res: any) => {
   }
 
   let modelId = rawModelId;
+  if (/seedream/i.test(modelId) && !modelId.startsWith('wavespeed:')) {
+    console.log(`[Model Provider Policy] Rewriting ${modelId} to WaveSpeed Seedream 5.0 Pro`);
+    modelId = 'wavespeed:bytedance/seedream-v5.0-pro';
+  }
   const fullPromptText = [
     (rest as any).prompt,
     (rest as any).chatPrompt,
@@ -5563,10 +5546,20 @@ async function resolveVideoUrlOrDataUrl(input: string): Promise<string> {
 
 const generateVideoHandler = async (req: any, res: any) => {
   req.setTimeout(600000);
-  const { prompt: rawPrompt, modelId, sourceImage, sourceVideo, strength, identityLock, naturalLook, aspectRatio, duration, resolution, allowNsfw } = req.body;
+  const { prompt: rawPrompt, modelId: rawModelId, sourceImage, sourceVideo, strength, identityLock, naturalLook, aspectRatio, duration, resolution, allowNsfw } = req.body;
 
-  if (!rawPrompt || typeof rawPrompt !== 'string' || !rawPrompt.trim() || !modelId) {
+  if (!rawPrompt || typeof rawPrompt !== 'string' || !rawPrompt.trim() || !rawModelId) {
     return res.status(400).json({ error: 'prompt and modelId are required' });
+  }
+
+  let modelId = rawModelId as string;
+  if (/seedance/i.test(modelId) && !modelId.startsWith('wavespeed-')) {
+    const version = /seedance[- ]?2\.0/i.test(modelId) ? '2.0' : '2.5';
+    const editMode = /(?:edit|v2v|video-to-video)/i.test(modelId) || Boolean(sourceVideo);
+    modelId = editMode
+      ? `wavespeed-v2v:bytedance/seedance-${version}/edit`
+      : `wavespeed-i2v:bytedance/seedance-${version}`;
+    console.log(`[Model Provider Policy] Rewriting ${rawModelId} to ${modelId}`);
   }
 
   const identityLockTerms = 'IDENTITY LOCK: Reproduce the exact same facial features in every detail — identical bone structure, eye shape and spacing, nose shape, lip shape, and jawline. This is the same person. Do not reinterpret or alter the face.';
