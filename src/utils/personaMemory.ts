@@ -14,6 +14,7 @@ export interface PersonaMemoryNote {
 
 const MAX_MEMORY_NOTES = 60;
 const memoryKey = (personaId: string) => `persona_memories_${personaId}`;
+const qualityMigrationKey = (personaId: string) => `persona_memories_quality_v2_${personaId}`;
 
 function createId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -31,6 +32,22 @@ function isCorruptedLegacyMemory(text: string): boolean {
   return normalized.includes('allowing is the')
     || normalized.includes("user's name is allowing")
     || normalized.includes("user's name is serious");
+}
+
+/**
+ * Automatic memory is intentionally conservative. A transcript line is not a
+ * fact merely because it contains "I want" or happens to be emotionally
+ * charged. Only stable identity, relationship, household, preference, work,
+ * location, or explicitly requested remember-statements are durable enough to
+ * be injected into future calls.
+ */
+export function isDurablePersonaMemoryText(value: unknown): boolean {
+  const text = normalizeText(value);
+  if (!text || text.length > 320 || /\?$/.test(text)) return false;
+  if (/^(?:and|but|so|yes|no|okay|ok|well|oh|um|uh|hmm|listen)\b/i.test(text)) return false;
+  if (/\b(?:send|show|take|snap|generate|create|make|render|record|edit|change|remove|undress|strip)\b[\s\S]{0,80}\b(?:image|photo|picture|selfie|video|clip|clothes|nude|naked|topless)\b/i.test(text)) return false;
+
+  return /^(?:my\s+name\s+is\b|call\s+me\b|i\s+(?:live\s+in|am\s+from|(?:work|study)\s+(?:as|at|in)|am\s+an?\b|have\s+(?:an?|one|two|three|four|five|\d+)\b|(?:love|like|prefer|hate|enjoy)\b)|my\s+(?:birthday|age|job|work|career|home|city|country|family|partner|wife|husband|girlfriend|boyfriend|child|children|son|daughter|brother|sister|parent|mother|father|goal|favorite|favourite|preference|pronouns?)\b|remember\s+that\b|you\s+have\s+(?:an?|one|two|three|four|five|\d+)\s+(?:older\s+|younger\s+)?(?:brother|sister|sibling|son|daughter|child|children)s?\b|your\s+(?:birthday|age|family|partner|child|children|son|daughter|brother|sister|parent|mother|father|favorite|favourite|preference|pronouns?)\b)/i.test(text);
 }
 
 function createNote(text: string, source: PersonaMemorySource): PersonaMemoryNote {
@@ -107,11 +124,33 @@ export function loadPersonaMemoryNotes(personaId: string, defaultFacts: string[]
         .map(text => normalizeText(text))
         .filter(text => text && !existingText.has(text.toLowerCase()))
         .map(text => createNote(text, 'default'));
-      return savePersonaMemoryNotes(personaId, [...seededDefaults, ...legacy]);
+      const defaultsByText = new Map(defaultFacts.map(text => [normalizeText(text).toLowerCase(), normalizeText(text)]));
+      const migrated = [...seededDefaults, ...legacy]
+        .map(note => defaultsByText.has(note.text.toLowerCase())
+          ? { ...note, source: 'default' as const, pinned: true }
+          : note)
+        .filter(note => note.source !== 'automatic' || isDurablePersonaMemoryText(note.text));
+      accountLocalStorage.setItem(qualityMigrationKey(personaId), '1');
+      return savePersonaMemoryNotes(personaId, migrated);
     }
 
-    return uniqueNotes(parsed.map(normalizeNote).filter((note): note is PersonaMemoryNote => Boolean(note)))
+    let notes = uniqueNotes(parsed.map(normalizeNote).filter((note): note is PersonaMemoryNote => Boolean(note)))
       .sort((left, right) => Number(right.pinned) - Number(left.pinned) || Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
+
+    // Repair the old object-format migration once. It marked seeded defaults as
+    // ordinary chat memories and retained one-off wishes as permanent facts.
+    if (accountLocalStorage.getItem(qualityMigrationKey(personaId)) !== '1') {
+      const defaults = new Set(defaultFacts.map(text => normalizeText(text).toLowerCase()).filter(Boolean));
+      notes = notes
+        .map(note => defaults.has(note.text.toLowerCase())
+          ? { ...note, source: 'default' as const, pinned: true }
+          : note)
+        .filter(note => note.source !== 'automatic' || isDurablePersonaMemoryText(note.text));
+      accountLocalStorage.setItem(qualityMigrationKey(personaId), '1');
+      return savePersonaMemoryNotes(personaId, notes);
+    }
+
+    return notes;
   } catch {
     return [];
   }

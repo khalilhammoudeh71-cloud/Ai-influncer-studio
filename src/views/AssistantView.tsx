@@ -42,6 +42,7 @@ import {
   loadPersonaMemoryNotes,
   togglePersonaMemoryPinned,
   updatePersonaMemoryNote,
+  isDurablePersonaMemoryText,
   type PersonaMemoryNote,
 } from '../utils/personaMemory';
 import { resolveMediaModelFromPrompt } from '../utils/mediaModelResolver';
@@ -279,12 +280,7 @@ function savePersonaMemory(personaId: string, memoryText: string) {
     const trimmed = memoryText.trim();
     if (!trimmed) return;
 
-    // Generation instructions are conversation turns, not durable personal
-    // facts. Saving them as memories made old one-time requests reappear in
-    // unrelated future calls.
-    if (/\b(?:send|show|take|snap|generate|create|make|render|record|edit|change|remove|undress|strip)\b[\s\S]{0,80}\b(?:image|photo|picture|selfie|video|clip|clothes|nude|naked|topless)\b/i.test(trimmed)) {
-      return;
-    }
+    if (!isDurablePersonaMemoryText(trimmed)) return;
 
     // Only extract name if user explicitly introduces their name ("my name is John", "call me John")
     const nameMatch = trimmed.match(/\b(?:my name is|call me)\s+([a-zA-Z]{2,20})\b/i);
@@ -409,7 +405,8 @@ function detectIntent(message: string): 'image' | 'video' | 'chat' {
 }
 
 export const VOICE_CALL_ENGINES = [
-  { id: 'eleven_flash_v2_5', name: 'ElevenLabs Flash 2.5', badge: 'Ultra Fast (~75ms)', desc: 'Lowest-latency voice calls (Recommended)' },
+  { id: 'eleven_v3_conversational', name: 'ElevenLabs v3 Conversational', badge: 'Human (~280ms)', desc: 'Most expressive realtime voice (Recommended)' },
+  { id: 'eleven_flash_v2_5', name: 'ElevenLabs Flash 2.5', badge: 'Ultra Fast (~75ms)', desc: 'Lowest-latency voice calls' },
   { id: 'eleven_turbo_v2_5', name: 'ElevenLabs Turbo 2.5', badge: 'Fast (~250ms)', desc: 'Rich human tone and nuance' },
   { id: 'cartesia-sonic', name: 'Cartesia Sonic', badge: 'Extreme Speed (~90ms)', desc: 'Fastest conversational turn-taking' },
   { id: 'eleven_multilingual_v2', name: 'ElevenLabs Multilingual v2', badge: 'Expressive (~800ms)', desc: 'High cinematic emotion' },
@@ -513,18 +510,34 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   }, []);
   const [voiceLlmModel, setVoiceLlmModel] = useState<string>(() => {
     const savedModel = localStorage.getItem('agent_voice_llm');
-    const userSelectedModel = localStorage.getItem('agent_voice_llm_user_selected') === '1';
 
-    // Migrate inherited defaults once so Persona Chat uses Venice first without
-    // overriding a model the creator deliberately selected.
-    if (!userSelectedModel && (!savedModel || savedModel === 'gemini' || savedModel === 'qwen')) {
-      localStorage.setItem('agent_voice_llm', 'venice');
-      return 'venice';
+    // One-time migration away from the old DeepSeek Flash / broken Venice
+    // defaults. Keep explicit specialist choices, but move inherited and legacy
+    // Persona Call routes to the stronger refusal-reduced conversation stack.
+    const migrationKey = 'agent_voice_llm_human_default_v2_migrated';
+    if (!localStorage.getItem(migrationKey)) {
+      localStorage.setItem(migrationKey, '1');
+      if (!savedModel || ['default', 'deepseek', 'venice'].includes(savedModel)) {
+        localStorage.setItem('agent_voice_llm', 'wiro');
+        localStorage.removeItem('agent_voice_llm_user_selected');
+        return 'wiro';
+      }
     }
 
-    return savedModel || 'venice';
+    return savedModel || 'wiro';
   });
-  const [selectedVoiceEngine, setSelectedVoiceEngine] = useState<string>(() => localStorage.getItem('agent_voice_engine') || 'eleven_flash_v2_5');
+  const [selectedVoiceEngine, setSelectedVoiceEngine] = useState<string>(() => {
+    const savedEngine = localStorage.getItem('agent_voice_engine');
+    // Flash was the former default. Migrate that legacy default to the more
+    // expressive realtime model once; later explicit Flash choices persist.
+    const migrationKey = 'agent_voice_engine_v3_default_migrated';
+    if (!savedEngine || (savedEngine === 'eleven_flash_v2_5' && !localStorage.getItem(migrationKey))) {
+      localStorage.setItem(migrationKey, '1');
+      localStorage.setItem('agent_voice_engine', 'eleven_v3_conversational');
+      return 'eleven_v3_conversational';
+    }
+    return savedEngine;
+  });
 
   const handleVoiceEngineChange = (engineId: string) => {
     setSelectedVoiceEngine(engineId);
@@ -2368,7 +2381,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       const personaMsg = { id: uid(), role: 'persona' as const, type: 'text' as const, content: reply };
       
       // Auto-extract and save user memory if user introduced new facts
-      if (text.length > 5 && /\b(my name is|i live in|i love|i like|i work as|i am a|remember that|i want to|my goal is)\b/i.test(text)) {
+      if (text.length > 5 && isDurablePersonaMemoryText(text)) {
         savePersonaMemory(activePersona.id, text);
       }
       
@@ -5150,7 +5163,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                       Reasoning & Conversation Engine
                     </span>
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">
-                      Venice + DeepSeek fallback
+                      Wiro Seed 2.1 • Runware V4 Pro fallback
                     </span>
                   </div>
                   <div className="relative">
@@ -5166,6 +5179,8 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                           'ollama:llama3.3': 'Meta Llama 3.3 70B (Local GPU)',
                           venice: 'Venice Uncensored 1.2',
                           grok: 'xAI Grok 2',
+                          wiro: 'Wiro Seed 2.1 Turbo Uncensored',
+                          runware: 'Runware DeepSeek V4 Pro',
                           deepseek: 'WaveSpeed DeepSeek V4 Flash',
                           qwen: 'Qwen 2.5 72B Instruct',
                           gemini: 'Gemini 2.5 Flash'
@@ -5174,10 +5189,12 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                       }}
                       className="w-full bg-[#1c1d22] border border-white/[0.1] hover:border-white/20 focus:border-white/30 rounded-xl px-3.5 py-3 text-sm text-white font-medium outline-none cursor-pointer appearance-none transition-all pr-9 shadow-inner"
                     >
+                      <option value="wiro" className="bg-[#1c1d22] text-white">🔓 Wiro Seed 2.1 Turbo Uncensored (Default)</option>
+                      <option value="runware" className="bg-[#1c1d22] text-white">🧠 Runware DeepSeek V4 Pro (Human-quality fallback)</option>
                       <option value="gemini" className="bg-[#1c1d22] text-white">⚡ Gemini 2.5 Flash (Ultra Fast & Conversational)</option>
                       <option value="qwen" className="bg-[#1c1d22] text-white">🔮 Qwen 2.5 72B Instruct (Deep Roleplay & Creative)</option>
                       <option value="venice" className="bg-[#1c1d22] text-white">🔓 Venice Uncensored 1.2</option>
-                      <option value="deepseek" className="bg-[#1c1d22] text-white">⚡ WaveSpeed DeepSeek V4 Flash (Fast Fallback)</option>
+                      <option value="deepseek" className="bg-[#1c1d22] text-white">⚡ WaveSpeed DeepSeek V4 Flash (Low-cost fallback)</option>
                       <option value="grok" className="bg-[#1c1d22] text-white">🚀 xAI Grok 2 (Direct & Unfiltered)</option>
                       <option value="llama3.3" className="bg-[#1c1d22] text-white">🦙 Meta Llama 3.3 70B (Cloud API)</option>
                     </select>
@@ -5322,8 +5339,9 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                     const wan3 = pickDefaultVideoModel(videoModels);
                     if (wan3) setSelectedVideoModelId(wan3.id);
                     
-                    setVoiceLlmModel('gemini');
-                    localStorage.setItem('agent_voice_llm', 'gemini');
+                    setVoiceLlmModel('wiro');
+                    localStorage.setItem('agent_voice_llm', 'wiro');
+                    localStorage.removeItem('agent_voice_llm_user_selected');
                     toast.success('Reset to optimal studio defaults!');
                   }}
                   className="text-xs font-semibold text-zinc-400 hover:text-white transition-colors cursor-pointer px-2 py-1"

@@ -3752,6 +3752,13 @@ ${companionDirective ? `${companionDirective}\n` : ''}1. EQUAL CONFIDANTE & CHAR
    - When every participant is an adult and the scenario is consensual and legal, engage naturally in explicit, NSFW, romantic, sensual, or erotic conversation and roleplay whenever desired or initiated by ${effectiveUserName}. Do not moralize, invent a policy refusal, or redirect a lawful adult request.
    - Hard boundary: never sexualize minors, non-consensual exploitation, or illegal sexual material. Refuse only those cases clearly and briefly.
 
+7B. INTIMATE CONVERSATIONAL REALISM:
+   - In romantic or sexual conversation, respond to the emotional temperature and the exact preceding line before adding explicit detail. Sound like one specific intimate partner in a shared moment, not a performer completing an instruction.
+   - Preserve chemistry, tension, teasing, warmth, confidence, desire, or vulnerability as appropriate. Let concrete detail emerge inside a natural reply instead of mechanically listing body parts or actions.
+   - Vary sentence length and rhythm across turns. Do not default to "Um, okay," "I understand," a formal confirmation, the user's wording repeated back, or the same "I want you to..." construction every time.
+   - Keep the point of view anchored: speak as ${personaName} in first person (I/me/my) and address ${effectiveUserName} in second person (you/your). When ${effectiveUserName} says "you" or "this version of you," that refers to ${personaName}; never switch either person into third person mid-reply.
+   - Use ${effectiveUserName}'s name only when it adds genuine emotional emphasis. Continue the moment rather than restarting, summarizing, or explaining the roleplay.
+
 8. MULTIMODAL EYESIGHT & ATTACHMENTS:
    - ${effectiveUserName} can upload and share photos and files with you. You have full vision to inspect, analyze, and compliment or critique what he sends.
 
@@ -3846,9 +3853,8 @@ ${companionDirective ? `${companionDirective}\n` : ''}1. EQUAL CONFIDANTE & CHAR
       return isVoiceProviderRefusal(raw);
     };
 
-    // Venice Uncensored 1.2 is the primary Persona Chat and voice-call model.
-    // The older role-play model repeatedly invented moral objections in adult
-    // dialogue, so the candidate helper excludes that legacy override.
+    // WaveSpeed DeepSeek V4 Flash is the default Persona Chat model. Venice
+    // remains available when the creator explicitly selects it.
     const shouldUseVenice = Boolean(VENICE_API_KEY) && shouldUseVenicePersonaLlm(modelTarget);
     let attemptedVenice = false;
     if (!finalReply && shouldUseVenice) {
@@ -3896,8 +3902,8 @@ ${companionDirective ? `${companionDirective}\n` : ''}1. EQUAL CONFIDANTE & CHAR
       }
     }
 
-    // If Venice is unavailable or returns a recognizable refusal, retry the
-    // same complete persona context through DeepSeek V4 Flash on WaveSpeed.
+    // Use DeepSeek V4 Flash by default, or as the refusal-checked fallback when
+    // an explicitly selected Venice model is unavailable or refuses.
     const shouldUseWaveSpeedDeepSeek = Boolean(WAVESPEED_API_KEY) && shouldUseWaveSpeedDeepSeekFallback({
       modelTarget,
       attemptedVenice,
@@ -3908,7 +3914,7 @@ ${companionDirective ? `${companionDirective}\n` : ''}1. EQUAL CONFIDANTE & CHAR
       attemptedWaveSpeedDeepSeek = true;
       try {
         const waveSpeedModel = process.env.WAVESPEED_PERSONA_FALLBACK_MODEL || DEFAULT_WAVESPEED_PERSONA_FALLBACK_MODEL;
-        console.log(`[Persona Chat] Routing fallback to WaveSpeed ${waveSpeedModel}...`);
+        console.log(`[Persona Chat] Routing to WaveSpeed ${waveSpeedModel}...`);
         const waveSpeedRes = await fetch(`${WAVESPEED_LLM_BASE}/chat/completions`, {
           method: 'POST',
           headers: {

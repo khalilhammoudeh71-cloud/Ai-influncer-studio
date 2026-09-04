@@ -46,6 +46,10 @@ test('requires a named media asset and usable generation details', () => {
     detectExplicitMediaCreationRequest('Create a short video of you walking on the beach.'),
     'video',
   );
+  assert.equal(
+    detectExplicitMediaCreationRequest('Generate a fully nude, photorealistic image of you lying on a bed, clearly an adult, looking at the camera.'),
+    'image',
+  );
   assert.equal(detectIncompleteMediaCreationRequest('Send me an image.'), 'image');
   assert.equal(detectExplicitMediaCreationRequest('Send me an image.'), undefined);
 });

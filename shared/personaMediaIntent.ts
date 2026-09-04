@@ -14,15 +14,15 @@ export function isConversationalMediaCreationRemark(value: unknown): boolean {
 function requestMatch(prompt: string): RegExpMatchArray | null {
   const patterns = [
     new RegExp(
-      `\\b(?:generate|create|make|render|produce|send|show|give|take|share)\\s+(?:me\\s+)?(?:(?:a|an|the|some|another|new)\\s+)*(?<leading>[a-z0-9'" -]{0,80}?)\\b(?<kind>${MEDIA_KIND})\\b(?<trailing>[\\s\\S]*)$`,
+      `\\b(?:generate|create|make|render|produce|send|show|give|take|share)\\s+(?:me\\s+)?(?:(?:a|an|the|some|another|new)\\s+)*(?<leading>[a-z0-9'" ,/&()+.-]{0,120}?)\\b(?<kind>${MEDIA_KIND})\\b(?<trailing>[\\s\\S]*)$`,
       'i',
     ),
     new RegExp(
-      `\\b(?:i\\s+)?(?:want|need|would\\s+like|would\\s+love|i['’]?d\\s+like|i['’]?d\\s+love|love)\\s+(?:to\\s+(?:see|get|have|receive)\\s+)?(?:(?:a|an|the|some|another|new)\\s+)*(?<leading>[a-z0-9'" -]{0,80}?)\\b(?<kind>${MEDIA_KIND})\\b(?<trailing>[\\s\\S]*)$`,
+      `\\b(?:i\\s+)?(?:want|need|would\\s+like|would\\s+love|i['’]?d\\s+like|i['’]?d\\s+love|love)\\s+(?:to\\s+(?:see|get|have|receive)\\s+)?(?:(?:a|an|the|some|another|new)\\s+)*(?<leading>[a-z0-9'" ,/&()+.-]{0,120}?)\\b(?<kind>${MEDIA_KIND})\\b(?<trailing>[\\s\\S]*)$`,
       'i',
     ),
     new RegExp(
-      `\\b(?:can|could|may)\\s+i\\s+(?:see|get|have|receive)\\s+(?:(?:a|an|the|some|another|new)\\s+)*(?<leading>[a-z0-9'" -]{0,80}?)\\b(?<kind>${MEDIA_KIND})\\b(?<trailing>[\\s\\S]*)$`,
+      `\\b(?:can|could|may)\\s+i\\s+(?:see|get|have|receive)\\s+(?:(?:a|an|the|some|another|new)\\s+)*(?<leading>[a-z0-9'" ,/&()+.-]{0,120}?)\\b(?<kind>${MEDIA_KIND})\\b(?<trailing>[\\s\\S]*)$`,
       'i',
     ),
   ];

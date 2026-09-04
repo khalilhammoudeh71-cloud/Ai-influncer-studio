@@ -127,6 +127,8 @@ test('a generic creation request asks for details instead of starting an arbitra
   assert.equal(detectExplicitPersonaMediaRequest('Send me an image of you in a red dress at the beach.')?.type, 'image');
   assert.equal(detectIncompletePersonaMediaRequest("I'd love to see an explicit nude image of you in the bedroom."), undefined);
   assert.equal(detectExplicitPersonaMediaRequest("I'd love to see an explicit nude image of you in the bedroom.")?.type, 'image');
+  assert.equal(detectIncompletePersonaMediaRequest('Generate a fully nude, photorealistic image of you lying on a bed, clearly an adult, looking at the camera.'), undefined);
+  assert.equal(detectExplicitPersonaMediaRequest('Generate a fully nude, photorealistic image of you lying on a bed, clearly an adult, looking at the camera.')?.type, 'image');
 });
 
 test('the immediate answer to an image clarification becomes the generation prompt', () => {

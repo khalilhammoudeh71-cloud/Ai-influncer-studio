@@ -23,6 +23,7 @@ const {
   addPersonaMemoryNote,
   buildRecentConversationSummary,
   deletePersonaMemoryNote,
+  isDurablePersonaMemoryText,
   loadPersonaMemoryNotes,
   togglePersonaMemoryPinned,
   updatePersonaMemoryNote,
@@ -71,4 +72,30 @@ test('summarizes shared text and voice context', () => {
   assert.match(summary, /text and voice context/i);
   assert.match(summary, /Yes, that was him/);
   assert.match(summary, /Rawan replied/);
+});
+
+test('keeps only stable facts in automatic persona memory', () => {
+  assert.equal(isDurablePersonaMemoryText('I want to see you tonight.'), false);
+  assert.equal(isDurablePersonaMemoryText('So you remember the dream I told you about?'), false);
+  assert.equal(isDurablePersonaMemoryText('And I like this image, make it naked.'), false);
+  assert.equal(isDurablePersonaMemoryText('My name is Dr. H.'), true);
+  assert.equal(isDurablePersonaMemoryText('I prefer late-night calls.'), true);
+  assert.equal(isDurablePersonaMemoryText('You have three sisters.'), true);
+});
+
+test('repairs legacy object memories and pins seeded defaults once', () => {
+  values.clear();
+  setActiveStorageUserId('memory-quality-user');
+  const key = accountStorageKey('persona_memories_leen', 'memory-quality-user');
+  values.set(key, JSON.stringify([
+    { id: 'default-old', text: "User's name is Dr. H", pinned: false, source: 'automatic', createdAt: '2026-01-01', updatedAt: '2026-01-01' },
+    { id: 'noise', text: 'I want to see you tonight.', pinned: false, source: 'automatic', createdAt: '2026-01-01', updatedAt: '2026-01-01' },
+    { id: 'family', text: 'You have three sisters.', pinned: false, source: 'automatic', createdAt: '2026-01-01', updatedAt: '2026-01-01' },
+  ]));
+
+  const notes = loadPersonaMemoryNotes('leen', ["User's name is Dr. H"]);
+  assert.equal(notes.some(note => note.text === 'I want to see you tonight.'), false);
+  assert.equal(notes.find(note => note.id === 'default-old')?.pinned, true);
+  assert.equal(notes.find(note => note.id === 'default-old')?.source, 'default');
+  assert.equal(notes.some(note => note.text === 'You have three sisters.'), true);
 });

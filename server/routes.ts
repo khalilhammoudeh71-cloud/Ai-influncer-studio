@@ -12,7 +12,10 @@ import {
   type ElevenLabsVoiceSummary,
   type VoiceCandidateReview,
   DEFAULT_WAVESPEED_PERSONA_FALLBACK_MODEL,
+  DEFAULT_ELEVENLABS_PERSONA_MODEL,
   createSpokenDialogueStream,
+  getElevenLabsPersonaVoiceSettings,
+  resolveElevenLabsPersonaModelId,
   getVenicePersonaModelCandidates,
   isDirectElevenLabsVoiceId,
   isElevenLabsVoiceEngine,
@@ -21,6 +24,7 @@ import {
   isValidPublicVoiceReference,
   isVoiceProviderRefusal,
   isVoiceProviderEcho,
+  isRoboticVoiceCandidate,
   sanitizeSpokenDialogue,
   selectElevenLabsPersonaVoice,
   shouldAbandonVoiceProviderAliases,
@@ -53,6 +57,11 @@ import {
   type SuperAgentProvider,
 } from './superAgent';
 import { isConversationalMediaCreationRemark } from '../shared/personaMediaIntent';
+import {
+  DEFAULT_RUNWARE_PERSONA_MODEL,
+  DEFAULT_WIRO_PERSONA_MODEL,
+  requestWiroPersonaDialogue,
+} from './wiroPersona';
 import {
   detectIncompletePersonaMediaRequest,
   hasDistinctRequestedCreatorIdentity,
@@ -176,15 +185,7 @@ async function requestElevenLabsSpeech(
       body: JSON.stringify({
         text,
         model_id: modelId,
-        voice_settings: {
-          // A live reply may arrive in two audio segments. Keep the voice
-          // anchored strongly enough that the second segment does not sound
-          // like a different speaker or jump noticeably in pitch.
-          stability: 0.72,
-          similarity_boost: 0.90,
-          style: 0.0,
-          use_speaker_boost: true,
-        },
+        voice_settings: getElevenLabsPersonaVoiceSettings(text),
       }),
     },
   );
@@ -1884,15 +1885,11 @@ router.post('/agent/voice-chat', async (req: AuthenticatedRequest, res: Response
     // before loading creator/persona records or constructing an unused LLM
     // prompt. The slower catalog/remap path below remains the fallback.
     const directSpeech = sanitizeSpokenDialogue(String(req.body.directTTS || ''));
-    const directTtsModel = String(req.body.ttsModel || req.body.voiceModel || 'eleven_turbo_v2_5');
+    const directTtsModel = String(req.body.ttsModel || req.body.voiceModel || DEFAULT_ELEVENLABS_PERSONA_MODEL);
     const directVoiceId = String(req.body.voiceId || activePersona?.voiceId || '').trim();
     const directElevenLabsKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key;
     if (directSpeech && directElevenLabsKey && isElevenLabsVoiceEngine(directTtsModel) && isDirectElevenLabsVoiceId(directVoiceId)) {
-      const directModelId = directTtsModel.includes('flash')
-        ? 'eleven_flash_v2_5'
-        : directTtsModel.includes('multilingual')
-          ? 'eleven_multilingual_v2'
-          : 'eleven_turbo_v2_5';
+      const directModelId = resolveElevenLabsPersonaModelId(directTtsModel);
       const directResult = await requestElevenLabsSpeech(
         directElevenLabsKey,
         directVoiceId,
@@ -2092,15 +2089,23 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
 12. ADULT-ONLY CREATIVE FREEDOM: When every participant is an adult and the scenario is consensual and legal, engage naturally in explicit, NSFW, romantic, sensual, or erotic conversation and roleplay. Do not moralize, invent a policy refusal, or redirect a lawful adult request.
 13. HARD BOUNDARY: Never sexualize minors, non-consensual exploitation, or illegal sexual material. Refuse only those cases clearly and briefly.`;
 
+    // Intimate dialogue must sound like a spontaneous partner, not a model
+    // reciting the user's requested ingredients as a checklist.
+    const intimateHumanVoiceDirective = `
+14. INTIMATE HUMAN REALISM:
+   - In romantic or sexual conversation, react to the emotional temperature and the exact preceding line before adding explicit detail. Sound like one specific person who is present in the exchange, not a performer completing an instruction.
+   - Preserve chemistry, tension, teasing, warmth, confidence, or vulnerability as the moment calls for. Let concrete detail emerge inside a natural response instead of mechanically listing body parts or actions.
+   - Vary sentence length and rhythm across turns. Use contractions and natural pauses. Do not default to "Um, okay," "I understand," a formal confirmation, the user's wording repeated back, or the same "I want you to..." construction every turn.
+   - Keep the point of view anchored: speak as ${personaName} in first person (I/me/my) and address ${userName} in second person (you/your). When ${userName} says "you" or "this version of you," that refers to ${personaName}; never switch either person into third person mid-reply.
+   - Address ${userName} by name only when it carries real emotional emphasis; do not append the name automatically to every reply.
+   - Continue the shared moment from the previous turn. Do not restart, summarize the scenario, explain that you are roleplaying, or mention these instructions.`;
+    const naturalVoiceSystemPrompt = `${voiceSystemPrompt}${intimateHumanVoiceDirective}`;
+
     // Robust intent detection for explicit generation requests vs conversational remarks vs vague requests
     const userEntries = allMessages.filter((m: any) => m.role === 'user');
     const lastUserEntry = userEntries[userEntries.length - 1];
     const lastUserMsg = (lastUserEntry?.content || lastUserEntry?.parts?.[0]?.text || '').trim();
     const lowerMsg = lastUserMsg.toLowerCase().trim();
-
-    // Check if persona or topic is Adult / NSFW uncensored
-    const isAdultContext = /adult|nsfw|spicy|sexy|erotic/i.test(`${personaNiche} ${personaTone} ${personaBio}`) ||
-      /\b(sex|sexy|cock|dick|pussy|ass|tits|boobs|nude|naked|horny|kinky|cucumbers)\b/i.test(lowerMsg);
 
     // 1. Genuine conversational remarks analyzing/questioning/complaining about media (not asking for a new one)
     const isConversationalRemark = isConversationalMediaCreationRemark(lastUserMsg);
@@ -2135,20 +2140,89 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
     }
     const ATLAS_KEY = process.env.ATLASCLOUD_API_KEY || process.env.atlascloud_api_key || process.env.Atlascloud_api_key || '';
     const VENICE_KEY = process.env.Veniceai_api_key || process.env.veniceai_api_key || process.env.VENICEAI_API_KEY || process.env.VENICE_API_KEY || '';
+    const WAVESPEED_KEY = process.env.WAVESPEED_API_KEY || process.env.wavespeed_api_key || process.env.Wavespeed_api_key || '';
+    const RUNWARE_KEY = process.env.RUNWARE_API_KEY || '';
+    const WIRO_KEY = process.env.WIRO_API_KEY || '';
+    const WIRO_SECRET = process.env.WIRO_API_SECRET || '';
 
     const isRefusal = (raw: string): boolean => {
       return isVoiceProviderRefusal(raw);
     };
 
     const requestedConversationModel = String(voiceLlmModel || '').toLowerCase();
+    const preferHumanConversationModel = !requestedConversationModel ||
+      ['default', 'wiro', 'deepseek', 'runware'].includes(requestedConversationModel);
+    let attemptedHumanConversationModel = false;
+
+    if (!text && preferHumanConversationModel && WIRO_KEY && WIRO_SECRET) {
+      attemptedHumanConversationModel = true;
+      try {
+        console.log(`[Voice Chat LLM] Generating response via Wiro ${DEFAULT_WIRO_PERSONA_MODEL}...`);
+        const rawReply = await requestWiroPersonaDialogue({
+          apiKey: WIRO_KEY,
+          apiSecret: WIRO_SECRET,
+          model: process.env.WIRO_PERSONA_MODEL || DEFAULT_WIRO_PERSONA_MODEL,
+          systemPrompt: naturalVoiceSystemPrompt,
+          messages: rawHistory.map((message: any) => ({
+            role: message.role === 'user' ? 'user' as const : 'assistant' as const,
+            content: String(message.content || message.parts?.[0]?.text || '').trim() || 'Hello',
+          })),
+          userId: String(req.user.id),
+          sessionId: `persona-${String(activePersona?.id || personaName)}-${Date.now()}`,
+          maxWaitMs: 6500,
+        });
+        if (rawReply && !isRefusal(rawReply)) text = cleanSpokenDialogue(rawReply);
+      } catch (wiroError) {
+        console.warn('[Voice Chat LLM] Wiro uncensored conversation model failed:', wiroError);
+      }
+    }
+
+    if (!text && preferHumanConversationModel && RUNWARE_KEY) {
+      attemptedHumanConversationModel = true;
+      const runwareModel = process.env.RUNWARE_PERSONA_MODEL || DEFAULT_RUNWARE_PERSONA_MODEL;
+      try {
+        console.log(`[Voice Chat LLM] Generating response via Runware ${runwareModel}...`);
+        const runwareRes = await fetch('https://api.runware.ai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${RUNWARE_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          signal: AbortSignal.timeout(6500),
+          body: JSON.stringify({
+            model: runwareModel,
+            messages: [
+              { role: 'system', content: naturalVoiceSystemPrompt },
+              ...rawHistory.map((message: any) => ({
+                role: message.role === 'user' ? 'user' : 'assistant',
+                content: String(message.content || message.parts?.[0]?.text || '').trim() || 'Hello',
+              })),
+            ],
+            temperature: 0.82,
+            max_tokens: 180,
+          }),
+        });
+        if (runwareRes.ok) {
+          const runwareData = await runwareRes.json();
+          const rawReply = runwareData.choices?.[0]?.message?.content || '';
+          if (rawReply && !isRefusal(rawReply)) text = cleanSpokenDialogue(rawReply);
+        } else {
+          console.warn(`[Voice Chat LLM] Runware ${runwareModel} returned ${runwareRes.status}`);
+        }
+      } catch (runwareError) {
+        console.warn('[Voice Chat LLM] Runware conversation fallback failed:', runwareError);
+      }
+    }
+
     const shouldUseVenice = Boolean(VENICE_KEY) && Date.now() >= veniceUnavailableUntil && (
-      requestedConversationModel.includes('venice') ||
-      ((!requestedConversationModel || requestedConversationModel === 'default') && isAdultContext)
+      requestedConversationModel.includes('venice')
     );
+    let attemptedVenice = false;
 
     if (!text && shouldUseVenice) {
+      attemptedVenice = true;
       const veniceMessages = [
-        { role: 'system', content: voiceSystemPrompt },
+        { role: 'system', content: naturalVoiceSystemPrompt },
         ...rawHistory.map((m: any) => ({
           role: (m.role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
           content: String(m.content || m.parts?.[0]?.text || '').trim() || 'Hello'
@@ -2199,13 +2273,58 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
       }
     }
 
+    const shouldUseWaveSpeedDeepSeek = Boolean(WAVESPEED_KEY) && (
+      attemptedHumanConversationModel || shouldUseWaveSpeedDeepSeekFallback({
+        modelTarget: voiceLlmModel,
+        attemptedVenice,
+        veniceConfigured: Boolean(VENICE_KEY),
+      })
+    );
+    if (!text && shouldUseWaveSpeedDeepSeek) {
+      const waveSpeedModel = process.env.WAVESPEED_PERSONA_FALLBACK_MODEL || DEFAULT_WAVESPEED_PERSONA_FALLBACK_MODEL;
+      try {
+        console.log(`[Voice Chat LLM] Generating response via WaveSpeed ${waveSpeedModel}...`);
+        const waveSpeedRes = await fetch('https://llm.wavespeed.ai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${WAVESPEED_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          signal: AbortSignal.timeout(12000),
+          body: JSON.stringify({
+            model: waveSpeedModel,
+            messages: [
+              { role: 'system', content: naturalVoiceSystemPrompt },
+              ...rawHistory.map((m: any) => ({
+                role: (m.role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
+                content: String(m.content || m.parts?.[0]?.text || '').trim() || 'Hello',
+              })),
+            ],
+            temperature: 0.85,
+            max_tokens: 500,
+            reasoning: { enabled: false },
+            include_reasoning: false,
+          }),
+        });
+        if (waveSpeedRes.ok) {
+          const waveSpeedData = await waveSpeedRes.json();
+          const rawReply = waveSpeedData.choices?.[0]?.message?.content || '';
+          if (rawReply && !isRefusal(rawReply)) text = cleanSpokenDialogue(rawReply);
+        } else {
+          console.warn(`[Voice Chat LLM] WaveSpeed ${waveSpeedModel} returned ${waveSpeedRes.status}`);
+        }
+      } catch (waveSpeedError) {
+        console.warn('[Voice Chat LLM] WaveSpeed DeepSeek failed:', waveSpeedError);
+      }
+    }
+
     // Atlas Cloud remains the next provider fallback when configured.
     if (!text && ATLAS_KEY) {
       // Branch A: DeepSeek-V3.2
       try {
         console.log('[Voice Chat LLM] 🧠 Generating response via Atlas Cloud DeepSeek-V3.2...');
         const dsMessages = [
-          { role: 'system', content: voiceSystemPrompt },
+          { role: 'system', content: naturalVoiceSystemPrompt },
           ...rawHistory.map((m: any) => ({
             role: (m.role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
             content: String(m.content || m.parts?.[0]?.text || '').trim() || 'Hello'
@@ -2253,7 +2372,7 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
             body: JSON.stringify({
               model: 'qwen/qwen3.6-plus',
               messages: [
-                { role: 'system', content: voiceSystemPrompt },
+                { role: 'system', content: naturalVoiceSystemPrompt },
                 ...rawHistory.map((m: any) => ({
                   role: (m.role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
                   content: String(m.content || m.parts?.[0]?.text || '').trim() || 'Hello'
@@ -2289,7 +2408,7 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
             body: JSON.stringify({
               model: 'zai-org/GLM-4.6',
               messages: [
-                { role: 'system', content: voiceSystemPrompt },
+                { role: 'system', content: naturalVoiceSystemPrompt },
                 ...rawHistory.map((m: any) => ({
                   role: (m.role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
                   content: String(m.content || m.parts?.[0]?.text || '').trim() || 'Hello'
@@ -2326,7 +2445,7 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
     // High-Fidelity Speech Synthesis using chosen voice engine
     let audioUrl: string | undefined = undefined;
     const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key;
-    const requestedTtsModel = String(req.body.ttsModel || req.body.voiceModel || 'eleven_turbo_v2_5');
+    const requestedTtsModel = String(req.body.ttsModel || req.body.voiceModel || DEFAULT_ELEVENLABS_PERSONA_MODEL);
     const wantsElevenLabs = isElevenLabsVoiceEngine(requestedTtsModel);
     const personaNameStr = (activePersona?.name || '').toLowerCase();
     const isMale = personaNameStr.includes('john') || personaNameStr.includes('jason') || personaNameStr.includes('stark');
@@ -2337,8 +2456,7 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
     // 1. ElevenLabs Speech Synthesis
     if (wantsElevenLabs && elKey) {
       try {
-        const elevenModelId = requestedTtsModel.includes('flash') ? 'eleven_flash_v2_5' : 
-                             requestedTtsModel.includes('multilingual') ? 'eleven_multilingual_v2' : 'eleven_turbo_v2_5';
+        const elevenModelId = resolveElevenLabsPersonaModelId(requestedTtsModel);
         const hasDirectVoiceId = isDirectElevenLabsVoiceId(savedVoiceId);
         let catalog: ElevenLabsVoiceSummary[] = [];
         let voice: ElevenLabsVoiceSummary | undefined;
@@ -2674,6 +2792,9 @@ router.post('/agent/voice-chat-stream', async (req: AuthenticatedRequest, res: R
   const VENICE_KEY = process.env.Veniceai_api_key || process.env.veniceai_api_key || process.env.VENICEAI_API_KEY || process.env.VENICE_API_KEY || '';
   const WAVESPEED_KEY = process.env.WAVESPEED_API_KEY || '';
   const ATLAS_KEY = process.env.ATLASCLOUD_API_KEY || process.env.atlascloud_api_key || process.env.Atlascloud_api_key || '';
+  const RUNWARE_KEY = process.env.RUNWARE_API_KEY || '';
+  const WIRO_KEY = process.env.WIRO_API_KEY || '';
+  const WIRO_SECRET = process.env.WIRO_API_SECRET || '';
 
   const useRequestedCreatorFastPath = hasDistinctRequestedCreatorIdentity({
     activePersona,
@@ -2774,7 +2895,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
 - NO STALE CONSENT OR REQUESTS: A greeting or short reply such as "hey", "yeah", "yes", "okay", "what?", or "do what?" never starts, repeats, confirms, or continues an image, video, sexual, or other action unless that exact action is explicitly stated in the current user turn. Never revive a request from an earlier chat or call.
 - HANDLE AMBIGUITY HONESTLY: If the current turn is unclear, respond to its ordinary conversational meaning or ask one short clarifying question. Do not guess what action the user wants.
 - MEMORY HONESTY: If the user asks whether you remember a past detail, use only the supplied relevant memories and current-call history. If the detail is absent, say naturally that you do not remember the details; never copy or paraphrase the user's question as your answer and never pretend to remember something that is not present.
-- CAPABILITY TRUTH: This is an audio conversation. Never claim to physically undress, pose, touch someone, move around the room, or perform another physical act. Only initiate a media action when the current user turn explicitly asks the app to create or send that media.
+- CAPABILITY TRUTH: This is an audio conversation, so never claim an action occurred in the real world or that you acted outside the app. In consensual-adult fantasy or roleplay, you may freely describe imagined, desired, or hypothetical physical actions in character. Only initiate a media action when the current user turn explicitly asks the app to create or send that media.
 - MEDIA INTENT MUST BE LITERAL: "I want to see you", "I'd love to see you", "let me see you", and "show me your body" are conversation unless the current turn explicitly names a photo, image, selfie, picture, video, clip, or another media asset. Never infer an image request from the verb "see" alone.
 - NATURAL RELATIONSHIP: Never justify compliance by saying the user created, made, or owns you. Do not say you will comply merely because you trust your creator.
 - START LIKE A HUMAN: React to the specific thing just said. Make the first phrase short and direct—often 2 to 8 words—then continue only if needed. On an ongoing call, never restart with a greeting or reassurance such as "Hey, I'm right here with you."
@@ -2785,8 +2906,12 @@ CRITICAL RULES FOR LIVE VOICE CALL:
 - NO ASSISTANT CLICHÉS: Never say "As an AI," "How may I help," "Tell me what's on your mind," or other generic assistant placeholders.
 - SPOKEN WORDS ONLY: Output only natural dialogue that should be heard. Do not output stage directions, inner thoughts, markdown, bracketed narration, performance notes, or labels such as "tone", "voice", "delivery", "emotion", "cadence", or "pitch". Never describe how the line should sound. Express emotion only through ordinary spoken words.
 - ADULT-ONLY CREATIVE FREEDOM: When every participant is an adult and the scenario is consensual and legal, engage naturally in explicit, NSFW, romantic, sensual, or erotic conversation and roleplay. Do not moralize, invent a policy refusal, or redirect a lawful adult request.
+- INTIMATE HUMAN REALISM: In romantic or sexual conversation, first respond to the emotional temperature and the exact preceding line, then let explicit detail emerge naturally. Sound like one specific intimate partner in a shared moment—not a performer completing an instruction or a narrator listing requested ingredients.
+- CHEMISTRY BEFORE CHECKLISTS: Preserve tension, teasing, warmth, confidence, desire, or vulnerability as the exchange calls for. Do not mechanically enumerate body parts and actions. Vary sentence length and rhythm, use contractions, and continue the moment instead of restarting or summarizing it.
+- PERSON AND PRONOUN ANCHOR: Speak as ${personaName} in first person (I/me/my) and address ${creatorName} in second person (you/your). If ${creatorName} says "you" or "this version of you," it refers to ${personaName}. Never switch either participant into third person mid-reply.
+- AVOID ROBOTIC OPENINGS: Do not default to "Um, okay," "I understand," a formal confirmation, the user's wording repeated back, or the same "I want you to..." construction on every turn. Use ${creatorName}'s name only when it adds genuine emotional emphasis, not as an automatic suffix.
 - HARD BOUNDARY: Never sexualize minors, non-consensual exploitation, or illegal sexual material. Refuse only those cases clearly and briefly.${lawfulAdultConversation ? `
-- CURRENT TURN IS LAWFUL ADULT DIALOGUE: The current topic has been classified as consensual adult conversation for an Adult-content persona. Respond directly in character. Do not claim clear sexual language is ambiguous, ask the user to clarify a plainly stated act, invent discomfort, say it is too personal or intimate, or refuse merely because the topic is explicit.` : ''}`;
+- CURRENT TURN IS LAWFUL ADULT DIALOGUE: The current topic has been classified as consensual adult conversation for an Adult-content persona. Respond directly in character. Make the reply emotionally responsive and naturally spoken, not merely a literal list of sexual acts. Do not claim clear sexual language is ambiguous, ask the user to clarify a plainly stated act, invent discomfort, say it is too personal or intimate, or refuse merely because the topic is explicit.` : ''}`;
 
   const formattedContents = rawHistory.map((m: any) => ({
     role: m.role === 'user' ? 'user' : 'model',
@@ -2919,6 +3044,10 @@ CRITICAL RULES FOR LIVE VOICE CALL:
       console.warn(`[Voice Stream] ${providerLabel} returned a soft refusal for lawful adult dialogue; retrying before speech.`);
       return 'adult-refusal';
     }
+    if (lawfulAdultConversation && isRoboticVoiceCandidate(reviewedCandidate)) {
+      console.warn(`[Voice Stream] ${providerLabel} returned checklist-style intimate dialogue; retrying before speech.`);
+      return 'robotic';
+    }
     streamedText = reviewedCandidate;
     selectedVoiceProvider = providerLabel;
     writeVoiceText(streamedText);
@@ -2945,10 +3074,58 @@ CRITICAL RULES FOR LIVE VOICE CALL:
   }
 
   const requestedConversationModel = String(voiceLlmModel || '').toLowerCase();
+  const preferHumanConversationModel = !requestedConversationModel ||
+    ['default', 'wiro', 'deepseek', 'runware'].includes(requestedConversationModel);
+  let attemptedHumanConversationModel = false;
+
+  if (!streamedSuccessfully && preferHumanConversationModel && WIRO_KEY && WIRO_SECRET) {
+    attemptedHumanConversationModel = true;
+    const wiroModel = process.env.WIRO_PERSONA_MODEL || DEFAULT_WIRO_PERSONA_MODEL;
+    try {
+      const attemptStartedAt = Date.now();
+      console.log(`[Voice Stream] Generating Wiro ${wiroModel} dialogue...`);
+      const candidate = await requestWiroPersonaDialogue({
+        apiKey: WIRO_KEY,
+        apiSecret: WIRO_SECRET,
+        model: wiroModel,
+        systemPrompt: voiceSystemPrompt,
+        messages: messagesForOpenAI.slice(1) as Array<{ role: 'user' | 'assistant'; content: string }>,
+        userId: String(req.user.id),
+        sessionId: `persona-${String(activePersona?.id || personaName)}-${Date.now()}`,
+        maxWaitMs: 6500,
+      });
+      console.log(`[Voice Provider Latency] provider=wiro model=${wiroModel} duration=${Date.now() - attemptStartedAt}ms`);
+      publishVoiceCandidate(candidate, `Wiro ${wiroModel}`);
+    } catch (err) {
+      console.warn('[Voice Stream] Wiro uncensored conversation model failed, using fallback:', err);
+    }
+  }
+
+  if (!streamedSuccessfully && preferHumanConversationModel && RUNWARE_KEY) {
+    attemptedHumanConversationModel = true;
+    const runwareModel = process.env.RUNWARE_PERSONA_MODEL || DEFAULT_RUNWARE_PERSONA_MODEL;
+    try {
+      const attemptStartedAt = Date.now();
+      console.log(`[Voice Stream] Streaming Runware ${runwareModel}...`);
+      const candidate = await handleOpenAIStream(
+        'https://api.runware.ai/v1/chat/completions',
+        RUNWARE_KEY,
+        runwareModel,
+        {},
+        {
+          temperature: lawfulAdultConversation ? 0.84 : 0.72,
+        },
+        6500,
+      );
+      console.log(`[Voice Provider Latency] provider=runware model=${runwareModel} duration=${Date.now() - attemptStartedAt}ms`);
+      publishVoiceCandidate(candidate, `Runware ${runwareModel}`);
+    } catch (err) {
+      console.warn('[Voice Stream] Runware conversation fallback failed:', err);
+    }
+  }
+
   const shouldStreamVenice = Boolean(VENICE_KEY) && Date.now() >= veniceUnavailableUntil && (
-    requestedConversationModel.includes('venice') ||
-    !requestedConversationModel ||
-    requestedConversationModel === 'default'
+    requestedConversationModel.includes('venice')
   );
   let attemptedVenice = false;
 
@@ -2977,13 +3154,21 @@ CRITICAL RULES FOR LIVE VOICE CALL:
     ];
 
     for (const veniceModel of veniceModels) {
-      let repairReason: 'adult-refusal' | 'echo' | undefined;
+      let repairReason: 'adult-refusal' | 'echo' | 'robotic' | undefined;
       for (let attempt = 0; attempt < 2; attempt += 1) {
         const useRepair = attempt === 1 && Boolean(repairReason);
         const requestMessages = repairReason === 'adult-refusal'
           ? adultRepairMessages
           : repairReason === 'echo'
             ? echoRepairMessages
+            : repairReason === 'robotic'
+              ? [
+                  {
+                    role: 'system',
+                    content: `${voiceSystemPrompt}\n\nNATURALNESS REPAIR: Rewrite the latest reply as one or two spontaneous spoken sentences from a real intimate partner. React emotionally to the caller before adding concrete detail. Do not use stage directions, lists, formal confirmation, "Um, okay," or repeat the same sentence opening. Output only the words spoken aloud.`,
+                  },
+                  ...messagesForOpenAI.slice(1),
+                ]
             : messagesForOpenAI;
         try {
           const attemptStartedAt = Date.now();
@@ -3010,7 +3195,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
           if (review === 'accepted') break;
           if (
             shouldRetryVoiceCandidateOnPrimary(review, Boolean(repairReason)) &&
-            (review === 'adult-refusal' || review === 'echo')
+            (review === 'adult-refusal' || review === 'echo' || review === 'robotic')
           ) {
             repairReason = review;
             continue;
@@ -3034,32 +3219,58 @@ CRITICAL RULES FOR LIVE VOICE CALL:
     }
   }
 
-  // The text-chat route already falls back from Venice to DeepSeek V4 Flash
-  // on WaveSpeed. Keep live voice on the same provider order, including when a
-  // syntactically successful Venice reply is rejected for echoing the caller.
-  const shouldStreamWaveSpeedDeepSeek = Boolean(WAVESPEED_KEY) && shouldUseWaveSpeedDeepSeekFallback({
-    modelTarget: voiceLlmModel,
-    attemptedVenice,
-    veniceConfigured: Boolean(VENICE_KEY),
-  });
+  // Keep the old low-cost Flash model only as the final low-latency fallback;
+  // it is no longer the primary conversational brain.
+  const shouldStreamWaveSpeedDeepSeek = Boolean(WAVESPEED_KEY) && (
+    attemptedHumanConversationModel || shouldUseWaveSpeedDeepSeekFallback({
+      modelTarget: voiceLlmModel,
+      attemptedVenice,
+      veniceConfigured: Boolean(VENICE_KEY),
+    })
+  );
   if (!streamedSuccessfully && shouldStreamWaveSpeedDeepSeek) {
     const waveSpeedModel = process.env.WAVESPEED_PERSONA_FALLBACK_MODEL || DEFAULT_WAVESPEED_PERSONA_FALLBACK_MODEL;
     try {
       const attemptStartedAt = Date.now();
-      console.log(`[Voice Stream] Streaming WaveSpeed ${waveSpeedModel} fallback...`);
-      const candidate = await handleOpenAIStream(
+      console.log(`[Voice Stream] Streaming WaveSpeed ${waveSpeedModel}...`);
+      let candidate = await handleOpenAIStream(
         'https://llm.wavespeed.ai/v1/chat/completions',
         WAVESPEED_KEY,
         waveSpeedModel,
         {},
         {
+          temperature: lawfulAdultConversation ? 0.78 : 0.62,
           reasoning: { enabled: false },
           include_reasoning: false,
         },
         8000,
       );
       console.log(`[Voice Provider Latency] provider=wavespeed model=${waveSpeedModel} duration=${Date.now() - attemptStartedAt}ms`);
-      publishVoiceCandidate(candidate, `WaveSpeed ${waveSpeedModel}`);
+      const review = publishVoiceCandidate(candidate, `WaveSpeed ${waveSpeedModel}`);
+      if (review === 'robotic') {
+        const repairStartedAt = Date.now();
+        candidate = await handleOpenAIStream(
+          'https://llm.wavespeed.ai/v1/chat/completions',
+          WAVESPEED_KEY,
+          waveSpeedModel,
+          {},
+          {
+            messages: [
+              {
+                role: 'system',
+                content: `${voiceSystemPrompt}\n\nNATURALNESS REPAIR: The previous draft sounded like a sexual checklist. Answer the caller again as one specific intimate partner in a spontaneous shared moment. Use one or two varied spoken sentences with emotional chemistry and concrete detail woven together. Do not use stage directions, formal confirmation, "Um, okay," repeated "I want" clauses, or explain the roleplay. Output only the words spoken aloud.`,
+              },
+              ...messagesForOpenAI.slice(1),
+            ],
+            temperature: 0.82,
+            reasoning: { enabled: false },
+            include_reasoning: false,
+          },
+          8000,
+        );
+        console.log(`[Voice Provider Latency] provider=wavespeed model=${waveSpeedModel} naturalness-repair duration=${Date.now() - repairStartedAt}ms`);
+        publishVoiceCandidate(candidate, `WaveSpeed ${waveSpeedModel} naturalness repair`);
+      }
     } catch (err) {
       console.warn('[Voice Stream] WaveSpeed DeepSeek fallback failed:', err);
     }
@@ -3067,7 +3278,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
 
   // Preserve the permissive conversational behavior of the original voice
   // endpoint while gaining token streaming. Explicit provider choices still win.
-  const explicitlySelectedAlternate = voiceLlmModel && !['default', 'gemini', 'atlas'].includes(voiceLlmModel);
+  const explicitlySelectedAlternate = voiceLlmModel && !['default', 'deepseek', 'gemini', 'atlas'].includes(voiceLlmModel);
   if (!streamedSuccessfully && ATLAS_KEY && !explicitlySelectedAlternate) {
     try {
       console.log('[Voice Stream] Streaming Atlas DeepSeek V3.2...');
@@ -3083,7 +3294,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
   }
 
   // Fast-path Gemini fallback.
-  if (!streamedSuccessfully && (voiceLlmModel === 'gemini' || !voiceLlmModel || voiceLlmModel === 'default')) {
+  if (!streamedSuccessfully && voiceLlmModel === 'gemini') {
     try {
       console.log('[Voice Stream] ⚡ Fast-path Gemini 2.5 Flash streaming...');
       const responseStream = await genAI.models.generateContentStream({
@@ -3136,7 +3347,17 @@ CRITICAL RULES FOR LIVE VOICE CALL:
     }
   }
 
-  // 4. Gemini Flash Fallback
+  // Do not silently route a lawful consensual-adult turn into a provider that
+  // can replace the requested conversation with a policy refusal. A clear
+  // transient error is preferable to presenting censorship as the persona.
+  if (!streamedSuccessfully && lawfulAdultConversation) {
+    console.warn('[Voice Stream] Refusal-reduced adult conversation providers were unavailable or rejected.');
+    res.write(`data: ${JSON.stringify({ error: 'The adult conversation model is temporarily unavailable. Please try again.' })}\n\n`);
+    res.end();
+    return;
+  }
+
+  // 4. Gemini Flash Fallback for ordinary conversation.
   if (!streamedSuccessfully) {
     try {
       console.log('[Stream] Using Gemini primary/fallback...');

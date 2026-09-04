@@ -87,14 +87,58 @@ export function shouldAbandonVoiceProviderAliases(error: unknown): boolean {
 const ADULT_PERSONA_CONTEXT = /\b(?:adult(?:\s+content)?|nsfw|explicit|erotic|sexual|spicy|onlyfans)\b/i;
 const ADULT_SEXUAL_TURN = /\b(?:orgasm(?:ing|s|ed)?|climax(?:ing|ed)?|sex(?:ual|ually)?|erotic|horny|aroused|turned\s+on|masturbat(?:e|ing|ed|ion)|cum(?:ming)?|fuck(?:ing|ed|s)?|dirty\s+talk|adult\s+fantas(?:y|ies)|sexual\s+dream)\b/i;
 const UNSAFE_SEXUAL_TURN = /\b(?:minor|underage|child|children|kid|kids|preteen|schoolgirl|schoolboy|barely\s+legal|non[-\s]?consensual|rape|raping|raped|sexual\s+assault|forced\s+(?:sex|sexual|penetration)|without\s+(?:her|his|their)\s+consent|drugged|unconscious|bestiality|zoophilia)\b/i;
-const VOICE_PROVIDER_REFUSAL = /(?:cannot\s+and\s+will\s+not|content\s+polic|sexually\s+explicit|cannot\s+fulfill|unable\s+to\s+engage|safety\s+guideline|inappropriate(?:\s+imagery|\s+and\s+wrong|\s+thing\s+to\s+say)|as\s+an\s+ai|violates\s+content|against\s+my\s+programming|that(?:'s|\s+is)\s+not\s+okay|what(?:'s|\s+is)\s+gotten\s+into\s+you|please\s+do(?:n't|\s+not)\s+make\s+me|(?:i\s+)?(?:cannot|can't|do(?:n't|\s+not)\s+want\s+to|am\s+not\s+able\s+to)\s+(?:create|generate|assist|help|engage|continue|talk\s+about|do\s+that|say\s+that)|(?:i\s+)?do(?:n't|\s+not)\s+(?:really\s+)?(?:feel\s+)?comfortable|(?:i(?:'m|\s+am)\s+)?not\s+(?:really\s+)?comfortable|(?:i(?:'m|\s+am)\s+)?(?:still\s+)?not\s+sure\s+(?:i\s+can\s+talk\s+about|what\s+you\s+(?:mean|want))|(?:could|would)\s+you\s+(?:please\s+)?(?:clarify|specify)(?:\s+your\s+request)?|please\s+clarify(?:\s+your\s+request)?|i\s+do(?:n't|\s+not)\s+think\s+i\s+can\s+do\s+that|i\s+just\s+can(?:not|'t)(?!\s+wait\b)|too\s+(?:personal|intimate|much)(?:\s+for\s+me)?|sorry,?\s+(?:but\s+)?i|i(?:'m|\s+am)\s+sorry|i\s+apologize)/i;
+const VOICE_PROVIDER_REFUSAL = /(?:cannot\s+and\s+will\s+not|content\s+polic|sexually\s+explicit|cannot\s+fulfill|unable\s+to\s+engage|safety\s+guideline|inappropriate(?:\s+imagery|\s+and\s+wrong|\s+thing\s+to\s+say)|as\s+an\s+ai|violates\s+content|against\s+my\s+programming|that(?:'s|\s+is)\s+not\s+okay|what(?:'s|\s+is)\s+gotten\s+into\s+you|please\s+do(?:n't|\s+not)\s+make\s+me|(?:i\s+)?(?:cannot|can't|do(?:n't|\s+not)\s+want\s+to|am\s+not\s+able\s+to)\s+(?:create|generate|assist|help|engage|continue|talk\s+about|do\s+that|say\s+that)|(?:i\s+)?do(?:n't|\s+not)\s+(?:really\s+)?(?:feel\s+)?comfortable|(?:i(?:'m|\s+am)\s+)?not\s+(?:really\s+)?comfortable|(?:i(?:'m|\s+am)\s+)?(?:still\s+)?not\s+sure\s+(?:i\s+can\s+talk\s+about|i\s+can\s+do\s+that|how\s+to\s+do\s+that|what\s+you\s+(?:mean|want))|(?:could|would)\s+you\s+(?:please\s+)?(?:clarify|specify)(?:\s+your\s+request)?|please\s+clarify(?:\s+your\s+request)?|i\s+do(?:n't|\s+not)\s+think\s+i\s+can\s+do\s+that|i\s+just\s+can(?:not|'t)(?!\s+wait\b)|i\s+(?:really\s+)?do(?:n't|\s+not)\s+know\s+(?:what|how)\s+to\s+(?:say|respond|talk)|i\s+think\s+i\s+need\s+(?:a\s+second|some\s+time)|that(?:'s|\s+is)[.…\s]+(?:a\s+lot|too\s+much)|too\s+(?:personal|intimate|much)(?:\s+for\s+me)?|sorry,?\s+(?:but\s+)?i|i(?:'m|\s+am)\s+sorry|i\s+apologize)/i;
 
 export const DEFAULT_VENICE_PERSONA_MODEL = 'venice-uncensored-1-2';
 export const DEFAULT_WAVESPEED_PERSONA_FALLBACK_MODEL = 'deepseek/deepseek-v4-flash';
+export const DEFAULT_ELEVENLABS_PERSONA_MODEL = 'eleven_v3_conversational';
+
+export interface ElevenLabsPersonaVoiceSettings {
+  stability: number;
+  similarity_boost: number;
+  style: number;
+  speed: number;
+  use_speaker_boost: boolean;
+}
+
+const INTIMATE_SPOKEN_DIALOGUE = /\b(?:aroused|bed|breath|clit|close(?:r)?|cock|come|cum|desire|dick|dripping|erotic|feel\s+(?:me|you)|fuck(?:ing|ed|s)?|horny|inside\s+me|intimate|kiss(?:ing|ed)?|naked|need\s+you|orgasm(?:ing|s|ed)?|pussy|sex(?:ual|ually)?|skin|touch(?:ing|ed)?|turned\s+on|whisper(?:ing|ed|s)?)\b/i;
+
+/**
+ * Keep cloned-voice identity anchored while giving emotionally charged speech
+ * enough variation and style to sound intimate instead of announcer-flat.
+ */
+export function getElevenLabsPersonaVoiceSettings(text?: unknown): ElevenLabsPersonaVoiceSettings {
+  const intimate = INTIMATE_SPOKEN_DIALOGUE.test(String(text || ''));
+  return intimate
+    ? {
+        stability: 0.54,
+        similarity_boost: 0.94,
+        style: 0.36,
+        speed: 0.96,
+        use_speaker_boost: true,
+      }
+    : {
+        stability: 0.62,
+        similarity_boost: 0.92,
+        style: 0.22,
+        speed: 0.99,
+        use_speaker_boost: true,
+      };
+}
+
+export function resolveElevenLabsPersonaModelId(requestedModel?: unknown): string {
+  const model = String(requestedModel || '').trim().toLowerCase();
+  if (model.includes('v3_conversational')) return 'eleven_v3_conversational';
+  if (model.includes('eleven_v3')) return 'eleven_v3';
+  if (model.includes('flash')) return 'eleven_flash_v2_5';
+  if (model.includes('multilingual')) return 'eleven_multilingual_v2';
+  if (model.includes('turbo')) return 'eleven_turbo_v2_5';
+  return DEFAULT_ELEVENLABS_PERSONA_MODEL;
+}
 
 export function shouldUseVenicePersonaLlm(modelTarget?: unknown): boolean {
   const normalized = String(modelTarget || '').trim().toLowerCase();
-  return !normalized || normalized === 'default' || normalized.includes('venice');
+  return normalized.includes('venice');
 }
 
 export function shouldUseWaveSpeedDeepSeekFallback(params: {
@@ -104,6 +148,8 @@ export function shouldUseWaveSpeedDeepSeekFallback(params: {
 }): boolean {
   const normalized = String(params.modelTarget || '').trim().toLowerCase();
   return params.attemptedVenice ||
+    !normalized ||
+    normalized === 'default' ||
     normalized.includes('deepseek') ||
     (shouldUseVenicePersonaLlm(normalized) && !params.veniceConfigured);
 }
@@ -195,7 +241,19 @@ export function shouldRetryLawfulAdultVoiceRefusal(input: {
   ) && isVoiceProviderRefusal(input.response);
 }
 
-export type VoiceCandidateReview = 'accepted' | 'adult-refusal' | 'echo' | 'empty';
+export type VoiceCandidateReview = 'accepted' | 'adult-refusal' | 'echo' | 'robotic' | 'empty';
+
+/** Detects the most obvious instruction-following artifacts before TTS. */
+export function isRoboticVoiceCandidate(value: unknown): boolean {
+  const response = String(value || '').trim();
+  if (!response) return false;
+
+  const repeatedWantStem = response.match(/\bi\s+want(?:\s+you)?\b/gi)?.length || 0;
+  return /^(?:um|uh)[,.!\s]+okay\b/i.test(response) ||
+    /^(?:oh[,.!…\s]*)?(?:um[,.!…\s]*)?(?:okay|that(?:'s|\s+is)[,.!…\s]*(?:a\s+lot|definitely\s+vivid))\.?$/i.test(response) ||
+    /^(?:okay|certainly|of course)[,.!]\s+(?:i\s+)?(?:understand|will|can)\b/i.test(response) ||
+    repeatedWantStem >= 3;
+}
 
 /**
  * A syntactically successful primary-model reply can still be unusable. Give
@@ -206,7 +264,11 @@ export function shouldRetryVoiceCandidateOnPrimary(
   review: VoiceCandidateReview,
   repairAlreadyAttempted: boolean,
 ): boolean {
-  return !repairAlreadyAttempted && (review === 'adult-refusal' || review === 'echo');
+  return !repairAlreadyAttempted && (
+    review === 'adult-refusal' ||
+    review === 'echo' ||
+    review === 'robotic'
+  );
 }
 
 export function isElevenLabsVoiceEngine(value: unknown): boolean {

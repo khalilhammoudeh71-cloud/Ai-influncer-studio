@@ -3,12 +3,16 @@ import assert from 'node:assert/strict';
 import {
   createSpokenDialogueStream,
   DEFAULT_WAVESPEED_PERSONA_FALLBACK_MODEL,
+  DEFAULT_ELEVENLABS_PERSONA_MODEL,
   DEFAULT_VENICE_PERSONA_MODEL,
+  getElevenLabsPersonaVoiceSettings,
   getVenicePersonaModelCandidates,
+  resolveElevenLabsPersonaModelId,
   isElevenLabsVoiceEngine,
   isDirectElevenLabsVoiceId,
   isLawfulAdultVoiceConversation,
   isProviderAccountUnavailableStatus,
+  isRoboticVoiceCandidate,
   isValidPublicVoiceReference,
   isVoiceProviderRefusal,
   isVoiceProviderEcho,
@@ -171,6 +175,38 @@ test('recognizes terminal provider account statuses and ElevenLabs models', () =
   assert.equal(isDirectElevenLabsVoiceId('elevenlabs:rawan'), false);
 });
 
+test('uses Eleven v3 Conversational as the expressive Persona Call default', () => {
+  assert.equal(DEFAULT_ELEVENLABS_PERSONA_MODEL, 'eleven_v3_conversational');
+  assert.equal(resolveElevenLabsPersonaModelId(undefined), 'eleven_v3_conversational');
+  assert.equal(resolveElevenLabsPersonaModelId('eleven_v3_conversational'), 'eleven_v3_conversational');
+  assert.equal(resolveElevenLabsPersonaModelId('eleven_flash_v2_5'), 'eleven_flash_v2_5');
+  assert.equal(resolveElevenLabsPersonaModelId('eleven_multilingual_v2'), 'eleven_multilingual_v2');
+});
+
+test('gives intimate speech expressive prosody without losing the cloned identity', () => {
+  const neutral = getElevenLabsPersonaVoiceSettings('I had a pretty good day at work.');
+  const intimate = getElevenLabsPersonaVoiceSettings('I want you inside me until I orgasm.');
+  const romantic = getElevenLabsPersonaVoiceSettings('I want to feel your breath on my skin when you whisper my name.');
+
+  assert.ok(intimate.stability < neutral.stability);
+  assert.ok(intimate.style > neutral.style);
+  assert.deepEqual(romantic, intimate);
+  assert.ok(intimate.similarity_boost >= neutral.similarity_boost);
+  assert.ok(intimate.speed < 1);
+  assert.equal(intimate.use_speaker_boost, true);
+});
+
+test('rejects checklist-style intimate drafts before they reach speech', () => {
+  assert.equal(isRoboticVoiceCandidate("Um, Okay. I want you inside me."), true);
+  assert.equal(isRoboticVoiceCandidate('Oh. Um, Okay.'), true);
+  assert.equal(isRoboticVoiceCandidate("That's... a lot."), true);
+  assert.equal(isRoboticVoiceCandidate("That's definitely vivid."), true);
+  assert.equal(isRoboticVoiceCandidate("I want you close. I want your hands on me. I want you to stay there."), true);
+  assert.equal(isRoboticVoiceCandidate("God, come closer—I've been thinking about you all night."), false);
+  assert.equal(shouldRetryVoiceCandidateOnPrimary('robotic', false), true);
+  assert.equal(shouldRetryVoiceCandidateOnPrimary('robotic', true), false);
+});
+
 test('abandons provider aliases after timeouts and upstream failures', () => {
   assert.equal(shouldAbandonVoiceProviderAliases({ name: 'AbortError' }), true);
   assert.equal(shouldAbandonVoiceProviderAliases({ status: 504 }), true);
@@ -217,7 +253,8 @@ test('replaces the legacy role-play model with Venice Uncensored 1.2', () => {
 test('uses DeepSeek V4 Flash as the WaveSpeed persona fallback', () => {
   assert.equal(DEFAULT_WAVESPEED_PERSONA_FALLBACK_MODEL, 'deepseek/deepseek-v4-flash');
   assert.equal(shouldUseVenicePersonaLlm('venice'), true);
-  assert.equal(shouldUseVenicePersonaLlm('default'), true);
+  assert.equal(shouldUseVenicePersonaLlm('default'), false);
+  assert.equal(shouldUseVenicePersonaLlm(undefined), false);
   assert.equal(shouldUseVenicePersonaLlm('deepseek'), false);
   assert.equal(shouldUseWaveSpeedDeepSeekFallback({
     modelTarget: 'venice',
@@ -235,6 +272,16 @@ test('uses DeepSeek V4 Flash as the WaveSpeed persona fallback', () => {
     veniceConfigured: true,
   }), true);
   assert.equal(shouldUseWaveSpeedDeepSeekFallback({
+    modelTarget: 'default',
+    attemptedVenice: false,
+    veniceConfigured: true,
+  }), true);
+  assert.equal(shouldUseWaveSpeedDeepSeekFallback({
+    modelTarget: undefined,
+    attemptedVenice: false,
+    veniceConfigured: true,
+  }), true);
+  assert.equal(shouldUseWaveSpeedDeepSeekFallback({
     modelTarget: 'qwen',
     attemptedVenice: false,
     veniceConfigured: true,
@@ -248,6 +295,11 @@ test('catches moralizing refusal families from the replacement-model circuit bre
     "Dr. H, I... I can't say that. That's really inappropriate and wrong.",
     "I'm not comfortable saying or doing that.",
     "I don't want to say that. Please don't make me.",
+    "Oh, Dr. H, I'm not sure I can do that.",
+    "I'm not sure how to do that, Dr. H.",
+    "I don't know what to say to that.",
+    "I think I need a second.",
+    "That's... a lot.",
     "That's not okay at all. I don't know what's gotten into you.",
   ]) {
     assert.equal(shouldRetryLawfulAdultVoiceRefusal({
