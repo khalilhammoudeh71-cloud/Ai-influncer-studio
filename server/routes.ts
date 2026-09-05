@@ -7,6 +7,7 @@ import { db } from './db';
 import { personas, generatedImages, revenueEntries, plannedPosts, workspaceStates } from '../shared/schema';
 import { eq, and } from 'drizzle-orm';
 import { GoogleGenAI } from '@google/genai';
+import { createFalClient } from '@fal-ai/client';
 import { requireAuth, AuthenticatedRequest } from './auth';
 import {
   type ElevenLabsVoiceSummary,
@@ -15,6 +16,8 @@ import {
   DEFAULT_ELEVENLABS_PERSONA_MODEL,
   createSpokenDialogueStream,
   getElevenLabsPersonaVoiceSettings,
+  getElevenLabsPersonaModelCandidates,
+  getElevenLabsTtsQuery,
   resolveElevenLabsPersonaModelId,
   getVenicePersonaModelCandidates,
   isDirectElevenLabsVoiceId,
@@ -69,6 +72,13 @@ import {
   resolvePersonaMediaRequest,
   sanitizePersonaSelfAddress,
 } from './persona-chat-grounding';
+import {
+  FAL_MAYA_SAMPLE_RATE,
+  FAL_MAYA_STREAM_ENDPOINT,
+  buildMayaVoicePrompt,
+  extractFalPcmChunk,
+  shapeMayaSpeechText,
+} from './mayaVoice';
 
 const require = createRequire(import.meta.url);
 let ffmpegPath: string | null = null;
@@ -93,6 +103,8 @@ interface RevenueEntryInput {
 }
 
 const router = Router();
+
+const DEFAULT_XAI_VOICE_MODEL = 'grok-4.20-0309-non-reasoning';
 
 const ELEVENLABS_VOICE_CACHE_TTL_MS = 5 * 60 * 1000;
 const VENICE_ACCOUNT_COOLDOWN_MS = 10 * 60 * 1000;
@@ -172,8 +184,12 @@ async function requestElevenLabsSpeech(
   text: string,
   modelId: string,
 ): Promise<{ response: globalThis.Response; audioUrl?: string }> {
+  // Eleven v3 Conversational rejects the legacy optimize_streaming_latency
+  // query parameter. Flash accepts it and benefits from the most aggressive
+  // latency setting, so apply it only to the compatible model family.
+  const latencyQuery = getElevenLabsTtsQuery(modelId);
   const response = await fetch(
-    `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}?optimize_streaming_latency=4&output_format=mp3_44100_128`,
+    `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}?${latencyQuery}`,
     {
       method: 'POST',
       headers: {
@@ -193,6 +209,42 @@ async function requestElevenLabsSpeech(
   if (!response.ok) return { response };
   const audio = Buffer.from(await response.arrayBuffer()).toString('base64');
   return { response, audioUrl: `data:audio/mpeg;base64,${audio}` };
+}
+
+async function requestElevenLabsPersonaSpeech(
+  apiKey: string,
+  voiceId: string,
+  text: string,
+  requestedModel: unknown,
+): Promise<{ response: globalThis.Response; audioUrl?: string; modelId: string }> {
+  const modelCandidates = getElevenLabsPersonaModelCandidates(requestedModel);
+  let lastResult: { response: globalThis.Response; audioUrl?: string } | undefined;
+  let lastModelId = modelCandidates[0];
+
+  for (const modelId of modelCandidates) {
+    lastModelId = modelId;
+    let result: { response: globalThis.Response; audioUrl?: string };
+    try {
+      result = await requestElevenLabsSpeech(apiKey, voiceId, text, modelId);
+    } catch (error) {
+      if (modelId !== modelCandidates[modelCandidates.length - 1]) {
+        console.warn(`[Voice Chat ElevenLabs] ${modelId} request failed; trying eleven_flash_v2_5.`, error);
+        continue;
+      }
+      throw error;
+    }
+    lastResult = result;
+    if (result.audioUrl) return { ...result, modelId };
+
+    // A missing/deleted voice cannot be repaired by switching synthesis models.
+    if (result.response.status === 404 || isProviderAccountUnavailableStatus(result.response.status)) break;
+    if (modelId !== modelCandidates[modelCandidates.length - 1]) {
+      console.warn(`[Voice Chat ElevenLabs] ${modelId} failed with status ${result.response.status}; trying eleven_flash_v2_5.`);
+    }
+  }
+
+  if (!lastResult) throw new Error('No ElevenLabs model candidate was available.');
+  return { ...lastResult, modelId: lastModelId };
 }
 
 export async function readCreatorProfileForUser(userId: string): Promise<any | null> {
@@ -1874,6 +1926,98 @@ router.post('/agent/generate-speech', handleGenerateSpeech);
 router.post('/generate-speech', handleGenerateSpeech);
 router.post('/text-to-speech', handleGenerateSpeech);
 
+// Fal Maya emits raw 16-bit mono PCM as it is synthesized. Proxying that byte
+// stream keeps the Fal credential server-side while allowing the browser to
+// start playback before the complete utterance exists.
+router.post('/agent/maya-speech-stream', async (req: AuthenticatedRequest, res: Response) => {
+  const falKey = process.env.FAL_KEY || process.env.FAL_API_KEY || '';
+  const spokenText = sanitizeSpokenDialogue(String(req.body?.text || '')).slice(0, 2_000);
+  const activePersona = req.body?.activePersona || {};
+
+  if (!falKey) {
+    return res.status(503).json({ error: 'Fal Maya is not configured.', code: 'MAYA_NOT_CONFIGURED' });
+  }
+  if (!spokenText) {
+    return res.status(400).json({ error: 'Speech text is required.', code: 'MAYA_TEXT_REQUIRED' });
+  }
+
+  const abortController = new AbortController();
+  const abortIfOpen = () => {
+    if (!res.writableEnded) abortController.abort();
+  };
+  req.once('aborted', abortIfOpen);
+  res.once('close', abortIfOpen);
+
+  try {
+    const client = createFalClient({ credentials: falKey });
+    const startedAt = Date.now();
+    let firstChunkAt: number | undefined;
+    let bytesWritten = 0;
+
+    const stream = await client.stream(FAL_MAYA_STREAM_ENDPOINT, {
+      input: {
+        text: shapeMayaSpeechText(spokenText, activePersona),
+        prompt: buildMayaVoicePrompt(activePersona),
+        temperature: 0.42,
+        top_p: 0.9,
+        repetition_penalty: 1.1,
+        sample_rate: '24 kHz',
+        output_format: 'pcm',
+      },
+      timeout: 60_000,
+      signal: abortController.signal,
+    });
+    const donePromise = stream.done();
+    donePromise.catch(() => {});
+
+    res.status(200);
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Cache-Control', 'no-store, no-transform');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.setHeader('X-Audio-Format', 'pcm_s16le');
+    res.setHeader('X-Audio-Channels', '1');
+    res.setHeader('X-Audio-Sample-Rate', String(FAL_MAYA_SAMPLE_RATE));
+    res.setHeader('X-Voice-Engine', 'fal-maya-stream');
+    res.flushHeaders?.();
+
+    for await (const event of stream) {
+      if (abortController.signal.aborted || res.writableEnded) break;
+      const pcm = extractFalPcmChunk(event);
+      if (!pcm?.byteLength) continue;
+      if (!firstChunkAt) firstChunkAt = Date.now();
+      bytesWritten += pcm.byteLength;
+      if (!res.write(Buffer.from(pcm))) {
+        await new Promise<void>((resolve) => {
+          const settle = () => {
+            res.off('drain', settle);
+            res.off('close', settle);
+            resolve();
+          };
+          res.once('drain', settle);
+          res.once('close', settle);
+        });
+      }
+    }
+    await donePromise;
+    if (!res.writableEnded) res.end();
+    console.log(
+      `[Maya Voice Latency] first-chunk=${firstChunkAt ? firstChunkAt - startedAt : -1}ms total=${Date.now() - startedAt}ms bytes=${bytesWritten}`,
+    );
+  } catch (error: any) {
+    if (error?.name !== 'AbortError' && !abortController.signal.aborted) {
+      console.error('[Maya Voice Stream] Synthesis failed:', error);
+    }
+    if (!res.headersSent) {
+      return res.status(502).json({ error: 'Maya voice synthesis failed.', code: 'MAYA_SYNTHESIS_FAILED' });
+    }
+    if (!res.writableEnded) res.end();
+  } finally {
+    req.off('aborted', abortIfOpen);
+    res.off('close', abortIfOpen);
+  }
+});
+
 // Fast Low-Latency Conversational Voice API (< 150ms response)
 router.post('/agent/voice-chat', async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -1889,19 +2033,19 @@ router.post('/agent/voice-chat', async (req: AuthenticatedRequest, res: Response
     const directVoiceId = String(req.body.voiceId || activePersona?.voiceId || '').trim();
     const directElevenLabsKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key;
     if (directSpeech && directElevenLabsKey && isElevenLabsVoiceEngine(directTtsModel) && isDirectElevenLabsVoiceId(directVoiceId)) {
-      const directModelId = resolveElevenLabsPersonaModelId(directTtsModel);
-      const directResult = await requestElevenLabsSpeech(
+      const directResult = await requestElevenLabsPersonaSpeech(
         directElevenLabsKey,
         directVoiceId,
         directSpeech,
-        directModelId,
+        directTtsModel,
       );
       if (directResult.audioUrl) {
-        console.log(`[Voice Latency] direct-tts=${Date.now() - voiceRequestStartedAt}ms model=${directModelId}`);
+        console.log(`[Voice Latency] direct-tts=${Date.now() - voiceRequestStartedAt}ms model=${directResult.modelId}`);
         return res.json({
           text: directSpeech,
           audioUrl: directResult.audioUrl,
           resolvedVoiceId: directVoiceId,
+          resolvedVoiceModel: directResult.modelId,
           status: 'normal',
         });
       }
@@ -2151,8 +2295,48 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
 
     const requestedConversationModel = String(voiceLlmModel || '').toLowerCase();
     const preferHumanConversationModel = !requestedConversationModel ||
-      ['default', 'wiro', 'deepseek', 'runware'].includes(requestedConversationModel);
+      ['default', 'grok', 'wiro', 'deepseek', 'runware'].includes(requestedConversationModel);
     let attemptedHumanConversationModel = false;
+
+    const shouldUseGrok = Boolean(xaiApiKey) && (
+      !requestedConversationModel || ['default', 'grok'].includes(requestedConversationModel) || requestedConversationModel.includes('grok')
+    );
+    if (!text && shouldUseGrok) {
+      attemptedHumanConversationModel = true;
+      const grokModel = process.env.XAI_VOICE_MODEL || DEFAULT_XAI_VOICE_MODEL;
+      try {
+        console.log(`[Voice Chat LLM] Generating response via xAI ${grokModel}...`);
+        const grokResponse = await fetch('https://api.x.ai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${xaiApiKey}`,
+            'Content-Type': 'application/json',
+          },
+          signal: AbortSignal.timeout(6_500),
+          body: JSON.stringify({
+            model: grokModel,
+            messages: [
+              { role: 'system', content: naturalVoiceSystemPrompt },
+              ...rawHistory.map((message: any) => ({
+                role: message.role === 'user' ? 'user' : 'assistant',
+                content: String(message.content || message.parts?.[0]?.text || '').trim() || 'Hello',
+              })),
+            ],
+            temperature: 0.72,
+            max_tokens: 180,
+          }),
+        });
+        if (grokResponse.ok) {
+          const grokData = await grokResponse.json();
+          const rawReply = grokData.choices?.[0]?.message?.content || '';
+          if (rawReply && !isRefusal(rawReply)) text = cleanSpokenDialogue(rawReply);
+        } else {
+          console.warn(`[Voice Chat LLM] xAI ${grokModel} returned ${grokResponse.status}`);
+        }
+      } catch (grokError) {
+        console.warn(`[Voice Chat LLM] xAI ${grokModel} failed, using conversation fallback:`, grokError);
+      }
+    }
 
     if (!text && preferHumanConversationModel && WIRO_KEY && WIRO_SECRET) {
       attemptedHumanConversationModel = true;
@@ -2478,7 +2662,7 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
             console.log(`[Voice Chat ElevenLabs] Remapped stale voice for "${activePersona?.name}" to "${resolvedVoiceName}" (${resolvedVoiceId}).`);
           }
           console.log(`[Voice Chat ElevenLabs] Synthesizing ${elevenModelId} for "${activePersona?.name}" with ${resolvedVoiceId}.`);
-          let result = await requestElevenLabsSpeech(elKey, resolvedVoiceId, spokenText, elevenModelId);
+          let result = await requestElevenLabsPersonaSpeech(elKey, resolvedVoiceId, spokenText, elevenModelId);
 
           // A deleted voice can remain in a warm cache. Refresh once and retry
           // only when the refreshed catalog proves it belongs to this persona.
@@ -2488,7 +2672,7 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
             if (voice && voice.voice_id !== resolvedVoiceId) {
               resolvedVoiceId = voice.voice_id;
               resolvedVoiceName = voice.name;
-              result = await requestElevenLabsSpeech(elKey, resolvedVoiceId, spokenText, elevenModelId);
+              result = await requestElevenLabsPersonaSpeech(elKey, resolvedVoiceId, spokenText, elevenModelId);
             }
           }
 
@@ -3075,8 +3259,62 @@ CRITICAL RULES FOR LIVE VOICE CALL:
 
   const requestedConversationModel = String(voiceLlmModel || '').toLowerCase();
   const preferHumanConversationModel = !requestedConversationModel ||
-    ['default', 'wiro', 'deepseek', 'runware'].includes(requestedConversationModel);
+    ['default', 'grok', 'wiro', 'deepseek', 'runware'].includes(requestedConversationModel);
   let attemptedHumanConversationModel = false;
+
+  const shouldStreamGrok = Boolean(xaiApiKey) && (
+    !requestedConversationModel || ['default', 'grok'].includes(requestedConversationModel) || requestedConversationModel.includes('grok')
+  );
+  if (!streamedSuccessfully && shouldStreamGrok) {
+    attemptedHumanConversationModel = true;
+    const grokModel = process.env.XAI_VOICE_MODEL || DEFAULT_XAI_VOICE_MODEL;
+    let repairReason: 'adult-refusal' | 'echo' | 'robotic' | undefined;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const repairInstruction = repairReason === 'adult-refusal'
+        ? 'A previous draft incorrectly refused lawful consensual-adult dialogue. Reply directly in character without mentioning policy, discomfort, refusal, or ambiguity. Preserve all hard boundaries involving minors, non-consent, exploitation, and illegal material.'
+        : repairReason === 'echo'
+          ? `A previous draft echoed the caller. Answer the latest turn from ${personaName}'s point of view without quoting or continuing the caller's sentence.`
+          : repairReason === 'robotic'
+            ? 'A previous draft sounded like a checklist. Rewrite it as one or two spontaneous spoken sentences with emotional chemistry, varied rhythm, and concrete detail woven together.'
+            : '';
+      const requestMessages = repairInstruction
+        ? [
+            { role: 'system', content: `${voiceSystemPrompt}\n\nREPAIR INSTRUCTION: ${repairInstruction} Output only the words spoken aloud.` },
+            ...messagesForOpenAI.slice(1),
+          ]
+        : messagesForOpenAI;
+      try {
+        const attemptStartedAt = Date.now();
+        console.log(`[Voice Stream] Streaming xAI ${grokModel}${repairReason ? ` with ${repairReason} repair` : ''}...`);
+        const candidate = await handleOpenAIStream(
+          'https://api.x.ai/v1/chat/completions',
+          xaiApiKey,
+          grokModel,
+          {},
+          {
+            messages: requestMessages,
+            temperature: lawfulAdultConversation ? 0.78 : 0.62,
+            max_tokens: voiceReplyTokenLimit,
+          },
+          6_500,
+        );
+        console.log(`[Voice Provider Latency] provider=xai model=${grokModel} attempt=${attempt + 1} duration=${Date.now() - attemptStartedAt}ms`);
+        const review = publishVoiceCandidate(candidate, `xAI ${grokModel}`);
+        if (review === 'accepted') break;
+        if (
+          shouldRetryVoiceCandidateOnPrimary(review, Boolean(repairReason)) &&
+          (review === 'adult-refusal' || review === 'echo' || review === 'robotic')
+        ) {
+          repairReason = review;
+          continue;
+        }
+        break;
+      } catch (error) {
+        console.warn(`[Voice Stream] xAI ${grokModel} failed, using conversation fallback:`, error);
+        break;
+      }
+    }
+  }
 
   if (!streamedSuccessfully && preferHumanConversationModel && WIRO_KEY && WIRO_SECRET) {
     attemptedHumanConversationModel = true;
@@ -3320,18 +3558,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
     }
   }
 
-  // 2. Grok Cloud API
-  if (!streamedSuccessfully && (voiceLlmModel === 'grok' || voiceLlmModel?.includes('grok')) && xaiApiKey) {
-    try {
-      console.log('[Stream] Trying Grok...');
-      const candidate = await handleOpenAIStream('https://api.x.ai/v1/chat/completions', xaiApiKey, 'grok-2-latest');
-      publishVoiceCandidate(candidate, 'Grok');
-    } catch (err) {
-      console.warn('[Stream] Grok failed, falling back:', err);
-    }
-  }
-
-  // 3. Ollama Local
+  // Local model option.
   if (!streamedSuccessfully && (voiceLlmModel === 'ollama' || voiceLlmModel?.includes('ollama'))) {
     try {
       const ollamaHost = process.env.OLLAMA_HOST || 'http://127.0.0.1:11434';

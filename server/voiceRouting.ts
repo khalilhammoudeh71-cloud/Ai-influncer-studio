@@ -136,6 +136,19 @@ export function resolveElevenLabsPersonaModelId(requestedModel?: unknown): strin
   return DEFAULT_ELEVENLABS_PERSONA_MODEL;
 }
 
+export function getElevenLabsPersonaModelCandidates(requestedModel?: unknown): string[] {
+  const primaryModel = resolveElevenLabsPersonaModelId(requestedModel);
+  return primaryModel === DEFAULT_ELEVENLABS_PERSONA_MODEL
+    ? [primaryModel, 'eleven_flash_v2_5']
+    : [primaryModel];
+}
+
+export function getElevenLabsTtsQuery(modelId: string): string {
+  return modelId === 'eleven_v3_conversational'
+    ? 'output_format=mp3_44100_128'
+    : 'optimize_streaming_latency=4&output_format=mp3_44100_128';
+}
+
 export function shouldUseVenicePersonaLlm(modelTarget?: unknown): boolean {
   const normalized = String(modelTarget || '').trim().toLowerCase();
   return normalized.includes('venice');

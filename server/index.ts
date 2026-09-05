@@ -139,6 +139,7 @@ const ATLASCLOUD_API_KEY = process.env.ATLASCLOUD_API_KEY || process.env.atlascl
 const ATLASCLOUD_BASE = 'https://api.atlascloud.ai';
 
 const XAI_API_KEY = process.env.XAI_API_KEY || process.env.xai_api_key || process.env.X_AI_API_KEY || '';
+const XAI_VOICE_MODEL = process.env.XAI_VOICE_MODEL || 'grok-4.20-0309-non-reasoning';
 const XAI_BASE = 'https://api.x.ai/v1';
 
 const OPENAI_DIRECT_KEY = process.env.Openai_api_key || process.env.openai_api_key || process.env.OPENAI_API_KEY || '';
@@ -3313,7 +3314,30 @@ RULES:
 
     let greetingText = '';
 
-    if (VENICE_API_KEY) {
+    if (XAI_API_KEY) {
+      try {
+        const grokGreeting = await fetch('https://api.x.ai/v1/chat/completions', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${XAI_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: XAI_VOICE_MODEL,
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.72,
+            max_tokens: 60,
+          }),
+          signal: AbortSignal.timeout(4_000),
+        });
+        if (grokGreeting.ok) {
+          const data = await grokGreeting.json() as any;
+          const candidate = data.choices?.[0]?.message?.content?.trim();
+          if (candidate && candidate.length > 2) greetingText = candidate;
+        }
+      } catch (error) {
+        console.warn(`[persona-greeting] xAI ${XAI_VOICE_MODEL} error:`, error);
+      }
+    }
+
+    if (!greetingText && VENICE_API_KEY) {
       const veniceModels = getVenicePersonaModelCandidates(
         process.env.VENICE_VOICE_MODEL || process.env.VENICE_PERSONA_MODEL,
       );

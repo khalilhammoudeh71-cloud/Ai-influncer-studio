@@ -7,7 +7,7 @@
     "dev": "vite",
     "server": "tsx watch server/index.ts",
     "build": "vite build",
-    "build:api": "esbuild scripts/api-source.ts --bundle --platform=node --format=esm --outfile=api/index.mjs --target=node20 --minify --banner:js=\"import { createRequire } from 'node:module'; import { fileURLToPath } from 'node:url'; import { dirname } from 'node:path'; const require = createRequire(import.meta.url); const __filename = fileURLToPath(import.meta.url); const __dirname = dirname(__filename);\" --external:@neondatabase/serverless --external:@vercel/functions --external:ws --external:dotenv --external:express --external:cors --external:openai --external:@google/genai --external:drizzle-orm --external:drizzle-zod --external:zod --external:p-limit --external:p-retry --external:ffmpeg-static --external:@ffmpeg-installer/ffmpeg",
+    "build:api": "esbuild scripts/api-source.ts --bundle --platform=node --format=esm --outfile=api/index.mjs --target=node20 --minify --banner:js=\"import { createRequire } from 'node:module'; import { fileURLToPath } from 'node:url'; import { dirname } from 'node:path'; const require = createRequire(import.meta.url); const __filename = fileURLToPath(import.meta.url); const __dirname = dirname(__filename);\" --external:@neondatabase/serverless --external:@vercel/functions --external:@fal-ai/client --external:ws --external:dotenv --external:express --external:cors --external:openai --external:@google/genai --external:drizzle-orm --external:drizzle-zod --external:zod --external:p-limit --external:p-retry --external:ffmpeg-static --external:@ffmpeg-installer/ffmpeg",
     "verify:api-bundle": "node scripts/verify-api-bundle.mjs",
     "vercel-build": "npm run build && npm run build:api && npm run verify:api-bundle",
     "preview": "vite preview",
@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@elevenlabs/client": "^1.21.0",
+    "@fal-ai/client": "^1.10.1",
     "@google/genai": "^1.46.0",
     "@neondatabase/serverless": "^1.0.2",
     "@supabase/supabase-js": "^2.105.1",

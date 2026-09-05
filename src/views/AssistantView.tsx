@@ -99,6 +99,10 @@ import {
   pickDefaultVideoModel,
 } from '../../shared/mediaDefaults';
 import { CommitStrategy, RealtimeEvents, Scribe, type RealtimeConnection } from '@elevenlabs/client';
+import {
+  AUTO_PERSONA_VOICE_ENGINE,
+  resolvePersonaVoiceEngine,
+} from '../utils/personaVoiceEngine';
 
 // ── Typewriter hook ──────────────────────────────────────
 function useTypewriter(text: string, speed = 18) {
@@ -405,8 +409,10 @@ function detectIntent(message: string): 'image' | 'video' | 'chat' {
 }
 
 export const VOICE_CALL_ENGINES = [
-  { id: 'eleven_v3_conversational', name: 'ElevenLabs v3 Conversational', badge: 'Human (~280ms)', desc: 'Most expressive realtime voice (Recommended)' },
-  { id: 'eleven_flash_v2_5', name: 'ElevenLabs Flash 2.5', badge: 'Ultra Fast (~75ms)', desc: 'Lowest-latency voice calls' },
+  { id: AUTO_PERSONA_VOICE_ENGINE, name: 'Automatic Persona Voice', badge: 'Recommended', desc: 'Clones use Eleven v3 with Flash fallback; uncloned personas use Maya' },
+  { id: 'eleven_v3_conversational', name: 'ElevenLabs v3 Conversational', badge: 'Human (~280ms)', desc: 'Most expressive delivery using the saved cloned voice' },
+  { id: 'eleven_flash_v2_5', name: 'ElevenLabs Flash 2.5', badge: 'Ultra Fast (~75ms)', desc: 'Fastest delivery using the saved cloned voice' },
+  { id: 'fal_maya_stream', name: 'Fal Maya Stream', badge: 'Live (~400ms)', desc: 'Emotional prompt-designed voice for personas without a clone' },
   { id: 'eleven_turbo_v2_5', name: 'ElevenLabs Turbo 2.5', badge: 'Fast (~250ms)', desc: 'Rich human tone and nuance' },
   { id: 'cartesia-sonic', name: 'Cartesia Sonic', badge: 'Extreme Speed (~90ms)', desc: 'Fastest conversational turn-taking' },
   { id: 'eleven_multilingual_v2', name: 'ElevenLabs Multilingual v2', badge: 'Expressive (~800ms)', desc: 'High cinematic emotion' },
@@ -511,32 +517,29 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   const [voiceLlmModel, setVoiceLlmModel] = useState<string>(() => {
     const savedModel = localStorage.getItem('agent_voice_llm');
 
-    // One-time migration away from the old DeepSeek Flash / broken Venice
-    // defaults. Keep explicit specialist choices, but move inherited and legacy
-    // Persona Call routes to the stronger refusal-reduced conversation stack.
-    const migrationKey = 'agent_voice_llm_human_default_v2_migrated';
+    // Move existing installations to the newly benchmarked default once. Any
+    // choice made after this migration remains sticky.
+    const migrationKey = 'agent_voice_llm_grok_default_v3_migrated';
     if (!localStorage.getItem(migrationKey)) {
       localStorage.setItem(migrationKey, '1');
-      if (!savedModel || ['default', 'deepseek', 'venice'].includes(savedModel)) {
-        localStorage.setItem('agent_voice_llm', 'wiro');
-        localStorage.removeItem('agent_voice_llm_user_selected');
-        return 'wiro';
-      }
+      localStorage.setItem('agent_voice_llm', 'grok');
+      localStorage.removeItem('agent_voice_llm_user_selected');
+      return 'grok';
     }
 
-    return savedModel || 'wiro';
+    return savedModel || 'grok';
   });
   const [selectedVoiceEngine, setSelectedVoiceEngine] = useState<string>(() => {
     const savedEngine = localStorage.getItem('agent_voice_engine');
-    // Flash was the former default. Migrate that legacy default to the more
-    // expressive realtime model once; later explicit Flash choices persist.
-    const migrationKey = 'agent_voice_engine_v3_default_migrated';
-    if (!savedEngine || (savedEngine === 'eleven_flash_v2_5' && !localStorage.getItem(migrationKey))) {
+    // Migrate once to clone-aware routing. Existing uploaded voices keep their
+    // exact ElevenLabs identity; personas without a clone receive Maya.
+    const migrationKey = 'agent_voice_engine_clone_first_v5_default_migrated';
+    if (!localStorage.getItem(migrationKey)) {
       localStorage.setItem(migrationKey, '1');
-      localStorage.setItem('agent_voice_engine', 'eleven_v3_conversational');
-      return 'eleven_v3_conversational';
+      localStorage.setItem('agent_voice_engine', AUTO_PERSONA_VOICE_ENGINE);
+      return AUTO_PERSONA_VOICE_ENGINE;
     }
-    return savedEngine;
+    return savedEngine || AUTO_PERSONA_VOICE_ENGINE;
   });
 
   const handleVoiceEngineChange = (engineId: string) => {
@@ -1116,6 +1119,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 
   const [callInput, setCallInput] = useState('');
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const streamingAudioContextRef = useRef<AudioContext | null>(null);
+  const streamingAudioSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const activeCallAbortControllerRef = useRef<AbortController | null>(null);
   const callTimerRef = useRef<any>(null);
   const callRecRef = useRef<any>(null);
@@ -1608,6 +1613,19 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     return `${current} ${tail}`.trim();
   }, []);
 
+  const stopStreamingAudio = useCallback(() => {
+    for (const source of streamingAudioSourcesRef.current) {
+      try { source.stop(); } catch {}
+      try { source.disconnect(); } catch {}
+    }
+    streamingAudioSourcesRef.current.clear();
+    const context = streamingAudioContextRef.current;
+    streamingAudioContextRef.current = null;
+    if (context && context.state !== 'closed') {
+      void context.close().catch(() => {});
+    }
+  }, []);
+
   const interruptPersona = useCallback(() => {
     console.log('[Interrupt] 🛑 Halting persona audio playback and cancelling in-flight request...');
     callTurnIdRef.current += 1;
@@ -1623,6 +1641,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       } catch {}
       audioRef.current = null;
     }
+    stopStreamingAudio();
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       try { window.speechSynthesis.cancel(); } catch {}
     }
@@ -1636,7 +1655,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         restartSpeechRecognition();
       }
     }
-  }, [rememberPersonaSpeech]);
+  }, [rememberPersonaSpeech, stopStreamingAudio]);
 
   useEffect(() => {
     isCallActiveRef.current = isCallActive;
@@ -1894,6 +1913,113 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     voiceModel: string;
   };
 
+  const playMayaSpeechStream = async (
+    text: string,
+    voiceRouting: FrozenVoiceRouting,
+    controller: AbortController,
+    onStart?: () => void,
+  ): Promise<boolean> => {
+    const response = await authFetch('/api/agent/maya-speech-stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, activePersona: voiceRouting.persona }),
+      signal: controller.signal,
+    });
+    if (!response.ok || !response.body) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `Maya voice synthesis failed (${response.status})`);
+    }
+
+    const AudioContextConstructor = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextConstructor) throw new Error('Streaming audio is not supported in this browser.');
+
+    const sampleRate = Number(response.headers.get('X-Audio-Sample-Rate')) || 24_000;
+    let context = streamingAudioContextRef.current;
+    if (!context || context.state === 'closed') {
+      context = new AudioContextConstructor({ sampleRate }) as AudioContext;
+      streamingAudioContextRef.current = context;
+    }
+    if (context.state === 'suspended') await context.resume();
+
+    const reader = response.body.getReader();
+    const minimumScheduleBytes = 4_096;
+    let pending = new Uint8Array(0);
+    let nextStartAt = context.currentTime + 0.025;
+    let scheduledAudio = false;
+    let receivedBytes = 0;
+
+    const schedulePcm = (pcm: Uint8Array) => {
+      if (pcm.byteLength < 2 || controller.signal.aborted) return;
+      const sampleCount = Math.floor(pcm.byteLength / 2);
+      const audioBuffer = context.createBuffer(1, sampleCount, sampleRate);
+      const channel = audioBuffer.getChannelData(0);
+      const view = new DataView(pcm.buffer, pcm.byteOffset, sampleCount * 2);
+      for (let index = 0; index < sampleCount; index += 1) {
+        channel[index] = view.getInt16(index * 2, true) / 32_768;
+      }
+
+      const source = context.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(context.destination);
+      streamingAudioSourcesRef.current.add(source);
+      source.onended = () => {
+        streamingAudioSourcesRef.current.delete(source);
+        try { source.disconnect(); } catch {}
+      };
+
+      const startsAt = Math.max(nextStartAt, context.currentTime + 0.012);
+      source.start(startsAt);
+      nextStartAt = startsAt + audioBuffer.duration;
+      if (!scheduledAudio) {
+        scheduledAudio = true;
+        onStart?.();
+      }
+    };
+
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (!value?.byteLength) continue;
+        receivedBytes += value.byteLength;
+        const combined = new Uint8Array(pending.byteLength + value.byteLength);
+        combined.set(pending);
+        combined.set(value, pending.byteLength);
+        pending = combined;
+
+        const schedulableBytes = Math.floor(pending.byteLength / minimumScheduleBytes) * minimumScheduleBytes;
+        if (schedulableBytes > 0) {
+          schedulePcm(pending.slice(0, schedulableBytes));
+          pending = pending.slice(schedulableBytes);
+        }
+      }
+
+      const finalBytes = pending.byteLength - (pending.byteLength % 2);
+      if (finalBytes > 0) schedulePcm(pending.slice(0, finalBytes));
+      if (!scheduledAudio || receivedBytes === 0) {
+        throw new Error('Maya returned no playable audio.');
+      }
+
+      const remainingMs = Math.max(0, (nextStartAt - context.currentTime) * 1_000 + 30);
+      await new Promise<void>((resolve, reject) => {
+        const timer = window.setTimeout(() => {
+          controller.signal.removeEventListener('abort', onAbort);
+          resolve();
+        }, remainingMs);
+        const onAbort = () => {
+          window.clearTimeout(timer);
+          reject(new DOMException('Audio playback was interrupted.', 'AbortError'));
+        };
+        controller.signal.addEventListener('abort', onAbort, { once: true });
+      });
+      return true;
+    } finally {
+      if (controller.signal.aborted && streamingAudioContextRef.current === context) {
+        stopStreamingAudio();
+      }
+    }
+  };
+
   const playTTS = async (text: string, onStart?: () => void, voiceRouting?: FrozenVoiceRouting) => {
     const speechPersona = voiceRouting?.persona || activePersona;
     currentPersonaSpeechRef.current = text.toLowerCase().trim();
@@ -1935,13 +2061,33 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     };
 
     try {
-      const currentVoice = voiceRouting || {
+      let currentVoice = voiceRouting || {
         persona: speechPersona,
         ...getActivePersonaVoice(speechPersona),
-        voiceModel: selectedVoiceEngine,
+        voiceModel: resolvePersonaVoiceEngine(speechPersona, selectedVoiceEngine),
       };
       controller = new AbortController();
       activeCallAbortControllerRef.current = controller;
+
+      if (currentVoice.voiceModel === 'fal_maya_stream') {
+        try {
+          await playMayaSpeechStream(text, currentVoice, controller, () => {
+            if (!isCallActiveRef.current) return;
+            setCallStatus('speaking');
+            isAgentSpeakingRef.current = true;
+            voiceCallBusyRef.current = false;
+            personaSpeakingStartTimeRef.current = Date.now();
+            onStart?.();
+          });
+          onPlaybackComplete();
+          return;
+        } catch (error: any) {
+          if (error?.name === 'AbortError') throw error;
+          console.warn('[Maya Voice Playback] Falling back to the saved ElevenLabs persona voice:', error);
+          stopStreamingAudio();
+          currentVoice = { ...currentVoice, voiceModel: 'eleven_v3_conversational' };
+        }
+      }
 
       const ttsRes = await authFetch('/api/agent/voice-chat', {
         method: 'POST',
@@ -2173,7 +2319,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         persona: activePersona,
         voiceId: targetVoiceId,
         voiceReference: targetVoiceRef,
-        voiceModel: selectedVoiceEngine,
+        voiceModel: resolvePersonaVoiceEngine(activePersona, selectedVoiceEngine),
       };
 
       const reportTerminalTtsError = (message: string) => {
@@ -2186,7 +2332,10 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         toast.error(message, { id: 'persona-voice-unavailable', duration: 7000 });
       };
 
-      const synthesizeSpeechSegment = async (segment: string): Promise<string | undefined> => {
+      const synthesizeSpeechSegment = async (
+        segment: string,
+        voiceModel = targetVoiceRouting.voiceModel,
+      ): Promise<string | undefined> => {
         if (terminalTtsError) return undefined;
         for (let attempt = 0; attempt < 2; attempt++) {
           try {
@@ -2198,8 +2347,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
                 directTTS: segment,
                 voiceId: targetVoiceRouting.voiceId,
                 voiceReference: targetVoiceRouting.voiceReference,
-                voiceModel: targetVoiceRouting.voiceModel,
-                ttsModel: targetVoiceRouting.voiceModel,
+                voiceModel,
+                ttsModel: voiceModel,
               }),
               signal: controller.signal,
             });
@@ -2276,6 +2425,35 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         const cleanSegment = segment.replace(/\s+/g, ' ').trim();
         if (!speakerOn || cleanSegment.length < 2) return;
         streamingSpeechQueued = true;
+        if (targetVoiceRouting.voiceModel === 'fal_maya_stream') {
+          streamingPlayback = streamingPlayback.then(async () => {
+            try {
+              const played = await playMayaSpeechStream(cleanSegment, targetVoiceRouting, controller, () => {
+                streamingAudioPlayed = true;
+                recordFirstAudioLatency();
+                personaSpeakingStartTimeRef.current = Date.now();
+                setCallStatus('speaking');
+                isAgentSpeakingRef.current = true;
+                voiceCallBusyRef.current = false;
+                if (!isMutedRef.current) restartSpeechRecognition();
+              });
+              streamingAudioPlayed ||= played;
+            } catch (error: any) {
+              if (error?.name === 'AbortError') throw error;
+              console.warn('[Maya Voice Playback] Streaming failed; trying the saved ElevenLabs persona voice:', error);
+              stopStreamingAudio();
+              streamingAudioPlayed = false;
+              const fallbackAudio = await synthesizeSpeechSegment(cleanSegment, 'eleven_v3_conversational');
+              if (fallbackAudio) {
+                await playPreparedSegment(cleanSegment, Promise.resolve(fallbackAudio), 1);
+              }
+              if (!streamingAudioPlayed) {
+                reportTerminalTtsError('Maya and the fallback persona voice are temporarily unavailable. Try again in a moment.');
+              }
+            }
+          });
+          return;
+        }
         const audioPromise = synthesizeSpeechSegment(cleanSegment);
         streamingPlayback = streamingPlayback.then(() => playPreparedSegment(cleanSegment, audioPromise));
       };
@@ -2914,6 +3092,13 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       audioRef.current.volume = 1.0;
       audioRef.current.muted = false;
       audioRef.current.play().catch(() => {});
+      if (resolvePersonaVoiceEngine(activePersona, selectedVoiceEngine) === 'fal_maya_stream') {
+        const AudioContextConstructor = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioContextConstructor && (!streamingAudioContextRef.current || streamingAudioContextRef.current.state === 'closed')) {
+          streamingAudioContextRef.current = new AudioContextConstructor({ sampleRate: 24_000 }) as AudioContext;
+        }
+        void streamingAudioContextRef.current?.resume().catch(() => {});
+      }
     } catch {}
 
     const connectingTranscript: CallTranscriptItem[] = [
@@ -3037,6 +3222,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       } catch {}
       audioRef.current = null;
     }
+    stopStreamingAudio();
 
     // Cancel browser speech synthesis immediately
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
@@ -3044,7 +3230,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         window.speechSynthesis.cancel();
       } catch {}
     }
-  }, [activePersona.id]);
+  }, [activePersona.id, rememberPersonaSpeech, stopStreamingAudio]);
 
   // Cleanup on component unmount
   useEffect(() => {
@@ -3064,11 +3250,12 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         try { audioRef.current.pause(); audioRef.current.src = ''; } catch {}
         audioRef.current = null;
       }
+      stopStreamingAudio();
       if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
         try { window.speechSynthesis.cancel(); } catch {}
       }
     };
-  }, []);
+  }, [stopStreamingAudio]);
 
   const [editModels, setEditModels] = useState<ModelInfo[]>([]);
   const [videoModels, setVideoModels] = useState<ModelInfo[]>([]);
@@ -5163,7 +5350,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                       Reasoning & Conversation Engine
                     </span>
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">
-                      Wiro Seed 2.1 • Runware V4 Pro fallback
+                      Grok 4.20 • Wiro fallback
                     </span>
                   </div>
                   <div className="relative">
@@ -5178,7 +5365,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                           'llama3.3': 'Meta Llama 3.3 70B (Cloud API)',
                           'ollama:llama3.3': 'Meta Llama 3.3 70B (Local GPU)',
                           venice: 'Venice Uncensored 1.2',
-                          grok: 'xAI Grok 2',
+                          grok: 'xAI Grok 4.20 Non-Reasoning',
                           wiro: 'Wiro Seed 2.1 Turbo Uncensored',
                           runware: 'Runware DeepSeek V4 Pro',
                           deepseek: 'WaveSpeed DeepSeek V4 Flash',
@@ -5189,13 +5376,13 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                       }}
                       className="w-full bg-[#1c1d22] border border-white/[0.1] hover:border-white/20 focus:border-white/30 rounded-xl px-3.5 py-3 text-sm text-white font-medium outline-none cursor-pointer appearance-none transition-all pr-9 shadow-inner"
                     >
-                      <option value="wiro" className="bg-[#1c1d22] text-white">🔓 Wiro Seed 2.1 Turbo Uncensored (Default)</option>
+                      <option value="grok" className="bg-[#1c1d22] text-white">🚀 xAI Grok 4.20 Non-Reasoning (Default)</option>
+                      <option value="wiro" className="bg-[#1c1d22] text-white">🔓 Wiro Seed 2.1 Turbo (Fallback)</option>
                       <option value="runware" className="bg-[#1c1d22] text-white">🧠 Runware DeepSeek V4 Pro (Human-quality fallback)</option>
                       <option value="gemini" className="bg-[#1c1d22] text-white">⚡ Gemini 2.5 Flash (Ultra Fast & Conversational)</option>
                       <option value="qwen" className="bg-[#1c1d22] text-white">🔮 Qwen 2.5 72B Instruct (Deep Roleplay & Creative)</option>
                       <option value="venice" className="bg-[#1c1d22] text-white">🔓 Venice Uncensored 1.2</option>
                       <option value="deepseek" className="bg-[#1c1d22] text-white">⚡ WaveSpeed DeepSeek V4 Flash (Low-cost fallback)</option>
-                      <option value="grok" className="bg-[#1c1d22] text-white">🚀 xAI Grok 2 (Direct & Unfiltered)</option>
                       <option value="llama3.3" className="bg-[#1c1d22] text-white">🦙 Meta Llama 3.3 70B (Cloud API)</option>
                     </select>
                     <ChevronDown size={14} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
@@ -5339,9 +5526,10 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                     const wan3 = pickDefaultVideoModel(videoModels);
                     if (wan3) setSelectedVideoModelId(wan3.id);
                     
-                    setVoiceLlmModel('wiro');
-                    localStorage.setItem('agent_voice_llm', 'wiro');
+                    setVoiceLlmModel('grok');
+                    localStorage.setItem('agent_voice_llm', 'grok');
                     localStorage.removeItem('agent_voice_llm_user_selected');
+                    handleVoiceEngineChange(AUTO_PERSONA_VOICE_ENGINE);
                     toast.success('Reset to optimal studio defaults!');
                   }}
                   className="text-xs font-semibold text-zinc-400 hover:text-white transition-colors cursor-pointer px-2 py-1"

@@ -6,6 +6,8 @@ import {
   DEFAULT_ELEVENLABS_PERSONA_MODEL,
   DEFAULT_VENICE_PERSONA_MODEL,
   getElevenLabsPersonaVoiceSettings,
+  getElevenLabsPersonaModelCandidates,
+  getElevenLabsTtsQuery,
   getVenicePersonaModelCandidates,
   resolveElevenLabsPersonaModelId,
   isElevenLabsVoiceEngine,
@@ -181,6 +183,21 @@ test('uses Eleven v3 Conversational as the expressive Persona Call default', () 
   assert.equal(resolveElevenLabsPersonaModelId('eleven_v3_conversational'), 'eleven_v3_conversational');
   assert.equal(resolveElevenLabsPersonaModelId('eleven_flash_v2_5'), 'eleven_flash_v2_5');
   assert.equal(resolveElevenLabsPersonaModelId('eleven_multilingual_v2'), 'eleven_multilingual_v2');
+  assert.deepEqual(getElevenLabsPersonaModelCandidates(undefined), [
+    'eleven_v3_conversational',
+    'eleven_flash_v2_5',
+  ]);
+  assert.deepEqual(getElevenLabsPersonaModelCandidates('eleven_flash_v2_5'), [
+    'eleven_flash_v2_5',
+  ]);
+  assert.equal(
+    getElevenLabsTtsQuery('eleven_v3_conversational'),
+    'output_format=mp3_44100_128',
+  );
+  assert.equal(
+    getElevenLabsTtsQuery('eleven_flash_v2_5'),
+    'optimize_streaming_latency=4&output_format=mp3_44100_128',
+  );
 });
 
 test('gives intimate speech expressive prosody without losing the cloned identity', () => {
