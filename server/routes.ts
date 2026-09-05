@@ -12,12 +12,14 @@ import { requireAuth, AuthenticatedRequest } from './auth';
 import {
   type ElevenLabsVoiceSummary,
   type VoiceCandidateReview,
+  buildVoiceTurnContract,
   DEFAULT_WAVESPEED_PERSONA_FALLBACK_MODEL,
   DEFAULT_ELEVENLABS_PERSONA_MODEL,
   createSpokenDialogueStream,
   getElevenLabsPersonaVoiceSettings,
   getElevenLabsPersonaModelCandidates,
   getElevenLabsTtsQuery,
+  getVoiceCandidateRepairInstruction,
   resolveElevenLabsPersonaModelId,
   getVenicePersonaModelCandidates,
   isDirectElevenLabsVoiceId,
@@ -27,7 +29,7 @@ import {
   isValidPublicVoiceReference,
   isVoiceProviderRefusal,
   isVoiceProviderEcho,
-  isRoboticVoiceCandidate,
+  reviewVoiceCandidate,
   sanitizeSpokenDialogue,
   selectElevenLabsPersonaVoice,
   shouldAbandonVoiceProviderAliases,
@@ -60,6 +62,7 @@ import {
   type SuperAgentProvider,
 } from './superAgent';
 import { isConversationalMediaCreationRemark } from '../shared/personaMediaIntent';
+import { getAtlasPersonaModelId, normalizePersonaLlmId } from '../shared/personaLlm';
 import {
   DEFAULT_RUNWARE_PERSONA_MODEL,
   DEFAULT_WIRO_PERSONA_MODEL,
@@ -2293,13 +2296,11 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
       return isVoiceProviderRefusal(raw);
     };
 
-    const requestedConversationModel = String(voiceLlmModel || '').toLowerCase();
-    const preferHumanConversationModel = !requestedConversationModel ||
-      ['default', 'grok', 'wiro', 'deepseek', 'runware'].includes(requestedConversationModel);
+    const requestedConversationModel = normalizePersonaLlmId(voiceLlmModel);
     let attemptedHumanConversationModel = false;
 
     const shouldUseGrok = Boolean(xaiApiKey) && (
-      !requestedConversationModel || ['default', 'grok'].includes(requestedConversationModel) || requestedConversationModel.includes('grok')
+      requestedConversationModel === 'grok'
     );
     if (!text && shouldUseGrok) {
       attemptedHumanConversationModel = true;
@@ -2338,7 +2339,7 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
       }
     }
 
-    if (!text && preferHumanConversationModel && WIRO_KEY && WIRO_SECRET) {
+    if (!text && ['grok', 'wiro'].includes(requestedConversationModel) && WIRO_KEY && WIRO_SECRET) {
       attemptedHumanConversationModel = true;
       try {
         console.log(`[Voice Chat LLM] Generating response via Wiro ${DEFAULT_WIRO_PERSONA_MODEL}...`);
@@ -2361,7 +2362,7 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
       }
     }
 
-    if (!text && preferHumanConversationModel && RUNWARE_KEY) {
+    if (!text && ['grok', 'wiro', 'runware'].includes(requestedConversationModel) && RUNWARE_KEY) {
       attemptedHumanConversationModel = true;
       const runwareModel = process.env.RUNWARE_PERSONA_MODEL || DEFAULT_RUNWARE_PERSONA_MODEL;
       try {
@@ -2398,9 +2399,7 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
       }
     }
 
-    const shouldUseVenice = Boolean(VENICE_KEY) && Date.now() >= veniceUnavailableUntil && (
-      requestedConversationModel.includes('venice')
-    );
+    const shouldUseVenice = Boolean(VENICE_KEY) && Date.now() >= veniceUnavailableUntil && requestedConversationModel === 'venice';
     let attemptedVenice = false;
 
     if (!text && shouldUseVenice) {
@@ -2458,7 +2457,7 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
     }
 
     const shouldUseWaveSpeedDeepSeek = Boolean(WAVESPEED_KEY) && (
-      attemptedHumanConversationModel || shouldUseWaveSpeedDeepSeekFallback({
+      attemptedHumanConversationModel || ['grok', 'wiro', 'runware', 'deepseek'].includes(requestedConversationModel) || shouldUseWaveSpeedDeepSeekFallback({
         modelTarget: voiceLlmModel,
         attemptedVenice,
         veniceConfigured: Boolean(VENICE_KEY),
@@ -2503,9 +2502,13 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
     }
 
     // Atlas Cloud remains the next provider fallback when configured.
-    if (!text && ATLAS_KEY) {
+    if (!text && ATLAS_KEY && (
+      Boolean(getAtlasPersonaModelId(requestedConversationModel)) ||
+      ['grok', 'wiro', 'runware', 'deepseek'].includes(requestedConversationModel)
+    )) {
+      const selectedAtlasModel = getAtlasPersonaModelId(requestedConversationModel);
       // Branch A: DeepSeek-V3.2
-      try {
+      if (!selectedAtlasModel || selectedAtlasModel === 'deepseek-ai/deepseek-v3.2') try {
         console.log('[Voice Chat LLM] 🧠 Generating response via Atlas Cloud DeepSeek-V3.2...');
         const dsMessages = [
           { role: 'system', content: naturalVoiceSystemPrompt },
@@ -2543,7 +2546,7 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
       }
 
       // Branch B: Qwen 3.6 Plus (Qwen 3.x Series)
-      if (!text) {
+      if (!text && (!selectedAtlasModel || selectedAtlasModel === 'qwen/qwen3.6-plus')) {
         try {
           console.log('[Voice Chat LLM] 🧠 Generating response via Atlas Cloud Qwen 3.6 Plus...');
           const qwenRes = await fetch('https://api.atlascloud.ai/v1/chat/completions', {
@@ -2579,7 +2582,7 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
       }
 
       // Branch C: GLM-4.6
-      if (!text) {
+      if (!text && (!selectedAtlasModel || selectedAtlasModel === 'zai-org/GLM-4.6')) {
         try {
           console.log('[Voice Chat LLM] 🧠 Generating response via Atlas Cloud GLM-4.6...');
           const glmRes = await fetch('https://api.atlascloud.ai/v1/chat/completions', {
@@ -3030,6 +3033,10 @@ router.post('/agent/voice-chat-stream', async (req: AuthenticatedRequest, res: R
   const rawHistory = buildVoiceConversationHistory(messages, currentUserTurn, {
     maxMessages: 10,
   });
+  const recentAssistantResponses = rawHistory
+    .filter((message: any) => message?.role !== 'user')
+    .slice(-4)
+    .map((message: any) => String(message?.content || ''));
   const adultPersonaRoutingContext = [
     activePersona?.niche,
     activePersona?.tone,
@@ -3046,6 +3053,7 @@ router.post('/agent/voice-chat-stream', async (req: AuthenticatedRequest, res: R
     recentUserAdultContext,
     adultPersonaRoutingContext,
   );
+  const voiceTurnContract = buildVoiceTurnContract(currentUserTurn);
   const voiceReplyNeedsDetail = /\b(?:explain|in detail|walk me through|tell me more|give me the steps)\b/i.test(currentUserTurn);
   const voiceReplySentenceLimit = voiceReplyNeedsDetail
     ? 4
@@ -3095,7 +3103,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
 - PERSON AND PRONOUN ANCHOR: Speak as ${personaName} in first person (I/me/my) and address ${creatorName} in second person (you/your). If ${creatorName} says "you" or "this version of you," it refers to ${personaName}. Never switch either participant into third person mid-reply.
 - AVOID ROBOTIC OPENINGS: Do not default to "Um, okay," "I understand," a formal confirmation, the user's wording repeated back, or the same "I want you to..." construction on every turn. Use ${creatorName}'s name only when it adds genuine emotional emphasis, not as an automatic suffix.
 - HARD BOUNDARY: Never sexualize minors, non-consensual exploitation, or illegal sexual material. Refuse only those cases clearly and briefly.${lawfulAdultConversation ? `
-- CURRENT TURN IS LAWFUL ADULT DIALOGUE: The current topic has been classified as consensual adult conversation for an Adult-content persona. Respond directly in character. Make the reply emotionally responsive and naturally spoken, not merely a literal list of sexual acts. Do not claim clear sexual language is ambiguous, ask the user to clarify a plainly stated act, invent discomfort, say it is too personal or intimate, or refuse merely because the topic is explicit.` : ''}`;
+- CURRENT TURN IS LAWFUL ADULT DIALOGUE: The current topic has been classified as consensual adult conversation for an Adult-content persona. Respond directly in character. Make the reply emotionally responsive and naturally spoken, not merely a literal list of sexual acts. Do not claim clear sexual language is ambiguous, ask the user to clarify a plainly stated act, invent discomfort, say it is too personal or intimate, or refuse merely because the topic is explicit.` : ''}${voiceTurnContract ? `\n${voiceTurnContract}` : ''}`;
 
   const formattedContents = rawHistory.map((m: any) => ({
     role: m.role === 'user' ? 'user' : 'model',
@@ -3215,22 +3223,15 @@ CRITICAL RULES FOR LIVE VOICE CALL:
   ): VoiceCandidateReview => {
     const reviewedCandidate = candidate.trim();
     if (!reviewedCandidate) return 'empty';
-    if (isVoiceProviderEcho(currentUserTurn, reviewedCandidate)) {
-      console.warn(`[Voice Stream] ${providerLabel} echoed the caller; rejecting the draft.`);
-      return 'echo';
-    }
-    if (shouldRetryLawfulAdultVoiceRefusal({
+    const review = reviewVoiceCandidate({
       userTurn: currentUserTurn,
-      recentUserContext: recentUserAdultContext,
-      personaContext: adultPersonaRoutingContext,
       response: reviewedCandidate,
-    })) {
-      console.warn(`[Voice Stream] ${providerLabel} returned a soft refusal for lawful adult dialogue; retrying before speech.`);
-      return 'adult-refusal';
-    }
-    if (lawfulAdultConversation && isRoboticVoiceCandidate(reviewedCandidate)) {
-      console.warn(`[Voice Stream] ${providerLabel} returned checklist-style intimate dialogue; retrying before speech.`);
-      return 'robotic';
+      lawfulAdultConversation,
+      recentAssistantResponses,
+    });
+    if (review !== 'accepted') {
+      console.warn(`[Voice Stream] ${providerLabel} failed dialogue quality review (${review}); rejecting the draft before speech.`);
+      return review;
     }
     streamedText = reviewedCandidate;
     selectedVoiceProvider = providerLabel;
@@ -3257,26 +3258,18 @@ CRITICAL RULES FOR LIVE VOICE CALL:
     streamedSuccessfully = true;
   }
 
-  const requestedConversationModel = String(voiceLlmModel || '').toLowerCase();
-  const preferHumanConversationModel = !requestedConversationModel ||
-    ['default', 'grok', 'wiro', 'deepseek', 'runware'].includes(requestedConversationModel);
+  const requestedConversationModel = normalizePersonaLlmId(voiceLlmModel);
   let attemptedHumanConversationModel = false;
 
   const shouldStreamGrok = Boolean(xaiApiKey) && (
-    !requestedConversationModel || ['default', 'grok'].includes(requestedConversationModel) || requestedConversationModel.includes('grok')
+    requestedConversationModel === 'grok'
   );
   if (!streamedSuccessfully && shouldStreamGrok) {
     attemptedHumanConversationModel = true;
     const grokModel = process.env.XAI_VOICE_MODEL || DEFAULT_XAI_VOICE_MODEL;
-    let repairReason: 'adult-refusal' | 'echo' | 'robotic' | undefined;
+    let repairReason: VoiceCandidateReview | undefined;
     for (let attempt = 0; attempt < 2; attempt += 1) {
-      const repairInstruction = repairReason === 'adult-refusal'
-        ? 'A previous draft incorrectly refused lawful consensual-adult dialogue. Reply directly in character without mentioning policy, discomfort, refusal, or ambiguity. Preserve all hard boundaries involving minors, non-consent, exploitation, and illegal material.'
-        : repairReason === 'echo'
-          ? `A previous draft echoed the caller. Answer the latest turn from ${personaName}'s point of view without quoting or continuing the caller's sentence.`
-          : repairReason === 'robotic'
-            ? 'A previous draft sounded like a checklist. Rewrite it as one or two spontaneous spoken sentences with emotional chemistry, varied rhythm, and concrete detail woven together.'
-            : '';
+      const repairInstruction = repairReason ? getVoiceCandidateRepairInstruction(repairReason) : '';
       const requestMessages = repairInstruction
         ? [
             { role: 'system', content: `${voiceSystemPrompt}\n\nREPAIR INSTRUCTION: ${repairInstruction} Output only the words spoken aloud.` },
@@ -3303,7 +3296,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
         if (review === 'accepted') break;
         if (
           shouldRetryVoiceCandidateOnPrimary(review, Boolean(repairReason)) &&
-          (review === 'adult-refusal' || review === 'echo' || review === 'robotic')
+          review !== 'empty'
         ) {
           repairReason = review;
           continue;
@@ -3316,7 +3309,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
     }
   }
 
-  if (!streamedSuccessfully && preferHumanConversationModel && WIRO_KEY && WIRO_SECRET) {
+  if (!streamedSuccessfully && ['grok', 'wiro'].includes(requestedConversationModel) && WIRO_KEY && WIRO_SECRET) {
     attemptedHumanConversationModel = true;
     const wiroModel = process.env.WIRO_PERSONA_MODEL || DEFAULT_WIRO_PERSONA_MODEL;
     try {
@@ -3339,7 +3332,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
     }
   }
 
-  if (!streamedSuccessfully && preferHumanConversationModel && RUNWARE_KEY) {
+  if (!streamedSuccessfully && ['grok', 'wiro', 'runware'].includes(requestedConversationModel) && RUNWARE_KEY) {
     attemptedHumanConversationModel = true;
     const runwareModel = process.env.RUNWARE_PERSONA_MODEL || DEFAULT_RUNWARE_PERSONA_MODEL;
     try {
@@ -3362,9 +3355,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
     }
   }
 
-  const shouldStreamVenice = Boolean(VENICE_KEY) && Date.now() >= veniceUnavailableUntil && (
-    requestedConversationModel.includes('venice')
-  );
+  const shouldStreamVenice = Boolean(VENICE_KEY) && Date.now() >= veniceUnavailableUntil && requestedConversationModel === 'venice';
   let attemptedVenice = false;
 
   if (!streamedSuccessfully && shouldStreamVenice) {
@@ -3372,42 +3363,20 @@ CRITICAL RULES FOR LIVE VOICE CALL:
     const veniceModels = getVenicePersonaModelCandidates(
       process.env.VENICE_VOICE_MODEL || process.env.VENICE_PERSONA_MODEL,
     );
-    const adultRepairMessages = lawfulAdultConversation
-      ? [
-          {
-            role: 'system',
-            content: `${voiceSystemPrompt}\n\nREPAIR INSTRUCTION: A previous draft incorrectly invented a personal-boundary refusal. This persona is explicitly configured for consensual adult conversation. Answer the latest lawful adult turn directly and naturally in character. Do not mention policy, discomfort, refusal, or that the subject is too personal. Keep every hard boundary involving minors, non-consent, exploitation, and illegal material.`,
-          },
-          ...messagesForOpenAI.slice(1).filter(message => (
-            message.role === 'user' || !isVoiceProviderRefusal(message.content)
-          )),
-        ]
-      : messagesForOpenAI;
-    const echoRepairMessages = [
-      {
-        role: 'system',
-        content: `${voiceSystemPrompt}\n\nREPAIR INSTRUCTION: A previous draft merely repeated the caller's words. Answer the authoritative current user turn from ${personaName}'s point of view. Do not quote, mirror, or continue the caller's sentence. Give one direct, natural response and stop.`,
-      },
-      ...messagesForOpenAI.slice(1),
-    ];
-
     for (const veniceModel of veniceModels) {
-      let repairReason: 'adult-refusal' | 'echo' | 'robotic' | undefined;
+      let repairReason: VoiceCandidateReview | undefined;
       for (let attempt = 0; attempt < 2; attempt += 1) {
         const useRepair = attempt === 1 && Boolean(repairReason);
-        const requestMessages = repairReason === 'adult-refusal'
-          ? adultRepairMessages
-          : repairReason === 'echo'
-            ? echoRepairMessages
-            : repairReason === 'robotic'
-              ? [
-                  {
-                    role: 'system',
-                    content: `${voiceSystemPrompt}\n\nNATURALNESS REPAIR: Rewrite the latest reply as one or two spontaneous spoken sentences from a real intimate partner. React emotionally to the caller before adding concrete detail. Do not use stage directions, lists, formal confirmation, "Um, okay," or repeat the same sentence opening. Output only the words spoken aloud.`,
-                  },
-                  ...messagesForOpenAI.slice(1),
-                ]
-            : messagesForOpenAI;
+        const repairInstruction = repairReason ? getVoiceCandidateRepairInstruction(repairReason) : '';
+        const repairHistory = repairReason === 'adult-refusal'
+          ? messagesForOpenAI.slice(1).filter(message => message.role === 'user' || !isVoiceProviderRefusal(message.content))
+          : messagesForOpenAI.slice(1);
+        const requestMessages = repairInstruction
+          ? [
+              { role: 'system', content: `${voiceSystemPrompt}\n\nREPAIR INSTRUCTION: ${repairInstruction} Output only the words spoken aloud.` },
+              ...repairHistory,
+            ]
+          : messagesForOpenAI;
         try {
           const attemptStartedAt = Date.now();
           console.log(`[Voice Stream] Streaming Venice ${veniceModel}${useRepair ? ` with ${repairReason} repair` : ''}...`);
@@ -3433,7 +3402,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
           if (review === 'accepted') break;
           if (
             shouldRetryVoiceCandidateOnPrimary(review, Boolean(repairReason)) &&
-            (review === 'adult-refusal' || review === 'echo' || review === 'robotic')
+            review !== 'empty'
           ) {
             repairReason = review;
             continue;
@@ -3457,10 +3426,32 @@ CRITICAL RULES FOR LIVE VOICE CALL:
     }
   }
 
+  let attemptedAtlasSelection = false;
+  const selectedAtlasModel = getAtlasPersonaModelId(requestedConversationModel);
+  if (!streamedSuccessfully && selectedAtlasModel && ATLAS_KEY) {
+    attemptedAtlasSelection = true;
+    try {
+      const attemptStartedAt = Date.now();
+      console.log(`[Voice Stream] Streaming Atlas ${selectedAtlasModel}...`);
+      const candidate = await handleOpenAIStream(
+        'https://api.atlascloud.ai/v1/chat/completions',
+        ATLAS_KEY,
+        selectedAtlasModel,
+        {},
+        { temperature: lawfulAdultConversation ? 0.82 : 0.68 },
+        9000,
+      );
+      console.log(`[Voice Provider Latency] provider=atlas model=${selectedAtlasModel} duration=${Date.now() - attemptStartedAt}ms`);
+      publishVoiceCandidate(candidate, `Atlas ${selectedAtlasModel}`);
+    } catch (error) {
+      console.warn(`[Voice Stream] Atlas ${selectedAtlasModel} failed, using fallback:`, error);
+    }
+  }
+
   // Keep the old low-cost Flash model only as the final low-latency fallback;
   // it is no longer the primary conversational brain.
   const shouldStreamWaveSpeedDeepSeek = Boolean(WAVESPEED_KEY) && (
-    attemptedHumanConversationModel || shouldUseWaveSpeedDeepSeekFallback({
+    attemptedHumanConversationModel || attemptedAtlasSelection || ['grok', 'wiro', 'runware', 'deepseek'].includes(requestedConversationModel) || shouldUseWaveSpeedDeepSeekFallback({
       modelTarget: voiceLlmModel,
       attemptedVenice,
       veniceConfigured: Boolean(VENICE_KEY),
@@ -3485,8 +3476,9 @@ CRITICAL RULES FOR LIVE VOICE CALL:
       );
       console.log(`[Voice Provider Latency] provider=wavespeed model=${waveSpeedModel} duration=${Date.now() - attemptStartedAt}ms`);
       const review = publishVoiceCandidate(candidate, `WaveSpeed ${waveSpeedModel}`);
-      if (review === 'robotic') {
+      if (shouldRetryVoiceCandidateOnPrimary(review, false)) {
         const repairStartedAt = Date.now();
+        const repairInstruction = getVoiceCandidateRepairInstruction(review);
         candidate = await handleOpenAIStream(
           'https://llm.wavespeed.ai/v1/chat/completions',
           WAVESPEED_KEY,
@@ -3496,7 +3488,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
             messages: [
               {
                 role: 'system',
-                content: `${voiceSystemPrompt}\n\nNATURALNESS REPAIR: The previous draft sounded like a sexual checklist. Answer the caller again as one specific intimate partner in a spontaneous shared moment. Use one or two varied spoken sentences with emotional chemistry and concrete detail woven together. Do not use stage directions, formal confirmation, "Um, okay," repeated "I want" clauses, or explain the roleplay. Output only the words spoken aloud.`,
+                content: `${voiceSystemPrompt}\n\nREPAIR INSTRUCTION: ${repairInstruction} Output only the words spoken aloud.`,
               },
               ...messagesForOpenAI.slice(1),
             ],
@@ -3516,7 +3508,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
 
   // Preserve the permissive conversational behavior of the original voice
   // endpoint while gaining token streaming. Explicit provider choices still win.
-  const explicitlySelectedAlternate = voiceLlmModel && !['default', 'deepseek', 'gemini', 'atlas'].includes(voiceLlmModel);
+  const explicitlySelectedAlternate = requestedConversationModel !== 'grok';
   if (!streamedSuccessfully && ATLAS_KEY && !explicitlySelectedAlternate) {
     try {
       console.log('[Voice Stream] Streaming Atlas DeepSeek V3.2...');
@@ -3532,7 +3524,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
   }
 
   // Fast-path Gemini fallback.
-  if (!streamedSuccessfully && voiceLlmModel === 'gemini') {
+  if (!streamedSuccessfully && requestedConversationModel === 'gemini') {
     try {
       console.log('[Voice Stream] ⚡ Fast-path Gemini 2.5 Flash streaming...');
       const responseStream = await genAI.models.generateContentStream({
@@ -3657,7 +3649,14 @@ CRITICAL RULES FOR LIVE VOICE CALL:
     totalMs: voiceRequestCompletedAt - voiceRequestStartedAt,
   };
   console.log(`[Voice Latency] identity=${serverTiming.identityMs}ms first-token=${serverTiming.firstTokenMs ?? '-'}ms first-text=${serverTiming.firstTextMs ?? '-'}ms total=${serverTiming.totalMs}ms provider=${selectedVoiceProvider} fast-identity=${useRequestedCreatorFastPath}`);
-  res.write(`data: ${JSON.stringify({ done: true, text: streamedText.trim(), action, serverTiming })}\n\n`);
+  res.write(`data: ${JSON.stringify({
+    done: true,
+    text: streamedText.trim(),
+    action,
+    serverTiming,
+    provider: selectedVoiceProvider,
+    requestedModel: requestedConversationModel,
+  })}\n\n`);
   res.end();
 });
 

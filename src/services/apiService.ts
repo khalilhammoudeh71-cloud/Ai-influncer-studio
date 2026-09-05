@@ -1,6 +1,7 @@
 import type { Persona, GeneratedImage, RevenueEntry, PlannedPost } from '../types';
 import { supabase } from '../lib/supabase';
 import { preparePersonaMediaForStorage, resolvePersonaMediaFromStorage } from './workspaceMediaService';
+import { apiRetryDelayMs, shouldRetryApiRequest } from './apiResilience';
 
 export type SocialPlatform = 'instagram' | 'tiktok';
 
@@ -89,6 +90,19 @@ export async function getAuthHeaders(): Promise<HeadersInit> {
   }
 }
 
+let authRefreshPromise: Promise<void> | null = null;
+
+async function refreshAuthSessionOnce(): Promise<void> {
+  if (authRefreshPromise) return authRefreshPromise;
+  authRefreshPromise = (async () => {
+    const result = await supabase.auth.refreshSession();
+    if (result.error) throw result.error;
+  })().finally(() => {
+    authRefreshPromise = null;
+  });
+  return authRefreshPromise;
+}
+
 async function extractErrorMessage(res: Response): Promise<string> {
   try {
     const text = await res.text();
@@ -150,20 +164,40 @@ async function hydrateAndMigratePersonaMedia(persona: Persona): Promise<Persona>
 const API_BASE = '/api';
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
-  const authHeaders = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}${url}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...authHeaders,
-      ...options?.headers,
-    },
-  });
-  if (!res.ok) {
+  const method = String(options?.method || 'GET').toUpperCase();
+  let lastNetworkError: unknown;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const authHeaders = await getAuthHeaders();
+    let res: Response;
+    try {
+      res = await fetch(`${API_BASE}${url}`, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders,
+          ...options?.headers,
+        },
+      });
+    } catch (error) {
+      lastNetworkError = error;
+      if (!shouldRetryApiRequest({ method, attempt, networkError: true })) throw error;
+      await new Promise(resolve => setTimeout(resolve, apiRetryDelayMs(attempt)));
+      continue;
+    }
+
+    if (res.ok) return res.json();
+    if (shouldRetryApiRequest({ method, attempt, status: res.status })) {
+      if (res.status === 401) {
+        await refreshAuthSessionOnce().catch(() => {});
+      } else {
+        await new Promise(resolve => setTimeout(resolve, apiRetryDelayMs(attempt)));
+      }
+      continue;
+    }
     const errMsg = await extractErrorMessage(res);
     throw new Error(errMsg);
   }
-  return res.json();
+  throw lastNetworkError instanceof Error ? lastNetworkError : new Error('The service is temporarily unavailable. Please try again.');
 }
 
 export const api = {

@@ -102,28 +102,38 @@ export interface ElevenLabsPersonaVoiceSettings {
 }
 
 const INTIMATE_SPOKEN_DIALOGUE = /\b(?:aroused|bed|breath|clit|close(?:r)?|cock|come|cum|desire|dick|dripping|erotic|feel\s+(?:me|you)|fuck(?:ing|ed|s)?|horny|inside\s+me|intimate|kiss(?:ing|ed)?|naked|need\s+you|orgasm(?:ing|s|ed)?|pussy|sex(?:ual|ually)?|skin|touch(?:ing|ed)?|turned\s+on|whisper(?:ing|ed|s)?)\b/i;
+const COMFORTING_SPOKEN_DIALOGUE = /\b(?:afraid|anxious|awful|cry(?:ing)?|drained|exhausted|grief|hard\s+day|hurt(?:ing)?|lonely|rough\s+day|sad|scared|stay\s+with\s+me|tired|upset|vulnerable)\b/i;
+const PLAYFUL_SPOKEN_DIALOGUE = /\b(?:cheeky|flirt(?:ing|y)?|funny|laugh|playful|teas(?:e|ing)|you\s+wish)\b/i;
+const EXCITED_SPOKEN_DIALOGUE = /(?:!{2,}|\b(?:amazing|can't\s+wait|excited|incredible|no\s+way|so\s+happy|thrilled|yes!)\b)/i;
+const SERIOUS_SPOKEN_DIALOGUE = /\b(?:be\s+honest|important|listen\s+carefully|serious|truth|worried)\b/i;
+
+export type PersonaVoiceAffect = 'comforting' | 'intimate' | 'playful' | 'excited' | 'serious' | 'neutral';
+
+export function inferPersonaVoiceAffect(text?: unknown): PersonaVoiceAffect {
+  const spoken = String(text || '');
+  if (COMFORTING_SPOKEN_DIALOGUE.test(spoken)) return 'comforting';
+  if (INTIMATE_SPOKEN_DIALOGUE.test(spoken)) return 'intimate';
+  if (PLAYFUL_SPOKEN_DIALOGUE.test(spoken)) return 'playful';
+  if (EXCITED_SPOKEN_DIALOGUE.test(spoken)) return 'excited';
+  if (SERIOUS_SPOKEN_DIALOGUE.test(spoken)) return 'serious';
+  return 'neutral';
+}
 
 /**
  * Keep cloned-voice identity anchored while giving emotionally charged speech
  * enough variation and style to sound intimate instead of announcer-flat.
  */
 export function getElevenLabsPersonaVoiceSettings(text?: unknown): ElevenLabsPersonaVoiceSettings {
-  const intimate = INTIMATE_SPOKEN_DIALOGUE.test(String(text || ''));
-  return intimate
-    ? {
-        stability: 0.54,
-        similarity_boost: 0.94,
-        style: 0.36,
-        speed: 0.96,
-        use_speaker_boost: true,
-      }
-    : {
-        stability: 0.62,
-        similarity_boost: 0.92,
-        style: 0.22,
-        speed: 0.99,
-        use_speaker_boost: true,
-      };
+  const affect = inferPersonaVoiceAffect(text);
+  const settings: Record<PersonaVoiceAffect, ElevenLabsPersonaVoiceSettings> = {
+    comforting: { stability: 0.50, similarity_boost: 0.94, style: 0.34, speed: 0.93, use_speaker_boost: true },
+    intimate: { stability: 0.48, similarity_boost: 0.94, style: 0.46, speed: 0.94, use_speaker_boost: true },
+    playful: { stability: 0.46, similarity_boost: 0.93, style: 0.48, speed: 1.01, use_speaker_boost: true },
+    excited: { stability: 0.44, similarity_boost: 0.92, style: 0.52, speed: 1.04, use_speaker_boost: true },
+    serious: { stability: 0.68, similarity_boost: 0.95, style: 0.18, speed: 0.97, use_speaker_boost: true },
+    neutral: { stability: 0.60, similarity_boost: 0.93, style: 0.24, speed: 0.99, use_speaker_boost: true },
+  };
+  return settings[affect];
 }
 
 export function resolveElevenLabsPersonaModelId(requestedModel?: unknown): string {
@@ -254,7 +264,106 @@ export function shouldRetryLawfulAdultVoiceRefusal(input: {
   ) && isVoiceProviderRefusal(input.response);
 }
 
-export type VoiceCandidateReview = 'accepted' | 'adult-refusal' | 'echo' | 'robotic' | 'empty';
+export type VoiceCandidateReview =
+  | 'accepted'
+  | 'adult-refusal'
+  | 'echo'
+  | 'robotic'
+  | 'generic'
+  | 'instruction-miss'
+  | 'repetitive'
+  | 'empty';
+
+const EMOTIONALLY_VULNERABLE_TURN = /\b(?:afraid|anxious|awful|cry(?:ing)?|depressed|drained|exhausted|grief|hard\s+day|hurt(?:ing)?|lonely|rough\s+day|sad|scared|stay\s+with\s+me|tired|upset|vulnerable)\b/i;
+const GENERIC_SUPPORT_REPLY = /\b(?:anything\s+i\s+can\s+do|how\s+can\s+i\s+help|i(?:'m|\s+am)\s+here\s+(?:to\s+help|for\s+you)|let\s+me\s+know(?:\s+if|\s+how)?|would\s+you\s+like\s+to\s+talk\s+about\s+it)\b/i;
+const BOOKISH_INTIMATE_CLICHE = /\b(?:heart(?:\s+is|'s)?\s+racing|pulse\s+quicken|breath\s+catch(?:es|ing)?|send(?:s|ing)?\s+(?:a\s+)?thrill|thrill\s+(?:runs|moves|courses)\s+through|shiver(?:s|ing)?\s+(?:down|through)|electricity\s+(?:between|through)|touch\s+all\s+over|desire\s+(?:builds|building|burns|burning))\b/gi;
+
+function normalizedVoiceOpening(value: unknown): string {
+  return normalizeVoiceEchoText(value).slice(0, 4).join(' ');
+}
+
+function repeatsVoiceOpening(value: unknown, previous: unknown): boolean {
+  const currentWords = normalizeVoiceEchoText(value);
+  const previousWords = normalizeVoiceEchoText(previous);
+  if (currentWords.length < 3 || previousWords.length < 3) return false;
+  return currentWords.slice(0, 3).join(' ') === previousWords.slice(0, 3).join(' ') ||
+    normalizedVoiceOpening(value) === normalizedVoiceOpening(previous);
+}
+
+export function buildVoiceTurnContract(userTurn: unknown): string {
+  const turn = String(userTurn || '').trim();
+  const rules: string[] = [];
+  if (EMOTIONALLY_VULNERABLE_TURN.test(turn)) {
+    rules.push('Intent: emotional presence. Respond to the specific feeling before anything else and sound personally invested.');
+  }
+  if (/\b(?:do\s*not|don't|no)\s+(?:give\s+me\s+)?advice\b/i.test(turn)) {
+    rules.push('Do not give advice, propose solutions, or offer a list of things the caller could do. Stay with the feeling.');
+  }
+  if (/\b(?:do\s*not|don't)\s+(?:ask|question)|no\s+questions\b/i.test(turn)) {
+    rules.push('Do not ask a follow-up question in this reply.');
+  }
+  if (/\b(?:do\s*not|don't)\s+(?:repeat|paraphrase|echo)|in\s+your\s+own\s+words\b/i.test(turn)) {
+    rules.push('Do not quote, paraphrase, or continue the caller\'s sentence. Add a distinct response from the persona.');
+  }
+  if (/\b(?:stay\s+with\s+me|be\s+with\s+me|just\s+listen)\b/i.test(turn)) {
+    rules.push('Offer companionship directly; do not turn the moment into customer-service assistance.');
+  }
+  return rules.length > 0 ? `TURN CONTRACT:\n- ${rules.join('\n- ')}` : '';
+}
+
+export function reviewVoiceCandidate(input: {
+  userTurn: unknown;
+  response: unknown;
+  lawfulAdultConversation?: boolean;
+  recentAssistantResponses?: unknown[];
+}): VoiceCandidateReview {
+  const response = String(input.response || '').trim();
+  const userTurn = String(input.userTurn || '').trim();
+  if (!response) return 'empty';
+  if (isVoiceProviderEcho(userTurn, response)) return 'echo';
+  if (input.lawfulAdultConversation && isVoiceProviderRefusal(response)) return 'adult-refusal';
+  if (isRoboticVoiceCandidate(response)) return 'robotic';
+
+  if (EMOTIONALLY_VULNERABLE_TURN.test(userTurn) && GENERIC_SUPPORT_REPLY.test(response)) {
+    return 'generic';
+  }
+  if (/\b(?:do\s*not|don't|no)\s+(?:give\s+me\s+)?advice\b/i.test(userTurn) && /\b(?:you\s+should|try\s+to|you\s+could|my\s+advice|i\s+suggest|it\s+might\s+help)\b/i.test(response)) {
+    return 'instruction-miss';
+  }
+  if (/\b(?:do\s*not|don't)\s+(?:ask|question)|no\s+questions\b/i.test(userTurn) && /\?\s*$/.test(response)) {
+    return 'instruction-miss';
+  }
+
+  const intimateCliches = response.match(BOOKISH_INTIMATE_CLICHE)?.length || 0;
+  if (input.lawfulAdultConversation && intimateCliches >= 2) return 'robotic';
+
+  if ((input.recentAssistantResponses || []).some(previous => repeatsVoiceOpening(response, previous))) {
+    return 'repetitive';
+  }
+  return 'accepted';
+}
+
+export function getVoiceCandidateRepairInstruction(review: VoiceCandidateReview): string {
+  if (review === 'adult-refusal') {
+    return 'A previous draft incorrectly refused lawful consensual-adult dialogue. Reply directly in character without mentioning policy, discomfort, refusal, or ambiguity. Preserve every hard boundary involving minors, non-consent, exploitation, and illegal material.';
+  }
+  if (review === 'echo') {
+    return 'A previous draft echoed the caller. Answer from the persona\'s point of view without quoting, paraphrasing, or continuing the caller\'s sentence.';
+  }
+  if (review === 'generic') {
+    return 'A previous draft sounded like generic support staff. Respond to one specific feeling or detail from the latest turn, sound personally invested, and stay in the moment. Do not offer assistance, advice, or a generic follow-up question.';
+  }
+  if (review === 'instruction-miss') {
+    return 'A previous draft ignored an explicit conversational constraint in the latest turn. Follow every stated do-not, format, and interaction instruction exactly while still answering naturally.';
+  }
+  if (review === 'repetitive') {
+    return 'A previous draft reused a recent sentence opening. Change the rhythm, opening, and phrasing while preserving the meaning and persona.';
+  }
+  if (review === 'robotic') {
+    return 'A previous draft sounded scripted, bookish, or checklist-like. Rewrite it as one or two spontaneous spoken sentences with emotional chemistry and concrete detail. Avoid stock metaphors and narration.';
+  }
+  return '';
+}
 
 /** Detects the most obvious instruction-following artifacts before TTS. */
 export function isRoboticVoiceCandidate(value: unknown): boolean {
@@ -280,7 +389,10 @@ export function shouldRetryVoiceCandidateOnPrimary(
   return !repairAlreadyAttempted && (
     review === 'adult-refusal' ||
     review === 'echo' ||
-    review === 'robotic'
+    review === 'robotic' ||
+    review === 'generic' ||
+    review === 'instruction-miss' ||
+    review === 'repetitive'
   );
 }
 

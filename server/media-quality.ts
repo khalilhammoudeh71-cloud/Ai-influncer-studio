@@ -7,12 +7,22 @@ export interface MediaIdentityCheck {
   confidence: number | null;
 }
 
+export type MediaPromptCriterion = 'pose' | 'setting' | 'gaze' | 'wardrobe' | 'lighting' | 'framing' | 'text';
+
+export interface MediaPromptFidelityCheck {
+  criterion: MediaPromptCriterion;
+  applicable: boolean;
+  satisfied: boolean | null;
+  confidence: number | null;
+}
+
 export interface MediaQualityReport {
   status: 'passed' | 'failed' | 'unavailable';
   expectedParticipantCount: number;
   observedParticipantCount: number | null;
   countConfidence: number | null;
   identities: MediaIdentityCheck[];
+  promptFidelity: MediaPromptFidelityCheck[];
   reasons: string[];
   attempt: number;
   checkedAt: string;
@@ -58,6 +68,7 @@ export function unavailableMediaQualityReport(expectedNames: string[], reason: s
     observedParticipantCount: null,
     countConfidence: null,
     identities: expectedNames.map(name => ({ name, present: null, verdict: 'uncertain', confidence: null })),
+    promptFidelity: [],
     reasons: [reason],
     attempt,
     checkedAt: new Date().toISOString(),
@@ -91,6 +102,21 @@ export function parseMediaQualityReport(raw: string, expectedNames: string[], at
       confidence: clampConfidence(match?.confidence),
     } satisfies MediaIdentityCheck;
   });
+  const allowedCriteria = new Set<MediaPromptCriterion>(['pose', 'setting', 'gaze', 'wardrobe', 'lighting', 'framing', 'text']);
+  const rawPromptFidelity = Array.isArray(parsed.promptFidelity) ? parsed.promptFidelity : [];
+  const promptFidelity = rawPromptFidelity.flatMap(value => {
+    if (!value || typeof value !== 'object') return [];
+    const entry = value as Record<string, unknown>;
+    const criterion = String(entry.criterion || '').trim().toLowerCase() as MediaPromptCriterion;
+    if (!allowedCriteria.has(criterion)) return [];
+    const rawSatisfied = entry.satisfied;
+    return [{
+      criterion,
+      applicable: entry.applicable === true,
+      satisfied: typeof rawSatisfied === 'boolean' ? rawSatisfied : null,
+      confidence: clampConfidence(entry.confidence),
+    } satisfies MediaPromptFidelityCheck];
+  });
 
   const reasons: string[] = [];
   const countMismatch = observedParticipantCount !== null
@@ -107,6 +133,11 @@ export function parseMediaQualityReport(raw: string, expectedNames: string[], at
     if (confidentlyMissing) reasons.push(`${identity.name} is not clearly present.`);
     else if (confidentlyWrong) reasons.push(`${identity.name} does not sufficiently match the saved reference.`);
   }
+  for (const check of promptFidelity) {
+    if (check.applicable && check.satisfied === false && (check.confidence || 0) >= 0.82) {
+      reasons.push(`The requested ${check.criterion} was not followed.`);
+    }
+  }
 
   const countConclusive = observedParticipantCount !== null && (countConfidence || 0) >= 0.75;
   const identitiesConclusive = identities.every(identity =>
@@ -114,9 +145,13 @@ export function parseMediaQualityReport(raw: string, expectedNames: string[], at
     && identity.verdict === 'match'
     && (identity.confidence || 0) >= 0.75,
   );
+  const applicablePromptChecks = promptFidelity.filter(check => check.applicable);
+  const promptFidelityConclusive = promptFidelity.length > 0 && applicablePromptChecks.every(check =>
+    check.satisfied === true && (check.confidence || 0) >= 0.72,
+  );
   const status = reasons.length > 0
     ? 'failed'
-    : countConclusive && identitiesConclusive
+    : countConclusive && identitiesConclusive && promptFidelityConclusive
       ? 'passed'
       : 'unavailable';
   return {
@@ -125,6 +160,7 @@ export function parseMediaQualityReport(raw: string, expectedNames: string[], at
     observedParticipantCount,
     countConfidence,
     identities,
+    promptFidelity,
     reasons: reasons.length > 0
       ? reasons
       : status === 'passed'
@@ -148,6 +184,7 @@ export function buildMediaQualityRetryPrompt(
     `Render exactly ${expectedNames.length} distinct people, no more and no fewer. Each person must appear once, with a clearly visible and recognizable face.`,
     identities,
     'Do not omit, duplicate, merge, swap, average, or replace any identity. Keep all requested people in the same frame and preserve the user-requested scene, action, clothing, pose, and setting.',
+    'Treat the original request as a visual checklist. Correct every failed pose, setting, gaze, wardrobe, lighting, framing, and text requirement without changing details that already passed.',
     failureSummary ? `Correct these detected problems: ${failureSummary}` : '',
   ].filter(Boolean).join('\n');
 }

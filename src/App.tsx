@@ -17,7 +17,9 @@ import {
   Cpu,
   Palette,
   Check,
-  Menu
+  Menu,
+  CloudOff,
+  Loader2,
 } from 'lucide-react';
 import { cn } from './utils/cn';
 import { Persona, RevenueEntry, PlannedPost, Tab, NavEntry } from './types';
@@ -51,6 +53,7 @@ import {
   hydrateAccountLocalStorage,
   migrateLegacyAccountKey,
   setActiveStorageUserId,
+  type WorkspaceSyncStatus,
 } from './utils/accountStorage';
 import { ProModeToggle, useProMode } from './utils/useProMode';
 
@@ -219,6 +222,16 @@ function App() {
   const [showShortcutsModal, setShowShortcutsModal] = useState(false);
   const [showMediaJobCenter, setShowMediaJobCenter] = useState(false);
   const [newAssetsCount, setNewAssetsCount] = useState(0); // #6 gallery badge
+  const [workspaceSyncStatus, setWorkspaceSyncStatus] = useState<WorkspaceSyncStatus>('synced');
+
+  useEffect(() => {
+    const handleWorkspaceSyncStatus = (event: Event) => {
+      const detail = (event as CustomEvent<{ status?: WorkspaceSyncStatus }>).detail;
+      if (detail?.status) setWorkspaceSyncStatus(detail.status);
+    };
+    window.addEventListener('workspace-sync-status', handleWorkspaceSyncStatus);
+    return () => window.removeEventListener('workspace-sync-status', handleWorkspaceSyncStatus);
+  }, []);
 
   // Keep the app in sync with the real Supabase authentication session.
   useEffect(() => {
@@ -463,6 +476,7 @@ function App() {
           loadPersonas(),
           hydrateAccountLocalStorage(userId).catch(error => {
             console.warn('[Workspace Sync] Using the local cache for this session:', error);
+            setWorkspaceSyncStatus('pending');
           }),
         ]);
         let serverPersonas = loadResult.personas;
@@ -1187,6 +1201,17 @@ function App() {
       onOpenMenu={() => setIsMobileNavOpen(true)}
       newAssetsCount={newAssetsCount}
     />
+    {workspaceSyncStatus !== 'synced' && (
+      <div
+        className="fixed bottom-[82px] right-4 z-[1000] flex items-center gap-2 rounded-full border border-amber-400/25 bg-[#17181d]/95 px-3 py-2 text-[11px] font-semibold text-amber-100 shadow-2xl backdrop-blur-xl lg:bottom-4"
+        title="Your changes are safe in this browser and will sync automatically when the account connection recovers."
+      >
+        {workspaceSyncStatus === 'syncing'
+          ? <Loader2 size={13} className="animate-spin text-amber-300" />
+          : <CloudOff size={13} className="text-amber-300" />}
+        {workspaceSyncStatus === 'syncing' ? 'Syncing workspace…' : 'Saved locally — sync pending'}
+      </div>
+    )}
     <Toaster position="top-right" containerStyle={{ zIndex: 999999 }} toastOptions={{ duration: 4000, style: { background: '#1c1d22', color: '#fff', border: '1px solid rgba(255, 255, 255, 0.12)' } }} />
       <CommandPalette
         isOpen={showCommandPalette}

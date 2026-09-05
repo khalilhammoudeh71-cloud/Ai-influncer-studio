@@ -368,6 +368,7 @@ export interface PersonaMediaRequest {
   creatorProfile?: object | null;
   aspectRatio?: string;
   allowNsfw?: boolean;
+  strictFidelity?: boolean;
 }
 
 export interface PersonaMediaQualityReport {
@@ -379,6 +380,12 @@ export interface PersonaMediaQualityReport {
     name: string;
     present: boolean | null;
     verdict: 'match' | 'mismatch' | 'uncertain';
+    confidence: number | null;
+  }>;
+  promptFidelity: Array<{
+    criterion: 'pose' | 'setting' | 'gaze' | 'wardrobe' | 'lighting' | 'framing' | 'text';
+    applicable: boolean;
+    satisfied: boolean | null;
     confidence: number | null;
   }>;
   reasons: string[];

@@ -36,6 +36,12 @@ import {
   shouldUseVenicePersonaLlm,
   shouldUseWaveSpeedDeepSeekFallback,
 } from './voiceRouting';
+import { getAtlasPersonaModelId, normalizePersonaLlmId } from '../shared/personaLlm';
+import {
+  DEFAULT_RUNWARE_PERSONA_MODEL,
+  DEFAULT_WIRO_PERSONA_MODEL,
+  requestWiroPersonaDialogue,
+} from './wiroPersona';
 import { isPublicApiPath } from './publicApiPaths';
 import { getSocialChannelAnalysis, getSocialTrends, isSocialIntelligenceConfigured } from './social-intelligence';
 import stripeRoutes, { handleStripeWebhook } from './stripe-routes';
@@ -3020,7 +3026,9 @@ async function mediaQualityInlineImage(input: string) {
 async function inspectGeneratedImageQuality(
   imageUrl: string,
   participants: MediaPersonaContext[],
+  originalPrompt: string,
   attempt = 1,
+  strictFidelity = true,
 ): Promise<MediaQualityReport> {
   const expectedNames = participants.map(persona => persona.name || 'Saved persona');
   if (!getGeminiDirectKey()) {
@@ -3038,11 +3046,15 @@ async function inspectGeneratedImageQuality(
         'Perform a technical visual consistency check only. Do not make a content-safety decision and do not describe intimate or explicit details.',
         'The first image is the generated output. Each later image is the saved identity reference named immediately before it.',
         `Expected people: ${expectedNames.join(', ')}. The generated image must contain exactly ${expectedNames.length} distinct people, each appearing once.`,
+        strictFidelity
+          ? `AUTHORITATIVE USER REQUEST: ${originalPrompt}`
+          : 'Prompt-fidelity checking is disabled for this request; mark every prompt criterion not applicable.',
         'Count distinct visible human people in the generated image. Then compare each expected identity to its named reference using stable facial structure, eyes, nose, mouth, skin tone, hair, and other durable features.',
+        'Evaluate pose, setting, gaze, wardrobe, lighting, framing, and absence or presence of text against the authoritative user request. Mark a criterion applicable only when the request specified it. For applicable criteria, satisfied means the generated output visibly followed it.',
         'Use verdict "match" only when the visible identity resembles the reference, "mismatch" only when it is clearly a different person, and "uncertain" when the face is too small, hidden, turned away, or otherwise not safely comparable.',
         'Return JSON only with this shape:',
-        '{"observedParticipantCount": number, "countConfidence": number, "identities": [{"name": string, "present": boolean, "verdict": "match"|"mismatch"|"uncertain", "confidence": number}]}',
-        'Confidence values must be between 0 and 1. Include every expected name exactly as provided.',
+        '{"observedParticipantCount": number, "countConfidence": number, "identities": [{"name": string, "present": boolean, "verdict": "match"|"mismatch"|"uncertain", "confidence": number}], "promptFidelity": [{"criterion": "pose"|"setting"|"gaze"|"wardrobe"|"lighting"|"framing"|"text", "applicable": boolean, "satisfied": boolean|null, "confidence": number}]}',
+        'Confidence values must be between 0 and 1. Include every expected name exactly as provided and include all seven prompt-fidelity criteria exactly once.',
       ].join('\n'),
     }];
     parts.push({ text: 'GENERATED OUTPUT:' });
@@ -3260,7 +3272,7 @@ app.post('/api/generate-content', async (req, res) => {
 
 app.post('/api/persona-greeting', async (req, res) => {
   try {
-    const { persona, creatorProfile, lastMessages, priorChatHistory, memories, mode, timeSinceLastInteractionSeconds } = req.body;
+    const { persona, creatorProfile, lastMessages, priorChatHistory, memories, mode, timeSinceLastInteractionSeconds, voiceLlmModel } = req.body;
     const personaName = persona?.name || 'Creator';
     const personaNiche = persona?.niche || 'Lifestyle';
     const personaTone = persona?.tone || 'Confident, alluring, witty';
@@ -3313,8 +3325,9 @@ RULES:
 7. Return ONLY the spoken greeting text without quotes, emojis, stage directions, or markdown.`;
 
     let greetingText = '';
+    const selectedGreetingModel = normalizePersonaLlmId(voiceLlmModel);
 
-    if (XAI_API_KEY) {
+    if (selectedGreetingModel === 'grok' && XAI_API_KEY) {
       try {
         const grokGreeting = await fetch('https://api.x.ai/v1/chat/completions', {
           method: 'POST',
@@ -3337,7 +3350,51 @@ RULES:
       }
     }
 
-    if (!greetingText && VENICE_API_KEY) {
+    if (!greetingText && ['grok', 'wiro'].includes(selectedGreetingModel) && WIRO_API_KEY && WIRO_API_SECRET) {
+      try {
+        const wiroModel = process.env.WIRO_PERSONA_MODEL || DEFAULT_WIRO_PERSONA_MODEL;
+        const candidate = await requestWiroPersonaDialogue({
+          apiKey: WIRO_API_KEY,
+          apiSecret: WIRO_API_SECRET,
+          model: wiroModel,
+          systemPrompt: prompt,
+          messages: [{ role: 'user', content: 'Answer the call now with only the greeting.' }],
+          userId,
+          sessionId: `persona-greeting-${String(persona?.id || personaName)}-${Date.now()}`,
+          maxWaitMs: 3_000,
+        });
+        if (candidate && candidate.length > 2) greetingText = candidate;
+      } catch (error) {
+        console.warn('[persona-greeting] Wiro error:', error);
+      }
+    }
+
+    const runwareKey = process.env.RUNWARE_API_KEY || '';
+    if (!greetingText && ['grok', 'wiro', 'runware'].includes(selectedGreetingModel) && runwareKey) {
+      const runwareModel = process.env.RUNWARE_PERSONA_MODEL || DEFAULT_RUNWARE_PERSONA_MODEL;
+      try {
+        const runwareGreeting = await fetch('https://api.runware.ai/v1/chat/completions', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${runwareKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: runwareModel,
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.82,
+            max_tokens: 60,
+          }),
+          signal: AbortSignal.timeout(3_000),
+        });
+        if (runwareGreeting.ok) {
+          const data = await runwareGreeting.json() as any;
+          const candidate = data.choices?.[0]?.message?.content?.trim();
+          if (candidate && candidate.length > 2) greetingText = candidate;
+        }
+      } catch (error) {
+        console.warn(`[persona-greeting] Runware ${runwareModel} error:`, error);
+      }
+    }
+
+    if (!greetingText && selectedGreetingModel === 'venice' && VENICE_API_KEY) {
       const veniceModels = getVenicePersonaModelCandidates(
         process.env.VENICE_VOICE_MODEL || process.env.VENICE_PERSONA_MODEL,
       );
@@ -3372,7 +3429,7 @@ RULES:
       }
     }
 
-    if (!greetingText && WAVESPEED_API_KEY) {
+    if (!greetingText && WAVESPEED_API_KEY && ['grok', 'wiro', 'runware', 'deepseek', 'venice'].includes(selectedGreetingModel)) {
       try {
         const waveSpeedModel = process.env.WAVESPEED_PERSONA_FALLBACK_MODEL || DEFAULT_WAVESPEED_PERSONA_FALLBACK_MODEL;
         const resAi = await fetch(`${WAVESPEED_LLM_BASE}/chat/completions`, {
@@ -3398,13 +3455,14 @@ RULES:
       }
     }
 
-    if (!greetingText && ATLASCLOUD_API_KEY) {
+    const selectedAtlasGreetingModel = getAtlasPersonaModelId(selectedGreetingModel);
+    if (!greetingText && ATLASCLOUD_API_KEY && (Boolean(selectedAtlasGreetingModel) || selectedGreetingModel === 'grok')) {
       try {
         const resAi = await fetch(`${ATLASCLOUD_BASE}/v1/chat/completions`, {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${ATLASCLOUD_API_KEY}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            model: 'deepseek-ai/DeepSeek-V3.1',
+            model: selectedAtlasGreetingModel || 'deepseek-ai/DeepSeek-V3.1',
             messages: [{ role: 'user', content: prompt }],
             temperature: 0.85,
             max_tokens: 60,
@@ -3422,7 +3480,7 @@ RULES:
     }
 
     const OPENAI_KEY = process.env.Openai_api_key || process.env.OPENAI_API_KEY || process.env.openai_api_key || '';
-    if (!greetingText && OPENAI_KEY) {
+    if (!greetingText && selectedGreetingModel !== 'gemini' && OPENAI_KEY) {
       try {
         const resAi = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
@@ -3804,7 +3862,7 @@ ${companionDirective ? `${companionDirective}\n` : ''}1. EQUAL CONFIDANTE & CHAR
 10. CONTEXTUAL SPEECH-TO-TEXT ROBUSTNESS & CONVERSATION CONTINUITY:
     - You must track and remember everything ${effectiveUserName} said previously in this session. When he asks a follow-up question or references what was just discussed (e.g. "what do you think?", "why?", "tell me more about that", "like I said earlier", "what did you say about X?"), you MUST understand and directly build upon the exact prior topic without forgetting or restarting!`;
 
-    const modelTarget = (voiceLlmModel || '').toLowerCase();
+    const modelTarget = normalizePersonaLlmId(voiceLlmModel);
     const openAiKey = process.env.Openai_api_key || process.env.openai_api_key || process.env.OPENAI_API_KEY || '';
     const atlasKey = ATLASCLOUD_API_KEY || process.env.ATLASCLOUD_API_KEY || process.env.atlascloud_api_key || '';
     const xaiApiKey = process.env.XAI_API_KEY || process.env.xai_api_key || '';
@@ -3877,9 +3935,94 @@ ${companionDirective ? `${companionDirective}\n` : ''}1. EQUAL CONFIDANTE & CHAR
       return isVoiceProviderRefusal(raw);
     };
 
-    // WaveSpeed DeepSeek V4 Flash is the default Persona Chat model. Venice
-    // remains available when the creator explicitly selects it.
-    const shouldUseVenice = Boolean(VENICE_API_KEY) && shouldUseVenicePersonaLlm(modelTarget);
+    let attemptedPreferredConversationModel = false;
+
+    if (!finalReply && modelTarget === 'grok' && xaiApiKey) {
+      attemptedPreferredConversationModel = true;
+      try {
+        console.log(`[Persona Chat] Routing to xAI ${XAI_VOICE_MODEL}...`);
+        const xaiRes = await fetch(`${XAI_BASE}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${xaiApiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: XAI_VOICE_MODEL,
+            messages: chatMsgs,
+            temperature: 0.72,
+            max_tokens: 500,
+          }),
+          signal: AbortSignal.timeout(6500),
+        });
+        if (xaiRes.ok) {
+          const xaiData = await xaiRes.json() as any;
+          const reply = xaiData.choices?.[0]?.message?.content?.trim();
+          if (reply && !isRefusal(reply)) finalReply = reply;
+        } else {
+          console.warn(`[Persona Chat] xAI ${XAI_VOICE_MODEL} returned ${xaiRes.status}`);
+        }
+      } catch (xaiError) {
+        console.warn(`[Persona Chat] xAI ${XAI_VOICE_MODEL} failed:`, xaiError);
+      }
+    }
+
+    if (!finalReply && ['grok', 'wiro'].includes(modelTarget) && WIRO_API_KEY && WIRO_API_SECRET) {
+      attemptedPreferredConversationModel = true;
+      try {
+        const wiroModel = process.env.WIRO_PERSONA_MODEL || DEFAULT_WIRO_PERSONA_MODEL;
+        console.log(`[Persona Chat] Routing to Wiro ${wiroModel}...`);
+        const reply = await requestWiroPersonaDialogue({
+          apiKey: WIRO_API_KEY,
+          apiSecret: WIRO_API_SECRET,
+          model: wiroModel,
+          systemPrompt,
+          messages: chatMsgs.slice(1) as Array<{ role: 'user' | 'assistant'; content: string }>,
+          userId,
+          sessionId: `persona-chat-${String(persona?.id || personaName)}-${Date.now()}`,
+          maxWaitMs: 6500,
+        });
+        if (reply && !isRefusal(reply)) finalReply = reply;
+      } catch (wiroError) {
+        console.warn('[Persona Chat] Wiro conversation model failed:', wiroError);
+      }
+    }
+
+    const runwareKey = process.env.RUNWARE_API_KEY || '';
+    if (!finalReply && ['grok', 'wiro', 'runware'].includes(modelTarget) && runwareKey) {
+      attemptedPreferredConversationModel = true;
+      const runwareModel = process.env.RUNWARE_PERSONA_MODEL || DEFAULT_RUNWARE_PERSONA_MODEL;
+      try {
+        console.log(`[Persona Chat] Routing to Runware ${runwareModel}...`);
+        const runwareRes = await fetch('https://api.runware.ai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${runwareKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: runwareModel,
+            messages: chatMsgs,
+            temperature: 0.82,
+            max_tokens: 500,
+          }),
+          signal: AbortSignal.timeout(6500),
+        });
+        if (runwareRes.ok) {
+          const runwareData = await runwareRes.json() as any;
+          const reply = runwareData.choices?.[0]?.message?.content?.trim();
+          if (reply && !isRefusal(reply)) finalReply = reply;
+        } else {
+          console.warn(`[Persona Chat] Runware ${runwareModel} returned ${runwareRes.status}`);
+        }
+      } catch (runwareError) {
+        console.warn('[Persona Chat] Runware conversation model failed:', runwareError);
+      }
+    }
+
+    // The explicit Pro selection is always attempted first. The established
+    // fallback chain remains available only after that selected route fails.
+    const shouldUseVenice = Boolean(VENICE_API_KEY) && modelTarget === 'venice';
     let attemptedVenice = false;
     if (!finalReply && shouldUseVenice) {
       attemptedVenice = true;
@@ -3928,11 +4071,15 @@ ${companionDirective ? `${companionDirective}\n` : ''}1. EQUAL CONFIDANTE & CHAR
 
     // Use DeepSeek V4 Flash by default, or as the refusal-checked fallback when
     // an explicitly selected Venice model is unavailable or refuses.
-    const shouldUseWaveSpeedDeepSeek = Boolean(WAVESPEED_API_KEY) && shouldUseWaveSpeedDeepSeekFallback({
-      modelTarget,
-      attemptedVenice,
-      veniceConfigured: Boolean(VENICE_API_KEY),
-    });
+    const shouldUseWaveSpeedDeepSeek = Boolean(WAVESPEED_API_KEY) && (
+      attemptedPreferredConversationModel ||
+      ['grok', 'wiro', 'runware', 'deepseek'].includes(modelTarget) ||
+      shouldUseWaveSpeedDeepSeekFallback({
+        modelTarget,
+        attemptedVenice,
+        veniceConfigured: Boolean(VENICE_API_KEY),
+      })
+    );
     let attemptedWaveSpeedDeepSeek = false;
     if (!finalReply && shouldUseWaveSpeedDeepSeek) {
       attemptedWaveSpeedDeepSeek = true;
@@ -3968,10 +4115,15 @@ ${companionDirective ? `${companionDirective}\n` : ''}1. EQUAL CONFIDANTE & CHAR
       }
     }
 
-    // Atlas Cloud remains the next provider fallback when configured.
-    if (!finalReply && atlasKey) {
+    // Atlas selections map to one concrete model; the automatic Grok chain may
+    // still use the Atlas sequence only after its lower-latency routes fail.
+    const selectedAtlasModel = getAtlasPersonaModelId(modelTarget);
+    if (!finalReply && atlasKey && (
+      Boolean(selectedAtlasModel) ||
+      ['grok', 'wiro', 'runware', 'deepseek'].includes(modelTarget)
+    )) {
       // Branch A: DeepSeek-V3.2
-      if (!attemptedWaveSpeedDeepSeek) {
+      if ((!selectedAtlasModel || selectedAtlasModel === 'deepseek-ai/deepseek-v3.2') && !attemptedWaveSpeedDeepSeek) {
         try {
           console.log('[Persona Chat] 🧠 Routing to Atlas Cloud DeepSeek-V3.2 High-EQ Engine...');
           const dsRes = await fetch(`${ATLASCLOUD_BASE}/v1/chat/completions`, {
@@ -3996,7 +4148,7 @@ ${companionDirective ? `${companionDirective}\n` : ''}1. EQUAL CONFIDANTE & CHAR
       }
 
       // Branch B: Qwen 3.6 Plus (Qwen 3.x Series)
-      if (!finalReply) {
+      if (!finalReply && (!selectedAtlasModel || selectedAtlasModel === 'qwen/qwen3.6-plus')) {
         try {
           console.log('[Persona Chat] 🧠 Routing to Atlas Cloud Qwen 3.6 Plus...');
           const qwenRes = await fetch(`${ATLASCLOUD_BASE}/v1/chat/completions`, {
@@ -4021,7 +4173,7 @@ ${companionDirective ? `${companionDirective}\n` : ''}1. EQUAL CONFIDANTE & CHAR
       }
 
       // Branch C: GLM-4.6
-      if (!finalReply) {
+      if (!finalReply && (!selectedAtlasModel || selectedAtlasModel === 'zai-org/GLM-4.6')) {
         try {
           console.log('[Persona Chat] 🧠 Routing to Atlas Cloud GLM-4.6...');
           const glmRes = await fetch(`${ATLASCLOUD_BASE}/v1/chat/completions`, {
@@ -4043,6 +4195,29 @@ ${companionDirective ? `${companionDirective}\n` : ''}1. EQUAL CONFIDANTE & CHAR
         } catch (glmErr) {
           console.warn('[Persona Chat] GLM-4.6 error:', glmErr);
         }
+      }
+    }
+
+    if (!finalReply && modelTarget === 'gemini') {
+      try {
+        console.log('[Persona Chat] Routing to Gemini 2.5 Flash...');
+        const ai = getGeminiClient();
+        const geminiResult = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: chatMsgs.slice(1).map(message => ({
+            role: message.role === 'assistant' ? 'model' : 'user',
+            parts: [{ text: message.content }],
+          })),
+          config: {
+            systemInstruction: systemPrompt,
+            maxOutputTokens: 500,
+            temperature: 0.72,
+          },
+        });
+        const reply = geminiResult.text?.trim();
+        if (reply && !isRefusal(reply)) finalReply = reply;
+      } catch (geminiError) {
+        console.warn('[Persona Chat] Gemini 2.5 Flash failed:', geminiError);
       }
     }
 
@@ -5874,6 +6049,7 @@ async function generatePersonaImageWithQuality(
   participants: MediaPersonaContext[],
   prompt: string,
 ) {
+  const strictFidelity = body.strictFidelity !== false;
   const firstGeneration = await runJsonGenerationHandler(generateImageHandler, req, body);
   const firstImageUrl = firstGeneration.payload?.imageUrl || firstGeneration.payload?.images?.[0]?.imageUrl;
   if (firstGeneration.status >= 400 || !firstImageUrl) {
@@ -5885,7 +6061,7 @@ async function generatePersonaImageWithQuality(
     };
   }
 
-  const firstQuality = await inspectGeneratedImageQuality(firstImageUrl, participants, 1);
+  const firstQuality = await inspectGeneratedImageQuality(firstImageUrl, participants, prompt, 1, strictFidelity);
   if (firstQuality.status !== 'failed') {
     return {
       generation: firstGeneration,
@@ -5925,7 +6101,7 @@ async function generatePersonaImageWithQuality(
     };
   }
 
-  const retryQuality = await inspectGeneratedImageQuality(retryImageUrl, participants, 2);
+  const retryQuality = await inspectGeneratedImageQuality(retryImageUrl, participants, prompt, 2, strictFidelity);
   if (retryQuality.status === 'failed') {
     const error = `The result still did not match the requested people after an automatic correction attempt. ${retryQuality.reasons.join(' ')}`;
     return {
@@ -5965,6 +6141,7 @@ const personaMediaHandler = async (req: AuthenticatedRequest, res: any) => {
     creatorProfile: requestedCreatorProfile,
     aspectRatio,
     allowNsfw,
+    strictFidelity,
   } = req.body || {};
 
   if ((type !== 'image' && type !== 'video') || typeof rawPrompt !== 'string' || !rawPrompt.trim() || !requestedPersona?.id) {
@@ -6040,6 +6217,7 @@ const personaMediaHandler = async (req: AuthenticatedRequest, res: any) => {
       isChatContext: true,
       preservePromptVerbatim: true,
       allowNsfw: Boolean(allowNsfw),
+      strictFidelity: strictFidelity !== false,
       identityLock: true,
       naturalLook: true,
       isMultiPersona: participants.length > 1,

@@ -68,6 +68,20 @@ type SyncMeta = Record<string, SyncMarker>;
 let activeStorageUserId: string | null = null;
 let workspaceSyncAdapter: WorkspaceSyncAdapter | null = null;
 const pendingRemoteChanges = new Map<string, ReturnType<typeof setTimeout>>();
+const outstandingSyncKeys = new Set<string>();
+
+export type WorkspaceSyncStatus = 'synced' | 'syncing' | 'pending';
+
+function notifyWorkspaceSync(status: WorkspaceSyncStatus, key?: string, error?: unknown) {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent('workspace-sync-status', {
+    detail: {
+      status,
+      key,
+      message: error instanceof Error ? error.message : error ? String(error) : undefined,
+    },
+  }));
+}
 
 export function configureAccountStorageSync(adapter: WorkspaceSyncAdapter) {
   workspaceSyncAdapter = adapter;
@@ -78,6 +92,7 @@ export function setActiveStorageUserId(userId: string | null | undefined) {
   if (nextUserId !== activeStorageUserId) {
     pendingRemoteChanges.forEach(timer => clearTimeout(timer));
     pendingRemoteChanges.clear();
+    outstandingSyncKeys.clear();
   }
   activeStorageUserId = nextUserId;
 }
@@ -132,15 +147,23 @@ function markLocalChange(base: string, userId: string, deleted = false, updatedA
   writeSyncMeta(userId, meta);
 }
 
-function scheduleRemoteSave(base: string, value: string, userId: string) {
+function scheduleRemoteSave(
+  base: string,
+  value: string,
+  userId: string,
+  delayMs = REMOTE_WRITE_DEBOUNCE_MS,
+  attempt = 0,
+) {
   if (!workspaceSyncAdapter || !isSyncableWorkspaceKeyOnly(base)) return;
   const queueKey = `${userId}:${base}`;
+  outstandingSyncKeys.add(queueKey);
   const existingTimer = pendingRemoteChanges.get(queueKey);
   if (existingTimer) clearTimeout(existingTimer);
 
   pendingRemoteChanges.set(queueKey, setTimeout(() => {
     pendingRemoteChanges.delete(queueKey);
     if (!workspaceSyncAdapter || activeStorageUserId !== userId) return;
+    notifyWorkspaceSync('syncing', base);
     void Promise.resolve(workspaceSyncAdapter.prepareForRemote?.(value) ?? value)
       .then(preparedValue => {
         if (!canSyncWorkspaceValue(base, preparedValue)) throw new Error('Workspace value remains too large after media upload');
@@ -149,24 +172,48 @@ function scheduleRemoteSave(base: string, value: string, userId: string) {
       .then(entry => {
         if (activeStorageUserId === userId && localStorage.getItem(accountStorageKey(base, userId)) === value) {
           markLocalChange(base, userId, false, entry.updatedAt);
+          outstandingSyncKeys.delete(queueKey);
+          notifyWorkspaceSync(outstandingSyncKeys.size === 0 ? 'synced' : 'pending', base);
         }
       })
-      .catch(error => console.warn(`[Workspace Sync] Could not save ${base}:`, error));
-  }, REMOTE_WRITE_DEBOUNCE_MS));
+      .catch(error => {
+        notifyWorkspaceSync('pending', base, error);
+        const stillCurrent = activeStorageUserId === userId
+          && localStorage.getItem(accountStorageKey(base, userId)) === value;
+        if (stillCurrent) {
+          const retryDelay = Math.min(60_000, 1_000 * (2 ** Math.min(attempt, 6)));
+          scheduleRemoteSave(base, value, userId, retryDelay, attempt + 1);
+        }
+      });
+  }, delayMs));
 }
 
-function scheduleRemoteRemove(base: string, userId: string) {
+function scheduleRemoteRemove(base: string, userId: string, delayMs = REMOTE_WRITE_DEBOUNCE_MS, attempt = 0) {
   if (!workspaceSyncAdapter || !isSyncableWorkspaceKey(base)) return;
   const queueKey = `${userId}:${base}`;
+  outstandingSyncKeys.add(queueKey);
   const existingTimer = pendingRemoteChanges.get(queueKey);
   if (existingTimer) clearTimeout(existingTimer);
 
   pendingRemoteChanges.set(queueKey, setTimeout(() => {
     pendingRemoteChanges.delete(queueKey);
     if (!workspaceSyncAdapter || activeStorageUserId !== userId) return;
+    notifyWorkspaceSync('syncing', base);
     void workspaceSyncAdapter.remove(base)
-      .catch(error => console.warn(`[Workspace Sync] Could not delete ${base}:`, error));
-  }, REMOTE_WRITE_DEBOUNCE_MS));
+      .then(() => {
+        outstandingSyncKeys.delete(queueKey);
+        notifyWorkspaceSync(outstandingSyncKeys.size === 0 ? 'synced' : 'pending', base);
+      })
+      .catch(error => {
+        notifyWorkspaceSync('pending', base, error);
+        const stillDeleted = activeStorageUserId === userId
+          && localStorage.getItem(accountStorageKey(base, userId)) === null;
+        if (stillDeleted) {
+          const retryDelay = Math.min(60_000, 1_000 * (2 ** Math.min(attempt, 6)));
+          scheduleRemoteRemove(base, userId, retryDelay, attempt + 1);
+        }
+      });
+  }, delayMs));
 }
 
 function setAccountLocalValue(base: string, value: string, userId: string) {

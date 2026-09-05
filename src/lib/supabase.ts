@@ -7,6 +7,7 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const mockClient = {
   auth: {
     getSession: async () => ({ data: { session: null }, error: null }),
+    refreshSession: async () => ({ data: { session: null }, error: null }),
     getUser: async () => ({ data: { user: null }, error: null }),
     onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
     signInWithOAuth: async () => ({ data: null, error: new Error('Supabase not configured') }),

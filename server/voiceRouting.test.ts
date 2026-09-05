@@ -8,7 +8,9 @@ import {
   getElevenLabsPersonaVoiceSettings,
   getElevenLabsPersonaModelCandidates,
   getElevenLabsTtsQuery,
+  getVoiceCandidateRepairInstruction,
   getVenicePersonaModelCandidates,
+  inferPersonaVoiceAffect,
   resolveElevenLabsPersonaModelId,
   isElevenLabsVoiceEngine,
   isDirectElevenLabsVoiceId,
@@ -18,6 +20,8 @@ import {
   isValidPublicVoiceReference,
   isVoiceProviderRefusal,
   isVoiceProviderEcho,
+  reviewVoiceCandidate,
+  buildVoiceTurnContract,
   normalizeNaturalVoiceGreeting,
   sanitizeSpokenDialogue,
   selectElevenLabsPersonaVoice,
@@ -50,6 +54,60 @@ test('repairs a rejected primary voice candidate once before cross-provider fall
   assert.equal(shouldRetryVoiceCandidateOnPrimary('empty', false), false);
   assert.equal(shouldRetryVoiceCandidateOnPrimary('accepted', false), false);
   assert.equal(shouldRetryVoiceCandidateOnPrimary('echo', true), false);
+  assert.equal(shouldRetryVoiceCandidateOnPrimary('generic', false), true);
+  assert.equal(shouldRetryVoiceCandidateOnPrimary('instruction-miss', false), true);
+  assert.equal(shouldRetryVoiceCandidateOnPrimary('repetitive', false), true);
+});
+
+test('builds a concrete emotional turn contract from the caller instructions', () => {
+  const contract = buildVoiceTurnContract("I had a rough day. Don't give me advice—stay with me and don't ask questions.");
+  assert.match(contract, /emotional presence/i);
+  assert.match(contract, /Do not give advice/i);
+  assert.match(contract, /Do not ask a follow-up question/i);
+  assert.match(contract, /companionship directly/i);
+});
+
+test('rejects generic emotional support and bookish intimate drafts', () => {
+  assert.equal(reviewVoiceCandidate({
+    userTurn: "I had a rough day and feel drained. Don't give me advice—stay with me.",
+    response: "I'm really sorry you're feeling drained. If there's anything I can do, just let me know.",
+  }), 'generic');
+  assert.equal(reviewVoiceCandidate({
+    userTurn: 'Stay with me; no advice.',
+    response: 'You should take a break and try to get some rest.',
+  }), 'instruction-miss');
+  assert.equal(reviewVoiceCandidate({
+    userTurn: 'React with real desire in your own words.',
+    response: 'My heart is racing as a thrill runs through me, and I want your touch all over.',
+    lawfulAdultConversation: true,
+  }), 'robotic');
+  assert.match(getVoiceCandidateRepairInstruction('generic'), /generic support staff/i);
+});
+
+test('rejects repeated voice openings while allowing a fresh response', () => {
+  assert.equal(reviewVoiceCandidate({
+    userTurn: 'Tell me what you think.',
+    response: 'Honestly, I think that could work beautifully.',
+    recentAssistantResponses: ['Honestly, I think we should wait until tomorrow.'],
+  }), 'repetitive');
+  assert.equal(reviewVoiceCandidate({
+    userTurn: 'Tell me what you think.',
+    response: 'That could work beautifully, actually.',
+    recentAssistantResponses: ['Honestly, I think we should wait until tomorrow.'],
+  }), 'accepted');
+});
+
+test('selects affect-specific ElevenLabs delivery without changing the clone', () => {
+  assert.equal(inferPersonaVoiceAffect('That sounds exhausting. Stay with me for a minute.'), 'comforting');
+  assert.equal(inferPersonaVoiceAffect('Come closer and kiss me slowly.'), 'intimate');
+  assert.equal(inferPersonaVoiceAffect('You wish—I am only teasing you.'), 'playful');
+  assert.equal(inferPersonaVoiceAffect('This is important, so listen carefully.'), 'serious');
+
+  const comforting = getElevenLabsPersonaVoiceSettings('That sounds exhausting. Stay with me.');
+  const neutral = getElevenLabsPersonaVoiceSettings('I finished the document.');
+  assert.ok(comforting.speed < neutral.speed);
+  assert.ok(comforting.style > neutral.style);
+  assert.ok(comforting.similarity_boost >= neutral.similarity_boost);
 });
 
 const voices = [

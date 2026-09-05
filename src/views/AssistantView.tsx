@@ -91,6 +91,12 @@ import {
   detectIncompleteMediaCreationRequest,
 } from '../../shared/personaMediaIntent';
 import {
+  DEFAULT_PERSONA_LLM_ID,
+  PERSONA_LLM_OPTIONS,
+  normalizePersonaLlmId,
+} from '../../shared/personaLlm';
+import { useProMode } from '../utils/useProMode';
+import {
   DEFAULT_IMAGE_MODEL_ID,
   DEFAULT_IMAGE_MODEL_NAME,
   DEFAULT_VIDEO_MODEL_ID,
@@ -492,6 +498,7 @@ function uid(): string {
 }
 
 export default function AssistantView({ personas, persona: propActivePersona, onSelectPersona, nav }: Props) {
+  const [isPro] = useProMode();
   const [selectedPersonaId, setSelectedPersonaId] = useState(propActivePersona.id);
 
   // Synchronize when global active persona is changed from top header
@@ -522,12 +529,14 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     const migrationKey = 'agent_voice_llm_grok_default_v3_migrated';
     if (!localStorage.getItem(migrationKey)) {
       localStorage.setItem(migrationKey, '1');
-      localStorage.setItem('agent_voice_llm', 'grok');
+      localStorage.setItem('agent_voice_llm', DEFAULT_PERSONA_LLM_ID);
       localStorage.removeItem('agent_voice_llm_user_selected');
-      return 'grok';
+      return DEFAULT_PERSONA_LLM_ID;
     }
 
-    return savedModel || 'grok';
+    const normalizedModel = normalizePersonaLlmId(savedModel);
+    if (savedModel !== normalizedModel) localStorage.setItem('agent_voice_llm', normalizedModel);
+    return normalizedModel;
   });
   const [selectedVoiceEngine, setSelectedVoiceEngine] = useState<string>(() => {
     const savedEngine = localStorage.getItem('agent_voice_engine');
@@ -551,6 +560,15 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     }
   };
 
+  const handleVoiceLlmChange = (modelId: string) => {
+    const normalizedModel = normalizePersonaLlmId(modelId);
+    setVoiceLlmModel(normalizedModel);
+    localStorage.setItem('agent_voice_llm', normalizedModel);
+    localStorage.setItem('agent_voice_llm_user_selected', '1');
+    const selected = PERSONA_LLM_OPTIONS.find(model => model.id === normalizedModel);
+    if (selected) toast.success(`Conversation model set to ${selected.name}`);
+  };
+
   const [messages, setMessages] = useState<ChatMessage[]>(() => loadHistory(propActivePersona.id));
   const messagesRef = useRef<ChatMessage[]>(messages);
   const [input, setInput] = useState('');
@@ -566,6 +584,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   const [replyInput, setReplyInput] = useState('');
   const [generatedReplies, setGeneratedReplies] = useState<string[]>([]);
   const [showEngineSettings, setShowEngineSettings] = useState(false);
+  const [strictMediaFidelity, setStrictMediaFidelity] = useState(() => localStorage.getItem('persona_strict_media_fidelity') !== 'false');
   const [isReferenceModalOpen, setIsReferenceModalOpen] = useState(false);
   const [showMemoryCenter, setShowMemoryCenter] = useState(false);
   const [showMediaJobCenter, setShowMediaJobCenter] = useState(false);
@@ -846,6 +865,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   } | null>(null);
   const [pendingVoiceConfirmation, setPendingVoiceConfirmation] = useState<string | null>(null);
   const [lastVoiceLatency, setLastVoiceLatency] = useState<VoiceLatencySnapshot | null>(null);
+  const [lastVoiceRoute, setLastVoiceRoute] = useState<{ provider: string; requestedModel: string } | null>(null);
   const voiceSpeechStartedAtRef = useRef<number | null>(null);
   const browserPendingTranscriptRef = useRef<{ text: string; updatedAt: number }>({ text: '', updatedAt: 0 });
 
@@ -969,6 +989,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         referenceImage: input.imageUrl,
         aspectRatio: input.aspectRatio,
         allowNsfw: true,
+        strictFidelity: strictMediaFidelity,
         creatorProfile: getCreatorProfile(),
       });
 
@@ -2516,7 +2537,15 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           speechBuffer += payload.text;
           currentPersonaSpeechRef.current = streamedReply.toLowerCase().trim();
         }
-        if (payload.done) streamMetadata = payload;
+        if (payload.done) {
+          streamMetadata = payload;
+          if (payload.provider) {
+            setLastVoiceRoute({
+              provider: String(payload.provider),
+              requestedModel: String(payload.requestedModel || voiceLlmModel),
+            });
+          }
+        }
       };
       while (true) {
         const { value, done } = await reader.read();
@@ -2639,6 +2668,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
               videoModelId: mediaType === 'video' ? requestedModelId : selectedVideoModelId || DEFAULT_VIDEO_MODEL_ID,
               aspectRatio: '9:16',
               allowNsfw: true,
+              strictFidelity: strictMediaFidelity,
               revisionImage: imageRevision.isRevision ? imageRevision.source?.content : undefined,
               additionalImages: extraImages.length > 0 ? extraImages : undefined,
               creatorProfile: creator,
@@ -3045,6 +3075,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           memories: [],
           mode,
           timeSinceLastInteractionSeconds: timeSinceLastSec,
+          voiceLlmModel,
         }),
         signal: AbortSignal.timeout(3500),
       });
@@ -3058,7 +3089,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       console.warn('[Dynamic Greeting] Using contextual fallback greeting:', e);
     }
     return fallbackGreeting;
-  }, []);
+  }, [voiceLlmModel]);
 
   // Start Hands-Free Live Call with Interruption support
   const handleStartCall = async () => {
@@ -3691,6 +3722,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
             creatorProfile: creator,
             aspectRatio: '9:16',
             allowNsfw: true,
+            strictFidelity: strictMediaFidelity,
           });
           const resultText = modelSelection.explicit && modelSelection.matched
             ? `${result.message} Used ${result.model || modelSelection.modelName}.`
@@ -3893,7 +3925,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#24252b] hover:bg-[#2b2c33] border border-white/[0.09] text-zinc-200 hover:text-white text-xs font-semibold transition-all cursor-pointer shadow-sm"
               >
                 <SlidersHorizontal size={13} className="text-zinc-400" />
-                <span className="hidden sm:inline">AI Settings</span>
+                <span className="hidden sm:inline">{isPro ? 'Pro Models' : 'AI Settings'}</span>
               </button>
 
               <button
@@ -4528,12 +4560,30 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
                   <span className="truncate">🎙️ {activePersona.name}</span>
                 </div>
+                {isPro && (
+                  <div className="relative">
+                    <select
+                      value={voiceLlmModel}
+                      onChange={event => handleVoiceLlmChange(event.target.value)}
+                      className="max-w-[190px] bg-[#1c1d22] hover:bg-[#222329] border border-cyan-400/25 text-cyan-100 text-[11px] font-semibold rounded-lg px-2.5 py-1 outline-none cursor-pointer backdrop-blur-md transition-all"
+                      title="Select conversation LLM"
+                      aria-label="Conversation LLM"
+                    >
+                      {PERSONA_LLM_OPTIONS.map(model => (
+                        <option key={model.id} value={model.id} className="bg-[#1c1d22] text-white">
+                          {model.name} ({model.badge})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <div className="relative">
                   <select
                     value={selectedVoiceEngine}
                     onChange={e => handleVoiceEngineChange(e.target.value)}
                     className="bg-[#1c1d22] hover:bg-[#222329] border border-white/[0.12] text-zinc-200 text-[11px] font-semibold rounded-lg px-2.5 py-1 outline-none cursor-pointer backdrop-blur-md transition-all"
                     title="Select Voice Engine"
+                    aria-label="Voice engine"
                   >
                     {VOICE_CALL_ENGINES.map(eng => (
                       <option key={eng.id} value={eng.id} className="bg-[#1c1d22] text-white">
@@ -4577,6 +4627,15 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                   >
                     <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
                     Reply {formatLatency(lastVoiceLatency.responseMs)}
+                  </div>
+                )}
+                {lastVoiceRoute && (
+                  <div
+                    className="hidden lg:flex max-w-[220px] items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/[0.08] px-2.5 py-1 text-[10px] font-semibold text-emerald-200"
+                    title={`Requested ${lastVoiceRoute.requestedModel}; answered by ${lastVoiceRoute.provider}`}
+                  >
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" />
+                    <span className="truncate">{lastVoiceRoute.provider}</span>
                   </div>
                 )}
                 {callStatus !== 'connecting' && (
@@ -4637,6 +4696,11 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                       ))}
                     </div>
                     <p className="text-[9px] text-zinc-500">Reply measures the final transcript to the first audible persona response.</p>
+                    {lastVoiceRoute && (
+                      <p className="text-[9px] text-zinc-500">
+                        Requested {lastVoiceRoute.requestedModel}; answered by <span className="text-zinc-300">{lastVoiceRoute.provider}</span>.
+                      </p>
+                    )}
                   </div>
 
                   <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.05] p-3 space-y-3">
@@ -5350,40 +5414,21 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                       Reasoning & Conversation Engine
                     </span>
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">
-                      Grok 4.20 • Wiro fallback
+                      {PERSONA_LLM_OPTIONS.find(model => model.id === voiceLlmModel)?.name || 'Grok 4.20'}
                     </span>
                   </div>
                   <div className="relative">
                     <select
                       value={voiceLlmModel}
-                      onChange={(e) => {
-                        const selected = e.target.value;
-                        setVoiceLlmModel(selected);
-                        localStorage.setItem('agent_voice_llm', selected);
-                        localStorage.setItem('agent_voice_llm_user_selected', '1');
-                        const labels: Record<string, string> = {
-                          'llama3.3': 'Meta Llama 3.3 70B (Cloud API)',
-                          'ollama:llama3.3': 'Meta Llama 3.3 70B (Local GPU)',
-                          venice: 'Venice Uncensored 1.2',
-                          grok: 'xAI Grok 4.20 Non-Reasoning',
-                          wiro: 'Wiro Seed 2.1 Turbo Uncensored',
-                          runware: 'Runware DeepSeek V4 Pro',
-                          deepseek: 'WaveSpeed DeepSeek V4 Flash',
-                          qwen: 'Qwen 2.5 72B Instruct',
-                          gemini: 'Gemini 2.5 Flash'
-                        };
-                        toast.success(`Switched to ${labels[selected] || selected}`);
-                      }}
+                      onChange={event => handleVoiceLlmChange(event.target.value)}
                       className="w-full bg-[#1c1d22] border border-white/[0.1] hover:border-white/20 focus:border-white/30 rounded-xl px-3.5 py-3 text-sm text-white font-medium outline-none cursor-pointer appearance-none transition-all pr-9 shadow-inner"
+                      aria-label="Conversation LLM"
                     >
-                      <option value="grok" className="bg-[#1c1d22] text-white">🚀 xAI Grok 4.20 Non-Reasoning (Default)</option>
-                      <option value="wiro" className="bg-[#1c1d22] text-white">🔓 Wiro Seed 2.1 Turbo (Fallback)</option>
-                      <option value="runware" className="bg-[#1c1d22] text-white">🧠 Runware DeepSeek V4 Pro (Human-quality fallback)</option>
-                      <option value="gemini" className="bg-[#1c1d22] text-white">⚡ Gemini 2.5 Flash (Ultra Fast & Conversational)</option>
-                      <option value="qwen" className="bg-[#1c1d22] text-white">🔮 Qwen 2.5 72B Instruct (Deep Roleplay & Creative)</option>
-                      <option value="venice" className="bg-[#1c1d22] text-white">🔓 Venice Uncensored 1.2</option>
-                      <option value="deepseek" className="bg-[#1c1d22] text-white">⚡ WaveSpeed DeepSeek V4 Flash (Low-cost fallback)</option>
-                      <option value="llama3.3" className="bg-[#1c1d22] text-white">🦙 Meta Llama 3.3 70B (Cloud API)</option>
+                      {PERSONA_LLM_OPTIONS.map(model => (
+                        <option key={model.id} value={model.id} className="bg-[#1c1d22] text-white">
+                          {model.name} ({model.badge})
+                        </option>
+                      ))}
                     </select>
                     <ChevronDown size={14} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
                   </div>
@@ -5511,6 +5556,22 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                       </p>
                     </div>
                   </div>
+                  <label className="flex cursor-pointer items-start justify-between gap-4 rounded-xl border border-white/[0.07] bg-black/20 px-3 py-2.5">
+                    <span>
+                      <span className="block text-[11px] font-semibold text-zinc-200">Strict prompt fidelity</span>
+                      <span className="mt-0.5 block text-[10px] leading-normal text-zinc-500">Checks pose, setting, gaze, wardrobe, lighting, framing, and text; retries one confident mismatch.</span>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={strictMediaFidelity}
+                      onChange={event => {
+                        const enabled = event.target.checked;
+                        setStrictMediaFidelity(enabled);
+                        localStorage.setItem('persona_strict_media_fidelity', String(enabled));
+                      }}
+                      className="mt-0.5 h-4 w-4 shrink-0 accent-[#E7C477]"
+                    />
+                  </label>
                 </div>
 
               </div>
@@ -5526,10 +5587,12 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                     const wan3 = pickDefaultVideoModel(videoModels);
                     if (wan3) setSelectedVideoModelId(wan3.id);
                     
-                    setVoiceLlmModel('grok');
-                    localStorage.setItem('agent_voice_llm', 'grok');
+                    setVoiceLlmModel(DEFAULT_PERSONA_LLM_ID);
+                    localStorage.setItem('agent_voice_llm', DEFAULT_PERSONA_LLM_ID);
                     localStorage.removeItem('agent_voice_llm_user_selected');
                     handleVoiceEngineChange(AUTO_PERSONA_VOICE_ENGINE);
+                    setStrictMediaFidelity(true);
+                    localStorage.setItem('persona_strict_media_fidelity', 'true');
                     toast.success('Reset to optimal studio defaults!');
                   }}
                   className="text-xs font-semibold text-zinc-400 hover:text-white transition-colors cursor-pointer px-2 py-1"
