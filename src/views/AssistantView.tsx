@@ -89,6 +89,7 @@ import { buildVoiceConversationHistory } from '../../shared/voiceConversationCon
 import {
   detectExplicitMediaCreationRequest,
   detectIncompleteMediaCreationRequest,
+  resolveExecutableMediaCreationRequest,
 } from '../../shared/personaMediaIntent';
 import {
   DEFAULT_PERSONA_LLM_ID,
@@ -415,13 +416,13 @@ function detectIntent(message: string): 'image' | 'video' | 'chat' {
 }
 
 export const VOICE_CALL_ENGINES = [
-  { id: AUTO_PERSONA_VOICE_ENGINE, name: 'Automatic Persona Voice', badge: 'Recommended', desc: 'Clones use Eleven v3 with Flash fallback; uncloned personas use Maya' },
-  { id: 'eleven_v3_conversational', name: 'ElevenLabs v3 Conversational', badge: 'Human (~280ms)', desc: 'Most expressive delivery using the saved cloned voice' },
-  { id: 'eleven_flash_v2_5', name: 'ElevenLabs Flash 2.5', badge: 'Ultra Fast (~75ms)', desc: 'Fastest delivery using the saved cloned voice' },
-  { id: 'fal_maya_stream', name: 'Fal Maya Stream', badge: 'Live (~400ms)', desc: 'Emotional prompt-designed voice for personas without a clone' },
-  { id: 'eleven_turbo_v2_5', name: 'ElevenLabs Turbo 2.5', badge: 'Fast (~250ms)', desc: 'Rich human tone and nuance' },
-  { id: 'cartesia-sonic', name: 'Cartesia Sonic', badge: 'Extreme Speed (~90ms)', desc: 'Fastest conversational turn-taking' },
-  { id: 'eleven_multilingual_v2', name: 'ElevenLabs Multilingual v2', badge: 'Expressive (~800ms)', desc: 'High cinematic emotion' },
+  { id: AUTO_PERSONA_VOICE_ENGINE, name: 'Automatic Persona Voice', simpleLabel: 'Recommended for this persona', badge: 'Recommended', desc: 'Clones use Eleven v3 with Flash fallback; uncloned personas use Maya' },
+  { id: 'eleven_v3_conversational', name: 'ElevenLabs v3 Conversational', simpleLabel: 'Most expressive cloned voice', badge: 'Human (~280ms)', desc: 'Most expressive delivery using the saved cloned voice' },
+  { id: 'eleven_flash_v2_5', name: 'ElevenLabs Flash 2.5', simpleLabel: 'Fastest cloned voice', badge: 'Ultra Fast (~75ms)', desc: 'Fastest delivery using the saved cloned voice' },
+  { id: 'fal_maya_stream', name: 'Fal Maya Stream', simpleLabel: 'Emotional voice without a clone', badge: 'Live (~400ms)', desc: 'Emotional prompt-designed voice for personas without a clone' },
+  { id: 'eleven_turbo_v2_5', name: 'ElevenLabs Turbo 2.5', simpleLabel: 'Natural tone with quick replies', badge: 'Fast (~250ms)', desc: 'Rich human tone and nuance' },
+  { id: 'cartesia-sonic', name: 'Cartesia Sonic', simpleLabel: 'Fastest turn-taking', badge: 'Extreme Speed (~90ms)', desc: 'Fastest conversational turn-taking' },
+  { id: 'eleven_multilingual_v2', name: 'ElevenLabs Multilingual v2', simpleLabel: 'Most cinematic emotion', badge: 'Expressive (~800ms)', desc: 'High cinematic emotion' },
 ];
 
 export const PERSONA_VOICE_CHARACTERS = [
@@ -556,7 +557,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     localStorage.setItem('agent_voice_engine', engineId);
     const found = VOICE_CALL_ENGINES.find(e => e.id === engineId);
     if (found) {
-      toast.success(`Voice Engine set to ${found.name}`);
+      toast.success(`Voice set to ${isPro ? found.name : found.simpleLabel}`);
     }
   };
 
@@ -566,7 +567,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     localStorage.setItem('agent_voice_llm', normalizedModel);
     localStorage.setItem('agent_voice_llm_user_selected', '1');
     const selected = PERSONA_LLM_OPTIONS.find(model => model.id === normalizedModel);
-    if (selected) toast.success(`Conversation model set to ${selected.name}`);
+    if (selected) toast.success(`Conversation set to ${isPro ? selected.name : selected.simpleLabel}`);
   };
 
   const [messages, setMessages] = useState<ChatMessage[]>(() => loadHistory(propActivePersona.id));
@@ -2581,8 +2582,19 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         return;
       }
 
+      // The user's deterministic request—not a model-suggested action—owns
+      // whether the client may spend money and create media.
+      const voiceMediaConversationOnly = isConversationalMediaMention(text);
+      const voiceImageRevisionCandidate = resolveImageRevisionContext(text, updatedHistory, callRevisionSource);
+      const incompleteVoiceMediaRequest = detectIncompleteMediaCreationRequest(text);
+      const executableVoiceMediaIntent = voiceMediaConversationOnly
+        ? undefined
+        : resolveExecutableMediaCreationRequest(text, { hasImageRevision: voiceImageRevisionCandidate.isRevision });
+      const isVoiceImageIntent = executableVoiceMediaIntent === 'image';
+      const isVoiceVideoIntent = executableVoiceMediaIntent === 'video';
+
       let reply = data.text || data.reply || "Mm—what's up?";
-      if (/^(?:generating|creating|rendering|loading|producing|processing|taking)\s+(?:image|photo|video|picture|visual|content|look|selfie)/i.test(reply) || /^take a look at this (?:image|photo|picture)/i.test(reply)) {
+      if ((isVoiceImageIntent || isVoiceVideoIntent) && (/^(?:generating|creating|rendering|loading|producing|processing|taking)\s+(?:image|photo|video|picture|visual|content|look|selfie)/i.test(reply) || /^take a look at this (?:image|photo|picture)/i.test(reply))) {
         reply = `Let me take that for you right now, babe...`;
       }
       const personaMsg = { id: uid(), role: 'persona' as const, type: 'text' as const, content: reply };
@@ -2603,24 +2615,11 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 
       // Voice-call image edits may only inherit media from this active call (or
       // an explicitly attached generated image), never from archived chats.
-      const voiceMediaConversationOnly = isConversationalMediaMention(text);
-      const voiceImageRevisionCandidate = resolveImageRevisionContext(text, updatedHistory, callRevisionSource);
-      const incompleteVoiceMediaRequest = detectIncompleteMediaCreationRequest(text);
       if (incompleteVoiceMediaRequest) {
         // Do not let an older completed asset look like the answer to the new,
         // still-underspecified request while we ask the user for details.
         setActiveCallMedia(null);
       }
-      const isVoiceImageIntent = !voiceMediaConversationOnly && (
-        voiceImageRevisionCandidate.isRevision ||
-        data.action?.type === 'image' ||
-        (!incompleteVoiceMediaRequest && detectIntent(text) === 'image')
-      );
-
-      const isVoiceVideoIntent = !voiceMediaConversationOnly && !isVoiceImageIntent && (data.action?.type === 'video' || (!incompleteVoiceMediaRequest && (
-        detectIntent(text) === 'video'
-      )));
-
       if (isVoiceImageIntent || isVoiceVideoIntent) {
         const mediaType = isVoiceImageIntent ? 'image' as const : 'video' as const;
         setActiveCallMedia(null);
@@ -3642,12 +3641,14 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       const explicitVisualKeywords = /\b(image|photo|pic|picture|selfie|pose|portrait|photoshoot|video|clip|recording)\b/i.test(effectiveText);
       const isExplicitVisualRequest = !incompleteMediaRequest && /\b(send|take|generate|show|give|snap|make|create|post|capture)\b/i.test(effectiveText) && explicitVisualKeywords;
       const isConversationalQuestion = !isExplicitVisualRequest && /(?:\b(?:why did you send|why are you sending|what is that picture|who is that in the photo|stop sending)\b)/i.test(effectiveText);
-      const detectedIntent = isConversationalQuestion ? 'chat' : detectIntent(effectiveText);
       const imageRevisionCandidate = resolveImageRevisionContext(effectiveText, messagesRef.current, pastedRevisionSource);
+      const executableMediaIntent = mediaConversationOnly
+        ? undefined
+        : resolveExecutableMediaCreationRequest(effectiveText, { hasImageRevision: imageRevisionCandidate.isRevision });
       
       const isVoiceNoteAction = data.action?.type === 'voice_note' || (/\b(voice note|audio memo|voice message|audio message|whisper to me)\b/i.test(effectiveText) && !isConversationalQuestion);
-      const isVideoAction = !mediaConversationOnly && (data.action?.type === 'video' || detectedIntent === 'video');
-      const isImageAction = !mediaConversationOnly && !isVideoAction && (imageRevisionCandidate.isRevision || data.action?.type === 'image' || isExplicitVisualRequest || detectedIntent === 'image');
+      const isVideoAction = executableMediaIntent === 'video';
+      const isImageAction = executableMediaIntent === 'image';
 
       if (isVoiceNoteAction) {
         replaceMessage(loadingId, { type: 'text', content: replyText });
@@ -3921,7 +3922,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
               {/* AI Model & Voice Config Trigger */}
               <button
                 onClick={() => setShowEngineSettings(true)}
-                title="Configure AI Models & Voice Engines"
+                title={isPro ? 'Configure AI Models & Voice Engines' : 'Choose conversation and voice priorities'}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#24252b] hover:bg-[#2b2c33] border border-white/[0.09] text-zinc-200 hover:text-white text-xs font-semibold transition-all cursor-pointer shadow-sm"
               >
                 <SlidersHorizontal size={13} className="text-zinc-400" />
@@ -4560,34 +4561,32 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
                   <span className="truncate">🎙️ {activePersona.name}</span>
                 </div>
-                {isPro && (
-                  <div className="relative">
-                    <select
-                      value={voiceLlmModel}
-                      onChange={event => handleVoiceLlmChange(event.target.value)}
-                      className="max-w-[190px] bg-[#1c1d22] hover:bg-[#222329] border border-cyan-400/25 text-cyan-100 text-[11px] font-semibold rounded-lg px-2.5 py-1 outline-none cursor-pointer backdrop-blur-md transition-all"
-                      title="Select conversation LLM"
-                      aria-label="Conversation LLM"
-                    >
-                      {PERSONA_LLM_OPTIONS.map(model => (
-                        <option key={model.id} value={model.id} className="bg-[#1c1d22] text-white">
-                          {model.name} ({model.badge})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
+                <div className="relative">
+                  <select
+                    value={voiceLlmModel}
+                    onChange={event => handleVoiceLlmChange(event.target.value)}
+                    className="max-w-[190px] bg-[#1c1d22] hover:bg-[#222329] border border-cyan-400/25 text-cyan-100 text-[11px] font-semibold rounded-lg px-2.5 py-1 outline-none cursor-pointer backdrop-blur-md transition-all"
+                    title={isPro ? 'Select conversation LLM' : 'Choose what the conversation should prioritize'}
+                    aria-label={isPro ? 'Conversation LLM' : 'Conversation priority'}
+                  >
+                    {PERSONA_LLM_OPTIONS.map(model => (
+                      <option key={model.id} value={model.id} className="bg-[#1c1d22] text-white">
+                        {isPro ? `${model.name} (${model.badge})` : model.simpleLabel}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <div className="relative">
                   <select
                     value={selectedVoiceEngine}
                     onChange={e => handleVoiceEngineChange(e.target.value)}
                     className="bg-[#1c1d22] hover:bg-[#222329] border border-white/[0.12] text-zinc-200 text-[11px] font-semibold rounded-lg px-2.5 py-1 outline-none cursor-pointer backdrop-blur-md transition-all"
-                    title="Select Voice Engine"
-                    aria-label="Voice engine"
+                    title={isPro ? 'Select Voice Engine' : 'Choose what the voice should prioritize'}
+                    aria-label={isPro ? 'Voice engine' : 'Voice priority'}
                   >
                     {VOICE_CALL_ENGINES.map(eng => (
                       <option key={eng.id} value={eng.id} className="bg-[#1c1d22] text-white">
-                        {eng.name} ({eng.badge})
+                        {isPro ? `${eng.name} (${eng.badge})` : eng.simpleLabel}
                       </option>
                     ))}
                   </select>
@@ -4629,7 +4628,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                     Reply {formatLatency(lastVoiceLatency.responseMs)}
                   </div>
                 )}
-                {lastVoiceRoute && (
+                {isPro && lastVoiceRoute && (
                   <div
                     className="hidden lg:flex max-w-[220px] items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/[0.08] px-2.5 py-1 text-[10px] font-semibold text-emerald-200"
                     title={`Requested ${lastVoiceRoute.requestedModel}; answered by ${lastVoiceRoute.provider}`}
@@ -5393,8 +5392,14 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                     <SlidersHorizontal size={18} className="text-zinc-200" />
                   </div>
                   <div>
-                    <h3 className="text-base font-bold text-white tracking-tight">Studio AI & Model Configuration</h3>
-                    <p className="text-xs text-zinc-400 mt-0.5">Customize neural reasoning, generative visuals & voice synthesis</p>
+                    <h3 className="text-base font-bold text-white tracking-tight">
+                      {isPro ? 'Studio AI & Model Configuration' : 'Choose How Your Persona Responds'}
+                    </h3>
+                    <p className="text-xs text-zinc-400 mt-0.5">
+                      {isPro
+                        ? 'Customize neural reasoning, generative visuals & voice synthesis'
+                        : 'Pick the result you want; the studio chooses the technology behind it'}
+                    </p>
                   </div>
                 </div>
                 <button
@@ -5411,10 +5416,13 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                 <div className="p-4 rounded-2xl bg-white/[0.025] border border-white/[0.06] space-y-2.5">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-300">
-                      Reasoning & Conversation Engine
+                      {isPro ? 'Reasoning & Conversation Engine' : 'Conversation priority'}
                     </span>
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">
-                      {PERSONA_LLM_OPTIONS.find(model => model.id === voiceLlmModel)?.name || 'Grok 4.20'}
+                      {(() => {
+                        const selected = PERSONA_LLM_OPTIONS.find(model => model.id === voiceLlmModel);
+                        return selected ? (isPro ? selected.name : selected.simpleLabel) : 'Best overall conversation';
+                      })()}
                     </span>
                   </div>
                   <div className="relative">
@@ -5422,18 +5430,20 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                       value={voiceLlmModel}
                       onChange={event => handleVoiceLlmChange(event.target.value)}
                       className="w-full bg-[#1c1d22] border border-white/[0.1] hover:border-white/20 focus:border-white/30 rounded-xl px-3.5 py-3 text-sm text-white font-medium outline-none cursor-pointer appearance-none transition-all pr-9 shadow-inner"
-                      aria-label="Conversation LLM"
+                      aria-label={isPro ? 'Conversation LLM' : 'Conversation priority'}
                     >
                       {PERSONA_LLM_OPTIONS.map(model => (
                         <option key={model.id} value={model.id} className="bg-[#1c1d22] text-white">
-                          {model.name} ({model.badge})
+                          {isPro ? `${model.name} (${model.badge})` : model.simpleLabel}
                         </option>
                       ))}
                     </select>
                     <ChevronDown size={14} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
                   </div>
                   <p className="text-[11px] text-zinc-500 leading-normal">
-                    Powers text dialogue, voice agent reasoning, roleplay fidelity, and multimodal context.
+                    {isPro
+                      ? 'Powers text dialogue, voice agent reasoning, roleplay fidelity, and multimodal context.'
+                      : 'Changes the balance between natural conversation, speed, creativity, reasoning, and roleplay.'}
                   </p>
                 </div>
 
@@ -5441,10 +5451,13 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                 <div className="p-4 rounded-2xl bg-white/[0.025] border border-white/[0.06] space-y-3.5">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-300">
-                      Voice Persona & Synthesis
+                      {isPro ? 'Voice Persona & Synthesis' : 'Voice priority'}
                     </span>
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/[0.06] text-zinc-300 border border-white/[0.08] font-semibold">
-                      ElevenLabs Cloned
+                      {(() => {
+                        const selected = VOICE_CALL_ENGINES.find(engine => engine.id === selectedVoiceEngine);
+                        return selected ? (isPro ? selected.name : selected.simpleLabel) : 'Recommended for this persona';
+                      })()}
                     </span>
                   </div>
 
@@ -5470,17 +5483,18 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                     {/* Synthesis Latency Engine */}
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-                        Latency & Audio Engine
+                        {isPro ? 'Latency & Audio Engine' : 'What should the voice prioritize?'}
                       </label>
                       <div className="relative">
                         <select
                           value={selectedVoiceEngine}
                           onChange={e => handleVoiceEngineChange(e.target.value)}
                           className="w-full bg-[#1c1d22] border border-white/[0.1] hover:border-white/20 focus:border-white/30 rounded-xl px-3 py-2.5 text-xs text-white font-medium outline-none cursor-pointer appearance-none transition-all pr-8 shadow-inner truncate"
+                          aria-label={isPro ? 'Voice engine' : 'Voice priority'}
                         >
                           {VOICE_CALL_ENGINES.map(eng => (
                             <option key={eng.id} value={eng.id} className="bg-[#1c1d22] text-white">
-                              {eng.name} ({eng.badge})
+                              {isPro ? `${eng.name} (${eng.badge})` : eng.simpleLabel}
                             </option>
                           ))}
                         </select>

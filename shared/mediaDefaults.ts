@@ -41,6 +41,13 @@ export function isWan3VideoModel(model: MediaModelLike): boolean {
   );
 }
 
+export function isWan3BaseVideoModel(model: MediaModelLike): boolean {
+  const searchable = `${normalized(model.id)} ${normalized(model.name)}`;
+  return isWan3VideoModel(model)
+    && !searchable.includes('prime')
+    && !searchable.includes('pro');
+}
+
 export function getVideoModelType(model: MediaModelLike): VideoModelType {
   if (model.type === 'text-to-video' || model.type === 'image-to-video' || model.type === 'video-to-video') {
     return model.type;
@@ -65,6 +72,8 @@ export function pickDefaultImageModel<T extends MediaModelLike>(models: T[]): T 
 
 export function pickDefaultVideoModel<T extends MediaModelLike>(models: T[]): T | undefined {
   return models.find(model => model.id === DEFAULT_VIDEO_MODEL_ID)
+    || models.find(model => isWan3BaseVideoModel(model) && (model.type === 'image-to-video' || normalized(model.id).includes('i2v') || normalized(model.id).includes('image-to-video')))
+    || models.find(isWan3BaseVideoModel)
     || models.find(model => isWan3VideoModel(model) && (model.type === 'image-to-video' || normalized(model.id).includes('i2v') || normalized(model.id).includes('image-to-video')))
     || models.find(isWan3VideoModel)
     || models.find(model => isWaveSpeedModel(model) && (model.type === 'image-to-video' || normalized(model.id).includes('i2v')))
@@ -78,7 +87,8 @@ export function pickDefaultVideoModelForType<T extends MediaModelLike>(
 ): T | undefined {
   const typedModels = models.filter(model => getVideoModelType(model) === type);
 
-  return typedModels.find(isWan3VideoModel)
+  return typedModels.find(isWan3BaseVideoModel)
+    || typedModels.find(isWan3VideoModel)
     || typedModels.find(isWaveSpeedModel)
     || typedModels[0]
     || pickDefaultVideoModel(models);

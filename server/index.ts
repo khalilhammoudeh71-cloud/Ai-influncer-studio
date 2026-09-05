@@ -18,6 +18,7 @@ import OpenAI, { toFile } from 'openai';
 import { GoogleGenAI } from '@google/genai';
 import convert from 'heic-convert';
 import { Jimp } from 'jimp';
+import { createFalClient } from '@fal-ai/client';
 // Pool is imported dynamically in pushSchema to support different environments
 import apiRoutes, { globalDefaultVoiceRef, readCreatorProfileForUser, readPersonasForUser, synthesizeClonedAudioWithWavespeed, writeCreatorProfileForUser } from './routes';
 import { composeMultiPersonaPrompt, getPersonaPrimaryReference, resolveCreatorPersona, resolveMediaParticipants, type MediaPersonaContext } from './persona-media';
@@ -51,6 +52,16 @@ import { createGenerationQuote, creditsFromProviderCost, type GenerationKind, ty
 import { db } from './db';
 import { generatedImages, mediaJobs, users } from '../shared/schema';
 import { DEFAULT_IMAGE_MODEL_ID, DEFAULT_VIDEO_MODEL_ID } from '../shared/mediaDefaults';
+import {
+  annotateLatestUpgrades,
+  buildCatalogInputMetadata,
+  buildUniversalModelInput,
+  catalogCompatibility,
+  discoverProviderMediaModels,
+  mergeModels,
+  type DiscoveredModelInfo,
+  type ProviderCatalogSnapshot,
+} from './providerModelCatalog';
 import { and, desc, eq, lt, or } from 'drizzle-orm';
 import {
   fallbackModelForJob,
@@ -151,23 +162,7 @@ const XAI_BASE = 'https://api.x.ai/v1';
 const OPENAI_DIRECT_KEY = process.env.Openai_api_key || process.env.openai_api_key || process.env.OPENAI_API_KEY || '';
 
 
-interface ModelInfo {
-  id: string;
-  name: string;
-  provider: string;
-  type: 'text-to-image' | 'image-to-image' | 'upscaler' | 'text-to-video' | 'image-to-video' | 'video-to-video' | 'reference-to-video' | 'text-to-3d' | 'image-to-3d';
-  price: number;
-  description: string;
-  apiPath: string;
-  hasEditVariant: boolean;
-  editApiPath?: string;
-  editImageField?: 'image' | 'images';
-  editHasStrengthControl?: boolean;
-  isIdentityModel?: boolean;
-  nsfw?: boolean;
-  hasReferenceImage?: boolean;
-  supportedProperties?: string[];
-}
+interface ModelInfo extends DiscoveredModelInfo {}
 
 const NSFW_MODEL_IDS = new Set([
   'wavespeed-ai/wan-2.1-i2v-480p',
@@ -273,10 +268,29 @@ let cachedVideoModels: ModelInfo[] | null = null;
 let cachedThreeDModels: ModelInfo[] | null = null;
 let cachedVeniceModels: ModelInfo[] | null = null;
 let cachedAtlasCloudModels: ModelInfo[] | null = null;
+let cachedProviderCatalog: ProviderCatalogSnapshot | null = null;
+let cachedWavespeedCatalogStatus = { discovered: 0, compatible: 0, pendingAdapters: 0, checkedAt: '' };
 let cacheTimestamp = 0;
 let veniceCacheTimestamp = 0;
 let atlasCloudCacheTimestamp = 0;
+let providerCatalogCacheTimestamp = 0;
 const CACHE_TTL = 30 * 60 * 1000;
+const PROVIDER_CATALOG_TTL = 15 * 60 * 1000;
+
+async function fetchProviderCatalog(force = false): Promise<ProviderCatalogSnapshot> {
+  if (!force && cachedProviderCatalog && Date.now() - providerCatalogCacheTimestamp < PROVIDER_CATALOG_TTL) {
+    return cachedProviderCatalog;
+  }
+  const snapshot = await discoverProviderMediaModels({
+    falKey: process.env.FAL_KEY || process.env.FAL_API_KEY,
+    wiroKey: process.env.WIRO_API_KEY,
+    wiroSecret: process.env.WIRO_API_SECRET,
+    runwareKey: process.env.RUNWARE_API_KEY,
+  });
+  cachedProviderCatalog = snapshot;
+  providerCatalogCacheTimestamp = Date.now();
+  return snapshot;
+}
 
 const SUBSCRIPTION_FREE_MODELS = [
   'google/nano-banana-2',
@@ -315,8 +329,8 @@ const PROVIDER_NAMES: Record<string, string> = {
   'runwayml': 'Runway',
 };
 
-async function fetchWavespeedModels(): Promise<ModelInfo[]> {
-  if (cachedModels && Date.now() - cacheTimestamp < CACHE_TTL) {
+async function fetchWavespeedModels(force = false): Promise<ModelInfo[]> {
+  if (!force && cachedModels && Date.now() - cacheTimestamp < CACHE_TTL) {
     return cachedModels;
   }
 
@@ -324,8 +338,31 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
     const res = await fetch(`${WAVESPEED_BASE}/models`, {
       headers: { Authorization: `Bearer ${WAVESPEED_API_KEY}` },
     });
+    if (!res.ok) throw new Error(`WaveSpeed catalog request failed (${res.status})`);
     const json = await res.json();
-    const rawModels = json.data || [];
+    const allRawModels: any[] = Array.isArray(json.data) ? json.data : [];
+    const mediaTypes = new Set(['text-to-image', 'image-to-image', 'upscaler', 'text-to-video', 'image-to-video', 'video-to-video', 'reference-to-video', 'text-to-3d', 'image-to-3d', '3d']);
+    const catalogCandidates = allRawModels.filter(model => mediaTypes.has(String(model?.type || '')) || /3d|tripo|sf3d|rodin|hunyuan3d|meshy/i.test(String(model?.model_id || '')));
+    const rawModels = catalogCandidates.filter(model => {
+      const type = model.type === '3d' ? 'text-to-3d' : model.type;
+      const schema = model?.api_schema?.api_schemas?.[0]?.request_schema || {};
+      return catalogCompatibility(type, schema).compatible;
+    });
+    cachedWavespeedCatalogStatus = {
+      discovered: catalogCandidates.length,
+      compatible: rawModels.length,
+      pendingAdapters: catalogCandidates.length - rawModels.length,
+      checkedAt: new Date().toISOString(),
+    };
+
+    function catalogMetadata(m: any) {
+      const schema = m?.api_schema?.api_schemas?.[0]?.request_schema || {};
+      return {
+        ...buildCatalogInputMetadata(schema),
+        supportedProperties: Object.keys(schema.properties || {}),
+        catalogSource: 'live' as const,
+      };
+    }
 
     const textToImage = rawModels.filter((m: { type: string }) => m.type === 'text-to-image');
     const imageToImage = rawModels.filter((m: { type: string }) => m.type === 'image-to-image');
@@ -382,6 +419,7 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
         editImageField: hasRealEditVariant ? editEntry?.imageField : undefined,
         editHasStrengthControl: hasRealEditVariant ? (editEntry?.hasStrengthControl ?? false) : undefined,
         nsfw: isNsfwModel(m.model_id),
+        ...catalogMetadata(m),
       };
     });
 
@@ -417,101 +455,6 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
         nsfw: false,
       }));
 
-    const hasSeedream5 = models.some(m => m.id.includes('seedream-v5'));
-    if (!hasSeedream5) {
-      models.push({
-        id: 'wavespeed:bytedance/seedream-v5.0-pro',
-        name: 'Seedream 5.0 Pro',
-        provider: 'ByteDance',
-        type: 'text-to-image',
-        price: 0.035,
-        description: 'ByteDance Seedream 5.0 Pro ultra-photorealistic text & image generator with extreme prompt adherence',
-        apiPath: '/api/v3/bytedance/seedream-v5.0-pro',
-        hasEditVariant: true,
-        hasReferenceImage: true,
-        editApiPath: '/api/v3/bytedance/seedream-v5.0-pro/edit',
-        editImageField: 'images',
-        editHasStrengthControl: true,
-        nsfw: true,
-      });
-    }
-
-    const hasWan3Pro = models.some(m => m.id.includes('wan-3.0') || m.id.includes('wan-3') || m.name.toLowerCase().includes('wan 3'));
-    if (!hasWan3Pro) {
-      models.push({
-        id: 'wavespeed:wavespeed-ai/wan-3.0-pro',
-        name: 'Wan 3.0 Pro',
-        provider: 'Alibaba / Wavespeed',
-        type: 'text-to-image',
-        price: 0.030,
-        description: 'Wan 3.0 Pro flagship 4K photorealistic text & image generator with ultra-realistic detail',
-        apiPath: '/api/v3/wavespeed-ai/wan-3.0-pro',
-        hasEditVariant: true,
-        hasReferenceImage: true,
-        editApiPath: '/api/v3/wavespeed-ai/wan-3.0-pro/edit',
-        editImageField: 'image',
-        editHasStrengthControl: true,
-        nsfw: true,
-      });
-    }
-
-    const hasWan7Pro = models.some(m => m.id.includes('wan-2.7') || m.id.includes('wan-7') || m.name.toLowerCase().includes('wan 7'));
-    if (!hasWan7Pro) {
-      models.push({
-        id: 'wavespeed:wavespeed-ai/wan-2.7-pro',
-        name: 'Wan 7 Pro',
-        provider: 'Alibaba / Wavespeed',
-        type: 'text-to-image',
-        price: 0.030,
-        description: 'Wan 7 Pro ultra-high fidelity photorealistic text & image generator with cinematic detail',
-        apiPath: '/api/v3/wavespeed-ai/wan-2.7-pro',
-        hasEditVariant: true,
-        hasReferenceImage: true,
-        editApiPath: '/api/v3/wavespeed-ai/wan-2.7-pro/edit',
-        editImageField: 'image',
-        editHasStrengthControl: true,
-        nsfw: true,
-      });
-    }
-
-    const hasQwen3Pro = models.some(m => m.id.includes('qwen-3.0-pro') || m.id.includes('qwen-3-pro') || m.name.toLowerCase().includes('qwen 3'));
-    if (!hasQwen3Pro) {
-      models.push({
-        id: 'wavespeed:wavespeed-ai/qwen-3.0-pro',
-        name: 'Qwen 3.0 Pro',
-        provider: 'Alibaba / Qwen',
-        type: 'text-to-image',
-        price: 0.030,
-        description: 'Qwen 3.0 Pro flagship uncensored visual intelligence & high-fidelity portrait generator',
-        apiPath: '/api/v3/wavespeed-ai/qwen-3.0-pro',
-        hasEditVariant: true,
-        hasReferenceImage: true,
-        editApiPath: '/api/v3/wavespeed-ai/qwen-3.0-pro/edit',
-        editImageField: 'image',
-        editHasStrengthControl: true,
-        nsfw: true,
-      });
-    }
-
-    const hasQwen2Pro = models.some(m => m.id.includes('qwen-2.0-pro') || m.id.includes('qwen-2-pro') || m.name.toLowerCase().includes('qwen 2'));
-    if (!hasQwen2Pro) {
-      models.push({
-        id: 'wavespeed:wavespeed-ai/qwen-2.0-pro',
-        name: 'Qwen 2 Pro',
-        provider: 'Alibaba / Qwen',
-        type: 'text-to-image',
-        price: 0.025,
-        description: 'Qwen 2 Pro advanced visual intelligence and prompt alignment model',
-        apiPath: '/api/v3/wavespeed-ai/qwen-2.0-pro',
-        hasEditVariant: true,
-        hasReferenceImage: true,
-        editApiPath: '/api/v3/wavespeed-ai/qwen-2.0-pro/edit',
-        editImageField: 'image',
-        editHasStrengthControl: true,
-        nsfw: true,
-      });
-    }
-
     const editModels: ModelInfo[] = imageToImage.map((m: { model_id: string; base_price: number; description?: string; api_schema?: { api_schemas?: { api_path: string; request_schema?: { properties?: Record<string, unknown> } }[] } }) => {
       const apiPath = resolveApiPath(m);
       const providerSlash = m.model_id.indexOf('/');
@@ -535,23 +478,9 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
         hasEditVariant: false,
         editImageField: imageField,
         nsfw: isNsfwModel(m.model_id),
+        ...catalogMetadata(m),
       };
     });
-    const hasSeedream5Edit = editModels.some(m => m.id.includes('seedream-v5'));
-    if (!hasSeedream5Edit) {
-      editModels.push({
-        id: 'wavespeed-edit:bytedance/seedream-v5.0-pro/edit',
-        name: 'Seedream 5.0 Pro Edit',
-        provider: 'ByteDance',
-        type: 'image-to-image',
-        price: 0.035,
-        description: 'ByteDance Seedream 5.0 Pro image-to-image editing & style transfer',
-        apiPath: '/api/v3/bytedance/seedream-v5.0-pro/edit',
-        hasEditVariant: false,
-        editImageField: 'images',
-        nsfw: true,
-      });
-    }
     editModels.sort((a, b) => a.provider.localeCompare(b.provider) || a.name.localeCompare(b.name));
 
     const upscalerModels = rawModels.filter((m: { type: string; model_id: string; api_schema?: { api_schemas?: { request_schema?: { properties?: Record<string, unknown> } }[] } }) => {
@@ -586,6 +515,7 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
         hasEditVariant: false,
         editImageField: imageField,
         nsfw: isNsfwModel(m.model_id),
+        ...catalogMetadata(m),
       };
     });
     upscaleModels.sort((a, b) => a.provider.localeCompare(b.provider) || a.name.localeCompare(b.name));
@@ -617,7 +547,7 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
           apiPath,
           hasEditVariant: false,
           nsfw: isNsfwModel(m.model_id),
-          supportedProperties: supportedProps,
+          ...catalogMetadata(m),
         };
       }),
       ...imageToVideo.map((m: { model_id: string; base_price: number; description?: string; api_schema?: { api_schemas?: { api_path: string; request_schema?: { properties?: Record<string, unknown> } }[] } }) => {
@@ -644,7 +574,7 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
           hasEditVariant: false,
           editImageField: imageField,
           nsfw: isNsfwModel(m.model_id),
-          supportedProperties: supportedProps,
+          ...catalogMetadata(m),
         };
       }),
       ...videoToVideo.map((m: { model_id: string; base_price: number; description?: string; api_schema?: { api_schemas?: { api_path: string; request_schema?: { properties?: Record<string, unknown> } }[] } }) => {
@@ -670,131 +600,20 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
           apiPath,
           hasEditVariant: false,
           nsfw: isNsfwModel(m.model_id),
-          supportedProperties: supportedProps,
+          ...catalogMetadata(m),
         };
       }),
     ];
-
-    const hasWan3I2V = videoModels.some(m => m.id.includes('wan-3.0') && m.type === 'image-to-video');
-    if (!hasWan3I2V) {
-      videoModels.push({
-        id: DEFAULT_VIDEO_MODEL_ID,
-        name: 'Wan 3.0 Image to Video (Alibaba / WaveSpeed)',
-        provider: 'Alibaba / WaveSpeed',
-        type: 'image-to-video' as const,
-        price: 0.15,
-        description: 'Flagship 1080p high-realism video generation from text or image with uncensored prompt support',
-        apiPath: '/api/v3/alibaba/wan-3.0/image-to-video',
-        hasEditVariant: false,
-        nsfw: true,
-        supportedProperties: ['image', 'prompt', 'duration', 'aspect_ratio'],
-      });
-    }
-
-    const hasWan3V2V = videoModels.some(m => m.id.includes('wan-3.0') && (m.id.includes('edit') || m.type === 'video-to-video'));
-    if (!hasWan3V2V) {
-      videoModels.push({
-        id: 'wavespeed-v2v:alibaba/wan-3.0-v2v-1080p/edit',
-        name: 'Wan 3.0 Video Edit (Alibaba - Flagship Uncensored 1080p)',
-        provider: 'Alibaba',
-        type: 'video-to-video' as const,
-        price: 0.15,
-        description: 'Flagship 1080p uncensored video edit, motion transfer & video stylization',
-        apiPath: '/api/v3/alibaba/wan-3.0-v2v-1080p/edit',
-        hasEditVariant: false,
-        nsfw: true,
-        supportedProperties: ['video', 'prompt', 'strength'],
-      });
-    }
-
-    const hasWan3T2V = videoModels.some(m => m.id.includes('wan-3.0') && m.type === 'text-to-video');
-    if (!hasWan3T2V) {
-      videoModels.push({
-        id: 'wavespeed-t2v:alibaba/wan-3.0-t2v-1080p',
-        name: 'Wan 3.0 T2V (Alibaba - Flagship Uncensored 1080p)',
-        provider: 'Alibaba',
-        type: 'text-to-video' as const,
-        price: 0.15,
-        description: 'Flagship 1080p text-to-video synthesis with ultra-smooth dynamic camera physics',
-        apiPath: '/api/v3/alibaba/wan-3.0-t2v-1080p',
-        hasEditVariant: false,
-        nsfw: true,
-        supportedProperties: ['prompt', 'duration', 'aspect_ratio'],
-      });
-    }
-
-    const hasSeedance25Edit = videoModels.some(m => m.id.includes('seedance-2.5') && (m.id.includes('edit') || m.type === 'video-to-video'));
-    if (!hasSeedance25Edit) {
-      videoModels.push({
-        id: 'wavespeed-v2v:bytedance/seedance-2.5/edit',
-        name: 'Seedance 2.5 Video Edit (ByteDance - Flagship Uncensored)',
-        provider: 'ByteDance',
-        type: 'video-to-video' as const,
-        price: 0.15,
-        description: 'Flagship uncensored video edit, motion transfer & video stylization',
-        apiPath: '/api/v3/bytedance/seedance-2.5/edit',
-        hasEditVariant: false,
-        nsfw: true,
-        supportedProperties: ['video', 'prompt', 'strength'],
-      });
-    }
-
-    const hasSeedance25Gen = videoModels.some(m => m.id.includes('seedance-2.5') && m.type === 'image-to-video');
-    if (!hasSeedance25Gen) {
-      videoModels.push({
-        id: 'wavespeed-i2v:bytedance/seedance-2.5',
-        name: 'Seedance 2.5 (ByteDance - Flagship Uncensored)',
-        provider: 'ByteDance',
-        type: 'image-to-video' as const,
-        price: 0.15,
-        description: 'Flagship high-realism video generation from text or image with uncensored prompt support',
-        apiPath: '/api/v3/bytedance/seedance-2.5',
-        hasEditVariant: false,
-        nsfw: true,
-        supportedProperties: ['image', 'prompt', 'duration', 'aspect_ratio'],
-      });
-    }
-
-    const hasSeedance2Edit = videoModels.some(m => m.id.includes('seedance-2.0') && (m.id.includes('edit') || m.type === 'video-to-video'));
-    if (!hasSeedance2Edit) {
-      videoModels.push({
-        id: 'wavespeed-v2v:bytedance/seedance-2.0/edit',
-        name: 'Seedance 2.0 Video Edit (Uncensored)',
-        provider: 'ByteDance',
-        type: 'video-to-video' as const,
-        price: 0.15,
-        description: 'Edit, stylize, or transform existing videos with uncensored prompt support',
-        apiPath: '/api/v3/bytedance/seedance-2.0/edit',
-        hasEditVariant: false,
-        nsfw: true,
-        supportedProperties: ['video', 'prompt', 'strength'],
-      });
-    }
-
-    const hasSeedance2Gen = videoModels.some(m => m.id.includes('seedance-2.0') && m.type === 'image-to-video');
-    if (!hasSeedance2Gen) {
-      videoModels.push({
-        id: 'wavespeed-i2v:bytedance/seedance-2.0',
-        name: 'Seedance 2.0 (ByteDance - Uncensored)',
-        provider: 'ByteDance',
-        type: 'image-to-video' as const,
-        price: 0.15,
-        description: 'Generate high-realism video clips from text or reference photo with uncensored prompt support',
-        apiPath: '/api/v3/bytedance/seedance-2.0',
-        hasEditVariant: false,
-        nsfw: true,
-        supportedProperties: ['image', 'prompt', 'duration', 'aspect_ratio'],
-      });
-    }
 
     videoModels.sort((a, b) => {
       const getVidScore = (m: { id: string; name: string }) => {
         const id = (m.id || '').toLowerCase();
         const name = (m.name || '').toLowerCase();
-        if (id.includes('wan-3.0') || name.includes('wan 3.0') || name.includes('wan 3')) return 1;
-        if (id.includes('seedance-2.5') || name.includes('seedance 2.5')) return 2;
-        if (id.includes('wan-2.1') || name.includes('wan 2.1')) return 3;
-        if (id.includes('seedance-2.0') || name.includes('seedance 2.0')) return 4;
+        if (id.includes('wan-3.0-prime') || name.includes('wan 3.0 prime')) return 1;
+        if (id.includes('wan-3.0') || name.includes('wan 3.0') || name.includes('wan 3')) return 2;
+        if (id.includes('seedance-2.5') || name.includes('seedance 2.5')) return 3;
+        if (id.includes('wan-2.1') || name.includes('wan 2.1')) return 4;
+        if (id.includes('seedance-2.0') || name.includes('seedance 2.0')) return 5;
         return 100;
       };
       const sa = getVidScore(a);
@@ -886,17 +705,23 @@ async function fetchWavespeedModels(): Promise<ModelInfo[]> {
         apiPath,
         hasEditVariant: false,
         nsfw: isNsfwModel(m.model_id),
+        ...catalogMetadata(m),
       };
     });
 
     const finalThreeD = parsed3D.length > 0 ? parsed3D : default3DList;
     finalThreeD.sort((a, b) => a.provider.localeCompare(b.provider) || a.name.localeCompare(b.name));
 
-    cachedModels = [...identityModels, ...models];
-    cachedEditModels = editModels;
-    cachedUpscaleModels = upscaleModels;
-    cachedVideoModels = videoModels;
-    cachedThreeDModels = finalThreeD;
+    const annotatedImages = annotateLatestUpgrades([...identityModels, ...models]);
+    const annotatedEdits = annotateLatestUpgrades(editModels);
+    const annotatedUpscalers = annotateLatestUpgrades(upscaleModels);
+    const annotatedVideos = annotateLatestUpgrades(videoModels);
+    const annotatedThreeD = annotateLatestUpgrades(finalThreeD);
+    cachedModels = annotatedImages;
+    cachedEditModels = annotatedEdits;
+    cachedUpscaleModels = annotatedUpscalers;
+    cachedVideoModels = annotatedVideos;
+    cachedThreeDModels = annotatedThreeD;
     cacheTimestamp = Date.now();
     return cachedModels;
   } catch (err) {
@@ -1097,12 +922,13 @@ async function calculateGenerationQuote(
         quoteSource = 'configured-google-estimate';
       } else {
         try {
-          const [wavespeedModels, veniceModels, atlasCloudModels] = await Promise.all([
+          const [wavespeedModels, veniceModels, atlasCloudModels, providerCatalog] = await Promise.all([
             fetchWavespeedModels(),
             fetchVeniceModels(),
             fetchAtlasCloudModels(),
+            fetchProviderCatalog(),
           ]);
-          const all = getAllModels(wavespeedModels, veniceModels, atlasCloudModels);
+          const all = mergeModels(getAllModels(wavespeedModels, veniceModels, atlasCloudModels), providerCatalog.models, providerCatalog.editModels);
           const found = all.find(m => m.id === modelId);
           if (found) {
             provider = found.provider;
@@ -1125,8 +951,8 @@ async function calculateGenerationQuote(
     providerCostUsd = Number(process.env.GOOGLE_VIDEO_PROVIDER_COST_USD) || 0.10;
     if (modelId && !modelId.startsWith('google:')) {
       try {
-        await fetchWavespeedModels(); // ensures cachedVideoModels is filled
-        const allVideo = cachedVideoModels || [];
+        const [, providerCatalog] = await Promise.all([fetchWavespeedModels(), fetchProviderCatalog()]);
+        const allVideo = mergeModels(cachedVideoModels || [], providerCatalog.videoModels);
         const found = allVideo.find(m => m.id === modelId);
         if (found) {
           provider = found.provider;
@@ -2448,10 +2274,12 @@ async function removeBackgroundWithRunware(imageUrl: string): Promise<string> {
   return bgRemovedUrl;
 }
 
-app.get('/api/runware/models', (req, res) => {
+app.get('/api/runware/models', async (req, res) => {
+  const catalog = await fetchProviderCatalog();
   res.json({
-    models: RUNWARE_CURATED_MODELS,
-    loras: RUNWARE_CURATED_LORAS
+    models: mergeModels(RUNWARE_CURATED_MODELS, catalog.models.filter(model => model.id.startsWith('runware:'))),
+    loras: RUNWARE_CURATED_LORAS,
+    catalog: catalog.providers.Runware,
   });
 });
 
@@ -2617,7 +2445,10 @@ export async function runWiroTask(ownerSlug: string, modelSlug: string, inputPar
 
     if (task.status === 'task_postprocess_end' || task.status === 'task_output' || (task.outputs && task.outputs.length > 0)) {
       if (task.outputs && task.outputs.length > 0) {
-        return task.outputs[0];
+        const output = task.outputs[0];
+        if (typeof output === 'string') return output;
+        const outputUrl = output?.url || output?.fileUrl || output?.file_url;
+        if (typeof outputUrl === 'string') return outputUrl;
       }
       if (task.debugoutput && task.debugoutput.includes('SensitiveContentDetected')) {
         throw new Error(`Wiro Sensitive Content Flag: ${task.debugoutput}`);
@@ -2631,11 +2462,58 @@ export async function runWiroTask(ownerSlug: string, modelSlug: string, inputPar
   throw new Error(`Wiro task ${taskId} timed out after ${maxWaitMs / 1000}s`);
 }
 
-app.get('/api/wiro/models', (req, res) => {
+function discoveredCatalogModel(modelId: string): ModelInfo | undefined {
+  if (!cachedProviderCatalog) return undefined;
+  return [
+    ...cachedProviderCatalog.models,
+    ...cachedProviderCatalog.editModels,
+    ...cachedProviderCatalog.videoModels,
+  ].find(model => model.id === modelId);
+}
+
+function collectProviderOutputUrls(value: unknown, kind: 'image' | 'video'): string[] {
+  const results: string[] = [];
+  const visit = (node: unknown, key = '') => {
+    if (typeof node === 'string') {
+      if (/^https?:\/\//i.test(node) && (kind === 'image' ? /image|url|output|file/i.test(key) : /video|url|output|file/i.test(key))) {
+        results.push(node);
+      }
+      return;
+    }
+    if (Array.isArray(node)) {
+      node.forEach(item => visit(item, key));
+      return;
+    }
+    if (node && typeof node === 'object') {
+      Object.entries(node as Record<string, unknown>).forEach(([childKey, child]) => visit(child, childKey));
+    }
+  };
+  visit(value);
+  return [...new Set(results)];
+}
+
+async function runFalDiscoveredModel(model: ModelInfo, input: Record<string, unknown>, kind: 'image' | 'video'): Promise<string[]> {
+  const falKey = process.env.FAL_KEY || process.env.FAL_API_KEY || '';
+  if (!falKey) throw new Error('fal.ai API key not configured');
+  const client = createFalClient({ credentials: falKey });
+  const result = await (client as any).subscribe(model.apiPath, {
+    input,
+    logs: false,
+    timeout: kind === 'video' ? 600_000 : 180_000,
+  });
+  const urls = collectProviderOutputUrls(result?.data || result, kind);
+  if (!urls.length) throw new Error(`fal.ai returned no ${kind} URL`);
+  return urls;
+}
+
+app.get('/api/wiro/models', async (req, res) => {
+  const catalog = await fetchProviderCatalog();
   res.json({
-    models: WIRO_CURATED_MODELS,
-    videoModels: WIRO_CURATED_VIDEO_MODELS,
-    voiceModels: WIRO_CURATED_VOICE_MODELS
+    models: mergeModels(WIRO_CURATED_MODELS, catalog.models.filter(model => model.id.startsWith('wiro:'))),
+    editModels: catalog.editModels.filter(model => model.id.startsWith('wiro-edit:')),
+    videoModels: mergeModels(WIRO_CURATED_VIDEO_MODELS, catalog.videoModels.filter(model => model.id.startsWith('wiro-video:'))),
+    voiceModels: WIRO_CURATED_VOICE_MODELS,
+    catalog: catalog.providers.Wiro,
   });
 });
 
@@ -2644,14 +2522,17 @@ app.get('/api/models', requireAuth, async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     const isCreator = isCreatorUser(authReq.user.email);
 
-    const [wavespeedRes, veniceRes, atlasRes] = await Promise.allSettled([
+    const forceCatalogRefresh = req.query.refresh === '1' && isCreator;
+    const [wavespeedRes, veniceRes, atlasRes, providerCatalogRes] = await Promise.allSettled([
       fetchWavespeedModels(),
       fetchVeniceModels(),
       fetchAtlasCloudModels(),
+      fetchProviderCatalog(forceCatalogRefresh),
     ]);
     const wavespeedModels = wavespeedRes.status === 'fulfilled' ? wavespeedRes.value : [];
     const veniceModels = veniceRes.status === 'fulfilled' ? veniceRes.value : [];
     const atlasCloudModels = atlasRes.status === 'fulfilled' ? atlasRes.value : [];
+    const providerCatalog = providerCatalogRes.status === 'fulfilled' ? providerCatalogRes.value : null;
     const allModels = getAllModels(wavespeedModels, veniceModels, atlasCloudModels);
 
     const googleImagenModels: ModelInfo[] = [
@@ -2766,6 +2647,7 @@ app.get('/api/models', requireAuth, async (req, res) => {
         hasEditVariant: false,
       }]),
       ...(cachedEditModels || []),
+      ...(providerCatalog?.editModels || []),
     ];
 
     const googleVideoModels: ModelInfo[] = [
@@ -2891,13 +2773,35 @@ app.get('/api/models', requireAuth, async (req, res) => {
     const localVideoModels: ModelInfo[] = [];
 
     const xaiModels = await fetchXAIModels();
-    const sortedImageModels = [...RUNWARE_CURATED_MODELS, ...WIRO_CURATED_MODELS, ...localImageModels, ...googleImagenModels, ...xaiModels, ...allModels]
+    const configuredRunwareModels = process.env.RUNWARE_API_KEY ? RUNWARE_CURATED_MODELS : [];
+    const configuredWiroModels = WIRO_API_KEY && WIRO_API_SECRET ? WIRO_CURATED_MODELS : [];
+    const configuredWiroVideoModels = WIRO_API_KEY && WIRO_API_SECRET ? WIRO_CURATED_VIDEO_MODELS : [];
+    const followsWaveSpeedProviderPolicy = (model: ModelInfo) => !/seedream|seedance/i.test(`${model.id} ${model.name}`);
+    const discoveredImageModels = (providerCatalog?.models || []).filter(followsWaveSpeedProviderPolicy);
+    const discoveredEditModels = (providerCatalog?.editModels || []).filter(followsWaveSpeedProviderPolicy);
+    const discoveredVideoModels = (providerCatalog?.videoModels || []).filter(followsWaveSpeedProviderPolicy);
+
+    const sortedImageModels = mergeModels(
+      configuredRunwareModels,
+      configuredWiroModels,
+      discoveredImageModels,
+      localImageModels,
+      googleImagenModels,
+      xaiModels,
+      allModels,
+    )
       .map(mapPriceForUser);
 
-    const sortedEditModels = [...localImageModels, ...editModels]
+    const sortedEditModels = mergeModels(localImageModels, editModels.filter(followsWaveSpeedProviderPolicy), discoveredEditModels)
       .map(mapPriceForUser);
 
-    const sortedVideoModels = [...wavespeedVideoModels, ...WIRO_CURATED_VIDEO_MODELS, ...googleVideoModels, ...localVideoModels]
+    const sortedVideoModels = mergeModels(
+      wavespeedVideoModels,
+      configuredWiroVideoModels,
+      discoveredVideoModels,
+      googleVideoModels,
+      localVideoModels,
+    )
       .map(mapPriceForUser);
 
     const angleModels: ModelInfo[] = Object.entries(ANGLE_MODEL_CONFIGS).map(([id, config]) => mapPriceForUser({
@@ -2920,10 +2824,47 @@ app.get('/api/models', requireAuth, async (req, res) => {
       videoModels: sortedVideoModels,
       threeDModels: (cachedThreeDModels || []).map(mapPriceForUser),
       angleModels,
+      catalog: {
+        automaticDiscovery: true,
+        refreshIntervalMinutes: PROVIDER_CATALOG_TTL / 60_000,
+        checkedAt: providerCatalog?.checkedAt || cachedWavespeedCatalogStatus.checkedAt,
+        providers: {
+          WaveSpeed: {
+            configured: Boolean(WAVESPEED_API_KEY),
+            ok: wavespeedRes.status === 'fulfilled' && cachedWavespeedCatalogStatus.compatible > 0,
+            ...cachedWavespeedCatalogStatus,
+          },
+          ...(providerCatalog?.providers || {}),
+        },
+        pendingAdapters: cachedWavespeedCatalogStatus.pendingAdapters + (providerCatalog?.pendingModels.length || 0),
+      },
     });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to fetch models' });
   }
+});
+
+app.get('/api/model-catalog/refresh', async (req, res) => {
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret) return res.status(503).json({ error: 'Automatic model discovery is not configured' });
+  if (req.headers.authorization !== `Bearer ${cronSecret}`) {
+    return res.status(401).json({ error: 'Unauthorized catalog refresh request' });
+  }
+  const [wavespeedResult, providerResult] = await Promise.allSettled([
+    fetchWavespeedModels(true),
+    fetchProviderCatalog(true),
+  ]);
+  const providerCatalog = providerResult.status === 'fulfilled' ? providerResult.value : null;
+  return res.status(wavespeedResult.status === 'fulfilled' || providerCatalog ? 200 : 502).json({
+    checkedAt: new Date().toISOString(),
+    WaveSpeed: {
+      ok: wavespeedResult.status === 'fulfilled',
+      ...cachedWavespeedCatalogStatus,
+      error: wavespeedResult.status === 'rejected' ? String(wavespeedResult.reason) : undefined,
+    },
+    providers: providerCatalog?.providers || {},
+    pendingAdapters: cachedWavespeedCatalogStatus.pendingAdapters + (providerCatalog?.pendingModels.length || 0),
+  });
 });
 
 let cachedXAIModels: ModelInfo[] | null = null;
@@ -4933,6 +4874,8 @@ const generateImageHandler = async (req: any, res: any) => {
       !modelId.startsWith('openai:') && 
       !modelId.startsWith('xai:') && 
       !modelId.startsWith('grok:') && 
+      !modelId.startsWith('fal:') &&
+      !modelId.startsWith('fal-edit:') &&
       !modelId.startsWith('wavespeed:')) {
     modelId = `wavespeed:${modelId}`;
   }
@@ -5004,7 +4947,23 @@ const generateImageHandler = async (req: any, res: any) => {
       }
     }
 
-    if (modelId.startsWith('wiro:') || modelId === 'wiro') {
+    if (modelId.startsWith('fal:')) {
+      const providerCatalog = await fetchProviderCatalog();
+      const falModel = discoveredCatalogModel(modelId) || providerCatalog.models.find(model => model.id === modelId);
+      if (!falModel) throw new Error(`fal.ai model is no longer available: ${modelId}`);
+      const rawReferences = [referenceImage, ...(additionalImages || [])].filter((value): value is string => Boolean(value));
+      const resolvedReferences = rawReferences.length ? await Promise.all(rawReferences.map(resolveImageToDataUrl)) : [];
+      const falInput = buildUniversalModelInput(falModel, {
+        prompt,
+        image: resolvedReferences.length > 1 ? resolvedReferences : resolvedReferences[0],
+        aspectRatio,
+        resolution,
+        outputFormat: 'jpeg',
+        count,
+      });
+      imageUrls = await runFalDiscoveredModel(falModel, falInput, 'image');
+      modelName = falModel.name;
+    } else if (modelId.startsWith('wiro:') || modelId === 'wiro') {
       if (!prompt || prompt.length < 10) prompt = buildPrompt({ ...rest, referenceImage });
       const rawWiroId = modelId.replace(/^wiro:/, '');
       const [ownerSlug = 'bytedance', modelSlug = 'seedream-v5-pro'] = rawWiroId.split('/');
@@ -5018,20 +4977,29 @@ const generateImageHandler = async (req: any, res: any) => {
         modelName = `${fallbackModel.name} (Uncensored Route)`;
       } else {
         try {
-          const wiroPayload: Record<string, unknown> = {
-            prompt,
-            resolution: (req.body as any).resolution === '2k' ? '2k' : '1k',
-            aspectRatio: aspectRatio || '1:1',
-            outputFormat: 'jpeg',
-            watermark: 'false'
-          };
-          if (referenceImage) {
-            const resolvedRef = await resolveImageToDataUrl(referenceImage);
-            wiroPayload.inputImage = [resolvedRef];
-          }
+          await fetchProviderCatalog();
+          const liveWiroModel = discoveredCatalogModel(modelId);
+          const resolvedRef = referenceImage ? await resolveImageToDataUrl(referenceImage) : undefined;
+          const wiroPayload: Record<string, unknown> = liveWiroModel
+            ? buildUniversalModelInput(liveWiroModel, {
+                prompt,
+                image: resolvedRef,
+                aspectRatio: aspectRatio || '1:1',
+                resolution: (req.body as any).resolution === '2k' ? '2k' : '1k',
+                outputFormat: 'jpeg',
+                count,
+              })
+            : {
+                prompt,
+                resolution: (req.body as any).resolution === '2k' ? '2k' : '1k',
+                aspectRatio: aspectRatio || '1:1',
+                outputFormat: 'jpeg',
+                watermark: 'false',
+                ...(resolvedRef ? { inputImage: [resolvedRef] } : {}),
+              };
           const generatedUrl = await runWiroTask(ownerSlug, modelSlug, wiroPayload);
           imageUrls = [generatedUrl];
-          modelName = WIRO_CURATED_MODELS.find(m => m.id === modelId)?.name || `Wiro (${rawWiroId})`;
+          modelName = liveWiroModel?.name || WIRO_CURATED_MODELS.find(m => m.id === modelId)?.name || `Wiro (${rawWiroId})`;
         } catch (wiroErr) {
           console.warn('[Wiro Error - Auto Falling back to Runware]:', wiroErr);
           try {
@@ -5069,7 +5037,7 @@ const generateImageHandler = async (req: any, res: any) => {
           numberResults: count
         });
         imageUrls = generated;
-        modelName = RUNWARE_CURATED_MODELS.find(m => m.id === modelId)?.name || `Runware (${runwareModelId})`;
+        modelName = discoveredCatalogModel(modelId)?.name || RUNWARE_CURATED_MODELS.find(m => m.id === modelId)?.name || `Runware (${runwareModelId})`;
       } catch (runwareErr) {
         console.warn('[Runware Error - Auto Falling back to Wavespeed]:', runwareErr);
         const wavespeedModels = await fetchWavespeedModels();
@@ -5362,7 +5330,25 @@ const editImageHandler = async (req: any, res: any) => {
       if (!targetModelId.endsWith('/edit')) targetModelId += '/edit';
     }
 
-    if (modelId === 'replit:gpt-image-1' || modelId === 'openai:gpt-image-2') {
+    if (modelId.startsWith('fal-edit:') || modelId.startsWith('wiro-edit:')) {
+      await fetchProviderCatalog();
+      const catalogModel = discoveredCatalogModel(modelId);
+      if (!catalogModel) throw new Error(`This provider model is no longer available: ${modelId}`);
+      const resolvedSource = await resolveImageToDataUrl(sourceImage);
+      const references = [resolvedSource, resolvedAdditional].filter((value): value is string => Boolean(value));
+      const input = buildUniversalModelInput(catalogModel, {
+        prompt,
+        image: references.length > 1 ? references : references[0],
+        outputFormat: 'jpeg',
+      });
+      if (modelId.startsWith('fal-edit:')) {
+        imageUrl = (await runFalDiscoveredModel(catalogModel, input, 'image'))[0];
+      } else {
+        const [ownerSlug, modelSlug] = catalogModel.apiPath.split('/');
+        imageUrl = await runWiroTask(ownerSlug, modelSlug, input);
+      }
+      modelName = catalogModel.name;
+    } else if (modelId === 'replit:gpt-image-1' || modelId === 'openai:gpt-image-2') {
       const resolvedSource = await resolveImageToDataUrl(sourceImage);
       const images = [resolvedSource];
       if (resolvedAdditional) images.push(resolvedAdditional);
@@ -5806,25 +5792,54 @@ const generateVideoHandler = async (req: any, res: any) => {
       return res.json({ videoUrl, model: displayName });
     }
 
+    if (modelId.startsWith('fal-video:')) {
+      await fetchProviderCatalog();
+      const falModel = discoveredCatalogModel(modelId);
+      if (!falModel) throw new Error(`fal.ai video model is no longer available: ${modelId}`);
+      const resolvedImage = sourceImage && !sourceImage.startsWith('blob:') ? await resolveImageToDataUrl(sourceImage) : undefined;
+      const resolvedVideo = sourceVideo && !sourceVideo.startsWith('blob:') ? await resolveVideoUrlOrDataUrl(sourceVideo) : undefined;
+      const input = buildUniversalModelInput(falModel, {
+        prompt,
+        image: resolvedImage,
+        video: resolvedVideo,
+        aspectRatio,
+        resolution,
+        duration: duration !== undefined ? Number(duration) : undefined,
+      });
+      const videoUrl = (await runFalDiscoveredModel(falModel, input, 'video'))[0];
+      await finalizeGenerationCredits(creditReservation, { ok: true });
+      return res.json({ videoUrl, model: falModel.name });
+    }
+
     if (modelId.startsWith('wiro-video:') || modelId === 'wiro-video') {
       const rawWiroId = modelId.replace(/^wiro-video:/, '');
-      const [ownerSlug = 'bytedance', modelSlug = 'seedance-2.5'] = rawWiroId.split('/');
+      const runnableWiroId = rawWiroId.replace(/^(?:text-to-video|image-to-video|video-to-video|reference-to-video):/, '');
+      const [ownerSlug = 'bytedance', modelSlug = 'seedance-2.5'] = runnableWiroId.split('/');
       const isExplicit = allowNsfw || isNsfwModel(prompt) || ['nsfw', 'uncensored', 'sexy', 'naked', 'bikini', 'lingerie', 'underwear', 'lewd', 'adult', 'erotic'].some(k => prompt.toLowerCase().includes(k));
       if (isExplicit) {
         console.log('[Video Gen] NSFW detected for Wiro video — automatically routing to Wavespeed uncensored engine');
       } else {
         try {
-          const videoInput: Record<string, unknown> = {
-            prompt,
-            aspectRatio: aspectRatio || '16:9',
-            resolution: resolution || '720p',
-          };
+          await fetchProviderCatalog();
+          const liveWiroModel = discoveredCatalogModel(modelId);
+          const resolvedImg = sourceImage ? await resolveImageToDataUrl(sourceImage) : undefined;
+          const videoInput: Record<string, unknown> = liveWiroModel
+            ? buildUniversalModelInput(liveWiroModel, {
+                prompt,
+                image: resolvedImg,
+                video: sourceVideo || (req.body as any).inputVideo,
+                aspectRatio: aspectRatio || '16:9',
+                resolution: resolution || '720p',
+                duration: duration !== undefined ? Number(duration) : undefined,
+              })
+            : {
+                prompt,
+                aspectRatio: aspectRatio || '16:9',
+                resolution: resolution || '720p',
+              };
           if (modelSlug === 'p-video-avatar') {
             videoInput.voiceScript = prompt;
-            if (sourceImage) {
-              const resolvedImg = await resolveImageToDataUrl(sourceImage);
-              videoInput.inputImage = [resolvedImg];
-            }
+            if (resolvedImg) videoInput.inputImage = [resolvedImg];
             if ((req.body as any).audioUrl || (req.body as any).inputAudio) {
               videoInput.inputAudio = [(req.body as any).audioUrl || (req.body as any).inputAudio];
             }
@@ -5832,19 +5847,13 @@ const generateVideoHandler = async (req: any, res: any) => {
             if (sourceVideo || (req.body as any).inputVideo) {
               videoInput.inputVideo = [sourceVideo || (req.body as any).inputVideo];
             }
-            if (sourceImage) {
-              const resolvedImg = await resolveImageToDataUrl(sourceImage);
-              videoInput.inputImage = [resolvedImg];
-            }
+            if (resolvedImg) videoInput.inputImage = [resolvedImg];
             videoInput.saveAudio = 'true';
-          } else {
-            if (sourceImage) {
-              const resolvedImg = await resolveImageToDataUrl(sourceImage);
-              videoInput.inputImage = [resolvedImg];
-            }
+          } else if (!liveWiroModel && resolvedImg) {
+            videoInput.inputImage = [resolvedImg];
           }
           const videoUrl = await runWiroTask(ownerSlug, modelSlug, videoInput);
-          const displayName = WIRO_CURATED_VIDEO_MODELS.find(m => m.id === modelId)?.name || `Wiro (${rawWiroId})`;
+          const displayName = liveWiroModel?.name || WIRO_CURATED_VIDEO_MODELS.find(m => m.id === modelId)?.name || `Wiro (${rawWiroId})`;
           await finalizeGenerationCredits(creditReservation, { ok: true });
           return res.json({ videoUrl, model: displayName });
         } catch (wiroErr) {

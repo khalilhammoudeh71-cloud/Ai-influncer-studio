@@ -72,3 +72,21 @@ export function detectExplicitMediaCreationRequest(value: unknown): ExplicitMedi
   if (!match) return undefined;
   return /^(?:video|clip|reel|animation)$/i.test(match.groups?.kind || '') ? 'video' : 'image';
 }
+
+/**
+ * Returns the only media action the client is allowed to execute. A model may
+ * suggest an image or video action, but that suggestion must never override
+ * the user's actual words. Image revisions are the sole exception because a
+ * follow-up such as "make it brighter" refers to an already generated image.
+ */
+export function resolveExecutableMediaCreationRequest(
+  value: unknown,
+  options: { hasImageRevision?: boolean } = {},
+): ExplicitMediaRequestType | undefined {
+  const prompt = typeof value === 'string' ? value.trim() : '';
+  if (!prompt || isConversationalMediaCreationRemark(prompt) || detectIncompleteMediaCreationRequest(prompt)) {
+    return undefined;
+  }
+
+  return detectExplicitMediaCreationRequest(prompt) || (options.hasImageRevision ? 'image' : undefined);
+}

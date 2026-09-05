@@ -29,8 +29,19 @@ test('maps every Atlas selector to the exact backend model', () => {
   assert.equal(getAtlasPersonaModelId('grok'), undefined);
 });
 
-test('exposes unique Pro-selectable model ids', () => {
+test('exposes unique selectable model ids', () => {
   const ids = PERSONA_LLM_OPTIONS.map(option => option.id);
   assert.equal(new Set(ids).size, ids.length);
   assert.ok(ids.includes(DEFAULT_PERSONA_LLM_ID));
+});
+
+test('gives every Simple-mode choice a unique outcome label without provider names', () => {
+  const labels = PERSONA_LLM_OPTIONS.map(option => option.simpleLabel);
+  const providerNames = /grok|xai|wiro|runware|wavespeed|deepseek|venice|atlas|qwen|glm|gemini|google/i;
+
+  assert.equal(new Set(labels).size, labels.length);
+  labels.forEach(label => {
+    assert.ok(label.trim().length > 0);
+    assert.equal(providerNames.test(label), false);
+  });
 });

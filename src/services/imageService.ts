@@ -68,6 +68,12 @@ export interface ModelInfo {
   isIdentityModel?: boolean;
   nsfw?: boolean;
   supportedProperties?: string[];
+  requiredProperties?: string[];
+  catalogSource?: 'live' | 'curated';
+  catalogUpdatedAt?: string;
+  isNew?: boolean;
+  isUpgrade?: boolean;
+  releaseLabel?: string;
 }
 
 export function canUseReference(model: ModelInfo, allModels: ModelInfo[]): boolean {

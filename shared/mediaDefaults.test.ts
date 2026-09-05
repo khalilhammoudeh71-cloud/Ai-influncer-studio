@@ -60,3 +60,15 @@ test('prefers a live WaveSpeed Wan 3.0 I2V catalog variant when the canonical id
   ];
   assert.equal(pickDefaultVideoModel(models)?.id, 'wavespeed-i2v:alibaba/wan-3.0/image-to-video-fast');
 });
+
+test('keeps base Wan 3.0 as default when a newer Prime upgrade is discovered', () => {
+  const models = [
+    { id: 'wavespeed-i2v:alibaba/wan-3.0-prime/image-to-video', name: 'Wan 3.0 Prime Image to Video', provider: 'Alibaba / WaveSpeed', type: 'image-to-video' },
+    { id: 'wavespeed-i2v:alibaba/wan-3.0/image-to-video-fast', name: 'Wan 3.0 Image to Video Fast', provider: 'Alibaba / WaveSpeed', type: 'image-to-video' },
+  ];
+  assert.equal(pickDefaultVideoModel(models)?.id, 'wavespeed-i2v:alibaba/wan-3.0/image-to-video-fast');
+  assert.equal(
+    pickDefaultVideoModelForType(models, 'image-to-video')?.id,
+    'wavespeed-i2v:alibaba/wan-3.0/image-to-video-fast',
+  );
+});

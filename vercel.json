@@ -9,7 +9,8 @@
     }
   },
   "crons": [
-    { "path": "/api/media-jobs/worker", "schedule": "* * * * *" }
+    { "path": "/api/media-jobs/worker", "schedule": "* * * * *" },
+    { "path": "/api/model-catalog/refresh", "schedule": "*/15 * * * *" }
   ],
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/index.mjs" },

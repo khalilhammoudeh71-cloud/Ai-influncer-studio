@@ -532,7 +532,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const [selectedAspectRatio, setSelectedAspectRatio] = useState('1:1');
   const [isModelModalOpen, setIsModelModalOpen] = useState(false);
   const [modelSearchQuery, setModelSearchQuery] = useState('');
-  const [modelCategoryFilter, setModelCategoryFilter] = useState<'all' | 'wiro' | 'runware' | 'featured' | 'flux' | 'google' | 'wavespeed' | 'uncensored'>('all');
+  const [modelCategoryFilter, setModelCategoryFilter] = useState<'all' | 'new' | 'wiro' | 'runware' | 'featured' | 'flux' | 'google' | 'wavespeed' | 'uncensored'>('all');
 
   const [selectedLoras, setSelectedLoras] = useState<Array<{ model: string; weight: number; name?: string }>>([]);
   const [loraPanelOpen, setLoraPanelOpen] = useState(false);
@@ -554,6 +554,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       
       if (!matchesSearch) return false;
       if (modelCategoryFilter === 'all') return true;
+      if (modelCategoryFilter === 'new') return Boolean(m.isNew || m.isUpgrade);
       if (modelCategoryFilter === 'wiro') return m.id.toLowerCase().includes('wiro') || m.provider?.toLowerCase().includes('wiro');
       if (modelCategoryFilter === 'runware') return m.id.toLowerCase().includes('runware') || m.provider?.toLowerCase().includes('runware');
       if (modelCategoryFilter === 'featured') return m.id.includes('featured') || m.id.includes('imagen-4') || m.id.includes('flux') || m.id.includes('wavespeed') || m.id.includes('runware:100@1') || m.id.includes('wiro:bytedance');
@@ -1707,7 +1708,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 <optgroup key={provider} label={provider}>
                   {providerModels.map(m => (
                     <option key={m.id} value={m.id}>
-                      {m.name}{m.price > 0 ? (billingInfo?.isCreator ? ` ($${m.price.toFixed(3)})` : ` (${m.price} credits)`) : ' (Free)'}{m.nsfw ? ' 🔞' : ''}{showRefWarning && hasRefImage && !canUseReference(m, models) ? ' ⚠ No ref support' : ''}
+                      {m.name}{m.releaseLabel ? ` ✨ ${m.releaseLabel}` : ''}{m.price > 0 ? (billingInfo?.isCreator ? ` ($${m.price.toFixed(3)})` : ` (${m.price} credits)`) : ' (Free)'}{m.nsfw ? ' 🔞' : ''}{showRefWarning && hasRefImage && !canUseReference(m, models) ? ' ⚠ No ref support' : ''}
                     </option>
                   ))}
                 </optgroup>
@@ -1749,7 +1750,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                   {Object.entries(t2v).map(([provider, ms]) =>
                     ms.map(m => (
                       <option key={m.id} value={m.id}>
-                        {m.name} ({provider}){m.price > 0 ? (billingInfo?.isCreator ? ` $${m.price.toFixed(3)}` : ` ${m.price} credits`) : ' Free'}{m.nsfw ? ' 🔞' : ''}
+                        {m.name}{m.releaseLabel ? ` ✨ ${m.releaseLabel}` : ''} ({provider}){m.price > 0 ? (billingInfo?.isCreator ? ` $${m.price.toFixed(3)}` : ` ${m.price} credits`) : ' Free'}{m.nsfw ? ' 🔞' : ''}
                       </option>
                     ))
                   )}
@@ -1760,7 +1761,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                   {Object.entries(i2v).map(([provider, ms]) =>
                     ms.map(m => (
                       <option key={m.id} value={m.id}>
-                        {m.name} ({provider}){m.price > 0 ? (billingInfo?.isCreator ? ` $${m.price.toFixed(3)}` : ` ${m.price} credits`) : ' Free'}{m.nsfw ? ' 🔞' : ''}
+                        {m.name}{m.releaseLabel ? ` ✨ ${m.releaseLabel}` : ''} ({provider}){m.price > 0 ? (billingInfo?.isCreator ? ` $${m.price.toFixed(3)}` : ` ${m.price} credits`) : ' Free'}{m.nsfw ? ' 🔞' : ''}
                       </option>
                     ))
                   )}
@@ -1771,7 +1772,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                   {Object.entries(v2v).map(([provider, ms]) =>
                     ms.map(m => (
                       <option key={m.id} value={m.id}>
-                        {m.name} ({provider}){m.price > 0 ? (billingInfo?.isCreator ? ` $${m.price.toFixed(3)}` : ` ${m.price} credits`) : ' Free'}{m.nsfw ? ' 🔞' : ''}
+                        {m.name}{m.releaseLabel ? ` ✨ ${m.releaseLabel}` : ''} ({provider}){m.price > 0 ? (billingInfo?.isCreator ? ` $${m.price.toFixed(3)}` : ` ${m.price} credits`) : ' Free'}{m.nsfw ? ' 🔞' : ''}
                       </option>
                     ))
                   )}
@@ -4445,6 +4446,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-hide text-[10px] font-bold">
                 {[
                   { id: 'all', label: `All Models (${models.length})` },
+                  { id: 'new', label: '✨ New & Upgraded' },
                   { id: 'wiro', label: '🌐 Wiro AI' },
                   { id: 'runware', label: '⚡ Runware (Sub-Second)' },
                   { id: 'featured', label: '⭐ Featured' },
@@ -4506,6 +4508,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                           <div>
                             <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
                               {m.name}
+                              {m.releaseLabel && <span className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">✨ {m.releaseLabel}</span>}
                               {m.nsfw && <span className="text-[9px] px-1 py-0.2 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">🔞</span>}
                             </h4>
                             <span className="text-[9px] text-slate-400 font-medium">{m.provider || 'AI Engine'}</span>

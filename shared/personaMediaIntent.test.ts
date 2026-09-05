@@ -4,6 +4,7 @@ import {
   detectExplicitMediaCreationRequest,
   detectIncompleteMediaCreationRequest,
   isConversationalMediaCreationRemark,
+  resolveExecutableMediaCreationRequest,
 } from './personaMediaIntent';
 
 test('does not treat relational language as a media command', () => {
@@ -52,4 +53,21 @@ test('requires a named media asset and usable generation details', () => {
   );
   assert.equal(detectIncompleteMediaCreationRequest('Send me an image.'), 'image');
   assert.equal(detectExplicitMediaCreationRequest('Send me an image.'), undefined);
+});
+
+test('only authorizes media execution from deterministic user intent', () => {
+  assert.equal(resolveExecutableMediaCreationRequest('I want to see you.'), undefined);
+  assert.equal(resolveExecutableMediaCreationRequest('Send me an image.'), undefined);
+  assert.equal(
+    resolveExecutableMediaCreationRequest('Send me a photo of you wearing a red dress by the window.'),
+    'image',
+  );
+  assert.equal(
+    resolveExecutableMediaCreationRequest('Make it brighter.', { hasImageRevision: true }),
+    'image',
+  );
+  assert.equal(
+    resolveExecutableMediaCreationRequest("Don't send another image.", { hasImageRevision: true }),
+    undefined,
+  );
 });
