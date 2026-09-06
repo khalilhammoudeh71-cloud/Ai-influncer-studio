@@ -1715,7 +1715,10 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
             <div className="flex w-full sm:w-auto max-w-full min-w-0 items-center gap-1 bg-[#18181B] p-1 rounded-xl border border-white/10 flex-nowrap overflow-x-auto">
               <button
                 type="button"
-                onClick={() => setImageTab('upload')}
+                onClick={() => {
+                  setImageTab('upload');
+                  fileInputRef.current?.click();
+                }}
                 className={cn(
                   "px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap",
                   imageTab === 'upload' ? "bg-[#E7C477] text-[#161618] font-bold shadow-sm" : "text-slate-400 hover:text-white"
@@ -1746,27 +1749,15 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
             </div>
           </div>
 
-          {imageTab === 'upload' && (
-            /* Upload Dropzone */
-            <div
-              onClick={() => fileInputRef.current?.click()}
-              className="rounded-2xl border-2 border-dashed border-white/15 hover:border-[#E7C477] bg-[#0E0E10] p-8 text-center cursor-pointer transition-all group shadow-inner"
-            >
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleImageUpload}
-                accept="image/*"
-                multiple
-                className="hidden"
-              />
-              <div className="w-12 h-12 rounded-xl bg-[#E7C477] text-[#161618] flex items-center justify-center mx-auto mb-3 shadow-md group-hover:scale-105 transition-transform">
-                <Upload size={22} />
-              </div>
-              <h4 className="text-sm font-bold text-white mb-1">Click or drag photos here</h4>
-              <p className="text-xs text-slate-400">PNG, JPG, WebP photos supported</p>
-            </div>
-          )}
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleImageUpload}
+            accept="image/*"
+            multiple
+            className="hidden"
+            aria-label="Upload reference photos"
+          />
 
           {imageTab === 'ai' && (
             /* AI Text Prompt Generator */
