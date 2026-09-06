@@ -9,60 +9,67 @@ export const PERSONA_LLM_OPTIONS = [
     description: 'Best overall balance of human dialogue, intelligence, and low latency.',
   },
   {
-    id: 'wiro',
-    name: 'Wiro Seed 2.1 Turbo',
-    simpleLabel: 'Fast unrestricted conversation',
-    badge: 'Unrestricted',
-    description: 'Fast persona dialogue through the configured Wiro account.',
+    id: 'atlas-seed-character',
+    name: 'Atlas Doubao Seed Character',
+    simpleLabel: 'Most immersive roleplay',
+    badge: 'Immersive',
+    description: 'Character-focused conversation with strong emotional reactions and low latency.',
+  },
+  {
+    id: 'atlas-deepseek',
+    name: 'Atlas DeepSeek V3.2',
+    simpleLabel: 'Fast detailed conversation',
+    badge: 'Fast',
+    description: 'Fast, detailed dialogue and reasoning through Atlas Cloud.',
   },
   {
     id: 'runware',
     name: 'Runware DeepSeek V4 Pro',
     simpleLabel: 'Most natural conversation',
-    badge: 'Human quality',
+    badge: 'Natural',
     description: 'High-quality conversational fallback through Runware.',
-  },
-  {
-    id: 'deepseek',
-    name: 'WaveSpeed DeepSeek V4 Flash',
-    simpleLabel: 'Lowest-cost quick replies',
-    badge: 'Low cost',
-    description: 'Fast, inexpensive dialogue through WaveSpeed.',
   },
   {
     id: 'venice',
     name: 'Venice Uncensored 1.2',
-    simpleLabel: 'Immersive adult roleplay',
+    simpleLabel: 'Unrestricted roleplay alternative',
     badge: 'Roleplay',
     description: 'Venice-hosted uncensored persona conversation.',
+  },
+  {
+    id: 'gemini',
+    name: 'Gemini 2.5 Flash',
+    simpleLabel: 'Everyday general conversation',
+    badge: 'General',
+    description: 'General-purpose conversation through Google.',
+  },
+  {
+    id: 'deepseek',
+    name: 'WaveSpeed DeepSeek V4 Flash',
+    simpleLabel: 'Lowest-cost replies',
+    badge: 'High latency',
+    description: 'Inexpensive dialogue through WaveSpeed, ranked lower because of measured latency.',
+  },
+  {
+    id: 'wiro',
+    name: 'Wiro Seed 2.1 Turbo',
+    simpleLabel: 'Experimental unrestricted route',
+    badge: 'Unreliable',
+    description: 'Experimental persona dialogue route; recent live tests timed out and used fallback.',
   },
   {
     id: 'atlas-qwen',
     name: 'Atlas Qwen 3.6 Plus',
     simpleLabel: 'Creative and multilingual',
-    badge: 'Creative',
-    description: 'Creative and multilingual conversation through Atlas Cloud.',
-  },
-  {
-    id: 'atlas-deepseek',
-    name: 'Atlas DeepSeek V3.2',
-    simpleLabel: 'Deep reasoning and detail',
-    badge: 'Reasoning',
-    description: 'Detailed dialogue and reasoning through Atlas Cloud.',
+    badge: 'Experimental',
+    description: 'Creative multilingual route; recent persona benchmark did not return a usable reply.',
   },
   {
     id: 'atlas-glm',
     name: 'Atlas GLM-4.6',
     simpleLabel: 'Balanced alternative',
-    badge: 'Alternate',
-    description: 'An alternate conversational model through Atlas Cloud.',
-  },
-  {
-    id: 'gemini',
-    name: 'Gemini 2.5 Flash',
-    simpleLabel: 'Fast everyday conversation',
-    badge: 'Fast',
-    description: 'Low-latency general conversation through Google.',
+    badge: 'Experimental',
+    description: 'Alternate route; recent persona benchmark did not return a usable reply.',
   },
 ] as const;
 
@@ -81,6 +88,8 @@ export function normalizePersonaLlmId(value: unknown): PersonaLlmId {
 
 export function getAtlasPersonaModelId(value: unknown): string | undefined {
   switch (normalizePersonaLlmId(value)) {
+    case 'atlas-seed-character':
+      return 'bytedance/doubao-seed-character-260628';
     case 'atlas-qwen':
       return 'qwen/qwen3.6-plus';
     case 'atlas-glm':

@@ -4063,6 +4063,32 @@ ${companionDirective ? `${companionDirective}\n` : ''}1. EQUAL CONFIDANTE & CHAR
       Boolean(selectedAtlasModel) ||
       ['grok', 'wiro', 'runware', 'deepseek'].includes(modelTarget)
     )) {
+      // Branch 0: Doubao Seed Character, benchmarked specifically for
+      // emotionally responsive persona dialogue.
+      if (selectedAtlasModel === 'bytedance/doubao-seed-character-260628') {
+        try {
+          console.log('[Persona Chat] Routing to Atlas Cloud Doubao Seed Character...');
+          const seedRes = await fetch(`${ATLASCLOUD_BASE}/v1/chat/completions`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${atlasKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: selectedAtlasModel,
+              messages: chatMsgs,
+              temperature: 0.85,
+              max_tokens: 1500,
+            }),
+            signal: AbortSignal.timeout(9000),
+          });
+          if (seedRes.ok) {
+            const seedData = await seedRes.json() as any;
+            const r = seedData.choices?.[0]?.message?.content?.trim();
+            if (r && !isRefusal(r)) finalReply = r;
+          }
+        } catch (seedError) {
+          console.warn('[Persona Chat] Doubao Seed Character error:', seedError);
+        }
+      }
+
       // Branch A: DeepSeek-V3.2
       if ((!selectedAtlasModel || selectedAtlasModel === 'deepseek-ai/deepseek-v3.2') && !attemptedWaveSpeedDeepSeek) {
         try {

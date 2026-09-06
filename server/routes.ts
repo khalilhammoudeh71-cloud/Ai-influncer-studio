@@ -2507,6 +2507,40 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
       ['grok', 'wiro', 'runware', 'deepseek'].includes(requestedConversationModel)
     )) {
       const selectedAtlasModel = getAtlasPersonaModelId(requestedConversationModel);
+      // Branch 0: Doubao Seed Character
+      if (!text && selectedAtlasModel === 'bytedance/doubao-seed-character-260628') {
+        try {
+          console.log('[Voice Chat LLM] Generating response via Atlas Cloud Doubao Seed Character...');
+          const seedRes = await fetch('https://api.atlascloud.ai/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${ATLAS_KEY}`,
+              'Content-Type': 'application/json'
+            },
+            signal: AbortSignal.timeout(9000),
+            body: JSON.stringify({
+              model: selectedAtlasModel,
+              messages: [
+                { role: 'system', content: naturalVoiceSystemPrompt },
+                ...rawHistory.map((m: any) => ({
+                  role: (m.role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
+                  content: String(m.content || m.parts?.[0]?.text || '').trim() || 'Hello'
+                }))
+              ],
+              temperature: 0.85,
+              max_tokens: 500
+            })
+          });
+          if (seedRes.ok) {
+            const seedData = await seedRes.json();
+            const rawReply = seedData.choices?.[0]?.message?.content || '';
+            if (rawReply && !isRefusal(rawReply)) text = cleanSpokenDialogue(rawReply);
+          }
+        } catch (seedError) {
+          console.warn('[Voice Chat LLM] Doubao Seed Character error:', seedError);
+        }
+      }
+
       // Branch A: DeepSeek-V3.2
       if (!selectedAtlasModel || selectedAtlasModel === 'deepseek-ai/deepseek-v3.2') try {
         console.log('[Voice Chat LLM] 🧠 Generating response via Atlas Cloud DeepSeek-V3.2...');

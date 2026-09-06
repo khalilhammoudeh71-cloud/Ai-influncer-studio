@@ -23,10 +23,26 @@ test('normalizes saved aliases without changing explicit supported choices', () 
 });
 
 test('maps every Atlas selector to the exact backend model', () => {
+  assert.equal(getAtlasPersonaModelId('atlas-seed-character'), 'bytedance/doubao-seed-character-260628');
   assert.equal(getAtlasPersonaModelId('atlas-qwen'), 'qwen/qwen3.6-plus');
   assert.equal(getAtlasPersonaModelId('atlas-deepseek'), 'deepseek-ai/deepseek-v3.2');
   assert.equal(getAtlasPersonaModelId('atlas-glm'), 'zai-org/GLM-4.6');
   assert.equal(getAtlasPersonaModelId('grok'), undefined);
+});
+
+test('orders Persona Chat choices from most to least recommended', () => {
+  assert.deepEqual(PERSONA_LLM_OPTIONS.map(option => option.id), [
+    'grok',
+    'atlas-seed-character',
+    'atlas-deepseek',
+    'runware',
+    'venice',
+    'gemini',
+    'deepseek',
+    'wiro',
+    'atlas-qwen',
+    'atlas-glm',
+  ]);
 });
 
 test('exposes unique selectable model ids', () => {

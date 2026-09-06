@@ -4569,9 +4569,9 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                     title={isPro ? 'Select conversation LLM' : 'Choose what the conversation should prioritize'}
                     aria-label={isPro ? 'Conversation LLM' : 'Conversation priority'}
                   >
-                    {PERSONA_LLM_OPTIONS.map(model => (
+                    {PERSONA_LLM_OPTIONS.map((model, index) => (
                       <option key={model.id} value={model.id} className="bg-[#1c1d22] text-white">
-                        {isPro ? `${model.name} (${model.badge})` : model.simpleLabel}
+                        {`${index + 1}. ${isPro ? `${model.name} (${model.badge})` : model.simpleLabel}`}
                       </option>
                     ))}
                   </select>
@@ -5432,9 +5432,9 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                       className="w-full bg-[#1c1d22] border border-white/[0.1] hover:border-white/20 focus:border-white/30 rounded-xl px-3.5 py-3 text-sm text-white font-medium outline-none cursor-pointer appearance-none transition-all pr-9 shadow-inner"
                       aria-label={isPro ? 'Conversation LLM' : 'Conversation priority'}
                     >
-                      {PERSONA_LLM_OPTIONS.map(model => (
+                      {PERSONA_LLM_OPTIONS.map((model, index) => (
                         <option key={model.id} value={model.id} className="bg-[#1c1d22] text-white">
-                          {isPro ? `${model.name} (${model.badge})` : model.simpleLabel}
+                          {`${index + 1}. ${isPro ? `${model.name} (${model.badge})` : model.simpleLabel}`}
                         </option>
                       ))}
                     </select>
