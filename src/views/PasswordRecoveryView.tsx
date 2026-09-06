@@ -55,7 +55,7 @@ export default function PasswordRecoveryView({ onComplete, onCancel }: PasswordR
               <CheckCircle2 size={30} />
             </div>
             <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-emerald-400 mb-3">Password updated</p>
-            <h1 className="text-2xl font-black mb-3">Your account is secure</h1>
+            <h1 className="text-2xl font-black mb-3">Password updated</h1>
             <p className="text-sm text-white/60 leading-relaxed mb-7">
               Your new password is active. You can continue directly to your studio.
             </p>

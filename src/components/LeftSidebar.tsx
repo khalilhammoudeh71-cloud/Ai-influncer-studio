@@ -35,17 +35,17 @@ interface NavigationItem {
 }
 
 const primaryItems: NavigationItem[] = [
-  { id: 'personas', label: 'Personas', description: 'Create and manage identities', icon: Users, tabTarget: 'personas' },
-  { id: 'create', label: 'Create', description: 'Images, video, voice, and more', icon: Sparkles, tabTarget: 'create' },
-  { id: 'tools', label: 'AI Toolbox', description: 'Edit, enhance, and build content', icon: Wrench, tabTarget: 'intelligence' },
-  { id: 'library', label: 'Library', description: 'Review every generated asset', icon: Images, tabTarget: 'gallery' },
-  { id: 'planner', label: 'Planner', description: 'Plan and schedule content', icon: CalendarDays, tabTarget: 'planner' },
+  { id: 'personas', label: 'Personas', description: 'Your AI influencers', icon: Users, tabTarget: 'personas' },
+  { id: 'create', label: 'Create content', description: 'Make photos, videos, and audio', icon: Sparkles, tabTarget: 'create' },
+  { id: 'tools', label: 'Editing tools', description: 'Edit, enhance, and build content', icon: Wrench, tabTarget: 'intelligence' },
+  { id: 'library', label: 'Library', description: 'Find and download your creations', icon: Images, tabTarget: 'gallery' },
+  { id: 'planner', label: 'Content planner', description: 'Plan and schedule content', icon: CalendarDays, tabTarget: 'planner' },
 ];
 
 const secondaryItems: NavigationItem[] = [
   { id: 'chat', label: 'Persona Chat', description: 'Text and live voice conversations', icon: MessageCircle, tabTarget: 'assistant' },
-  { id: 'agent', label: 'Super Agent', description: 'Coordinate complex creator tasks', icon: Bot, tabTarget: 'agent' },
-  { id: 'analytics', label: 'Analytics', description: 'Performance and audience insights', icon: BarChart3, tabTarget: 'trends' },
+  { id: 'agent', label: 'AI assistant', description: 'Get help with multi-step tasks', icon: Bot, tabTarget: 'agent' },
+  { id: 'analytics', label: 'Trends', description: 'Explore Instagram and TikTok ideas', icon: BarChart3, tabTarget: 'trends' },
 ];
 
 function isItemActive(item: NavigationItem, activeTab: Tab) {
@@ -60,7 +60,7 @@ export default function LeftSidebar({
   onMobileClose,
 }: LeftSidebarProps) {
   const hasActiveSecondaryItem = secondaryItems.some((item) => isItemActive(item, activeTab));
-  const [moreOpen, setMoreOpen] = useState(hasActiveSecondaryItem);
+  const [moreOpen, setMoreOpen] = useState(true);
 
   useEffect(() => {
     if (hasActiveSecondaryItem) setMoreOpen(true);
@@ -139,10 +139,10 @@ export default function LeftSidebar({
               <img src="/logo.png" alt="" className="h-full w-full object-contain" />
             </span>
             <span className="min-w-0">
-              <span className="block truncate font-['Cinzel',serif] text-[13px] font-bold tracking-[0.02em] text-[var(--text-primary)]">
-                AI INFLUENCER
+              <span className="block truncate font-sans text-[13px] font-bold tracking-[0.02em] text-[var(--text-primary)]">
+                AI Influencer
               </span>
-              <span className="mt-1 block text-[8px] font-bold uppercase tracking-[0.42em] text-[var(--accent-primary)]">
+              <span className="mt-1 block text-xs font-medium tracking-normal text-[var(--accent-primary)]">
                 Studio
               </span>
             </span>
@@ -158,7 +158,7 @@ export default function LeftSidebar({
         </div>
 
         <nav aria-label="Main navigation" className="custom-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4">
-          <p className="mb-2 px-3 text-[9px] font-bold uppercase tracking-[0.25em] text-[var(--text-muted)]">Workspace</p>
+          <p className="mb-2 px-3 text-xs font-semibold tracking-normal text-[var(--text-muted)]">Workspace</p>
           <div className="space-y-1">{primaryItems.map(renderNavigationItem)}</div>
 
           <div className="my-4 h-px bg-[var(--border-subtle)]" />
@@ -178,8 +178,8 @@ export default function LeftSidebar({
               <MoreHorizontal size={17} />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block text-[13px] font-semibold">More</span>
-              <span className="mt-0.5 block truncate text-[11px] text-[var(--text-muted)]">Chat, agent, and analytics</span>
+              <span className="block text-[13px] font-semibold">Explore more</span>
+              <span className="mt-0.5 block truncate text-[11px] text-[var(--text-muted)]">Conversations, ideas, and assistance</span>
             </span>
             <ChevronDown size={15} className={cn('transition-transform', moreOpen && 'rotate-180')} />
           </button>
@@ -202,6 +202,7 @@ export default function LeftSidebar({
         </nav>
 
         <div className="border-t border-[var(--border-subtle)] p-3">
+          <button type="button" onClick={() => handleNavigate('create-persona')} className="studio-sidebar-start"><Sparkles size={17} /><span>New to the studio?<small>Create your first AI influencer</small></span></button>
           <button
             type="button"
             onClick={() => handleNavigate('settings')}
@@ -218,7 +219,7 @@ export default function LeftSidebar({
             </span>
             <span>
               <span className="block text-[13px] font-semibold">Settings</span>
-              <span className="mt-0.5 block text-[11px] text-[var(--text-muted)]">Providers and preferences</span>
+              <span className="mt-0.5 block text-[11px] text-[var(--text-muted)]">Account, connections, and appearance</span>
             </span>
           </button>
         </div>

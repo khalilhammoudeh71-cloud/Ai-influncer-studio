@@ -309,17 +309,17 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
         <header className="border-b border-[#E7C477]/10 pb-4">
           <h1 className="text-3xl md:text-4xl font-serif text-[#F5F1E8] tracking-tight flex items-center gap-3">
             Settings
-            <span className="text-[#E7C477] text-xl font-normal">✨</span>
+
           </h1>
-          <p className="text-xs md:text-sm text-[#8C909A] mt-1 font-sans">Manage your studio, creator identity, preferences, and integrations.</p>
+          <p className="text-xs md:text-sm text-[#8C909A] mt-1 font-sans">Manage your account, connected services, and how your studio looks.</p>
         </header>
 
         <nav aria-label="Settings sections" className="sticky top-0 z-30 -mx-2 overflow-x-auto border-b border-white/[0.06] bg-[var(--bg-base)]/95 px-2 py-2 backdrop-blur-xl">
           <div className="flex min-w-max gap-1.5">
             {[
-              ['identity', 'Identity'],
+              ['identity', 'Your profile'],
               ['models', 'Models'],
-              ['integrations', 'Integrations'],
+              ['integrations', 'Connections'],
               ['billing', 'Billing'],
               ['appearance', 'Appearance'],
               ['account', 'Account'],

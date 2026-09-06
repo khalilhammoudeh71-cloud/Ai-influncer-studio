@@ -263,9 +263,9 @@ export default function PersonaBuilderView({ persona: initialPersona, onChange, 
             <div>
               <p className="text-[10px] font-extrabold text-[#00D4FF] tracking-[0.2em] uppercase mb-1 drop-shadow-[0_0_8px_rgba(0,212,255,0.4)]">Persona Builder</p>
               <h1 className="text-[32px] font-black tracking-tight text-white mb-1 leading-none flex items-center gap-2">
-                Create Your Persona <Sparkles size={26} className="text-[#00D4FF]" />
+                Create your persona <Sparkles size={26} className="text-[#00D4FF]" />
               </h1>
-              <p className="text-sm font-medium text-[#94A3B8]">Build a reusable AI identity for images, videos, talking avatars, and content.</p>
+              <p className="text-sm font-medium text-[#94A3B8]">Save a character you can use across photos, videos, voiceovers, and posts.</p>
             </div>
             <div className="flex justify-end mt-2 md:mt-0">
               <ProModeToggle isPro={isPro} onToggle={togglePro} />

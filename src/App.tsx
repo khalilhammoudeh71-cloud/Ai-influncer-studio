@@ -132,14 +132,14 @@ function StudioLoadingShell() {
 
 const SECTION_LABELS: Record<Tab, string> = {
   personas: 'Personas',
-  'create-persona': 'Personas',
-  create: 'Create',
+  'create-persona': 'Create a persona',
+  create: 'Create content',
   gallery: 'Library',
-  planner: 'Planner',
+  planner: 'Content planner',
   assistant: 'Persona Chat',
-  agent: 'Super Agent',
-  trends: 'Analytics',
-  intelligence: 'Advanced Tools',
+  agent: 'AI assistant',
+  trends: 'Trends',
+  intelligence: 'Editing tools',
   revenue: 'Revenue',
   settings: 'Settings',
 };
@@ -927,7 +927,8 @@ function App() {
 
 
   return (
-    <div className="app-shell flex h-screen w-full max-w-full overflow-hidden bg-[var(--bg-base)] text-[var(--text-primary)]">
+    <div className="app-shell studio-workspace flex h-screen w-full max-w-full overflow-hidden bg-[var(--bg-base)] text-[var(--text-primary)]">
+      <a href="#studio-content" className="studio-skip-link">Skip to page content</a>
       {/* Left Sidebar Navigation */}
       <LeftSidebar 
         activeTab={activeTab} 
@@ -983,7 +984,7 @@ function App() {
                 onClick={() => setShowCommandPalette(true)}
                 className="w-full cursor-pointer truncate rounded-xl border border-[var(--border-default)] bg-[var(--bg-input)] py-2.5 pl-10 pr-12 text-left text-xs text-[var(--text-tertiary)] transition-all hover:border-[var(--border-strong)] focus:outline-none"
               >
-                What do you want to make?
+                Find a tool or describe your idea
               </button>
               <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none">
                 <kbd className="rounded border border-[var(--border-default)] bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--text-tertiary)]">⌘ K</kbd>
@@ -998,7 +999,7 @@ function App() {
               type="button"
               onClick={() => setShowCommandPalette(true)}
               className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-[var(--border-default)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] transition-all hover:border-[var(--border-strong)] hover:text-[var(--accent-primary)] lg:hidden"
-              title="What do you want to make?"
+              title="Find a tool or describe your idea"
               aria-label="Open creation command bar"
             >
               <Search size={16} />
@@ -1011,8 +1012,8 @@ function App() {
               type="button"
               onClick={() => setShowMediaJobCenter(true)}
               className="relative flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-[var(--border-default)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] transition-all hover:border-[var(--border-strong)] hover:text-[var(--accent-primary)]"
-              title="Open media jobs"
-              aria-label="Open media jobs"
+              title="View generation progress"
+              aria-label="View generation progress"
             >
               <Sparkles size={16} />
             </button>
@@ -1146,9 +1147,9 @@ function App() {
           {deduped.map((entry, i) => {
             const viewLabels: Record<string, string> = {
               'personas': 'Personas', 'create': 'Create', 'gallery': 'Library',
-              'assistant': 'Persona Chat', 'intelligence': 'AI Toolbox', 'agent': 'Super Agent',
+              'assistant': 'Persona Chat', 'intelligence': 'Editing tools', 'agent': 'AI assistant',
               'settings': 'Settings', 'persona-builder': 'Persona Builder',
-              'trends': 'Trend Radar',
+              'trends': 'Trends', 'planner': 'Content planner', 'revenue': 'Revenue', 'create-persona': 'Create persona',
             };
             const subViewLabels: Record<string, string> = {
               'ai-tools': 'AI Tools', 'planner': 'Content Planner', 'voice': 'Voice Studio',
@@ -1167,7 +1168,7 @@ function App() {
                       for (let j = 0; j < navStack.length - origIdx - 1; j++) popView();
                     }
                   }}
-                  className={`uppercase tracking-[0.12em] transition-colors ${
+                  className={`text-xs transition-colors ${
                     isLast ? 'text-[var(--accent-primary)]' : 'cursor-pointer text-[var(--text-muted)] hover:text-[var(--text-primary)]'
                   }`}
                 >
@@ -1176,7 +1177,7 @@ function App() {
                 {isLast && entry.subView && (
                   <>
                     <span className="text-[var(--text-muted)]">/</span>
-                    <span className="uppercase tracking-[0.12em] text-[var(--accent-primary)]">
+                    <span className="text-xs text-[var(--accent-primary)]">
                       {subViewLabels[entry.subView] || entry.subView}
                     </span>
                   </>
@@ -1189,8 +1190,8 @@ function App() {
       })()}
 
       {/* ── Content ─────────────────────────────────────────────── */}
-      <main className="relative z-10 flex-1 overflow-y-auto pb-[72px] lg:pb-0">
-        <div className={`w-full h-full ${tabDirectionRef.current === 'right' ? 'tab-enter-right' : 'tab-enter-left'}`} key={activeTab}>
+      <main id="studio-content" tabIndex={-1} className="relative z-10 min-h-0 flex-1 overflow-y-auto pb-[calc(72px+env(safe-area-inset-bottom))] lg:pb-0">
+        <div className={`studio-page w-full h-full ${tabDirectionRef.current === 'right' ? 'tab-enter-right' : 'tab-enter-left'}`} key={activeTab}>
           {renderContent()}
         </div>
       </main>

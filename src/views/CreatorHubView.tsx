@@ -11,7 +11,6 @@ import { Persona, NavActions } from '../types';
 import toast from 'react-hot-toast';
 import { cn } from '../utils/cn';
 import AIToolsView from './AIToolsView';
-import { useProMode } from '../utils/useProMode';
 
 interface CreatorHubViewProps {
   persona: Persona;
@@ -105,10 +104,7 @@ const TOOLS_CONFIG = [
 ];
 
 export default function CreatorHubView({ persona: activePersona, personas, nav, initialTool, billingInfo }: CreatorHubViewProps) {
-  const [isPro] = useProMode();
   const [toolboxSection, setToolboxSection] = useState<'all' | 'creative' | 'marketing'>('all');
-  const [simpleTool, setSimpleTool] = useState<any>(null);
-  const [showAllSimpleTools, setShowAllSimpleTools] = useState(false);
 
   useEffect(() => {
     if (initialTool) {
@@ -287,30 +283,16 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
     }
   };
 
-  const openCreativeTool = (toolId: string) => {
-    setSimpleTool(toolId);
-    setToolboxSection('creative');
-  };
-
-  const simpleStarts = [
-    { id: 'enhance', title: 'Enhance a photo', desc: 'Improve clarity and resolution', icon: Sparkles, action: () => openCreativeTool('upscaler') },
-    { id: 'background', title: 'Change a background', desc: 'Remove it or move the scene', icon: RefreshCw, action: () => openCreativeTool('bg-remover') },
-    { id: 'face', title: 'Swap a face', desc: 'Blend an identity naturally', icon: Users, action: () => openCreativeTool('face-swap') },
-    { id: 'outfit', title: 'Try on an outfit', desc: 'Preview clothing from a photo', icon: Award, action: () => openCreativeTool('virtual-tryon') },
-    { id: 'avatar', title: 'Make a talking avatar', desc: 'Animate a photo with voice', icon: MessageSquare, action: () => nav.push({ view: 'create', subView: 'talking-avatar' }) },
-    { id: 'plan', title: 'Plan social content', desc: 'Build ideas and a posting plan', icon: Target, action: () => nav.push({ view: 'planner' }) },
-  ];
-
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto min-h-full select-none">
       <header className="mb-6 flex flex-col md:flex-row justify-between items-start md:items-center border-b border-[#E7C477]/10 pb-4">
         <div>
           <h1 className="text-3xl md:text-4xl font-serif text-[#F5F1E8] tracking-tight flex items-center gap-3">
-            AI Toolbox
-            <span className="text-[#E7C477] text-xl font-normal">✨</span>
+            Editing tools
+
           </h1>
           <p className="text-xs md:text-sm text-[#8C909A] mt-1 font-sans">
-            Unified suite of visual creative editing and strategic marketing tools for{' '}
+            Edit photos, improve videos, or plan content for{' '}
             <span className="text-[#F2D58D] font-medium">{activePersona.name || 'your persona'}</span>.
           </p>
         </div>
@@ -375,54 +357,13 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
 
       {toolboxSection === 'all' && (
         <div className="space-y-12">
-          {!isPro && !showAllSimpleTools ? (
-            <section className="rounded-3xl border border-[#E7C477]/20 bg-[linear-gradient(145deg,rgba(231,196,119,0.08),rgba(14,21,35,0.92)_45%,rgba(0,212,255,0.05))] p-4 shadow-2xl shadow-black/30 sm:p-6">
-              <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#E7C477]">Recommended starts</p>
-                  <h2 className="mt-1 text-xl font-serif text-[#F5F1E8]">What would you like to do?</h2>
-                  <p className="mt-1 text-xs text-[#8C909A]">Choose a result. The studio will open the right tool for you.</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowAllSimpleTools(true)}
-                  className="w-fit cursor-pointer rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-[#D9BA72] transition-colors hover:border-[#E7C477]/30 hover:bg-[#E7C477]/10"
-                >
-                  Browse every tool
-                </button>
-              </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {simpleStarts.map(item => {
-                  const Icon = item.icon;
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={item.action}
-                      className="group flex cursor-pointer items-center gap-3 rounded-2xl border border-white/10 bg-[#11141B]/90 p-4 text-left transition-all hover:-translate-y-0.5 hover:border-[#E7C477]/35 hover:bg-[#18181B]"
-                    >
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#E7C477]/20 bg-[#E7C477]/10 text-[#F2D58D]">
-                        <Icon size={18} />
-                      </span>
-                      <span className="min-w-0">
-                        <span className="block text-sm font-semibold text-[#F5F1E8]">{item.title}</span>
-                        <span className="mt-0.5 block text-[10px] text-[#8C909A]">{item.desc}</span>
-                      </span>
-                      <ChevronRight size={15} className="ml-auto shrink-0 text-[#6F7480] transition-transform group-hover:translate-x-0.5 group-hover:text-[#E7C477]" />
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
-          ) : (
-            <>
               {/* Creative Section */}
               <div className="space-y-4">
                 <div className="flex items-center gap-2.5 pb-2 border-b border-[#E7C477]/10">
                   <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#F2D58D] to-[#B99655] flex items-center justify-center text-[#141416] shadow-sm">
                     <Sparkles size={14} />
                   </div>
-                  <h2 className="text-sm font-bold text-[#F5F1E8] uppercase tracking-wider">Creative & Image/Video Production Suite</h2>
+                  <h2 className="text-sm font-bold text-[#F5F1E8] uppercase tracking-wider">Photo and video tools</h2>
                 </div>
                 <AIToolsView
                   persona={activePersona}
@@ -440,7 +381,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                   <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#F2D58D] to-[#B99655] flex items-center justify-center text-[#141416] shadow-sm">
                     <Wrench size={14} />
                   </div>
-                  <h2 className="text-sm font-bold text-[#F5F1E8] uppercase tracking-wider">Strategic Marketing & Co-Pilot Suite</h2>
+                  <h2 className="text-sm font-bold text-[#F5F1E8] uppercase tracking-wider">Content and marketing tools</h2>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -474,8 +415,6 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                   })}
                 </div>
               </div>
-            </>
-          )}
         </div>
       )}
 
@@ -485,7 +424,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
           personas={personas} 
           onSelectPersona={() => {}} 
           nav={nav} 
-          initialTool={simpleTool || initialTool}
+          initialTool={initialTool}
           billingInfo={billingInfo}
         />
       )}

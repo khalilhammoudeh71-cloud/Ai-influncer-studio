@@ -469,10 +469,10 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
         <div>
           <h1 className="text-3xl md:text-4xl font-serif text-[#F5F1E8] tracking-tight flex items-center gap-3">
             Content Planner
-            <span className="text-[#E7C477] text-xl font-normal">✨</span>
+
           </h1>
           <p className="text-xs md:text-sm text-[#8C909A] mt-1 font-sans">
-            Plan, schedule, and publish content that drives growth.
+            Choose a persona, collect post ideas, and organize your publishing calendar.
           </p>
         </div>
 

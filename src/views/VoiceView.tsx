@@ -990,10 +990,10 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
           <div>
             <h1 className="text-3xl md:text-4xl font-serif text-[#F5F1E8] tracking-tight flex items-center gap-3">
               Voice Studio
-              <span className="text-[#E7C477] text-xl font-normal">✨</span>
+
             </h1>
             <p className="text-xs md:text-sm text-[#8C909A] mt-1 font-sans">
-              Create, clone, and customize voices that sound uniquely you.
+              Turn your script into speech, choose a saved voice, or create a new one.
             </p>
           </div>
           <div className="flex w-full min-w-0 flex-col items-stretch gap-3 sm:w-auto sm:flex-row sm:items-center sm:gap-4">

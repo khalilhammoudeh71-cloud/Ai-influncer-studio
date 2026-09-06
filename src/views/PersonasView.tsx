@@ -1,4 +1,4 @@
-import { Plus, Search, Edit2, Trash2, X, Check, Camera, Upload, Image as ImageIcon, AlertTriangle, Sparkles, ArrowLeft, Download, Heart, Trash, Eye, Loader2, ChevronDown, Cpu, Wand2, Pencil, ArrowUpCircle, Film, LayoutGrid, MessageSquare, Mic, Users, ChevronRight, DollarSign, Wrench, PlusCircle, Calendar, TrendingUp, CheckCircle2, Clock, Share2, Play, ExternalLink, ArrowUpRight, ArrowDownRight, Layers, Sliders, MoreVertical } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, X, Check, Camera, Upload, Image as ImageIcon, AlertTriangle, Sparkles, ArrowRight, ArrowLeft, Download, Heart, Trash, Eye, Loader2, ChevronDown, Cpu, Wand2, Pencil, ArrowUpCircle, Film, LayoutGrid, MessageSquare, Mic, Users, ChevronRight, DollarSign, Wrench, PlusCircle, Calendar, TrendingUp, CheckCircle2, Clock, Share2, Play, ExternalLink, ArrowUpRight, ArrowDownRight, Layers, Sliders, MoreVertical } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../utils/cn';
@@ -54,141 +54,27 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
   }, [activePersonas, searchQuery]);
 
   return (
-    <div className="p-6 md:p-10 max-w-[1500px] mx-auto space-y-10 select-none pb-24">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-[1320px] mx-auto space-y-7 select-none pb-24">
       
-      {/* Keep the aspirational hero for an empty workspace. Returning creators land on their roster. */}
-      {activePersonas.length === 0 && <div className="relative rounded-[28px] overflow-hidden border border-[#E7C477]/15 shadow-2xl bg-[#1E1E22]">
-        {/* Background Ambient Layers */}
-        <div className="absolute inset-0 bg-gradient-to-br from-[#1E1E22] via-[#161618] to-[#121214]" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,rgba(231,196,119,0.08),transparent_50%)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_right,rgba(138,88,168,0.06),transparent_50%)]" />
-        
-        {/* Grid pattern */}
-        <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)', backgroundSize: '60px 60px' }} />
-
-        <div className="relative z-10 flex flex-col lg:flex-row items-center gap-8 p-8 lg:p-12">
-          {/* Left: Text Content */}
-          <div className="flex-1 text-center lg:text-left space-y-4">
-            <motion.div
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5 }}
-            >
-              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#E7C477]/10 border border-[#E7C477]/25 mb-4">
-                <Sparkles size={13} className="text-[#D9BA72]" />
-                <span className="text-[10px] font-bold text-[#F2D58D] uppercase tracking-wider">AI-Powered Studio</span>
-              </div>
-              
-              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-serif text-[#F5F1E8] mb-3 leading-tight tracking-tight">
-                Create Your <span className="bg-gradient-to-r from-[#F2D58D] via-[#E7C477] to-[#B99655] bg-clip-text text-transparent">AI Persona</span>
-              </h1>
-              
-              <p className="text-xs sm:text-sm lg:text-base text-[#D4D4D8] mb-6 max-w-lg leading-relaxed font-sans">
-                Design unique AI influencers with consistent identity. Generate photos, videos, voice & content — all from one persona.
-              </p>
-              
-              <div className="flex flex-col sm:flex-row gap-3 justify-center lg:justify-start">
-                <motion.button 
-                  onClick={handleAddPersona}
-                  whileHover={{ scale: 1.03, y: -2 }}
-                  whileTap={{ scale: 0.97 }}
-                  className="btn-gold-primary px-8 py-3.5 text-xs font-semibold flex items-center justify-center gap-2.5 cursor-pointer shadow-xl shadow-amber-950/40"
-                >
-                  <Plus size={18} />
-                  <span>{activePersonas.length === 0 ? 'Create Your First Persona' : 'Create Another Persona'}</span>
-                </motion.button>
-              </div>
-            </motion.div>
-          </div>
-          
-          {/* Right: Floating Staggered Showcase Cards (Always display sample sample personas) */}
-          <div className="relative w-full lg:w-[440px] h-[290px] shrink-0">
-            {(() => {
-              const displayPersonas = [
-                { 
-                  id: 'sample-1', 
-                  name: 'Haute Couture Muse', 
-                  niche: 'Style • High Luxury', 
-                  avatar: '/examples/showcase_haute_couture.png',
-                  fallback: '/examples/influencer1.png'
-                },
-                { 
-                  id: 'sample-2', 
-                  name: 'Cyberpunk Icon', 
-                  niche: 'Futuristic & Edgy', 
-                  avatar: '/examples/showcase_tokyo_cyberpunk.png',
-                  fallback: '/examples/influencer2.png'
-                },
-                { 
-                  id: 'sample-3', 
-                  name: 'Amalfi Ambassador', 
-                  niche: 'Luxury Travel & Vlogs', 
-                  avatar: '/examples/showcase_amalfi_villa.png',
-                  fallback: '/examples/influencer3.png'
-                }
-              ];
-
-              const cardStyles = [
-                "absolute top-2 right-0 w-[165px] h-[205px] rounded-2xl overflow-hidden border border-[#E7C477]/30 shadow-2xl z-30 group bg-[#161618] cursor-pointer",
-                "absolute top-8 left-4 w-[155px] h-[195px] rounded-2xl overflow-hidden border border-[#E7C477]/30 shadow-2xl z-20 group bg-[#161618] cursor-pointer",
-                "absolute bottom-0 left-1/2 -translate-x-1/2 w-[145px] h-[175px] rounded-2xl overflow-hidden border border-[#E7C477]/30 shadow-2xl z-10 group bg-[#161618] cursor-pointer"
-              ];
-
-              const anims = [
-                { initial: { opacity: 0, x: 30, rotate: 5 }, animate: { opacity: 1, x: 0, rotate: 3 }, delay: 0.2 },
-                { initial: { opacity: 0, x: -30, rotate: -5 }, animate: { opacity: 1, x: 0, rotate: -4 }, delay: 0.4 },
-                { initial: { opacity: 0, y: 30 }, animate: { opacity: 1, y: 0 }, delay: 0.6 }
-              ];
-
-              return displayPersonas.map((p: any, i: number) => (
-                <motion.div
-                  key={p.id || i}
-                  initial={anims[i % 3].initial}
-                  animate={anims[i % 3].animate}
-                  transition={{ duration: 0.7, delay: anims[i % 3].delay }}
-                  className={cardStyles[i % 3]}
-                  onClick={handleAddPersona}
-                >
-                  <img 
-                    src={p.avatar} 
-                    alt={p.name} 
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
-                    onError={(e) => { 
-                      const target = e.target as HTMLImageElement;
-                      if (target.src !== p.fallback) target.src = p.fallback;
-                    }}
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-[#121214]/90 via-[#121214]/20 to-transparent" />
-                  <div className="absolute bottom-2.5 left-2.5 right-2.5">
-                    <p className="text-[10px] font-serif text-[#F5F1E8] truncate">{p.name}</p>
-                    <p className="text-[8px] text-[#A1A1AA] truncate">{p.niche}</p>
-                  </div>
-                </motion.div>
-              ));
-            })()}
-
-            {/* Ambient Gold Glow Orbs */}
-            <motion.div 
-              animate={{ y: [0, -10, 0], opacity: [0.2, 0.4, 0.2] }}
-              transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
-              className="absolute top-0 left-1/2 w-24 h-24 bg-[#E7C477]/15 rounded-full blur-2xl pointer-events-none"
-            />
-          </div>
-        </div>
-      </div>}
+      <header className="studio-page-heading"><div><h1>Your influencers</h1><p>A persona is your character’s saved look, voice, and personality.</p></div></header>
+      <nav className="studio-journey" aria-label="Creator workflow">
+        <button onClick={handleAddPersona}><span>1</span><div><strong>Create a persona</strong><small>Give your character a face and identity</small></div><Plus size={17} /></button>
+        <button onClick={() => navigateToTab?.('create')}><span>2</span><div><strong>Make your content</strong><small>Start with a photo, video, or voiceover</small></div><ArrowRight size={17} /></button>
+        <button onClick={() => navigateToTab?.('gallery')}><span>3</span><div><strong>Find your creations</strong><small>Review and download from your Library</small></div><ArrowRight size={17} /></button>
+      </nav>
 
       {/* ── AI PERSONA ROSTER GRID (PLACED PROMINENTLY ABOVE OTHER SECTIONS) ── */}
       <div className="space-y-5 pt-2">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <h2 className="text-2xl font-serif text-[#F5F1E8] flex items-center gap-3">
-              Your AI Personas
+              Saved personas
               <span className="text-xs px-3 py-1 rounded-full bg-[#E7C477]/10 text-[#F2D58D] border border-[#E7C477]/25 font-bold font-sans">
                 {activePersonas.length} Saved
               </span>
             </h2>
             <p className="text-xs text-[#A1A1AA] mt-1 font-sans">
-              Select, chat, edit or manage your created AI personas
+              Choose a persona to create content, chat, or edit their profile.
             </p>
           </div>
 
@@ -197,7 +83,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A1A1AA]" />
               <input 
                 type="text" 
-                placeholder="Search personas..."
+                aria-label="Search personas" placeholder="Search by name or niche"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full bg-[#141416] border border-white/10 rounded-xl pl-9 pr-4 py-2 text-xs text-[#F5F1E8] placeholder-[#A1A1AA] outline-none focus:border-[#E7C477] transition-colors"
@@ -222,12 +108,12 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
               </div>
               <h3 className="text-2xl font-serif text-[#F5F1E8]">Your studio is ready</h3>
               <p className="mt-2 text-sm text-[#A1A1AA] leading-relaxed">
-                Create your first persona to unlock identity-consistent images, voice, chat, and content planning.
+                Create a character you can use again in photos, videos, and conversations. Start with a name and a reference photo.
               </p>
               <div className="mt-6 grid grid-cols-3 gap-3 w-full text-left">
                 {[
-                  ['1', 'Define identity'],
-                  ['2', 'Add references'],
+                  ['1', 'Name your character'],
+                  ['2', 'Choose their look'],
                   ['3', 'Choose a voice'],
                 ].map(([step, label]) => (
                   <div key={step} className="rounded-xl border border-white/8 bg-[#161618] p-3">
@@ -241,7 +127,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                 onClick={handleAddPersona}
                 className="btn-gold-primary mt-7 px-7 py-3 text-sm flex items-center gap-2 cursor-pointer"
               >
-                <Plus size={16} /> Start Creating
+                <Plus size={16} /> Create a persona
               </button>
             </div>
           </div>
