@@ -156,8 +156,8 @@ const TOOLS = [
     id: 'camera-angles', title: 'Camera Angles', icon: Camera, 
     desc: 'Generate 9-angle identity sheets or adjust camera perspective.', 
     color: 'from-cyan-500 to-sky-500',
-    demoBefore: '/demo/faceswap_before.png',
-    demoAfter: '/demo/teleport_after.png',
+    demoBefore: '/demo/camera-angle-front.jpg',
+    demoAfter: '/demo/camera-angle-side.jpg',
   },
   { 
     id: 'upscaler', title: 'Image Upscaler', icon: ArrowUpCircle, 
