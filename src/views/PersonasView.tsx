@@ -57,11 +57,59 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
     <div className="p-4 sm:p-6 lg:p-8 max-w-[1320px] mx-auto space-y-7 select-none pb-24">
       
       <header className="studio-page-heading"><div><h1>Your influencers</h1><p>A persona is your character’s saved look, voice, and personality.</p></div></header>
-      <nav className="studio-journey" aria-label="Creator workflow">
-        <button onClick={handleAddPersona}><span>1</span><div><strong>Create a persona</strong><small>Give your character a face and identity</small></div><Plus size={17} /></button>
-        <button onClick={() => navigateToTab?.('create')}><span>2</span><div><strong>Make your content</strong><small>Start with a photo, video, or voiceover</small></div><ArrowRight size={17} /></button>
-        <button onClick={() => navigateToTab?.('gallery')}><span>3</span><div><strong>Find your creations</strong><small>Review and download from your Library</small></div><ArrowRight size={17} /></button>
-      </nav>
+      {/* ── FEATURE CARDS ROW (3 CARDS IN CHARCOAL & GOLD) ── */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        {[
+          {
+            icon: Camera,
+            title: 'Photo Generation',
+            desc: 'Create stunning, identity-consistent photos in any setting, outfit, and style',
+            image: '/examples/showcase_haute_couture.png',
+            action: () => nav.replace({ view: 'create', subView: 'image' })
+          },
+          {
+            icon: Film,
+            title: 'Video & Avatar',
+            desc: 'Turn any photo into a talking video or animated clip with custom voice',
+            image: '/examples/showcase_red_carpet.png',
+            action: () => nav.replace({ view: 'create', subView: 'video' })
+          },
+          {
+            icon: Sparkles,
+            title: 'Content Studio',
+            desc: 'Generate scripts, plan posts, clone voices — a full content creation suite',
+            image: '/examples/showcase_parisian_chic.png',
+            action: () => nav.replace({ view: 'planner' })
+          },
+        ].map((feature, i) => {
+          const FIcon = feature.icon;
+          return (
+            <motion.button
+              type="button"
+              key={feature.title}
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 + i * 0.1, duration: 0.4 }}
+              className="luxury-card group overflow-hidden hover:border-[#E7C477]/35 transition-all duration-300 cursor-pointer flex flex-col justify-between text-left"
+              onClick={feature.action}
+            >
+              {/* Preview Image Header */}
+              <div className="h-32 overflow-hidden relative">
+                <img src={feature.image} alt="" className="w-full h-full object-cover opacity-90 group-hover:opacity-100 group-hover:scale-105 transition-all duration-500" />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#1E1E22] via-[#1E1E22]/50 to-transparent" />
+              </div>
+
+              <div className="p-5 relative -mt-6 z-10">
+                <div className="w-9 h-9 rounded-xl bg-[#242428] border border-[#E7C477]/30 flex items-center justify-center mb-3 shadow-lg text-[#F2D58D]">
+                  <FIcon size={16} />
+                </div>
+                <h4 className="text-base font-serif text-[#F5F1E8] mb-1">{feature.title}</h4>
+                <p className="text-xs text-[#A1A1AA] leading-relaxed font-sans">{feature.desc}</p>
+              </div>
+            </motion.button>
+          );
+        })}
+      </div>
 
       {/* ── AI PERSONA ROSTER GRID (PLACED PROMINENTLY ABOVE OTHER SECTIONS) ── */}
       <div className="space-y-5 pt-2">
@@ -239,59 +287,6 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
           })}
           </div>
         )}
-      </div>
-
-      {/* ── FEATURE CARDS ROW (3 CARDS IN CHARCOAL & GOLD) ── */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        {[
-          { 
-            icon: Camera, 
-            title: 'Photo Generation', 
-            desc: 'Create stunning, identity-consistent photos in any setting, outfit, and style',
-            image: '/examples/showcase_haute_couture.png',
-            action: () => nav.replace({ view: 'create', subView: 'image' })
-          },
-          { 
-            icon: Film, 
-            title: 'Video & Avatar', 
-            desc: 'Turn any photo into a talking video or animated clip with custom voice',
-            image: '/examples/showcase_red_carpet.png',
-            action: () => nav.replace({ view: 'create', subView: 'video' })
-          },
-          { 
-            icon: Sparkles, 
-            title: 'Content Studio', 
-            desc: 'Generate scripts, plan posts, clone voices — a full content creation suite',
-            image: '/examples/showcase_parisian_chic.png',
-            action: () => nav.replace({ view: 'planner' })
-          },
-        ].map((feature, i) => {
-          const FIcon = feature.icon;
-          return (
-            <motion.div
-              key={feature.title}
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 + i * 0.1, duration: 0.4 }}
-              className="luxury-card group overflow-hidden hover:border-[#E7C477]/35 transition-all duration-300 cursor-pointer flex flex-col justify-between"
-              onClick={feature.action}
-            >
-              {/* Preview Image Header */}
-              <div className="h-32 overflow-hidden relative">
-                <img src={feature.image} alt="" className="w-full h-full object-cover opacity-60 group-hover:opacity-85 group-hover:scale-105 transition-all duration-500" />
-                <div className="absolute inset-0 bg-gradient-to-t from-[#1E1E22] via-[#1E1E22]/50 to-transparent" />
-              </div>
-              
-              <div className="p-5 relative -mt-6 z-10">
-                <div className="w-9 h-9 rounded-xl bg-[#242428] border border-[#E7C477]/30 flex items-center justify-center mb-3 shadow-lg text-[#F2D58D]">
-                  <FIcon size={16} />
-                </div>
-                <h4 className="text-base font-serif text-[#F5F1E8] mb-1">{feature.title}</h4>
-                <p className="text-xs text-[#A1A1AA] leading-relaxed font-sans">{feature.desc}</p>
-              </div>
-            </motion.div>
-          );
-        })}
       </div>
 
       {/* ── EXAMPLE SHOWCASE STRIP ("WHAT YOU CAN CREATE") ── */}
