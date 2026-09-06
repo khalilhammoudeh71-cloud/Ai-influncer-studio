@@ -93,7 +93,7 @@ const QUICK_PRESETS = [
     visualStyle: 'Warm boudoir lighting, ultra-photorealistic intimate portrait',
     bio: 'Deeply loyal, devoted digital creator sharing romantic and adult lifestyle desires.',
     traits: 'Seductive, Playful, Flirty, Devoted, Sensual',
-    image: '/examples/persona-ideas/adult-glamour-v2-nano-pro.jpg'
+    image: '/examples/persona-ideas/adult-glamour-seedream5.jpg'
   }
 ];
 
