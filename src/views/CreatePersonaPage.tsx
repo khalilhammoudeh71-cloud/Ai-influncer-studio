@@ -1519,7 +1519,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   ];
 
   const goToStudioStep = (nextStep: number) => {
-    if (nextStep > studioStep && studioStep === 0 && !name.trim()) {
+    if (!editingPersona && nextStep > studioStep && studioStep === 0 && !name.trim()) {
       toast.error('Add a persona name before continuing');
       return;
     }
@@ -1535,7 +1535,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       <div className="relative z-10 max-w-[1300px] mx-auto space-y-8">
         
         {/* ── HEADER BAR ── */}
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 sm:gap-6 luxury-card p-4 sm:p-6 md:p-8">
+        {!editingPersona && <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 sm:gap-6 luxury-card p-4 sm:p-6 md:p-8">
           <div>
             <h1 className="text-2xl sm:text-3xl md:text-4xl font-serif text-[#F5F1E8] tracking-tight flex items-center gap-3">
               {editingPersona ? `Edit ${editingPersona.name}` : 'Create a persona'}
@@ -1558,9 +1558,43 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
               </button>
             </div>
           )}
-        </div>
+        </div>}
 
-        {/* ── GUIDED STUDIO PROGRESS ── */}
+        {editingPersona ? (
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <h1 className="sr-only">Edit {editingPersona.name}</h1>
+            <div role="tablist" aria-label="Persona settings" className="flex min-w-0 flex-1 overflow-x-auto border-b border-[var(--border-default)]">
+              {STUDIO_STEPS.map((step, index) => (
+                <button
+                  key={step.id}
+                  type="button"
+                  role="tab"
+                  id={`persona-edit-tab-${step.id}`}
+                  aria-selected={studioStep === index}
+                  aria-controls="persona-edit-panel"
+                  tabIndex={studioStep === index ? 0 : -1}
+                  onClick={() => goToStudioStep(index)}
+                  onKeyDown={(event) => {
+                    const next = event.key === 'ArrowRight' ? (index + 1) % STUDIO_STEPS.length
+                      : event.key === 'ArrowLeft' ? (index + STUDIO_STEPS.length - 1) % STUDIO_STEPS.length
+                      : event.key === 'Home' ? 0 : event.key === 'End' ? STUDIO_STEPS.length - 1 : null;
+                    if (next === null) return;
+                    event.preventDefault();
+                    goToStudioStep(next);
+                    document.getElementById(`persona-edit-tab-${STUDIO_STEPS[next].id}`)?.focus();
+                  }}
+                  className={cn('shrink-0 border-b-2 px-4 py-3 text-sm font-semibold transition-colors', studioStep === index
+                    ? 'border-[var(--accent-primary)] text-[var(--accent-primary)]'
+                    : 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-primary)]')}
+                >{step.title}</button>
+              ))}
+            </div>
+            <button type="button" onClick={handleSave} disabled={isSaving} className="btn-gold-primary flex shrink-0 items-center justify-center gap-2 px-5 py-2.5 text-sm disabled:opacity-50">
+              {isSaving && <Loader2 size={16} className="animate-spin" />}
+              {isSaving ? 'Saving…' : 'Save changes'}
+            </button>
+          </div>
+        ) : (
         <div className="luxury-card p-3 sm:p-4">
           <div className="overflow-x-auto no-scrollbar">
             <div className="grid min-w-[680px] grid-cols-5 gap-2" aria-label="Persona creation progress">
@@ -1605,6 +1639,9 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
           </div>
         </div>
 
+        )}
+
+        <div id={editingPersona ? 'persona-edit-panel' : undefined} role={editingPersona ? 'tabpanel' : undefined} aria-labelledby={editingPersona ? `persona-edit-tab-${STUDIO_STEPS[studioStep].id}` : undefined} className="space-y-8">
         {studioStep === 1 && (
           <>
         {/* ── QUICK PRESETS WITH REALISTIC PORTRAIT VISUALS ── */}
@@ -2919,8 +2956,10 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
         </div>
         )}
 
+        </div>
+
         {/* ── GUIDED FLOW NAVIGATION ── */}
-        <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-[#0B0B0E] p-3 shadow-xl sm:flex-row sm:items-center sm:justify-between sm:p-4">
+        {!editingPersona && <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-[#0B0B0E] p-3 shadow-xl sm:flex-row sm:items-center sm:justify-between sm:p-4">
           <div className="min-w-0">
             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#D9BA72]">
               Step {studioStep + 1} of {STUDIO_STEPS.length}
@@ -2960,7 +2999,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
               </button>
             )}
           </div>
-        </div>
+        </div>}
       </div>
 
       {typeof document !== 'undefined' && createPortal(
