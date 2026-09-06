@@ -22,7 +22,6 @@ export default function MobileNavigation({ activeTab, onNavigate, onOpenMenu, ne
       {items.map((item) => {
         const active = activeTab === item.tab;
         const ItemIcon = item.icon;
-        const emphasized = item.tab === 'create';
 
         return (
           <button
@@ -38,18 +37,17 @@ export default function MobileNavigation({ activeTab, onNavigate, onOpenMenu, ne
             <span
               className={cn(
                 'relative grid h-8 w-10 place-items-center rounded-xl transition-all',
-                active && !emphasized && 'bg-[var(--accent-subtle)]',
-                emphasized && '-mt-5 h-12 w-12 rounded-2xl border border-[var(--border-strong)] bg-[var(--accent-primary)] text-[#15120b] shadow-[0_10px_28px_rgba(231,196,119,0.28)]',
+                active && 'bg-[var(--accent-subtle)]',
               )}
             >
-              <ItemIcon size={emphasized ? 20 : 18} strokeWidth={emphasized ? 2.2 : 1.8} />
+              <ItemIcon size={18} strokeWidth={1.8} />
               {item.tab === 'gallery' && newAssetsCount > 0 && (
                 <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[var(--accent-primary)] px-1 text-[8px] font-bold text-[#15120b]">
                   {newAssetsCount}
                 </span>
               )}
             </span>
-            <span className={cn(emphasized && '-mt-0.5 text-[var(--accent-primary)]')}>{item.label}</span>
+            <span>{item.label}</span>
           </button>
         );
       })}
