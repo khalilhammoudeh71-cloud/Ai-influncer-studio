@@ -1538,7 +1538,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
         {!editingPersona && <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 sm:gap-6 luxury-card p-4 sm:p-6 md:p-8">
           <div>
             <h1 className="text-2xl sm:text-3xl md:text-4xl font-serif text-[#F5F1E8] tracking-tight flex items-center gap-3">
-              {editingPersona ? `Edit ${editingPersona.name}` : 'Create a persona'}
+              Create a persona
 
             </h1>
             <p className="text-xs md:text-sm text-[#8C909A] mt-1 font-sans">
