@@ -53,7 +53,7 @@ const QUICK_PRESETS = [
     visualStyle: 'High-end Paris/Milan aesthetic, warm golden hour light',
     bio: 'Digital style icon & fashion creator sharing aesthetics and lifestyle storytelling.',
     traits: 'Sophisticated, Elegant, Authentic, Visionary',
-    image: '/sample_persona_portrait.jpg'
+    image: '/examples/persona-ideas/fashion-beauty-nano-pro.jpg'
   },
   {
     icon: '⚡',
@@ -63,7 +63,7 @@ const QUICK_PRESETS = [
     visualStyle: 'Modern minimal studio with sleek lighting',
     bio: 'Tech architect exploring future technology, AI, and digital innovation.',
     traits: 'Analytical, Brilliant, Bold, Trendsetter',
-    image: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?q=80&w=800&auto=format&fit=crop'
+    image: '/examples/persona-ideas/tech-ai-nano-pro.jpg'
   },
   {
     icon: '🏋️',
@@ -73,7 +73,7 @@ const QUICK_PRESETS = [
     visualStyle: 'High-performance athletic workout lighting',
     bio: 'Fitness creator helping followers optimize workout routines and daily mindset.',
     traits: 'Disciplined, Motivating, High-Energy, Authentic',
-    image: 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?q=80&w=800&auto=format&fit=crop'
+    image: '/examples/persona-ideas/fitness-health-nano-pro.jpg'
   },
   {
     icon: '🌴',
@@ -83,7 +83,7 @@ const QUICK_PRESETS = [
     visualStyle: 'Cinematic landscapes and tropical villa aesthetics',
     bio: 'Travel creator documenting exotic destinations and boutique escapes worldwide.',
     traits: 'Curious, Captivating, Adventurous, Eloquent',
-    image: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?q=80&w=800&auto=format&fit=crop'
+    image: '/examples/persona-ideas/travel-vlogs-nano-pro.jpg'
   },
   {
     icon: '🔥',
@@ -93,7 +93,7 @@ const QUICK_PRESETS = [
     visualStyle: 'Warm boudoir lighting, ultra-photorealistic intimate portrait',
     bio: 'Deeply loyal, devoted digital creator sharing romantic and adult lifestyle desires.',
     traits: 'Seductive, Playful, Flirty, Devoted, Sensual',
-    image: 'https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?q=80&w=800&auto=format&fit=crop'
+    image: '/examples/persona-ideas/adult-glamour-nano-pro.jpg'
   }
 ];
 
