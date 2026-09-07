@@ -236,6 +236,11 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
       </div>
 
       {/* ── FEATURE CARDS ROW (3 CARDS IN CHARCOAL & GOLD) ── */}
+      <section aria-labelledby="generation-options-heading" className="border-t border-[#E7C477]/20 pt-8 sm:pt-10 space-y-5">
+        <header>
+          <h2 id="generation-options-heading" className="text-2xl font-serif text-[#F5F1E8]">Create with your personas</h2>
+          <p className="text-sm text-[#A1A1AA] mt-2">Choose what to make next: photos, videos, or content.</p>
+        </header>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         {[
           {
@@ -288,6 +293,8 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
           );
         })}
       </div>
+
+      </section>
 
       {/* ── EXAMPLE SHOWCASE STRIP ("WHAT YOU CAN CREATE") ── */}
       <motion.div
