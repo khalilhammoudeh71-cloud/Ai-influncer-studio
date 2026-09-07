@@ -48,6 +48,7 @@ export type Persona = {
   additionalReferenceImages?: string[]; // Extra reference images uploaded alongside the primary
   alternateReferenceImage?: string; // Secondary reference (style, outfit, pose, etc.)
   personalityTraits: string[];
+  personalitySettings?: import("../../shared/personality").PersonalitySettings;
   visualStyle: string;
   audienceType: string;
   contentBoundaries: string;

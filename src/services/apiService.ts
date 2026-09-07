@@ -365,13 +365,14 @@ export const api = {
     generateScript: (params: { topic: string; persona: Persona; mode?: string; existingScript?: string; length?: string }) =>
       requestWithBody<{ script: string }>('/generate-voice-script', params),
     generateSpeech: (params: {
+      activePersona?: Partial<Persona>;
       text: string;
       voice?: string;
       performancePrompt?: string;
       backgroundAtmosphere?: string;
       engine?: 'elevenlabs' | 'heygen' | 'openai' | 'gemini' | 'omnivoice' | 'minimax-clone' | 'qwen3-clone' | 'seed-speech' | 'chatterbox' | 'mureka-vocal' | 'qwen-tts' | string;
       voiceId?: string;
-      voiceSettings?: { stability?: number; similarity_boost?: number; style?: number };
+      voiceSettings?: { stability?: number; similarity_boost?: number; style?: number; speed?: number };
       voiceReference?: string;
       voiceReferences?: string[];
       personaName?: string;

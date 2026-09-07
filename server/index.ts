@@ -1,3 +1,4 @@
+import { buildPersonalityInstructions, personalityDelivery } from '../shared/personality';
 import 'dotenv/config';
 import dns from 'dns';
 try { dns.setDefaultResultOrder('ipv4first'); } catch {}
@@ -3156,6 +3157,31 @@ async function generateWithGeminiVideo(
   return `data:video/mp4;base64,${videoBase64}`;
 }
 
+app.post('/api/personality-preview', requireAuth, async (req, res) => {
+  try {
+    const persona = req.body.persona || {};
+    const message = String(req.body.message || 'I had a long day. What should we do tonight?').slice(0, 1000);
+    const result = await getGeminiClient().models.generateContent({
+      model: 'gemini-3.1-pro-preview',
+      contents: message,
+      config: {
+        systemInstruction: `Write one conversational reply as ${String(persona.name || 'the persona').slice(0,100)}. Tone: ${String(persona.tone || '').slice(0,500)}. Bio: ${String(persona.bio || '').slice(0,1500)}.
+${buildPersonalityInstructions(persona)}
+Custom directions: ${String(persona.brandVoiceRules || '').slice(0,2000)}
+Boundaries: ${String(persona.contentBoundaries || '').slice(0,1000)}
+Reply in 1-3 sentences. Output only the words to say. Do not perform actions or generate media.`,
+        maxOutputTokens: 2048,
+        temperature: 0.8,
+      },
+    });
+    if (!result.text?.trim()) throw new Error('No preview was returned. Try again.');
+    res.json({ text: result.text.trim() });
+  } catch (error) {
+    console.error('[Personality preview]', error);
+    res.status(502).json({ error: 'Could not generate the personality preview. Please try again.' });
+  }
+});
+
 app.post('/api/generate-content', async (req, res) => {
   const { type, topic, persona, sceneCount } = req.body;
 
@@ -3726,7 +3752,7 @@ Niche / Focus: ${personaNiche}
 Speaking Style & Tone: ${personaTone}
 Visual Style: ${visualStyle}
 Bio: ${personaBio || 'No bio provided'}
-Personality Traits: ${traits}
+Personality Traits: ${traits}\n${buildPersonalityInstructions(persona)}
 Lore / Backstory: ${personaLore || 'None'}${voiceRules}${boundaries}${memoryContext}
 
 NON-NEGOTIABLE IDENTITY BOUNDARY:
@@ -7031,6 +7057,9 @@ async function uploadAudioToWavespeedCDN(audioBase64: string, wsKey: string): Pr
 }
 
 async function handleTTS(req: express.Request, res: express.Response) {
+  const personalityVoice = personalityDelivery(req.body.activePersona || {});
+  req.body.voiceSettings = { ...req.body.voiceSettings, ...personalityVoice };
+  if (personalityVoice.speed) req.body.speed = personalityVoice.speed;
   let {
     text,
     voiceName, voice: voiceParam,
@@ -7316,6 +7345,7 @@ async function handleTTS(req: express.Request, res: express.Response) {
           stability: computedStability,
           similarity_boost: computedLikeness,
           style: computedStyle,
+          speed,
           use_speaker_boost: true
         },
       }),

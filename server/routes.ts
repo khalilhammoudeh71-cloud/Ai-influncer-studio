@@ -1,3 +1,4 @@
+import { buildPersonalityInstructions, personalityDelivery, encodePersonality, decodePersonality } from '../shared/personality';
 import { Router, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
@@ -186,6 +187,7 @@ async function requestElevenLabsSpeech(
   voiceId: string,
   text: string,
   modelId: string,
+  persona?: any,
 ): Promise<{ response: globalThis.Response; audioUrl?: string }> {
   // Eleven v3 Conversational rejects the legacy optimize_streaming_latency
   // query parameter. Flash accepts it and benefits from the most aggressive
@@ -204,7 +206,7 @@ async function requestElevenLabsSpeech(
       body: JSON.stringify({
         text,
         model_id: modelId,
-        voice_settings: getElevenLabsPersonaVoiceSettings(text),
+        voice_settings: { ...getElevenLabsPersonaVoiceSettings(text), ...personalityDelivery(persona || {}) },
       }),
     },
   );
@@ -219,6 +221,7 @@ async function requestElevenLabsPersonaSpeech(
   voiceId: string,
   text: string,
   requestedModel: unknown,
+  persona?: any,
 ): Promise<{ response: globalThis.Response; audioUrl?: string; modelId: string }> {
   const modelCandidates = getElevenLabsPersonaModelCandidates(requestedModel);
   let lastResult: { response: globalThis.Response; audioUrl?: string } | undefined;
@@ -228,7 +231,7 @@ async function requestElevenLabsPersonaSpeech(
     lastModelId = modelId;
     let result: { response: globalThis.Response; audioUrl?: string };
     try {
-      result = await requestElevenLabsSpeech(apiKey, voiceId, text, modelId);
+      result = await requestElevenLabsSpeech(apiKey, voiceId, text, modelId, persona);
     } catch (error) {
       if (modelId !== modelCandidates[modelCandidates.length - 1]) {
         console.warn(`[Voice Chat ElevenLabs] ${modelId} request failed; trying eleven_flash_v2_5.`, error);
@@ -294,7 +297,7 @@ function personaToClient(row: typeof personas.$inferSelect, images: typeof gener
     referenceImage: row.referenceImage || undefined,
     additionalReferenceImages: JSON.parse(row.additionalReferenceImages || '[]'),
     alternateReferenceImage: row.alternateReferenceImage || undefined,
-    personalityTraits: JSON.parse(row.personalityTraits || '[]'),
+    ...decodePersonality(row.personalityTraits),
     visualStyle: row.visualStyle,
     audienceType: row.audienceType,
     contentBoundaries: row.contentBoundaries,
@@ -492,7 +495,7 @@ router.post('/personas', async (req: AuthenticatedRequest, res: Response) => {
           referenceImage: body.referenceImage || null,
           additionalReferenceImages: JSON.stringify(body.additionalReferenceImages || []),
           alternateReferenceImage: body.alternateReferenceImage || null,
-          personalityTraits: JSON.stringify(body.personalityTraits || []),
+          personalityTraits: encodePersonality(body),
           visualStyle: body.visualStyle || '',
           audienceType: body.audienceType || '',
           contentBoundaries: body.contentBoundaries || '',
@@ -522,7 +525,7 @@ router.post('/personas', async (req: AuthenticatedRequest, res: Response) => {
             referenceImage: body.referenceImage || null,
             additionalReferenceImages: JSON.stringify(body.additionalReferenceImages || []),
             alternateReferenceImage: body.alternateReferenceImage || null,
-            personalityTraits: JSON.stringify(body.personalityTraits || []),
+            personalityTraits: encodePersonality(body),
             visualStyle: body.visualStyle || '',
             audienceType: body.audienceType || '',
             contentBoundaries: body.contentBoundaries || '',
@@ -565,7 +568,7 @@ router.put('/personas/:clientId', async (req: AuthenticatedRequest, res: Respons
         referenceImage: body.referenceImage || null,
         additionalReferenceImages: JSON.stringify(body.additionalReferenceImages || []),
         alternateReferenceImage: body.alternateReferenceImage || null,
-        personalityTraits: JSON.stringify(body.personalityTraits || []),
+        personalityTraits: encodePersonality(body),
         visualStyle: body.visualStyle || '',
         audienceType: body.audienceType || '',
         contentBoundaries: body.contentBoundaries || '',
@@ -806,7 +809,7 @@ router.post('/migrate', async (req: AuthenticatedRequest, res: Response) => {
           referenceImage: p.referenceImage || null,
           additionalReferenceImages: JSON.stringify(p.additionalReferenceImages || []),
           alternateReferenceImage: p.alternateReferenceImage || null,
-          personalityTraits: JSON.stringify(p.personalityTraits || []),
+          personalityTraits: encodePersonality(p),
           visualStyle: p.visualStyle || '',
           audienceType: p.audienceType || '',
           contentBoundaries: p.contentBoundaries || '',
@@ -830,7 +833,7 @@ router.post('/migrate', async (req: AuthenticatedRequest, res: Response) => {
             referenceImage: p.referenceImage || null,
             additionalReferenceImages: JSON.stringify(p.additionalReferenceImages || []),
             alternateReferenceImage: p.alternateReferenceImage || null,
-            personalityTraits: JSON.stringify(p.personalityTraits || []),
+            personalityTraits: encodePersonality(p),
             visualStyle: p.visualStyle || '',
             audienceType: p.audienceType || '',
             contentBoundaries: p.contentBoundaries || '',
@@ -1783,6 +1786,7 @@ router.post('/test-voice-clone', handleTestVoiceClone);
 
 // Universal Speech Synthesis Endpoint for Voice Studio & Persona Studio
 const handleGenerateSpeech = async (req: AuthenticatedRequest, res: Response) => {
+  req.body.voiceSettings = { ...req.body.voiceSettings, ...personalityDelivery(req.body.activePersona || {}) };
   try {
     const { text, voiceId, engine, voice, voiceReference, voiceReferences, personaName, voiceSettings } = req.body;
     const textToSpeak = text || "Hello! This is a demonstration of my authentic AI voice.";
@@ -1884,6 +1888,7 @@ const handleGenerateSpeech = async (req: AuthenticatedRequest, res: Response) =>
               stability: voiceSettings?.stability ?? 0.50,
               similarity_boost: voiceSettings?.similarity_boost ?? 0.88,
               style: voiceSettings?.style ?? 0.0,
+              speed: voiceSettings?.speed ?? 1.0,
               use_speaker_boost: true
             }
           })
@@ -2041,6 +2046,7 @@ router.post('/agent/voice-chat', async (req: AuthenticatedRequest, res: Response
         directVoiceId,
         directSpeech,
         directTtsModel,
+        activePersona,
       );
       if (directResult.audioUrl) {
         console.log(`[Voice Latency] direct-tts=${Date.now() - voiceRequestStartedAt}ms model=${directResult.modelId}`);
@@ -2195,7 +2201,7 @@ ${creatorBio ? `• Creator Bio & Vibe: ${creatorBio}\n` : ''}${creatorDynamic ?
 
     const cleanSpokenDialogue = (raw: string): string => sanitizeSpokenDialogue(raw);
 
-    const voiceSystemPrompt = `You are ${personaName}, a real human creator on a LIVE VOICE CALL with ${userName}.${personaContext}${memoryContext}
+    const voiceSystemPrompt = `You are ${personaName}, a real human creator on a LIVE VOICE CALL with ${userName}.${personaContext}${memoryContext}\n${buildPersonalityInstructions(activePersona)}
 
 NON-NEGOTIABLE IDENTITY BOUNDARY:
 - Your name is ${personaName}. The human on the call is ${userName}.
@@ -2699,7 +2705,7 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
             console.log(`[Voice Chat ElevenLabs] Remapped stale voice for "${activePersona?.name}" to "${resolvedVoiceName}" (${resolvedVoiceId}).`);
           }
           console.log(`[Voice Chat ElevenLabs] Synthesizing ${elevenModelId} for "${activePersona?.name}" with ${resolvedVoiceId}.`);
-          let result = await requestElevenLabsPersonaSpeech(elKey, resolvedVoiceId, spokenText, elevenModelId);
+          let result = await requestElevenLabsPersonaSpeech(elKey, resolvedVoiceId, spokenText, elevenModelId, activePersona);
 
           // A deleted voice can remain in a warm cache. Refresh once and retry
           // only when the refreshed catalog proves it belongs to this persona.
@@ -2709,7 +2715,7 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
             if (voice && voice.voice_id !== resolvedVoiceId) {
               resolvedVoiceId = voice.voice_id;
               resolvedVoiceName = voice.name;
-              result = await requestElevenLabsPersonaSpeech(elKey, resolvedVoiceId, spokenText, elevenModelId);
+              result = await requestElevenLabsPersonaSpeech(elKey, resolvedVoiceId, spokenText, elevenModelId, activePersona);
             }
           }
 
@@ -2775,7 +2781,7 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
           personaVoiceRef,
           text,
           requestedTtsModel,
-          { deadlineMs: 12000 },
+          { deadlineMs: 12000, ...personalityDelivery(activePersona), exaggeration: personalityDelivery(activePersona).style },
         );
       } catch (wErr) {
         console.warn('[Wavespeed Voice Synthesis Warning]:', wErr);
@@ -2802,6 +2808,7 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
               model: 'tts-1',
               input: spokenText,
               voice: openaiVoice,
+              speed: personalityDelivery(activePersona).speed || 1.0,
               response_format: 'mp3'
             }),
             signal: AbortSignal.timeout(8000),
@@ -3108,7 +3115,7 @@ router.post('/agent/voice-chat-stream', async (req: AuthenticatedRequest, res: R
     res.write(`data: ${JSON.stringify({ text })}\n\n`);
   };
 
-  const voiceSystemPrompt = `You are ${personaName} on a live voice call with ${creatorName}.${personaContext}${memoryContext}
+  const voiceSystemPrompt = `You are ${personaName} on a live voice call with ${creatorName}.${personaContext}${memoryContext}\n${buildPersonalityInstructions(activePersona)}
 
 AUTHORITATIVE CURRENT USER TURN:
 <current_user_turn>${currentUserTurn}</current_user_turn>

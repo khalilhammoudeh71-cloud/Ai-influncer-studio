@@ -1,3 +1,5 @@
+import PersonalityControls from '../components/PersonalityControls';
+import { normalizePersonality, type PersonalitySettings } from '../../shared/personality';
 import React, { useState, useRef, useEffect, ChangeEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -320,6 +322,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   const [visualStyle, setVisualStyle] = useState('');
   const [bio, setBio] = useState('');
   const [personalityTraits, setPersonalityTraits] = useState('');
+  const [personalitySettings, setPersonalitySettings] = useState<PersonalitySettings>({voiceEnabled:false});
   const [companionType, setCompanionType] = useState<string>('intimate');
   const [creatorVoiceRule, setCreatorVoiceRule] = useState('');
   const [audienceType, setAudienceType] = useState('');
@@ -872,6 +875,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   // Pre-fill fields when editingPersona is passed
   useEffect(() => {
     if (editingPersona) {
+      setPersonalitySettings(normalizePersonality(editingPersona));
       setName(editingPersona.name || '');
       setNiche(editingPersona.niche || '');
       setPlatform(editingPersona.platform || 'Instagram');
@@ -980,6 +984,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
           setVisualStyle(draft.visualStyle || '');
           setBio(draft.bio || '');
           setPersonalityTraits(draft.personalityTraits || '');
+          setPersonalitySettings(draft.personalitySettings || {voiceEnabled:false});
           setCompanionType(draft.companionType || 'intimate');
           setCreatorVoiceRule(draft.creatorVoiceRule || '');
           setContentBoundaries(draft.contentBoundaries || '');
@@ -1046,6 +1051,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
         visualStyle,
         bio,
         personalityTraits,
+        personalitySettings,
         companionType,
         creatorVoiceRule,
         contentBoundaries,
@@ -1063,6 +1069,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
     visualStyle,
     bio,
     personalityTraits,
+    personalitySettings,
     companionType,
     creatorVoiceRule,
     contentBoundaries,
@@ -1425,6 +1432,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
           bio,
           brandVoiceRules: voiceRuleToSave,
           personalityTraits: personalityTraits.split(',').map(t => t.trim()).filter(Boolean),
+          personalitySettings: normalizePersonality({personalityTraits:personalityTraits.split(','),personalitySettings}),
           audienceType,
           contentGoals,
           contentBoundaries,
@@ -1463,6 +1471,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
           status: 'Active',
           brandVoiceRules: voiceRuleToSave,
           personalityTraits: personalityTraits.split(',').map(t => t.trim()).filter(Boolean),
+          personalitySettings: normalizePersonality({personalityTraits:personalityTraits.split(','),personalitySettings}),
           audienceType,
           contentGoals,
           contentBoundaries,
@@ -2913,6 +2922,13 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                 />
               </div>
             </div>
+
+            {studioStep === 2 && <div className="md:col-span-2">
+              <PersonalityControls
+                persona={{id:editingPersona?.id,name,tone,bio,personalityTraits:personalityTraits.split(',').map(t=>t.trim()).filter(Boolean),personalitySettings,brandVoiceRules:creatorVoiceRule,contentBoundaries,voiceId:selectedVoiceId,voiceEngine:selectedVoiceModel,voicePrompt,voiceLikeness,voiceStability,voiceStyleExaggeration,voiceSpeakingSpeed,voiceSampleUrl:audioSampleList[0]?.base64 || editingPersona?.voiceSampleUrl}}
+                onChange={setPersonalitySettings}
+              />
+            </div>}
 
             {/* Brand Voice Rules & Companion Behavioral Directives */}
             <div className={cn('md:col-span-2 space-y-2 border-t border-white/10 pt-4', studioStep !== 2 && 'hidden')}>

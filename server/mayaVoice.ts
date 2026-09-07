@@ -1,8 +1,11 @@
+import { personalityVoiceDirection, type PersonalitySettings } from '../shared/personality';
 export const FAL_MAYA_STREAM_ENGINE = 'fal_maya_stream';
 export const FAL_MAYA_STREAM_ENDPOINT = 'fal-ai/maya/stream';
 export const FAL_MAYA_SAMPLE_RATE = 24_000;
 
 type MayaPersona = {
+  personalityTraits?: string[];
+  personalitySettings?: PersonalitySettings;
   name?: string;
   niche?: string;
   tone?: string;
@@ -38,6 +41,7 @@ export function buildMayaVoicePrompt(persona?: MayaPersona): string {
     savedVoicePrompt ? `Saved voice identity: ${savedVoicePrompt}.` : '',
     `Warm intimate timbre, close-mic sound, ${pace.toLowerCase()} Spontaneous emotional reactions.`,
     tone,
+    personalityVoiceDirection(persona || {}),
     'Use natural breaths, subtle micro-pauses, varied rhythm, and restrained emotion that fits the words.',
     'Never sound like an announcer, audiobook narrator, customer-service agent, or theatrical performer.',
   ].filter(Boolean).join(' ');

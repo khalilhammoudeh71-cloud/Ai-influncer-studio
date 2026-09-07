@@ -1,3 +1,4 @@
+import { buildPersonalityInstructions } from '../../shared/personality';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Send, Bot, ChevronDown, ImageIcon, Video, Loader2, AlertCircle, Camera, MessageSquareQuote, Copy, Bookmark, Check, Phone, PhoneOff, Volume2, VolumeX, Mic, MicOff, RotateCcw, Trash2, Plus, Upload, Music, Film, X, Play, Sparkles, Paperclip, FileText, SlidersHorizontal, Settings, Hand, Maximize2, Download, Shirt, Heart, Pencil, BookOpen, ShieldCheck, Brain, Pin, Search, ArrowUpCircle, Wand2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -3777,6 +3778,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 Niche: ${activePersona.niche}
 Tone & Speaking Style: ${activePersona.tone}
 Personality: ${Array.isArray(activePersona.personalityTraits) ? activePersona.personalityTraits.join(', ') : (activePersona.personalityTraits || 'Charismatic, witty, authentic')}
+${buildPersonalityInstructions(activePersona)}
 Bio: ${activePersona.bio || ''}
 
 A fan or collaborator left this comment/DM on your post:
