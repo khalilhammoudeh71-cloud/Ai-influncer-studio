@@ -297,16 +297,17 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
       </section>
 
       {/* ── EXAMPLE SHOWCASE STRIP ("WHAT YOU CAN CREATE") ── */}
-      <motion.div
+      <motion.section
+        aria-labelledby="creation-examples-heading"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.5 }}
-        className="luxury-card p-6 space-y-5 mt-6 border-t border-white/10"
+        className="border-t border-[#E7C477]/20 pt-8 sm:pt-10 space-y-5"
       >
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h3 className="text-lg font-serif text-[#F5F1E8]">What You Can Create</h3>
-            <p className="text-xs text-[#A1A1AA] mt-0.5">AI-generated influencer content examples</p>
+            <h2 id="creation-examples-heading" className="text-2xl font-serif text-[#F5F1E8]">What you can create</h2>
+            <p className="text-sm text-[#A1A1AA] mt-2">Explore AI-generated examples for your next creation.</p>
           </div>
           <button 
             onClick={handleAddPersona}
@@ -316,7 +317,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
           </button>
         </div>
         
-        <div className="flex gap-4 overflow-x-auto custom-scrollbar pb-3 pt-1 snap-x snap-mandatory">
+        <div className="luxury-card p-4 sm:p-6 flex gap-4 overflow-x-auto custom-scrollbar snap-x snap-mandatory">
           {[
             { src: '/examples/showcase_haute_couture.png', label: 'Haute Couture Runway', category: 'High Fashion' },
             { src: '/examples/showcase_tokyo_cyberpunk.png', label: 'Tokyo Cyberpunk Night', category: 'Cyberpunk' },
@@ -348,7 +349,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
             </motion.div>
           ))}
         </div>
-      </motion.div>
+      </motion.section>
 
     </div>
   );
