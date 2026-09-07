@@ -1,3 +1,4 @@
+import { validateCarousel } from '../shared/carousel';
 import { buildPersonalityInstructions, personalityDelivery } from '../shared/personality';
 import 'dotenv/config';
 import dns from 'dns';
@@ -3156,6 +3157,21 @@ async function generateWithGeminiVideo(
   console.log('[Gemini Video] Downloaded video, size:', videoBuf.length, 'bytes');
   return `data:video/mp4;base64,${videoBase64}`;
 }
+
+app.post('/api/carousel-content', requireAuth, async (req, res) => {
+  const {persona,topic,format}=req.body || {};
+  const count=Number(req.body?.count);
+  if(!persona || typeof topic !== 'string' || !topic.trim() || topic.length>5000 || !Number.isInteger(count) || count<3 || count>10 || !['instagram','tiktok'].includes(format)) return res.status(400).json({error:'Choose a platform, 3–10 slides, and a topic under 5,000 characters.'});
+  try {
+    const result=await getGeminiClient().models.generateContent({model:'gemini-2.5-flash',contents:`Create a ${count}-slide ${format} photo carousel for ${String(persona.name || '').slice(0,100)}. Niche: ${String(persona.niche || '').slice(0,300)}. Tone: ${String(persona.tone || '').slice(0,300)}.
+${buildPersonalityInstructions(persona)}
+Topic or source: ${topic}
+Use a specific compelling hook on slide one, one useful idea per middle slide, and a relevant save/share/comment call to action on the last slide. Keep copy conversational and readable on a phone. Do not invent statistics, endorsements, or promise reach. Use short sentences, no markdown, no emojis inside slide text. Do not describe photos you cannot see.
+Return JSON {"slides":[{"headline":"maximum 70 characters","body":"maximum 180 characters","alt":"text summary of this slide"}],"caption":"natural platform caption with 3 relevant hashtags, maximum 1800 characters"}. Exactly ${count} slides.`,config:{responseMimeType:'application/json',maxOutputTokens:4500,thinkingConfig:{thinkingBudget:0},temperature:.75}});
+    const data=validateCarousel(JSON.parse(result.text || '{}'),count);
+    return res.json(data);
+  }catch(error){console.error('[Carousel]',error);return res.status(502).json({error:'Could not prepare the carousel. Please try again; you can also start with blank slides.'});}
+});
 
 app.post('/api/personality-preview', requireAuth, async (req, res) => {
   try {
