@@ -1,4 +1,15 @@
-export type CarouselSlide = {headline:string;body:string;image?:string;alt?:string};
+export const CAROUSEL_LAYOUTS = ['editorial','full-photo','scrapbook','split','panorama','minimal'] as const;
+export type CarouselLayout = typeof CAROUSEL_LAYOUTS[number];
+export type CarouselSlide = {headline:string;body:string;image?:string;alt?:string;layout?:CarouselLayout;secondImage?:string;cropX?:number;cropY?:number;zoom?:number;align?:'left'|'center';textPosition?:'top'|'middle'|'bottom';font?:'serif'|'sans';textScale?:number};
+export function normalizeSlideDesign(s:any):Partial<CarouselSlide>{
+ const photo=(v:any)=>typeof v==='string'&&/^(https?:\/\/|data:image\/(png|jpeg|webp);base64,|\/(?!\/))/.test(v)?v:undefined;
+ const number=(v:any,min:number,max:number,fallback:number)=>typeof v==='number'&&Number.isFinite(v)?Math.max(min,Math.min(max,v)):fallback;
+ return {image:photo(s.image),secondImage:photo(s.secondImage),layout:CAROUSEL_LAYOUTS.includes(s.layout)?s.layout:'editorial',cropX:number(s.cropX,0,100,50),cropY:number(s.cropY,0,100,50),zoom:number(s.zoom,1,3,1),align:s.align==='center'?'center':'left',textPosition:['top','middle','bottom'].includes(s.textPosition)?s.textPosition:'middle',font:s.font==='sans'?'sans':'serif',textScale:number(s.textScale,.7,1.3,1)};
+}
+export function panoramaPlacement(i:number,total:number,w:number,h:number,iw:number,ih:number,zoom=1,x=50,y=50){
+ const scale=Math.max(w*total/iw,h/ih)*zoom;
+ return {x:(w*total-iw*scale)*x/100-i*w,y:(h-ih*scale)*y/100,width:iw*scale,height:ih*scale};
+}
 export type CarouselFormat = 'instagram'|'tiktok';
 export const CAROUSEL_FORMATS = {instagram:{width:1080,height:1350,label:'Instagram · 4:5'},tiktok:{width:1080,height:1920,label:'TikTok · 9:16'}};
 export function validateCarousel(data:any,count:number,allowUnfinished=false): {slides:CarouselSlide[];caption:string} {
@@ -17,4 +28,14 @@ export function carouselZip(files:{name:string;data:Uint8Array}[]): Uint8Array {
  }
  const end=new Uint8Array(22),e=new DataView(end.buffer);e.setUint32(0,0x06054b50,true);e.setUint16(8,files.length,true);e.setUint16(10,files.length,true);e.setUint32(12,centralSize,true);e.setUint32(16,offset,true);
  const all=new Uint8Array(offset+centralSize+22);let at=0;for(const p of [...parts,...central,end]){all.set(p,at);at+=p.length;}return all;
+}
+
+export function packCarouselImages(slides:CarouselSlide[]){
+ const assets:string[]=[];
+ const ref=(image:string|undefined)=>{if(!image)return undefined;let i=assets.indexOf(image);if(i<0){i=assets.length;assets.push(image);}return `asset:${i}`;};
+ return {assets,slides:slides.map(s=>({...s,image:ref(s.image),secondImage:ref(s.secondImage)}))};
+}
+export function unpackCarouselImages(slide:any,assets:unknown){
+ const resolve=(v:any)=>typeof v==='string'&&/^asset:\d+$/.test(v)&&Array.isArray(assets)?assets[Number(v.slice(6))]:v;
+ return normalizeSlideDesign({...slide,image:resolve(slide.image),secondImage:resolve(slide.secondImage)});
 }
