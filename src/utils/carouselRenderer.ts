@@ -1,11 +1,11 @@
 import {CAROUSEL_FORMATS,CarouselFormat,CarouselSlide,panoramaPlacement} from '../../shared/carousel';
 export type CarouselTheme='midnight'|'paper'|'photo';
-export async function renderCarouselSlide(slide:CarouselSlide,index:number,total:number,format:CarouselFormat,theme:CarouselTheme,brand:string):Promise<HTMLCanvasElement>{
+export async function renderCarouselSlide(slide:CarouselSlide,index:number,total:number,format:CarouselFormat,theme:CarouselTheme,brand:string,photosOnly=false):Promise<HTMLCanvasElement>{
  const {width:w,height:h}=CAROUSEL_FORMATS[format],canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;
  const c=canvas.getContext('2d');if(!c)throw new Error('Your browser could not prepare the slide.');
  const light=theme==='paper',fg=light?'#171719':'#fff9ef',bg=light?'#f4ede0':'#171719',accent=light?'#8a5429':'#e7c477';
  c.fillStyle=bg;c.fillRect(0,0,w,h);
- const layout=slide.layout||'editorial',photoMode=layout==='full-photo'||layout==='panorama'||(layout==='editorial'&&theme==='photo');
+ const layout=photosOnly&&(!slide.layout||['minimal','editorial'].includes(slide.layout))?'full-photo':slide.layout||'editorial',photoMode=layout==='full-photo'||layout==='panorama'||(layout==='editorial'&&theme==='photo');
  const load=async(src:string)=>new Promise<HTMLImageElement>((resolve,reject)=>{const i=new Image();i.crossOrigin='anonymous';const timeout=setTimeout(()=>reject(new Error('A photo took too long to load. Upload a local copy.')),15000);i.onload=()=>{clearTimeout(timeout);resolve(i)};i.onerror=()=>{clearTimeout(timeout);reject(new Error('A photo could not be loaded. Upload a local copy.'))};i.src=src;});
  const image=slide.image&&layout!=='minimal'?await load(slide.image):undefined;
  const draw=(im:HTMLImageElement,x:number,y:number,width:number,height:number)=>{const scale=Math.max(width/im.width,height/im.height)*(slide.zoom||1);c.save();c.beginPath();c.rect(x,y,width,height);c.clip();c.drawImage(im,x+(width-im.width*scale)*(slide.cropX??50)/100,y+(height-im.height*scale)*(slide.cropY??50)/100,im.width*scale,im.height*scale);c.restore();};
@@ -14,14 +14,15 @@ export async function renderCarouselSlide(slide:CarouselSlide,index:number,total
  if(image&&layout!=='minimal'){
   if(layout==='panorama'){const p=panoramaPlacement(index,total,w,h,image.width,image.height,slide.zoom||1,slide.cropX??50,slide.cropY??50);c.drawImage(image,p.x,p.y,p.width,p.height);}
   else if(layout==='scrapbook'){
-   c.save();c.translate(w*.28,h*.23);c.rotate(-.08);c.fillStyle='#fff9ef';c.fillRect(-245,-210,490,440);draw(image,-225,-190,450,380);c.restore();
+   c.save();c.translate(w*.28,h*(photosOnly?.40:.23));c.rotate(-.08);c.fillStyle='#fff9ef';c.fillRect(-245,-210,490,440);draw(image,-225,-190,450,380);c.restore();
    const second=slide.secondImage?await load(slide.secondImage):image;
-   c.save();c.translate(w*.72,h*.28);c.rotate(.09);c.fillStyle='#fff9ef';c.fillRect(-245,-210,490,440);draw(second,-225,-190,450,380);c.restore();y=h*.47;
+   c.save();c.translate(w*.72,h*(photosOnly?.58:.28));c.rotate(.09);c.fillStyle='#fff9ef';c.fillRect(-245,-210,490,440);draw(second,-225,-190,450,380);c.restore();y=h*.47;
   } else if(layout==='split'){
-   draw(image,0,0,w/2-6,h*.40);const second=slide.secondImage?await load(slide.secondImage):image;draw(second,w/2+6,0,w/2-6,h*.40);y=h*.40+75;
+   draw(image,0,0,w/2-6,h*(photosOnly?1:.40));const second=slide.secondImage?await load(slide.secondImage):image;draw(second,w/2+6,0,w/2-6,h*(photosOnly?1:.40));y=h*.40+75;
   } else {draw(image,0,0,w,photoMode?h:h*.39);y=h*.39+75;}
-  if(photoMode){const g=c.createLinearGradient(0,0,0,h);g.addColorStop(0,'rgba(0,0,0,.55)');g.addColorStop(1,'rgba(0,0,0,.78)');c.fillStyle=g;c.fillRect(0,0,w,h);y=slide.textPosition==='top'?top+100:slide.textPosition==='bottom'?h*.56:h*.40;}
+  if(photoMode&&!photosOnly){const g=c.createLinearGradient(0,0,0,h);g.addColorStop(0,'rgba(0,0,0,.55)');g.addColorStop(1,'rgba(0,0,0,.78)');c.fillStyle=g;c.fillRect(0,0,w,h);y=slide.textPosition==='top'?top+100:slide.textPosition==='bottom'?h*.56:h*.40;}
  }
+ if(photosOnly){if(!image)throw new Error(`Choose a photo for slide ${index+1}.`);return canvas;}
  c.fillStyle=image&&photoMode?'#ffffff':fg;c.font='600 26px Arial';c.fillText(brand.slice(0,42),x,top);
  c.fillStyle=accent;c.fillRect(x,y,64,5);y+=55;
  const lines=(text:string,font:string)=>{c.font=font;const rows:string[]=[];let row='';for(const word of text.split(/\s+/)){if(c.measureText(word).width>textWidth){if(row){rows.push(row);row='';}let chunk='';for(const ch of word){if(c.measureText(chunk+ch).width>textWidth){rows.push(chunk);chunk='';}chunk+=ch;}row=chunk;}else if(c.measureText(row?row+' '+word:word).width>textWidth){rows.push(row);row=word;}else row=row?row+' '+word:word;}if(row)rows.push(row);return rows;};
