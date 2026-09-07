@@ -9,7 +9,7 @@ export async function renderCarouselSlide(slide:CarouselSlide,index:number,total
  if(slide.image){image=await new Promise<HTMLImageElement>((resolve,reject)=>{const i=new Image();i.crossOrigin='anonymous';const timeout=setTimeout(()=>reject(new Error('A photo took too long to load. Upload a local copy and try again.')),15000);i.onload=()=>{clearTimeout(timeout);resolve(i)};i.onerror=()=>{clearTimeout(timeout);reject(new Error('A photo could not be loaded for export. Upload a local copy or choose another photo.'))};i.src=slide.image!;});}
  const tall=format==='tiktok',x=80,textWidth=tall?800:920,top=tall?180:85,bottom=tall?310:100;
  let y=top+120;
- if(image){const ih=theme==='photo'?h:Math.round(h*.39),scale=Math.max(w/image.width,ih/image.height);c.drawImage(image,(w-image.width*scale)/2,(ih-image.height*scale)/2,image.width*scale,image.height*scale);
+ if(image){const ih=theme==='photo'?h:Math.round(h*.39),scale=Math.max(w/image.width,ih/image.height);c.save();c.beginPath();c.rect(0,0,w,ih);c.clip();c.save();c.beginPath();c.rect(0,0,w,ih);c.clip();c.drawImage(image,(w-image.width*scale)/2,(ih-image.height*scale)/2,image.width*scale,image.height*scale);c.restore();c.restore();
  if(theme==='photo'){const g=c.createLinearGradient(0,0,0,h);g.addColorStop(0,'rgba(0,0,0,.3)');g.addColorStop(.35,'rgba(0,0,0,.48)');g.addColorStop(1,'rgba(0,0,0,.96)');c.fillStyle=g;c.fillRect(0,0,w,h);y=h*.44;}else y=h*.39+75;
  }
  c.fillStyle=image&&theme==='photo'?'#ffffff':fg;c.font='600 26px Arial';c.fillText(brand.slice(0,42),x,top);
