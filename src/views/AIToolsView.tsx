@@ -1,6 +1,8 @@
+import CarouselCreator from '../components/CarouselCreator';
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
+  Layers,
   Wand2, 
   Weight, 
   Dumbbell, 
@@ -72,9 +74,10 @@ interface AIToolsViewProps {
   billingInfo?: any;
 }
 
-type ToolType = 'beautify' | 'morph' | 'muscle' | 'ink' | 'teleport' | 'canvas' | 'face-swap' | 'bg-remover' | 'virtual-tryon' | 'video-edit' | 'skin-enhancer' | 'upscaler' | 'camera-angles' | 'inpaint' | '3d-studio' | 'batch-face-swap' | 'batch-edit' | 'group-photoshoot' | null;
+type ToolType = 'carousel-creator' | 'beautify' | 'morph' | 'muscle' | 'ink' | 'teleport' | 'canvas' | 'face-swap' | 'bg-remover' | 'virtual-tryon' | 'video-edit' | 'skin-enhancer' | 'upscaler' | 'camera-angles' | 'inpaint' | '3d-studio' | 'batch-face-swap' | 'batch-edit' | 'group-photoshoot' | null;
 
 const TOOLS = [
+  {id:'carousel-creator',title:'Carousel Creator',icon:Layers,desc:'Design swipeable Instagram and TikTok posts with editable slides, persona photos, and JPG exports.',color:'from-amber-400 to-orange-500',demoBefore:'/demo/carousel-creator.svg',demoAfter:'/demo/carousel-creator.svg'},
   { 
     id: 'beautify', title: 'Beautify Core', icon: Droplets, 
     desc: 'Refine nose contours, smooth undereyes and skin perfectly.', 
@@ -1421,6 +1424,14 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
     );
   };
 
+  if (activeTool === 'carousel-creator') {
+    return <div className="p-4 sm:p-6 space-y-5">
+      <button type="button" onClick={() => setActiveTool(null)} className="btn-gold-secondary px-4 py-2 text-sm">Back to tools</button>
+      <header><h2 className="text-2xl font-serif text-[#F5F1E8]">Carousel Creator</h2><p className="text-sm text-slate-400 mt-2">Design swipeable Instagram and TikTok posts.</p></header>
+      <CarouselCreator key={persona.id} persona={persona} />
+    </div>;
+  }
+
   if (activeTool === 'camera-angles') {
     return renderAngleToolMode();
   }
@@ -1524,6 +1535,9 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                     <Star size={14} fill={favoriteTools.includes(tool.id) ? 'currentColor' : 'none'} />
                   </button>
                   <div className="relative h-48 w-full flex bg-black overflow-hidden shrink-0">
+                    {tool.id === 'carousel-creator' ? (
+                      <img src={tool.demoBefore} alt="Three coordinated carousel slides" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+                    ) : <>
                     {/* Before Image */}
                     <div className="relative w-1/2 h-full border-r border-white/10 overflow-hidden">
                       {tool.demoBefore.endsWith('.mp4') ? (
@@ -1547,6 +1561,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                     <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-[#18181B] border border-[#E7C477]/40 flex items-center justify-center z-10 shadow-2xl group-hover:rotate-180 transition-transform duration-700 text-[#F2D58D]">
                        <Wand2 size={13} />
                     </div>
+                    </>}
                   </div>
                   
                   <div className="p-5 relative flex-1 flex flex-col justify-center">

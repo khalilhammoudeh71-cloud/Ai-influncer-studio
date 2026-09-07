@@ -1,4 +1,3 @@
-import CarouselCreator from '../components/CarouselCreator';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -22,7 +21,6 @@ interface CreatorHubViewProps {
 }
 
 const TOOLS_CONFIG = [
-  {id:'carousel-creator',title:'Carousel Creator',desc:'Design swipeable Instagram and TikTok slides with persona photos, editable text, and JPG exports.',icon:Columns,color:'from-amber-400 to-orange-500',glow:'rgba(231,196,119,.15)'},
   {
     id: 'brand-deal',
     title: 'Brand Deal Analyzer',
@@ -357,10 +355,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
         </div>
       </div>
 
-      <button type="button" onClick={() => handleOpenTool('carousel-creator')} className="w-full flex items-center justify-between gap-5 rounded-2xl border border-[#E7C477]/30 bg-[#18181B] p-5 text-left hover:border-[#E7C477] transition-colors">
-        <span><span className="block text-xl font-serif text-[#F5F1E8]">Carousel Creator</span><span className="block text-sm text-[#A1A1AA] mt-2">Create swipeable Instagram and TikTok posts. Design, edit, and download your slides.</span><span className="block text-xs font-bold text-[#E7C477] mt-3">Open Carousel Creator →</span></span>
-        <span aria-hidden="true" className="hidden sm:flex shrink-0 items-center -space-x-3">{['Hook','Ideas','Save'].map((label,i)=><span key={label} className={`flex h-28 w-20 flex-col justify-between rounded-lg border border-[#E7C477]/30 p-3 shadow-lg ${i===1?'bg-[#E7C477] text-[#18181B] -translate-y-2':'bg-[#252528] text-[#E7C477]'}`}><span className="text-[10px]">0{i+1}</span><span className="text-sm font-serif">{label}</span></span>)}</span>
-      </button>
+
 
       {toolboxSection === 'all' && (
         <div className="space-y-12">
@@ -519,7 +514,6 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                 {/* Content Panel (Scrollable) */}
                 <div className="flex-1 overflow-y-auto p-6">
                   
-                  {activeTool === 'carousel-creator' && <CarouselCreator key={activePersona.id} persona={activePersona} />}
                   {/* Tool 1: Brand Deal Analyzer */}
                   {activeTool === 'brand-deal' && (
                     <div className="space-y-6">
