@@ -1084,6 +1084,15 @@ function App() {
                           type="button"
                           onClick={() => {
                             setSelectedPersonaId(p.id);
+                            if (
+                              (currentNav.view === 'create-persona' || currentNav.view === 'persona-builder') &&
+                              (currentNav.params?.personaId || currentNav.params?.editCurrent)
+                            ) {
+                              replaceView({
+                                ...currentNav,
+                                params: { ...currentNav.params, personaId: p.id },
+                              });
+                            }
                             trackPersonaUse(p.id);
                             setIsPersonaSwitcherOpen(false);
                           }}
