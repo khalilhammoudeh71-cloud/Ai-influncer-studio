@@ -1,10 +1,10 @@
 export const CAROUSEL_LAYOUTS = ['editorial','full-photo','scrapbook','split','panorama','minimal'] as const;
 export type CarouselLayout = typeof CAROUSEL_LAYOUTS[number];
-export type CarouselSlide = {headline:string;body:string;image?:string;alt?:string;layout?:CarouselLayout;secondImage?:string;cropX?:number;cropY?:number;zoom?:number;align?:'left'|'center';textPosition?:'top'|'middle'|'bottom';font?:'serif'|'sans';textScale?:number};
+export type CarouselSlide = {headline:string;body:string;image?:string;alt?:string;imagePrompt?:string;imageModel?:string;layout?:CarouselLayout;secondImage?:string;cropX?:number;cropY?:number;zoom?:number;align?:'left'|'center';textPosition?:'top'|'middle'|'bottom';font?:'serif'|'sans';textScale?:number};
 export function normalizeSlideDesign(s:any):Partial<CarouselSlide>{
  const photo=(v:any)=>typeof v==='string'&&/^(https?:\/\/|data:image\/(png|jpeg|webp);base64,|\/(?!\/))/.test(v)?v:undefined;
  const number=(v:any,min:number,max:number,fallback:number)=>typeof v==='number'&&Number.isFinite(v)?Math.max(min,Math.min(max,v)):fallback;
- return {image:photo(s.image),secondImage:photo(s.secondImage),layout:CAROUSEL_LAYOUTS.includes(s.layout)?s.layout:'editorial',cropX:number(s.cropX,0,100,50),cropY:number(s.cropY,0,100,50),zoom:number(s.zoom,1,3,1),align:s.align==='center'?'center':'left',textPosition:['top','middle','bottom'].includes(s.textPosition)?s.textPosition:'middle',font:s.font==='sans'?'sans':'serif',textScale:number(s.textScale,.7,1.3,1)};
+ return {imagePrompt:typeof s.imagePrompt==='string'?s.imagePrompt.slice(0,1800):undefined,imageModel:typeof s.imageModel==='string'?s.imageModel.slice(0,250):undefined,image:photo(s.image),secondImage:photo(s.secondImage),layout:CAROUSEL_LAYOUTS.includes(s.layout)?s.layout:'editorial',cropX:number(s.cropX,0,100,50),cropY:number(s.cropY,0,100,50),zoom:number(s.zoom,1,3,1),align:s.align==='center'?'center':'left',textPosition:['top','middle','bottom'].includes(s.textPosition)?s.textPosition:'middle',font:s.font==='sans'?'sans':'serif',textScale:number(s.textScale,.7,1.3,1)};
 }
 export function panoramaPlacement(i:number,total:number,w:number,h:number,iw:number,ih:number,zoom=1,x=50,y=50){
  const scale=Math.max(w*total/iw,h/ih)*zoom;
