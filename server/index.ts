@@ -3182,7 +3182,7 @@ app.post('/api/carousel-reference', requireAuth, async (req, res) => {
 app.post('/api/carousel-content', requireAuth, async (req, res) => {
   const {persona,topic,format}=req.body || {};
   const count=Number(req.body?.count);
-  if(!persona || typeof topic !== 'string' || !topic.trim() || topic.length>5000 || !Number.isInteger(count) || count<3 || count>10 || !['instagram','tiktok'].includes(format)) return res.status(400).json({error:'Choose a platform, 3–10 slides, and a topic under 5,000 characters.'});
+  if(!persona || typeof topic !== 'string' || !topic.trim() || topic.length>5000 || !Number.isInteger(count) || count<2 || count>10 || !['instagram','tiktok'].includes(format)) return res.status(400).json({error:'Choose a platform, 2–10 slides, and a topic under 5,000 characters.'});
   try {
     const result=await getGeminiClient().models.generateContent({model:'gemini-2.5-flash',contents:`Create a ${count}-slide ${format} photo carousel for ${String(persona.name || '').slice(0,100)}. Niche: ${String(persona.niche || '').slice(0,300)}. Tone: ${String(persona.tone || '').slice(0,300)}.
 ${buildPersonalityInstructions(persona)}

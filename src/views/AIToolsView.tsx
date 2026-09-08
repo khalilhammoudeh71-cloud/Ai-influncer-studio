@@ -1427,7 +1427,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
   if (activeTool === 'carousel-creator') {
     return <div className="p-4 sm:p-6 space-y-5">
       <button type="button" onClick={() => setActiveTool(null)} className="btn-gold-secondary px-4 py-2 text-sm">Back to tools</button>
-      <header><h2 className="text-2xl font-serif text-[#F5F1E8]">Carousel Creator</h2><p className="text-sm text-slate-400 mt-2">Design swipeable Instagram and TikTok posts.</p></header>
+      <p className="text-sm text-slate-400">AI ToolKit / Carousel Creator</p>
       <CarouselCreator key={persona.id} persona={persona} />
     </div>;
   }
