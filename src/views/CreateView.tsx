@@ -1,3 +1,4 @@
+import CarouselImageDialog from '../components/CarouselImageDialog';
 import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -528,6 +529,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
   const [activeQuickStyle, setActiveQuickStyle] = useState<string | null>(null);
   const [styleOptionsOpen, setStyleOptionsOpen] = useState(false);
+  const [referencePickerOpen,setReferencePickerOpen]=useState(false);
   const [personaPickerOpen, setPersonaPickerOpen] = useState(false);
   const [selectedAspectRatio, setSelectedAspectRatio] = useState('1:1');
   const [isModelModalOpen, setIsModelModalOpen] = useState(false);
@@ -2084,6 +2086,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             <div className="relative shrink-0">
               <button
                 type="button"
+                aria-label="Add reference image"
                 onClick={() => setUploadMenuOpen(!uploadMenuOpen)}
                 className="w-10 h-10 rounded-2xl bg-white/[0.04] border border-white/10 flex items-center justify-center text-slate-350 hover:bg-white/10 hover:text-white transition-all shadow-md"
               >
@@ -2094,6 +2097,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 <>
                   <div className="fixed inset-0 z-29" onClick={() => setUploadMenuOpen(false)} />
                   <div className="absolute left-0 top-full mt-2 w-48 rounded-xl border border-white/10 bg-[#141416] p-1.5 shadow-2xl z-30 space-y-0.5">
+                    <button type="button" onClick={()=>{setUploadMenuOpen(false);setReferencePickerOpen(true)}} className="w-full text-left px-3 py-2 rounded-lg text-xs text-slate-200 hover:bg-white/5 flex items-center gap-2 font-bold"><ImageIcon size={14}/>Persona reference images</button>
                     <button
                       type="button"
                       onClick={() => {
@@ -4489,6 +4493,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         </div>
       )}
 
+      {referencePickerOpen&&<CarouselImageDialog purpose="reference" format="instagram" personaPhotos={[activePersona.referenceImage,activePersona.avatar,...(activePersona.additionalReferenceImages||[])].filter((u):u is string=>!!u)} libraryPhotos={(activePersona.visualLibrary||[]).map(i=>i.url)} onChoose={url=>{if(url)setRefImages(prev=>prev.some(i=>i.url===url)?prev:[...prev,{id:crypto.randomUUID(),url,name:'Persona reference'}]);setReferencePickerOpen(false)}} onClose={()=>setReferencePickerOpen(false)}/>}
       <AssetPickerModal
         isOpen={isCreateAssetPickerOpen}
         onClose={() => setIsCreateAssetPickerOpen(false)}
