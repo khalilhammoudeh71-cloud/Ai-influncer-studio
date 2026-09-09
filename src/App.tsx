@@ -578,7 +578,7 @@ function App() {
 
         // Hydrate selection only from this authenticated account's namespace.
         const storedSelectedId = localStorage.getItem(storageKeys.selectedPersona);
-        const nextSelectedId = storedSelectedId
+        const nextSelectedId = storedSelectedId === 'empty' ? 'empty' : storedSelectedId
           && storedSelectedId !== 'empty'
           && finalActive.some(persona => persona.id === storedSelectedId)
           ? storedSelectedId

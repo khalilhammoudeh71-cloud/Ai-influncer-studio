@@ -41,7 +41,7 @@ interface ProModeToggleProps {
 export const ProModeToggle: React.FC<ProModeToggleProps> = ({ isPro, onToggle }) => {
   return (
     <div className="flex items-center gap-2.5 rounded-xl border border-[var(--border-default)] bg-[var(--bg-elevated)] px-2.5 py-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.18)] backdrop-blur-xl transition-all duration-300">
-      
+
       <button
         type="button"
         onClick={() => onToggle(!isPro)}
