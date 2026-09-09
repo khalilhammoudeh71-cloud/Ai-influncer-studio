@@ -3,12 +3,14 @@ import {Persona} from '../types';
 import {CarouselSlide} from '../../shared/carousel';
 import {SEQUENCE_STYLES,validateSequence} from '../../shared/carouselSequence';
 import {authFetch,fetchAllModelTypes,canUseReference,generateImage,ModelInfo} from '../services/imageService';
+import CarouselCoverBuilder from './CarouselCoverBuilder';
+import {coverGenerationPrompt} from '../../shared/carouselCover';
 import CarouselPhotoPicker from './CarouselPhotoPicker';
 import {processImageFile} from '../utils/imageProcessing';
 
 type Suggestions=ReturnType<typeof validateSequence>;
 export default function CarouselSequenceStudio({persona,slides,format,onUpdate,onBusy,photos,selected,onSelect}:{selected:number;onSelect:(i:number)=>void;photos:string[];persona:Persona;slides:CarouselSlide[];format:'instagram'|'tiktok';onUpdate:(index:number,patch:Partial<CarouselSlide>)=>void;onBusy:(message:string)=>void}){
- const [coverPrompt,setCoverPrompt]=useState(slides[0]?.imagePrompt||'');
+ const coverPrompt=slides[0]?.imagePrompt||'';
  const [style,setStyle]=useState<string>('same-shoot'),[instructions,setInstructions]=useState(''),[suggestions,setSuggestions]=useState<Suggestions>([]);
  const [models,setModels]=useState<ModelInfo[]>([]),[modelId,setModelId]=useState(''),[modelError,setModelError]=useState(''),[error,setError]=useState(''),[status,setStatus]=useState('');
  const alive=useRef(true),cover=slides[0]?.image;
@@ -16,10 +18,13 @@ export default function CarouselSequenceStudio({persona,slides,format,onUpdate,o
  const loadModels=()=>{setModelError('');fetchAllModelTypes().then(c=>{if(!alive.current)return;const compatible=c.models.filter(m=>canUseReference(m,c.models));setModels(compatible);setModelId(old=>compatible.some(m=>m.id===old)?old:compatible[0]?.id||'');if(!compatible.length)setModelError('No reference-image models are currently available.');}).catch(()=>{if(alive.current)setModelError('Could not load your image models. Try again.');});};
  useEffect(loadModels,[]);
  useEffect(()=>{setSuggestions([]);setStatus('');setError('');},[cover,slides.length]);
+ const coverReference=slides[0]?.coverReference||persona.referenceImage||persona.avatar||persona.alternateReferenceImage;
+ const coverChoices=slides[0]?.coverChoices||{};
+ const hasCoverIdea=!!coverPrompt.trim()||Object.values(coverChoices).some(Boolean);
  const generateCover=async()=>{
-  if(!modelId||!coverPrompt.trim())return;onBusy('Generating your cover photo…');setError('');setStatus('');
+  if(!modelId||!hasCoverIdea)return;onBusy('Generating your cover photo…');setError('');setStatus('');
   try{
-   const result=await generateImage({persona,modelId,prompt:`Create one cover photograph for a carousel. ${coverPrompt}. Preserve the reference person's identity if a reference is supplied. No added text, watermark, borders, or collage.`,preservePromptVerbatim:true,isChatContext:true,identityLock:true,aspectRatio:format==='instagram'?'4:5':'9:16',count:1});
+   const result=await generateImage({persona,modelId,referenceImage:coverReference||'',prompt:coverGenerationPrompt(coverPrompt,coverChoices),preservePromptVerbatim:true,isChatContext:true,identityLock:true,aspectRatio:format==='instagram'?'4:5':'9:16',count:1});
    const photo=Array.isArray(result)?result[0]:result;if(!photo?.imageUrl)throw new Error('No cover image returned.');
    if(alive.current){onUpdate(0,{image:photo.imageUrl,imagePrompt:coverPrompt,imageModel:modelId,layout:'full-photo',cropX:50,cropY:50,zoom:1});setSuggestions([]);setStatus('Cover generated. Request suggestions for your new cover next.');}
   }catch(e:any){if(alive.current)setError(e.message||'Could not generate the cover.');}finally{if(alive.current)onBusy('');}
@@ -55,7 +60,7 @@ export default function CarouselSequenceStudio({persona,slides,format,onUpdate,o
   {selected===0&&<details className="rounded-lg border border-white/15 p-3"><summary className="cursor-pointer text-sm">Choose a different cover photo</summary><div className="mt-3"><CarouselPhotoPicker label="Cover photo" photos={photos} value={cover} onChange={image=>onUpdate(0,{image})}/></div></details>}
   {selected===0&&(cover?<img src={cover} alt="Sequence cover reference" className="w-28 h-32 object-cover rounded-lg"/>:<p className="text-sm text-amber-200">Choose a photo for the cover slide first.</p>)}
   <div className="grid sm:grid-cols-2 gap-4"><label className="text-xs">Sequence direction<select value={style} onChange={e=>setStyle(e.target.value)} className="luxury-input w-full p-3 mt-2">{SEQUENCE_STYLES.map(([id,name])=><option value={id} key={id}>{name}</option>)}</select></label><label className="text-xs">Image model<select value={modelId} onChange={e=>setModelId(e.target.value)} className="luxury-input w-full p-3 mt-2"><option value="" disabled>Choose an image model</option>{models.map(m=><option value={m.id} key={m.id}>{m.name}</option>)}</select><span className="block text-slate-400 mt-2">Available models that support a reference image. Results and identity consistency vary by model.</span></label></div>
-  {selected===0&&<div className="rounded-xl border border-white/15 p-4 space-y-3"><h4 className="font-semibold text-sm">Create a cover photo</h4><label className="block text-xs">Cover photo prompt<textarea value={coverPrompt} onChange={e=>setCoverPrompt(e.target.value)} maxLength={1800} rows={3} placeholder="A candid café portrait in warm morning light, wearing a cream jacket." className="luxury-input w-full mt-2 p-3"/></label><button type="button" disabled={!modelId||!coverPrompt.trim()} onClick={generateCover} className="btn-gold-secondary px-3 py-2 text-sm disabled:opacity-40">Generate cover image</button><p className="text-xs text-slate-400">Uses your selected image model and the persona’s saved reference. Replaces the current cover photo.</p></div>}
+  {selected===0&&<div className="rounded-xl border border-white/15 p-4 space-y-3"><h4 className="font-semibold text-sm">Generate a new cover from a reference</h4><CarouselCoverBuilder reference={coverReference} photos={photos} choices={coverChoices} onReference={coverReference=>onUpdate(0,{coverReference})} onChoices={coverChoices=>onUpdate(0,{coverChoices})} onBusy={onBusy} onError={setError}/><label className="block text-xs">Cover photo prompt<textarea value={coverPrompt} onChange={e=>onUpdate(0,{imagePrompt:e.target.value})} maxLength={1800} rows={3} placeholder="A candid café portrait in warm morning light, wearing a cream jacket." className="luxury-input w-full mt-2 p-3"/></label><button type="button" disabled={!modelId||!hasCoverIdea} onClick={generateCover} className="btn-gold-secondary px-3 py-2 text-sm disabled:opacity-40">Generate cover image</button><p className="text-xs text-slate-400">Uses your selected model, generation reference, style choices, and prompt. Replaces the current cover photo.</p></div>}
   {modelError&&<p role="alert" className="text-sm text-red-300">{modelError} <button type="button" onClick={loadModels} className="underline">Reload models</button></p>}
   <label className="block text-xs">What should happen next? (optional)<textarea rows={2} maxLength={2000} value={instructions} onChange={e=>setInstructions(e.target.value)} placeholder="Keep the outfit and café. Suggest a close-up, a wider view, then walking away." className="luxury-input w-full p-3 mt-2"/></label>
   <button type="button" disabled={!cover} onClick={suggest} className="btn-gold-secondary px-4 py-2 text-sm disabled:opacity-40">{suggestions.length?'Suggest more photo options':'Suggest next photos from cover'}</button>
