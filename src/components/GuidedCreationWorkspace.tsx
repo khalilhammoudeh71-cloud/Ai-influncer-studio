@@ -97,7 +97,7 @@ export default function GuidedCreationWorkspace({
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="mb-1 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--accent-primary)]">
-              <Sparkles size={13} /> Guided creation
+              <Sparkles size={13} /> Simple Mode
             </div>
             <h2 id="guided-create-heading" className="text-lg font-semibold text-[var(--text-primary)] sm:text-xl">
               Make something in three simple steps

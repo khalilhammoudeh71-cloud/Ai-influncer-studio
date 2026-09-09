@@ -1055,7 +1055,7 @@ function App() {
                   <div className="hidden sm:block text-left max-w-[100px]">
                     <p className="text-[10px] font-bold text-[#F2D58D] uppercase tracking-widest leading-none">Active</p>
                     <p className="text-[11px] font-bold text-white truncate leading-tight">
-                      {activePersona.id === 'empty' ? 'No Persona' : activePersona.name}
+                      {activePersona.id === 'empty' ? 'None' : activePersona.name}
                     </p>
                   </div>
                   <ChevronDown size={12} className={`text-[#8C909A] hidden sm:block transition-transform duration-200 ${isPersonaSwitcherOpen ? 'rotate-180' : ''}`} />
@@ -1071,6 +1071,7 @@ function App() {
                       <p className="text-[9px] font-bold text-[#8C909A] uppercase tracking-wider px-2 py-1">Switch Persona</p>
                     </div>
                     <div className="max-h-[260px] overflow-y-auto p-1.5 space-y-1 custom-scrollbar">
+                      <button type="button" onClick={()=>{setSelectedPersonaId('empty');setIsPersonaSwitcherOpen(false);if(currentNav.view==='create-persona'||currentNav.view==='persona-builder')replaceView({view:'create'});}} className={`w-full flex items-center gap-2.5 px-2.5 py-3 rounded-xl text-left border ${selectedPersonaId==='empty'?'border-[#E7C477]/30 bg-[#E7C477]/15':'border-transparent hover:bg-white/5'}`}><Users size={20}/><span><strong className="block text-xs">None</strong><span className="block text-[11px] text-slate-400">Create freely without a persona identity</span></span></button>
                       {[...personas].sort((a, b) => {
                         const ri = recentPersonaIds.current;
                         const ai = ri.indexOf(a.id), bi = ri.indexOf(b.id);

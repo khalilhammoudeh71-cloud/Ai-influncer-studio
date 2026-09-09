@@ -1991,48 +1991,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             )}
           </div>
         ) : (
-          /* Sleek Thin Visual Showcase Banner (h-16 md:h-20) */
-          <div className="w-full relative h-16 md:h-20 bg-[#161618] border border-white/10 rounded-2xl overflow-hidden shadow-lg p-2 flex items-center justify-between gap-3 font-sans select-none">
-            <div className="flex items-center gap-2.5 pl-1.5">
-              <div className="w-8 h-8 rounded-lg bg-[#242428] border border-[#E7C477]/30 flex items-center justify-center shadow-md text-[#F2D58D] shrink-0">
-                <Sparkles className="w-4 h-4 animate-pulse" />
-              </div>
-              <div className="flex flex-col">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[8px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-[#E7C477]/15 border border-[#E7C477]/30 text-[#F2D58D]">
-                    Featured Models
-                  </span>
-                  <span className="text-[9px] font-bold text-slate-400 truncate">GPT Image 2 • Nano Banana • Seedream 5.0 • Wan 7</span>
-                </div>
-                <h2 className="text-xs font-bold text-white tracking-tight leading-tight mt-0.5 font-serif">
-                  Photorealistic Persona & Studio Visual Generator
-                </h2>
-              </div>
-            </div>
-            {/* Visual Showcase Thumbnails Strip */}
-            <div className="hidden sm:flex items-center gap-1.5 pr-1 shrink-0">
-              {[
-                { title: 'Editorial', img: '/persona_showcase_1.png' },
-                { title: 'Cinematic', img: '/persona_showcase_2.png' },
-                { title: 'Portrait', img: '/persona_showcase_3.png' },
-                { title: 'Studio', img: '/persona_showcase_4.png' }
-              ].map((item, idx) => (
-                <div key={idx} className="relative w-11 h-11 md:w-12 md:h-12 rounded-xl overflow-hidden border border-white/20 shadow-md hover:scale-105 transition-all duration-300 group">
-                  <img
-                    src={item.img}
-                    alt={item.title}
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = '/isabella_laurent_reference.png';
-                    }}
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-transparent flex items-end p-0.5">
-                    <span className="text-[6px] font-bold text-white uppercase tracking-wider leading-none drop-shadow">{item.title}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+          null
         )}
 
         {/* Post Generation Toolkit for Active Version */}
@@ -2178,8 +2137,9 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               <textarea
                 value={imagePrompt}
                 onChange={e => setImagePrompt(e.target.value)}
-                placeholder="Describe what you want the AI to create in vivid details..."
-                className="w-full bg-transparent border-0 outline-none resize-none text-sm text-white placeholder-slate-500 h-48 md:h-56 min-h-[180px] focus:ring-0 p-0"
+                aria-label="Describe your image"
+                placeholder="Describe the image: subject, setting, style, and lighting…"
+                className="w-full bg-transparent border-0 outline-none resize-none text-sm text-white placeholder-slate-500 h-28 md:h-32 min-h-[112px] focus:ring-0 p-0"
               />
             </div>
 
@@ -2367,10 +2327,10 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               <div className="relative shrink-0">
                 <select
                   value={refPersonaId}
-                  onChange={(e) => setRefPersonaId(e.target.value)}
+                  onChange={(e) => {const id=e.target.value;setRefPersonaId(id);setLocalPersonaId(id);onSelectPersona(id==='none'?'empty':id);}}
                   className="bg-[#141416] border border-white/10 rounded-xl px-2.5 py-1 text-xs font-semibold text-slate-200 outline-none appearance-none pr-6 hover:bg-[#1E1E22] hover:border-white/20 transition-all cursor-pointer h-8 text-ellipsis overflow-hidden max-w-[140px]"
                 >
-                  <option value="none">No identity reference</option>
+                  <option value="none">None — create freely</option>
                   {personas.map(p => (
                     <option key={p.id} value={p.id}>{p.name}</option>
                   ))}
@@ -4135,7 +4095,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         onPersonaChange={personaId => {
           setLocalPersonaId(personaId);
           if (mode === 'video') setVideoSourcePersonaId(personaId);
-          if (personaId !== 'none') onSelectPersona(personaId);
+          setRefPersonaId(personaId);
+          onSelectPersona(personaId === 'none' ? 'empty' : personaId);
         }}
         estimate={estimate}
         timeEstimate={mode === 'video' ? 'Usually 1–4 minutes' : mode === 'talking-avatar' ? 'Usually 1–3 minutes' : 'Usually 10–45 seconds'}
