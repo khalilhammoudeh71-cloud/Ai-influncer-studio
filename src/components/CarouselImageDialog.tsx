@@ -1,0 +1,13 @@
+import React,{useEffect,useRef,useState} from 'react';
+import CarouselPhotoPicker from './CarouselPhotoPicker';
+import {processImageFile} from '../utils/imageProcessing';
+export default function CarouselImageDialog({personaPhotos,libraryPhotos,value,format,onChoose,onClose}:{personaPhotos:string[];libraryPhotos:string[];value?:string;format:'instagram'|'tiktok';onChoose:(image:string|undefined)=>void;onClose:()=>void}) {
+ const dialog=useRef<HTMLDialogElement>(null),input=useRef<HTMLInputElement>(null);
+ const [source,setSource]=useState<'persona'|'library'|'device'>('persona'),[busy,setBusy]=useState(false),[error,setError]=useState('');
+ useEffect(()=>{dialog.current?.showModal();return()=>dialog.current?.close()},[]);
+ return <dialog aria-labelledby="carousel-photo-dialog-title" ref={dialog} onCancel={onClose} onClose={onClose} className="m-auto w-[min(600px,94vw)] max-h-[85vh] overflow-y-auto rounded-2xl border border-white/20 bg-[#1b1b1e] p-5 text-white backdrop:bg-black/70"><div className="flex items-center justify-between gap-3"><h3 id="carousel-photo-dialog-title" className="text-lg font-semibold">Choose a photo</h3><button type="button" onClick={onClose} disabled={busy} className="px-3 py-2 text-sm">Close</button></div><p className="text-xs text-slate-400 my-3">This photo will appear on your selected slide. To make a different photo from a reference, use Generate.</p><div className="flex gap-2 mb-4">{(['persona','library','device'] as const).map(s=><button type="button" aria-pressed={source===s} key={s} disabled={busy} onClick={()=>setSource(s)} className={`flex-1 rounded-lg py-3 text-xs border ${source===s?'border-[#E7C477] text-[#E7C477]':'border-white/15'}`}>{s==='persona'?'Persona images':s==='library'?'Library':'This device'}</button>)}</div>
+ {source==='device'?<button type="button" disabled={busy} onClick={()=>input.current?.click()} className="btn-gold-primary px-4 py-3 text-sm">{busy?'Loading photo…':'Choose from device'}</button>:<CarouselPhotoPicker format={format} label={source==='persona'?'Persona images':'Saved library'} photos={source==='persona'?personaPhotos:libraryPhotos} value={value} onChange={onChoose}/>}
+ {source==='library'&&!libraryPhotos.length&&<p className="text-xs text-slate-400 mt-3">No saved images yet. Choose a persona image or upload from your device.</p>}
+ <input ref={input} type="file" accept="image/*" hidden onChange={async e=>{const f=e.target.files?.[0];e.target.value='';if(!f)return;setBusy(true);setError('');try{onChoose(await processImageFile(f))}catch(err:any){setError(err.message||'Could not load this image.')}finally{setBusy(false)}}}/>{error&&<p role="alert" className="text-red-300 text-sm mt-3">{error}</p>}
+ </dialog>
+}
