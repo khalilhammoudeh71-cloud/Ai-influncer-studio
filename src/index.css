@@ -1330,7 +1330,7 @@ input:focus, textarea:focus, select:focus {
 
 /* Sub-pixel subtle grid background for canvas */
 .canvas-grid-bg {
-  background-image: 
+  background-image:
     radial-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 0);
   background-size: 24px 24px;
 }
@@ -1469,4 +1469,12 @@ body, input, textarea, select, button { font-family: var(--studio-font); }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
+
+/* Approved carousel workspace: persistent preview beside contextual controls. */
+.carousel-refined-workspace { display:grid; grid-template-columns:minmax(0,1fr); gap:28px; align-items:start; }
+.carousel-refined-preview { min-width:0; }
+@media (min-width: 1000px) {
+ .carousel-refined-workspace { grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:40px; }
+ .carousel-refined-preview { position:sticky; top:100px; }
 }
