@@ -971,10 +971,6 @@ function App() {
               )}
             </AnimatePresence>
 
-            <div className="min-w-0 lg:hidden">
-              <p className="text-[8px] font-bold uppercase tracking-[0.22em] text-[var(--text-muted)]">Workspace</p>
-              <p className="truncate text-[13px] font-semibold text-[var(--text-primary)]">{SECTION_LABELS[activeTab]}</p>
-            </div>
 
             <div className="relative hidden w-full max-w-md lg:block">
               <div className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-[var(--text-tertiary)]">
