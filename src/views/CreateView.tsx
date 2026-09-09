@@ -2013,6 +2013,13 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               </button>
             </div>
 
+            {actionError && (
+              <div role="alert" className="rounded-xl border border-red-400/40 bg-red-950/30 p-3 text-sm text-red-100">
+                <p className="font-semibold">Image update failed — your original image is still displayed.</p>
+                <p className="mt-1">{actionError}</p>
+              </div>
+            )}
+
             {postAction === 'edit' && (
               <div className="bg-[#161618] border border-white/10 rounded-xl p-3.5 space-y-3">
                 {isPro && renderModelSelect(selectedEditModel, setSelectedEditModel, groupedEditModels)}
