@@ -53,9 +53,9 @@ export default function CarouselCreator({persona}:{persona:Persona}){
 
  {busy&&<p role="status" className="sticky top-4 z-20 rounded-xl bg-[#E7C477] text-black p-3 text-sm shadow-lg">{busy}</p>}{error&&<p role="alert" className="text-sm text-red-300">{error}</p>}
  {slides.length===0?<section className="space-y-6">
- <div className="rounded-2xl bg-white/[.035] p-5 sm:p-6">  <div className="grid gap-4 sm:grid-cols-2">
-   <label className="text-xs text-slate-300">Platform<select value={format} onChange={e=>setFormat(e.target.value as CarouselFormat)} className="luxury-input mt-2 w-full p-3">{Object.entries(CAROUSEL_FORMATS).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}</select></label>
-   <label className="text-xs text-slate-300">Number of slides<select value={count} onChange={e=>setCount(+e.target.value)} className="luxury-input mt-2 w-full p-3">{Array.from({length:9},(_,i)=>i+2).map(n=><option key={n}>{n}</option>)}</select></label>
+ <div className="rounded-2xl bg-white/[.035] p-3 sm:p-4">  <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-3">
+   <label className="min-w-0 text-xs text-slate-300">Platform<select value={format} onChange={e=>setFormat(e.target.value as CarouselFormat)} className="luxury-input mt-1.5 h-11 w-full min-w-0 px-2 sm:px-3 text-sm">{Object.entries(CAROUSEL_FORMATS).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}</select></label>
+   <label className="min-w-0 text-xs text-slate-300">Number of slides<select value={count} onChange={e=>setCount(+e.target.value)} className="luxury-input mt-1.5 h-11 w-full min-w-0 px-2 sm:px-3 text-sm">{Array.from({length:9},(_,i)=>i+2).map(n=><option key={n}>{n}</option>)}</select></label>
   </div>
 </div>
  <div className="grid sm:grid-cols-3 gap-4">{([
