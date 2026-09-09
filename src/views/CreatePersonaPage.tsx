@@ -1,3 +1,4 @@
+import { authFetch } from '../services/imageService';
 import PersonalityControls from '../components/PersonalityControls';
 import { normalizePersonality, type PersonalitySettings } from '../../shared/personality';
 import React, { useState, useRef, useEffect, ChangeEvent } from 'react';
@@ -465,7 +466,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       if (data && Array.isArray(data.voices) && data.voices.length > 0) {
         setAccountVoices(data.voices);
       } else {
-        const res = await fetch('/api/elevenlabs-voices');
+        const res = await authFetch('/api/elevenlabs-voices');
         const fallbackData = await res.json();
         if (Array.isArray(fallbackData.voices)) {
           setAccountVoices(fallbackData.voices);
@@ -474,7 +475,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
     } catch (err: any) {
       console.warn('[Fetch Account Voices Note, trying fallback]:', err?.message || err);
       try {
-        const res = await fetch('/api/elevenlabs-voices');
+        const res = await authFetch('/api/elevenlabs-voices');
         const fallbackData = await res.json();
         if (Array.isArray(fallbackData.voices) && fallbackData.voices.length > 0) {
           setAccountVoices(fallbackData.voices);

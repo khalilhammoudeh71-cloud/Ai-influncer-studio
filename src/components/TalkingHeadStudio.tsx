@@ -1,3 +1,4 @@
+import { authFetch } from '../services/imageService';
 import React, { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { X, Play, Pause, Download, Loader2, Upload, Mic, Camera, Video, AlertTriangle, Sparkles, UserRound, Check, FolderHeart } from 'lucide-react';
@@ -126,13 +127,14 @@ export default function TalkingHeadStudio({
     if (!persona) return;
     setScriptGenerating(true);
     try {
-      const res = await fetch('/api/generate-voice-script', {
+      const res = await authFetch('/api/generate-voice-script', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ topic: 'engaging social media voiceover', persona, length: '15-second' }),
       });
       const data = await res.json();
-      if (data.script) setScript(data.script);
+      if (!res.ok || !data.script) throw new Error(data.error || 'Script generation returned no script');
+      setScript(data.script);
     } catch {
       toast.error('Failed to generate script');
     } finally {
@@ -160,7 +162,7 @@ export default function TalkingHeadStudio({
       const voice = TTS_VOICES.find(v => v.id === voiceId);
       if (!voice) return;
 
-      const res = await fetch('/api/generate-speech', {
+      const res = await authFetch('/api/generate-speech', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

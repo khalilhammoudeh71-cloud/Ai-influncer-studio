@@ -59,6 +59,7 @@ import VideoStitcher from '../components/VideoStitcher';
 import QuickStartHub, { type CreationCapabilityId } from '../components/QuickStartHub';
 import GuidedCreationWorkspace from '../components/GuidedCreationWorkspace';
 import {
+  authFetch,
   generateImage,
   generateVideo,
   generateContent,
@@ -199,7 +200,7 @@ const ANONYMOUS_PERSONA: Persona = {
 interface CreateViewProps {
   persona: Persona;
   personas: Persona[];
-  setPersonas: (personas: Persona[]) => void;
+  setPersonas: React.Dispatch<React.SetStateAction<Persona[]>>;
   onSelectPersona: (id: string) => void;
   subView?: string;
   initialBrief?: CreationBrief;
@@ -1117,26 +1118,22 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   };
 
   const saveMediaToLibrary = async (media: GeneratedImage) => {
-    const updatedPersonas = personas.map(p => {
-      if (p.id === persona.id) {
-        return { ...p, visualLibrary: [...(p.visualLibrary || []), media] };
-      }
-      return p;
-    });
-    setPersonas(updatedPersonas);
-
-    try {
-      await fetch(`/api/personas/${persona.id}/images`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(media),
-      });
-    } catch (err) {
-      console.error('Failed to persist media:', err);
+    setSaved(false);
+    setGlobalError(null);
+    if (!personas.some(p => p.id === persona.id)) {
+      setGlobalError('Choose a persona before saving to their library. You can also download the image directly.');
+      return;
     }
-
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    try {
+      const persisted = await api.images.create(persona.id, media);
+      setPersonas(prev => prev.map(p => p.id === persona.id
+        ? { ...p, visualLibrary: [...(p.visualLibrary || []), persisted] }
+        : p));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err) {
+      setGlobalError(err instanceof Error ? err.message : 'Could not save to the library. Please try again.');
+    }
   };
 
   const handleImageGenerate = async () => {
@@ -1364,7 +1361,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     setExtendError(null);
     setExtendResult(null);
     try {
-      const frameRes = await fetch('/api/extract-last-frame', {
+      const frameRes = await authFetch('/api/extract-last-frame', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ videoUrl: videoResult.videoUrl }),
@@ -2568,6 +2565,12 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     return (
       <div className="flex flex-col gap-4 w-full max-w-5xl mx-auto pb-10">
         
+        {extendError && (
+          <div role="alert" className="rounded-xl border border-red-400/40 bg-red-950/30 p-3 text-sm text-red-100">
+            <p className="font-semibold">Video extension failed. Your previous video is unchanged.</p>
+            <p className="mt-1">{extendError}</p>
+          </div>
+        )}
         {/* ── TOP SECTION: Alternating Hero Slideshow / Video Output Canvas ── */}
         <div className={`relative w-full ${videoResult?.videoUrl || isGenerating || isExtending ? 'min-h-[460px] md:min-h-[560px] max-h-[680px]' : 'h-44 md:h-52 max-h-[220px]'} rounded-[24px] border border-white/10 bg-[#08080A] overflow-hidden shadow-2xl transition-all duration-500`}>
           {isGenerating || isExtending ? (
@@ -2608,8 +2611,6 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                       mediaType: 'video',
                     };
                     saveMediaToLibrary(media);
-                    setSaved(true);
-                    setTimeout(() => setSaved(false), 2000);
                   }}
                   className="px-3 py-1.5 bg-black/80 backdrop-blur-sm rounded-xl text-white hover:bg-black transition-all border border-white/10 hover:border-[#E7C477] shadow-lg flex items-center gap-1.5 text-xs font-bold cursor-pointer"
                   title="Save to Library"
@@ -4213,7 +4214,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       )}
 
       {globalError && !globalError.includes('Failed query:') && !globalError.includes('DrizzleQueryError') && (
-        <div className="mb-4 bg-rose-500/10 border border-rose-500/20 rounded-xl p-3 flex items-start gap-2">
+        <div role="alert" className="mb-4 bg-rose-500/10 border border-rose-500/20 rounded-xl p-3 flex items-start gap-2">
           <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
           <p className="text-sm text-rose-300">{globalError}</p>
         </div>

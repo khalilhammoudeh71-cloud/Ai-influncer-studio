@@ -812,7 +812,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
       const rawDataUrl = ev.target?.result as string;
       const dataUrl = await trimAudioBase64To10Sec(rawDataUrl);
       try {
-        const res = await fetch('/api/agent/set-default-voice', {
+        const res = await authFetch('/api/agent/set-default-voice', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ voiceReference: dataUrl })
@@ -852,7 +852,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
     accountLocalStorage.removeItem('superagent_cloned_voice_id');
     accountLocalStorage.removeItem('superagent_cloned_voice_audio');
     try {
-      await fetch('/api/agent/set-default-voice', {
+      await authFetch('/api/agent/set-default-voice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ voiceReference: null })
@@ -879,7 +879,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
       let targetAudioUrl = savedAudio;
 
       if (!targetAudioUrl) {
-        const res = await fetch('/api/agent/test-voice-clone', {
+        const res = await authFetch('/api/agent/test-voice-clone', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1292,7 +1292,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
         : undefined;
 
       console.log('[Voice Stream] 🔄 Fetching /api/agent/voice-chat-stream...');
-      const response = await fetch('/api/agent/voice-chat-stream', {
+      const response = await authFetch('/api/agent/voice-chat-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeader },
         body: JSON.stringify({
@@ -1986,7 +1986,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
         const targetMsg = messages.find(m => m.id === msgId);
         const originalImageUrl = targetMsg?.execSteps?.[stepIdx].resultUrl || '';
 
-        const res = await fetch('/api/face-swap', {
+        const res = await authFetch('/api/face-swap', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -2110,7 +2110,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
     if (voiceEngine === 'elevenlabs') {
       toast.loading(`Cloning voice '${voiceNameInput}' via ElevenLabs...`, { id: 'studio-job' });
       try {
-        const cloneRes = await fetch('/api/elevenlabs-clone-voice', {
+        const cloneRes = await authFetch('/api/elevenlabs-clone-voice', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -2128,7 +2128,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
         
         toast.loading(`Synthesizing test speech with cloned voice ID...`, { id: 'studio-job' });
         
-        const speechRes = await fetch('/api/generate-speech', {
+        const speechRes = await authFetch('/api/generate-speech', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -2151,7 +2151,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
     } else {
       toast.loading('Cloning voice via OmniVoice API...', { id: 'studio-job' });
       try {
-        const res = await fetch('/api/voice-clone', {
+        const res = await authFetch('/api/voice-clone', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -2185,7 +2185,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
     toast.loading('Creating Talking Avatar (OmniVoice + InfiniteTalk)...', { id: 'studio-job' });
 
     try {
-      const res = await fetch('/api/talking-avatar', {
+      const res = await authFetch('/api/talking-avatar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2219,7 +2219,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
     setIsPersonaTyping(true);
 
     try {
-      const res = await fetch('/api/agent/persona-chat', {
+      const res = await authFetch('/api/agent/persona-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2658,7 +2658,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
           addLocalLog(`Chosen Voice: ${voiceId} (${engine})`, true, true);
           addLocalLog(`⏳ Synthesizing voice script narration...`);
 
-          const response = await fetch('/api/generate-speech', {
+          const response = await authFetch('/api/generate-speech', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -2690,7 +2690,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
           addLocalLog(`Chosen 3D Model: ${modelId}`, true, true);
           addLocalLog(`⏳ Synthesizing 3D GLB asset mesh...`);
 
-          const res = await fetch('/api/generate-3d', {
+          const res = await authFetch('/api/generate-3d', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -2782,7 +2782,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
           let clonedId = 'voice-' + Math.random().toString(36).substring(2, 9);
           if (audioDataUrl) {
             try {
-              const res = await fetch('/api/clone-voice', {
+              const res = await authFetch('/api/clone-voice', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -2871,7 +2871,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
 
           let editedUrl = '';
           if (editType === 'bg-remover') {
-            const res = await fetch('/api/remove-bg', {
+            const res = await authFetch('/api/remove-bg', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ image: srcImg })
@@ -2880,7 +2880,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
             if (!res.ok) throw new Error(data.error || 'BG removal failed');
             editedUrl = data.imageUrl;
           } else if (editType === 'face-swap') {
-            const res = await fetch('/api/face-swap', {
+            const res = await authFetch('/api/face-swap', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ targetImage: srcImg, swapImage: step.params.secondImage || srcImg })
@@ -2889,7 +2889,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
             if (!res.ok) throw new Error(data.error || 'Face swap failed');
             editedUrl = data.imageUrl;
           } else if (editType === 'virtual-tryon') {
-            const res = await fetch('/api/virtual-tryon', {
+            const res = await authFetch('/api/virtual-tryon', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ personImage: srcImg, garmentImage: step.params.secondImage || srcImg })
@@ -2984,7 +2984,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
 
           const originalUserMessage = [...messages].reverse().find(message => message.role === 'user');
           const recoveryPrompt = `The previous studio workflow failed. Review the execution report and create a corrected plan containing only the failed and unfinished work. Do not repeat successful steps. Execution report: ${JSON.stringify(executionReport)}`;
-          const recoveryResponse = await fetch('/api/agent/chat', {
+          const recoveryResponse = await authFetch('/api/agent/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...authHeader },
             body: JSON.stringify({
@@ -4589,7 +4589,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                       setDownloaderResult(null);
                       const toastId = toast.loading('Extracting video from link...');
                       try {
-                        const res = await fetch('/api/download-social-video', {
+                        const res = await authFetch('/api/download-social-video', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ url: downloaderUrl })
@@ -4831,7 +4831,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                     setDownloaderResult(null);
                     const toastId = toast.loading('Extracting video from link...');
                     try {
-                      const res = await fetch('/api/download-social-video', {
+                      const res = await authFetch('/api/download-social-video', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ url: downloaderUrl })

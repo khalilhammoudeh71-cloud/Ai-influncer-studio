@@ -1,3 +1,4 @@
+import { authFetch } from '../services/imageService';
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -128,7 +129,7 @@ export default function GroupPhotoshootStudio({ personas, activePersona }: Group
     toast.loading(`Synthesizing dual photoshoot with ${selectedParticipants.map(p => p?.name).join(' & ')}...`, { id: 'group-shoot' });
 
     try {
-      const res = await fetch('/api/multi-persona-photoshoot', {
+      const res = await authFetch('/api/multi-persona-photoshoot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
