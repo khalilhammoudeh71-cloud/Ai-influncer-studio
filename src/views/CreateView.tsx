@@ -1744,6 +1744,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           <div className="relative">
             <select
               value={selectedVideoModel}
+                  data-video-model-select
+                  aria-label="Video model"
               onChange={e => setSelectedVideoModel(e.target.value)}
               className="w-full bg-[var(--bg-elevated)] border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white focus:ring-2 focus:ring-pink-500 outline-none appearance-none pr-10"
             >
@@ -2936,6 +2938,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               {isPro && <div className="relative">
                 <select
                   value={selectedVideoModel}
+                  data-video-model-select
+                  aria-label="Video model"
                   onChange={e => setSelectedVideoModel(e.target.value)}
                   className="bg-[#161f30] border border-white/10 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-200 outline-none appearance-none pr-6 hover:bg-white/[0.08] hover:border-white/20 transition-all cursor-pointer h-8 text-ellipsis overflow-hidden max-w-[215px]"
                 >

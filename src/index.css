@@ -1478,3 +1478,18 @@ body, input, textarea, select, button { font-family: var(--studio-font); }
  .carousel-refined-workspace { grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:40px; }
  .carousel-refined-preview { position:sticky; top:100px; }
 }
+
+/* Keep native dropdown menus opaque and readable in every interaction state. */
+select,
+select:hover,
+select:focus {
+  color-scheme: inherit;
+  background-color: var(--bg-elevated, #19191d);
+  color: var(--text-primary, #f5f1e8);
+  transition-property: border-color, box-shadow;
+}
+select option,
+select optgroup {
+  background-color: var(--bg-elevated, #19191d);
+  color: var(--text-primary, #f5f1e8);
+}
