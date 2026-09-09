@@ -1,3 +1,4 @@
+import { directImageModels, getDirectImageModel } from './openai-image-models';
 import {SEQUENCE_STYLES,validateSequence} from '../shared/carouselSequence';
 import { validateCarousel } from '../shared/carousel';
 import { buildPersonalityInstructions, personalityDelivery } from '../shared/personality';
@@ -881,7 +882,7 @@ async function fetchAtlasCloudModels(): Promise<ModelInfo[]> {
 function getAllModels(wavespeedModels: ModelInfo[], veniceModels: ModelInfo[] = [], atlasCloudModels: ModelInfo[] = []): ModelInfo[] {
   const builtIn: ModelInfo[] = [];
   if (OPENAI_DIRECT_KEY) {
-    builtIn.push({
+    builtIn.push(...directImageModels(), {
       id: 'openai:gpt-image-2',
       name: 'GPT Image 2',
       provider: 'OpenAI',
@@ -915,10 +916,10 @@ async function calculateGenerationQuote(
     quoteSource = 'configured-avatar-estimate';
   } else if (type === 'image') {
     if (modelId) {
-      if (modelId === 'replit:gpt-image-1' || modelId === 'openai:gpt-image-2') {
+      if (modelId === 'replit:gpt-image-1' || !!getDirectImageModel(modelId)) {
         provider = 'OpenAI';
         providerCostUsd = 0.04;
-        quoteSource = 'model-catalog';
+        quoteSource = modelId.includes('gpt-image-2.5-') ? 'configured-openai-estimate' : 'model-catalog';
       } else if (modelId.startsWith('google:')) {
         provider = 'Google';
         providerCostUsd = Number(process.env.GOOGLE_IMAGE_PROVIDER_COST_USD) || 0.04;
@@ -1441,7 +1442,9 @@ async function convertToSquarePngBuffer(dataUrl: string): Promise<Buffer> {
   return await image.getBuffer('image/png');
 }
 
-async function generateWithDirectOpenAI(prompt: string, referenceImage?: string | string[], aspectRatio?: string, maskImage?: string): Promise<string> {
+async function generateWithDirectOpenAI(prompt: string, referenceImage?: string | string[], aspectRatio?: string, maskImage?: string, modelId = 'openai:gpt-image-2'): Promise<string> {
+  const selectedModel = getDirectImageModel(modelId);
+  if (!selectedModel) throw new Error('Unknown OpenAI image model');
   if (!OPENAI_DIRECT_KEY) throw new Error('OpenAI API key not configured');
   const client = new OpenAI({ apiKey: OPENAI_DIRECT_KEY });
   let response;
@@ -1464,8 +1467,8 @@ async function generateWithDirectOpenAI(prompt: string, referenceImage?: string 
     }));
 
     const editParams: any = {
-      model: 'gpt-image-2',
-      image: imageFiles[0],
+      model: selectedModel.apiModel,
+      image: imageFiles,
       prompt,
       n: 1,
       size: aspectRatioToReplitSize(aspectRatio),
@@ -1487,7 +1490,7 @@ async function generateWithDirectOpenAI(prompt: string, referenceImage?: string 
     response = await client.images.edit(editParams);
   } else {
     response = await client.images.generate({
-      model: 'gpt-image-2',
+      model: selectedModel.apiModel,
       prompt,
       n: 1,
       size: aspectRatioToReplitSize(aspectRatio),
@@ -2630,6 +2633,7 @@ app.get('/api/models', requireAuth, async (req, res) => {
     ];
 
     const editModels: ModelInfo[] = [
+      ...(OPENAI_DIRECT_KEY ? directImageModels().map(m => ({ ...m, type: 'image-to-image' as const })) : []),
       ...(OPENAI_DIRECT_KEY ? [{
         id: 'openai:gpt-image-2',
         name: 'GPT Image 2 (OpenAI)',
@@ -5155,22 +5159,22 @@ const generateImageHandler = async (req: any, res: any) => {
         imageUrls = [await generateWithReplit(prompt, replitRefArg, aspectRatio)];
       }
       modelName = 'gpt-image-2';
-    } else if (modelId === 'openai:gpt-image-2') {
+    } else if (!!getDirectImageModel(modelId)) {
       if (!prompt || prompt.length < 10) prompt = buildPrompt({ ...rest, referenceImage });
       const allOpenAIRefs = [referenceImage, ...(additionalImages || [])].filter((x): x is string => !!x);
       const openAIRefArg = allOpenAIRefs.length > 1 ? allOpenAIRefs : allOpenAIRefs[0];
-      console.log('[openai:gpt-image-2] Sending', allOpenAIRefs.length, 'reference image(s) to OpenAI');
+      console.log('[OpenAI] Model', modelId, 'sending', allOpenAIRefs.length, 'reference image(s) to OpenAI');
       if (count > 1) {
-        const results = await Promise.allSettled(Array.from({ length: count }, () => generateWithDirectOpenAI(prompt, openAIRefArg, aspectRatio)));
+        const results = await Promise.allSettled(Array.from({ length: count }, () => generateWithDirectOpenAI(prompt, openAIRefArg, aspectRatio, undefined, modelId)));
         imageUrls = results.filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled').map(r => r.value);
         if (imageUrls.length === 0) {
           const firstErr = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
           throw firstErr ? firstErr.reason : new Error('All image generation requests failed');
         }
       } else {
-        imageUrls = [await generateWithDirectOpenAI(prompt, openAIRefArg, aspectRatio)];
+        imageUrls = [await generateWithDirectOpenAI(prompt, openAIRefArg, aspectRatio, undefined, modelId)];
       }
-      modelName = 'GPT Image 2';
+      modelName = getDirectImageModel(modelId)?.name || 'GPT Image 2';
     } else if (modelId.startsWith('xai:') || modelId.startsWith('grok:')) {
       const rawGrokId = modelId.replace(/^xai:/, '').replace(/^grok:/, '');
       if (!prompt || prompt.length < 10) prompt = buildPrompt({ ...rest, referenceImage });
@@ -5372,9 +5376,9 @@ app.post('/api/generate-reference', async (req, res) => {
     if (modelId === 'replit:gpt-image-1') {
       imageUrl = await generateWithReplit(prompt);
       modelName = 'gpt-image-2';
-    } else if (modelId === 'openai:gpt-image-2') {
-      imageUrl = await generateWithDirectOpenAI(prompt);
-      modelName = 'GPT Image 2';
+    } else if (!!getDirectImageModel(modelId)) {
+      imageUrl = await generateWithDirectOpenAI(prompt, undefined, undefined, undefined, modelId);
+      modelName = getDirectImageModel(modelId)?.name || 'GPT Image 2';
     } else if (modelId.startsWith('wavespeed:')) {
       const wavespeedModels = await fetchWavespeedModels();
       const modelInfo = wavespeedModels.find(m => m.id === modelId);
@@ -5438,7 +5442,7 @@ const editImageHandler = async (req: any, res: any) => {
         imageUrl = await runWiroTask(ownerSlug, modelSlug, input);
       }
       modelName = catalogModel.name;
-    } else if (modelId === 'replit:gpt-image-1' || modelId === 'openai:gpt-image-2') {
+    } else if (modelId === 'replit:gpt-image-1' || !!getDirectImageModel(modelId)) {
       const resolvedSource = await resolveImageToDataUrl(sourceImage);
       const images = [resolvedSource];
       if (resolvedAdditional) images.push(resolvedAdditional);
@@ -5446,10 +5450,11 @@ const editImageHandler = async (req: any, res: any) => {
         if (modelId === 'replit:gpt-image-1') {
           imageUrl = await generateWithReplit(prompt, images, undefined, maskImage);
         } else {
-          imageUrl = await generateWithDirectOpenAI(prompt, images, undefined, maskImage);
+          imageUrl = await generateWithDirectOpenAI(prompt, images, undefined, maskImage, modelId);
         }
-        modelName = 'GPT Image 2';
+        modelName = getDirectImageModel(modelId)?.name || 'GPT Image 2';
       } catch (gptErr) {
+        if (modelId.includes('gpt-image-2.5-')) throw gptErr;
         console.warn('[GPT Image 2 fallback] OpenAI inpaint failed, falling back to Seedream 5.0 Pro:', gptErr instanceof Error ? gptErr.message : gptErr);
         await fetchWavespeedModels();
         const fallbackModel = (cachedEditModels || []).find(m => m.id.includes('seedream-v5.0-pro/edit')) || {
