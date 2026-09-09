@@ -104,6 +104,7 @@ const TOOLS_CONFIG = [
 ];
 
 export default function CreatorHubView({ persona: activePersona, personas, nav, initialTool, billingInfo }: CreatorHubViewProps) {
+  const [creativeToolOpen, setCreativeToolOpen] = useState(!!initialTool);
   const [toolboxSection, setToolboxSection] = useState<'all' | 'creative' | 'marketing'>('all');
 
   useEffect(() => {
@@ -285,7 +286,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
 
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto min-h-full select-none">
-      <header className="mb-6 flex flex-col md:flex-row justify-between items-start md:items-center border-b border-[#E7C477]/10 pb-4">
+      {!creativeToolOpen && !activeTool && <><header className="mb-6 flex flex-col md:flex-row justify-between items-start md:items-center border-b border-[#E7C477]/10 pb-4">
         <div>
           <h1 className="text-3xl md:text-4xl font-serif text-[#F5F1E8] tracking-tight flex items-center gap-3">
             Editing tools
@@ -341,7 +342,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
               toolboxSection === 'marketing' ? 'text-[#141416]' : 'text-[#8C909A] hover:text-[#F5F1E8]'
             }`}
           >
-            {toolboxSection === 'marketing' && (
+            {toolboxSection === 'marketing' && !activeTool && (
               <motion.div
                 layoutId="toolboxTabBg"
                 className="absolute inset-0 bg-gradient-to-r from-[#F2D58D] to-[#B99655] rounded-xl -z-10 shadow-md shadow-amber-950/40"
@@ -357,28 +358,31 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
 
 
 
+      </>}
       {toolboxSection === 'all' && (
         <div className="space-y-12">
               {/* Creative Section */}
               <div className="space-y-4">
-                <div className="flex items-center gap-2.5 pb-2 border-b border-[#E7C477]/10">
+                {!creativeToolOpen && <div className="flex items-center gap-2.5 pb-2 border-b border-[#E7C477]/10">
                   <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#F2D58D] to-[#B99655] flex items-center justify-center text-[#141416] shadow-sm">
                     <Sparkles size={14} />
                   </div>
                   <h2 className="text-sm font-bold text-[#F5F1E8] uppercase tracking-wider">Photo and video tools</h2>
                 </div>
+                }
                 <AIToolsView
                   persona={activePersona}
                   personas={personas}
                   onSelectPersona={() => {}}
                   nav={nav}
+                  onToolOpenChange={setCreativeToolOpen}
                   initialTool={null}
                   billingInfo={billingInfo}
                 />
               </div>
 
               {/* Marketing Section */}
-              <div className="space-y-4">
+              <div hidden={creativeToolOpen || !!activeTool} className="space-y-4">
                 <div className="flex items-center gap-2.5 pb-2 border-b border-[#E7C477]/10">
                   <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#F2D58D] to-[#B99655] flex items-center justify-center text-[#141416] shadow-sm">
                     <Wrench size={14} />
@@ -426,6 +430,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
           personas={personas} 
           onSelectPersona={() => {}} 
           nav={nav} 
+          onToolOpenChange={setCreativeToolOpen}
           initialTool={initialTool}
           billingInfo={billingInfo}
         />

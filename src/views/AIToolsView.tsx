@@ -71,6 +71,7 @@ interface AIToolsViewProps {
   onSelectPersona: (id: string) => void;
   nav: NavActions;
   initialTool?: ToolType;
+  onToolOpenChange?: (open: boolean) => void;
   billingInfo?: any;
 }
 
@@ -230,8 +231,9 @@ const DISTANCE_OPTIONS = [
   { id: 2,  label: 'Wide Shot'    },
 ];
 
-export default function AIToolsView({ persona, personas, onSelectPersona, nav, initialTool, billingInfo }: AIToolsViewProps) {
+export default function AIToolsView({ persona, personas, onSelectPersona, nav, initialTool, billingInfo, onToolOpenChange }: AIToolsViewProps) {
   const [activeTool, setActiveTool] = useState<ToolType>(initialTool || null);
+  useEffect(() => { onToolOpenChange?.(!!activeTool); }, [activeTool, onToolOpenChange]);
   const [toolSearch, setToolSearch] = useState('');
   const [toolListMode, setToolListMode] = useState<'all' | 'favorites' | 'recent'>('all');
   const [favoriteTools, setFavoriteTools] = useState<string[]>(() => {
