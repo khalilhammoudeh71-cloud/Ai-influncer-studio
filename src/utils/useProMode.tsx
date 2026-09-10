@@ -48,9 +48,9 @@ export const ProModeToggle: React.FC<ProModeToggleProps> = ({ isPro, onToggle })
         aria-pressed={isPro}
         aria-label={`Switch to ${isPro ? 'Simple Mode' : 'Advanced Mode'}`}
         title={isPro ? 'Advanced Mode shows all settings. Click for Simple Mode with just the essentials.' : 'Simple Mode shows essential settings. Click for Advanced Mode to see all controls.'}
-        className={`flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1 text-xs font-semibold transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)] ${isPro ? 'border-cyan-300/30 bg-cyan-400/10 text-cyan-300' : 'border-[var(--border-strong)] bg-[var(--accent-muted)] text-[var(--accent-primary)]'}`}
+        className={`flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1 text-xs font-semibold transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)] ${isPro ? 'border-[var(--border-strong)] bg-[var(--accent-muted)] text-[var(--accent-primary)]' : 'border-[var(--border-strong)] bg-[var(--accent-muted)] text-[var(--accent-primary)]'}`}
       >
-        <span className={`h-1.5 w-1.5 rounded-full ${isPro ? 'bg-cyan-300' : 'bg-[var(--accent-primary)]'}`} />
+        <span className={`h-1.5 w-1.5 rounded-full ${isPro ? 'bg-[var(--accent-primary)]' : 'bg-[var(--accent-primary)]'}`} />
         {isPro ? 'Advanced Mode' : 'Simple Mode'}
       </button>
     </div>

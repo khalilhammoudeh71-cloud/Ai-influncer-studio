@@ -158,7 +158,7 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
   const handleLocalFilesAdded = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
     const files = Array.from(e.target.files);
-    
+
     files.forEach(file => {
       const reader = new FileReader();
       reader.onload = () => {
@@ -201,7 +201,7 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
 
         try {
           const res = await upscaleImage(item.url, upscaleModelId, upscaleTarget);
-          
+
           const payload = {
             id: 'img-' + Math.random().toString(36).substring(2, 9),
             url: res.imageUrl,
@@ -296,7 +296,7 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-2 items-center">
+          <div hidden={allMedia.length === 0} className={allMedia.length ? "flex flex-wrap gap-2 items-center" : "hidden"}>
             {/* Search */}
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-tertiary)]" />
@@ -305,7 +305,7 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
                 placeholder="Search prompts..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                className="bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl pl-9 pr-4 py-2 text-sm text-white placeholder-[var(--text-muted)] focus:ring-2 focus:ring-emerald-500 outline-none w-[180px]"
+                className="bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl pl-9 pr-4 py-2 text-sm text-white placeholder-[var(--text-muted)] focus:ring-2 focus:ring-[var(--accent-primary)] outline-none w-[180px]"
               />
             </div>
 
@@ -315,7 +315,7 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
               <select
                 value={sortMode}
                 onChange={e => setSortMode(e.target.value as SortMode)}
-                className="bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl pl-9 pr-4 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-emerald-500 appearance-none"
+                className="bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl pl-9 pr-4 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-[var(--accent-primary)] appearance-none"
               >
                 {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
@@ -372,7 +372,7 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
                 onClick={() => setLayoutMode('grid')}
                 aria-label="Use grid layout"
                 aria-pressed={layoutMode === 'grid'}
-                className={`p-1.5 rounded-lg transition-colors ${layoutMode === 'grid' ? 'bg-emerald-600 text-white' : 'text-[var(--text-muted)] hover:text-white'}`}
+                className={`p-1.5 rounded-lg transition-colors ${layoutMode === 'grid' ? 'bg-[var(--accent-primary)] text-[#161108]' : 'text-[var(--text-muted)] hover:text-white'}`}
                 title="Grid layout"
               >
                 <LayoutGrid size={14} />
@@ -381,7 +381,7 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
                 onClick={() => setLayoutMode('masonry')}
                 aria-label="Use masonry layout"
                 aria-pressed={layoutMode === 'masonry'}
-                className={`p-1.5 rounded-lg transition-colors ${layoutMode === 'masonry' ? 'bg-emerald-600 text-white' : 'text-[var(--text-muted)] hover:text-white'}`}
+                className={`p-1.5 rounded-lg transition-colors ${layoutMode === 'masonry' ? 'bg-[var(--accent-primary)] text-[#161108]' : 'text-[var(--text-muted)] hover:text-white'}`}
                 title="Masonry layout"
               >
                 <Columns size={14} />
@@ -391,7 +391,7 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
         </div>
 
         {/* Persona Vault Tabs */}
-        <div className="flex gap-2 mt-4 flex-wrap items-center pt-2 border-t border-white/5">
+        <div className={allMedia.length ? "flex gap-2 mt-4 flex-wrap items-center pt-2 border-t border-white/5" : "hidden"}>
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1 flex items-center gap-1.5">
             <FolderHeart size={13} className="text-[#D9BA72]" />
             Personas:
@@ -438,7 +438,7 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
         </div>
 
         {/* Type filter tabs */}
-        <div className="flex gap-2 mt-3 flex-wrap">
+        <div className={allMedia.length ? "flex gap-2 mt-3 flex-wrap" : "hidden"}>
           {[
             { id: 'all', label: 'All', count: allMedia.length },
             { id: 'image', label: 'Images', count: allMedia.filter(i => !i.mediaType || i.mediaType === 'image').length },
@@ -450,7 +450,7 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
               onClick={() => setFilterType(tab.id as any)}
               className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all border flex items-center gap-1.5 cursor-pointer ${
                 filterType === tab.id
-                  ? 'bg-emerald-600 border-emerald-500 text-white shadow-md'
+                  ? 'bg-[var(--accent-primary)] border-[var(--accent-primary)] text-[#161108] shadow-md'
                   : 'bg-[var(--bg-elevated)] border-[var(--border-default)] text-[var(--text-secondary)] hover:text-white hover:border-white/30'
               }`}
             >
@@ -468,30 +468,18 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="empty-state flex flex-col items-center justify-center py-24 rounded-3xl relative overflow-hidden"
-          style={{ background: 'radial-gradient(ellipse at 50% 0%, rgba(0,212,255,0.06) 0%, transparent 70%)' }}
+          className="empty-state flex flex-col items-center justify-center py-12 rounded-3xl relative overflow-hidden"
+          style={{ background: 'radial-gradient(ellipse at 50% 0%, rgba(231,196,119,0.04) 0%, transparent 70%)' }}
         >
-          <div className="absolute inset-0 pointer-events-none">
-            {[...Array(6)].map((_, i) => (
-              <div key={i} className="absolute rounded-full opacity-10 animate-pulse"
-                style={{
-                  width: `${40 + i * 30}px`, height: `${40 + i * 30}px`,
-                  left: `${15 + i * 12}%`, top: `${10 + (i % 3) * 25}%`,
-                  background: i % 2 === 0 ? '#00D4FF' : '#D9B667',
-                  animationDelay: `${i * 0.4}s`,
-                }}
-              />
-            ))}
-          </div>
           <div className="relative z-10 text-center space-y-4">
             <div className="w-20 h-20 mx-auto rounded-3xl flex items-center justify-center"
-              style={{ background: 'linear-gradient(135deg, rgba(0,212,255,0.2) 0%, rgba(217,182,103,0.2) 100%)', border: '1px solid rgba(0,212,255,0.2)' }}>
-              <ImageIcon size={36} className="text-[#00D4FF] opacity-60" />
+              style={{ background: 'linear-gradient(135deg, rgba(231,196,119,0.12) 0%, rgba(217,182,103,0.2) 100%)', border: '1px solid rgba(231,196,119,0.12)' }}>
+              <ImageIcon size={36} className="text-[var(--accent-primary)] opacity-60" />
             </div>
             <div>
-              <h3 className="text-2xl font-extrabold text-white mb-2">Your vault is empty</h3>
+              <h3 className="text-2xl font-extrabold text-white mb-2">Your library starts here</h3>
               <p className="text-[var(--text-tertiary)] text-sm max-w-sm mx-auto leading-relaxed">
-                Images and videos you generate in the Create Studio appear here. Start creating to build your visual library.
+                After generating an image or video, choose Save to Library to keep it here.
               </p>
             </div>
             <motion.button
@@ -540,9 +528,9 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
                   exit={{ opacity: 0, scale: 0.9 }}
                   transition={{ duration: 0.2 }}
                   className={`group relative ${layoutMode === 'masonry' ? 'masonry-item rounded-2xl overflow-hidden' : 'aspect-square rounded-2xl overflow-hidden'} bg-[var(--bg-elevated)] border cursor-pointer transition-all ${
-                    isBatchMode && isSelected 
-                      ? 'border-emerald-500 ring-2 ring-emerald-500/30 scale-[0.98]' 
-                      : 'border-[var(--border-subtle)] hover:border-emerald-500/50'
+                    isBatchMode && isSelected
+                      ? 'border-[var(--accent-primary)] ring-2 ring-emerald-500/30 scale-[0.98]'
+                      : 'border-[var(--border-subtle)] hover:border-[var(--accent-primary)]/50'
                   }`}
                   onClick={() => {
                     if (isBatchMode) {
@@ -564,8 +552,8 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
                   {isBatchMode && !isVideo && (
                     <div className="absolute top-3 left-3 z-20">
                       <div className={`w-6 h-6 rounded-full flex items-center justify-center border backdrop-blur-md shadow-lg transition-all ${
-                        isSelected 
-                          ? 'bg-emerald-500 border-emerald-400 text-white' 
+                        isSelected
+                          ? 'bg-emerald-500 border-emerald-400 text-white'
                           : 'bg-black/40 border-white/20 text-transparent hover:border-white/40'
                       }`}>
                         <Check size={12} className="stroke-[3]" />
@@ -575,11 +563,11 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
                   {isVideo ? (
                     <video src={item.url} className="w-full h-full object-cover" />
                   ) : (
-                    <img 
-                      src={item.url} 
-                      alt="" 
-                      className="w-full h-full object-cover" 
-                      loading="lazy" 
+                    <img
+                      src={item.url}
+                      alt=""
+                      className="w-full h-full object-cover"
+                      loading="lazy"
                       onError={(e) => {
                         (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=600&auto=format&fit=crop';
                       }}
@@ -766,7 +754,7 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
                 <div className="mt-auto pt-4 border-t border-[var(--border-subtle)] space-y-2">
                   <button
                     onClick={() => downloadFile(selectedItem.url, selectedItem.mediaType === 'video' ? 'video' : 'image', selectedItem.personaName)}
-                    className="w-full py-2.5 rounded-xl font-bold text-sm bg-emerald-600 hover:bg-emerald-500 text-white transition-colors flex items-center justify-center gap-2"
+                    className="w-full py-2.5 rounded-xl font-bold text-sm bg-[var(--accent-primary)] hover:bg-emerald-500 text-white transition-colors flex items-center justify-center gap-2"
                   >
                     <Download className="w-4 h-4" /> Download
                   </button>
@@ -851,7 +839,7 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
             initial={{ y: 100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 100, opacity: 0 }}
-            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[90] w-[95%] max-w-4xl bg-black/90 backdrop-blur-xl border border-emerald-500/20 rounded-3xl p-5 shadow-2xl shadow-emerald-950/40 flex flex-col gap-4 text-white"
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[90] w-[95%] max-w-4xl bg-black/90 backdrop-blur-xl border border-[var(--accent-primary)]/20 rounded-3xl p-5 shadow-2xl shadow-emerald-950/40 flex flex-col gap-4 text-white"
           >
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
               {/* Left Side: Stats */}
@@ -866,7 +854,7 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
 
               {/* Action queue stats */}
               <div className="flex items-center gap-3">
-                <span className="text-xs font-bold px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-300">
+                <span className="text-xs font-bold px-3 py-1.5 bg-emerald-500/10 border border-[var(--accent-primary)]/20 rounded-xl text-emerald-300">
                   Vault: {selectedIds.size} selected
                 </span>
                 <span className="text-xs font-bold px-3 py-1.5 bg-[var(--accent-muted)] border border-[var(--border-strong)] rounded-xl text-[var(--accent-secondary)]">
@@ -885,7 +873,7 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
                   value={upscaleModelId}
                   onChange={e => setUpscaleModelId(e.target.value)}
                   disabled={isUpscaling}
-                  className="bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 disabled:opacity-50"
+                  className="bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white outline-none focus:ring-1 focus:ring-[var(--accent-primary)] focus:border-[var(--accent-primary)] disabled:opacity-50"
                 >
                   <option value="wavespeed-upscale:wavespeed-ai/image-upscaler">Wavespeed Super Resolution (Fast)</option>
                   <option value="wavespeed-upscale:wavespeed-ai/ultimate-image-upscaler">Ultimate Image Upscaler (High Detail)</option>
@@ -932,7 +920,7 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
                   type="button"
                   disabled={isUpscaling}
                   onClick={() => uploadInputRef.current?.click()}
-                  className="w-full py-2 bg-white/5 border border-dashed border-white/20 hover:border-emerald-500/50 rounded-xl text-xs font-bold hover:bg-white/10 transition-all flex items-center justify-center gap-2 disabled:opacity-50 text-white"
+                  className="w-full py-2 bg-white/5 border border-dashed border-white/20 hover:border-[var(--accent-primary)]/50 rounded-xl text-xs font-bold hover:bg-white/10 transition-all flex items-center justify-center gap-2 disabled:opacity-50 text-white"
                 >
                   <ImageIcon size={14} className="text-emerald-400" />
                   {uploadedFiles.length > 0 ? `Add More (${uploadedFiles.length} total)` : 'Upload Local Images'}

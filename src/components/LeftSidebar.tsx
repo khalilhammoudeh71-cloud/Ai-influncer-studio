@@ -36,8 +36,8 @@ interface NavigationItem {
 
 const primaryItems: NavigationItem[] = [
   { id: 'personas', label: 'Personas', description: 'Your AI influencers', icon: Users, tabTarget: 'personas' },
-  { id: 'create', label: 'Create content', description: 'Make photos, videos, and audio', icon: Sparkles, tabTarget: 'create' },
-  { id: 'tools', label: 'Editing tools', description: 'Edit, enhance, and build content', icon: Wrench, tabTarget: 'intelligence' },
+  { id: 'create', label: 'Create', description: 'Make photos, videos, and audio', icon: Sparkles, tabTarget: 'create' },
+  { id: 'tools', label: 'Tools', description: 'Edit, enhance, and build content', icon: Wrench, tabTarget: 'intelligence' },
   { id: 'library', label: 'Library', description: 'Find and download your creations', icon: Images, tabTarget: 'gallery' },
   { id: 'planner', label: 'Content planner', description: 'Plan and schedule content', icon: CalendarDays, tabTarget: 'planner' },
 ];

@@ -1484,7 +1484,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
           <div className="flex flex-col gap-4 border-b border-[#E7C477]/10 pb-6">
             <div>
               <h2 className="text-2xl font-serif text-[#F5F1E8] tracking-tight">Photo and video tools</h2>
-              <p className="text-xs md:text-sm text-[#8C909A] mt-1.5 font-medium">Unified AI visual creation and neural editing suite for your creator personas</p>
+              <p className="text-xs md:text-sm text-[#8C909A] mt-1.5 font-medium">Choose a tool to edit your photos or videos.</p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div className="relative w-full sm:max-w-sm">

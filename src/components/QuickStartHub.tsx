@@ -93,22 +93,8 @@ interface QuickStartHubProps {
 
 export default function QuickStartHub({ activeCapability, onSelectCapability }: QuickStartHubProps) {
   return (
-    <section className="mb-5 overflow-hidden rounded-[24px] border border-[var(--border-default)] bg-[var(--bg-elevated)] shadow-[0_24px_80px_rgba(0,0,0,0.24)]">
-      <div className="border-b border-[var(--border-subtle)] bg-[linear-gradient(135deg,rgba(231,196,119,0.11),transparent_58%)] px-4 py-4 sm:px-6">
-        <div>
-          <div className="mb-1 flex items-center gap-2 text-xs font-bold tracking-normal text-[var(--accent-primary)]">
-            <Sparkles size={13} /> Choose your format
-          </div>
-          <h2 className="text-lg font-semibold text-[var(--text-primary)] sm:text-xl">
-            What would you like to make?
-          </h2>
-          <p className="mt-1 max-w-2xl text-[11px] leading-relaxed text-[var(--text-muted)]">
-            Pick a format to open its guided editor. You can switch to Advanced controls whenever you need more options.
-          </p>
-        </div>
-      </div>
-
-      <div className="grid gap-3 p-3 sm:grid-cols-2 sm:p-4 lg:grid-cols-3">
+    <section className="mb-5">
+      <div className="grid grid-cols-1 gap-4 min-[480px]:grid-cols-2 lg:grid-cols-3">
         {CAPABILITIES.map((capability, index) => {
           const Icon = capability.icon;
           const active = capability.id === activeCapability;
@@ -128,7 +114,7 @@ export default function QuickStartHub({ activeCapability, onSelectCapability }: 
                   : 'border-[var(--border-subtle)] bg-[var(--bg-input)] hover:-translate-y-1 hover:border-[var(--gold-border-active)] hover:shadow-[0_18px_48px_rgba(0,0,0,0.3)]'
               }`}
             >
-              <div className="relative aspect-[16/9] overflow-hidden border-b border-[var(--border-subtle)] bg-black">
+              <div className="relative aspect-[2/1] overflow-hidden border-b border-[var(--border-subtle)] bg-black">
                 <img
                   src={capability.image}
                   alt=""

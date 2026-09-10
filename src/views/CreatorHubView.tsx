@@ -289,7 +289,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
       {!creativeToolOpen && !activeTool && <><header className="mb-6 flex flex-col md:flex-row justify-between items-start md:items-center border-b border-[#E7C477]/10 pb-4">
         <div>
           <h1 className="text-3xl md:text-4xl font-serif text-[#F5F1E8] tracking-tight flex items-center gap-3">
-            Editing tools
+            Tools
 
           </h1>
           <p className="text-xs md:text-sm text-[#8C909A] mt-1 font-sans">
@@ -363,13 +363,6 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
         <div className="space-y-12">
               {/* Creative Section */}
               <div className="space-y-4">
-                {!creativeToolOpen && <div className="flex items-center gap-2.5 pb-2 border-b border-[#E7C477]/10">
-                  <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#F2D58D] to-[#B99655] flex items-center justify-center text-[#141416] shadow-sm">
-                    <Sparkles size={14} />
-                  </div>
-                  <h2 className="text-sm font-bold text-[#F5F1E8] uppercase tracking-wider">Photo and video tools</h2>
-                </div>
-                }
                 <AIToolsView
                   persona={activePersona}
                   personas={personas}

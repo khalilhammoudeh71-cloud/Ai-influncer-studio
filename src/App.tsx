@@ -133,13 +133,13 @@ function StudioLoadingShell() {
 const SECTION_LABELS: Record<Tab, string> = {
   personas: 'Personas',
   'create-persona': 'Create a persona',
-  create: 'Create content',
+  create: 'Create',
   gallery: 'Library',
   planner: 'Content planner',
   assistant: 'Persona Chat',
   agent: 'AI assistant',
   trends: 'Trends',
-  intelligence: 'Editing tools',
+  intelligence: 'Tools',
   revenue: 'Revenue',
   settings: 'Settings',
 };
@@ -1001,7 +1001,7 @@ function App() {
               <Search size={16} />
             </button>
 
-            <ProModeToggle isPro={isProMode} onToggle={setIsProMode} />
+            {['create', 'intelligence', 'ai-tools'].includes(currentNav.view) && <ProModeToggle isPro={isProMode} onToggle={setIsProMode} />}
 
             {/* Durable media jobs */}
             <button
@@ -1153,7 +1153,7 @@ function App() {
           {deduped.map((entry, i) => {
             const viewLabels: Record<string, string> = {
               'personas': 'Personas', 'create': 'Create', 'gallery': 'Library',
-              'assistant': 'Persona Chat', 'intelligence': 'Editing tools', 'agent': 'AI assistant',
+              'assistant': 'Persona Chat', 'intelligence': 'Tools', 'agent': 'AI assistant',
               'settings': 'Settings', 'persona-builder': 'Persona Builder',
               'trends': 'Trends', 'planner': 'Content planner', 'revenue': 'Revenue', 'create-persona': 'Create persona',
             };

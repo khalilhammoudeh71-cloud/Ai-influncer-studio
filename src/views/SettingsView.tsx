@@ -389,7 +389,7 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
                     {creatorName || 'Creator Profile'}
                   </h2>
                   <span className="px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-[#E7C477]/15 text-[#F2D58D] border border-[#E7C477]/30 flex items-center gap-1">
-                    <Sparkles size={10} className="text-[#E7C477]" /> Universal Sync
+                    <Sparkles size={10} className="text-[#E7C477]" /> Shared profile
                   </span>
                 </div>
                 <p className="text-xs text-[var(--text-tertiary)] mt-0.5">

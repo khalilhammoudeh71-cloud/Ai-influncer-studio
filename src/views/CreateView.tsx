@@ -2006,7 +2006,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 <ArrowUpCircle className="w-3.5 h-3.5" /> Upscale 4K
               </button>
               <button onClick={handleSaveImage} disabled={saved} className="flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 btn-gold-secondary transition-all disabled:opacity-50 shadow-md">
-                {saved ? <><Check className="w-3.5 h-3.5 text-[#E7C477]" /> Saved!</> : <><CheckCircle className="w-3.5 h-3.5" /> Save to Vault</>}
+                {saved ? <><Check className="w-3.5 h-3.5 text-[#E7C477]" /> Saved!</> : <><CheckCircle className="w-3.5 h-3.5" /> Save to Library</>}
               </button>
             </div>
 
@@ -2048,7 +2048,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         {/* ── INTERMEDIATE SECTION: Variation History Stream Thumbnails ── */}
         {activeVersion && generatedFeed.length > 0 && (
           <div className="space-y-2 bg-[#0E0E10] border border-white/10 p-3.5 rounded-2xl">
-            <span className="text-[10px] font-bold text-[#F2D58D] uppercase tracking-wider block">Creations History Stream</span>
+            <span className="text-[10px] font-bold text-[#F2D58D] uppercase tracking-wider block">Recent creations</span>
             <div className="flex gap-2.5 overflow-x-auto pb-1 scrollbar-hide select-none">
               {generatedFeed.map(entry => {
                 const isFocused = focusedEntryId === entry.id;
@@ -4177,23 +4177,13 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       {/* ── CREATE HUB HEADER ── */}
       <div className="mb-4 flex flex-col md:flex-row md:items-center justify-between gap-3 px-1 border-b border-[#E7C477]/10 pb-3">
         <div>
-          {isCapabilityWorkspace && (
-            <button
-              type="button"
-              onClick={() => nav.replace({ view: 'create' })}
-              className="mb-3 inline-flex cursor-pointer items-center gap-2 rounded-full border border-[var(--gold-border-active)] bg-[var(--gold-bg-subtle)] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--gold-bright)] transition-colors hover:bg-[var(--gold-bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]"
-            >
-              <ArrowLeft size={13} />
-              All creation tools
-            </button>
-          )}
           <h1 className="text-2xl md:text-3xl font-serif text-[#F5F1E8] tracking-tight flex items-center gap-2">
-            {isCapabilityWorkspace ? activeWorkspaceMeta.title : 'Create content'}
+            {isCapabilityWorkspace ? activeWorkspaceMeta.title : 'Create'}
           </h1>
           <p className="text-xs text-[#8C909A] mt-0.5 max-w-3xl font-sans">
             {isCapabilityWorkspace
               ? activeWorkspaceMeta.description
-              : 'Choose a format below. The guided editor will help you describe and create your content.'}
+              : 'Choose what you want to make.'}
           </p>
         </div>
       </div>

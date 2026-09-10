@@ -117,7 +117,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                   isSelected ? "border-[#E7C477]/60" : "border-white/10 hover:border-white/25"
                 )}
               >
-                <div className="w-full aspect-[4/5] overflow-hidden relative bg-[#141416] flex items-center justify-center">
+                <div className="w-full aspect-[1/1] overflow-hidden relative bg-[#141416] flex items-center justify-center">
                   <button type="button" aria-label={`Select ${p.name}`} aria-pressed={isSelected} onClick={e=>{e.stopPropagation();onSelectPersona(p.id);}} className="absolute inset-0 z-10 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#E7C477]"/>
                   {p.avatar || p.referenceImage ? (
                     <PersonaAvatar
@@ -209,6 +209,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
         )}
       </div>
 
+      <details className="border-t border-white/10 pt-4"><summary className="cursor-pointer text-sm text-[var(--text-secondary)]">Creation shortcuts & inspiration</summary>
       {/* ── FEATURE CARDS ROW (3 CARDS IN CHARCOAL & GOLD) ── */}
       <section aria-labelledby="generation-options-heading" className="border-t border-white/10 pt-8 sm:pt-10 space-y-5">
         <header>
@@ -308,7 +309,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
           ))}
         </div>
       </motion.section>
-
+      </details>
     </div>
   );
 }
