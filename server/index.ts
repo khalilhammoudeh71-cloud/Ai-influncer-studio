@@ -1,3 +1,5 @@
+import { runProviderCandidates } from './providerFailover';
+import { equivalentRoutes } from '../shared/modelRouting';
 import { directImageModels, getDirectImageModel } from './openai-image-models';
 import {SEQUENCE_STYLES,validateSequence} from '../shared/carouselSequence';
 import { validateCarousel } from '../shared/carousel';
@@ -2783,10 +2785,9 @@ app.get('/api/models', requireAuth, async (req, res) => {
     const configuredRunwareModels = process.env.RUNWARE_API_KEY ? RUNWARE_CURATED_MODELS : [];
     const configuredWiroModels = WIRO_API_KEY && WIRO_API_SECRET ? WIRO_CURATED_MODELS : [];
     const configuredWiroVideoModels = WIRO_API_KEY && WIRO_API_SECRET ? WIRO_CURATED_VIDEO_MODELS : [];
-    const followsWaveSpeedProviderPolicy = (model: ModelInfo) => !/seedream|seedance/i.test(`${model.id} ${model.name}`);
-    const discoveredImageModels = (providerCatalog?.models || []).filter(followsWaveSpeedProviderPolicy);
-    const discoveredEditModels = (providerCatalog?.editModels || []).filter(followsWaveSpeedProviderPolicy);
-    const discoveredVideoModels = (providerCatalog?.videoModels || []).filter(followsWaveSpeedProviderPolicy);
+    const discoveredImageModels = (providerCatalog?.models || []);
+    const discoveredEditModels = (providerCatalog?.editModels || []);
+    const discoveredVideoModels = (providerCatalog?.videoModels || []);
 
     const sortedImageModels = mergeModels(
       configuredRunwareModels,
@@ -2799,7 +2800,7 @@ app.get('/api/models', requireAuth, async (req, res) => {
     )
       .map(mapPriceForUser);
 
-    const sortedEditModels = mergeModels(localImageModels, editModels.filter(followsWaveSpeedProviderPolicy), discoveredEditModels)
+    const sortedEditModels = mergeModels(localImageModels, editModels, discoveredEditModels)
       .map(mapPriceForUser);
 
     const sortedVideoModels = mergeModels(
@@ -4939,10 +4940,6 @@ const generateImageHandler = async (req: any, res: any) => {
   }
 
   let modelId = rawModelId;
-  if (/seedream/i.test(modelId) && !modelId.startsWith('wavespeed:')) {
-    console.log(`[Model Provider Policy] Rewriting ${modelId} to WaveSpeed Seedream 5.0 Pro`);
-    modelId = 'wavespeed:bytedance/seedream-v5.0-pro';
-  }
   const fullPromptText = [
     (rest as any).prompt,
     (rest as any).chatPrompt,
@@ -5831,7 +5828,7 @@ async function resolveVideoUrlOrDataUrl(input: string): Promise<string> {
 }
 
 const generateVideoHandler = async (req: any, res: any) => {
-  req.setTimeout(600000);
+  req.setTimeout?.(600000);
   const { prompt: rawPrompt, modelId: rawModelId, sourceImage, sourceVideo, strength, identityLock, naturalLook, aspectRatio, duration, resolution, allowNsfw } = req.body;
 
   if (!rawPrompt || typeof rawPrompt !== 'string' || !rawPrompt.trim() || !rawModelId) {
@@ -5839,15 +5836,6 @@ const generateVideoHandler = async (req: any, res: any) => {
   }
 
   let modelId = rawModelId as string;
-  if (/seedance/i.test(modelId) && !modelId.startsWith('wavespeed-')) {
-    const version = /seedance[- ]?2\.0/i.test(modelId) ? '2.0' : '2.5';
-    const editMode = /(?:edit|v2v|video-to-video)/i.test(modelId) || Boolean(sourceVideo);
-    modelId = editMode
-      ? `wavespeed-v2v:bytedance/seedance-${version}/edit`
-      : `wavespeed-i2v:bytedance/seedance-${version}`;
-    console.log(`[Model Provider Policy] Rewriting ${rawModelId} to ${modelId}`);
-  }
-
   const identityLockTerms = 'IDENTITY LOCK: Reproduce the exact same facial features in every detail — identical bone structure, eye shape and spacing, nose shape, lip shape, and jawline. This is the same person. Do not reinterpret or alter the face.';
   const realismTerms = 'Candid photography, natural skin texture, subtle skin pores, film grain, not over-retouched, authentic photograph.';
   let prompt = rawPrompt.trim();
@@ -6124,6 +6112,30 @@ async function runJsonGenerationHandler(
   req: any,
   body: Record<string, unknown>,
 ): Promise<{ status: number; payload: any }> {
+  if ((handler === generateImageHandler || handler === generateVideoHandler) && !req.__providerRouting && Number(body.count || 1) === 1) {
+    let candidates: ModelInfo[] = [];
+    try {
+      const [wave, venice, atlas, catalog] = await Promise.all([
+        fetchWavespeedModels(), fetchVeniceModels(), fetchAtlasCloudModels(), fetchProviderCatalog(),
+      ]);
+      const available = handler === generateImageHandler
+        ? mergeModels(getAllModels(wave, venice, atlas), catalog.models,
+            process.env.RUNWARE_API_KEY ? RUNWARE_CURATED_MODELS : [],
+            WIRO_API_KEY && WIRO_API_SECRET ? WIRO_CURATED_MODELS : [])
+        : mergeModels(cachedVideoModels || [], catalog.videoModels,
+            WIRO_API_KEY && WIRO_API_SECRET ? WIRO_CURATED_VIDEO_MODELS : []);
+      const selected = available.find(m => m.id === body.modelId);
+      if (selected) candidates = equivalentRoutes(selected, available).filter(m =>
+        !(body.referenceImage || body.sourceImage) || m.hasReferenceImage || m.hasEditVariant || m.type === 'image-to-video');
+    } catch (error) { console.warn('[model-routing] Catalog unavailable; retaining selected model'); }
+    if (candidates.length > 1) {
+      req.__providerRouting = true;
+      try {
+        return await runProviderCandidates(candidates, candidate =>
+          runJsonGenerationHandler(handler, req, {...body, modelId:candidate.id}));
+      } finally { delete req.__providerRouting; }
+    }
+  }
   const originalBody = req.body;
   let status = 200;
   let payload: any;
