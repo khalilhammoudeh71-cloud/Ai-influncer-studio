@@ -63,3 +63,22 @@ test('accepts completed successful Wiro task with null finishreason', async () =
   const result=await requestWiroPersonaDialogue({apiKey:'test',apiSecret:'test',systemPrompt:'Be brief.',messages:[],userId:'test',sessionId:'test',fetchImpl:async()=>{if(!replies.length)throw new Error('discarded completed answer');return new Response(JSON.stringify(replies.shift()));}});
   assert.equal(result,'Hello, hope your day goes well.');
 });
+
+test('keeps safety instructions in the system field instead of the caller prompt', async () => {
+  const { requestWiroPersonaDialogue } = await import('./wiroPersona');
+  const systemPrompt = 'Be helpful. Do not create sexual content involving minors.';
+  await requestWiroPersonaDialogue({
+    apiKey: 'test', apiSecret: 'test', systemPrompt,
+    messages: [{ role: 'user', content: 'Suggest a peaceful activity.' }], userId: 'test', sessionId: 'test',
+    fetchImpl: async (url, options) => {
+      if (String(url).includes('/Run/')) {
+        const body = JSON.parse(String(options?.body));
+        assert.equal(body.systemInstructions, systemPrompt);
+        assert.match(body.prompt, /CALLER: Suggest a peaceful activity/);
+        assert.ok(!body.prompt.includes(systemPrompt));
+        return new Response(JSON.stringify({ taskid: 'test' }));
+      }
+      return new Response(JSON.stringify({ tasklist: [{ status: 'task_postprocess_end', pexit: '0', outputs: [{ content: { raw: 'Take a walk.', finishreason: 'stop' } }] }] }));
+    },
+  });
+});

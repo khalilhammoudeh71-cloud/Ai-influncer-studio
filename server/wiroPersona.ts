@@ -85,7 +85,8 @@ export async function requestWiroPersonaDialogue(request: WiroPersonaRequest): P
       method: 'POST',
       headers: createWiroHeaders(request.apiKey, request.apiSecret),
       body: JSON.stringify({
-        prompt: buildWiroPersonaPrompt(request.systemPrompt, request.messages),
+        systemInstructions: request.systemPrompt,
+        prompt: buildWiroPersonaPrompt('', request.messages).trim(),
         thinkingType: 'disabled',
         maxCompletionTokens: 180,
         userId: request.userId,
