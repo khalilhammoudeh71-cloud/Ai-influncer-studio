@@ -3390,6 +3390,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
         {},
         {
           temperature: lawfulAdultConversation ? 0.84 : 0.72,
+          reasoning_effort: 'none',
         },
         6500,
       );

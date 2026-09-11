@@ -1886,6 +1886,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   useEffect(() => {
     isMutedRef.current = isMuted;
     if (isMuted) {
+      clearPendingRealtimeTranscript();
+      setLiveUserSpeech('');
       try { scribeConnectionRef.current?.mute(); } catch {}
       stopSpeechRecognition();
     } else if (isCallActiveRef.current) {
