@@ -469,3 +469,8 @@ test('keeps live-call greetings short, spoken, and free of stage directions', ()
     "Mm, I've been thinking about you.",
   );
 });
+
+test('spoken word budgets never cut a sentence into a fragment', () => {
+  const reply = 'Sunday at six works for me. A cream blouse with dark jeans and delicate gold earrings would make a lovely outfit for our evening together.';
+  assert.equal(shapeNaturalSpokenReply(reply, { maxWords: 12 }), 'Sunday at six works for me.');
+});

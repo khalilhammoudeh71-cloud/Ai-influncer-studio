@@ -2729,7 +2729,7 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
       }
     }
 
-    // 2. Cartesia Sonic Voice Synthesis (Ultra-Fast ~90ms)
+    // 2. Cartesia stock-voice synthesis; this does not use the ElevenLabs persona clone.
     const cartesiaKey = process.env.CARTESIA_API_KEY || '';
     if (!audioUrl && cartesiaKey && requestedTtsModel.includes('cartesia')) {
       try {
@@ -2739,14 +2739,13 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
           method: 'POST',
           headers: {
             'X-API-Key': cartesiaKey,
-            'Cartesia-Version': '2024-06-10',
+            'Cartesia-Version': '2026-03-01',
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            model_id: 'sonic-english',
+            model_id: 'sonic-3.5',
             transcript: spokenText,
             voice: {
-              mode: 'id',
               id: cartesiaVoiceId
             },
             output_format: {
@@ -3072,7 +3071,7 @@ router.post('/agent/voice-chat-stream', async (req: AuthenticatedRequest, res: R
   // call. The helper also prevents greetings and acknowledgements from being
   // paired with an old request, even if an outdated client sends a large log.
   const rawHistory = buildVoiceConversationHistory(messages, currentUserTurn, {
-    maxMessages: 10,
+    maxMessages: 64,
   });
   const recentAssistantResponses = rawHistory
     .filter((message: any) => message?.role !== 'user')

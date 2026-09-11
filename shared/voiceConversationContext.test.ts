@@ -160,3 +160,15 @@ test('voice memory recall is relevant and excludes one-time media commands', () 
     'My son is training for the Cairo marathon',
   ]);
 });
+
+test('long calls retain earlier facts and subsequent corrections in order', () => {
+  const messages = [
+    { role: 'user', type: 'text', content: 'Our meeting is Saturday at seven.' },
+    ...Array.from({ length: 20 }, (_, index) => ({ role: index % 2 ? 'persona' : 'user', type: 'text', content: `Conversation detail ${index}` })),
+    { role: 'user', type: 'text', content: 'Correction: Sunday at six.' },
+  ];
+  const result = buildVoiceConversationHistory(messages, 'When is our meeting?');
+  assert.equal(result[0].content, messages[0].content);
+  assert.equal(result.at(-2)?.content, 'Correction: Sunday at six.');
+  assert.equal(result.at(-1)?.content, 'When is our meeting?');
+});

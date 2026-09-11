@@ -568,8 +568,16 @@ export function shapeNaturalSpokenReply(
   const selectedWords = selected.join(' ').split(/\s+/).filter(Boolean);
   if (selectedWords.length <= maxWords) return selected.join(' ').trim();
 
-  const shortened = selectedWords.slice(0, maxWords).join(' ').replace(/[,;:\s]+$/, '').trim();
-  return /[.!?]$/.test(shortened) ? shortened : `${shortened}.`;
+  // Treat the word target as soft: never turn a complete thought into a fragment.
+  const complete: string[] = [];
+  let wordCount = 0;
+  for (const sentence of selected) {
+    const count = sentence.split(/\s+/).length;
+    if (complete.length && wordCount + count > maxWords) break;
+    complete.push(sentence);
+    wordCount += count;
+  }
+  return complete.join(' ');
 }
 
 function findSafeSpeechBoundary(value: string): number {

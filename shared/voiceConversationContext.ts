@@ -184,7 +184,7 @@ export function buildVoiceConversationHistory(
   const exactCurrentTurn = String(currentUserMessage || '').trim();
   if (!exactCurrentTurn) return [];
 
-  const maxMessages = Math.max(2, Math.min(16, options.maxMessages || 10));
+  const maxMessages = Math.max(2, Math.min(64, options.maxMessages || 64));
   const clean = (Array.isArray(messages) ? messages : [])
     .filter(isDialogueMessage)
     .map(message => ({ ...message, content: String(message.content || '').trim() }));

@@ -424,7 +424,7 @@ export const VOICE_CALL_ENGINES = [
   { id: 'eleven_flash_v2_5', name: 'ElevenLabs Flash 2.5', simpleLabel: 'Fastest cloned voice', badge: 'Ultra Fast (~75ms)', desc: 'Fastest delivery using the saved cloned voice' },
   { id: 'fal_maya_stream', name: 'Fal Maya Stream', simpleLabel: 'Emotional voice without a clone', badge: 'Live (~400ms)', desc: 'Emotional prompt-designed voice for personas without a clone' },
   { id: 'eleven_turbo_v2_5', name: 'ElevenLabs Turbo 2.5', simpleLabel: 'Natural tone with quick replies', badge: 'Fast (~250ms)', desc: 'Rich human tone and nuance' },
-  { id: 'cartesia-sonic', name: 'Cartesia Sonic', simpleLabel: 'Fastest turn-taking', badge: 'Extreme Speed (~90ms)', desc: 'Fastest conversational turn-taking' },
+  { id: 'cartesia-sonic', name: 'Cartesia Sonic 3.5', simpleLabel: 'Alternative voice', badge: 'Stock voice', desc: 'Uses a Cartesia stock voice, not your saved persona voice' },
   { id: 'eleven_multilingual_v2', name: 'ElevenLabs Multilingual v2', simpleLabel: 'Most cinematic emotion', badge: 'Expressive (~800ms)', desc: 'High cinematic emotion' },
 ];
 
@@ -2325,7 +2325,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       // request become the apparent current instruction (for example, "Yeah"
       // was interpreted as approval of a request from an earlier chat).
       const conversationContext = buildVoiceConversationHistory(updatedHistory, text, {
-        maxMessages: 10,
+        maxMessages: 64,
       });
       const activeCallIds = new Set(updatedHistory.map(message => message.id));
       const recalledConversation = selectGroundedVoiceRecall(
