@@ -474,3 +474,11 @@ test('spoken word budgets never cut a sentence into a fragment', () => {
   const reply = 'Sunday at six works for me. A cream blouse with dark jeans and delicate gold earrings would make a lovely outfit for our evening together.';
   assert.equal(shapeNaturalSpokenReply(reply, { maxWords: 12 }), 'Sunday at six works for me.');
 });
+
+test('requested recall may repeat an earlier factual answer without provider fallback', () => {
+  assert.equal(reviewVoiceCandidate({
+    userTurn: 'Summarize the current meeting plan in one complete sentence.',
+    response: 'We are meeting Sunday at six, code amber, with mint tea.',
+    recentAssistantResponses: ['We are meeting Sunday at six, code amber, with mint tea.'],
+  }), 'accepted');
+});

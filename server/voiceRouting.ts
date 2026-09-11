@@ -337,7 +337,9 @@ export function reviewVoiceCandidate(input: {
   const intimateCliches = response.match(BOOKISH_INTIMATE_CLICHE)?.length || 0;
   if (input.lawfulAdultConversation && intimateCliches >= 2) return 'robotic';
 
-  if ((input.recentAssistantResponses || []).some(previous => repeatsVoiceOpening(response, previous))) {
+  // Repetition is expected when the caller asks for recall or confirmation.
+  const requestedRecall = /\b(?:repeat|recall|remind|confirm|summari[sz]e|say.{0,30}again)\b/i.test(userTurn);
+  if (!requestedRecall && (input.recentAssistantResponses || []).some(previous => repeatsVoiceOpening(response, previous))) {
     return 'repetitive';
   }
   return 'accepted';
