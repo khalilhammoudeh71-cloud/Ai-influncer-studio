@@ -4548,7 +4548,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                   <img 
                     src={activePersona.avatar || activePersona.referenceImage} 
                     alt={activePersona.name} 
-                    className="w-10 h-10 shrink-0 rounded-full border border-white/20 object-cover shadow-sm" 
+                    className="w-10 h-10 shrink-0 rounded-full border border-white/20 object-cover shadow-sm"
                     onError={(e) => {
                       const target = e.target as HTMLImageElement;
                       const fallback = activePersona?.referenceImage && target.src !== activePersona.referenceImage
@@ -4891,7 +4891,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
             </AnimatePresence>
 
             {/* Visualizer Area */}
-            <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-3 my-2 relative">
+            <div className="flex-none w-full flex flex-col items-center justify-start gap-3 my-2 relative">
               {/* Status Indicator */}
               <div className="text-center z-10 min-h-[38px] flex flex-col items-center justify-center px-4">
                 {pendingVoiceConfirmation ? (
