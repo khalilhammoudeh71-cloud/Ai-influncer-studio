@@ -3478,7 +3478,10 @@ CRITICAL RULES FOR LIVE VOICE CALL:
         ATLAS_KEY,
         selectedAtlasModel,
         {},
-        { temperature: lawfulAdultConversation ? 0.82 : 0.68 },
+        {
+          temperature: lawfulAdultConversation ? 0.82 : 0.68,
+          ...(requestedConversationModel === 'atlas-qwen' ? { enable_thinking: false } : {}),
+        },
         9000,
       );
       console.log(`[Voice Provider Latency] provider=atlas model=${selectedAtlasModel} duration=${Date.now() - attemptStartedAt}ms`);
