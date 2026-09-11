@@ -3574,6 +3574,8 @@ CRITICAL RULES FOR LIVE VOICE CALL:
         config: {
           systemInstruction: `${voiceSystemPrompt}\nMANDATORY: Always finish all sentences completely. Never cut off mid-thought.`,
           maxOutputTokens: voiceReplyTokenLimit,
+          // The small spoken-reply budget must not be consumed by thinking.
+          thinkingConfig: { thinkingBudget: 0 },
           temperature: 0.60
         }
       });
@@ -3627,6 +3629,8 @@ CRITICAL RULES FOR LIVE VOICE CALL:
         config: {
           systemInstruction: `${voiceSystemPrompt}\nMANDATORY: Always finish all sentences completely. Never cut off mid-thought.`,
           maxOutputTokens: voiceReplyTokenLimit,
+          // The small spoken-reply budget must not be consumed by thinking.
+          thinkingConfig: { thinkingBudget: 0 },
           temperature: 0.60
         }
       });

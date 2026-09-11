@@ -36,20 +36,30 @@ export function buildWiroPersonaPrompt(systemPrompt: string, messages: ChatMessa
   return `${systemPrompt.trim()}\n\nLIVE CALL TRANSCRIPT:\n${transcript}\nPERSONA:`;
 }
 
-function extractWiroText(value: unknown): string {
+function extractWiroText(value: unknown, depth = 0): string {
+  if (depth > 8) return '';
   if (typeof value === 'string') {
     const trimmed = value.trim();
     if (!trimmed) return '';
     try {
-      const parsed = JSON.parse(trimmed) as Record<string, any>;
-      return String(parsed.text || parsed.output || parsed.response || parsed.content || trimmed).trim();
+      return extractWiroText(JSON.parse(trimmed), depth + 1);
     } catch {
       return trimmed;
     }
   }
+  if (Array.isArray(value)) {
+    return value.map(part => extractWiroText(part, depth + 1)).filter(Boolean).join(' ').trim();
+  }
   if (!value || typeof value !== 'object') return '';
-  const record = value as Record<string, any>;
-  return String(record.text || record.output || record.response || record.content || '').trim();
+  const record = value as Record<string, unknown>;
+  // Task/Detail exposes its output container before inference completes.
+  // Never stringify that container or return prompt/thinking metadata.
+  if ('finishreason' in record && record.finishreason === null) return '';
+  for (const key of ['answer', 'text', 'output', 'response', 'content', 'raw']) {
+    const text = extractWiroText(record[key], depth + 1);
+    if (text) return text;
+  }
+  return '';
 }
 
 /**

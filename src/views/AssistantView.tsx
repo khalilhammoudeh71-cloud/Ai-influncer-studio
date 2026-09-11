@@ -4542,13 +4542,13 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
             className="absolute inset-0 z-50 bg-[#121316]/98 backdrop-blur-2xl flex flex-col justify-between p-4 sm:p-6 overflow-y-auto custom-scrollbar rounded-2xl sm:rounded-3xl border border-white/[0.12] shadow-2xl"
           >
             {/* Header */}
-            <div className="flex items-center justify-between flex-shrink-0 mb-2">
-              <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 flex-shrink-0 mb-3">
+              <div className="flex min-w-0 items-center gap-3">
                 {activePersona?.avatar || activePersona?.referenceImage ? (
                   <img 
                     src={activePersona.avatar || activePersona.referenceImage} 
                     alt={activePersona.name} 
-                    className="w-10 h-10 rounded-full border border-white/20 object-cover shadow-sm" 
+                    className="w-10 h-10 shrink-0 rounded-full border border-white/20 object-cover shadow-sm" 
                     onError={(e) => {
                       const target = e.target as HTMLImageElement;
                       const fallback = activePersona?.referenceImage && target.src !== activePersona.referenceImage
@@ -4569,7 +4569,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
               </div>
               
               {/* Voice Status & Voice Engine Selector & Call Duration */}
-              <div className="flex items-center gap-2">
+              <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
                 <div 
                   className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/25 text-emerald-300 text-[11px] font-semibold rounded-lg px-2.5 py-1 backdrop-blur-md transition-all shadow-sm max-w-[150px] truncate"
                   title={`Voice strictly locked to ${activePersona.name}'s cloned voice`}
@@ -4577,11 +4577,11 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
                   <span className="truncate">🎙️ {activePersona.name}</span>
                 </div>
-                <div className="relative">
+                <div className="relative min-w-0 flex-1 basis-48">
                   <select
                     value={voiceLlmModel}
                     onChange={event => handleVoiceLlmChange(event.target.value)}
-                    className="max-w-[190px] bg-[#1c1d22] hover:bg-[#222329] border border-cyan-400/25 text-cyan-100 text-[11px] font-semibold rounded-lg px-2.5 py-1 outline-none cursor-pointer backdrop-blur-md transition-all"
+                    className="w-full min-w-0 bg-[#1c1d22] hover:bg-[#222329] border border-cyan-400/25 text-cyan-100 text-[11px] font-semibold rounded-lg px-2.5 py-1 outline-none cursor-pointer backdrop-blur-md transition-all"
                     title={isPro ? 'Select conversation LLM' : 'Choose what the conversation should prioritize'}
                     aria-label={isPro ? 'Conversation LLM' : 'Conversation priority'}
                   >
@@ -4592,11 +4592,11 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                     ))}
                   </select>
                 </div>
-                <div className="relative">
+                <div className="relative min-w-0 flex-1 basis-48">
                   <select
                     value={selectedVoiceEngine}
                     onChange={e => handleVoiceEngineChange(e.target.value)}
-                    className="bg-[#1c1d22] hover:bg-[#222329] border border-white/[0.12] text-zinc-200 text-[11px] font-semibold rounded-lg px-2.5 py-1 outline-none cursor-pointer backdrop-blur-md transition-all"
+                    className="w-full min-w-0 bg-[#1c1d22] hover:bg-[#222329] border border-white/[0.12] text-zinc-200 text-[11px] font-semibold rounded-lg px-2.5 py-1 outline-none cursor-pointer backdrop-blur-md transition-all"
                     title={isPro ? 'Select Voice Engine' : 'Choose what the voice should prioritize'}
                     aria-label={isPro ? 'Voice engine' : 'Voice priority'}
                   >
@@ -4646,7 +4646,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                 )}
                 {isPro && lastVoiceRoute && (
                   <div
-                    className="hidden lg:flex max-w-[220px] items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/[0.08] px-2.5 py-1 text-[10px] font-semibold text-emerald-200"
+                    className="flex max-w-full items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/[0.08] px-2.5 py-1 text-[10px] font-semibold text-emerald-200"
                     title={`Requested ${lastVoiceRoute.requestedModel}; answered by ${lastVoiceRoute.provider}`}
                   >
                     <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" />
