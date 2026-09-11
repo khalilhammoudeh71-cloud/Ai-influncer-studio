@@ -1648,12 +1648,14 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     return `${current} ${tail}`.trim();
   }, []);
 
-  const stopStreamingAudio = useCallback(() => {
+  const stopStreamingAudio = useCallback((closeContext = false) => {
     for (const source of streamingAudioSourcesRef.current) {
       try { source.stop(); } catch {}
       try { source.disconnect(); } catch {}
     }
     streamingAudioSourcesRef.current.clear();
+    // Keep the gesture-unlocked context during the call, including interruptions.
+    if (!closeContext) return;
     const context = streamingAudioContextRef.current;
     streamingAudioContextRef.current = null;
     if (context && context.state !== 'closed') {
@@ -3135,7 +3137,9 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       audioRef.current.volume = 1.0;
       audioRef.current.muted = false;
       audioRef.current.play().catch(() => {});
-      if (resolvePersonaVoiceEngine(activePersona, selectedVoiceEngine) === 'fal_maya_stream') {
+      {
+        // Unlock Web Audio while the call-start click still has user activation.
+        // The caller can switch to streaming speech later in this same call.
         const AudioContextConstructor = window.AudioContext || (window as any).webkitAudioContext;
         if (AudioContextConstructor && (!streamingAudioContextRef.current || streamingAudioContextRef.current.state === 'closed')) {
           streamingAudioContextRef.current = new AudioContextConstructor({ sampleRate: 24_000 }) as AudioContext;
@@ -3265,7 +3269,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       } catch {}
       audioRef.current = null;
     }
-    stopStreamingAudio();
+    stopStreamingAudio(true);
 
     // Cancel browser speech synthesis immediately
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
@@ -3293,7 +3297,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         try { audioRef.current.pause(); audioRef.current.src = ''; } catch {}
         audioRef.current = null;
       }
-      stopStreamingAudio();
+      stopStreamingAudio(true);
       if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
         try { window.speechSynthesis.cancel(); } catch {}
       }
