@@ -77,3 +77,25 @@ export function extractFalPcmChunk(event: unknown): Uint8Array | undefined {
   if (typeof audio === 'string') return decodeHex(audio);
   return undefined;
 }
+
+/** Bound each provider wait, including the first audio chunk before streaming starts. */
+export async function nextMayaAudioChunk<T>(
+  iterator: AsyncIterator<T>,
+  abort: () => void,
+  timeoutMs = 15_000,
+): Promise<IteratorResult<T>> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      iterator.next(),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => {
+          abort();
+          reject(new Error('Maya audio timed out; use the saved persona voice.'));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}

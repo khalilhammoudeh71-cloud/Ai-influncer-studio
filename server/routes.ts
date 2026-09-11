@@ -79,6 +79,7 @@ import {
 import {
   FAL_MAYA_SAMPLE_RATE,
   FAL_MAYA_STREAM_ENDPOINT,
+  nextMayaAudioChunk,
   buildMayaVoicePrompt,
   extractFalPcmChunk,
   shapeMayaSpeechText,
@@ -1990,8 +1991,11 @@ router.post('/agent/maya-speech-stream', async (req: AuthenticatedRequest, res: 
     // Wait for actual audio before committing success, so validation failures
     // can return a useful error instead of an empty 200 response.
 
-    for await (const event of stream) {
-      if (abortController.signal.aborted || res.writableEnded) break;
+    const audioIterator = stream[Symbol.asyncIterator]();
+    while (!abortController.signal.aborted && !res.writableEnded) {
+      const next = await nextMayaAudioChunk(audioIterator, () => stream.abort());
+      if (next.done) break;
+      const event = next.value;
       const pcm = extractFalPcmChunk(event);
       if (!pcm?.byteLength) continue;
       if (!firstChunkAt) firstChunkAt = Date.now();

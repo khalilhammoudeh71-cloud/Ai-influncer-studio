@@ -422,7 +422,7 @@ export const VOICE_CALL_ENGINES = [
   { id: AUTO_PERSONA_VOICE_ENGINE, name: 'Use persona’s saved voice', simpleLabel: 'Recommended for this persona', badge: 'Recommended', desc: 'Clones use Eleven v3 with Flash fallback; uncloned personas use Maya' },
   { id: 'eleven_v3_conversational', name: 'ElevenLabs v3 Conversational', simpleLabel: 'Most expressive cloned voice', badge: 'Human (~280ms)', desc: 'Most expressive delivery using the saved cloned voice' },
   { id: 'eleven_flash_v2_5', name: 'ElevenLabs Flash 2.5', simpleLabel: 'Fastest cloned voice', badge: 'Ultra Fast (~75ms)', desc: 'Fastest delivery using the saved cloned voice' },
-  { id: 'fal_maya_stream', name: 'Fal Maya Stream', simpleLabel: 'Emotional voice without a clone', badge: 'Live (~400ms)', desc: 'Emotional prompt-designed voice for personas without a clone' },
+  { id: 'fal_maya_stream', name: 'Fal Maya Stream', simpleLabel: 'Emotional voice without a clone', badge: 'Variable latency', desc: 'Emotional prompt-designed voice for personas without a clone' },
   { id: 'eleven_turbo_v2_5', name: 'ElevenLabs Turbo 2.5', simpleLabel: 'Natural tone with quick replies', badge: 'Fast (~250ms)', desc: 'Rich human tone and nuance' },
   { id: 'cartesia-sonic', name: 'Cartesia Sonic 3.5', simpleLabel: 'Alternative voice', badge: 'Stock voice', desc: 'Uses a Cartesia stock voice, not your saved persona voice' },
   { id: 'eleven_multilingual_v2', name: 'ElevenLabs Multilingual v2', simpleLabel: 'Most cinematic emotion', badge: 'Expressive (~800ms)', desc: 'High cinematic emotion' },
