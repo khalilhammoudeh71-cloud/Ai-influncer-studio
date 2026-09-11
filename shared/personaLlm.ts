@@ -54,8 +54,8 @@ export const PERSONA_LLM_OPTIONS = [
     id: 'wiro',
     name: 'Wiro Seed 2.1 Turbo',
     simpleLabel: 'Experimental unrestricted route',
-    badge: 'Unreliable',
-    description: 'Experimental persona dialogue route; recent live tests timed out and used fallback.',
+    badge: 'High latency',
+    description: 'Slower task-based dialogue. Allows up to 30 seconds when selected, then uses a fallback if unavailable.',
   },
   {
     id: 'atlas-qwen',

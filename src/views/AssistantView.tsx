@@ -555,7 +555,10 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     return savedEngine || AUTO_PERSONA_VOICE_ENGINE;
   });
 
+  const [voicePlaybackNotice, setVoicePlaybackNotice] = useState('');
+
   const handleVoiceEngineChange = (engineId: string) => {
+    setVoicePlaybackNotice('');
     setSelectedVoiceEngine(engineId);
     localStorage.setItem('agent_voice_engine', engineId);
     const found = VOICE_CALL_ENGINES.find(e => e.id === engineId);
@@ -2111,6 +2114,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       if (currentVoice.voiceModel === 'fal_maya_stream') {
         try {
           await playMayaSpeechStream(text, currentVoice, controller, () => {
+            setVoicePlaybackNotice('');
             if (!isCallActiveRef.current) return;
             setCallStatus('speaking');
             isAgentSpeakingRef.current = true;
@@ -2123,6 +2127,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         } catch (error: any) {
           if (error?.name === 'AbortError') throw error;
           console.warn('[Maya Voice Playback] Falling back to the saved ElevenLabs persona voice:', error);
+          setVoicePlaybackNotice('Maya is unavailable for this reply. Trying the saved persona voice.');
           stopStreamingAudio();
           currentVoice = { ...currentVoice, voiceModel: 'eleven_v3_conversational' };
         }
@@ -2468,6 +2473,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           streamingPlayback = streamingPlayback.then(async () => {
             try {
               const played = await playMayaSpeechStream(cleanSegment, targetVoiceRouting, controller, () => {
+                setVoicePlaybackNotice('');
                 streamingAudioPlayed = true;
                 recordFirstAudioLatency();
                 personaSpeakingStartTimeRef.current = Date.now();
@@ -2480,6 +2486,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
             } catch (error: any) {
               if (error?.name === 'AbortError') throw error;
               console.warn('[Maya Voice Playback] Streaming failed; trying the saved ElevenLabs persona voice:', error);
+              setVoicePlaybackNotice('Maya is unavailable for this reply. Trying the saved persona voice.');
               stopStreamingAudio();
               streamingAudioPlayed = false;
               const fallbackAudio = await synthesizeSpeechSegment(cleanSegment, 'eleven_v3_conversational');
@@ -3126,6 +3133,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     cancelVoiceEnrollment(true);
     setIgnoredSpeakerCount(0);
     setLastSpeakerMatchScore(null);
+    setVoicePlaybackNotice('');
     setCallStatus('connecting');
     setCallDuration(0);
     isAgentSpeakingRef.current = false;
@@ -4649,6 +4657,9 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                     <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
                     Reply {formatLatency(lastVoiceLatency.responseMs)}
                   </div>
+                )}
+                {voicePlaybackNotice && (
+                  <p role="status" className="basis-full text-xs text-[#E7C477]">{voicePlaybackNotice}</p>
                 )}
                 {isPro && lastVoiceRoute && (
                   <div

@@ -36,27 +36,32 @@ export function buildWiroPersonaPrompt(systemPrompt: string, messages: ChatMessa
   return `${systemPrompt.trim()}\n\nLIVE CALL TRANSCRIPT:\n${transcript}\nPERSONA:`;
 }
 
-function extractWiroText(value: unknown, depth = 0): string {
+function extractWiroText(value: unknown, depth = 0, completed = false): string {
   if (depth > 8) return '';
   if (typeof value === 'string') {
     const trimmed = value.trim();
     if (!trimmed) return '';
     try {
-      return extractWiroText(JSON.parse(trimmed), depth + 1);
+      return extractWiroText(JSON.parse(trimmed), depth + 1, completed);
     } catch {
       return trimmed;
     }
   }
   if (Array.isArray(value)) {
-    return value.map(part => extractWiroText(part, depth + 1)).filter(Boolean).join(' ').trim();
+    return value.map(part => extractWiroText(part, depth + 1, completed)).filter(Boolean).join(' ').trim();
   }
   if (!value || typeof value !== 'object') return '';
   const record = value as Record<string, unknown>;
   // Task/Detail exposes its output container before inference completes.
   // Never stringify that container or return prompt/thinking metadata.
-  if ('finishreason' in record && record.finishreason === null) return '';
+  if (!completed && 'finishreason' in record && record.finishreason === null) return '';
+  if (Array.isArray(record.segments)) {
+    return record.segments
+      .filter(segment => segment?.type === 'answer' && typeof segment.text === 'string')
+      .map(segment => segment.text.trim()).filter(Boolean).join(' ');
+  }
   for (const key of ['answer', 'text', 'output', 'response', 'content', 'raw']) {
-    const text = extractWiroText(record[key], depth + 1);
+    const text = extractWiroText(record[key], depth + 1, completed);
     if (text) return text;
   }
   return '';
@@ -72,7 +77,7 @@ export async function requestWiroPersonaDialogue(request: WiroPersonaRequest): P
   const fetcher = request.fetchImpl || fetch;
   const model = request.model || DEFAULT_WIRO_PERSONA_MODEL;
   const controller = new AbortController();
-  const maxWaitMs = Math.max(1000, Math.min(12000, request.maxWaitMs || 6500));
+  const maxWaitMs = Math.max(1000, Math.min(30000, request.maxWaitMs || 6500));
   const timeout = setTimeout(() => controller.abort(), maxWaitMs);
 
   try {
@@ -81,6 +86,8 @@ export async function requestWiroPersonaDialogue(request: WiroPersonaRequest): P
       headers: createWiroHeaders(request.apiKey, request.apiSecret),
       body: JSON.stringify({
         prompt: buildWiroPersonaPrompt(request.systemPrompt, request.messages),
+        thinkingType: 'disabled',
+        maxCompletionTokens: 180,
         userId: request.userId,
         session_id: request.sessionId,
       }),
@@ -108,7 +115,10 @@ export async function requestWiroPersonaDialogue(request: WiroPersonaRequest): P
       const detailJson = await detailResponse.json() as { tasklist?: Array<Record<string, any>> };
       const task = detailJson.tasklist?.[0];
       if (!task) continue;
-      const output = Array.isArray(task.outputs) ? task.outputs.map(extractWiroText).find(Boolean) : '';
+      if (task.status === 'task_postprocess_end' && task.pexit != null && String(task.pexit) !== '0') {
+        throw new Error('Wiro persona task failed');
+      }
+      const output = Array.isArray(task.outputs) ? task.outputs.map((value: unknown) => extractWiroText(value, 0, task.status === 'task_postprocess_end' && String(task.pexit) === '0')).find(Boolean) : '';
       if (output) return output;
       if (task.status === 'task_error' || task.status === 'task_cancel') {
         throw new Error(String(task.debugoutput || 'Wiro persona task failed'));

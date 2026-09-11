@@ -2365,7 +2365,7 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
           })),
           userId: String(req.user.id),
           sessionId: `persona-${String(activePersona?.id || personaName)}-${Date.now()}`,
-          maxWaitMs: 6500,
+          maxWaitMs: requestedConversationModel === 'wiro' ? 30000 : 6500,
         });
         if (rawReply && !isRefusal(rawReply)) text = cleanSpokenDialogue(rawReply);
       } catch (wiroError) {
@@ -2395,6 +2395,7 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
               })),
             ],
             temperature: 0.82,
+            reasoning_effort: 'none',
             max_tokens: 180,
           }),
         });
@@ -3368,7 +3369,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
         messages: messagesForOpenAI.slice(1) as Array<{ role: 'user' | 'assistant'; content: string }>,
         userId: String(req.user.id),
         sessionId: `persona-${String(activePersona?.id || personaName)}-${Date.now()}`,
-        maxWaitMs: 6500,
+        maxWaitMs: requestedConversationModel === 'wiro' ? 30000 : 6500,
       });
       console.log(`[Voice Provider Latency] provider=wiro model=${wiroModel} duration=${Date.now() - attemptStartedAt}ms`);
       publishVoiceCandidate(candidate, `Wiro ${wiroModel}`);

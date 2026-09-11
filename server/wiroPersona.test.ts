@@ -41,3 +41,25 @@ test('does not turn structured metadata into speech when a Wiro task fails', asy
     fetchImpl: async () => new Response(JSON.stringify(responses.shift()), { status: 200 }),
   }), /provider unavailable/);
 });
+
+
+test('reads Wiro final answer segments without exposing reasoning or tool metadata', async () => {
+  const { requestWiroPersonaDialogue } = await import('./wiroPersona');
+  const replies = [{taskid:'test'}, {tasklist:[{status:'task_postprocess_end',pexit:'0',outputs:[{content:{segments:[{type:'thinking',text:'private reasoning'},{type:'answer',text:'Try a quiet walk.'}],finishreason:'stop'}}]}]}];
+  const result = await requestWiroPersonaDialogue({apiKey:'test',apiSecret:'test',systemPrompt:'Be brief.',messages:[],userId:'test',sessionId:'test',fetchImpl:async()=>{if(!replies.length)throw new Error('unexpected extra poll');return new Response(JSON.stringify(replies.shift()));}});
+  assert.equal(result,'Try a quiet walk.');
+});
+
+test('rejects unsuccessful Wiro terminal tasks even when partial text exists', async () => {
+  const { requestWiroPersonaDialogue } = await import('./wiroPersona');
+  const replies=[{taskid:'test'},{tasklist:[{status:'task_postprocess_end',pexit:'1',outputs:[{content:{raw:'An unfinished answer',finishreason:'error'}}]}]}];
+  await assert.rejects(requestWiroPersonaDialogue({apiKey:'test',apiSecret:'test',systemPrompt:'Be brief.',messages:[],userId:'test',sessionId:'test',fetchImpl:async()=>new Response(JSON.stringify(replies.shift()))}),/Wiro persona task failed/);
+});
+
+
+test('accepts completed successful Wiro task with null finishreason', async () => {
+  const { requestWiroPersonaDialogue } = await import('./wiroPersona');
+  const replies=[{taskid:'test'},{tasklist:[{status:'task_postprocess_end',pexit:'0',outputs:[{content:{segments:[{type:'answer',text:'Hello, hope your day goes well.'}],finishreason:null}}]}]}];
+  const result=await requestWiroPersonaDialogue({apiKey:'test',apiSecret:'test',systemPrompt:'Be brief.',messages:[],userId:'test',sessionId:'test',fetchImpl:async()=>{if(!replies.length)throw new Error('discarded completed answer');return new Response(JSON.stringify(replies.shift()));}});
+  assert.equal(result,'Hello, hope your day goes well.');
+});
