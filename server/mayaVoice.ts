@@ -25,8 +25,8 @@ function inferAdultVoice(persona?: MayaPersona): string {
 
 export function buildMayaVoicePrompt(persona?: MayaPersona): string {
   const adultVoice = inferAdultVoice(persona);
-  const personaTone = String(persona?.tone || '').replace(/\s+/g, ' ').trim().slice(0, 220);
-  const savedVoicePrompt = String(persona?.voicePrompt || '').replace(/\s+/g, ' ').trim().slice(0, 320);
+  const personaTone = String(persona?.tone || '').replace(/\s+/g, ' ').trim().slice(0, 70);
+  const savedVoicePrompt = String(persona?.voicePrompt || '').replace(/\s+/g, ' ').trim().slice(0, 120);
   const tone = personaTone
     ? `Personality and emotional tone: ${personaTone}.`
     : 'Personality and emotional tone: warm, confident, playful, and emotionally responsive.';
@@ -41,10 +41,10 @@ export function buildMayaVoicePrompt(persona?: MayaPersona): string {
     savedVoicePrompt ? `Saved voice identity: ${savedVoicePrompt}.` : '',
     `Warm intimate timbre, close-mic sound, ${pace.toLowerCase()} Spontaneous emotional reactions.`,
     tone,
+    'Never sound like an announcer.',
     personalityVoiceDirection(persona || {}),
-    'Use natural breaths, subtle micro-pauses, varied rhythm, and restrained emotion that fits the words.',
-    'Never sound like an announcer, audiobook narrator, customer-service agent, or theatrical performer.',
-  ].filter(Boolean).join(' ');
+    'Use natural breaths, subtle pauses and varied rhythm.',
+  ].filter(Boolean).join(' ').slice(0, 500);
 }
 
 export function shapeMayaSpeechText(text: string, persona?: MayaPersona): string {

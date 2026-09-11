@@ -37,3 +37,13 @@ test('extracts raw and hex-encoded PCM events while rejecting malformed payloads
   assert.equal(extractFalPcmChunk({ audio: 'not-hex' }), undefined);
   assert.equal(extractFalPcmChunk({ done: true }), undefined);
 });
+
+test('Maya voice descriptions fit the provider 500-character limit', () => {
+  const prompt = buildMayaVoicePrompt({
+    name: 'Rawan Hasan',
+    tone: 'Warm and expressive. '.repeat(30),
+    voicePrompt: 'Soft, clear conversational voice. '.repeat(30),
+  });
+  assert.ok(prompt.length <= 500);
+  assert.match(prompt, /adult woman/);
+});
