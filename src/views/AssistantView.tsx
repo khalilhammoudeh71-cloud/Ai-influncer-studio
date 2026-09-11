@@ -4572,7 +4572,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
               <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
                 <div 
                   className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/25 text-emerald-300 text-[11px] font-semibold rounded-lg px-2.5 py-1 backdrop-blur-md transition-all shadow-sm max-w-[150px] truncate"
-                  title={`Voice strictly locked to ${activePersona.name}'s cloned voice`}
+                  title={voiceModel === 'cartesia-sonic' ? 'Cartesia stock voice; not the saved persona clone' : voiceModel === 'fal_maya_stream' ? 'Maya generated voice; not the saved persona clone' : `Using ${activePersona.name}'s saved voice`}
                 >
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
                   <span className="truncate">🎙️ {activePersona.name}</span>

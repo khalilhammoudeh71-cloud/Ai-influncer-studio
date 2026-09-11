@@ -1987,7 +1987,8 @@ router.post('/agent/maya-speech-stream', async (req: AuthenticatedRequest, res: 
     res.setHeader('X-Audio-Channels', '1');
     res.setHeader('X-Audio-Sample-Rate', String(FAL_MAYA_SAMPLE_RATE));
     res.setHeader('X-Voice-Engine', 'fal-maya-stream');
-    res.flushHeaders?.();
+    // Wait for actual audio before committing success, so validation failures
+    // can return a useful error instead of an empty 200 response.
 
     for await (const event of stream) {
       if (abortController.signal.aborted || res.writableEnded) break;
@@ -2014,10 +2015,10 @@ router.post('/agent/maya-speech-stream', async (req: AuthenticatedRequest, res: 
     );
   } catch (error: any) {
     if (error?.name !== 'AbortError' && !abortController.signal.aborted) {
-      console.error('[Maya Voice Stream] Synthesis failed:', error);
+      console.error('[Maya Voice Stream] Synthesis failed:', JSON.stringify({ status: error?.status, message: error?.message, fields: Array.isArray(error?.body?.detail) ? error.body.detail.map((item: any) => ({ location: item.loc, message: item.msg, type: item.type })) : undefined }));
     }
     if (!res.headersSent) {
-      return res.status(502).json({ error: 'Maya voice synthesis failed.', code: 'MAYA_SYNTHESIS_FAILED' });
+      return res.status(502).type('application/json').json({ error: 'Maya voice synthesis failed.', code: 'MAYA_SYNTHESIS_FAILED' });
     }
     if (!res.writableEnded) res.end();
   } finally {
