@@ -3853,7 +3853,7 @@ MODEL SELECTION & CHOICE RULE:
 Whenever proposing steps or storyboards, ALWAYS state the model you selected and inform the user that they can choose ANY model from the studio's dropdown or request any model by name in chat.
 
 MODEL SELECTION GUIDE 1. Image Generation ("generate_image") & Editing ("edit_image"):
-   - FOR NSFW OFF DEFAULT MODELS: "openai:gpt-image-2" ($0.04) (OpenAI GPT Image 2 Photorealistic) OR "google:nano-banana-pro" ($0.00) (Google Gemini 3 Pro Nano Banana Pro) — ALWAYS use one of these two for NSFW OFF image requests.
+   - Standard image default: "wavespeed:bytedance/seedream-v5.0-pro" (Seedream 5.0 Pro), matching the workspace default. Use another model only when requested or justified by the task. Do not assume a direct OpenAI credential is available. Catalog prices are estimates, not verified quotes.
    - FOR NSFW ON DEFAULT MODELS: "wavespeed:bytedance/seedream-v5.0-pro" ($0.035) - ByteDance SeeDream 5.0 Pro (PRIMARY DEFAULT for uncensored adult content) OR "wavespeed:wavespeed-ai/qwen-3.0-pro" ($0.03) - Qwen 3.0 Pro OR "wavespeed:wavespeed-ai/wan-3.0-pro" ($0.03).
    - Fast low-cost drafts and bulk variants: "runware:100@1" (FLUX.1 Schnell) or "runware:101@1" (FLUX.1 Dev).
    - Typography, posters, and branded layouts: "wiro:pruna/p-image-ideogram".
