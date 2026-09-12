@@ -299,6 +299,19 @@ export function normalizeSuperAgentPlanSteps(value: unknown, request = ''): Arra
   });
 }
 
+/** Accept explicit JSON plans, never invent a task from ordinary prose. */
+export function recoverStructuredAgentPlan(reply: string, request: string) {
+  const blocks = [...reply.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)].map(match => match[1]);
+  for (const block of [reply, ...blocks]) {
+    try {
+      const value = JSON.parse(block);
+      const steps = normalizeSuperAgentPlanSteps(Array.isArray(value) ? value : value.suggestedSteps || value.steps || (value.type ? [value] : []), request);
+      if (steps.length) return steps;
+    } catch { /* Unstructured prose is not a plan. */ }
+  }
+  return [];
+}
+
 export function normalizeSuperAgentMediaRouting(
   stepType: string,
   rawParams: Record<string, any>,

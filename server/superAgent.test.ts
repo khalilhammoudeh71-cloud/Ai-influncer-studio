@@ -167,3 +167,11 @@ test('rejects incomplete image and video plans', () => {
   assert.deepEqual(normalizeSuperAgentPlanSteps([{type:'generate_image',params:{}}]), []);
   assert.deepEqual(normalizeSuperAgentPlanSteps([{type:'generate_video',params:{prompt:' '}}]), []);
 });
+
+test('recovers explicit structured steps embedded in a model reply', async () => {
+  const { recoverStructuredAgentPlan } = await import('./superAgent');
+  const reply = 'Here is the step:\n```json\n{"type":"generate_image","params":{"prompt":"A mint teacup","usePersona":false}}\n```\nShall I proceed?';
+  assert.equal(recoverStructuredAgentPlan(reply, 'Create a teacup image')[0]?.params.prompt, 'A mint teacup');
+  assert.deepEqual(recoverStructuredAgentPlan('I can make an image.', 'Create a teacup image'), []);
+  assert.deepEqual(recoverStructuredAgentPlan(reply, 'Text only, show an example'), []);
+});

@@ -56,6 +56,7 @@ import {
   estimateSuperAgentCost,
   modelSupportsNativeTools,
   normalizeSuperAgentPlanSteps,
+  recoverStructuredAgentPlan,
   normalizeSuperAgentModelCatalog,
   normalizeVeniceModelCatalog,
   parseAgentToolArguments,
@@ -4329,11 +4330,21 @@ Do not wrap your response in markdown code blocks or HTML tags. Return ONLY the 
           parsed.suggestedSteps = normalizeSuperAgentPlanSteps(parsed.suggestedSteps, userPrompt);
           parsed.status = parsed.suggestedSteps.length ? 'clarifying' : 'normal';
         }
+        if (!parsed.suggestedSteps?.length) {
+          parsed.suggestedSteps = recoverStructuredAgentPlan(typeof parsed.text === 'string' ? parsed.text : text, userPrompt);
+          if (parsed.suggestedSteps.length) {
+            parsed.status = 'clarifying';
+            parsed.text = 'Your plan is ready below. Review the instructions, then approve it to run.';
+          }
+        }
         return res.json({ ...parsed, sources, agentMode: superAgentMode });
       } catch (e) {
         // Plain conversation is not permission to invent an action plan.
       }
     }
+
+    const recoveredSteps = recoverStructuredAgentPlan(text, userPrompt);
+    if (recoveredSteps.length) return res.json({text:'Your plan is ready below. Review the instructions, then approve it to run.',status:'clarifying',suggestedSteps:recoveredSteps,sources,agentMode:superAgentMode});
 
     text = text.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
 
