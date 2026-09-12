@@ -5464,7 +5464,7 @@ const editImageHandler = async (req: any, res: any) => {
         modelName = `${fallbackModel.name} (Fallback)`;
         const payload: Record<string, unknown> = {
           prompt,
-          enable_sync_mode: true,
+          enable_sync_mode: false,
           enable_base64_output: true,
           image: resolvedSource,
           images: [resolvedSource],
@@ -5510,7 +5510,7 @@ const editImageHandler = async (req: any, res: any) => {
         const b64Url = resolvedSource;
         const payload: Record<string, unknown> = {
           prompt,
-          enable_sync_mode: true,
+          enable_sync_mode: false,
           enable_base64_output: true,
           image: b64Url,
           images: [b64Url],
@@ -5543,7 +5543,7 @@ const editImageHandler = async (req: any, res: any) => {
       const b64Url = await resolveImageToDataUrl(sourceImage);
       const payload: Record<string, unknown> = {
         prompt,
-        enable_sync_mode: true,
+        enable_sync_mode: false,
         enable_base64_output: true,
         image: b64Url,
         images: [b64Url],
