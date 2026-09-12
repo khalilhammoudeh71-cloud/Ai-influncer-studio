@@ -2368,6 +2368,9 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
         if (stoppedPlans.current.has(messageId)) throw new Error('Stopped before the next step. Completed assets are kept.');
         activeStepIndex = i;
         updateStepStatus(i, 'running');
+        if (['generate_image', 'generate_video'].includes(step.type) && (typeof step.params.prompt !== 'string' || !step.params.prompt.trim())) {
+          throw new Error('This plan is missing its image or video instructions. Add the complete description before running it.');
+        }
 
         if (step.type === 'create_persona') {
           addLocalLog(`⏳ Building persona profile '${step.params.name}'...`);

@@ -12,7 +12,7 @@ This follows the useful interaction patterns described by [Higgsfield Supercompu
 - An editable saved Project brief under Agent setup, supplied as context in later turns.
 - Plans wait for explicit approval in Review required mode. The alternative is accurately labeled Run automatically, not Auto-publish.
 - Editable image/script instructions in the task plan; stop before the next step; retries skip already successful steps.
-- Removed the keyword shortcut that launched image jobs from ordinary phrases such as “do not create assets.”
+- Removed the keyword shortcut and legacy fallback plans that treated ordinary phrases such as “do not create assets” as image requests. Incomplete image/video instructions are rejected before generation; alternate provider plan shapes retain their prompts.
 - Image generation carries the scene into the conversational prompt path. Object/no-people scenes omit persona references; persona scenes use the existing participant-aware media service and its fidelity checks.
 - Selected-persona resolution replaces first-persona selection. Generating an asset no longer replaces the saved avatar or reference image.
 - Research uses Gemini Search/URL context, and the UI displays links from returned grounding metadata. Missing evidence is reported instead of replaced with canned “live trends.”
@@ -52,7 +52,7 @@ Keep Adaptive Fast for routine writing/planning based on the earlier audit. Use 
 
 ## Validation completed before release
 
-- 24 targeted automated tests passed, including new approval, restoration, optional identity, missing-output and research-source cases.
+- 27 targeted automated tests passed, including new approval, restoration, optional identity, missing-output and research-source cases.
 - Type checking and production frontend build passed during development; final release checks are recorded in the delivery message.
 - Browser fixture: new plan waited for approval; its edited prompt and conversation survived refresh; simulated provider failure displayed Needs attention and preserved the failed instructions.
 - Live provider probe: Gemini retrieved the IANA example-domains explanation with a usable source URL.

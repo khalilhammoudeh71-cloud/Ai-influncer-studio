@@ -3914,7 +3914,7 @@ AVAILABLE STEPS inside "suggestedSteps":
    Parameters: amount (number), source, platform, notes
  
 CRITICAL EXECUTION RULE:
-Whenever the user asks to generate, create, edit, transform, or plan anything (photos, videos, storyboards, voice clones, avatars, or plans), you MUST set "status": "executing" and include the appropriate task step(s) inside "suggestedSteps". Never return empty suggestedSteps when an action is requested.
+For an explicit request to execute a studio action, propose complete steps for review. Text-only advice, budgets, comparisons, and requests to wait must have empty suggestedSteps. Never execute while the user is still describing the request.
  
 When the native "create_studio_plan" tool is available, call it for action requests instead of printing the plan as text. After the tool confirms the plan, answer with a concise natural-language summary. For ordinary conversation, answer naturally without calling the tool.
 
@@ -3922,7 +3922,7 @@ When native tools are unavailable, reply in valid JSON format with these exact p
 {
   "text": "Your textual chat reply to the user including Model Recommendations & Alternatives breakdown",
   "status": "executing",
-  "suggestedSteps": [ ...array of execution steps... ]
+  "suggestedSteps": [{"type":"generate_image","params":{"prompt":"Complete scene description","usePersona":false,"aspectRatio":"1:1"}}]
 }
 Do not wrap your response in markdown code blocks or HTML tags. Return ONLY the JSON object.`;
 
@@ -4217,13 +4217,13 @@ Do not wrap your response in markdown code blocks or HTML tags. Return ONLY the 
                 continue;
               }
 
-              const normalizedSteps = normalizeSuperAgentPlanSteps(args.steps);
+              const normalizedSteps = normalizeSuperAgentPlanSteps(args.steps, userPrompt);
               if (normalizedSteps.length === 0) {
                 conversation.push({
                   role: 'tool',
                   tool_call_id: toolCall.id,
                   name: toolName,
-                  content: JSON.stringify({ ok: false, error: 'The plan contained no supported studio steps. Revise it.' }),
+                  content: JSON.stringify({ ok: false, error: 'The plan is incomplete or the user asked for text only/wait. For an authorized image/video action, provide params.prompt with the full scene. Otherwise respond without a plan.' }),
                 });
                 continue;
               }
@@ -4309,9 +4309,9 @@ Do not wrap your response in markdown code blocks or HTML tags. Return ONLY the 
 
     if (nativePlan && nativePlan.length > 0) {
       return res.json({
-        text: text || nativePlanSummary || 'I built and validated the execution plan. I’m starting it now.',
+        text: text || nativePlanSummary || 'Your plan is ready to review. No actions have run yet.',
         status: 'executing',
-        suggestedSteps: nativePlan,
+        suggestedSteps: normalizeSuperAgentPlanSteps(nativePlan, userPrompt),
         critiqueLogs: ['Adaptive Agent native tool plan validated against supported studio actions.'],
         collaborationLogs: [{
           agent: `${superAgentMode?.provider || 'Adaptive'} Reasoning`,
@@ -4326,44 +4326,12 @@ Do not wrap your response in markdown code blocks or HTML tags. Return ONLY the 
       try {
         const parsed = JSON.parse(text);
         if (Array.isArray(parsed?.suggestedSteps)) {
-          parsed.suggestedSteps = normalizeSuperAgentPlanSteps(parsed.suggestedSteps);
-          if (parsed.suggestedSteps.length > 0) parsed.status = 'executing';
+          parsed.suggestedSteps = normalizeSuperAgentPlanSteps(parsed.suggestedSteps, userPrompt);
+          parsed.status = parsed.suggestedSteps.length ? 'clarifying' : 'normal';
         }
         return res.json({ ...parsed, sources, agentMode: superAgentMode });
       } catch (e) {
-        // If LLM returned raw text instead of JSON during action request, construct fallback execution plan
-        const lastUserMsg = messages.filter((m: any) => m.role === 'user').pop();
-        const promptText = typeof lastUserMsg?.content === 'string' ? lastUserMsg.content : (lastUserMsg?.content?.text || '');
-        const lowerPrompt = promptText.toLowerCase();
-
-        const isVisualIntent = ['photo', 'picture', 'image', 'draw', 'portrait', 'photoshoot', 'outfit', 'avatar', 'visual', 'generate', 'create', 'make'].some(k => lowerPrompt.includes(k));
-        const attImg = lastUserMsg?.attachments?.find((a: any) => a.mimeType?.startsWith('image/'))?.dataUrl;
-
-        if (isVisualIntent) {
-          const fallbackStep = attImg ? {
-            type: 'edit_image',
-            params: {
-              editType: 'beautify',
-              prompt: promptText || 'Visual edit',
-              sourceImage: attImg,
-              modelId: allowNsfw ? 'wavespeed:bytedance/seedream-v5.0-pro' : 'openai:gpt-image-2'
-            },
-            status: 'pending'
-          } : {
-            type: 'generate_image',
-            params: {
-              prompt: promptText || 'Visual creation',
-              modelId: allowNsfw ? 'wavespeed:bytedance/seedream-v5.0-pro' : 'openai:gpt-image-2'
-            },
-            status: 'pending'
-          };
-
-          return res.json({
-            status: 'executing',
-            suggestedSteps: [fallbackStep],
-            text: text || `Drafted task execution plan for request: "${promptText}".`
-          });
-        }
+        // Plain conversation is not permission to invent an action plan.
       }
     }
 
@@ -4382,50 +4350,9 @@ Do not wrap your response in markdown code blocks or HTML tags. Return ONLY the 
       };
     }
 
-    if (!data.text || data.text.trim().length < 12) {
-      data.text = "I'm doing great, thanks for asking! What would you like to chat about?";
-    }
-
-    if (!data.suggestedSteps || !Array.isArray(data.suggestedSteps) || data.suggestedSteps.length === 0) {
-      const lastUserMsg = [...messages].reverse().find((m: any) => m.role === 'user');
-      const promptText = lastUserMsg?.content || '';
-      let attImg: string | undefined = undefined;
-      if (lastUserMsg?.attachments && lastUserMsg.attachments.length > 0) {
-        const imgAtt = lastUserMsg.attachments.find((a: any) => a.mimeType && a.mimeType.startsWith('image/'));
-        if (imgAtt) attImg = imgAtt.dataUrl;
-      }
-
-      const lowerReq = promptText.toLowerCase();
-      const isVisualIntent = attImg || lowerReq.includes('generate') || lowerReq.includes('create') || lowerReq.includes('make') || lowerReq.includes('picture') || lowerReq.includes('photo') || lowerReq.includes('image') || lowerReq.includes('video') || lowerReq.includes('avatar') || lowerReq.includes('draw') || lowerReq.includes('photoshoot') || lowerReq.includes('outfit') || lowerReq.includes('edit') || lowerReq.includes('swap');
-
-      if (isVisualIntent) {
-        const fallbackStep = attImg ? {
-          type: 'edit_image',
-          params: {
-            editType: 'beautify',
-            prompt: promptText || 'Visual edit',
-            sourceImage: attImg,
-            modelId: 'wavespeed:bytedance/seedream-v5.0-pro'
-          },
-          status: 'pending'
-        } : {
-          type: 'generate_image',
-          params: {
-            prompt: promptText || 'Visual creation',
-            modelId: 'wavespeed:bytedance/seedream-v5.0-pro'
-          },
-          status: 'pending'
-        };
-
-        data.status = 'executing';
-        data.suggestedSteps = [fallbackStep];
-        data.text = data.text || `Drafted task execution plan for request: "${promptText}".`;
-      } else {
-        data.status = 'normal';
-        data.suggestedSteps = undefined;
-        data.text = data.text || `Hey there! How can I help you build, design, or market your AI influencer today?`;
-      }
-    }
+    data.text = typeof data.text === 'string' ? data.text : text;
+    data.suggestedSteps = normalizeSuperAgentPlanSteps(data.suggestedSteps, userPrompt);
+    data.status = data.suggestedSteps.length ? 'clarifying' : 'normal';
 
     // 2. Dual-Brain "Review & Critique" Loop Pass
     if (data.status === 'executing' && data.suggestedSteps && data.suggestedSteps.length > 0) {

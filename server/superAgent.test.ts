@@ -152,3 +152,18 @@ test('forces Seedream and Seedance through WaveSpeed while leaving WAN 3.0 as th
     'wavespeed-i2v:alibaba/wan-3.0/image-to-video',
   );
 });
+test('text-only and wait instructions cannot become executable plans', () => {
+  const steps = [{type:'generate_image',params:{prompt:'assets budget'}}];
+  assert.deepEqual(normalizeSuperAgentPlanSteps(steps, 'Text only; do not create assets or publish.'), []);
+  assert.deepEqual(normalizeSuperAgentPlanSteps(steps, 'Wait, I am still describing it.'), []);
+});
+
+test('preserves complete prompts from alternate provider plan shapes', () => {
+  assert.equal(normalizeSuperAgentPlanSteps([{type:'generate_image',prompt:'A mint teacup',usePersona:false}])[0].params.prompt, 'A mint teacup');
+  assert.equal(normalizeSuperAgentPlanSteps([{type:'generate_image',params:'{"prompt":"A mint teacup","usePersona":false}'}])[0].params.usePersona, false);
+});
+
+test('rejects incomplete image and video plans', () => {
+  assert.deepEqual(normalizeSuperAgentPlanSteps([{type:'generate_image',params:{}}]), []);
+  assert.deepEqual(normalizeSuperAgentPlanSteps([{type:'generate_video',params:{prompt:' '}}]), []);
+});

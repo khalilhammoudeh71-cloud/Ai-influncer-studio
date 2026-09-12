@@ -277,20 +277,24 @@ export function parseAgentToolArguments(value: unknown): Record<string, any> | n
   }
 }
 
-export function normalizeSuperAgentPlanSteps(value: unknown): Array<{
+export function normalizeSuperAgentPlanSteps(value: unknown, request = ''): Array<{
   type: string;
   params: Record<string, any>;
   status: 'pending';
 }> {
+  if (/\b(?:text[- ]only|do not (?:create|generate|execute|publish)|don't (?:create|generate|execute|publish)|wait|not yet)\b/i.test(request)) return [];
   if (!Array.isArray(value)) return [];
   return value.slice(0, 20).flatMap((step) => {
     if (!step || typeof step !== 'object') return [];
     const candidate = step as Record<string, any>;
     const type = typeof candidate.type === 'string' ? candidate.type.trim() : '';
     if (!SUPPORTED_STEP_TYPES.has(type)) return [];
-    const params = candidate.params && typeof candidate.params === 'object' && !Array.isArray(candidate.params)
-      ? normalizeSuperAgentMediaRouting(type, candidate.params)
-      : {};
+    const raw = typeof candidate.params === 'string' ? parseAgentToolArguments(candidate.params) : (candidate.params || candidate.parameters || candidate);
+    const params = raw && typeof raw === 'object' && !Array.isArray(raw)
+      ? normalizeSuperAgentMediaRouting(type, raw) : {};
+    delete params.type;
+    delete params.status;
+    if (['generate_image', 'generate_video'].includes(type) && (typeof params.prompt !== 'string' || !params.prompt.trim())) return [];
     return [{ type, params, status: 'pending' as const }];
   });
 }
@@ -350,7 +354,22 @@ export const SUPER_AGENT_PLAN_TOOL = {
                   'clone_voice', 'storyboard_sequence', 'edit_image', 'log_revenue',
                 ],
               },
-              params: { type: 'object', additionalProperties: true },
+              params: {
+                type: 'object', additionalProperties: true,
+                description: 'Complete inputs for this step. Image/video generation requires prompt. Never put inputs outside params.',
+                properties: {
+                  prompt: {type:'string', description:'Full image or video scene, carrying forward all user details.'},
+                  modelId: {type:'string'},
+                  usePersona: {type:'boolean', description:'False for objects, scenery, or requests without the active persona.'},
+                  aspectRatio: {type:'string'},
+                  text: {type:'string'},
+                  sourceImage: {type:'string'},
+                  editType: {type:'string'},
+                  name: {type:'string'},
+                  theme: {type:'string'},
+                  platform: {type:'string'},
+                },
+              },
             },
           },
         },
