@@ -137,7 +137,7 @@ const SECTION_LABELS: Record<Tab, string> = {
   gallery: 'Library',
   planner: 'Content planner',
   assistant: 'Persona Chat',
-  agent: 'AI assistant',
+  agent: 'Super Agent',
   trends: 'Trends',
   intelligence: 'Tools',
   revenue: 'Revenue',
@@ -1153,7 +1153,7 @@ function App() {
           {deduped.map((entry, i) => {
             const viewLabels: Record<string, string> = {
               'personas': 'Personas', 'create': 'Create', 'gallery': 'Library',
-              'assistant': 'Persona Chat', 'intelligence': 'Tools', 'agent': 'AI assistant',
+              'assistant': 'Persona Chat', 'intelligence': 'Tools', 'agent': 'Super Agent',
               'settings': 'Settings', 'persona-builder': 'Persona Builder',
               'trends': 'Trends', 'planner': 'Content planner', 'revenue': 'Revenue', 'create-persona': 'Create persona',
             };

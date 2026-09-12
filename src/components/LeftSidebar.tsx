@@ -35,6 +35,7 @@ interface NavigationItem {
 }
 
 const primaryItems: NavigationItem[] = [
+  { id: 'agent', label: 'Super Agent', description: 'Get help with multi-step tasks', icon: Bot, tabTarget: 'agent' },
   { id: 'personas', label: 'Personas', description: 'Your AI influencers', icon: Users, tabTarget: 'personas' },
   { id: 'create', label: 'Create', description: 'Make photos, videos, and audio', icon: Sparkles, tabTarget: 'create' },
   { id: 'tools', label: 'Tools', description: 'Edit, enhance, and build content', icon: Wrench, tabTarget: 'intelligence' },
@@ -44,7 +45,6 @@ const primaryItems: NavigationItem[] = [
 
 const secondaryItems: NavigationItem[] = [
   { id: 'chat', label: 'Persona Chat', description: 'Text and live voice conversations', icon: MessageCircle, tabTarget: 'assistant' },
-  { id: 'agent', label: 'AI assistant', description: 'Get help with multi-step tasks', icon: Bot, tabTarget: 'agent' },
   { id: 'analytics', label: 'Trends', description: 'Explore Instagram and TikTok ideas', icon: BarChart3, tabTarget: 'trends' },
 ];
 

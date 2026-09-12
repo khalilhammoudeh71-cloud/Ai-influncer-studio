@@ -3082,7 +3082,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
         <div className="flex-none flex flex-col md:flex-row md:items-center justify-between border-b border-[#E7C477]/10 px-6 py-3 bg-[#050914] gap-2 select-none">
           <div className="flex items-center gap-3">
             <h1 className="text-xl md:text-2xl font-serif text-[#F5F1E8] tracking-tight flex items-center gap-2">
-              AI assistant
+              Super Agent
             </h1>
             <span className="text-[10px] font-semibold px-2.5 py-0.5 rounded-full bg-[#E7C477]/10 text-[#F2D58D] border border-[#E7C477]/25">
               Multi-step tasks
