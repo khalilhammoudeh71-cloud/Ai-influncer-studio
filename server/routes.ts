@@ -63,6 +63,7 @@ import {
   type SuperAgentProvider,
 } from './superAgent';
 import { isConversationalMediaCreationRemark } from '../shared/personaMediaIntent';
+import { resolveVoiceMediaDraft } from '../shared/voiceMediaDraft';
 import { getAtlasPersonaModelId, normalizePersonaLlmId } from '../shared/personaLlm';
 import {
   DEFAULT_RUNWARE_PERSONA_MODEL,
@@ -3169,7 +3170,10 @@ CRITICAL RULES FOR LIVE VOICE CALL:
   // the action instead of allowing an unrelated model refusal to contradict it.
   const exactUserPrompt = currentUserTurn;
   const incompleteMediaRequest = detectIncompletePersonaMediaRequest(exactUserPrompt);
-  const directMediaRequest = resolvePersonaMediaRequest(exactUserPrompt, rawHistory);
+  const voiceMediaDraft = resolveVoiceMediaDraft(exactUserPrompt, rawHistory);
+  const directMediaRequest = voiceMediaDraft.status === 'ready'
+    ? { type: voiceMediaDraft.type!, prompt: voiceMediaDraft.prompt! }
+    : undefined;
   const action = directMediaRequest
     ? {
         type: directMediaRequest.type,
@@ -3286,7 +3290,13 @@ CRITICAL RULES FOR LIVE VOICE CALL:
     return 'accepted';
   };
 
-  if (incompleteMediaRequest) {
+  if (voiceMediaDraft.status === 'waiting') {
+    streamedText = voiceMediaDraft.prompt
+      ? `Anything else you want in the ${voiceMediaDraft.type === 'video' ? 'video' : 'picture'}, or shall I make it?`
+      : 'What would you like in the picture? I’ll wait until you’re ready to send it.';
+    writeVoiceText(streamedText);
+    streamedSuccessfully = true;
+  } else if (incompleteMediaRequest) {
     streamedText = incompleteMediaRequest === 'video'
       ? 'What kind of video would you like me to make?'
       : 'What kind of image would you like me to make?';

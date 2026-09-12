@@ -88,6 +88,7 @@ import {
   type VoiceLatencySnapshot,
   type VoiceTurnTiming,
 } from '../utils/voiceStability';
+import { resolveVoiceMediaDraft } from '../../shared/voiceMediaDraft';
 import { buildVoiceConversationHistory } from '../../shared/voiceConversationContext';
 import {
   detectExplicitMediaCreationRequest,
@@ -2611,9 +2612,12 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       const voiceMediaConversationOnly = isConversationalMediaMention(text);
       const voiceImageRevisionCandidate = resolveImageRevisionContext(text, updatedHistory, callRevisionSource);
       const incompleteVoiceMediaRequest = detectIncompleteMediaCreationRequest(text);
-      const executableVoiceMediaIntent = voiceMediaConversationOnly
-        ? undefined
-        : resolveExecutableMediaCreationRequest(text, { hasImageRevision: voiceImageRevisionCandidate.isRevision });
+      const voiceMediaDraft = resolveVoiceMediaDraft(text, updatedHistory);
+      const executableVoiceMediaIntent = !voiceMediaConversationOnly && voiceMediaDraft.status === 'ready'
+        ? voiceMediaDraft.type
+        : !voiceMediaConversationOnly && voiceMediaDraft.status === 'none' && voiceImageRevisionCandidate.isRevision
+          ? resolveExecutableMediaCreationRequest(text, { hasImageRevision: true })
+          : undefined;
       const isVoiceImageIntent = executableVoiceMediaIntent === 'image';
       const isVoiceVideoIntent = executableVoiceMediaIntent === 'video';
 
@@ -2657,7 +2661,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           type: 'loading',
           content: callGenerationLabel,
         }]);
-        const exactMediaRequest = String(data.action?.prompt || text).trim();
+        const exactMediaRequest = voiceMediaDraft.prompt || String(data.action?.prompt || text).trim();
         const rawMediaPrompt = exactMediaRequest || `${activePersona.name}, ${activePersona.niche}, ${mediaType === 'image' ? 'photorealistic portrait' : 'cinematic motion video clip'}`;
         const modelSelection = resolveMediaModelFromPrompt(
           rawMediaPrompt,

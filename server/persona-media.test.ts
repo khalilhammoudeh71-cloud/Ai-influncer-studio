@@ -6,6 +6,11 @@ const leen = { id: 'leen', name: 'Leen Hassan', referenceImage: 'leen.jpg' };
 const rawan = { id: 'rawan', name: 'Rawan Hassan', referenceImage: 'rawan.jpg' };
 const drH = { id: 'dr-h', name: 'DR.H', referenceImage: 'dr-h.jpg' };
 
+test('an action with me as the subject includes the creator reference', () => {
+  const participants = resolveMediaParticipants('A photo of me hugging you from behind in blue jackets.', leen, [leen, drH], drH);
+  assert.deepEqual(participants.map(getPersonaPrimaryReference), ['leen.jpg', 'dr-h.jpg']);
+});
+
 test('resolves an explicitly named saved persona alongside the active persona', () => {
   const participants = resolveMediaParticipants('Show Leen and Rawan Hassan hanging out', leen, [leen, rawan, drH], drH);
   assert.deepEqual(participants.map(persona => persona.id), ['leen', 'rawan']);

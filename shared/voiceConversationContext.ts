@@ -1,3 +1,5 @@
+import { resolveVoiceMediaDraft } from './voiceMediaDraft';
+
 export interface VoiceConversationMessage {
   id?: string;
   role?: string;
@@ -210,6 +212,11 @@ export function buildVoiceConversationHistory(
   }
 
   if (isContextUnsafeVoiceTurn(exactCurrentTurn)) {
+    // A direct answer to this call's pending image question needs its scene.
+    // Unrelated acknowledgements still receive only the immediately prior line.
+    if (resolveVoiceMediaDraft(exactCurrentTurn, beforeCurrent).status === 'ready') {
+      return [...beforeCurrent, current].slice(-maxMessages);
+    }
     const immediateAssistant = beforeCurrent.length > 0 && isAssistantRole(beforeCurrent.at(-1)?.role)
       ? beforeCurrent.at(-1)
       : undefined;
