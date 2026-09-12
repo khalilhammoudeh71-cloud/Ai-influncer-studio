@@ -1073,7 +1073,9 @@ function buildPrompt(body: ImageGenRequest, useEditInstructionStyle = false): st
         ? `The only subject is ${creatorName} (${creatorAppearance}). Use the supplied creator reference image for identity.`
         : isDuo
           ? `The scene contains exactly ${personaName} and ${creatorName} (${creatorAppearance}). Use each supplied reference image for the corresponding identity.`
-          : `The subject is ${personaName}. In the request, "you" and "your" refer to ${personaName}; use the persona reference image for identity.`;
+          : personaName
+            ? `The subject is ${personaName}. In the request, "you" and "your" refer to ${personaName}; use the persona reference image for identity.`
+            : 'Use only the subjects described in the request. Do not add a person or portrait.';
       const exactParts = [
         'AUTHORITATIVE USER REQUEST — preserve every requested subject, action, pose, outfit, setting, camera detail, and relationship exactly as written.',
         `USER REQUEST (VERBATIM): ${rawScene}`,

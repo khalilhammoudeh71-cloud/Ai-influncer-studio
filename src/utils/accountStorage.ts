@@ -23,6 +23,7 @@ const SYNCABLE_EXACT_KEYS = new Set([
   'ai_influencer_draft_video_prompt',
   'ai_influencer_feed_history',
   'agent_presets',
+  'super_agent_brief',
   'agent_default_voice_id',
   'superagent_cloned_voice',
   'superagent_cloned_voice_id',

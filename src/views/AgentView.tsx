@@ -58,9 +58,10 @@ import VoiceCloneStudioModal from '../components/VoiceCloneStudioModal';
 import { api } from '../services/apiService';
 import { generatePersonaPlan } from '../utils/personaEngine';
 import { generateImage, upscaleImage, authFetch } from '../services/imageService';
-import { editImageJob, talkingAvatarJob } from '../services/mediaJobService';
+import { editImageJob, talkingAvatarJob, requestPersonaMediaJob } from '../services/mediaJobService';
 import { cn } from '../utils/cn';
 import { trimAudioBase64To10Sec } from '../utils/audioUtils';
+import { canAutoRun, restoreConversation, imagePersona, requireOutput, previousImage } from '../utils/agentWorkspace';
 import { accountLocalStorage } from '../utils/accountStorage';
 import toast from 'react-hot-toast';
 import { DEFAULT_VIDEO_MODEL_ID } from '../../shared/mediaDefaults';
@@ -108,6 +109,7 @@ interface Message {
     completionTokens?: number;
     costUsd?: number;
   };
+  sources?: Array<{title:string;url:string}>;
   replanDepth?: number;
   planCard?: { title: string; steps: { title: string; estimatedCost: string }[]; totalCost: string };
   isExecuting?: boolean;
@@ -481,14 +483,22 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
   const effectiveSelectedPersonaId = propSelectedPersonaId;
   const [inputText, setInputText] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>(() => restoreConversation(accountLocalStorage.getItem('chat_history_super_agent')));
   
+  useEffect(() => {
+    try { accountLocalStorage.setItem('chat_history_super_agent', JSON.stringify(messages)); }
+    catch { toast.error('Conversation could not be saved. Keep this page open while working.'); }
+  }, [messages]);
+
   const [isSending, setIsSending] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [canvasTab, setCanvasTab] = useState<'studio' | 'chat' | 'marketing' | 'media' | 'downloader'>('studio');
   const [customPresets, setCustomPresets] = useState<CustomPreset[]>([]);
 
   // Autopilot, Sub-Agent Delegation & Approval Queue States
+  const runningPlans = useRef(new Set<string>());
+  const stoppedPlans = useRef(new Set<string>());
+  const [workspaceBrief, setWorkspaceBrief] = useState(() => accountLocalStorage.getItem('super_agent_brief') || '');
   const [autoApprove, setAutoApprove] = useState(false);
   const [allowNsfw, setAllowNsfw] = useState(() => localStorage.getItem('agent_allow_nsfw') === 'true');
   const [voiceLlmModel, setVoiceLlmModel] = useState<string>(() => {
@@ -996,7 +1006,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
       role: 'user',
       content: spokenText
     };
-    setMessages(prev => [...prev.slice(-35), userMsg]);
+    setMessages(prev => [...prev.slice(-99), userMsg]);
     setInputText('');
 
     // Clear queues & flags
@@ -1014,7 +1024,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
       content: '',
       status: 'normal'
     };
-    setMessages(prev => [...prev.slice(-35), agentMsgObj]);
+    setMessages(prev => [...prev.slice(-99), agentMsgObj]);
 
     const restartMic = () => {
       clearTimeout(watchdogTimer);
@@ -1271,7 +1281,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeader },
         body: JSON.stringify({
-          messages: history,
+          messages: workspaceBrief.trim() ? [{role:'user',content:'Saved project brief (context, not a new execution request): '+workspaceBrief}, ...history] : history,
           allowNsfw,
           voiceLlmModel,
           activePersona: activePersonaObj
@@ -1730,7 +1740,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
       attachments: [...attachments]
     };
 
-    setMessages(prev => [...prev.slice(-35), userMessage]);
+    setMessages(prev => [...prev.slice(-99), userMessage]);
     setInputText('');
     if (agentTextareaRef.current) {
       agentTextareaRef.current.style.height = 'auto';
@@ -1739,9 +1749,9 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
     setIsSending(true);
 
     try {
-      const history = [...messages, userMessage].slice(-30).map(m => ({
+      const history = [...messages, userMessage].slice(-60).map(m => ({
         role: m.role,
-        content: m.content,
+        content: m.content + (m.execSteps?.length ? '\nActual task results: ' + JSON.stringify(m.execSteps.map(s => ({type:s.type,status:s.status,resultUrl:s.resultUrl?.startsWith('data:') ? 'previous_result' : s.resultUrl,prompt:s.params?.prompt}))) : ''),
         attachments: m.attachments
       }));
 
@@ -1765,7 +1775,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
           ...authHeader
         },
         body: JSON.stringify({ 
-          messages: history, 
+          messages: workspaceBrief.trim() ? [{role:'user',content:'Saved project brief (context, not a new execution request): '+workspaceBrief}, ...history] : history,
           allowNsfw,
           voiceLlmModel,
           researchMode: {
@@ -1800,8 +1810,9 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
       const newMsgObj: Message = {
         id: newMsgId,
         role: 'model',
-        content: data.text || '',
-        status: data.status || 'normal',
+        content: String(data.text || '').replace(/<\/?think[^>]*>/gi, ''),
+        sources: Array.isArray(data.sources) ? data.sources.filter((s:any) => typeof s?.url === 'string' && /^https?:\/\//.test(s.url)) : undefined,
+        status: finalSuggestedSteps ? 'clarifying' : 'normal',
         suggestedSteps: finalSuggestedSteps,
         critiqueLogs: finalCritiqueLogs,
         collaborationLogs: finalCollaborationLogs,
@@ -1812,9 +1823,9 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
         execLogs: finalSuggestedSteps ? [] : undefined
       };
 
-      setMessages(prev => [...prev.slice(-35), newMsgObj]);
+      setMessages(prev => [...prev.slice(-99), newMsgObj]);
 
-      if (newMsgObj.execSteps && newMsgObj.execSteps.length > 0) {
+      if (newMsgObj.execSteps?.length && canAutoRun(autoApprove, userMessage.content)) {
         setTimeout(() => {
           runPipeline(newMsgId, newMsgObj);
         }, 50);
@@ -1822,14 +1833,14 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
     } catch (err: any) {
       console.warn('Agent chat fallback triggered:', err);
       const fallbackMsgId = Math.random().toString();
-      const textReply = `Hey there! How can I help you build, design, or market your AI influencer today? You can ask me to generate photos, create videos, plan content, or manage personas!`;
+      const textReply = 'I could not complete that request. Your message is saved; please retry. No successful result has been confirmed.';
       const chatMsgObj: Message = {
         id: fallbackMsgId,
         role: 'model',
         content: textReply,
         status: 'normal'
       };
-      setMessages(prev => [...prev.slice(-25), chatMsgObj]);
+      setMessages(prev => [...prev.slice(-99), chatMsgObj]);
     } finally {
       setIsSending(false);
     }
@@ -2253,7 +2264,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
     }
 
     accountLocalStorage.setItem(`planner_pending_asset_${targetPersona.id}`, JSON.stringify({
-      url: result.videoUrl,
+      url: requireOutput(result.videoUrl, 'Video generation'),
       title: result.title || `${result.platform} video`,
       platform: result.platform,
       kind: 'video',
@@ -2266,7 +2277,9 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
   // ─── Pipeline runner execution ──────────────────────────────────────────────
   const runPipeline = async (messageId: string, directMsg?: Message) => {
     const targetMsg = directMsg || messages.find(m => m.id === messageId);
-    if (!targetMsg || !targetMsg.execSteps || targetMsg.isExecuting) return;
+    if (!targetMsg || !targetMsg.execSteps || targetMsg.isExecuting || runningPlans.current.has(messageId)) return;
+    runningPlans.current.add(messageId);
+    stoppedPlans.current.delete(messageId);
 
     setMessages(prev => prev.map(m => m.id === messageId ? { ...m, isExecuting: true, status: 'executing' } : m));
 
@@ -2284,6 +2297,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
     };
 
     const updateStepStatus = (stepIdx: number, status: 'pending' | 'running' | 'success' | 'error', resultUrl?: string) => {
+      stepsList[stepIdx] = {...stepsList[stepIdx],status,...(resultUrl ? {resultUrl} : {})};
       setMessages(prev => prev.map(m => {
         if (m.id === messageId && m.execSteps) {
           const updated = [...m.execSteps];
@@ -2295,11 +2309,11 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
       }));
     };
 
-    addLocalLog('🤖 Auto-Pilot Pipeline initialized...', true);
+    addLocalLog('Starting approved task plan...', true);
     
     let activeStepIndex = -1;
     const executionReport: Array<{ index: number; type: string; status: 'success' | 'error'; error?: string }> = [];
-    const stepsList = targetMsg.execSteps || targetMsg.suggestedSteps || [];
+    const stepsList = (targetMsg.execSteps || []).map(step => ({...step,params:{...step.params}}));
 
     try {
       let memoryFaceImage: string | null = null;
@@ -2334,51 +2348,24 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
       }
 
       const ensurePersona = async (): Promise<Persona> => {
-        if (createdPersona && createdPersona.id && createdPersona.id !== 'empty') return createdPersona;
-        const existing = personas.find(p => p.id && p.id !== 'empty');
+        if (createdPersona && createdPersona.id && createdPersona.id !== 'empty') return {...createdPersona};
+        const existing = personas.find(p => p.id === effectiveSelectedPersonaId && p.id !== 'empty');
         if (existing) {
           createdPersona = existing;
           createdPersonaId = existing.id;
-          return existing;
+          return {...existing};
         }
 
-        addLocalLog(`👤 Auto-architecting default studio persona profile...`);
-        const uniqueId = `persona-${Date.now()}`;
-        const defaultP: Persona = {
-          id: uniqueId,
-          name: 'Studio Influencer',
-          niche: 'Lifestyle',
-          tone: 'Confident',
-          platform: 'Instagram',
-          status: 'Active',
-          avatar: memoryFaceImage || 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=400&q=80',
-          referenceImage: memoryFaceImage || undefined,
-          personalityTraits: ['Charming', 'Photogenic'],
-          visualStyle: 'Photorealistic',
-          audienceType: 'General',
-          contentBoundaries: 'None',
-          bio: 'Official Studio AI Influencer',
-          brandVoiceRules: '',
-          contentGoals: '',
-          personaNotes: ''
-        };
-
-        let saved = defaultP;
-        try {
-          saved = await api.personas.create(defaultP);
-        } catch (err) {
-          console.warn('[Persona DB fallback]: Using local persona instance', err);
-        }
-        createdPersona = saved;
-        createdPersonaId = saved.id;
-        setPersonas(prev => [...prev.filter(p => p.id !== 'empty'), saved]);
-        onSelectPersona(saved.id);
-        addLocalLog(`✅ Default Persona '${saved.name}' created & activated.`);
-        return saved;
+        throw new Error('Choose a persona before running this task, or ask me to create a new persona first.');
       };
 
       for (let i = 0; i < stepsList.length; i++) {
         const step = stepsList[i];
+        if (step.status === 'success' || step.status === 'done') {
+          executionReport.push({index:i,type:step.type,status:'success'});
+          continue;
+        }
+        if (stoppedPlans.current.has(messageId)) throw new Error('Stopped before the next step. Completed assets are kept.');
         activeStepIndex = i;
         updateStepStatus(i, 'running');
 
@@ -2431,7 +2418,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
 
         else if (step.type === 'generate_content_plan') {
           if (!createdPersona) {
-            createdPersona = personas[0] || null;
+            createdPersona = personas.find(p => p.id === effectiveSelectedPersonaId && p.id !== 'empty') || null;
             if (!createdPersona || createdPersona.id === 'empty') throw new Error('No active persona detected.');
             createdPersonaId = createdPersona.id;
           }
@@ -2446,9 +2433,9 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
         }
 
         else if (step.type === 'generate_image') {
-          const activeP = await ensurePersona();
+          const activeP = imagePersona(await ensurePersona(), step.params);
 
-          if (memoryFaceImage) {
+          if (memoryFaceImage && step.params.usePersona !== false && activeP.identityLock !== false) {
             addLocalLog(`🧠 [Memory System]: Syncing reference face photo for visual generation.`);
             activeP.referenceImage = memoryFaceImage;
           }
@@ -2458,27 +2445,28 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
           addLocalLog(`⏳ Spinning up visual generation pipeline...`);
           addLocalLog(`📝 Prompt: "${step.params.prompt}"`);
 
-          const modelCascade = [
-            modelId,
-            'wavespeed:bytedance/seedream-v5.0-pro',
-            'wavespeed:wavespeed-ai/qwen-3.0-pro',
-            'openai:gpt-image-2',
-            'google:nano-banana-pro'
-          ].filter((m, idx, arr) => arr.indexOf(m) === idx);
+          const modelCascade = [modelId];
 
           let result: any = null;
           let lastError: any = null;
 
           for (const currentModel of modelCascade) {
             try {
-              result = await generateImage({
+              if (activeP.identityLock !== false) {
+                const generated = await requestPersonaMediaJob({type:'image',persona:activeP,prompt:step.params.prompt,imageModelId:currentModel,aspectRatio:step.params.aspectRatio || '1:1',strictFidelity:true});
+                result = {imageUrl:generated.url,model:generated.model,promptUsed:generated.promptUsed};
+              } else result = await generateImage({
                 persona: activeP,
                 modelId: currentModel,
                 environment: step.params.environment,
                 outfitStyle: step.params.outfit,
                 framing: step.params.framing,
                 prompt: step.params.prompt,
-                aspectRatio: '1:1',
+                isChatContext: true,
+                chatPrompt: step.params.prompt,
+                preservePromptVerbatim: true,
+                identityLock: activeP.identityLock !== false && Boolean(activeP.referenceImage || activeP.avatar),
+                aspectRatio: step.params.aspectRatio || '1:1',
                 resolution: 'standard',
                 count: 1
               });
@@ -2490,10 +2478,11 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
           }
 
           if (!result) {
-            throw new Error(`All model cascades failed for image generation. Last error: ${lastError?.message || 'Unknown'}`);
+            throw new Error(`Image generation failed: ${lastError?.message || 'Unknown'}`);
           }
 
-          const imageUrl = Array.isArray(result) ? result[0].imageUrl : result.imageUrl;
+          const imageUrl = requireOutput(Array.isArray(result) ? result[0]?.imageUrl : result.imageUrl, 'Image generation');
+          if (imageUrl === activeP.referenceImage || imageUrl === activeP.avatar) throw new Error('The provider returned the reference image unchanged. No new image was confirmed.');
           const promptUsed = Array.isArray(result) ? result[0].promptUsed : result.promptUsed;
           const resolvedModel = Array.isArray(result) ? result[0].model : result.model;
 
@@ -2513,16 +2502,8 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
           await api.images.create(createdPersonaId, imgPayload);
           addLocalLog(`✅ Visual asset generated & saved to library.`);
 
-          const updatedPersona: Persona = {
-            ...activeP,
-            avatar: imageUrl,
-            referenceImage: imageUrl
-          };
-          const savedPersona = await api.personas.update(updatedPersona);
-          
-          setPersonas(prev => prev.map(p => p.id === createdPersonaId ? savedPersona : p));
+          // Creating an asset never changes the persona's saved identity or avatar.
 
-          addLocalLog(`✅ Profile avatar fully synced!`);
           updateStepStatus(i, 'success', imageUrl);
         }
 
@@ -2586,7 +2567,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
 
           const videoPayload = {
             id: 'video-' + Math.random().toString(36).substring(2, 9),
-            url: result.videoUrl,
+            url: requireOutput(result.videoUrl, 'Video generation'),
             prompt: step.params.prompt,
             timestamp: Date.now(),
             isFavorite: true,
@@ -2618,12 +2599,13 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
           } catch (stitchErr: any) {
             addLocalLog(`❌ Stitching failed: ${stitchErr.message}`);
             updateStepStatus(i, 'error');
+            throw stitchErr;
           }
         }
 
         else if (step.type === 'generate_voice') {
           if (!createdPersona) {
-            createdPersona = personas[0] || null;
+            createdPersona = personas.find(p => p.id === effectiveSelectedPersonaId && p.id !== 'empty') || null;
             if (!createdPersona || createdPersona.id === 'empty') throw new Error('No active persona detected.');
             createdPersonaId = createdPersona.id;
           }
@@ -2650,12 +2632,12 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
 
           const data = await response.json();
           addLocalLog(`✅ Audio narration generated successfully.`);
-          updateStepStatus(i, 'success', data.audioUrl);
+          updateStepStatus(i, 'success', requireOutput(data.audioUrl, 'Speech'));
         }
 
         else if (step.type === 'generate_3d') {
           if (!createdPersona) {
-            createdPersona = personas[0] || null;
+            createdPersona = personas.find(p => p.id === effectiveSelectedPersonaId && p.id !== 'empty') || null;
             if (!createdPersona || createdPersona.id === 'empty') throw new Error('No active persona detected.');
             createdPersonaId = createdPersona.id;
           }
@@ -2680,7 +2662,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
 
           const payload = {
             id: '3d-' + Math.random().toString(36).substring(2, 9),
-            url: data.modelUrl,
+            url: requireOutput(data.modelUrl, '3D generation'),
             prompt: step.params.prompt || '3D Asset Mesh',
             timestamp: Date.now(),
             model: data.model || modelId,
@@ -2694,7 +2676,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
 
         else if (step.type === 'generate_talking_head') {
           if (!createdPersona) {
-            createdPersona = personas[0] || null;
+            createdPersona = personas.find(p => p.id === effectiveSelectedPersonaId && p.id !== 'empty') || null;
             if (!createdPersona || createdPersona.id === 'empty') throw new Error('No active persona detected.');
             createdPersonaId = createdPersona.id;
           }
@@ -2754,7 +2736,8 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
           const voiceName = step.params.voiceName || 'Cloned Voice Sample';
           addLocalLog(`⏳ Extracting audio features & cloning voice via ${engine}...`);
 
-          let clonedId = 'voice-' + Math.random().toString(36).substring(2, 9);
+          let clonedId = '';
+          if (!audioDataUrl) throw new Error('Attach a voice recording before cloning a voice.');
           if (audioDataUrl) {
             try {
               const res = await authFetch('/api/clone-voice', {
@@ -2767,9 +2750,10 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                 })
               });
               const data = await res.json();
-              if (data.voiceId) clonedId = data.voiceId;
+              if (!res.ok) throw new Error(data.error || 'Voice cloning failed');
+              clonedId = requireOutput(data.voiceId, 'Voice cloning');
             } catch (cloneErr) {
-              addLocalLog(`⚠️ Voice clone fallback active. Generated ID: ${clonedId}`);
+              throw cloneErr;
             }
           }
 
@@ -2781,7 +2765,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
 
         else if (step.type === 'storyboard_sequence') {
           if (!createdPersona) {
-            createdPersona = personas[0] || null;
+            createdPersona = personas.find(p => p.id === effectiveSelectedPersonaId && p.id !== 'empty') || null;
             if (!createdPersona || createdPersona.id === 'empty') throw new Error('No active persona detected.');
             createdPersonaId = createdPersona.id;
           }
@@ -2839,7 +2823,8 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
           const activeP = await ensurePersona();
 
           const editType = step.params.editType || 'upscale';
-          const srcImg = step.params.sourceImage || activeP.avatar || activeP.referenceImage;
+          const explicitSource = step.params.sourceImage;
+          const srcImg = explicitSource && explicitSource !== 'previous_result' ? explicitSource : previousImage([{execSteps:stepsList.slice(0,i)}]) || previousImage(messages) || memoryFaceImage;
           if (!srcImg) throw new Error('Source image is required for image editing.');
 
           addLocalLog(`⏳ Executing AI Tool edit: ${editType}...`);
@@ -2892,6 +2877,8 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
             mediaType: 'image' as const
           };
 
+          requireOutput(editedUrl, 'Image editing');
+          if (editedUrl === srcImg) throw new Error('The edit returned the original image unchanged.');
           await api.images.create(createdPersonaId, payload);
           addLocalLog(`✅ AI Tool edit (${editType}) completed & saved to library.`);
           updateStepStatus(i, 'success', editedUrl);
@@ -2899,7 +2886,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
 
         else if (step.type === 'log_revenue') {
           if (!createdPersona) {
-            createdPersona = personas[0] || null;
+            createdPersona = personas.find(p => p.id === effectiveSelectedPersonaId && p.id !== 'empty') || null;
             if (!createdPersona || createdPersona.id === 'empty') throw new Error('No active persona detected.');
             createdPersonaId = createdPersona.id;
           }
@@ -2924,12 +2911,13 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
         executionReport.push({ index: i, type: step.type, status: 'success' });
       }
 
-      addLocalLog('🏆 Auto-Pilot pipeline executions finished successfully!');
+      addLocalLog('All requested steps completed.');
       setMessages(prev => prev.map(m => m.id === messageId ? { ...m, status: 'done' } : m));
       toast.success('Agent completed all tasks successfully!');
       
     } catch (err: any) {
       const failureMessage = err.message || 'Workflow execution halted.';
+      setMessages(prev => prev.map(m => m.id === messageId ? {...m,status:'clarifying'} : m));
       const failedStep = stepsList[activeStepIndex];
       executionReport.push({
         index: activeStepIndex,
@@ -2996,7 +2984,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                 agentMode: recoveryData.agentMode,
                 replanDepth: 1,
               };
-              setMessages(prev => [...prev.slice(-35), recoveryMessage]);
+              setMessages(prev => [...prev.slice(-99), recoveryMessage]);
               toast.success('A corrected plan is ready for review.');
             }
           }
@@ -3005,6 +2993,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
         }
       }
     } finally {
+      runningPlans.current.delete(messageId);
       setMessages(prev => prev.map(m => m.id === messageId ? { ...m, isExecuting: false } : m));
     }
   };
@@ -3074,9 +3063,9 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                   ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
                   : 'bg-white/5 text-zinc-300 border-white/10 hover:border-white/20 hover:bg-white/10'
               }`}
-              title="Toggle Human-in-the-Loop review queue vs direct publishing"
+              title="Review plans before running, or run requested tasks automatically"
             >
-              <span>{autoApprove ? 'Auto-publish' : 'Review required'}</span>
+              <span>{autoApprove ? 'Run automatically' : 'Review required'}</span>
             </button>
 
             {/* Uncensored NSFW Toggle */}
@@ -3103,6 +3092,10 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                 <Sliders size={13} className="text-cyan-400" /> Agent setup
               </summary>
               <div className="absolute right-0 top-full mt-2 flex w-[min(92vw,430px)] flex-col gap-2 rounded-2xl border border-white/10 bg-[#11131a]/98 p-3 shadow-2xl backdrop-blur-xl">
+            <label className="text-xs text-zinc-300">Project brief
+              <textarea aria-label="Project brief" value={workspaceBrief} onChange={e => {setWorkspaceBrief(e.target.value); accountLocalStorage.setItem('super_agent_brief',e.target.value);}} placeholder="Goals, audience, style and details to keep in mind…" className="mt-1 w-full rounded-lg border border-white/15 bg-black/30 p-2 text-sm" rows={3} />
+              <span className="text-[11px] text-zinc-400">Saved for future conversations. You can edit it anytime.</span>
+            </label>
             {/* LLM Engine Selector */}
             <div className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-cyan-500/40 rounded-xl px-3 py-1.5 text-xs font-bold shadow-sm transition-all">
               <span className="text-[10px] text-zinc-400 font-extrabold uppercase tracking-wider hidden sm:inline">Engine:</span>
@@ -3157,10 +3150,10 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                   <option value="llama3.3" className="bg-zinc-900 text-white">🦙 Meta Llama 3.3 70B (Cloud API)</option>
                 </optgroup>
                 <optgroup label="☁️ CLOUD API ENGINES (HIGH-SPEED CLOUD GPU)">
-                  <option value="qwen" className="bg-zinc-900 text-white">🔮 Qwen 2.5 72B (Cloud API)</option>
-                  <option value="deepseek" className="bg-zinc-900 text-white">🧠 DeepSeek R1 Reasoner (Cloud API)</option>
+                  <option value="qwen" className="bg-zinc-900 text-white">Qwen — Available reasoning route</option>
+                  <option value="deepseek" className="bg-zinc-900 text-white">DeepSeek — Available reasoning route</option>
                   <option value="venice" className="bg-zinc-900 text-white">Venice Uncensored 1.2 (Cloud)</option>
-                  <option value="grok" className="bg-zinc-900 text-white">🚀 xAI Grok 2 (Cloud API)</option>
+                  <option value="grok" className="bg-zinc-900 text-white">xAI Grok — Current configured model</option>
                   <option value="gemini" className="bg-zinc-900 text-white">🤖 Gemini 2.5 Flash (Cloud API)</option>
                 </optgroup>
               </select>
@@ -3449,7 +3442,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                       {msg.role === 'model' ? '🤖 Agent' : '👤 You'}
                       {msg.role === 'model' && msg.agentMode && (
                         <span className="ml-2 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2 py-0.5 text-cyan-300">
-                          {msg.agentMode.provider} · {msg.agentMode.effort}
+                          {msg.agentMode.provider} · {msg.agentMode.model} · {msg.agentMode.effort}
                           {msg.agentMode.research ? ' · research' : ''}
                           {typeof msg.agentMode.costUsd === 'number' ? ` · $${msg.agentMode.costUsd.toFixed(5)}` : ''}
                         </span>
@@ -3462,6 +3455,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                         : 'bg-white/5 border-white/10 text-zinc-100 rounded-tl-none'
                     }`}>
                       <div className="whitespace-pre-wrap">{msg.content}</div>
+                      {msg.sources?.length ? <div className="mt-3 flex flex-wrap gap-2" aria-label="Research sources">{msg.sources.map(source => <a key={source.url} href={source.url} target="_blank" rel="noreferrer" className="rounded-lg border border-[#E7C477]/25 px-2 py-1 text-xs text-[#E7C477] underline">{source.title}</a>)}</div> : null}
 
                       {/* Attachments rendering */}
                       {msg.attachments && msg.attachments.length > 0 && (
@@ -3545,17 +3539,18 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                           <div className="flex items-center justify-between border-b border-white/10 pb-2">
                             <div className="flex items-center gap-2">
                               <Cpu className="w-4 h-4 text-cyan-400 animate-pulse" />
-                              <span className="font-extrabold text-xs text-white uppercase tracking-wider">Super Agent Task Pipeline</span>
+                              <span className="font-extrabold text-xs text-white uppercase tracking-wider">Task plan</span>
                             </div>
                             <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border ${
                               msg.status === 'done' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' :
                               msg.status === 'executing' ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 animate-pulse' :
                               'bg-amber-500/20 text-amber-300 border-amber-500/40'
                             }`}>
-                              {msg.status === 'done' ? 'Completed' : msg.status === 'executing' ? 'Executing' : 'Pending'}
+                              {msg.status === 'done' ? 'Completed' : msg.status === 'executing' ? 'Working' : msg.execSteps?.some(s => s.status === 'error') ? 'Needs attention' : 'Review plan'}
                             </span>
                           </div>
 
+                          {msg.execSteps.some(s => s.status === 'error') && <p role="alert" className="text-xs text-amber-200">{msg.execLogs?.at(-1) || 'A step failed. Completed results are kept; unfinished work needs review.'}</p>}
                           <div className="space-y-3">
                             {msg.execSteps.map((step, sIdx) => (
                               <div key={sIdx} className="p-3 rounded-xl bg-white/5 border border-white/5 space-y-2">
@@ -3572,9 +3567,10 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                                   </div>
                                 </div>
 
+                                {!msg.isExecuting && (step.status === 'pending' || step.status === 'error') && <textarea aria-label={`Instructions for step ${sIdx + 1}`} value={step.params.prompt || step.params.text || ''} onChange={e => setMessages(prev => prev.map(m => m.id === msg.id ? {...m,execSteps:m.execSteps?.map((s,index) => index === sIdx ? {...s,params:{...s.params,[s.type === 'generate_voice' ? 'text' : 'prompt']:e.target.value}} : s)} : m))} className="w-full rounded-lg border border-white/10 bg-black/20 p-2 text-xs text-zinc-200" rows={3} />}
                                 {step.resultUrl && (
                                   <div className="mt-2 rounded-xl overflow-hidden border border-white/10 bg-black/50">
-                                    {step.type.includes('video') ? (
+                                    {step.type === 'generate_voice' ? <audio src={step.resultUrl} controls className="w-full" /> : step.type === 'generate_3d' ? <a href={step.resultUrl} target="_blank" rel="noreferrer">Open 3D asset</a> : step.type.includes('video') || step.type === 'generate_talking_head' || step.type === 'storyboard_sequence' ? (
                                       <video src={step.resultUrl} controls className="w-full max-h-64 object-cover" />
                                     ) : (
                                       <img src={step.resultUrl} alt="Result" className="w-full max-h-64 object-cover" />
@@ -3584,13 +3580,14 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                               </div>
                             ))}
                           </div>
+                          {msg.isExecuting && <button type="button" onClick={() => {stoppedPlans.current.add(msg.id); toast('Stopping after the current step.');}} className="text-xs text-zinc-300 underline">Stop after current step</button>}
                           {msg.status === 'clarifying' && !msg.isExecuting && (
                             <button
                               type="button"
                               onClick={() => runPipeline(msg.id, msg)}
                               className="flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-400/40 bg-cyan-500/15 px-4 py-2.5 text-xs font-extrabold text-cyan-200 transition-colors hover:bg-cyan-500/25"
                             >
-                              <RefreshCw size={14} /> Run corrected plan
+                              <RefreshCw size={14} /> Approve & run plan
                             </button>
                           )}
                         </div>
