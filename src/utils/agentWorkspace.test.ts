@@ -41,3 +41,11 @@ test('image identity is optional and never mutates the stored persona', () => {
   assert.equal(person.referenceImage, 'reference');
   assert.equal(workspace.imagePersona(person,{usePersona:true}).referenceImage, 'reference');
 });
+
+test('pending plans are not sent to the model as completed task results', async () => {
+  const { taskContext } = await import('./agentWorkspace');
+  const state = taskContext([{type:'generate_image',status:'pending',params:{prompt:'blue cup'}},{type:'generate_image',status:'success',resultUrl:'data:image/png;base64,abc',params:{prompt:'mint cup'}}]);
+  assert.equal(state.pending.length, 1);
+  assert.equal(state.results.length, 1);
+  assert.equal(state.results[0].resultUrl, 'previous_result');
+});

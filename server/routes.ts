@@ -3819,6 +3819,7 @@ WORKSPACE EXECUTION CONTRACT:
 - Discuss and refine the user's complete brief across messages. Do not generate from an unfinished description, a quoted example, a text-only instruction, or a request to wait.
 - Propose a concrete plan with complete prompts. Do not claim any tool ran: the app will execute approved steps and report their actual results.
 - For generate_image set usePersona=false for objects, landscapes, products, diagrams, or requests with no people. Set usePersona=true only when the user wants the selected persona. Preserve requested aspectRatio.
+- Workspace task state is internal context: pending steps have not run; only successful results are finished. Never echo the task-state JSON in your reply.
 - Creating an image never means changing someone's profile photo.
 - Ask one concise question when a required participant or reference is missing. Do not invent identities.
 - For revisions, use edit_image, not generate_image, and change only the requested parts. Set sourceImage="previous_result" to edit the most recent successful image in this conversation. Never substitute the profile avatar for a generated image.
@@ -4141,6 +4142,7 @@ Do not wrap your response in markdown code blocks or HTML tags. Return ONLY the 
                 ? 'max_tokens'
                 : 'max_completion_tokens']: route.effort === 'deep' ? 4096 : 2048,
             };
+            if (!supportsTools && modelCandidate.provider === 'wavespeed') requestBody.response_format = {type:'json_object'};
             if (modelCandidate.provider === 'venice') {
               requestBody.prompt_cache_key = `super-agent:${req.user?.id || 'session'}`;
               requestBody.venice_parameters = {

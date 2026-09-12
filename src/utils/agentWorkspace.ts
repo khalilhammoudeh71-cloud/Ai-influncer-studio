@@ -37,3 +37,11 @@ export function imagePersona<T extends Record<string, any>>(persona: T, params: 
   }
   return {...persona};
 }
+
+export function taskContext(steps: any[]) {
+  const summarize = (s: any) => ({type:s.type,status:s.status,params:JSON.parse(JSON.stringify(s.params || {}, (_key, value) => typeof value === 'string' && value.startsWith('data:') ? 'attached_asset' : value)),resultUrl: s.resultUrl?.startsWith('data:') ? 'previous_result' : s.resultUrl});
+  return {
+    pending: steps.filter(s => !['success','done','error'].includes(s.status)).map(summarize),
+    results: steps.filter(s => ['success','done','error'].includes(s.status)).map(summarize),
+  };
+}

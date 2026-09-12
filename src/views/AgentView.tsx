@@ -61,7 +61,7 @@ import { generateImage, upscaleImage, authFetch } from '../services/imageService
 import { editImageJob, talkingAvatarJob, requestPersonaMediaJob } from '../services/mediaJobService';
 import { cn } from '../utils/cn';
 import { trimAudioBase64To10Sec } from '../utils/audioUtils';
-import { canAutoRun, restoreConversation, imagePersona, requireOutput, previousImage } from '../utils/agentWorkspace';
+import { canAutoRun, restoreConversation, imagePersona, requireOutput, previousImage, taskContext } from '../utils/agentWorkspace';
 import { accountLocalStorage } from '../utils/accountStorage';
 import toast from 'react-hot-toast';
 import { DEFAULT_VIDEO_MODEL_ID } from '../../shared/mediaDefaults';
@@ -1751,7 +1751,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
     try {
       const history = [...messages, userMessage].slice(-60).map(m => ({
         role: m.role,
-        content: m.content + (m.execSteps?.length ? '\nActual task results: ' + JSON.stringify(m.execSteps.map(s => ({type:s.type,status:s.status,resultUrl:s.resultUrl?.startsWith('data:') ? 'previous_result' : s.resultUrl,prompt:s.params?.prompt}))) : ''),
+        content: m.content + (m.execSteps?.length ? '\n[Workspace task state — context only, never repeat verbatim]: ' + JSON.stringify(taskContext(m.execSteps)) : ''),
         attachments: m.attachments
       }));
 
