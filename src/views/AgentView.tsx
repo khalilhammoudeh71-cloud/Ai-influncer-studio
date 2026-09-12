@@ -489,8 +489,6 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
   const [customPresets, setCustomPresets] = useState<CustomPreset[]>([]);
 
   // Autopilot, Sub-Agent Delegation & Approval Queue States
-  const [autopilotActive, setAutopilotActive] = useState(false);
-  const [autopilotInterval, setAutopilotInterval] = useState<'30s' | '1h' | '6h' | '12h'>('1h');
   const [autoApprove, setAutoApprove] = useState(false);
   const [allowNsfw, setAllowNsfw] = useState(() => localStorage.getItem('agent_allow_nsfw') === 'true');
   const [voiceLlmModel, setVoiceLlmModel] = useState<string>(() => {
@@ -708,29 +706,6 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
       return true;
     }));
   }, []);
-
-  // Background Autopilot Timer Loop
-  useEffect(() => {
-    if (!autopilotActive) return;
-
-    let ms = 3600000; // 1 hour default
-    if (autopilotInterval === '30s') ms = 30000;
-    else if (autopilotInterval === '6h') ms = 21600000;
-    else if (autopilotInterval === '12h') ms = 43200000;
-
-    const timer = setInterval(() => {
-      toast('🤖 [Autopilot Loop]: Triggering scheduled background generation...', { icon: '⚡' });
-      emitSubAgentLog('business', `Autopilot background timer fired (${autopilotInterval}). Initiating automated media cycle...`);
-
-      const randomPreset = BASE_PRESETS[Math.floor(Math.random() * BASE_PRESETS.length)];
-      if (randomPreset) {
-        emitSubAgentLog('copywriter', `Autopilot selected campaign strategy: "${randomPreset.name}"`);
-        sendMessage(randomPreset.prompt);
-      }
-    }, ms);
-
-    return () => clearInterval(timer);
-  }, [autopilotActive, autopilotInterval]);
 
   // Guided Tour Tab auto-switching handler
   useEffect(() => {
@@ -3091,32 +3066,6 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
 
           {/* Unified Controls Toolbar */}
           <div className="flex flex-wrap items-center gap-2">
-            {/* Autopilot Button */}
-            <button
-              onClick={() => setAutopilotActive(!autopilotActive)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold tracking-wide flex items-center gap-2 transition-all border cursor-pointer ${
-                autopilotActive
-                  ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50 shadow-md shadow-cyan-500/10'
-                  : 'bg-white/5 text-zinc-300 border-white/10 hover:border-white/20 hover:bg-white/10'
-              }`}
-            >
-              {autopilotActive ? <Pause className="w-3.5 h-3.5 text-cyan-400 animate-pulse" /> : <Play className="w-3.5 h-3.5 text-zinc-400" />}
-              <span>{autopilotActive ? 'Autopilot Active' : 'Start Autopilot'}</span>
-            </button>
-
-            {autopilotActive && (
-              <select
-                value={autopilotInterval}
-                onChange={(e: any) => setAutopilotInterval(e.target.value)}
-                className="bg-black/60 border border-cyan-500/30 text-cyan-300 text-xs rounded-xl px-2.5 py-1.5 font-bold outline-none cursor-pointer"
-              >
-                <option value="30s">Every 30s (Demo)</option>
-                <option value="1h">Every 1 hr</option>
-                <option value="6h">Every 6 hrs</option>
-                <option value="12h">Every 12 hrs</option>
-              </select>
-            )}
-
             {/* Approval Queue Toggle */}
             <button
               onClick={() => setAutoApprove(!autoApprove)}
@@ -3486,9 +3435,8 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                   <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
                     <Sparkles size={24} />
                   </div>
-                  <div className="text-sm font-bold text-white">Super Agent Co-Pilot Studio</div>
                   <div className="text-xs text-zinc-400 max-w-sm leading-relaxed">
-                    Message Super Agent below to generate photos, videos, plan content, or chat naturally.
+                    Describe what you want to accomplish. I’ll help you work through it.
                   </div>
                 </div>
               ) : (
@@ -3862,23 +3810,6 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                     )}
                   </AnimatePresence>
                 </div>
-
-                {/* Workflows Menu */}
-                <select
-                  onChange={(e) => {
-                    if (e.target.value) {
-                      setInputText(e.target.value);
-                      e.target.value = "";
-                    }
-                  }}
-                  className="h-9 px-2.5 rounded-xl border border-white/10 bg-white/5 hover:border-cyan-500/30 text-xs font-bold text-cyan-300 outline-none cursor-pointer transition-all shadow"
-                >
-                  <option value="">⚡ Workflows ▾</option>
-                  <option value="Generate 3 photorealistic portrait photos of my AI influencer in a luxury penthouse wearing elegant evening outfit.">📸 Photoshoot</option>
-                  <option value="Create a 1-minute video storyboard with 4 scenes: talking avatar intro, workout action shot, protein shake, and call to action.">🎬 1-Min Video Storyboard</option>
-                  <option value="Clone the voice from my uploaded video sample and generate a talking avatar saying 'Welcome to my exclusive channel!'">🎙️ Voice Clone & Avatar</option>
-                  <option value="Architect a 7-day content schedule for Instagram with high-converting hooks, viral caption ideas, and revenue strategies.">📈 7-Day Content Plan</option>
-                </select>
 
                 {/* Mic Input Trigger */}
                 <button
