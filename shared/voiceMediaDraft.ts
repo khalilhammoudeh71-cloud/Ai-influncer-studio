@@ -40,7 +40,7 @@ export function resolveVoiceMediaDraft(current: string, history: MediaDraftMessa
   const ready = finish.test(text) || confirmsQuestion;
   const hasScene = parts.some(part => description.test(part) || /\b(?:of|featuring|showing)\s+\S+\s+\S+/i.test(part));
   if (ready) return hasScene ? { status: 'ready', type, prompt: parts.join('\n') } : { status: 'waiting', type };
-  if (media.test(text) || (parts.length && description.test(text))) {
+  if (media.test(text) || (parts.length && (description.test(text) || /^(?:and|with|while|also|both|in|at|wearing|actually|instead)\b/i.test(text)))) {
     return { status: 'waiting', type, prompt: hasScene ? parts.join('\n') : undefined };
   }
   return { status: 'none' };

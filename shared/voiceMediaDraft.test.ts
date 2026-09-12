@@ -44,3 +44,9 @@ test('call history retains a pending scene only for its immediate confirmation',
   const transmitted = buildVoiceConversationHistory(history, 'Yes.');
   assert.equal(resolveVoiceMediaDraft('Yes.', transmitted).status, 'ready');
 });
+
+test('a continuation remains pending without claiming generation', () => {
+  const result = resolveVoiceMediaDraft('With blue jackets and morning light.', [user('I want an image of you and me sitting at a cafe.'), assistant('Anything else you want in the picture, or shall I make it?')]);
+  assert.equal(result.status, 'waiting');
+  assert.match(result.prompt || '', /blue jackets/);
+});
