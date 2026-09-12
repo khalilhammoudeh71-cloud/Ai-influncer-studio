@@ -175,3 +175,9 @@ test('recovers explicit structured steps embedded in a model reply', async () =>
   assert.deepEqual(recoverStructuredAgentPlan('I can make an image.', 'Create a teacup image'), []);
   assert.deepEqual(recoverStructuredAgentPlan(reply, 'Text only, show an example'), []);
 });
+
+test('a generated-image step with a source runs through the editing path', () => {
+  const step = normalizeSuperAgentPlanSteps([{type:'generate_image',params:{prompt:'Change only the cup to blue',sourceImage:'previous_result',modelId:'wavespeed:bytedance/seedream-v5.0-pro'}}])[0];
+  assert.equal(step.type, 'edit_image');
+  assert.equal(step.params.modelId, 'wavespeed-edit:bytedance/seedream-v5.0-pro/edit');
+});

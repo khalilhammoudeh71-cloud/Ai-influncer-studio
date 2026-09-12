@@ -287,9 +287,10 @@ export function normalizeSuperAgentPlanSteps(value: unknown, request = ''): Arra
   return value.slice(0, 20).flatMap((step) => {
     if (!step || typeof step !== 'object') return [];
     const candidate = step as Record<string, any>;
-    const type = typeof candidate.type === 'string' ? candidate.type.trim() : '';
+    let type = typeof candidate.type === 'string' ? candidate.type.trim() : '';
     if (!SUPPORTED_STEP_TYPES.has(type)) return [];
     const raw = typeof candidate.params === 'string' ? parseAgentToolArguments(candidate.params) : (candidate.params || candidate.parameters || candidate);
+    if (type === 'generate_image' && typeof raw?.sourceImage === 'string' && raw.sourceImage.trim()) type = 'edit_image';
     const params = raw && typeof raw === 'object' && !Array.isArray(raw)
       ? normalizeSuperAgentMediaRouting(type, raw) : {};
     delete params.type;

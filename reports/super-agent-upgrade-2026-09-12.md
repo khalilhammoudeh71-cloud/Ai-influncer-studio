@@ -52,12 +52,16 @@ Keep Adaptive Fast for routine writing/planning based on the earlier audit. Use 
 
 ## Validation completed before release
 
-- 27 targeted automated tests passed, including new approval, restoration, optional identity, missing-output and research-source cases.
+- 29 targeted automated tests passed, including new approval, restoration, optional identity, missing-output and research-source cases.
 - Type checking and production frontend build passed during development; final release checks are recorded in the delivery message.
 - Browser fixture: new plan waited for approval; its edited prompt and conversation survived refresh; simulated provider failure displayed Needs attention and preserved the failed instructions.
 - Live provider probe: Gemini retrieved the IANA example-domains explanation with a usable source URL.
 - Live provider probe: Grok 4.6 answered the budget example correctly.
 - Catalog checks above were read-only. Most media endpoints were not exhaustively generated against.
+
+## Production verification
+
+The upgrade and follow-up validation fixes are deployed on [ai-influencerstudio.com](https://ai-influencerstudio.com/), latest code commit `c1a2e55`. Production returned the correct $84 total / $36 remaining for the text-only Cedar request, with no new task plan or generation. After refreshing the live app, it also recalled Project Cedar and the $36 remaining budget correctly. A natural “Yes, generate that image now” confirmation produced an editable task card retaining the full teacup scene. Approved execution completed through Seedream and visibly returned a mint-green teacup on a sunlit wooden table, with no persona portrait. Earlier verification caught both an unwanted fallback plan and a missing prompt; those observations drove the follow-up fixes, rather than being counted as passes.
 
 ## What remains before comparable breadth
 

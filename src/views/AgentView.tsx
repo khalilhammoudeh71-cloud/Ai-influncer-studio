@@ -2825,7 +2825,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
         else if (step.type === 'edit_image') {
           const activeP = await ensurePersona();
 
-          const editType = step.params.editType || 'upscale';
+          const editType = step.params.editType || (step.params.prompt ? 'custom edit' : 'upscale');
           const explicitSource = step.params.sourceImage;
           const srcImg = explicitSource && explicitSource !== 'previous_result' ? explicitSource : previousImage([{execSteps:stepsList.slice(0,i)}]) || previousImage(messages) || memoryFaceImage;
           if (!srcImg) throw new Error('Source image is required for image editing.');

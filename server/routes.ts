@@ -3821,7 +3821,7 @@ WORKSPACE EXECUTION CONTRACT:
 - For generate_image set usePersona=false for objects, landscapes, products, diagrams, or requests with no people. Set usePersona=true only when the user wants the selected persona. Preserve requested aspectRatio.
 - Creating an image never means changing someone's profile photo.
 - Ask one concise question when a required participant or reference is missing. Do not invent identities.
-- For revisions, change only the requested parts. Set sourceImage="previous_result" to edit the most recent successful image in this conversation. Never substitute the profile avatar for a generated image.
+- For revisions, use edit_image, not generate_image, and change only the requested parts. Set sourceImage="previous_result" to edit the most recent successful image in this conversation. Never substitute the profile avatar for a generated image.
 - Research claims require actual retrieved evidence and usable URLs. Clearly separate suggestions from verified facts.
 CRITICAL RESPONSE AND PERSONALITY DIRECTIVES:
 - Follow the user's latest instruction exactly. Explicit wording, length, format, and output constraints always override conversational style.
