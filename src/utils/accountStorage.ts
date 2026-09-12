@@ -62,6 +62,7 @@ interface WorkspaceSyncAdapter {
 interface SyncMarker {
   updatedAt: string;
   deleted?: boolean;
+  dirty?: boolean;
 }
 
 type SyncMeta = Record<string, SyncMarker>;
@@ -142,9 +143,9 @@ function writeSyncMeta(userId: string, meta: SyncMeta) {
   } catch {}
 }
 
-function markLocalChange(base: string, userId: string, deleted = false, updatedAt = new Date().toISOString()) {
+function markLocalChange(base: string, userId: string, deleted = false, updatedAt = new Date().toISOString(), dirty = true) {
   const meta = readSyncMeta(userId);
-  meta[base] = { updatedAt, ...(deleted ? { deleted: true } : {}) };
+  meta[base] = { updatedAt, dirty, ...(deleted ? { deleted: true } : {}) };
   writeSyncMeta(userId, meta);
 }
 
@@ -172,9 +173,15 @@ function scheduleRemoteSave(
       })
       .then(entry => {
         if (activeStorageUserId === userId && localStorage.getItem(accountStorageKey(base, userId)) === value) {
-          markLocalChange(base, userId, false, entry.updatedAt);
+          markLocalChange(base, userId, false, entry.updatedAt, false);
           outstandingSyncKeys.delete(queueKey);
           notifyWorkspaceSync(outstandingSyncKeys.size === 0 ? 'synced' : 'pending', base);
+        } else if (activeStorageUserId === userId) {
+          // An older upload finished after a newer edit; restore the newest value remotely.
+          const latest = localStorage.getItem(accountStorageKey(base, userId));
+          markLocalChange(base, userId, latest === null);
+          if (latest === null) scheduleRemoteRemove(base, userId);
+          else scheduleRemoteSave(base, latest, userId);
         }
       })
       .catch(error => {
@@ -202,6 +209,10 @@ function scheduleRemoteRemove(base: string, userId: string, delayMs = REMOTE_WRI
     notifyWorkspaceSync('syncing', base);
     void workspaceSyncAdapter.remove(base)
       .then(() => {
+        if (activeStorageUserId !== userId) return;
+        const latest = localStorage.getItem(accountStorageKey(base, userId));
+        if (latest !== null) { markLocalChange(base, userId); scheduleRemoteSave(base, latest, userId); return; }
+        markLocalChange(base, userId, true, new Date().toISOString(), false);
         outstandingSyncKeys.delete(queueKey);
         notifyWorkspaceSync(outstandingSyncKeys.size === 0 ? 'synced' : 'pending', base);
       })
@@ -271,58 +282,54 @@ function listAccountLocalValues(userId: string): Map<string, string> {
 
 export async function hydrateAccountLocalStorage(userId: string): Promise<void> {
   if (!workspaceSyncAdapter || activeStorageUserId !== userId) return;
-
-  const remoteEntries = await workspaceSyncAdapter.list();
+  const adapter = workspaceSyncAdapter;
+  const remoteEntries = await adapter.list();
   if (activeStorageUserId !== userId) return;
-
   const remoteByKey = new Map(remoteEntries.map(entry => [entry.key, entry]));
   const localValues = listAccountLocalValues(userId);
   const meta = readSyncMeta(userId);
   const operations: Promise<unknown>[] = [];
-
+  const upload = async (base: string, value: string) => {
+    const prepared = await (adapter.prepareForRemote?.(value) ?? value);
+    if (activeStorageUserId !== userId || localStorage.getItem(accountStorageKey(base, userId)) !== value) return;
+    if (!canSyncWorkspaceValue(base, prepared)) throw new Error('Workspace value remains too large after media upload');
+    const saved = await adapter.save(base, prepared);
+    if (activeStorageUserId !== userId) return;
+    const latest = localStorage.getItem(accountStorageKey(base, userId));
+    if (latest === value) markLocalChange(base, userId, false, saved.updatedAt, false);
+    else {
+      markLocalChange(base, userId, latest === null);
+      if (latest === null) scheduleRemoteRemove(base, userId);
+      else scheduleRemoteSave(base, latest, userId);
+    }
+  };
   for (const entry of remoteEntries) {
     if (!isSyncableWorkspaceKey(entry.key)) continue;
     const localValue = localValues.get(entry.key);
     const marker = meta[entry.key];
     const localUpdatedAt = marker ? Date.parse(marker.updatedAt) : 0;
     const remoteUpdatedAt = Date.parse(entry.updatedAt) || 0;
-
-    if (marker?.deleted && localUpdatedAt > remoteUpdatedAt) {
-      operations.push(workspaceSyncAdapter.remove(entry.key));
+    if (marker?.deleted && (marker.dirty || localUpdatedAt > remoteUpdatedAt)) {
+      scheduleRemoteRemove(entry.key, userId);
       continue;
     }
-
-    if (localValue !== undefined && localUpdatedAt > remoteUpdatedAt) {
-      if (isSyncableWorkspaceKeyOnly(entry.key)) {
-        operations.push(Promise.resolve(workspaceSyncAdapter.prepareForRemote?.(localValue) ?? localValue).then(preparedValue => {
-          if (!canSyncWorkspaceValue(entry.key, preparedValue)) throw new Error('Workspace value remains too large after media upload');
-          return workspaceSyncAdapter!.save(entry.key, preparedValue);
-        }).then(saved => {
-          meta[entry.key] = { updatedAt: saved.updatedAt };
-        }));
-      }
+    if (localValue !== undefined && (marker?.dirty || localUpdatedAt > remoteUpdatedAt)) {
+      operations.push(upload(entry.key, localValue));
       continue;
     }
-
-    operations.push(Promise.resolve(workspaceSyncAdapter.prepareForLocal?.(entry.value) ?? entry.value).then(localValueToStore => {
+    operations.push(Promise.resolve(adapter.prepareForLocal?.(entry.value) ?? entry.value).then(value => {
       if (activeStorageUserId !== userId) return;
-      localStorage.setItem(accountStorageKey(entry.key, userId), localValueToStore);
-      meta[entry.key] = { updatedAt: entry.updatedAt };
+      // Media hydration may take time. Never replace writes made since it started.
+      if (localStorage.getItem(accountStorageKey(entry.key, userId)) !== (localValue ?? null)) return;
+      localStorage.setItem(accountStorageKey(entry.key, userId), value);
+      markLocalChange(entry.key, userId, false, entry.updatedAt, false);
     }));
   }
-
   for (const [base, value] of localValues) {
     if (remoteByKey.has(base) || meta[base]?.deleted || !isSyncableWorkspaceKeyOnly(base)) continue;
-    operations.push(Promise.resolve(workspaceSyncAdapter.prepareForRemote?.(value) ?? value).then(preparedValue => {
-      if (!canSyncWorkspaceValue(base, preparedValue)) throw new Error('Workspace value remains too large after media upload');
-      return workspaceSyncAdapter!.save(base, preparedValue);
-    }).then(saved => {
-      meta[base] = { updatedAt: saved.updatedAt };
-    }));
+    operations.push(upload(base, value));
   }
-
   await Promise.allSettled(operations);
-  if (activeStorageUserId === userId) writeSyncMeta(userId, meta);
 }
 
 export function migrateLegacyAccountKey(base: string, userId: string): void {

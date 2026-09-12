@@ -8,6 +8,7 @@ This follows the useful interaction patterns described by [Higgsfield Supercompu
 
 ## Implemented in this upgrade
 
+- Cloud sync protects unsynced local changes, checks for newer writes during media hydration, and repairs out-of-order uploads. Regression tests reproduced and then prevented lost-history races.
 - Conversation restoration through the existing account-scoped workspace storage, retaining up to 100 messages. Interrupted work does not auto-restart on refresh.
 - An editable saved Project brief under Agent setup, supplied as context in later turns.
 - Plans wait for explicit approval in Review required mode. The alternative is accurately labeled Run automatically, not Auto-publish.
@@ -17,6 +18,7 @@ This follows the useful interaction patterns described by [Higgsfield Supercompu
 - Selected-persona resolution replaces first-persona selection. Generating an asset no longer replaces the saved avatar or reference image.
 - Research uses Gemini Search/URL context, and the UI displays links from returned grounding metadata. Missing evidence is reported instead of replaced with canned “live trends.”
 - Relevant PDF, text and image attachments can be inspected by Gemini before the selected reasoning route receives the request, with an explicit unavailable/size-limit path.
+- WaveSpeed routes without native tool support request JSON output. Pending plans are separately labeled from completed results in conversation context. Explicit source-image requests normalize to the editing path even when the model labels them generation.
 - Actual returned model names appear in response metadata where provided, including Gemini fallback responses. Grok no longer requests the obsolete Grok 2 endpoint.
 - Missing image, speech, 3D and voice-clone outputs no longer count as success; stitching failure stops the run. Audio and 3D outputs use appropriate controls.
 
@@ -52,8 +54,8 @@ Keep Adaptive Fast for routine writing/planning based on the earlier audit. Use 
 
 ## Validation completed before release
 
-- 29 targeted automated tests passed, including new approval, restoration, optional identity, missing-output and research-source cases.
-- Type checking and production frontend build passed during development; final release checks are recorded in the delivery message.
+- 33 targeted automated tests passed, including new approval, restoration, optional identity, missing-output and research-source cases.
+- Type checking and the production frontend build passed. Production deployments built successfully on Vercel and were assigned to the custom domain.
 - Browser fixture: new plan waited for approval; its edited prompt and conversation survived refresh; simulated provider failure displayed Needs attention and preserved the failed instructions.
 - Live provider probe: Gemini retrieved the IANA example-domains explanation with a usable source URL.
 - Live provider probe: Grok 4.6 answered the budget example correctly.
@@ -61,7 +63,7 @@ Keep Adaptive Fast for routine writing/planning based on the earlier audit. Use 
 
 ## Production verification
 
-The upgrade and follow-up validation fixes are deployed on [ai-influencerstudio.com](https://ai-influencerstudio.com/), latest code commit `c1a2e55`. Production returned the correct $84 total / $36 remaining for the text-only Cedar request, with no new task plan or generation. After refreshing the live app, it also recalled Project Cedar and the $36 remaining budget correctly. A natural “Yes, generate that image now” confirmation produced an editable task card retaining the full teacup scene. Approved execution completed through Seedream and visibly returned a mint-green teacup on a sunlit wooden table, with no persona portrait. Earlier verification caught both an unwanted fallback plan and a missing prompt; those observations drove the follow-up fixes, rather than being counted as passes.
+The upgrade and follow-up validation fixes are deployed on [ai-influencerstudio.com](https://ai-influencerstudio.com/). Production returned the correct $84 total / $36 remaining for the text-only Cedar request, with no new task plan or generation. After refreshing the live app, it also recalled Project Cedar and the $36 remaining budget correctly. A natural “Yes, generate that image now” confirmation produced an editable task card retaining the full teacup scene. Approved execution completed through Seedream and visibly returned a mint-green teacup on a sunlit wooden table, with no persona portrait. The revision test initially hit two WaveSpeed HTTP 504 errors; both were displayed as failures without substituting the original image. Switching edit submission to asynchronous polling then completed successfully and visibly changed the cup and saucer to cobalt blue while retaining the scene. Earlier verification caught both an unwanted fallback plan and a missing prompt; those observations drove the follow-up fixes, rather than being counted as passes.
 
 ## What remains before comparable breadth
 
@@ -72,4 +74,4 @@ The upgrade and follow-up validation fixes are deployed on [ai-influencerstudio.
 5. **Finished deliverables:** thoroughly verified image → video → narration → assembly flows, quality checks, variations and downloadable packages. Video/audio/3D availability alone is not end-to-end certification.
 6. **Broader evaluations:** repeated, isolated tests for planning, research correctness, voice responsiveness, tool selection, identity fidelity and recovery under failures. Compare costs and latency with actual provider attribution.
 
-Relevant provider documentation: [Gemini grounded search](https://ai.google.dev/gemini-api/docs/google-search), [Gemini URL context](https://ai.google.dev/gemini-api/docs/url-context), [xAI web search](https://docs.x.ai/developers/tools/web-search), [Cartesia voice API](https://docs.cartesia.ai/api-reference/voices/list).
+Relevant provider documentation: [Gemini grounded search](https://ai.google.dev/gemini-api/docs/google-search), [Gemini URL context](https://ai.google.dev/gemini-api/docs/url-context), [xAI web search](https://docs.x.ai/developers/tools/web-search), [Cartesia voice API](https://docs.cartesia.ai/api-reference/voices/list), [WaveSpeed structured responses](https://wavespeed.ai/blog/posts/wavespeed-llm-api-quick-start/).
