@@ -734,19 +734,6 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
     }
   }, []);
 
-  // Self-healing effect: Automatically purge any legacy "hello" execution cards from state
-  useEffect(() => {
-    setMessages(prev => prev.filter(m => {
-      if (m.suggestedSteps) {
-        const contentStr = (m.content || '').toLowerCase();
-        if (contentStr.includes('request: "hello"') || contentStr.includes('seedream') || contentStr.includes('hello')) {
-          return false;
-        }
-      }
-      return true;
-    }));
-  }, []);
-
   // Guided Tour Tab auto-switching handler
   useEffect(() => {
     if (tourStep === 2) setCanvasTab('studio');

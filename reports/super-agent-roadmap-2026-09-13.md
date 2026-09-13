@@ -33,3 +33,7 @@ No new account permissions, provider credentials, or publishing actions were add
 ## Additional verification
 
 Creator identity and existing identity-grounding checks: 15 tests passed. Write-revision and cloud-sync checks: 5 tests passed. Type check, frontend build, and API bundle checks passed. A database transaction probe could not connect because the configured certificate chain was not trusted; certificate verification was not disabled.
+
+## Root cause found after repeated refresh testing
+
+A legacy mount effect in AgentView deleted every message with suggestedSteps when its text contained `seedream` or `hello`. This precisely reproduced the observed behavior: user requests and ordinary replies survived, while model-named generation plans disappeared. Browser regression: a mocked Seedream plan appeared, then disappeared after the mount effect ran on reload. The cleanup effect has been removed. The quota and delayed-save protections remain useful hardening but were not the direct cause of that deletion.
