@@ -2326,13 +2326,13 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
       }));
     };
 
-    const updateStepStatus = (stepIdx: number, status: 'pending' | 'running' | 'success' | 'error', resultUrl?: string) => {
-      stepsList[stepIdx] = {...(resultUrl ? withResultVersion(stepsList[stepIdx],resultUrl) : stepsList[stepIdx]),status};
+    const updateStepStatus = (stepIdx: number, status: 'pending' | 'running' | 'success' | 'error', resultUrl?: string, sourceUrl?: string) => {
+      stepsList[stepIdx] = {...(resultUrl ? withResultVersion({...stepsList[stepIdx],resultUrl:stepsList[stepIdx].resultUrl || sourceUrl},resultUrl) : stepsList[stepIdx]),status};
       setMessages(prev => prev.map(m => {
         if (m.id === messageId && m.execSteps) {
           const updated = [...m.execSteps];
           updated[stepIdx].status = status;
-          if (resultUrl) updated[stepIdx] = withResultVersion(updated[stepIdx], resultUrl);
+          if (resultUrl) updated[stepIdx] = withResultVersion({...updated[stepIdx],resultUrl:updated[stepIdx].resultUrl || sourceUrl}, resultUrl);
           return { ...m, execSteps: updated };
         }
         return m;
@@ -2914,7 +2914,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
           if (editedUrl === srcImg) throw new Error('The edit returned the original image unchanged.');
           const savedEdit = await api.images.create(createdPersonaId, payload);
           addLocalLog(`✅ AI Tool edit (${editType}) completed & saved to library.`);
-          updateStepStatus(i, 'success', requireOutput(savedEdit.url, 'Saved edit'));
+          updateStepStatus(i, 'success', requireOutput(savedEdit.url, 'Saved edit'), srcImg);
         }
 
         else if (step.type === 'log_revenue') {

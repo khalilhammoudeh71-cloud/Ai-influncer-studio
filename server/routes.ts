@@ -1,3 +1,4 @@
+import { agentIdentityContext } from './agentIdentity';
 import { researchSources } from './agentResearch';
 import { buildPersonalityInstructions, personalityDelivery, encodePersonality, decodePersonality } from '../shared/personality';
 import { Router, Response } from 'express';
@@ -3814,7 +3815,13 @@ router.post('/agent/chat', async (req: AuthenticatedRequest, res: Response) => {
       };
     });
 
+    const [agentCreator, agentPersonas] = await Promise.all([
+      readCreatorProfileForUser(req.user.id).catch(() => null),
+      readPersonasForUser(req.user.id).catch(() => []),
+    ]);
+    const agentIdentity = resolvePersonaChatIdentity({activePersona,storedCreator:agentCreator,savedPersonas:agentPersonas,fallbackName:'Creator'});
     const systemInstruction = `You are Super Agent Co-Pilot, a warm, capable creator-operations partner who speaks like a real human collaborator.
+${agentIdentityContext(agentIdentity,activePersona)}
 WORKSPACE EXECUTION CONTRACT:
 - Discuss and refine the user's complete brief across messages. Do not generate from an unfinished description, a quoted example, a text-only instruction, or a request to wait.
 - Propose a concrete plan with complete prompts. Do not claim any tool ran: the app will execute approved steps and report their actual results.
