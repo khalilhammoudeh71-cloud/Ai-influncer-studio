@@ -3076,9 +3076,9 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
       {/* LEFT COLUMN: Agent Conversational Console (Expanded) */}
       <div className="flex-1 flex flex-col h-full border-r border-white/5 relative min-w-0">
         {/* Header with Autopilot & Sub-Agent Controls (Unified Theme) */}
-        <div className="flex-none flex flex-col md:flex-row md:items-center justify-between border-b border-[#E7C477]/10 px-6 py-3 bg-[#050914] gap-2 select-none">
+        <div className="flex-none flex flex-col md:flex-row md:flex-wrap md:items-center justify-between border-b border-[#E7C477]/10 px-6 py-3 bg-[#050914] gap-2 select-none">
           <div className="flex items-center gap-3">
-            <h1 className="text-xl md:text-2xl font-serif text-[#F5F1E8] tracking-tight flex items-center gap-2">
+            <h1 className="whitespace-nowrap text-xl md:text-2xl font-serif text-[#F5F1E8] tracking-tight flex items-center gap-2">
               Super Agent
             </h1>
             <span className="text-[10px] font-semibold px-2.5 py-0.5 rounded-full bg-[#E7C477]/10 text-[#F2D58D] border border-[#E7C477]/25">
@@ -3088,14 +3088,14 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
 
           <div className="flex flex-wrap items-center gap-2">
             <label className="text-xs text-zinc-400">Project
-              <select aria-label="Super Agent project" disabled={isSending || messages.some(m=>m.isExecuting) || historySaving || historySaveFailed} value={projectId} onChange={e=>onProjectChange(e.target.value)} className="ml-2 max-w-48 rounded-lg border border-white/15 bg-zinc-900 p-2 text-sm text-zinc-100">
+              <select aria-label="Super Agent project" disabled={isSending || isLiveVoiceCallActive || isStudioLoading || isCloningVoice || messages.some(m=>m.isExecuting || m.execSteps?.some(s=>s.isActionLoading)) || historySaving || historySaveFailed} value={projectId} onChange={e=>onProjectChange(e.target.value)} className="ml-2 max-w-48 rounded-lg border border-white/15 bg-zinc-900 p-2 text-sm text-zinc-100">
                 {projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </label>
             <details className="relative text-xs text-zinc-300"><summary className="cursor-pointer">New project</summary>
               <form onSubmit={e=>{e.preventDefault();onCreateProject(projectName);}} className="absolute top-8 left-0 z-50 w-64 rounded-xl border border-white/15 bg-zinc-900 p-3 shadow-xl">
                 <input aria-label="New project name" value={projectName} onChange={e=>setProjectName(e.target.value)} maxLength={80} placeholder="Campaign name" className="w-full rounded-lg bg-black/30 p-2" />
-                <button disabled={!projectName.trim() || isSending || messages.some(m=>m.isExecuting) || historySaving || historySaveFailed} className="mt-2 rounded-lg bg-[#E7C477] px-3 py-2 text-black disabled:opacity-40">Create project</button>
+                <button disabled={!projectName.trim() || isSending || isLiveVoiceCallActive || isStudioLoading || isCloningVoice || messages.some(m=>m.isExecuting || m.execSteps?.some(s=>s.isActionLoading)) || historySaving || historySaveFailed} className="mt-2 rounded-lg bg-[#E7C477] px-3 py-2 text-black disabled:opacity-40">Create project</button>
               </form>
             </details>
             <span role="status" className="text-xs text-zinc-400">{historySaveFailed ? 'History not saved' : historySaving ? 'Saving history…' : ''}</span>

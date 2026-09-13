@@ -1,3 +1,4 @@
+import { workspaceWriteRevision } from './workspaceRevision';
 import { agentIdentityContext } from './agentIdentity';
 import { researchSources } from './agentResearch';
 import { buildPersonalityInstructions, personalityDelivery, encodePersonality, decodePersonality } from '../shared/personality';
@@ -8,7 +9,7 @@ import { exec } from 'child_process';
 import { createRequire } from 'module';
 import { db } from './db';
 import { personas, generatedImages, revenueEntries, plannedPosts, workspaceStates } from '../shared/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, lte } from 'drizzle-orm';
 import { GoogleGenAI } from '@google/genai';
 import { createFalClient } from '@fal-ai/client';
 import { requireAuth, AuthenticatedRequest } from './auth';
@@ -416,7 +417,9 @@ router.put('/workspace-state/:stateKey', async (req: AuthenticatedRequest, res: 
       return res.status(413).json({ error: 'Workspace state value is too large' });
     }
 
-    const now = new Date();
+    let now: Date;
+    try { now = workspaceWriteRevision(stateKey, req.body?.clientUpdatedAt); }
+    catch (error) { return res.status(409).json({error:error instanceof Error ? error.message : 'Invalid workspace revision'}); }
     const [row] = await db.insert(workspaceStates).values({
       userId: req.user.id,
       stateKey,
@@ -425,8 +428,10 @@ router.put('/workspace-state/:stateKey', async (req: AuthenticatedRequest, res: 
     }).onConflictDoUpdate({
       target: [workspaceStates.userId, workspaceStates.stateKey],
       set: { value, updatedAt: now },
+      ...(stateKey.startsWith('chat_history_super_agent') ? {setWhere:lte(workspaceStates.updatedAt,now)} : {}),
     }).returning();
 
+    if (!row) return res.status(409).json({error:'Workspace sync conflict: an older save was rejected. Your local conversation is retained.'});
     res.json(workspaceStateToClient(row));
   } catch (err) {
     console.error('[API] PUT /workspace-state error:', err);

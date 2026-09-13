@@ -55,7 +55,7 @@ interface WorkspaceStateEntry {
 
 interface WorkspaceSyncAdapter {
   list: () => Promise<WorkspaceStateEntry[]>;
-  save: (key: string, value: string) => Promise<WorkspaceStateEntry>;
+  save: (key: string, value: string, clientUpdatedAt?: string) => Promise<WorkspaceStateEntry>;
   remove: (key: string) => Promise<unknown>;
   prepareForRemote?: (value: string) => Promise<string>;
   prepareForLocal?: (value: string) => Promise<string>;
@@ -147,6 +147,7 @@ function writeSyncMeta(userId: string, meta: SyncMeta) {
 
 function markLocalChange(base: string, userId: string, deleted = false, updatedAt = new Date().toISOString(), dirty = true) {
   const meta = readSyncMeta(userId);
+  if (dirty) updatedAt = new Date(Math.max(Date.parse(updatedAt), (Date.parse(meta[base]?.updatedAt || '') || 0) + 1)).toISOString();
   meta[base] = { updatedAt, dirty, ...(deleted ? { deleted: true } : {}) };
   writeSyncMeta(userId, meta);
 }
@@ -159,6 +160,7 @@ function scheduleRemoteSave(
   attempt = 0,
 ) {
   if (!workspaceSyncAdapter || !isSyncableWorkspaceKeyOnly(base)) return;
+  const clientUpdatedAt = readSyncMeta(userId)[base]?.updatedAt || new Date().toISOString();
   const queueKey = `${userId}:${base}`;
   outstandingSyncKeys.add(queueKey);
   const existingTimer = pendingRemoteChanges.get(queueKey);
@@ -171,7 +173,7 @@ function scheduleRemoteSave(
     void Promise.resolve(workspaceSyncAdapter.prepareForRemote?.(value) ?? value)
       .then(preparedValue => {
         if (!canSyncWorkspaceValue(base, preparedValue)) throw new Error('Workspace value remains too large after media upload');
-        return workspaceSyncAdapter!.save(base, preparedValue);
+        return workspaceSyncAdapter!.save(base, preparedValue, clientUpdatedAt);
       })
       .then(entry => {
         if (activeStorageUserId === userId && localStorage.getItem(accountStorageKey(base, userId)) === value) {
@@ -190,7 +192,7 @@ function scheduleRemoteSave(
         notifyWorkspaceSync('pending', base, error);
         const stillCurrent = activeStorageUserId === userId
           && localStorage.getItem(accountStorageKey(base, userId)) === value;
-        if (stillCurrent) {
+        if (stillCurrent && !/Workspace sync conflict|Reload the app|device clock/i.test(String(error?.message || error))) {
           const retryDelay = Math.min(60_000, 1_000 * (2 ** Math.min(attempt, 6)));
           scheduleRemoteSave(base, value, userId, retryDelay, attempt + 1);
         }
@@ -292,10 +294,11 @@ export async function hydrateAccountLocalStorage(userId: string): Promise<void> 
   const meta = readSyncMeta(userId);
   const operations: Promise<unknown>[] = [];
   const upload = async (base: string, value: string) => {
+    const clientUpdatedAt = readSyncMeta(userId)[base]?.updatedAt || new Date().toISOString();
     const prepared = await (adapter.prepareForRemote?.(value) ?? value);
     if (activeStorageUserId !== userId || localStorage.getItem(accountStorageKey(base, userId)) !== value) return;
     if (!canSyncWorkspaceValue(base, prepared)) throw new Error('Workspace value remains too large after media upload');
-    const saved = await adapter.save(base, prepared);
+    const saved = await adapter.save(base, prepared, clientUpdatedAt);
     if (activeStorageUserId !== userId) return;
     const latest = localStorage.getItem(accountStorageKey(base, userId));
     if (latest === value) markLocalChange(base, userId, false, saved.updatedAt, false);
