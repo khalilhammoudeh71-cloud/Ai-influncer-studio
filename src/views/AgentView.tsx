@@ -62,7 +62,11 @@ import { editImageJob, talkingAvatarJob, requestPersonaMediaJob } from '../servi
 import { cn } from '../utils/cn';
 import { trimAudioBase64To10Sec } from '../utils/audioUtils';
 import { canAutoRun, restoreConversation, imagePersona, requireOutput, previousImage, taskContext } from '../utils/agentWorkspace';
-import { accountLocalStorage } from '../utils/accountStorage';
+import { accountLocalStorage, getActiveStorageUserId } from '../utils/accountStorage';
+import { withResultVersion, ResultVersion } from '../utils/agentVersions';
+import { projectKeys, readProjects, AgentProject } from '../utils/agentProjects';
+import { saveAgentHistory } from '../utils/agentHistoryPersistence';
+import { prepareWorkspaceValueForStorage, resolveWorkspaceValueFromStorage } from '../services/workspaceMediaService';
 import toast from 'react-hot-toast';
 import { DEFAULT_VIDEO_MODEL_ID } from '../../shared/mediaDefaults';
 import { normalizeAgentSteps } from '../utils/agentStepValidation';
@@ -120,6 +124,7 @@ interface Message {
     status: 'pending' | 'running' | 'success' | 'error' | 'done' | 'executing';
     resultUrl?: string;
     resultUrls?: string[];
+    resultVersions?: ResultVersion[];
     isActionLoading?: 'video' | 'upscale' | 'swap' | null;
   }[];
 }
@@ -479,15 +484,40 @@ function audioBufferToWav(buffer: AudioBuffer): Blob {
 
   return new Blob([bufferArr], { type: 'audio/wav' });
 }
-export default function AgentView({ personas, setPersonas, selectedPersonaId: propSelectedPersonaId, onSelectPersona, nav }: AgentViewProps) {
+export default function AgentView(props: AgentViewProps) {
+  const [projects,setProjects] = useState(() => readProjects(accountLocalStorage.getItem('super_agent_projects')));
+  const [projectId,setProjectId] = useState('default');
+  function createProject(name: string) {
+    if (!name.trim()) return;
+    const project = {id:crypto.randomUUID(),name:name.trim().slice(0,80)};
+    const next = [...projects,project];
+    try { accountLocalStorage.setItem('super_agent_projects',JSON.stringify(next)); }
+    catch { toast.error('Project could not be saved.'); return; }
+    setProjects(next); setProjectId(project.id);
+  }
+  return <AgentProjectView key={projectId} {...props} projectId={projectId} projects={projects} onProjectChange={setProjectId} onCreateProject={createProject} />;
+}
+function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelectedPersonaId, onSelectPersona, nav, projectId, projects, onProjectChange, onCreateProject }: AgentViewProps & {projectId:string;projects:AgentProject[];onProjectChange:(id:string)=>void;onCreateProject:(name:string)=>void}) {
+  const keys = projectKeys(projectId);
+  const [projectName,setProjectName] = useState('');
+  const [historySaving,setHistorySaving] = useState(false);
+  const [historySaveFailed,setHistorySaveFailed] = useState(false);
   const effectiveSelectedPersonaId = propSelectedPersonaId;
   const [inputText, setInputText] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const [messages, setMessages] = useState<Message[]>(() => restoreConversation(accountLocalStorage.getItem('chat_history_super_agent')));
+  const [messages, setMessages] = useState<Message[]>(() => restoreConversation(accountLocalStorage.getItem(keys.history)));
   
   useEffect(() => {
-    try { accountLocalStorage.setItem('chat_history_super_agent', JSON.stringify(messages)); }
-    catch { toast.error('Conversation could not be saved. Keep this page open while working.'); }
+    let current = true;
+    setHistorySaving(true);
+    setHistorySaveFailed(false);
+    const accountId = getActiveStorageUserId();
+    void saveAgentHistory(JSON.stringify(messages), async value =>
+      resolveWorkspaceValueFromStorage(await prepareWorkspaceValueForStorage(value)),
+      value => accountLocalStorage.setItem(keys.history, value),
+      () => current && accountId === getActiveStorageUserId(),
+    ).catch(() => { if (current) { setHistorySaveFailed(true); toast.error('Conversation could not be saved. Keep this page open while working.'); } }).finally(() => { if (current) setHistorySaving(false); });
+    return () => { current = false; };
   }, [messages]);
 
   const [isSending, setIsSending] = useState(false);
@@ -498,7 +528,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
   // Autopilot, Sub-Agent Delegation & Approval Queue States
   const runningPlans = useRef(new Set<string>());
   const stoppedPlans = useRef(new Set<string>());
-  const [workspaceBrief, setWorkspaceBrief] = useState(() => accountLocalStorage.getItem('super_agent_brief') || '');
+  const [workspaceBrief, setWorkspaceBrief] = useState(() => accountLocalStorage.getItem(keys.brief) || '');
   const [autoApprove, setAutoApprove] = useState(false);
   const [allowNsfw, setAllowNsfw] = useState(() => localStorage.getItem('agent_allow_nsfw') === 'true');
   const [voiceLlmModel, setVoiceLlmModel] = useState<string>(() => {
@@ -1884,7 +1914,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
       setMessages(prev => prev.map(m => {
         if (m.id === messageId && m.execSteps) {
           const updated = [...m.execSteps];
-          updated[stepIdx].resultUrl = result.imageUrl;
+          updated[stepIdx] = withResultVersion(updated[stepIdx], result.imageUrl);
           updated[stepIdx].isActionLoading = null;
           return { ...m, execSteps: updated };
         }
@@ -1992,7 +2022,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
         setMessages(prev => prev.map(m => {
           if (m.id === msgId && m.execSteps) {
             const updated = [...m.execSteps];
-            updated[stepIdx].resultUrl = data.imageUrl;
+            updated[stepIdx] = withResultVersion(updated[stepIdx], data.imageUrl);
             updated[stepIdx].isActionLoading = null;
             return { ...m, execSteps: updated };
           }
@@ -2297,12 +2327,12 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
     };
 
     const updateStepStatus = (stepIdx: number, status: 'pending' | 'running' | 'success' | 'error', resultUrl?: string) => {
-      stepsList[stepIdx] = {...stepsList[stepIdx],status,...(resultUrl ? {resultUrl} : {})};
+      stepsList[stepIdx] = {...(resultUrl ? withResultVersion(stepsList[stepIdx],resultUrl) : stepsList[stepIdx]),status};
       setMessages(prev => prev.map(m => {
         if (m.id === messageId && m.execSteps) {
           const updated = [...m.execSteps];
           updated[stepIdx].status = status;
-          if (resultUrl) updated[stepIdx].resultUrl = resultUrl;
+          if (resultUrl) updated[stepIdx] = withResultVersion(updated[stepIdx], resultUrl);
           return { ...m, execSteps: updated };
         }
         return m;
@@ -2502,12 +2532,12 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
             mediaType: 'image' as const
           };
 
-          await api.images.create(createdPersonaId, imgPayload);
+          const savedImage = await api.images.create(createdPersonaId, imgPayload);
           addLocalLog(`✅ Visual asset generated & saved to library.`);
 
           // Creating an asset never changes the persona's saved identity or avatar.
 
-          updateStepStatus(i, 'success', imageUrl);
+          updateStepStatus(i, 'success', requireOutput(savedImage.url, 'Saved image'));
         }
 
         else if (step.type === 'generate_video') {
@@ -2882,9 +2912,9 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
 
           requireOutput(editedUrl, 'Image editing');
           if (editedUrl === srcImg) throw new Error('The edit returned the original image unchanged.');
-          await api.images.create(createdPersonaId, payload);
+          const savedEdit = await api.images.create(createdPersonaId, payload);
           addLocalLog(`✅ AI Tool edit (${editType}) completed & saved to library.`);
-          updateStepStatus(i, 'success', editedUrl);
+          updateStepStatus(i, 'success', requireOutput(savedEdit.url, 'Saved edit'));
         }
 
         else if (step.type === 'log_revenue') {
@@ -3056,6 +3086,21 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
             </span>
           </div>
 
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="text-xs text-zinc-400">Project
+              <select aria-label="Super Agent project" disabled={isSending || messages.some(m=>m.isExecuting) || historySaving || historySaveFailed} value={projectId} onChange={e=>onProjectChange(e.target.value)} className="ml-2 max-w-48 rounded-lg border border-white/15 bg-zinc-900 p-2 text-sm text-zinc-100">
+                {projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </label>
+            <details className="relative text-xs text-zinc-300"><summary className="cursor-pointer">New project</summary>
+              <form onSubmit={e=>{e.preventDefault();onCreateProject(projectName);}} className="absolute top-8 left-0 z-50 w-64 rounded-xl border border-white/15 bg-zinc-900 p-3 shadow-xl">
+                <input aria-label="New project name" value={projectName} onChange={e=>setProjectName(e.target.value)} maxLength={80} placeholder="Campaign name" className="w-full rounded-lg bg-black/30 p-2" />
+                <button disabled={!projectName.trim() || isSending || messages.some(m=>m.isExecuting) || historySaving || historySaveFailed} className="mt-2 rounded-lg bg-[#E7C477] px-3 py-2 text-black disabled:opacity-40">Create project</button>
+              </form>
+            </details>
+            <span role="status" className="text-xs text-zinc-400">{historySaveFailed ? 'History not saved' : historySaving ? 'Saving history…' : ''}</span>
+          </div>
+
           {/* Unified Controls Toolbar */}
           <div className="flex flex-wrap items-center gap-2">
             {/* Approval Queue Toggle */}
@@ -3096,7 +3141,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
               </summary>
               <div className="absolute right-0 top-full mt-2 flex w-[min(92vw,430px)] flex-col gap-2 rounded-2xl border border-white/10 bg-[#11131a]/98 p-3 shadow-2xl backdrop-blur-xl">
             <label className="text-xs text-zinc-300">Project brief
-              <textarea aria-label="Project brief" value={workspaceBrief} onChange={e => {setWorkspaceBrief(e.target.value); accountLocalStorage.setItem('super_agent_brief',e.target.value);}} placeholder="Goals, audience, style and details to keep in mind…" className="mt-1 w-full rounded-lg border border-white/15 bg-black/30 p-2 text-sm" rows={3} />
+              <textarea aria-label="Project brief" value={workspaceBrief} onChange={e => {setWorkspaceBrief(e.target.value); accountLocalStorage.setItem(keys.brief,e.target.value);}} placeholder="Goals, audience, style and details to keep in mind…" className="mt-1 w-full rounded-lg border border-white/15 bg-black/30 p-2 text-sm" rows={3} />
               <span className="text-[11px] text-zinc-400">Saved for future conversations. You can edit it anytime.</span>
             </label>
             {/* LLM Engine Selector */}
@@ -3571,6 +3616,13 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                                 </div>
 
                                 {!msg.isExecuting && (step.status === 'pending' || step.status === 'error') && <textarea aria-label={`Instructions for step ${sIdx + 1}`} value={step.params.prompt || step.params.text || ''} onChange={e => setMessages(prev => prev.map(m => m.id === msg.id ? {...m,execSteps:m.execSteps?.map((s,index) => index === sIdx ? {...s,params:{...s.params,[s.type === 'generate_voice' ? 'text' : 'prompt']:e.target.value}} : s)} : m))} className="w-full rounded-lg border border-white/10 bg-black/20 p-2 text-xs text-zinc-200" rows={3} />}
+                                {(step.resultVersions?.length || 0) > 1 && ['generate_image','edit_image'].includes(step.type) && <details className="text-xs text-zinc-300">
+                                  <summary className="cursor-pointer py-2">Compare versions ({step.resultVersions!.length})</summary>
+                                  <div className="grid grid-cols-2 gap-2">{step.resultVersions!.map((version,index)=><figure key={index} className="min-w-0 rounded-lg border border-white/10 p-2">
+                                    <img src={version.url} alt={`Version ${index+1}`} className="h-40 w-full object-contain" />
+                                    <figcaption className="mt-2 flex flex-wrap justify-between gap-2"><span>Version {index+1}</span><button type="button" onClick={()=>handleEditImageAction(version.url)} className="text-[#E7C477] underline">Edit this version</button></figcaption>
+                                  </figure>)}</div>
+                                </details>}
                                 {step.resultUrl && (
                                   <div className="mt-2 rounded-xl overflow-hidden border border-white/10 bg-black/50">
                                     {step.type === 'generate_voice' ? <audio src={step.resultUrl} controls className="w-full" /> : step.type === 'generate_3d' ? <a href={step.resultUrl} target="_blank" rel="noreferrer">Open 3D asset</a> : step.type.includes('video') || step.type === 'generate_talking_head' || step.type === 'storyboard_sequence' ? (

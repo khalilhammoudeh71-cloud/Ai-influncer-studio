@@ -147,10 +147,10 @@ async function transformMediaDeep(value: unknown, transform: (value: string) => 
 }
 
 async function transformSerializedValue(value: string, transform: (value: string) => Promise<string>): Promise<string> {
-  try {
-    const parsed = JSON.parse(value);
-    if (parsed && typeof parsed === 'object') return JSON.stringify(await transformMediaDeep(parsed, transform));
-  } catch {}
+  let parsed: unknown;
+  try { parsed = JSON.parse(value); } catch { return transform(value); }
+  // Upload failures must reach the caller; never silently save the original base64.
+  if (parsed && typeof parsed === 'object') return JSON.stringify(await transformMediaDeep(parsed, transform));
   return transform(value);
 }
 
