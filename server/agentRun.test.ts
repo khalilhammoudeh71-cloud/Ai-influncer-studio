@@ -30,3 +30,6 @@ test('does not trust client-supplied results or child IDs', () => {
 test('an edit returning its source cannot advance the plan', () => {
     assert.equal(nextRunAction([{ type: 'edit_image', params: { prompt: 'Make it green' }, status: 'running', jobId: 'edit' }], { status: 'succeeded', request: { sourceImage: 'https://example.com/original.jpg' }, result: { url: 'https://example.com/original.jpg' } }).kind, 'fail');
 });
+test('source-based image plans use the edit path instead of discarding the source',()=>{
+ assert.equal(validateRunSteps([{type:'generate_image',params:{prompt:'Make the cup blue',sourceImage:'previous_result'}}])[0].type,'edit_image');
+});

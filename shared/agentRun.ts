@@ -26,7 +26,7 @@ export function validateRunSteps(steps: any): RunStep[] {
                 params[k] = p[k];
         if (params.sourceImage && (typeof params.sourceImage !== 'string' || !/^(https:\/\/|data:image\/|previous_result$)/.test(params.sourceImage)))
             throw new Error('Use a saved image or an uploaded image as the source.');
-        return { type: s.type, params, status: 'pending' };
+        return { type: s.type === 'generate_image' && (params.sourceImage || params.sourceImageFromStepIndex !== undefined) ? 'edit_image' : s.type, params, status: 'pending' };
     });
 }
 export function nextRunAction(steps: RunStep[], job?: any): any {
