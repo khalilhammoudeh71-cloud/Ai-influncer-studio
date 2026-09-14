@@ -1,5 +1,7 @@
+import { blocksAgentExecution } from '../../shared/agentPlanIntent';
+
 export function canAutoRun(autoApprove: boolean, prompt: string) {
-  return autoApprove && !/\b(?:text[- ]only|do not (?:create|generate|execute|publish)|don't (?:create|generate|execute|publish)|wait|not yet)\b/i.test(prompt);
+  return autoApprove && !blocksAgentExecution(prompt);
 }
 
 export function requireOutput(value: unknown, label: string): string {

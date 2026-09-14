@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   estimateSuperAgentCost,
+  decodeAgentReply,
   modelSupportsNativeTools,
   normalizeSuperAgentMediaRouting,
   normalizeSuperAgentPlanSteps,
@@ -180,4 +181,67 @@ test('a generated-image step with a source runs through the editing path', () =>
   const step = normalizeSuperAgentPlanSteps([{type:'generate_image',params:{prompt:'Change only the cup to blue',sourceImage:'previous_result',modelId:'wavespeed:bytedance/seedream-v5.0-pro'}}])[0];
   assert.equal(step.type, 'edit_image');
   assert.equal(step.params.modelId, 'wavespeed-edit:bytedance/seedream-v5.0-pro/edit');
+});
+
+test('review-only requests still receive proposed steps without authorizing execution',()=>{
+  const steps=[{type:'generate_image',params:{prompt:'A blue cup'}}];
+  assert.equal(normalizeSuperAgentPlanSteps(steps,'Prepare a two-step plan for my review. Do not execute yet.').length,1);
+  assert.deepEqual(normalizeSuperAgentPlanSteps(steps,'Text only: explain how to prepare a plan. Do not execute.'),[]);
+  assert.deepEqual(normalizeSuperAgentPlanSteps(steps,'Wait, I am still describing the plan for review.'),[]);
+});
+
+test('empty edit instructions do not become executable steps',()=>{
+  assert.deepEqual(normalizeSuperAgentPlanSteps([{type:'edit_image',params:{sourceImage:'previous_result'}}]),[]);
+  for (const editType of ['custom edit','   ']) {
+    assert.throws(()=>decodeAgentReply(JSON.stringify({text:'Ready',suggestedSteps:[{type:'edit_image',params:{editType,sourceImage:'previous_result'}}]}),'Edit the cup'),/incomplete/);
+  }
+  assert.equal(normalizeSuperAgentPlanSteps([{type:'edit_image',params:{editType:'upscale',sourceImage:'previous_result'}}]).length,1);
+});
+
+test('nested structured steps in legacy replies still become a plan card',()=>{
+  const reply=JSON.stringify({text:'Here is the step:\n```json\n{"type":"generate_image","params":{"prompt":"A blue cup","usePersona":false}}\n```',suggestedSteps:[]});
+  assert.equal(decodeAgentReply(reply,'Create a blue cup image').suggestedSteps.length,1);
+});
+
+test('malformed or partially unsupported plans fail as a whole',()=>{
+  assert.throws(()=>decodeAgentReply('{"text":"Ready","suggestedSteps":', 'Create a cup'),/incomplete/);
+  assert.throws(()=>decodeAgentReply(JSON.stringify({text:'Ready',suggestedSteps:[{type:'generate_image',params:{prompt:'A blue cup'}},{type:'delete_everything',params:{}}]}),'Create a cup'),/unsupported/);
+  assert.deepEqual(decodeAgentReply('The cost is $84.','Text only: calculate the budget.').suggestedSteps,[]);
+});
+
+test('legacy nested plans cannot silently drop an invalid edit',()=>{
+  const partial={steps:[{type:'generate_image',params:{prompt:'A blue cup'}},{type:'edit_image',params:{sourceImage:'previous_result'}}]};
+  const reply=JSON.stringify({text:'```json\n'+JSON.stringify(partial)+'\n```',suggestedSteps:[]});
+  assert.throws(()=>decodeAgentReply(reply,'Create a blue cup and edit it green'),/incomplete/);
+});
+
+test('ordinary code and data replies are displayed without becoming actions',()=>{
+  for(const text of ['```js\nconsole.log("hello")\n```','{"total":84,"remaining":36}']){
+    const reply=decodeAgentReply(text,'Text only: show the example.');
+    assert.equal(reply.text,text);assert.deepEqual(reply.suggestedSteps,[]);
+  }
+});
+
+test('waiting for approval keeps review cards while unfinished descriptions stay held',()=>{
+  const steps=[{type:'generate_image',params:{prompt:'A blue cup'}}];
+  assert.equal(normalizeSuperAgentPlanSteps(steps,'Create a plan. Do not execute yet.').length,1);
+  assert.equal(normalizeSuperAgentPlanSteps(steps,'Prepare a plan for review. Wait for my approval.').length,1);
+  assert.deepEqual(normalizeSuperAgentPlanSteps(steps,'Prepare a plan for review. Wait, I am still describing it.'),[]);
+});
+
+test('JSON schemas and data inside normal answers are not interpreted as plans',()=>{
+  for (const data of [{type:'object',properties:{name:{type:'string'}}},[21,42,84]]) {
+    const text='Here is the example:\n```json\n'+JSON.stringify(data)+'\n```';
+    const reply=decodeAgentReply(JSON.stringify({text,suggestedSteps:[]}),'Show an example');
+    assert.equal(reply.text,text);assert.deepEqual(reply.suggestedSteps,[]);
+    const direct=JSON.stringify(data);
+    assert.equal(decodeAgentReply(direct,'Show an example').text,direct);
+  }
+});
+
+test('serialized tool inputs retain their types and malformed input never reaches execution',()=>{
+  const valid=decodeAgentReply(JSON.stringify({text:'Review this.',suggestedSteps:[{type:'edit_image',params:'{"prompt":"Make the cup green","sourceImageFromStepIndex":0,"usePersona":false}'}]}),'Edit the cup green');
+  assert.equal(valid.suggestedSteps[0].params.sourceImageFromStepIndex,0);
+  assert.equal(valid.suggestedSteps[0].params.usePersona,false);
+  assert.throws(()=>decodeAgentReply(JSON.stringify({text:'Review this.',suggestedSteps:[{type:'generate_voice',params:'broken JSON'}]}),'Generate speech'),/malformed/);
 });

@@ -1,3 +1,5 @@
+import { blocksAgentPlan } from '../shared/agentPlanIntent';
+
 export type SuperAgentEffort = 'fast' | 'smart' | 'deep';
 export type SuperAgentProvider = 'runware' | 'wiro' | 'atlas' | 'wavespeed' | 'venice';
 
@@ -282,7 +284,7 @@ export function normalizeSuperAgentPlanSteps(value: unknown, request = ''): Arra
   params: Record<string, any>;
   status: 'pending';
 }> {
-  if (/\b(?:text[- ]only|do not (?:create|generate|execute|publish)|don't (?:create|generate|execute|publish)|wait|not yet)\b/i.test(request)) return [];
+  if (blocksAgentPlan(request)) return [];
   if (!Array.isArray(value)) return [];
   return value.slice(0, 20).flatMap((step) => {
     if (!step || typeof step !== 'object') return [];
@@ -296,21 +298,49 @@ export function normalizeSuperAgentPlanSteps(value: unknown, request = ''): Arra
     delete params.type;
     delete params.status;
     if (['generate_image', 'generate_video'].includes(type) && (typeof params.prompt !== 'string' || !params.prompt.trim())) return [];
+    const promptFreeEdit = ['upscale','bg-remover','face-swap','virtual-tryon','beautify'].includes(params.editType);
+    if (type === 'edit_image' && !promptFreeEdit && (typeof params.prompt !== 'string' || !params.prompt.trim())) return [];
     return [{ type, params, status: 'pending' as const }];
   });
+}
+
+/** Recognize plan-shaped JSON without confusing ordinary data or JSON Schemas for tools. */
+function explicitPlanSteps(value: any): unknown {
+  if (!value || typeof value !== 'object') return undefined;
+  const isStep = (step:any) => step && typeof step === 'object' && typeof step.type === 'string'
+    && (SUPPORTED_STEP_TYPES.has(step.type.trim()) || 'params' in step || 'parameters' in step);
+  if (Array.isArray(value)) return value.some(isStep) ? value : undefined;
+  if ('suggestedSteps' in value) return value.suggestedSteps;
+  if ('steps' in value) return value.steps;
+  return isStep(value) ? [value] : undefined;
 }
 
 /** Accept explicit JSON plans, never invent a task from ordinary prose. */
 export function recoverStructuredAgentPlan(reply: string, request: string) {
   const blocks = [...reply.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)].map(match => match[1]);
   for (const block of [reply, ...blocks]) {
-    try {
-      const value = JSON.parse(block);
-      const steps = normalizeSuperAgentPlanSteps(Array.isArray(value) ? value : value.suggestedSteps || value.steps || (value.type ? [value] : []), request);
-      if (steps.length) return steps;
-    } catch { /* Unstructured prose is not a plan. */ }
+    let value:any;
+    try { value=JSON.parse(block); } catch { continue; }
+    if (!value || typeof value!=='object') continue;
+    const rawSteps=explicitPlanSteps(value);
+    if (rawSteps === undefined) continue;
+    const steps = validateSuperAgentPlanSteps(rawSteps, request);
+    if (steps.length) return steps;
   }
   return [];
+}
+
+export function validateSuperAgentPlanSteps(value: unknown, request: string) {
+  if (!Array.isArray(value)) throw new Error('The planner returned malformed steps.');
+  if (!blocksAgentPlan(request)) {
+    for (const step of value) {
+      const raw=typeof step?.params==='string'?parseAgentToolArguments(step.params):step?.params ?? step?.parameters ?? step;
+      if (!raw || typeof raw!=='object' || Array.isArray(raw)) throw new Error('The planner returned malformed step inputs.');
+    }
+  }
+  const steps=normalizeSuperAgentPlanSteps(value,request);
+  if (!blocksAgentPlan(request) && steps.length!==value.length) throw new Error('The planner returned an incomplete or unsupported plan.');
+  return steps;
 }
 
 export function normalizeSuperAgentMediaRouting(
@@ -378,6 +408,7 @@ export const SUPER_AGENT_PLAN_TOOL = {
                   aspectRatio: {type:'string'},
                   text: {type:'string'},
                   sourceImage: {type:'string'},
+                  sourceImageFromStepIndex: {type:'integer', minimum:0, description:'Zero-based index of an earlier image step whose successful output must be edited or animated.'},
                   editType: {type:'string'},
                   name: {type:'string'},
                   theme: {type:'string'},
@@ -391,3 +422,51 @@ export const SUPER_AGENT_PLAN_TOOL = {
     },
   },
 } as const;
+
+// The same envelope is used for ordinary answers and reviewable plans. No tool
+// runs at this boundary; execution is handled by the existing approval flow.
+export const SUPER_AGENT_RESPONSE_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['text','suggestedSteps'],
+  properties: {
+    text: {type:'string', description:'Natural reply or concise summary of the plan. Do not claim tools have run.'},
+    suggestedSteps: {
+      ...SUPER_AGENT_PLAN_TOOL.function.parameters.properties.steps,
+      minItems: 0,
+      items: {
+        ...SUPER_AGENT_PLAN_TOOL.function.parameters.properties.steps.items,
+        properties: {
+          type: SUPER_AGENT_PLAN_TOOL.function.parameters.properties.steps.items.properties.type,
+          // Gemini rejects the open-ended params object in this response schema.
+          // Serialize only on the wire, then validate and decode before approval.
+          params: {type:'string',description:'Complete step parameters as a JSON-encoded object. Include all required inputs described in the system instructions. Preserve booleans and numbers inside the object; carry forward full prompts and source dependencies.'},
+        },
+      },
+      description: 'Complete steps for review, or an empty array for conversation, clarification, text-only advice and unfinished descriptions.',
+    },
+  },
+} as const;
+
+export function decodeAgentReply(reply: string, request: string) {
+  const blocks = [...reply.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)].map(match=>match[1]);
+  for (const block of [reply,...blocks]) {
+    let parsed:any;
+    try { parsed=JSON.parse(block); } catch { continue; }
+    if (!parsed || typeof parsed!=='object') continue;
+    const planSteps=explicitPlanSteps(parsed);
+    const isEnvelope=planSteps!==undefined || (!Array.isArray(parsed) && ['text','summary','suggestedSteps','steps'].some(key=>key in parsed));
+    if (!isEnvelope) return {text:reply.trim(),status:'normal',suggestedSteps:[]};
+    const rawSteps=planSteps===undefined ? [] : planSteps;
+    let suggestedSteps=validateSuperAgentPlanSteps(rawSteps,request);
+    let text=typeof parsed.text==='string'?parsed.text:typeof parsed.summary==='string'?parsed.summary:'';
+    if (Array.isArray(rawSteps) && !rawSteps.length && /```/.test(text)) {
+      suggestedSteps=recoverStructuredAgentPlan(text,request);
+      if(suggestedSteps.length)text='Review the plan below before running it.';
+    }
+    if (!text.trim() && !suggestedSteps.length) throw new Error('The planner returned no usable response.');
+    return {text:text.trim() || 'Review the plan below before running it.',status:suggestedSteps.length?'clarifying':'normal',suggestedSteps};
+  }
+  if (!reply.trim() || /^\s*(?:```json\b|\{|\[)/.test(reply)) throw new Error('The planner returned an incomplete response.');
+  return {text:reply.trim(),status:'normal',suggestedSteps:[]};
+}

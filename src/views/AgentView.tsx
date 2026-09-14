@@ -1,3 +1,4 @@
+import { readAgentChatResponse } from '../utils/agentChatResponse';
 import { AgentRecovery } from '../components/AgentRecovery';
 import { AgentAllowance } from '../components/AgentAllowance';
 import { AgentPlanApproval, type PlanApproval } from '../components/AgentPlanApproval';
@@ -1844,11 +1845,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
         })
       });
 
-      if (!res.ok) {
-        throw new Error('Failed to get response from Agent.');
-      }
-
-      const data = await res.json();
+      const data = await readAgentChatResponse(res);
       const normalizedSteps = normalizeAgentSteps(data.suggestedSteps);
       const finalSuggestedSteps = normalizedSteps.length > 0 ? normalizedSteps : undefined;
       const finalCritiqueLogs = Array.isArray(data.critiqueLogs)
@@ -1889,7 +1886,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
     } catch (err: any) {
       console.warn('Agent chat fallback triggered:', err);
       const fallbackMsgId = Math.random().toString();
-      const textReply = 'I could not complete that request. Your message is saved; please retry. No successful result has been confirmed.';
+      const textReply = err instanceof Error ? err.message : 'I could not complete that request. Your message is saved; please retry. No actions were started.';
       const chatMsgObj: Message = {
         id: fallbackMsgId,
         role: 'model',

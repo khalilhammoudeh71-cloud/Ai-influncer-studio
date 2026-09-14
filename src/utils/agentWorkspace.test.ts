@@ -8,6 +8,16 @@ test('review mode holds new plans, and explicit text-only requests never execute
   assert.equal(workspace.canAutoRun(true, 'Create one teacup image'), true);
 });
 
+test('a request for a reviewable plan overrides automatic execution',()=>{
+  assert.equal(workspace.canAutoRun(true,'Show me a plan before executing anything.'),false);
+  assert.equal(workspace.canAutoRun(true,'Create a plan. Do not execute yet.'),false);
+  assert.equal(workspace.canAutoRun(true,'Prepare the two-step plan for my review.'),false);
+  assert.equal(workspace.canAutoRun(true,'Draft a plan to make a blue cup, then edit it green.'),false);
+  assert.equal(workspace.canAutoRun(true,'Create a plan for approval. Do not run it.'),false);
+  assert.equal(workspace.canAutoRun(true,'Create a cup image. Wait for my approval.'),false);
+  assert.equal(workspace.canAutoRun(true,'Create a cup image. Do not run it.'),false);
+});
+
 test('restoring a conversation retains results but never restarts an interrupted paid job', () => {
   const restored = workspace.restoreConversation(JSON.stringify([{id:'a',role:'model',content:'A plan',isExecuting:true,status:'executing',execSteps:[{type:'generate_image',params:{prompt:'teacup'},status:'running'}]}]));
   assert.equal(restored[0].isExecuting, false);
