@@ -20,6 +20,7 @@ export function restoreConversation(raw: string | null): any[] {
     const value = JSON.parse(raw || '[]');
     if (!Array.isArray(value)) return [];
     return value.filter(m => m && typeof m.id === 'string' && typeof m.content === 'string' && ['user', 'model'].includes(m.role)).slice(-100).map(m => {
+      if (m.backgroundRunId) return {...m,isExecuting:m.backgroundStatus==='running',status:m.backgroundStatus==='running'?'executing':m.backgroundStatus==='succeeded'?'done':'normal'};
       const interrupted = m.isExecuting || m.status === 'executing';
       return {...m, isExecuting: false,
         status: interrupted ? 'clarifying' : m.status,

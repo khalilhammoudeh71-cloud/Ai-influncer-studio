@@ -49,3 +49,7 @@ test('pending plans are not sent to the model as completed task results', async 
   assert.equal(state.results.length, 1);
   assert.equal(state.results[0].resultUrl, 'previous_result');
 });
+test('restoring server-owned work does not mark it interrupted or offer another approval',()=>{
+ const [m]=workspace.restoreConversation(JSON.stringify([{id:'run',role:'model',content:'Saved plan',backgroundRunId:'server-run',backgroundStatus:'running',isExecuting:true,status:'executing',execSteps:[{status:'running',type:'generate_image'}]}]));
+ assert.equal(m.isExecuting,true);assert.equal(m.status,'executing');assert.equal(m.execSteps[0].status,'running');
+});
