@@ -3,7 +3,7 @@ const models:Record<string,{provider:string;model:string}>={
  'frontier-gemini-pro':{provider:'google',model:'gemini-3.1-pro-preview'},
  'frontier-gemini-flash':{provider:'google',model:'gemini-3.8-flash'},
 };
-export const frontierModel=(choice:string)=>models[choice];
+export const frontierModel=(choice:string)=>Object.prototype.hasOwnProperty.call(models,choice)?models[choice]:undefined;
 export async function runFrontierChat(choice:string,key:string,messages:any[],system:string,request:typeof fetch=fetch){
  const selected=frontierModel(choice);if(!selected)throw new Error('Unknown frontier model');
  if(!key)throw new Error(`${selected.model}: API credential is not configured`);

@@ -1,4 +1,5 @@
 import { recoveryAdvice } from './agentRecovery';
+import { proposeAgentRepair, type RepairAnalyzer } from './agentRepair';
 import { quotePlan } from './agentPlanQuote';
 import { bypassesInternalCredits } from './auth';
 import type { GenerationQuote } from './creditPricing';
@@ -19,7 +20,8 @@ function imageSource(steps: RunStep[], i: number, fallback?: string) {
         return p.sourceImage;
     return steps.slice(0, i).reverse().find(s => s.type !== 'generate_video' && s.resultUrl)?.resultUrl || fallback;
 }
-export function registerAgentRuns(app: any, db: any, schedule: (id: string, userId: string, user: any) => void, readPersonasForUser: (id: string) => Promise<any[]>, price?: (model:string,type:'image'|'video')=>Promise<GenerationQuote>) {
+export function registerAgentRuns(app: any, db: any, schedule: (id: string, userId: string, user: any) => void, readPersonasForUser: (id: string) => Promise<any[]>, price?: (model:string,type:'image'|'video')=>Promise<GenerationQuote>, analyzeRepair: RepairAnalyzer = proposeAgentRepair) {
+    const activeAnalysis = new Set<string>();
     async function advance(id: string, user: any) {
         let jobId: string | undefined;
         const row = await db.transaction(async (tx: any) => {
@@ -149,6 +151,25 @@ export function registerAgentRuns(app: any, db: any, schedule: (id: string, user
         const steps:RunStep[]=JSON.parse(run.steps);
         const index=steps.findIndex(step=>step.status!=='success');
         res.json({index,error:run.error,advice:recoveryAdvice(run.error||''),prompt:steps[index]?.params.prompt||'',version:run.updatedAt.toISOString()});
+    });
+    app.post('/api/agent-runs/:id/repair-proposal', async (req: any, res: any) => {
+        const ownerId = req.user.id;
+        if (activeAnalysis.has(ownerId)) return res.status(429).json({ error: 'A repair analysis is already running. Wait for it to finish.' });
+        activeAnalysis.add(ownerId);
+        try {
+            const [run] = await db.select().from(agentRuns).where(and(eq(agentRuns.id, req.params.id), eq(agentRuns.userId, ownerId)));
+            if (!run) return res.status(404).json({ error: 'Plan not found' });
+            const version = run.updatedAt.toISOString();
+            if (run.status !== 'failed' || req.body?.version !== version)
+                return res.status(409).json({ error: 'This plan changed. Inspect the failure again before requesting a repair.' });
+            const proposal = await analyzeRepair({ steps: JSON.parse(run.steps), error: run.error || '', hasSourceImage: Boolean(run.sourceImage) }, req.body?.model || 'frontier-gemini-flash');
+            const [latest] = await db.select().from(agentRuns).where(and(eq(agentRuns.id, run.id), eq(agentRuns.userId, ownerId)));
+            if (!latest || latest.status !== 'failed' || latest.updatedAt.toISOString() !== version)
+                return res.status(409).json({ error: 'This plan changed during analysis. Inspect the failure again.' });
+            return res.json({ proposal, version });
+        } catch (e) {
+            return res.status(502).json({ error: e instanceof Error ? e.message : 'Repair analysis failed. You can still revise the step manually.' });
+        } finally { activeAnalysis.delete(ownerId); }
     });
     app.post('/api/agent-runs/:id/:action', async (req: any, res: any) => {
         try {
