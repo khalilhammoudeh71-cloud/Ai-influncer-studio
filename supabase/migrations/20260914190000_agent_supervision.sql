@@ -15,5 +15,5 @@ ALTER TABLE public.agent_runs ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.agent_runs FROM anon, authenticated;
 ALTER TABLE public.media_jobs ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.media_jobs FROM anon;
-REVOKE INSERT, UPDATE, DELETE ON TABLE public.media_jobs FROM authenticated;
+REVOKE ALL ON TABLE public.media_jobs FROM authenticated;
 GRANT SELECT ON TABLE public.media_jobs TO authenticated;

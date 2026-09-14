@@ -9410,7 +9410,7 @@ async function pushSchema() {
         completed_at TIMESTAMPTZ
       );
       ALTER TABLE media_jobs ADD COLUMN IF NOT EXISTS agent_run_id TEXT;
-    REVOKE INSERT, UPDATE, DELETE ON TABLE media_jobs FROM anon, authenticated;
+      REVOKE ALL ON TABLE media_jobs FROM anon, authenticated;
       CREATE TABLE IF NOT EXISTS generation_costs (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
@@ -9494,8 +9494,8 @@ async function pushSchema() {
       REVOKE ALL ON TABLE personas, generated_images, revenue_entries, planned_posts, media_jobs FROM anon;
       REVOKE ALL ON TABLE generation_costs FROM anon, authenticated;
       GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE personas, generated_images, revenue_entries, planned_posts TO authenticated;
+      REVOKE ALL ON TABLE media_jobs FROM anon, authenticated;
       GRANT SELECT ON TABLE media_jobs TO authenticated;
-      REVOKE INSERT, UPDATE, DELETE ON TABLE media_jobs FROM anon, authenticated;
       REVOKE ALL ON SEQUENCE personas_id_seq, generated_images_id_seq, revenue_entries_id_seq, planned_posts_id_seq FROM anon;
       GRANT USAGE, SELECT ON SEQUENCE personas_id_seq, generated_images_id_seq, revenue_entries_id_seq, planned_posts_id_seq TO authenticated;
       DO $account_policies$

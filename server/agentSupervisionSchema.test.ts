@@ -9,6 +9,8 @@ test('authenticated clients cannot forge task linkage, results, or allowance rec
   await assert.rejects(pg.exec("UPDATE media_jobs SET agent_run_id=NULL WHERE id='job'"),/permission denied/);
   await assert.rejects(pg.exec("INSERT INTO media_jobs VALUES('forged',NULL)"),/permission denied/);
   await assert.rejects(pg.exec("DELETE FROM media_jobs"),/permission denied/);
+  await assert.rejects(pg.exec('TRUNCATE media_jobs'),/permission denied/);
+  assert.deepEqual((await pg.query("SELECT privilege_type FROM information_schema.role_table_grants WHERE grantee='authenticated' AND table_name='media_jobs'")).rows,[{privilege_type:'SELECT'}]);
   await assert.rejects(pg.exec('SELECT * FROM agent_runs'),/permission denied/);
   await assert.rejects(pg.exec('UPDATE agent_runs SET used_credits=0'),/permission denied/);
  }finally{await pg.close();}
