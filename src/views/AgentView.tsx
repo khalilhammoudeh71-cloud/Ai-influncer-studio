@@ -1,3 +1,4 @@
+import { AgentPlanApproval } from '../components/AgentPlanApproval';
 import { supportsBackground } from '../../shared/agentRun';
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -3671,7 +3672,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                           {msg.backgroundStatus==='paused' && <button type="button" onClick={()=>void backgroundAction(msg.backgroundRunId!,'resume')} className="text-sm text-[#E7C477] underline">Resume saved plan</button>}
                           {backgroundError && msg.backgroundRunId && <p role="status" className="text-sm text-amber-200">{backgroundError}. Your saved plan may still be running.</p>}
                           {!msg.backgroundRunId && msg.execSteps && <p className="text-xs text-zinc-400">{supportsBackground(msg.execSteps)?'Runs in the background after approval.':'Keep this page open while this plan runs.'}</p>}
-                          {msg.status === 'clarifying' && !msg.isExecuting && (
+                          {msg.status === 'clarifying' && !msg.isExecuting && (supportsBackground(msg.execSteps || []) ? <AgentPlanApproval steps={msg.execSteps || []} onApprove={()=>void runPipeline(msg.id,msg)} /> :
                             <button
                               type="button"
                               onClick={() => runPipeline(msg.id, msg)}

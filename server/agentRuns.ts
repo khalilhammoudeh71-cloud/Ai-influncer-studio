@@ -1,3 +1,6 @@
+import { quotePlan } from './agentPlanQuote';
+import { bypassesInternalCredits } from './auth';
+import type { GenerationQuote } from './creditPricing';
 import { and, eq, asc } from 'drizzle-orm';
 import { randomUUID, createHash } from 'node:crypto';
 import { agentRuns, mediaJobs, users } from '../shared/schema';
@@ -15,7 +18,7 @@ function imageSource(steps: RunStep[], i: number, fallback?: string) {
         return p.sourceImage;
     return steps.slice(0, i).reverse().find(s => s.type !== 'generate_video' && s.resultUrl)?.resultUrl || fallback;
 }
-export function registerAgentRuns(app: any, db: any, schedule: (id: string, userId: string, user: any) => void, readPersonasForUser: (id: string) => Promise<any[]>) {
+export function registerAgentRuns(app: any, db: any, schedule: (id: string, userId: string, user: any) => void, readPersonasForUser: (id: string) => Promise<any[]>, price?: (model:string,type:'image'|'video')=>Promise<GenerationQuote>) {
     async function advance(id: string, user: any) {
         let jobId: string | undefined;
         const row = await db.transaction(async (tx: any) => {
@@ -89,6 +92,15 @@ export function registerAgentRuns(app: any, db: any, schedule: (id: string, user
             schedule(jobId, user.id, user);
         return row;
     }
+    app.post('/api/agent-runs/quote', async (req:any,res:any)=>{
+        try {
+            if(!price)return res.status(503).json({error:'Pricing unavailable. No generation was started.'});
+            const steps=validateRunSteps(req.body?.steps);
+            const [owner]=await db.select({email:users.email,credits:users.credits}).from(users).where(eq(users.id,req.user.id));
+            if(!owner)return res.status(404).json({error:'Account not found'});
+            res.json(await quotePlan(steps,price,owner.credits||0,bypassesInternalCredits(owner.email)));
+        }catch(e){res.status(400).json({error:e instanceof Error?e.message:'Could not estimate plan'});}
+    });
     app.post('/api/agent-runs', async (req: any, res: any) => {
         try {
             if (!process.env.CRON_SECRET) return res.status(503).json({error:'Background execution is not configured. No generation was started.'});

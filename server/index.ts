@@ -8694,7 +8694,7 @@ app.get('/api/media-jobs', async (req: AuthenticatedRequest, res) => {
 
 // Vercel Cron recovery path. Immediate requests use waitUntil; this worker
 // resumes queued or interrupted jobs if an individual function instance ends.
-const advanceAgentRuns = registerAgentRuns(app, db, scheduleMediaJobExecution, readPersonasForUser);
+const advanceAgentRuns = registerAgentRuns(app, db, scheduleMediaJobExecution, readPersonasForUser, calculateGenerationQuote);
 
 app.get('/api/media-jobs/worker', async (req, res) => {
   if (!db) return res.status(503).json({ error: 'Media job storage is unavailable' });
