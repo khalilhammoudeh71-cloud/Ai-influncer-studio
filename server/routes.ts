@@ -1805,6 +1805,16 @@ const handleGenerateSpeech = async (req: AuthenticatedRequest, res: Response) =>
     const { text, voiceId, engine, voice, voiceReference, voiceReferences, personaName, voiceSettings } = req.body;
     const textToSpeak = text || "Hello! This is a demonstration of my authentic AI voice.";
     const requestedEngine = (engine || voice || '').toString();
+    // Arabic previews must use the same multilingual engine and saved speaker
+    // as calls, rather than the legacy Turbo preview or a generic fallback.
+    if (req.body.activePersona?.personalitySettings?.language === 'ar' && isDirectElevenLabsVoiceId(String(voiceId || ''))) {
+      const key = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key;
+      if (!key) return res.status(503).json({error:'The saved voice provider is unavailable. Your voice has not been changed.'});
+      const result = await requestElevenLabsPersonaSpeech(key, String(voiceId), textToSpeak, DEFAULT_ELEVENLABS_PERSONA_MODEL, req.body.activePersona);
+      if (!result.audioUrl) return res.status(502).json({error:'Could not preview Arabic with this saved voice. Please try again.'});
+      return res.json({audioUrl:result.audioUrl,engine:'elevenlabs',voiceId,model:result.modelId});
+    }
+
 
     const rawRefs: string[] = Array.isArray(voiceReferences) && voiceReferences.length > 0
       ? voiceReferences
