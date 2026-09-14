@@ -1810,9 +1810,18 @@ const handleGenerateSpeech = async (req: AuthenticatedRequest, res: Response) =>
     if (req.body.activePersona?.personalitySettings?.language === 'ar' && isDirectElevenLabsVoiceId(String(voiceId || ''))) {
       const key = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key;
       if (!key) return res.status(503).json({error:'The saved voice provider is unavailable. Your voice has not been changed.'});
-      const result = await requestElevenLabsPersonaSpeech(key, String(voiceId), textToSpeak, DEFAULT_ELEVENLABS_PERSONA_MODEL, req.body.activePersona);
+      let resolvedId = String(voiceId);
+      let result = await requestElevenLabsPersonaSpeech(key, resolvedId, textToSpeak, DEFAULT_ELEVENLABS_PERSONA_MODEL, req.body.activePersona);
+      if (result.response.status === 404) {
+        const catalog = await loadElevenLabsVoiceCatalog(key, true);
+        const existing = selectElevenLabsPersonaVoice(catalog, undefined, req.body.activePersona?.name || personaName);
+        if (existing && existing.voice_id !== resolvedId) {
+          resolvedId = existing.voice_id;
+          result = await requestElevenLabsPersonaSpeech(key, resolvedId, textToSpeak, DEFAULT_ELEVENLABS_PERSONA_MODEL, req.body.activePersona);
+        }
+      }
       if (!result.audioUrl) return res.status(502).json({error:'Could not preview Arabic with this saved voice. Please try again.'});
-      return res.json({audioUrl:result.audioUrl,engine:'elevenlabs',voiceId,model:result.modelId});
+      return res.json({audioUrl:result.audioUrl,engine:'elevenlabs',voiceId:resolvedId,model:result.modelId});
     }
 
 
