@@ -2,6 +2,7 @@ import { withGenerationContext, activeGenerationContext } from './generationCont
 import { registerAgentRuns } from './agentRuns';
 import { inspectAgentImage } from './agentVisual';
 import { hydratePersonaReferences, resolveOwnedImageReference } from './personaReferenceResolver';
+import { resolveVideoAspectRatio } from './videoAspectRatio';
 import { frontierModel } from './frontierModels';
 import { mediaJobAttemptWhere } from './mediaJobLease';
 import { runProviderCandidates } from './providerFailover';
@@ -6059,9 +6060,10 @@ const generateVideoHandler = async (req: any, res: any) => {
     };
 
     const supported = activeModel.supportedProperties || [];
-    if (aspectRatio && (supported.includes('aspect_ratio') || supported.includes('aspectRatio') || supported.includes('ratio'))) {
+    const videoAspectRatio = resolveVideoAspectRatio(activeModel.id, aspectRatio, Boolean(sourceImage));
+    if (videoAspectRatio && (supported.includes('aspect_ratio') || supported.includes('aspectRatio') || supported.includes('ratio'))) {
       const field = supported.find(k => k === 'aspect_ratio' || k === 'aspectRatio' || k === 'ratio')!;
-      payload[field] = aspectRatio;
+      payload[field] = videoAspectRatio;
     }
     if (duration !== undefined && (supported.includes('duration') || supported.includes('length') || supported.includes('seconds'))) {
       const field = supported.find(k => k === 'duration' || k === 'length' || k === 'seconds')!;
