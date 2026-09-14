@@ -46,6 +46,9 @@ export function registerAgentRuns(app: any, db: any, schedule: (id: string, user
             }
             else if (action.kind === 'wait') {
                 jobId = steps[action.index].jobId;
+                // Older rows may have PostgreSQL microseconds that JS Date cannot
+                // round-trip through the media worker's optimistic claim check.
+                if(child?.status==='queued')await tx.update(mediaJobs).set({updatedAt:new Date()}).where(and(eq(mediaJobs.id,jobId!),eq(mediaJobs.userId,user.id),eq(mediaJobs.status,'queued')));
             }
             else {
                 try {
@@ -70,7 +73,7 @@ export function registerAgentRuns(app: any, db: any, schedule: (id: string, user
                         request = noPeople ? { requestMode: 'studio', modelId: p.modelId || 'wavespeed:bytedance/seedream-v5.0-pro', chatPrompt: p.prompt, isChatContext: true, additionalInstructions: p.prompt, aspectRatio: p.aspectRatio || '1:1', identityLock: false, count: 1 } : { type: 'image', persona: { id: r.personaId }, prompt: p.prompt, imageModelId: p.modelId || 'wavespeed:bytedance/seedream-v5.0-pro', aspectRatio: p.aspectRatio || '1:1', strictFidelity: true };
                     }
                     jobId = randomUUID();
-                    await tx.insert(mediaJobs).values({ id: jobId, userId: user.id, personaClientId: r.personaId, kind, status: 'queued', request: JSON.stringify(request) });
+                    await tx.insert(mediaJobs).values({ id: jobId, userId: user.id, personaClientId: r.personaId, kind, status: 'queued', request: JSON.stringify(request), createdAt:new Date(),updatedAt:new Date() });
                     steps[i] = { ...steps[i], status: 'running', jobId };
                 }
                 catch (e) {
