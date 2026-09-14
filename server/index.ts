@@ -1,3 +1,4 @@
+import { mediaJobAttemptWhere } from './mediaJobLease';
 import { runProviderCandidates } from './providerFailover';
 import { equivalentRoutes } from '../shared/modelRouting';
 import { directImageModels, getDirectImageModel } from './openai-image-models';
@@ -8472,7 +8473,7 @@ async function executeMediaJob(jobId: string, userId: string, user: any, request
     eq(mediaJobs.id, jobId),
     eq(mediaJobs.userId, userId),
   ));
-  if (!job || job.status === 'succeeded' || job.status === 'canceled') return;
+  if (!job || job.cancelRequested || job.status === 'succeeded' || job.status === 'canceled') return;
   if (job.status === 'running' && !isMediaJobStale(job.updatedAt)) return;
 
   const kind = job.kind as MediaJobKind;
@@ -8485,7 +8486,7 @@ async function executeMediaJob(jobId: string, userId: string, user: any, request
       error: 'The stored media request is invalid',
       updatedAt: new Date(),
       completedAt: new Date(),
-    }).where(and(eq(mediaJobs.id, jobId), eq(mediaJobs.userId, userId)));
+    }).where(and(eq(mediaJobs.id, jobId), eq(mediaJobs.userId, userId), eq(mediaJobs.status, job.status), eq(mediaJobs.updatedAt, job.updatedAt), eq(mediaJobs.cancelRequested, false)));
     return;
   }
 
@@ -8511,8 +8512,10 @@ async function executeMediaJob(jobId: string, userId: string, user: any, request
     eq(mediaJobs.userId, userId),
     eq(mediaJobs.status, job.status),
     eq(mediaJobs.updatedAt, job.updatedAt),
+    eq(mediaJobs.cancelRequested, false),
   )).returning();
   if (!running) return;
+  const ownsAttempt = () => mediaJobAttemptWhere(jobId, userId, running.attempt);
 
   let rejectCancellation: ((error: Error) => void) | null = null;
   const cancellation = new Promise<never>((_resolve, reject) => {
@@ -8524,12 +8527,7 @@ async function executeMediaJob(jobId: string, userId: string, user: any, request
     const [updated] = await db.update(mediaJobs).set({
       ...progress,
       updatedAt: new Date(),
-    }).where(and(
-      eq(mediaJobs.id, jobId),
-      eq(mediaJobs.userId, userId),
-      eq(mediaJobs.status, 'running'),
-      eq(mediaJobs.cancelRequested, false),
-    )).returning({ id: mediaJobs.id });
+    }).where(ownsAttempt()).returning({ id: mediaJobs.id });
     if (!updated) rejectCancellation?.(new MediaJobCanceledError());
   };
   const heartbeatTimer = setInterval(() => {
@@ -8560,7 +8558,7 @@ async function executeMediaJob(jobId: string, userId: string, user: any, request
     ));
     if (current?.cancelRequested) throw new MediaJobCanceledError();
 
-    await db.update(mediaJobs).set({
+    const [completed] = await db.update(mediaJobs).set({
       status: 'succeeded',
       result: JSON.stringify(output),
       error: null,
@@ -8570,7 +8568,8 @@ async function executeMediaJob(jobId: string, userId: string, user: any, request
       usedFallback: useFallback || /fallback|failover/i.test(output.model || ''),
       updatedAt: new Date(),
       completedAt: new Date(),
-    }).where(and(eq(mediaJobs.id, jobId), eq(mediaJobs.userId, userId)));
+    }).where(ownsAttempt()).returning({ id: mediaJobs.id });
+    if (!completed) return; // A newer attempt or cancellation owns the result now.
 
     const libraryAssets = mediaJobLibraryAssets(jobId, job.personaClientId, kind, storedRequest, output);
     for (const asset of libraryAssets) {
@@ -8604,7 +8603,7 @@ async function executeMediaJob(jobId: string, userId: string, user: any, request
         error: null,
         completedAt: new Date(),
         updatedAt: new Date(),
-      }).where(and(eq(mediaJobs.id, jobId), eq(mediaJobs.userId, userId)));
+      }).where(mediaJobAttemptWhere(jobId, userId, running.attempt, true));
       return;
     }
 
@@ -8621,7 +8620,7 @@ async function executeMediaJob(jobId: string, userId: string, user: any, request
       fallbackModelId: fallback,
       updatedAt: new Date(),
       completedAt: new Date(),
-    }).where(and(eq(mediaJobs.id, jobId), eq(mediaJobs.userId, userId)));
+    }).where(ownsAttempt());
   } finally {
     clearInterval(heartbeatTimer);
   }
@@ -8794,8 +8793,12 @@ app.post('/api/media-jobs/:jobId/cancel', async (req: AuthenticatedRequest, res)
     error: null,
     updatedAt: now,
     completedAt: queued ? now : null,
-  }).where(and(eq(mediaJobs.id, jobId), eq(mediaJobs.userId, req.user.id))).returning();
-  return res.json({ job: publicMediaJob(updated || job) });
+  }).where(and(
+    eq(mediaJobs.id, jobId), eq(mediaJobs.userId, req.user.id),
+    eq(mediaJobs.status, job.status), eq(mediaJobs.attempt, job.attempt),
+  )).returning();
+  if (!updated) return res.status(409).json({ error: 'The job changed while canceling. Refresh its status.' });
+  return res.json({ job: publicMediaJob(updated) });
 });
 
 app.delete('/api/media-jobs/:jobId', async (req: AuthenticatedRequest, res) => {
