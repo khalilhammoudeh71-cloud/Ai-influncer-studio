@@ -11,11 +11,12 @@ test('approved plan survives reconnect, advances once, pauses/resumes and isolat
     const { PGlite } = await import(process.env.PGLITE_MODULE!);
     const pg = new PGlite();
     const db = drizzle(pg);
-    await pg.exec(`CREATE TABLE agent_runs(id text primary key,user_id text not null,project_id text not null,message_id text not null,persona_id text not null,status text not null,steps text not null,source_image text,error text,created_at timestamptz default now(),updated_at timestamptz default now());
+    await pg.exec(`CREATE TABLE users(id text primary key,email text); INSERT INTO users VALUES ('owner','owner@example.com'); CREATE TABLE agent_runs(id text primary key,user_id text not null,project_id text not null,message_id text not null,persona_id text not null,status text not null,steps text not null,source_image text,error text,created_at timestamptz default now(),updated_at timestamptz default now());
  CREATE TABLE media_jobs(id text primary key,user_id text,persona_client_id text,kind text,status text,request text,result text,error text,model_id text,fallback_model_id text,attempt int default 0,used_fallback boolean default false,progress int default 0,stage text default 'Queued',cancel_requested boolean default false,created_at timestamptz default now(),started_at timestamptz,updated_at timestamptz default now(),completed_at timestamptz);`);
     const routes = new Map<string, Function>();
     const app = { post: (p: string, f: Function) => routes.set('POST ' + p, f), get: (p: string, f: Function) => routes.set('GET ' + p, f) };
-    const advance = registerAgentRuns(app, db, () => { }, async () => [{ id: 'persona' }]);
+    const scheduled: any[] = [];
+    const advance = registerAgentRuns(app, db, (_id, _userId, user) => { scheduled.push(user); }, async () => [{ id: 'persona' }]);
     const call = async (path: string, body: any = {}, user = 'owner', params: any = {}) => { let code = 200, result: any; await routes.get(path)!({ body, user: { id: user }, params, query: { projectId: 'default' } }, { status(n: number) { code = n; return this; }, json(v: any) { result = v; return this; } }); return { code, ...result }; };
     const body = { projectId: 'default', messageId: 'message', personaId: 'persona', steps: [{ type: 'generate_image', params: { prompt: 'A blue teacup, no people' } }, { type: 'edit_image', params: { prompt: 'Make the cup green', sourceImage: 'previous_result' } }] };
     try {
@@ -37,7 +38,13 @@ test('approved plan survives reconnect, advances once, pauses/resumes and isolat
         await advance();
         assert.equal((await db.select().from(mediaJobs)).length, 1);
         await call('POST /api/agent-runs/:id/:action', {}, 'owner', { id: first.run.id, action: 'resume' });
+        await pg.exec("DELETE FROM users WHERE id='owner'");
+        const beforeMissingOwner = scheduled.length;
         await advance();
+        assert.equal(scheduled.length, beforeMissingOwner, 'deleted accounts cannot schedule background work');
+        await pg.exec("INSERT INTO users VALUES ('owner','owner@example.com')");
+        await advance();
+        assert.equal(scheduled.at(-1)?.email, 'owner@example.com', 'background billing must receive canonical account email');
         await advance();
         const next = await db.select().from(mediaJobs);
         assert.equal(next.length, 2);

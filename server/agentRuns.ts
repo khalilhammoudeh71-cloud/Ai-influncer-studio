@@ -1,6 +1,6 @@
 import { and, eq, asc } from 'drizzle-orm';
 import { randomUUID, createHash } from 'node:crypto';
-import { agentRuns, mediaJobs } from '../shared/schema';
+import { agentRuns, mediaJobs, users } from '../shared/schema';
 import { nextRunAction, validateRunSteps, type RunStep } from '../shared/agentRun';
 function publicRun(row: any) { return { ...row, steps: JSON.parse(row.steps), sourceImage: undefined, userId: undefined }; }
 function imageSource(steps: RunStep[], i: number, fallback?: string) {
@@ -160,7 +160,11 @@ export function registerAgentRuns(app: any, db: any, schedule: (id: string, user
         const rows = await db.select().from(agentRuns).where(eq(agentRuns.status, 'running')).orderBy(asc(agentRuns.updatedAt)).limit(10);
         for (const row of rows)
             try {
-                await advance(row.id, { id: row.userId });
+                // Rehydrate server-owned identity: billing rules must be identical
+                // whether a signed-in request or the cron worker advances a plan.
+                const [owner] = await db.select({ id: users.id, email: users.email }).from(users).where(eq(users.id, row.userId));
+                if (!owner) continue;
+                await advance(row.id, owner);
             }
             catch (e) {
                 console.warn('[agent-runs] Advance failed', row.id, e instanceof Error ? e.message : 'Unknown error');
