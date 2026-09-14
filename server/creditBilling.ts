@@ -1,3 +1,4 @@
+import { generationMetadata } from './generationContext';
 import nodeCrypto from 'node:crypto';
 import { and, eq, gte, sql } from 'drizzle-orm';
 import { db } from './db';
@@ -49,7 +50,7 @@ export async function reserveGenerationCredits(input: {
       estimatedProviderCostMicrousd: input.quote.providerCostMicrousd,
       reservedCredits,
       count: input.quote.count,
-      requestMetadata: JSON.stringify(input.metadata || {}),
+      requestMetadata: JSON.stringify(generationMetadata(input.metadata)),
     });
   });
 

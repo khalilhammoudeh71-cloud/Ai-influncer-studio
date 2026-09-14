@@ -1,3 +1,4 @@
+import { withGenerationContext } from './generationContext';
 import { registerAgentRuns } from './agentRuns';
 import { mediaJobAttemptWhere } from './mediaJobLease';
 import { runProviderCandidates } from './providerFailover';
@@ -8536,11 +8537,11 @@ async function executeMediaJob(jobId: string, userId: string, user: any, request
   }, 10_000);
 
   try {
-    const generationPromise = runJsonGenerationHandler(
+    const generationPromise = withGenerationContext({jobId,attempt:running.attempt}, () => runJsonGenerationHandler(
       mediaJobHandler(kind, executionRequest),
       detachedMediaRequest(user || { id: userId, email: '' }),
       executionRequest,
-    );
+    ));
     // The provider promise may still settle after a cancellation race. Keep a
     // rejection handler attached so it never becomes an unhandled rejection.
     void generationPromise.catch(() => undefined);
