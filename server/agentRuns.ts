@@ -1,3 +1,4 @@
+import { recoveryAdvice } from './agentRecovery';
 import { quotePlan } from './agentPlanQuote';
 import { bypassesInternalCredits } from './auth';
 import type { GenerationQuote } from './creditPricing';
@@ -141,6 +142,14 @@ export function registerAgentRuns(app: any, db: any, schedule: (id: string, user
             res.status(503).json({ error: 'Could not load background plans' });
         }
     });
+    app.get('/api/agent-runs/:id/recovery',async(req:any,res:any)=>{
+        const [run]=await db.select().from(agentRuns).where(and(eq(agentRuns.id,req.params.id),eq(agentRuns.userId,req.user.id)));
+        if(!run)return res.status(404).json({error:'Plan not found'});
+        if(run.status!=='failed')return res.status(409).json({error:'Only failed plans need recovery'});
+        const steps:RunStep[]=JSON.parse(run.steps);
+        const index=steps.findIndex(step=>step.status!=='success');
+        res.json({index,error:run.error,advice:recoveryAdvice(run.error||''),prompt:steps[index]?.params.prompt||'',version:run.updatedAt.toISOString()});
+    });
     app.post('/api/agent-runs/:id/:action', async (req: any, res: any) => {
         try {
             const action = req.params.action;
@@ -163,6 +172,11 @@ export function registerAgentRuns(app: any, db: any, schedule: (id: string, user
                     const index = steps.findIndex(s => s.status !== 'success');
                     if (index < 0)
                         throw new Error('No failed step to retry.');
+                    if(req.body?.prompt!==undefined){
+                        if(req.body.version!==r.updatedAt.toISOString())throw new Error('This plan changed. Inspect the failure again before applying a repair.');
+                        if(typeof req.body.prompt!=='string'||!req.body.prompt.trim()||req.body.prompt.length>20000)throw new Error('A valid repair instruction is required.');
+                        steps[index].params={...steps[index].params,prompt:req.body.prompt.trim()};
+                    }
                     steps[index] = { type: steps[index].type, params: steps[index].params, status: 'pending' };
                     changes.steps = JSON.stringify(steps);
                     changes.error = null;

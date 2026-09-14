@@ -1,3 +1,4 @@
+import { AgentRecovery } from '../components/AgentRecovery';
 import { AgentPlanApproval } from '../components/AgentPlanApproval';
 import { supportsBackground } from '../../shared/agentRun';
 import React, { useState, useRef, useEffect } from 'react';
@@ -3678,7 +3679,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                           </div>
                           {msg.isExecuting && <button type="button" onClick={() => {if(msg.backgroundRunId){void backgroundAction(msg.backgroundRunId,'stop');}else{stoppedPlans.current.add(msg.id); toast('Stopping after the current step.');}}} className="text-xs text-zinc-300 underline">Stop after current step</button>}
                           {msg.backgroundRunId && <p role="status" className="text-sm text-zinc-300">{msg.backgroundStatus==='running'?'Running in background — you can close this page':msg.backgroundStatus==='paused'?'Paused before the next step':msg.backgroundStatus==='succeeded'?'Completed and saved in Library':'Needs attention'} · {msg.execSteps?.filter(s=>s.status==='success').length || 0} of {msg.execSteps?.length || 0} steps complete</p>}
-                          {msg.backgroundStatus==='failed' && <button type="button" onClick={()=>void backgroundAction(msg.backgroundRunId!,'retry')} className="text-sm text-[#E7C477] underline">Retry failed step (may charge again)</button>}
+                          {msg.backgroundStatus==='failed' && <AgentRecovery id={msg.backgroundRunId!} onRecovered={syncBackgroundRun} />}
                           {msg.backgroundStatus==='paused' && <button type="button" onClick={()=>void backgroundAction(msg.backgroundRunId!,'resume')} className="text-sm text-[#E7C477] underline">Resume saved plan</button>}
                           {backgroundError && msg.backgroundRunId && <p role="status" className="text-sm text-amber-200">{backgroundError}. Your saved plan may still be running.</p>}
                           {!msg.backgroundRunId && msg.execSteps && <p className="text-xs text-zinc-400">{supportsBackground(msg.execSteps)?'Runs in the background after approval.':'Keep this page open while this plan runs.'}</p>}

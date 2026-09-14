@@ -65,9 +65,15 @@ test('approved plan survives reconnect, advances once, pauses/resumes and isolat
         await advance();
         assert.equal((await db.select().from(mediaJobs)).length, 2);
         assert.equal((await call('GET /api/agent-runs')).runs[0].status, 'failed');
-        await call('POST /api/agent-runs/:id/:action', {}, 'owner', { id: first.run.id, action: 'retry' });
+        const review=await call('GET /api/agent-runs/:id/recovery',{},'owner',{id:first.run.id});
+        assert.equal(review.advice.kind,'temporary');
+        assert.equal((await call('GET /api/agent-runs/:id/recovery',{},'other',{id:first.run.id})).code,404);
+        const stale=await call('POST /api/agent-runs/:id/:action',{prompt:'Make cup green',version:'stale'},'owner',{id:first.run.id,action:'retry'});
+        assert.equal(stale.code,409);
+        await call('POST /api/agent-runs/:id/:action', {prompt:'Change only the cup to green',version:review.version}, 'owner', { id: first.run.id, action: 'retry' });
         const retried = (await db.select().from(mediaJobs)).find(j => j.id !== edit.id && j.id !== jobs[0].id)!;
         assert.ok(retried);
+        assert.equal(JSON.parse(retried.request!).prompt,'Change only the cup to green');
         assert.equal(JSON.parse(retried.request!).sourceImage, 'https://example.com/cup.jpg');
         await db.update(mediaJobs).set({ status: 'succeeded', result: JSON.stringify({ url: 'https://example.com/green.jpg' }) }).where(eq(mediaJobs.id, retried.id));
         await advance();
