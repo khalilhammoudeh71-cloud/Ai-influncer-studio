@@ -1811,7 +1811,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         // retain enough breathing room for the speaker to continue naturally.
         const pauseDelay = getVoiceTurnCommitDelay(trimmed, {
           source: 'browser',
-          hasTerminalPunctuation: /[.?!]$/.test(trimmed),
+          hasTerminalPunctuation: /[.?!؟]$/.test(trimmed),
         });
 
         const resultCountAtSchedule = e.results.length;

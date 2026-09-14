@@ -240,7 +240,7 @@ export function takeSpeakableSpeechChunk(
   const normalized = buffer.trimStart();
   if (!normalized) return { remainder: '' };
 
-  const sentence = normalized.match(/^([\s\S]{4,180}?[.!?])(?=\s|$)/);
+  const sentence = normalized.match(/^([\s\S]{4,180}?[.!?؟])(?=\s|$)/);
   if (sentence) {
     return {
       chunk: sentence[1].trim(),
@@ -249,7 +249,7 @@ export function takeSpeakableSpeechChunk(
   }
 
   if (options.firstChunk) {
-    const clause = normalized.match(/^([\s\S]{20,110}?[,;:\u2014\u2013])(?=\s|$)/);
+    const clause = normalized.match(/^([\s\S]{20,110}?[,;،؛:\u2014\u2013])(?=\s|$)/);
     if (clause) {
       return {
         chunk: clause[1].trim(),
@@ -261,6 +261,8 @@ export function takeSpeakableSpeechChunk(
       const nearbyBreak = Math.max(
         normalized.lastIndexOf(',', 72),
         normalized.lastIndexOf(';', 72),
+        normalized.lastIndexOf('،', 72),
+        normalized.lastIndexOf('؛', 72),
         normalized.lastIndexOf(':', 72),
         normalized.lastIndexOf(' ', 72),
       );
@@ -288,6 +290,8 @@ export function takeSpeakableSpeechChunk(
     const nearbyBreak = Math.max(
       normalized.lastIndexOf(',', 120),
       normalized.lastIndexOf(';', 120),
+      normalized.lastIndexOf('،', 120),
+      normalized.lastIndexOf('؛', 120),
       normalized.lastIndexOf(':', 120),
       normalized.lastIndexOf(' ', 120),
     );
