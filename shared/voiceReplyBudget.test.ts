@@ -1,0 +1,3 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {needsDetailedVoiceReply} from './voiceReplyBudget';
+test('Arabic calculations and multiple questions allow complete answers',()=>{assert.equal(needsDetailedVoiceReply('قديش بقي معي؟ وإذا رجعت تذكرة، قديش بصير معي؟'),true);assert.equal(needsDetailedVoiceReply('اشرحلي بالتفصيل'),true);assert.equal(needsDetailedVoiceReply('شو اسمي؟ ووين الموعد؟'),true)});
+test('casual turns stay short in both languages',()=>{assert.equal(needsDetailedVoiceReply('كان يومي متعب، بس اسمعيني'),false);assert.equal(needsDetailedVoiceReply('How was your day?'),false);assert.equal(needsDetailedVoiceReply('Calculate the total'),true)});

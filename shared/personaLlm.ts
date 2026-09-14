@@ -62,14 +62,14 @@ export const PERSONA_LLM_OPTIONS = [
     name: 'Atlas Qwen 3.6 Plus',
     simpleLabel: 'Creative and multilingual',
     badge: 'Experimental',
-    description: 'Creative multilingual route; recent persona benchmark did not return a usable reply.',
+    description: 'Multilingual conversation; passed the recent Arabic recall and arithmetic checks.',
   },
   {
     id: 'atlas-glm',
     name: 'Atlas GLM-4.6',
     simpleLabel: 'Balanced alternative',
     badge: 'Experimental',
-    description: 'Alternate route; recent persona benchmark did not return a usable reply.',
+    description: 'Alternate conversation route; recent Arabic arithmetic results were unreliable.',
   },
 ] as const;
 

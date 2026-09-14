@@ -1,3 +1,4 @@
+import { needsDetailedVoiceReply } from '../shared/voiceReplyBudget';
 import { selectedTextModel, runFrontierChat, assertCompleteModelOutput } from './frontierModels';
 import { validateCampaign, type AgentCampaign } from '../shared/agentCampaign';
 import { workspaceWriteRevision } from './workspaceRevision';
@@ -1975,6 +1976,10 @@ router.post('/agent/maya-speech-stream', async (req: AuthenticatedRequest, res: 
   const spokenText = sanitizeSpokenDialogue(String(req.body?.text || '')).slice(0, 2_000);
   const activePersona = req.body?.activePersona || {};
 
+  if (activePersona.personalitySettings?.language === 'ar') {
+    return res.status(422).json({ error: 'Maya is unavailable for Arabic calls. Select an ElevenLabs voice engine.', code: 'MAYA_ARABIC_UNAVAILABLE' });
+  }
+
   if (!falKey) {
     return res.status(503).json({ error: 'Fal Maya is not configured.', code: 'MAYA_NOT_CONFIGURED' });
   }
@@ -3132,18 +3137,18 @@ router.post('/agent/voice-chat-stream', async (req: AuthenticatedRequest, res: R
     adultPersonaRoutingContext,
   );
   const voiceTurnContract = buildVoiceTurnContract(currentUserTurn);
-  const voiceReplyNeedsDetail = /\b(?:explain|in detail|walk me through|tell me more|give me the steps)\b/i.test(currentUserTurn);
+  const voiceReplyNeedsDetail = needsDetailedVoiceReply(currentUserTurn);
   const voiceReplySentenceLimit = voiceReplyNeedsDetail
-    ? 4
+    ? 8
     : 2;
   // A role-play provider may ignore a sentence-count instruction and keep
   // generating. Cap ordinary call turns near the amount we can actually speak;
   // otherwise the user waits for discarded prose before TTS can begin.
-  const voiceReplyTokenLimit = voiceReplyNeedsDetail ? 220 : 96;
+  const voiceReplyTokenLimit = voiceReplyNeedsDetail ? 600 : 192;
   const spokenStreamOptions = {
     deferUntilFlush: true,
     maxSentences: voiceReplySentenceLimit,
-    maxWords: voiceReplySentenceLimit > 2 ? 90 : 48,
+    maxWords: voiceReplySentenceLimit > 2 ? 180 : 48,
     maxFillers: 1,
   } as const;
   const voicePromptCacheKey = `persona-voice-${String(req.user.id).slice(0, 48)}-${String(activePersona?.id || personaName).slice(0, 48)}`;
@@ -3169,7 +3174,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
 - MEDIA INTENT MUST BE LITERAL: "I want to see you", "I'd love to see you", "let me see you", and "show me your body" are conversation unless the current turn explicitly names a photo, image, selfie, picture, video, clip, or another media asset. Never infer an image request from the verb "see" alone.
 - NATURAL RELATIONSHIP: Never justify compliance by saying the user created, made, or owns you. Do not say you will comply merely because you trust your creator.
 - START LIKE A HUMAN: React to the specific thing just said. Make the first phrase short and direct—often 2 to 8 words—then continue only if needed. On an ongoing call, never restart with a greeting or reassurance such as "Hey, I'm right here with you."
-- CONCISE & NATURAL: Use no more than 2 clear, natural sentences unless the user explicitly asks for detail. One main thought at a time. Sentence fragments are welcome when they sound natural in spoken conversation. After answering, stop; do not fill silence with a new topic.
+- CONCISE & NATURAL: ${voiceReplyNeedsDetail ? 'Answer every part of the question, giving final results before explanations. Use up to 8 complete sentences when needed. Do not spend the answer on introductory filler.' : 'Use no more than 2 clear, natural sentences.'} One main thought at a time. Sentence fragments are welcome when they sound natural in spoken conversation. After answering, stop; do not fill silence with a new topic.
 - HUMAN CADENCE: Occasionally use one light discourse marker such as "mm," "well," "honestly," "okay," "wait," "um," or "hmm" when it genuinely fits. Use at most one in a reply and do not use one in every reply.
 - NATURAL PAUSES: Use commas, an em dash, or a brief ellipsis sparingly where a person would actually pause. Keep the filler and its thought together; never output an isolated "Umm..." or repeated hesitation sounds.
 - COMPLETE THOUGHTS: Always finish your sentence completely with proper punctuation (. ! ?). Never end mid-sentence.
@@ -3434,7 +3439,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
           temperature: lawfulAdultConversation ? 0.84 : 0.72,
           reasoning_effort: 'none',
         },
-        6500,
+        voiceReplyNeedsDetail ? 20000 : 6500,
       );
       console.log(`[Voice Provider Latency] provider=runware model=${runwareModel} duration=${Date.now() - attemptStartedAt}ms`);
       publishVoiceCandidate(candidate, `Runware ${runwareModel}`);

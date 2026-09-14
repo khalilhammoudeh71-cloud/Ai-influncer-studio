@@ -4622,8 +4622,8 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                     aria-label={isPro ? 'Voice engine' : 'Voice priority'}
                   >
                     {VOICE_CALL_ENGINES.map(eng => (
-                      <option key={eng.id} value={eng.id} className="bg-[#1c1d22] text-white">
-                        {isPro ? `${eng.name} (${eng.badge})` : eng.simpleLabel}
+                      <option key={eng.id} value={eng.id} disabled={eng.id === 'fal_maya_stream' && recognitionLanguage(activePersona).scribe === 'ar'} className="bg-[#1c1d22] text-white">
+                        {eng.id === 'fal_maya_stream' && recognitionLanguage(activePersona).scribe === 'ar' ? 'Maya — unavailable for Arabic' : isPro ? `${eng.name} (${eng.badge})` : eng.simpleLabel}
                       </option>
                     ))}
                   </select>
@@ -4668,13 +4668,13 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                 {voicePlaybackNotice && (
                   <p role="status" className="basis-full text-xs text-[#E7C477]">{voicePlaybackNotice}</p>
                 )}
-                {isPro && lastVoiceRoute && (
+                {lastVoiceRoute && (
                   <div
                     className="flex max-w-full items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/[0.08] px-2.5 py-1 text-[10px] font-semibold text-emerald-200"
                     title={`Requested ${lastVoiceRoute.requestedModel}; answered by ${lastVoiceRoute.provider}`}
                   >
                     <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" />
-                    <span className="truncate">{lastVoiceRoute.provider}</span>
+                    <span className="truncate">Answered by {lastVoiceRoute.provider}</span>
                   </div>
                 )}
                 {callStatus !== 'connecting' && (
@@ -5528,8 +5528,8 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                           aria-label={isPro ? 'Voice engine' : 'Voice priority'}
                         >
                           {VOICE_CALL_ENGINES.map(eng => (
-                            <option key={eng.id} value={eng.id} className="bg-[#1c1d22] text-white">
-                              {isPro ? `${eng.name} (${eng.badge})` : eng.simpleLabel}
+                            <option key={eng.id} value={eng.id} disabled={eng.id === 'fal_maya_stream' && recognitionLanguage(activePersona).scribe === 'ar'} className="bg-[#1c1d22] text-white">
+                              {eng.id === 'fal_maya_stream' && recognitionLanguage(activePersona).scribe === 'ar' ? 'Maya — unavailable for Arabic' : isPro ? `${eng.name} (${eng.badge})` : eng.simpleLabel}
                             </option>
                           ))}
                         </select>
