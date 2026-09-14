@@ -74,6 +74,7 @@ test('analysis allowance is reserved only when an actual model call is needed, a
  const withModelCall=async(work:()=>Promise<any>)=>{reservations++;throw new Error('Task allowance reached');};
  const invoke=async()=>{calls++;return {text:'{}',model:'test',provider:'test'};};
  await proposeAgentRepair({...context,error:'Insufficient credits',withModelCall},'frontier-grok',invoke);
+ await proposeAgentRepair({...context,error:'Task allowance reached',withModelCall},'frontier-grok',invoke);
  await proposeAgentRepair({...context,steps:[context.steps[1]],withModelCall},'frontier-grok',invoke);
  assert.equal(reservations,0);assert.equal(calls,0);
  await assert.rejects(proposeAgentRepair({...context,withModelCall},'frontier-grok',invoke),/Task allowance reached/);
