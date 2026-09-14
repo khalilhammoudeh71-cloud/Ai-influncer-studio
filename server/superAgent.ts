@@ -1,4 +1,5 @@
 import { blocksAgentPlan } from '../shared/agentPlanIntent';
+import { validateCampaign, CAMPAIGN_WIRE_SCHEMA } from '../shared/agentCampaign';
 
 export type SuperAgentEffort = 'fast' | 'smart' | 'deep';
 export type SuperAgentProvider = 'runware' | 'wiro' | 'atlas' | 'wavespeed' | 'venice';
@@ -380,6 +381,7 @@ export const SUPER_AGENT_PLAN_TOOL = {
       additionalProperties: false,
       required: ['summary', 'steps'],
       properties: {
+        campaign: CAMPAIGN_WIRE_SCHEMA,
         summary: { type: 'string', description: 'A concise natural-language summary of what will be done.' },
         steps: {
           type: 'array',
@@ -406,6 +408,8 @@ export const SUPER_AGENT_PLAN_TOOL = {
                   modelId: {type:'string'},
                   usePersona: {type:'boolean', description:'False for objects, scenery, or requests without the active persona.'},
                   aspectRatio: {type:'string'},
+                  duration: {type:'number',description:'Requested video duration in seconds.'},
+                  resolution: {type:'string'},
                   text: {type:'string'},
                   sourceImage: {type:'string'},
                   sourceImageFromStepIndex: {type:'integer', minimum:0, description:'Zero-based index of an earlier image step whose successful output must be edited or animated.'},
@@ -428,8 +432,9 @@ export const SUPER_AGENT_PLAN_TOOL = {
 export const SUPER_AGENT_RESPONSE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['text','suggestedSteps'],
+  required: ['text','suggestedSteps','campaign'],
   properties: {
+    campaign: CAMPAIGN_WIRE_SCHEMA,
     text: {type:'string', description:'Natural reply or concise summary of the plan. Do not claim tools have run.'},
     suggestedSteps: {
       ...SUPER_AGENT_PLAN_TOOL.function.parameters.properties.steps,
@@ -465,7 +470,8 @@ export function decodeAgentReply(reply: string, request: string) {
       if(suggestedSteps.length)text='Review the plan below before running it.';
     }
     if (!text.trim() && !suggestedSteps.length) throw new Error('The planner returned no usable response.');
-    return {text:text.trim() || 'Review the plan below before running it.',status:suggestedSteps.length?'clarifying':'normal',suggestedSteps};
+    const campaign=blocksAgentPlan(request)?undefined:validateCampaign(parsed.campaign,suggestedSteps);
+    return {text:text.trim() || 'Review the plan below before running it.',status:suggestedSteps.length?'clarifying':'normal',suggestedSteps,...(campaign?{campaign}:{})};
   }
   if (!reply.trim() || /^\s*(?:```json\b|\{|\[)/.test(reply)) throw new Error('The planner returned an incomplete response.');
   return {text:reply.trim(),status:'normal',suggestedSteps:[]};

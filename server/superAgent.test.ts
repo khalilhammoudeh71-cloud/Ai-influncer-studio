@@ -245,3 +245,10 @@ test('serialized tool inputs retain their types and malformed input never reache
   assert.equal(valid.suggestedSteps[0].params.usePersona,false);
   assert.throws(()=>decodeAgentReply(JSON.stringify({text:'Review this.',suggestedSteps:[{type:'generate_voice',params:'broken JSON'}]}),'Generate speech'),/malformed/);
 });
+
+test('campaign replies carry validated copy alongside actionable media steps',()=>{
+ const campaign={title:'Morning',platform:'Instagram',posts:[{date:'2026-09-15',title:'Coffee',format:'image',caption:'A slow start.',assets:[{stepIndex:0,alt:'Coffee portrait'}]}]};
+ const reply=decodeAgentReply(JSON.stringify({text:'Review this campaign.',campaign:JSON.stringify(campaign),suggestedSteps:[{type:'generate_image',params:{prompt:'A morning portrait'}}]}),'Create a campaign for review');
+ assert.deepEqual(reply.campaign,campaign);
+ assert.throws(()=>decodeAgentReply(JSON.stringify({text:'Review.',campaign:{...campaign,posts:[]},suggestedSteps:reply.suggestedSteps}),'Create campaign'),/Campaign/);
+});

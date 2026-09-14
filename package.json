@@ -31,6 +31,7 @@
     "drizzle-orm": "^0.45.2",
     "drizzle-zod": "^0.8.3",
     "express": "^5.2.1",
+    "fflate": "0.8.3",
     "framer-motion": "^12.38.0",
     "heic-convert": "^2.1.0",
     "instagram-url-direct": "^2.0.7",

@@ -22,9 +22,13 @@ export function validateRunSteps(steps: any): RunStep[] {
             throw new Error('Image dependencies must refer to an earlier image step.');
         // Only known generation inputs are accepted; execution state is server-owned.
         const params: Record<string, any> = {};
-        for (const k of ['prompt', 'modelId', 'aspectRatio', 'usePersona', 'sourceImage', 'sourceImageFromStepIndex', 'editType'])
+        for (const k of ['prompt', 'modelId', 'aspectRatio', 'usePersona', 'sourceImage', 'sourceImageFromStepIndex', 'editType', 'duration', 'resolution'])
             if (p[k] !== undefined)
                 params[k] = p[k];
+        if (params.duration !== undefined && (typeof params.duration !== 'number' || !Number.isFinite(params.duration) || params.duration < 1 || params.duration > 30))
+            throw new Error('Video duration must be between 1 and 30 seconds.');
+        if (params.resolution !== undefined && !['480p','720p','1080p'].includes(params.resolution))
+            throw new Error('Choose a supported video resolution.');
         if (params.sourceImage && (typeof params.sourceImage !== 'string' || !/^(https:\/\/|data:image\/|previous_result$)/.test(params.sourceImage)))
             throw new Error('Use a saved image or an uploaded image as the source.');
         return { type: s.type === 'generate_image' && (params.sourceImage || params.sourceImageFromStepIndex !== undefined) ? 'edit_image' : s.type, params, status: 'pending' };

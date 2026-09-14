@@ -9384,6 +9384,7 @@ async function pushSchema() {
       ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS budget_credits INTEGER;
       ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS used_credits INTEGER NOT NULL DEFAULT 0;
       ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS visual_review BOOLEAN NOT NULL DEFAULT false;
+      ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS campaign TEXT;
       ALTER TABLE agent_runs ENABLE ROW LEVEL SECURITY;
       REVOKE ALL ON TABLE agent_runs FROM anon, authenticated;
       CREATE INDEX IF NOT EXISTS agent_runs_worker ON agent_runs(status, updated_at);

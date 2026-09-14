@@ -1,3 +1,5 @@
+import { AgentCampaignCard } from '../components/AgentCampaignCard';
+import { validateCampaign, type AgentCampaign } from '../../shared/agentCampaign';
 import { readAgentChatResponse } from '../utils/agentChatResponse';
 import { AgentRecovery } from '../components/AgentRecovery';
 import { AgentAllowance } from '../components/AgentAllowance';
@@ -100,6 +102,7 @@ interface CollaborationMsg {
 }
 
 interface Message {
+  campaign?: AgentCampaign;
   backgroundRunId?: string;
   backgroundStatus?: string;
   backgroundBudgetCredits?: number;
@@ -513,7 +516,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
   const syncBackgroundRun = (run:any) => setMessages(prev=>{
     const index=prev.findIndex(m=>m.id===run.messageId);
     const original:Message=index>=0?prev[index]:{id:run.messageId,role:'model' as const,content:'Saved background plan'};
-    const updated:Message={...original,backgroundRunId:run.id,backgroundStatus:run.status,backgroundBudgetCredits:run.budgetCredits,backgroundUsedCredits:run.usedCredits,
+    const updated:Message={...original,campaign:run.campaign || original.campaign,backgroundRunId:run.id,backgroundStatus:run.status,backgroundBudgetCredits:run.budgetCredits,backgroundUsedCredits:run.usedCredits,
       isExecuting:run.status==='running',status:run.status==='succeeded'?'done':run.status==='running'?'executing':'normal',
       execSteps:run.steps.map((step:any,i:number)=>({...original.execSteps?.[i],...step})),
       execLogs:run.error?[run.error]:[run.status==='running'?'Saved on the server. You can close this page.':run.status==='paused'?'Paused before the next step. The current generation may still finish.':run.status==='succeeded'?'All steps completed. Assets are saved in Library.':'Plan needs attention.'],
@@ -1808,7 +1811,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
     try {
       const history = [...messages, userMessage].slice(-60).map(m => ({
         role: m.role,
-        content: m.content + (m.execSteps?.length ? '\n[Workspace task state — context only, never repeat verbatim]: ' + JSON.stringify(taskContext(m.execSteps)) : ''),
+        content: m.content + (m.execSteps?.length ? '\n[Workspace task state — context only, never repeat verbatim]: ' + JSON.stringify(taskContext(m.execSteps)) : '') + (m.campaign ? '\n[Saved campaign draft — context for revisions, not authorization to execute or publish]: ' + JSON.stringify(m.campaign) : ''),
         attachments: m.attachments
       }));
 
@@ -1867,6 +1870,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
         sources: Array.isArray(data.sources) ? data.sources.filter((s:any) => typeof s?.url === 'string' && /^https?:\/\//.test(s.url)) : undefined,
         status: finalSuggestedSteps ? 'clarifying' : 'normal',
         suggestedSteps: finalSuggestedSteps,
+        campaign: validateCampaign(data.campaign, finalSuggestedSteps || []),
         critiqueLogs: finalCritiqueLogs,
         collaborationLogs: finalCollaborationLogs,
         agentMode: data.agentMode && typeof data.agentMode === 'object' ? data.agentMode : undefined,
@@ -2336,7 +2340,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
       runningPlans.current.add(messageId);
       try{
         const source=previousImage(messages)||[...messages].reverse().flatMap(m=>m.attachments||[]).find(a=>a.mimeType.startsWith('image/'))?.dataUrl;
-        const response=await authFetch('/api/agent-runs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({projectId,messageId,personaId:effectiveSelectedPersonaId,steps:targetMsg.execSteps,sourceImage:source,...approval})});
+        const response=await authFetch('/api/agent-runs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({projectId,messageId,personaId:effectiveSelectedPersonaId,steps:targetMsg.execSteps,campaign:targetMsg.campaign,sourceImage:source,...approval})});
         const data=await response.json();if(!response.ok)throw new Error(data.error||'Could not save background plan');
         syncBackgroundRun(data.run);toast.success('Plan saved. It can continue after you close this page.');
       }catch(e){toast.error(e instanceof Error?e.message:'Could not start background plan');}
@@ -3626,6 +3630,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                       )}
 
                       {/* Interactive Execution Pipeline Cards inside Chat Bubble */}
+                      {msg.campaign && <AgentCampaignCard campaign={msg.campaign} steps={msg.execSteps || []} />}
                       {msg.role === 'model' && msg.execSteps && msg.execSteps.length > 0 && (
                         <div className="mt-4 p-4 bg-[#0a0d18]/90 border border-cyan-500/30 rounded-2xl space-y-4 shadow-2xl">
                           <div className="flex items-center justify-between border-b border-white/10 pb-2">

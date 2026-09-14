@@ -1,13 +1,13 @@
 import { recoveryAdvice } from './agentRecovery';
 import { proposeAgentRepair, type RepairAnalyzer } from './agentRepair';
-import { quotePlan } from './agentPlanQuote';
+import { quotePlan, type PlanPricer } from './agentPlanQuote';
 import { bypassesInternalCredits } from './auth';
-import type { GenerationQuote } from './creditPricing';
 import { and, eq, asc } from 'drizzle-orm';
 import { randomUUID, createHash } from 'node:crypto';
 import { agentRuns, mediaJobs, users } from '../shared/schema';
 import { nextRunAction, validateRunSteps, type RunStep } from '../shared/agentRun';
-function publicRun(row: any) { return { ...row, steps: JSON.parse(row.steps), sourceImage: undefined, userId: undefined }; }
+import { validateCampaign } from '../shared/agentCampaign';
+function publicRun(row: any) { return { ...row, campaign:row.campaign?JSON.parse(row.campaign):undefined, steps: JSON.parse(row.steps), sourceImage: undefined, userId: undefined }; }
 function imageSource(steps: RunStep[], i: number, fallback?: string) {
     const p = steps[i].params;
     if (p.sourceImageFromStepIndex !== undefined) {
@@ -20,7 +20,7 @@ function imageSource(steps: RunStep[], i: number, fallback?: string) {
         return p.sourceImage;
     return steps.slice(0, i).reverse().find(s => s.type !== 'generate_video' && s.resultUrl)?.resultUrl || fallback;
 }
-export function registerAgentRuns(app: any, db: any, schedule: (id: string, userId: string, user: any) => void, readPersonasForUser: (id: string) => Promise<any[]>, price?: (model:string,type:'image'|'video')=>Promise<GenerationQuote>, analyzeRepair: RepairAnalyzer = proposeAgentRepair, supervision: {inspect?:(input:any)=>Promise<any>;analyze?:(run:any,work:()=>Promise<any>,model:string)=>Promise<any>} = {}) {
+export function registerAgentRuns(app: any, db: any, schedule: (id: string, userId: string, user: any) => void, readPersonasForUser: (id: string) => Promise<any[]>, price?: PlanPricer, analyzeRepair: RepairAnalyzer = proposeAgentRepair, supervision: {inspect?:(input:any)=>Promise<any>;analyze?:(run:any,work:()=>Promise<any>,model:string)=>Promise<any>} = {}) {
     const activeAnalysis = new Set<string>();
     async function advance(id: string, user: any): Promise<any> {
         let jobId: string | undefined;
@@ -84,7 +84,7 @@ export function registerAgentRuns(app: any, db: any, schedule: (id: string, user
                     }
                     else if (steps[i].type === 'generate_video') {
                         kind = 'video';
-                        request = { requestMode: 'studio', personaClientId: r.personaId, prompt: p.prompt, modelId: p.modelId || 'wavespeed-i2v:alibaba/wan-3.0/image-to-video', sourceImage: source };
+                        request = { requestMode: 'studio', personaClientId: r.personaId, prompt: p.prompt, modelId: p.modelId || 'wavespeed-i2v:alibaba/wan-3.0/image-to-video', sourceImage: source, duration:p.duration, resolution:p.resolution, aspectRatio:p.aspectRatio };
                         if (!source)
                             throw new Error('Video needs a source image. Add an image step first or choose a reference.');
                     }
@@ -161,7 +161,8 @@ export function registerAgentRuns(app: any, db: any, schedule: (id: string, user
                 const estimate=await quotePlan(steps,price,owner.credits||0,bypassesInternalCredits(owner.email));
                 if(estimate.insufficientCredits)return res.status(402).json({error:`Insufficient credits. The priced steps need an estimated ${estimate.estimatedCredits} credits; your balance is ${estimate.balance}. No generation was started.`});
             }
-            await db.insert(agentRuns).values({ id, userId: req.user.id, projectId, messageId, personaId, steps: JSON.stringify(steps), sourceImage: sourceImage || null, status: 'running',budgetCredits,visualReview:req.body.visualReview!==false }).onConflictDoNothing();
+            const campaign=validateCampaign(req.body.campaign,steps);
+            await db.insert(agentRuns).values({ id, userId: req.user.id, projectId, messageId, personaId, steps: JSON.stringify(steps), campaign:campaign?JSON.stringify(campaign):null, sourceImage: sourceImage || null, status: 'running',budgetCredits,visualReview:req.body.visualReview!==false }).onConflictDoNothing();
             const row = await advance(id, req.user);
             return res.json({ run: publicRun(row) });
         }

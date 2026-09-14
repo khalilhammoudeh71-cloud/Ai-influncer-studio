@@ -1,4 +1,15 @@
 import test from 'node:test';import assert from 'node:assert/strict';import{readFileSync}from'node:fs';
+test('campaign migration works before supervision on a clean database and is idempotent',{skip:!process.env.PGLITE_MODULE},async()=>{
+ const{PGlite}=await import(process.env.PGLITE_MODULE!);const pg=new PGlite();
+ try{
+  await pg.exec('CREATE ROLE authenticated;CREATE ROLE anon;CREATE TABLE media_jobs(id text)');
+  const migration=readFileSync(new URL('../supabase/migrations/20260914185809_agent_campaign_package.sql',import.meta.url),'utf8');
+  await pg.exec(migration);await pg.exec(migration);
+  await pg.exec(readFileSync(new URL('../supabase/migrations/20260914190000_agent_supervision.sql',import.meta.url),'utf8'));
+  assert.equal((await pg.query("SELECT count(*) FROM information_schema.columns WHERE table_name='agent_runs' AND column_name IN ('campaign','budget_credits','visual_review')")).rows[0].count,3);
+  await pg.exec('SET ROLE authenticated');await assert.rejects(pg.exec('SELECT campaign FROM agent_runs'),/permission denied/);
+ }finally{await pg.close();}
+});
 test('authenticated clients cannot forge task linkage, results, or allowance records',{skip:!process.env.PGLITE_MODULE},async()=>{
  const{PGlite}=await import(process.env.PGLITE_MODULE!);const pg=new PGlite();
  try{

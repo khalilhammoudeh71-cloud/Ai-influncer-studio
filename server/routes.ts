@@ -1,4 +1,5 @@
 import { selectedTextModel, runFrontierChat, assertCompleteModelOutput } from './frontierModels';
+import { validateCampaign, type AgentCampaign } from '../shared/agentCampaign';
 import { workspaceWriteRevision } from './workspaceRevision';
 import { agentIdentityContext } from './agentIdentity';
 import { researchSources } from './agentResearch';
@@ -3832,6 +3833,8 @@ ${agentIdentityContext(agentIdentity,activePersona)}
 WORKSPACE EXECUTION CONTRACT:
 - Discuss and refine the user's complete brief across messages. Do not generate from an unfinished description, a quoted example, a text-only instruction, or a request to wait.
 - A complete request, or a request to prepare a plan for review, must include structured suggestedSteps (or the native plan tool), not just prose or a promise. "Do not execute yet" permits drafting a plan for review; it never authorizes execution.
+- For a campaign request, include campaign as a JSON-encoded object {title,platform,posts:[{date:"YYYY-MM-DD",title,format:"image"|"carousel"|"video"|"text",caption,assets:[{stepIndex:0,alt:"Full image description"}]}]}. Dates and post count must match the user brief. Link every generated asset to a post using zero-based suggestedSteps indexes. A carousel is 2–10 separate image steps in swipe order. Reuse an earlier index when reusing a photo. Use only generate_image, edit_image and generate_video steps for these campaigns; do not invoke the legacy seven-day generate_content_plan template. The app groups captions and assets and can export a ZIP once every result is ready. Publishing is manual. Do not invent overlay or packaging tools. For ordinary conversation use campaign:null. State any missing dates before preparing the campaign.
+- Preserve requested video duration (numeric seconds), resolution and aspectRatio in generate_video params. For image-to-video, link sourceImageFromStepIndex to the exact earlier image requested, not merely the most recent image.
 - Propose a concrete plan with complete prompts. Do not claim any tool ran: the app will execute approved steps and report their actual results.
 - For generate_image set usePersona=false for objects, landscapes, products, diagrams, or requests with no people. Set usePersona=true only when the user wants the selected persona. Preserve requested aspectRatio.
 - Workspace task state is internal context: pending steps have not run; only successful results are finished. Never echo the task-state JSON in your reply.
@@ -3954,6 +3957,7 @@ Do not wrap your response in markdown code blocks or HTML tags. Return ONLY the 
     let text = '';
     let nativePlan: any[] | null = null;
     let nativePlanSummary = '';
+    let nativeCampaign:AgentCampaign|undefined;
     let superAgentMode: {
       provider: string;
       model: string;
@@ -4215,8 +4219,11 @@ Do not wrap your response in markdown code blocks or HTML tags. Return ONLY the 
 
               let normalizedSteps:ReturnType<typeof normalizeSuperAgentPlanSteps> = [];
               try {
-                if (toolCalls.length === 1) normalizedSteps = validateSuperAgentPlanSteps(args.steps, userPrompt);
-              } catch { /* Request a complete replacement, never accept only part of a plan. */ }
+                if (toolCalls.length === 1) {
+                  normalizedSteps = validateSuperAgentPlanSteps(args.steps, userPrompt);
+                  nativeCampaign=validateCampaign(args.campaign,normalizedSteps);
+                }
+              } catch { normalizedSteps=[]; nativeCampaign=undefined; }
               if (normalizedSteps.length === 0) {
                 conversation.push({
                   role: 'tool',
@@ -4322,6 +4329,7 @@ Do not wrap your response in markdown code blocks or HTML tags. Return ONLY the 
         text: text || nativePlanSummary || 'Your plan is ready to review. No actions have run yet.',
         status: 'clarifying',
         suggestedSteps: normalizeSuperAgentPlanSteps(nativePlan, userPrompt),
+        ...(nativeCampaign?{campaign:nativeCampaign}:{}),
         critiqueLogs: ['Adaptive Agent native tool plan validated against supported studio actions.'],
         collaborationLogs: [{
           agent: `${superAgentMode?.provider || 'Adaptive'} Reasoning`,

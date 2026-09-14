@@ -11,7 +11,7 @@ test('approved plan survives reconnect, advances once, pauses/resumes and isolat
     const { PGlite } = await import(process.env.PGLITE_MODULE!);
     const pg = new PGlite();
     const db = drizzle(pg);
-    await pg.exec(`CREATE TABLE users(id text primary key,email text,credits int default 0); INSERT INTO users(id,email) VALUES ('owner','owner@example.com'); CREATE TABLE agent_runs(budget_credits int,used_credits int default 0,visual_review boolean default false,id text primary key,user_id text not null,project_id text not null,message_id text not null,persona_id text not null,status text not null,steps text not null,source_image text,error text,created_at timestamptz default now(),updated_at timestamptz default now());
+    await pg.exec(`CREATE TABLE users(id text primary key,email text,credits int default 0); INSERT INTO users(id,email) VALUES ('owner','owner@example.com'); CREATE TABLE agent_runs(campaign text,budget_credits int,used_credits int default 0,visual_review boolean default false,id text primary key,user_id text not null,project_id text not null,message_id text not null,persona_id text not null,status text not null,steps text not null,source_image text,error text,created_at timestamptz default now(),updated_at timestamptz default now());
  CREATE TABLE media_jobs(agent_run_id text,id text primary key,user_id text,persona_client_id text,kind text,status text,request text,result text,error text,model_id text,fallback_model_id text,attempt int default 0,used_fallback boolean default false,progress int default 0,stage text default 'Queued',cancel_requested boolean default false,created_at timestamptz default now(),started_at timestamptz,updated_at timestamptz default now(),completed_at timestamptz);`);
     const routes = new Map<string, Function>();
     const app = { post: (p: string, f: Function) => routes.set('POST ' + p, f), get: (p: string, f: Function) => routes.set('GET ' + p, f) };
@@ -122,6 +122,23 @@ test('approved plan survives reconnect, advances once, pauses/resumes and isolat
         assert.equal(saved.runs[0].status, 'succeeded');
         assert.equal(saved.runs[0].steps[1].resultUrl, 'https://example.com/green.jpg');
         assert.equal((await db.select().from(mediaJobs)).length, 3);
+        await pg.exec("UPDATE users SET credits=50 WHERE id='owner'");
+        const campaign={title:'Coffee',platform:'Instagram',posts:[{date:'2026-09-15',title:'Morning cup',format:'image',caption:'A quiet morning.',assets:[{stepIndex:0,alt:'A blue teacup'}]},{date:'2026-09-16',title:'Steam',format:'video',caption:'Take a moment.',assets:[{stepIndex:1,alt:'Steam rising from a blue cup'}]}]};
+        const videoRun=await call('POST /api/agent-runs',{...body,campaign,messageId:'campaign-video',steps:[
+            {type:'generate_image',params:{prompt:'A blue teacup, no people'}},
+            {type:'generate_video',params:{prompt:'Steam rising from the teacup',sourceImageFromStepIndex:0,duration:5,resolution:'720p',aspectRatio:'4:5'}}
+        ]});
+        assert.equal(videoRun.code,200);
+        assert.deepEqual(videoRun.run.campaign,campaign);
+        const restored=(await call('GET /api/agent-runs')).runs.find((r:any)=>r.id===videoRun.run.id);
+        assert.deepEqual(restored.campaign,campaign,'server restoration retains the campaign after client history is gone');
+        const sourceJob=(await db.select().from(mediaJobs)).find(j=>j.agentRunId===videoRun.run.id)!;
+        await db.update(mediaJobs).set({status:'succeeded',result:JSON.stringify({url:'https://example.com/campaign.jpg'})}).where(eq(mediaJobs.id,sourceJob.id));
+        await advance();
+        const videoJob=(await db.select().from(mediaJobs)).find(j=>j.agentRunId===videoRun.run.id&&j.kind==='video')!;
+        const request=JSON.parse(videoJob.request!);
+        assert.equal(request.sourceImage,'https://example.com/campaign.jpg');
+        assert.equal(request.duration,5);assert.equal(request.resolution,'720p');assert.equal(request.aspectRatio,'4:5');
     }
     finally {
         if(previousSecret===undefined)delete process.env.CRON_SECRET;else process.env.CRON_SECRET=previousSecret;

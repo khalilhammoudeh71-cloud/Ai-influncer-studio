@@ -37,3 +37,9 @@ test('custom edit labels remain eligible while browser-only image tools do not',
  assert.equal(validateRunSteps([{type:'edit_image',params:{prompt:'Make it green',editType:'recolor',sourceImage:'previous_result'}}])[0].type,'edit_image');
  assert.throws(()=>validateRunSteps([{type:'edit_image',params:{prompt:'Swap face',editType:'face-swap'}}]));
 });
+
+test('video duration and resolution survive approval validation',()=>{
+ const plan=validateRunSteps([image(),{type:'generate_video',params:{prompt:'Gentle movement',duration:5,resolution:'720p',sourceImageFromStepIndex:0}}]);
+ assert.equal(plan[1].params.duration,5);assert.equal(plan[1].params.resolution,'720p');
+ for(const duration of [-1,0,1000,'forever'])assert.throws(()=>validateRunSteps([{type:'generate_video',params:{prompt:'Motion',duration}}]));
+});

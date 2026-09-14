@@ -172,6 +172,7 @@ export const agentRuns = pgTable('agent_runs', {
  steps: text('steps').notNull(), sourceImage: text('source_image'), error: text('error'),
  budgetCredits: integer('budget_credits'), usedCredits: integer('used_credits').notNull().default(0),
  visualReview: boolean('visual_review').notNull().default(false),
+ campaign: text('campaign'),
  createdAt: timestamp('created_at',{withTimezone:true}).defaultNow().notNull(),
  updatedAt: timestamp('updated_at',{withTimezone:true}).defaultNow().notNull(),
 });
