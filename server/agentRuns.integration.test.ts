@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 // Opt-in embedded PostgreSQL integration test, with no account/API credentials.
 // PGLITE_MODULE points to an installed @electric-sql/pglite ESM entry point.
 test('approved plan survives reconnect, advances once, pauses/resumes and isolates owners', { skip: !process.env.PGLITE_MODULE }, async () => {
+    const previousSecret=process.env.CRON_SECRET;process.env.CRON_SECRET='synthetic-test';
     const { drizzle } = await import('drizzle-orm/pglite');
     const { PGlite } = await import(process.env.PGLITE_MODULE!);
     const pg = new PGlite();
@@ -55,6 +56,7 @@ test('approved plan survives reconnect, advances once, pauses/resumes and isolat
         assert.equal((await db.select().from(mediaJobs)).length, 3);
     }
     finally {
+        if(previousSecret===undefined)delete process.env.CRON_SECRET;else process.env.CRON_SECRET=previousSecret;
         await pg.close();
     }
 });

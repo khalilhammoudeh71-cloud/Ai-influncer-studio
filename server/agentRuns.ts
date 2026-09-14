@@ -88,6 +88,7 @@ export function registerAgentRuns(app: any, db: any, schedule: (id: string, user
     }
     app.post('/api/agent-runs', async (req: any, res: any) => {
         try {
+            if (!process.env.CRON_SECRET) return res.status(503).json({error:'Background execution is not configured. No generation was started.'});
             const { projectId, messageId, personaId, sourceImage } = req.body || {};
             if (![projectId, messageId, personaId].every(x => typeof x === 'string' && x.length > 0 && x.length < 200))
                 return res.status(400).json({ error: 'Project, message and persona are required.' });
