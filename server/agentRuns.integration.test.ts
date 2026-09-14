@@ -11,8 +11,8 @@ test('approved plan survives reconnect, advances once, pauses/resumes and isolat
     const { PGlite } = await import(process.env.PGLITE_MODULE!);
     const pg = new PGlite();
     const db = drizzle(pg);
-    await pg.exec(`CREATE TABLE users(id text primary key,email text,credits int default 0); INSERT INTO users(id,email) VALUES ('owner','owner@example.com'); CREATE TABLE agent_runs(id text primary key,user_id text not null,project_id text not null,message_id text not null,persona_id text not null,status text not null,steps text not null,source_image text,error text,created_at timestamptz default now(),updated_at timestamptz default now());
- CREATE TABLE media_jobs(id text primary key,user_id text,persona_client_id text,kind text,status text,request text,result text,error text,model_id text,fallback_model_id text,attempt int default 0,used_fallback boolean default false,progress int default 0,stage text default 'Queued',cancel_requested boolean default false,created_at timestamptz default now(),started_at timestamptz,updated_at timestamptz default now(),completed_at timestamptz);`);
+    await pg.exec(`CREATE TABLE users(id text primary key,email text,credits int default 0); INSERT INTO users(id,email) VALUES ('owner','owner@example.com'); CREATE TABLE agent_runs(budget_credits int,used_credits int default 0,visual_review boolean default false,id text primary key,user_id text not null,project_id text not null,message_id text not null,persona_id text not null,status text not null,steps text not null,source_image text,error text,created_at timestamptz default now(),updated_at timestamptz default now());
+ CREATE TABLE media_jobs(agent_run_id text,id text primary key,user_id text,persona_client_id text,kind text,status text,request text,result text,error text,model_id text,fallback_model_id text,attempt int default 0,used_fallback boolean default false,progress int default 0,stage text default 'Queued',cancel_requested boolean default false,created_at timestamptz default now(),started_at timestamptz,updated_at timestamptz default now(),completed_at timestamptz);`);
     const routes = new Map<string, Function>();
     const app = { post: (p: string, f: Function) => routes.set('POST ' + p, f), get: (p: string, f: Function) => routes.set('GET ' + p, f) };
     const scheduled: any[] = [];
@@ -31,11 +31,11 @@ test('approved plan survives reconnect, advances once, pauses/resumes and isolat
         return {action:'revise',reason:'Make the color change explicit.',proposedPrompt:'Change only the cup to green',model:'test-model',provider:'test'};
     });
     const call = async (path: string, body: any = {}, user = 'owner', params: any = {}) => { let code = 200, result: any; await routes.get(path)!({ body, user: { id: user }, params, query: { projectId: 'default' } }, { status(n: number) { code = n; return this; }, json(v: any) { result = v; return this; } }); return { code, ...result }; };
-    const body = { projectId: 'default', messageId: 'message', personaId: 'persona', steps: [{ type: 'generate_image', params: { prompt: 'A blue teacup, no people' } }, { type: 'edit_image', params: { prompt: 'Make the cup green', sourceImage: 'previous_result' } }] };
+    const body = { budgetCredits:100, visualReview:false, projectId: 'default', messageId: 'message', personaId: 'persona', steps: [{ type: 'generate_image', params: { prompt: 'A blue teacup, no people' } }, { type: 'edit_image', params: { prompt: 'Make the cup green', sourceImage: 'previous_result' } }] };
     try {
         const estimate = await call('POST /api/agent-runs/quote',body);
         assert.equal(estimate.insufficientCredits,true);
-        assert.equal(estimate.complete,false);
+        assert.equal(estimate.complete,true);
         assert.equal((await db.select().from(mediaJobs)).length,0,'quoting never starts a generation');
         const denied = await call('POST /api/agent-runs', body);
         assert.equal(denied.code,402);

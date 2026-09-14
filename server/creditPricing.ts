@@ -1,4 +1,4 @@
-export type GenerationKind = 'image' | 'video' | 'speech' | 'avatar';
+export type GenerationKind = 'image' | 'video' | 'speech' | 'avatar' | 'analysis';
 
 export interface GenerationQuote {
   kind: GenerationKind;

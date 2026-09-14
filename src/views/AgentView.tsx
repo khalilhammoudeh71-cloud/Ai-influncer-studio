@@ -1,5 +1,6 @@
 import { AgentRecovery } from '../components/AgentRecovery';
-import { AgentPlanApproval } from '../components/AgentPlanApproval';
+import { AgentAllowance } from '../components/AgentAllowance';
+import { AgentPlanApproval, type PlanApproval } from '../components/AgentPlanApproval';
 import { supportsBackground } from '../../shared/agentRun';
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -100,6 +101,8 @@ interface CollaborationMsg {
 interface Message {
   backgroundRunId?: string;
   backgroundStatus?: string;
+  backgroundBudgetCredits?: number;
+  backgroundUsedCredits?: number;
   id: string;
   role: 'user' | 'model';
   content: string;
@@ -128,6 +131,7 @@ interface Message {
     params: any; 
     status: 'pending' | 'running' | 'success' | 'error' | 'done' | 'executing';
     resultUrl?: string;
+    quality?: {status:string;summary?:string};
     resultUrls?: string[];
     resultVersions?: ResultVersion[];
     isActionLoading?: 'video' | 'upscale' | 'swap' | null;
@@ -508,7 +512,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
   const syncBackgroundRun = (run:any) => setMessages(prev=>{
     const index=prev.findIndex(m=>m.id===run.messageId);
     const original:Message=index>=0?prev[index]:{id:run.messageId,role:'model' as const,content:'Saved background plan'};
-    const updated:Message={...original,backgroundRunId:run.id,backgroundStatus:run.status,
+    const updated:Message={...original,backgroundRunId:run.id,backgroundStatus:run.status,backgroundBudgetCredits:run.budgetCredits,backgroundUsedCredits:run.usedCredits,
       isExecuting:run.status==='running',status:run.status==='succeeded'?'done':run.status==='running'?'executing':'normal',
       execSteps:run.steps.map((step:any,i:number)=>({...original.execSteps?.[i],...step})),
       execLogs:run.error?[run.error]:[run.status==='running'?'Saved on the server. You can close this page.':run.status==='paused'?'Paused before the next step. The current generation may still finish.':run.status==='succeeded'?'All steps completed. Assets are saved in Library.':'Plan needs attention.'],
@@ -2327,14 +2331,15 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
   };
 
   // ─── Pipeline runner execution ──────────────────────────────────────────────
-  const runPipeline = async (messageId: string, directMsg?: Message) => {
+  const runPipeline = async (messageId: string, directMsg?: Message, approval?: PlanApproval) => {
     const targetMsg = directMsg || messages.find(m => m.id === messageId);
     if (!targetMsg || !targetMsg.execSteps || targetMsg.isExecuting || runningPlans.current.has(messageId)) return;
     if(supportsBackground(targetMsg.execSteps) && !targetMsg.execSteps.some(s=>['success','done'].includes(s.status))){
+      if(!approval){toast('Review the plan cost and set an allowance before starting.');return;}
       runningPlans.current.add(messageId);
       try{
         const source=previousImage(messages)||[...messages].reverse().flatMap(m=>m.attachments||[]).find(a=>a.mimeType.startsWith('image/'))?.dataUrl;
-        const response=await authFetch('/api/agent-runs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({projectId,messageId,personaId:effectiveSelectedPersonaId,steps:targetMsg.execSteps,sourceImage:source})});
+        const response=await authFetch('/api/agent-runs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({projectId,messageId,personaId:effectiveSelectedPersonaId,steps:targetMsg.execSteps,sourceImage:source,...approval})});
         const data=await response.json();if(!response.ok)throw new Error(data.error||'Could not save background plan');
         syncBackgroundRun(data.run);toast.success('Plan saved. It can continue after you close this page.');
       }catch(e){toast.error(e instanceof Error?e.message:'Could not start background plan');}
@@ -3665,6 +3670,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                                     <figcaption className="mt-2 flex flex-wrap justify-between gap-2"><span>Version {index+1}</span><button type="button" onClick={()=>handleEditImageAction(version.url)} className="text-[#E7C477] underline">Edit this version</button></figcaption>
                                   </figure>)}</div>
                                 </details>}
+                                {step.quality && <p role="status" className="text-xs text-zinc-300">{step.quality.status==='checking'?'Checking this result against your request…':step.quality.status==='passed'?'Visual check passed.':step.quality.summary}</p>}
                                 {step.resultUrl && (
                                   <div className="mt-2 rounded-xl overflow-hidden border border-white/10 bg-black/50">
                                     {step.type === 'generate_voice' ? <audio src={step.resultUrl} controls className="w-full" /> : step.type === 'generate_3d' ? <a href={step.resultUrl} target="_blank" rel="noreferrer">Open 3D asset</a> : step.type.includes('video') || step.type === 'generate_talking_head' || step.type === 'storyboard_sequence' ? (
@@ -3679,11 +3685,12 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                           </div>
                           {msg.isExecuting && <button type="button" onClick={() => {if(msg.backgroundRunId){void backgroundAction(msg.backgroundRunId,'stop');}else{stoppedPlans.current.add(msg.id); toast('Stopping after the current step.');}}} className="text-xs text-zinc-300 underline">Stop after current step</button>}
                           {msg.backgroundRunId && <p role="status" className="text-sm text-zinc-300">{msg.backgroundStatus==='running'?'Running in background — you can close this page':msg.backgroundStatus==='paused'?'Paused before the next step':msg.backgroundStatus==='succeeded'?'Completed and saved in Library':'Needs attention'} · {msg.execSteps?.filter(s=>s.status==='success').length || 0} of {msg.execSteps?.length || 0} steps complete</p>}
+                          {msg.backgroundRunId && <AgentAllowance id={msg.backgroundRunId} used={msg.backgroundUsedCredits||0} limit={msg.backgroundBudgetCredits} onSaved={syncBackgroundRun} />}
                           {msg.backgroundStatus==='failed' && <AgentRecovery key={msg.backgroundRunId} id={msg.backgroundRunId!} planningModel={planningModel} onRecovered={syncBackgroundRun} />}
                           {msg.backgroundStatus==='paused' && <button type="button" onClick={()=>void backgroundAction(msg.backgroundRunId!,'resume')} className="text-sm text-[#E7C477] underline">Resume saved plan</button>}
                           {backgroundError && msg.backgroundRunId && <p role="status" className="text-sm text-amber-200">{backgroundError}. Your saved plan may still be running.</p>}
                           {!msg.backgroundRunId && msg.execSteps && <p className="text-xs text-zinc-400">{supportsBackground(msg.execSteps)?'Runs in the background after approval.':'Keep this page open while this plan runs.'}</p>}
-                          {msg.status === 'clarifying' && !msg.isExecuting && (supportsBackground(msg.execSteps || []) ? <AgentPlanApproval steps={msg.execSteps || []} onApprove={()=>void runPipeline(msg.id,msg)} /> :
+                          {msg.status === 'clarifying' && !msg.isExecuting && (supportsBackground(msg.execSteps || []) ? <AgentPlanApproval steps={msg.execSteps || []} onApprove={approval=>void runPipeline(msg.id,msg,approval)} /> :
                             <button
                               type="button"
                               onClick={() => runPipeline(msg.id, msg)}

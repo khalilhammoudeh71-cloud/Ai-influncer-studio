@@ -121,6 +121,7 @@ export const plannedPosts = pgTable("planned_posts", {
 
 export const mediaJobs = pgTable("media_jobs", {
   id: text("id").primaryKey(),
+  agentRunId: text("agent_run_id"),
   userId: text("user_id").notNull(),
   personaClientId: text("persona_client_id"),
   kind: text("kind").notNull(),
@@ -169,6 +170,8 @@ export const agentRuns = pgTable('agent_runs', {
  projectId: text('project_id').notNull(), messageId: text('message_id').notNull(),
  personaId: text('persona_id').notNull(), status: text('status').notNull(),
  steps: text('steps').notNull(), sourceImage: text('source_image'), error: text('error'),
+ budgetCredits: integer('budget_credits'), usedCredits: integer('used_credits').notNull().default(0),
+ visualReview: boolean('visual_review').notNull().default(false),
  createdAt: timestamp('created_at',{withTimezone:true}).defaultNow().notNull(),
  updatedAt: timestamp('updated_at',{withTimezone:true}).defaultNow().notNull(),
 });

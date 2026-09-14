@@ -3,7 +3,7 @@ import type { RepairProposal } from '../shared/agentRecovery';
 import { recoveryAdvice } from './agentRecovery';
 import { frontierModel, runFrontierChat } from './frontierModels';
 
-export interface RepairContext { steps: RunStep[]; error: string; hasSourceImage: boolean }
+export interface RepairContext { steps: RunStep[]; error: string; hasSourceImage: boolean; scope?:'step'|'remaining'; withModelCall?: (work:()=>Promise<{text:string;model:string;provider:string}>)=>Promise<{text:string;model:string;provider:string}> }
 export type RepairAnalyzer = (context: RepairContext, model: string) => Promise<RepairProposal>;
 
 // Reference images stay on the generation path. Diagnostics receives text only.
@@ -32,7 +32,7 @@ export async function proposeAgentRepair(
     const key = selected.provider === 'xai'
       ? process.env.XAI_API_KEY || process.env.xai_api_key || process.env.X_AI_API_KEY || ''
       : process.env.Gemini_api_key || process.env.gemini_api_key || process.env.GEMINI_API_KEY || '';
-    return runFrontierChat(model, key, messages, system);
+    return runFrontierChat(model, key, messages, system,fetch,{maxOutputTokens:4096});
   },
 ): Promise<RepairProposal> {
   if (!frontierModel(choice)) throw new Error('Choose an available repair model.');
@@ -54,14 +54,18 @@ export async function proposeAgentRepair(
     failedStep: { number: index + 1, type: step.type, prompt: diagnosticText(step.params.prompt, 20000), hasSourceImage: hasSource },
     error: diagnosticText(context.error, 2000),
     completedSteps: context.steps.slice(0, index).map((s, i) => ({ number: i + 1, type: s.type, prompt: diagnosticText(s.params.prompt, 1000), hasResult: Boolean(s.resultUrl) })),
+    ...(context.scope==='remaining'?{remainingSteps:context.steps.slice(index).map((s,j)=>({index:index+j,type:s.type,prompt:diagnosticText(s.params.prompt,2000),sourceImageFromStepIndex:s.params.sourceImageFromStepIndex}))}:{}),
   };
-  const result = await invoke(choice, [{ role: 'user', content: JSON.stringify(evidence) }], instructions);
+  const scopeInstruction=context.scope==='remaining'?`\nFor a revise action, add a fourth JSON field remainingPrompts: an array of {index,prompt} covering EVERY supplied remaining step in its original order. For review/retry use remainingPrompts: null. You may clarify instructions of pending steps to keep the repaired task coherent. Never change indexes, tools, dependencies or completed work. proposedPrompt must equal the first remaining prompt. Preserve unaffected instructions.`:'';
+  const system = context.scope === 'remaining' ? instructions.replace('exactly three fields', 'four fields').replace("You may clarify only the failed step's prompt", "You may clarify the unfinished steps' prompts") : instructions;
+  const work = () => invoke(choice, [{ role: 'user', content: JSON.stringify(evidence) }], system+scopeInstruction);
+  const result = context.withModelCall ? await context.withModelCall(work) : await work();
   let parsed: any;
   try {
     if (result.text.length > 30000) throw new Error();
     parsed = JSON.parse(result.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''));
   } catch { throw new Error('The repair model returned an unreadable suggestion. You can still revise this step manually.'); }
-  if (!parsed || Array.isArray(parsed) || Object.keys(parsed).sort().join(',') !== 'action,proposedPrompt,reason'
+  if (!parsed || Array.isArray(parsed) || Object.keys(parsed).sort().join(',') !== (context.scope==='remaining'?'action,proposedPrompt,reason,remainingPrompts':'action,proposedPrompt,reason')
       || !['revise', 'retry', 'review'].includes(parsed.action)
       || typeof parsed.reason !== 'string' || !parsed.reason.trim() || parsed.reason.length > 3000)
     throw new Error('The repair suggestion was invalid. No plan changes were made.');
@@ -74,5 +78,9 @@ export async function proposeAgentRepair(
   }
   // Transient failures are handled above; an unknown cause does not justify a blind retry.
   if (parsed.action === 'retry') return { action: 'review', reason: parsed.reason.trim(), proposedPrompt: null, model: result.model, provider: result.provider };
-  return { action: parsed.action, reason: parsed.reason.trim(), proposedPrompt: parsed.proposedPrompt?.trim() ?? null, model: result.model, provider: result.provider };
+  if(context.scope==='remaining'&&parsed.action==='revise'){
+    const patches=parsed.remainingPrompts;
+    if(!Array.isArray(patches)||patches.length!==context.steps.length-index||patches.some((p:any,j:number)=>!p||Object.keys(p).sort().join(',')!=='index,prompt'||p.index!==index+j||typeof p.prompt!=='string'||!p.prompt.trim()||p.prompt.length>20000)||patches[0].prompt.trim()!==parsed.proposedPrompt.trim())throw new Error('The remaining plan repair changed its structure. No changes were applied.');
+  }
+  return { action: parsed.action, reason: parsed.reason.trim(), proposedPrompt: parsed.proposedPrompt?.trim() ?? null, model: result.model, provider: result.provider,...(context.scope==='remaining'&&parsed.action==='revise'?{remainingPrompts:parsed.remainingPrompts.map((p:any)=>({index:p.index,prompt:p.prompt.trim()}))}:{}) };
 }

@@ -20,10 +20,11 @@ function imageSource(steps: RunStep[], i: number, fallback?: string) {
         return p.sourceImage;
     return steps.slice(0, i).reverse().find(s => s.type !== 'generate_video' && s.resultUrl)?.resultUrl || fallback;
 }
-export function registerAgentRuns(app: any, db: any, schedule: (id: string, userId: string, user: any) => void, readPersonasForUser: (id: string) => Promise<any[]>, price?: (model:string,type:'image'|'video')=>Promise<GenerationQuote>, analyzeRepair: RepairAnalyzer = proposeAgentRepair) {
+export function registerAgentRuns(app: any, db: any, schedule: (id: string, userId: string, user: any) => void, readPersonasForUser: (id: string) => Promise<any[]>, price?: (model:string,type:'image'|'video')=>Promise<GenerationQuote>, analyzeRepair: RepairAnalyzer = proposeAgentRepair, supervision: {inspect?:(input:any)=>Promise<any>;analyze?:(run:any,work:()=>Promise<any>,model:string)=>Promise<any>} = {}) {
     const activeAnalysis = new Set<string>();
-    async function advance(id: string, user: any) {
+    async function advance(id: string, user: any): Promise<any> {
         let jobId: string | undefined;
+        let inspection:any;
         const row = await db.transaction(async (tx: any) => {
             const [r] = await tx.select().from(agentRuns).where(and(eq(agentRuns.id, id), eq(agentRuns.userId, user.id))).for('update');
             if (!r || r.status !== 'running')
@@ -37,6 +38,20 @@ export function registerAgentRuns(app: any, db: any, schedule: (id: string, user
                     child = { ...child, request: JSON.parse(child.request || '{}'), result: JSON.parse(child.result || 'null') };
             }
             let action = nextRunAction(steps, child);
+            if(action.kind==='success' && r.visualReview && !['passed','accepted'].includes(steps[action.index].quality?.status||'')){
+                const i=action.index;
+                if(steps[i].quality?.status==='checking'){
+                    if(Date.now()-Date.parse(steps[i].quality!.startedAt||'')<120000)return r;
+                    steps[i].quality={status:'uncertain',summary:'The visual check was interrupted. Review the saved output before continuing.'};
+                    steps[i].status='error';
+                    const [saved]=await tx.update(agentRuns).set({steps:JSON.stringify(steps),status:'failed',error:steps[i].quality!.summary,updatedAt:new Date()}).where(eq(agentRuns.id,id)).returning();return saved;
+                }
+                const token=randomUUID();
+                steps[i].resultUrl=action.url;
+                steps[i].quality={status:'checking',token,startedAt:new Date().toISOString()};
+                inspection={run:r,step:steps[i],index:i,token,outputUrl:action.url,sourceImage:imageSource(steps,i,r.sourceImage)};
+                const [saved]=await tx.update(agentRuns).set({steps:JSON.stringify(steps),updatedAt:new Date()}).where(eq(agentRuns.id,id)).returning();return saved;
+            }
             if (action.kind === 'success') {
                 steps[action.index] = { ...steps[action.index], status: 'success', resultUrl: action.url };
                 action = nextRunAction(steps);
@@ -79,7 +94,7 @@ export function registerAgentRuns(app: any, db: any, schedule: (id: string, user
                         request = noPeople ? { requestMode: 'studio', modelId: p.modelId || 'wavespeed:bytedance/seedream-v5.0-pro', chatPrompt: p.prompt, isChatContext: true, additionalInstructions: p.prompt, aspectRatio: p.aspectRatio || '1:1', identityLock: false, count: 1 } : { type: 'image', persona: { id: r.personaId }, prompt: p.prompt, imageModelId: p.modelId || 'wavespeed:bytedance/seedream-v5.0-pro', aspectRatio: p.aspectRatio || '1:1', strictFidelity: true };
                     }
                     jobId = randomUUID();
-                    await tx.insert(mediaJobs).values({ id: jobId, userId: user.id, personaClientId: r.personaId, kind, status: 'queued', request: JSON.stringify(request), createdAt:new Date(),updatedAt:new Date() });
+                    await tx.insert(mediaJobs).values({ id: jobId, agentRunId:r.id, userId: user.id, personaClientId: r.personaId, kind, status: 'queued', request: JSON.stringify(request), createdAt:new Date(),updatedAt:new Date() });
                     steps[i] = { ...steps[i], status: 'running', jobId };
                 }
                 catch (e) {
@@ -91,6 +106,23 @@ export function registerAgentRuns(app: any, db: any, schedule: (id: string, user
             const [saved] = await tx.update(agentRuns).set({ steps: JSON.stringify(steps), status, error, updatedAt: new Date() }).where(eq(agentRuns.id, id)).returning();
             return saved;
         });
+        if(inspection){
+            let quality:any;
+            try{quality=supervision.inspect?await supervision.inspect(inspection):{status:'uncertain',summary:'Visual review is unavailable. Inspect the saved output.'};}
+            catch(e){quality={status:'uncertain',summary:e instanceof Error?e.message:'Visual review unavailable'};}
+            if(!['passed','failed','uncertain'].includes(quality?.status))quality={status:'uncertain',summary:'The visual checker returned an invalid result.'};
+            const saved=await db.transaction(async(tx:any)=>{
+                const [current]=await tx.select().from(agentRuns).where(and(eq(agentRuns.id,id),eq(agentRuns.userId,user.id))).for('update');
+                if(!current)return current;
+                const steps:RunStep[]=JSON.parse(current.steps),s=steps[inspection.index];
+                if(s?.quality?.token!==inspection.token)return current;
+                s.quality={status:quality.status,summary:String(quality.summary||'Visual review inconclusive').slice(0,3000),checkedAt:new Date().toISOString()};
+                s.status=quality.status==='passed'?'success':'error';
+                s.error=quality.status==='passed'?undefined:`Visual review: ${s.quality.summary}`;
+                const [next]=await tx.update(agentRuns).set({steps:JSON.stringify(steps),status:quality.status==='passed'?current.status:'failed',error:s.error||null,updatedAt:new Date()}).where(eq(agentRuns.id,id)).returning();return next;
+            });
+            return saved?.status==='running' && quality.status==='passed'?advance(id,user):saved;
+        }
         if (jobId)
             schedule(jobId, user.id, user);
         return row;
@@ -108,6 +140,8 @@ export function registerAgentRuns(app: any, db: any, schedule: (id: string, user
         try {
             if (!process.env.CRON_SECRET) return res.status(503).json({error:'Background execution is not configured. No generation was started.'});
             const { projectId, messageId, personaId, sourceImage } = req.body || {};
+            const budgetCredits=req.body?.budgetCredits;
+            if(!Number.isSafeInteger(budgetCredits)||budgetCredits<1||budgetCredits>100000)return res.status(400).json({error:'Review and set a task allowance between 1 and 100,000 credits before starting.'});
             if (![projectId, messageId, personaId].every(x => typeof x === 'string' && x.length > 0 && x.length < 200))
                 return res.status(400).json({ error: 'Project, message and persona are required.' });
             const steps = validateRunSteps(req.body.steps);
@@ -127,7 +161,7 @@ export function registerAgentRuns(app: any, db: any, schedule: (id: string, user
                 const estimate=await quotePlan(steps,price,owner.credits||0,bypassesInternalCredits(owner.email));
                 if(estimate.insufficientCredits)return res.status(402).json({error:`Insufficient credits. The priced steps need an estimated ${estimate.estimatedCredits} credits; your balance is ${estimate.balance}. No generation was started.`});
             }
-            await db.insert(agentRuns).values({ id, userId: req.user.id, projectId, messageId, personaId, steps: JSON.stringify(steps), sourceImage: sourceImage || null, status: 'running' }).onConflictDoNothing();
+            await db.insert(agentRuns).values({ id, userId: req.user.id, projectId, messageId, personaId, steps: JSON.stringify(steps), sourceImage: sourceImage || null, status: 'running',budgetCredits,visualReview:req.body.visualReview!==false }).onConflictDoNothing();
             const row = await advance(id, req.user);
             return res.json({ run: publicRun(row) });
         }
@@ -150,7 +184,13 @@ export function registerAgentRuns(app: any, db: any, schedule: (id: string, user
         if(run.status!=='failed')return res.status(409).json({error:'Only failed plans need recovery'});
         const steps:RunStep[]=JSON.parse(run.steps);
         const index=steps.findIndex(step=>step.status!=='success');
-        res.json({index,error:run.error,advice:recoveryAdvice(run.error||''),prompt:steps[index]?.params.prompt||'',version:run.updatedAt.toISOString()});
+        res.json({index,error:run.error,advice:recoveryAdvice(run.error||''),prompt:steps[index]?.params.prompt||'',version:run.updatedAt.toISOString(),quality:steps[index]?.quality,resultUrl:steps[index]?.resultUrl,remainingSteps:steps.slice(index).map((s,j)=>({index:index+j,prompt:s.params.prompt,type:s.type}))});
+    });
+    app.post('/api/agent-runs/:id/allowance',async(req:any,res:any)=>{
+        const limit=req.body?.budgetCredits;
+        if(!Number.isSafeInteger(limit)||limit<1||limit>100000)return res.status(400).json({error:'Choose an allowance from 1 to 100,000 credits.'});
+        const result=await db.transaction(async(tx:any)=>{const[r]=await tx.select().from(agentRuns).where(and(eq(agentRuns.id,req.params.id),eq(agentRuns.userId,req.user.id))).for('update');if(!r)return null;if(limit<r.usedCredits)throw new Error('The allowance cannot be lower than usage already reserved.');const[saved]=await tx.update(agentRuns).set({budgetCredits:limit,updatedAt:new Date()}).where(eq(agentRuns.id,r.id)).returning();return saved;}).catch((e:any)=>({allowanceError:e.message}));
+        if(!result)return res.status(404).json({error:'Plan not found'});if(result.allowanceError)return res.status(409).json({error:result.allowanceError});return res.json({run:publicRun(result)});
     });
     app.post('/api/agent-runs/:id/repair-proposal', async (req: any, res: any) => {
         const ownerId = req.user.id;
@@ -162,7 +202,8 @@ export function registerAgentRuns(app: any, db: any, schedule: (id: string, user
             const version = run.updatedAt.toISOString();
             if (run.status !== 'failed' || req.body?.version !== version)
                 return res.status(409).json({ error: 'This plan changed. Inspect the failure again before requesting a repair.' });
-            const proposal = await analyzeRepair({ steps: JSON.parse(run.steps), error: run.error || '', hasSourceImage: Boolean(run.sourceImage) }, req.body?.model || 'frontier-gemini-flash');
+            const choice = req.body?.model || 'frontier-gemini-flash';
+            const proposal = await analyzeRepair({ steps: JSON.parse(run.steps), error: run.error || '', hasSourceImage: Boolean(run.sourceImage),scope:req.body?.scope==='remaining'?'remaining':'step', withModelCall: supervision.analyze ? work => supervision.analyze!(run,work,choice) : undefined }, choice);
             const [latest] = await db.select().from(agentRuns).where(and(eq(agentRuns.id, run.id), eq(agentRuns.userId, ownerId)));
             if (!latest || latest.status !== 'failed' || latest.updatedAt.toISOString() !== version)
                 return res.status(409).json({ error: 'This plan changed during analysis. Inspect the failure again.' });
@@ -174,7 +215,7 @@ export function registerAgentRuns(app: any, db: any, schedule: (id: string, user
     app.post('/api/agent-runs/:id/:action', async (req: any, res: any) => {
         try {
             const action = req.params.action;
-            if (!['stop', 'resume', 'retry'].includes(action))
+            if (!['stop', 'resume', 'retry','accept-result'].includes(action))
                 return res.status(400).json({ error: 'Unsupported action' });
             const row = await db.transaction(async (tx: any) => {
                 const [r] = await tx.select().from(agentRuns).where(and(eq(agentRuns.id, req.params.id), eq(agentRuns.userId, req.user.id))).for('update');
@@ -186,6 +227,12 @@ export function registerAgentRuns(app: any, db: any, schedule: (id: string, user
                 if (action === 'resume' && r.status === 'failed')
                     throw new Error('A generation failed. Review it in generation history before retrying; automatic paid retry is disabled.');
                 const changes: any = { status: action === 'stop' ? 'paused' : 'running', updatedAt: new Date() };
+                if(action==='accept-result'){
+                    const steps:RunStep[]=JSON.parse(r.steps),index=steps.findIndex(s=>s.status!=='success'),step=steps[index];
+                    if(r.status!=='failed'||req.body?.version!==r.updatedAt.toISOString()||!step?.resultUrl||!['failed','uncertain'].includes(step.quality?.status||''))throw new Error('Inspect the current visual result before accepting it.');
+                    step.status='success';step.quality={...step.quality!,status:'accepted',summary:'You reviewed and accepted this output.'};delete step.error;
+                    changes.steps=JSON.stringify(steps);changes.error=null;
+                }
                 if (action === 'retry') {
                     if (r.status !== 'failed')
                         throw new Error('Only a failed plan can be retried.');
@@ -193,7 +240,12 @@ export function registerAgentRuns(app: any, db: any, schedule: (id: string, user
                     const index = steps.findIndex(s => s.status !== 'success');
                     if (index < 0)
                         throw new Error('No failed step to retry.');
-                    if(req.body?.prompt!==undefined){
+                    if(req.body?.repairs!==undefined){
+                        if(req.body.version!==r.updatedAt.toISOString())throw new Error('This plan changed. Inspect it again.');
+                        const repairs=req.body.repairs;
+                        if(!Array.isArray(repairs)||!repairs.length||repairs.length>steps.length-index||new Set(repairs.map((x:any)=>x.index)).size!==repairs.length)throw new Error('Invalid remaining plan repair.');
+                        for(const patch of repairs){if(!Number.isInteger(patch.index)||patch.index<index||patch.index>=steps.length||steps[patch.index].status==='success'||typeof patch.prompt!=='string'||!patch.prompt.trim()||patch.prompt.length>20000)throw new Error('Only valid unfinished instructions can be revised.');steps[patch.index].params={...steps[patch.index].params,prompt:patch.prompt.trim()};}
+                    }else if(req.body?.prompt!==undefined){
                         if(req.body.version!==r.updatedAt.toISOString())throw new Error('This plan changed. Inspect the failure again before applying a repair.');
                         if(typeof req.body.prompt!=='string'||!req.body.prompt.trim()||req.body.prompt.length>20000)throw new Error('A valid repair instruction is required.');
                         steps[index].params={...steps[index].params,prompt:req.body.prompt.trim()};

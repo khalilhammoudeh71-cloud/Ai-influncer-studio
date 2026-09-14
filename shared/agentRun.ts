@@ -5,6 +5,7 @@ export type RunStep = {
     status: string;
     resultUrl?: string;
     error?: string;
+    quality?: {status:string;summary?:string;checkedAt?:string;token?:string;startedAt?:string};
 };
 export function supportsBackground(steps: any[]): boolean {
     return Boolean(steps?.length) && steps.every(s => ['generate_image', 'generate_video', 'edit_image'].includes(s.type) && !(s.type === 'edit_image' && ['bg-remover', 'face-swap', 'virtual-tryon'].includes(s.params?.editType)) && !s.params?.sourceVideo && (s.params?.sourceImageFromStepIndex === undefined || steps[s.params.sourceImageFromStepIndex]?.type !== 'generate_video'));

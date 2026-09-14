@@ -61,3 +61,21 @@ test('uncertain diagnosis requests review instead of returning an executable ret
   assert.equal(result.proposedPrompt, null);
   await assert.rejects(proposeAgentRepair(context, 'frontier-grok', async () => { throw new Error('HTTP 503'); }), /503/);
 });
+
+test('remaining-plan repair includes later instructions but cannot alter completed steps or dependencies',async()=>{
+ const expanded={...context,scope:'remaining' as const,steps:[...context.steps,{type:'generate_video',status:'pending',params:{prompt:'Pan around the green cup',sourceImageFromStepIndex:1}}]};
+ const result=await proposeAgentRepair(expanded,'frontier-grok',async(_model,messages)=>{const evidence=JSON.parse(messages[0].content);assert.equal(evidence.remainingSteps[1].prompt,'Pan around the green cup');return{text:JSON.stringify({action:'revise',reason:'Carry the green cup into the video.',proposedPrompt:'Change only the cup color to green.',remainingPrompts:[{index:1,prompt:'Change only the cup color to green.'},{index:2,prompt:'Pan slowly around the resulting green cup; retain the table.'}]}),model:'test',provider:'test'};});
+ assert.equal(result.remainingPrompts?.length,2);
+ await assert.rejects(proposeAgentRepair(expanded,'frontier-grok',reply({action:'revise',reason:'Invalid',proposedPrompt:'Change only the cup color to green.',remainingPrompts:[{index:0,prompt:'Overwrite completed image'},{index:2,prompt:'Video'}]})));
+});
+
+test('analysis allowance is reserved only when an actual model call is needed, and blocks the call when exhausted',async()=>{
+ let reservations=0,calls=0;
+ const withModelCall=async(work:()=>Promise<any>)=>{reservations++;throw new Error('Task allowance reached');};
+ const invoke=async()=>{calls++;return {text:'{}',model:'test',provider:'test'};};
+ await proposeAgentRepair({...context,error:'Insufficient credits',withModelCall},'frontier-grok',invoke);
+ await proposeAgentRepair({...context,steps:[context.steps[1]],withModelCall},'frontier-grok',invoke);
+ assert.equal(reservations,0);assert.equal(calls,0);
+ await assert.rejects(proposeAgentRepair({...context,withModelCall},'frontier-grok',invoke),/Task allowance reached/);
+ assert.equal(reservations,1);assert.equal(calls,0);
+});

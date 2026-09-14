@@ -4,6 +4,7 @@ export interface RepairProposal {
   proposedPrompt: string | null;
   model?: string;
   provider?: string;
+  remainingPrompts?:{index:number;prompt:string}[];
 }
 
 export interface RecoveryDetail {
@@ -12,4 +13,7 @@ export interface RecoveryDetail {
   advice: { kind: string; retry: boolean; message: string };
   prompt: string;
   version: string;
+  quality?:{status:string;summary?:string};
+  resultUrl?:string;
+  remainingSteps?:{index:number;prompt:string;type:string}[];
 }

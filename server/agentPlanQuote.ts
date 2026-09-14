@@ -1,12 +1,6 @@
-import type { RunStep } from '../shared/agentRun';
-import type { GenerationQuote } from './creditPricing';
-export async function quotePlan(steps:RunStep[], price:(model:string,type:'image'|'video')=>Promise<GenerationQuote>, balance:number, creator:boolean){
- const items=await Promise.all(steps.map(async(step,index)=>{
-  const model=step.params.modelId||(step.type==='generate_video'?'wavespeed-i2v:alibaba/wan-3.0/image-to-video':'wavespeed:bytedance/seedream-v5.0-pro');
-  if(step.type==='edit_image')return {index,model,credits:null,source:'Edit cost unavailable'};
-  const q=await price(model,step.type==='generate_video'?'video':'image');
-  return {index,model,credits:creator?0:q.credits,source:q.quoteSource};
- }));
- const estimatedCredits=items.reduce((sum,item)=>sum+(item.credits??0),0);
- return {steps:items,estimatedCredits,complete:items.every(item=>item.credits!==null),balance,insufficientCredits:!creator&&estimatedCredits>balance,providerChargesApply:creator};
+import type{RunStep}from'../shared/agentRun';import type{GenerationQuote}from'./creditPricing';
+export async function quotePlan(steps:RunStep[],price:(model:string,type:'image'|'video')=>Promise<GenerationQuote>,balance:number,creator:boolean){
+ const items=await Promise.all(steps.map(async(step,index)=>{const model=step.params.modelId||(step.type==='generate_video'?'wavespeed-i2v:alibaba/wan-3.0/image-to-video':'wavespeed:bytedance/seedream-v5.0-pro');const q=await price(model,step.type==='generate_video'?'video':'image');const reviewCredits=step.type==='generate_video'?0:1;return{index,model,credits:creator?0:q.credits+reviewCredits,usageCredits:q.credits+reviewCredits,reviewCredits,source:q.quoteSource};}));
+ const estimatedCredits=items.reduce((s,i)=>s+i.credits,0),estimatedUsage=items.reduce((s,i)=>s+i.usageCredits,0);
+ return{steps:items,estimatedCredits,estimatedUsage,recommendedLimit:Math.max(10,estimatedUsage*2+3),complete:true,balance,insufficientCredits:!creator&&estimatedCredits>balance,providerChargesApply:creator};
 }
