@@ -1,6 +1,7 @@
 import { withGenerationContext, activeGenerationContext } from './generationContext';
 import { registerAgentRuns } from './agentRuns';
 import { inspectAgentImage } from './agentVisual';
+import { hydratePersonaReferences, resolveOwnedImageReference } from './personaReferenceResolver';
 import { frontierModel } from './frontierModels';
 import { mediaJobAttemptWhere } from './mediaJobLease';
 import { runProviderCandidates } from './providerFailover';
@@ -1734,6 +1735,7 @@ async function convertHeicToJpegIfNecessary(dataUrl: string): Promise<string> {
 async function resolveImageToDataUrl(input: string): Promise<string> {
   let resolved = '';
   if (!input) return '';
+  if(input.startsWith('supabase-media://'))throw new Error('The private reference image must be resolved for this account before generation.');
   if (input.startsWith('data:')) {
     resolved = input;
   } else if (input.startsWith('/uploads/') || input.startsWith('uploads/') || input.startsWith('/')) {
@@ -6299,11 +6301,11 @@ const personaMediaHandler = async (req: AuthenticatedRequest, res: any) => {
         ownerPersonaId: creatorPersona.id,
       });
     }
-    const participants = resolveMediaParticipants(rawPrompt, activePersona, savedPersonas, creatorPersona);
+    const participants = await Promise.all(resolveMediaParticipants(rawPrompt, activePersona, savedPersonas, creatorPersona).map(persona=>hydratePersonaReferences(persona,req.user.id)));
     const participantNames = participants.map(persona => persona.name).filter(Boolean);
     const prompt = composeMultiPersonaPrompt(rawPrompt, participants);
 
-    const primaryReference = referenceImage || getPersonaPrimaryReference(participants[0]);
+    const primaryReference = await resolveOwnedImageReference(referenceImage || getPersonaPrimaryReference(participants[0]),req.user.id);
     const participantReferences = participants
       .slice(1)
       .map(getPersonaPrimaryReference)
@@ -6396,7 +6398,7 @@ const personaMediaHandler = async (req: AuthenticatedRequest, res: any) => {
       });
     }
 
-    let videoSourceImage = primaryReference;
+    let videoSourceImage:string|undefined = primaryReference;
     let keyframeQuality: MediaQualityReport | null = null;
     let keyframeQualityRetried = false;
     if (participants.length > 1) {
@@ -8730,7 +8732,7 @@ const advanceAgentRuns = registerAgentRuns(app, db, scheduleMediaJobExecution, r
       const saved=await readPersonasForUser(run.userId),active=saved.find(p=>p.id===run.personaId);
       if(!active)return{status:'uncertain',summary:'The saved persona is unavailable for visual review.'};
       const creator=resolveCreatorPersona(saved,await readCreatorProfileForUser(run.userId));
-      const participants=resolveMediaParticipants(step.params.prompt,active,saved,creator);
+      const participants=await Promise.all(resolveMediaParticipants(step.params.prompt,active,saved,creator).map(persona=>hydratePersonaReferences(persona,run.userId)));
       references=participants.map(p=>({name:p.name||'Saved persona',image:getPersonaPrimaryReference(p)||''}));
       if(references.some(r=>!r.image))return{status:'uncertain',summary:'A saved identity reference is missing. Review the output before continuing.'};
     }
