@@ -3674,9 +3674,9 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                                 {step.resultUrl && (
                                   <div className="mt-2 rounded-xl overflow-hidden border border-white/10 bg-black/50">
                                     {step.type === 'generate_voice' ? <audio src={step.resultUrl} controls className="w-full" /> : step.type === 'generate_3d' ? <a href={step.resultUrl} target="_blank" rel="noreferrer">Open 3D asset</a> : step.type.includes('video') || step.type === 'generate_talking_head' || step.type === 'storyboard_sequence' ? (
-                                      <video src={step.resultUrl} controls className="w-full max-h-64 object-cover" />
+                                      <video src={step.resultUrl} controls className="w-full max-h-64 object-contain" />
                                     ) : (
-                                      <img src={step.resultUrl} alt="Result" className="w-full max-h-64 object-cover" />
+                                      <img src={step.resultUrl} alt="Result" className="w-full max-h-64 object-contain" />
                                     )}
                                   </div>
                                 )}
