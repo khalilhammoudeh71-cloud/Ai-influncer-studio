@@ -1,3 +1,4 @@
+import { recognitionLanguage } from '../../shared/personaLanguage';
 import { createPortal } from 'react-dom';
 import { uniqueModels } from '../../shared/modelRouting';
 import { buildPersonalityInstructions } from '../../shared/personality';
@@ -1480,7 +1481,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           vadThreshold: 0.42,
           minSpeechDurationMs: 80,
           minSilenceDurationMs: 140,
-          languageCode: 'en',
+          languageCode: recognitionLanguage(activePersona).scribe,
           keyterms: buildVoiceKeyterms(voiceAccuracyProfileRef.current, [
             ...personas.map(persona => persona.name),
             activePersona?.name,
@@ -1738,7 +1739,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       const rec = new SpeechRecognition();
       rec.continuous = true;
       rec.interimResults = true;
-      rec.lang = 'en-US';
+      rec.lang = recognitionLanguage(activePersona).browser;
       rec.maxAlternatives = 1;
       recognitionStartIndexRef.current = 0;
 
@@ -3085,7 +3086,9 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       `Hey—good to hear you.`
     ];
 
-    const fallbackPool = isRecentContinuation ? continuationPool : (isAdultOrFlirty ? intimatePools : luxuryPools);
+    const fallbackPool = recognitionLanguage(persona).scribe === 'ar'
+      ? (isRecentContinuation ? ['أهلاً، رجعنا. وين كنا؟'] : ['أهلاً، كيفك؟'])
+      : isRecentContinuation ? continuationPool : (isAdultOrFlirty ? intimatePools : luxuryPools);
     const fallbackGreeting = fallbackPool[Math.floor(Math.random() * fallbackPool.length)];
 
     try {

@@ -1,3 +1,4 @@
+import { ARABIC_DIALECTS, type ArabicDialect } from '../../shared/personaLanguage';
 import React, { useEffect, useRef, useState } from 'react';
 import { PersonalitySettings, normalizePersonality, TRAIT_BEHAVIORS, traitsFor } from '../../shared/personality';
 import { Persona } from '../types';
@@ -32,6 +33,11 @@ export default function PersonalityControls({ persona, onChange }: Props) {
    finally{if(current===revision.current)setBusy(null);}
  };
  return <div className="space-y-5">
+  <section aria-label="Conversation language" className="space-y-3 rounded-xl border border-white/15 p-4">
+   <label className="block text-sm text-white">Call language / لغة المكالمة<select aria-label="Call language" value={settings.language} onChange={e=>onChange({...settings,language:e.target.value as 'en'|'ar'})} className="luxury-input block w-full mt-2 p-3"><option value="en">English</option><option value="ar">العربية</option></select></label>
+   {settings.language==='ar' && <label className="block text-sm text-white">Arabic dialect / اللهجة<select aria-label="Arabic dialect" value={settings.dialect} onChange={e=>onChange({...settings,dialect:e.target.value as ArabicDialect})} className="luxury-input block w-full mt-2 p-3">{Object.entries(ARABIC_DIALECTS).map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label>}
+   <p className="text-xs text-slate-400">Saved for this persona’s conversations and calls. Keeps the existing voice. Accent quality depends on the voice; preview it below. Save changes and start a new call to apply the listening language.</p>
+  </section>
   {traits.length>0 && <div className="divide-y divide-white/10">
    <p className="text-xs text-slate-400 pb-3">Choose a primary trait to lead the personality. Supporting traits add nuance; three or four usually give a clearer result.</p>
    {traits.map(trait=><div key={trait} className="py-3 flex flex-col sm:flex-row sm:items-center gap-3">

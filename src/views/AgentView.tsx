@@ -1,3 +1,4 @@
+import { recognitionLanguage } from '../../shared/personaLanguage';
 import { AgentCampaignCard } from '../components/AgentCampaignCard';
 import { validateCampaign, type AgentCampaign } from '../../shared/agentCampaign';
 import { readAgentChatResponse } from '../utils/agentChatResponse';
@@ -814,7 +815,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
       const rec = new SpeechRecognition();
       rec.continuous = false;
       rec.interimResults = false;
-      rec.lang = 'en-US';
+      rec.lang = recognitionLanguage(personas.find(p => p.id === effectiveSelectedPersonaId) || {}).browser;
       
       rec.onstart = () => {
         setIsListening(true);
@@ -1478,7 +1479,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
       const rec = new SpeechRecognition();
       rec.continuous = true;
       rec.interimResults = true;
-      rec.lang = 'en-US';
+      rec.lang = recognitionLanguage(personas.find(p => p.id === effectiveSelectedPersonaId) || {}).browser;
 
       rec.onresult = (e: any) => {
         if (liveVoiceRecRef.current !== rec) return;

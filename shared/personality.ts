@@ -1,5 +1,6 @@
+import {normalizeLanguage, languageInstructions, type ArabicDialect} from './personaLanguage';
 export type TraitIntensity = 'subtle' | 'balanced' | 'strong';
-export type PersonalitySettings = { primary?: string; intensities?: Record<string, TraitIntensity>; voiceEnabled?: boolean };
+export type PersonalitySettings = { primary?: string; intensities?: Record<string, TraitIntensity>; voiceEnabled?: boolean; language?: 'en'|'ar'; dialect?: ArabicDialect };
 type Profile = { personalityTraits?: unknown; personalitySettings?: PersonalitySettings | any };
 // Concrete directions are shared by the editor, text generation and speech routes.
 export const TRAIT_BEHAVIORS: Record<string, string> = Object.assign(Object.create(null), {
@@ -36,7 +37,7 @@ export function traitsFor(p: Profile): string[] {
 }
 export function normalizePersonality(p: Profile): Required<PersonalitySettings> {
  const traits=traitsFor(p), s=p?.personalitySettings || {};
- return {primary:traits.includes(s.primary)?s.primary:traits[0] || '', intensities:Object.fromEntries(traits.map(t=>[t,['subtle','balanced','strong'].includes(s.intensities?.[t])?s.intensities[t]:'balanced'])),voiceEnabled:s.voiceEnabled === true};
+ return {...normalizeLanguage(p),primary:traits.includes(s.primary)?s.primary:traits[0] || '', intensities:Object.fromEntries(traits.map(t=>[t,['subtle','balanced','strong'].includes(s.intensities?.[t])?s.intensities[t]:'balanced'])),voiceEnabled:s.voiceEnabled === true};
 }
 export function encodePersonality(p: Profile): string {
  return JSON.stringify({version:1,traits:traitsFor(p),settings:normalizePersonality(p)});
@@ -48,8 +49,8 @@ export function decodePersonality(raw: string | null) {
 }
 export function buildPersonalityInstructions(p: Profile): string {
  const s=normalizePersonality(p), traits=traitsFor(p);
- if(!traits.length)return '';
- return ['Personality performance directions:',`Primary trait: ${s.primary}. Let this lead when styles conflict; supporting traits are accents.`,
+ if(!traits.length)return languageInstructions(p);
+ return [languageInstructions(p),'Personality performance directions:',`Primary trait: ${s.primary}. Let this lead when styles conflict; supporting traits are accents.`,
  ...traits.map(t=>`${t} (${s.intensities[t]}): ${TRAIT_BEHAVIORS[t] || `Express ${t} naturally through wording and conversational choices.`}`),
  'Intensity: subtle = occasional light touches; balanced = a noticeable recurring style; strong = a distinctive style in most suitable replies. Do not name your traits or repeat catchphrases. Match the actual question, seriousness and user boundaries; accuracy comes first. These directions replace generic default personality adjectives, not factual or safety instructions.'].join('\n');
 }

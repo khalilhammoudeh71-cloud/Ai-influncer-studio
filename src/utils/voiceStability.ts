@@ -49,7 +49,7 @@ export interface VoiceTurnCommitOptions {
   hasTerminalPunctuation?: boolean;
 }
 
-const INTERRUPT_PREFIX = /^(?:stop|wait|hold on|pause|no|actually|cancel|never mind|nevermind)\b/i;
+const INTERRUPT_PREFIX = /^(?:(?:استنى|استني|لحظة|وقف|توقف|مهلا)(?=\s|$)|(?:stop|wait|hold on|pause|no|actually|cancel|never mind|nevermind)\b)/i;
 
 const OPEN_ENDED_TURN_ENDING = /(?:\b(?:and|or|but|so|because|then|when|if|that|which|who|where|while|although|unless|with|without|for|about|to|the|a|an|my|your|our|their|this|these|those|i|we|you|he|she|they|it|is|are|was|were|do|does|did|can|could|would|should|will|just|like|um|uh)\b|[,;:\-\u2014\u2013])$/i;
 
@@ -64,7 +64,8 @@ const ECHO_STOP_WORDS = new Set([
 export function normalizeVoiceWords(value: string): string[] {
   return value
     .toLowerCase()
-    .replace(/[^a-z0-9'\s]/g, ' ')
+    .replace(/[\u0610-\u061a\u064b-\u065f\u0670\u06d6-\u06ed]/g, '')
+    .replace(/[^\p{L}\p{N}'\s]/gu, ' ')
     .split(/\s+/)
     .filter(Boolean);
 }
@@ -148,9 +149,9 @@ export function getVoiceTurnCommitDelay(
   if (!clean) return 0;
   if (INTERRUPT_PREFIX.test(clean)) return 90;
 
-  const terminalPunctuation = options.hasTerminalPunctuation ?? /[.!?]["')\]]?$/.test(clean);
+  const terminalPunctuation = options.hasTerminalPunctuation ?? /[.!?؟]["')\]]?$/.test(clean);
   if (terminalPunctuation) return options.source === 'realtime' ? 90 : 160;
-  if (OPEN_ENDED_TURN_ENDING.test(clean) || OPEN_ENDED_PHRASE.test(clean)) {
+  if (/(?:^|\s)(?:بس|لأنه|لأنو|يعني|أو|إذا|إنه|انو|بدي|بدّي|مع|عن|بدون|مثلا|مثلاً)$/.test(clean) || OPEN_ENDED_TURN_ENDING.test(clean) || OPEN_ENDED_PHRASE.test(clean)) {
     return options.source === 'realtime' ? 700 : 900;
   }
 
