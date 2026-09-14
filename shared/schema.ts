@@ -162,3 +162,13 @@ export const generationCosts = pgTable("generation_costs", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
 });
+
+// Server-only approved plans. The API scopes every read/write to the owner.
+export const agentRuns = pgTable('agent_runs', {
+ id: text('id').primaryKey(), userId: text('user_id').notNull(),
+ projectId: text('project_id').notNull(), messageId: text('message_id').notNull(),
+ personaId: text('persona_id').notNull(), status: text('status').notNull(),
+ steps: text('steps').notNull(), sourceImage: text('source_image'), error: text('error'),
+ createdAt: timestamp('created_at',{withTimezone:true}).defaultNow().notNull(),
+ updatedAt: timestamp('updated_at',{withTimezone:true}).defaultNow().notNull(),
+});

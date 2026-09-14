@@ -1,3 +1,4 @@
+import { supportsBackground } from '../../shared/agentRun';
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -95,6 +96,8 @@ interface CollaborationMsg {
 }
 
 interface Message {
+  backgroundRunId?: string;
+  backgroundStatus?: string;
   id: string;
   role: 'user' | 'model';
   content: string;
@@ -499,6 +502,35 @@ export default function AgentView(props: AgentViewProps) {
 }
 function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelectedPersonaId, onSelectPersona, nav, projectId, projects, onProjectChange, onCreateProject }: AgentViewProps & {projectId:string;projects:AgentProject[];onProjectChange:(id:string)=>void;onCreateProject:(name:string)=>void}) {
   const keys = projectKeys(projectId);
+  const [backgroundError,setBackgroundError]=useState('');
+  const syncBackgroundRun = (run:any) => setMessages(prev=>{
+    const index=prev.findIndex(m=>m.id===run.messageId);
+    const original:Message=index>=0?prev[index]:{id:run.messageId,role:'model' as const,content:'Saved background plan'};
+    const updated:Message={...original,backgroundRunId:run.id,backgroundStatus:run.status,
+      isExecuting:run.status==='running',status:run.status==='succeeded'?'done':run.status==='running'?'executing':'normal',
+      execSteps:run.steps.map((step:any,i:number)=>({...original.execSteps?.[i],...step})),
+      execLogs:run.error?[run.error]:[run.status==='running'?'Saved on the server. You can close this page.':run.status==='paused'?'Paused before the next step. The current generation may still finish.':run.status==='succeeded'?'All steps completed. Assets are saved in Library.':'Plan needs attention.'],
+    };
+    if(index<0)return [...prev,updated];
+    if(JSON.stringify(original)===JSON.stringify(updated))return prev;
+    return prev.map((m,i)=>i===index?updated:m);
+  });
+  useEffect(()=>{
+    let disposed=false;
+    const refresh=async()=>{
+      try{
+        const res=await authFetch(`/api/agent-runs?projectId=${encodeURIComponent(projectId)}`);
+        const data=await res.json();if(!res.ok)throw new Error(data.error||'Background status unavailable');
+        if(!disposed){setBackgroundError('');for(const run of data.runs||[])syncBackgroundRun(run);}
+      }catch(e){if(!disposed)setBackgroundError(e instanceof Error?e.message:'Background status unavailable');}
+    };
+    void refresh();const timer=setInterval(refresh,5000);
+    return()=>{disposed=true;clearInterval(timer);};
+  },[projectId]);
+  const backgroundAction=async(id:string,action:string)=>{
+    try{const res=await authFetch(`/api/agent-runs/${encodeURIComponent(id)}/${action}`,{method:'POST'});const data=await res.json();if(!res.ok)throw new Error(data.error);syncBackgroundRun(data.run);}catch(e){toast.error(e instanceof Error?e.message:'Could not update plan');}
+  };
+
   const [projectName,setProjectName] = useState('');
   const [historySaving,setHistorySaving] = useState(false);
   const [historySaveFailed,setHistorySaveFailed] = useState(false);
@@ -2295,6 +2327,17 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
   const runPipeline = async (messageId: string, directMsg?: Message) => {
     const targetMsg = directMsg || messages.find(m => m.id === messageId);
     if (!targetMsg || !targetMsg.execSteps || targetMsg.isExecuting || runningPlans.current.has(messageId)) return;
+    if(supportsBackground(targetMsg.execSteps) && !targetMsg.execSteps.some(s=>['success','done'].includes(s.status))){
+      runningPlans.current.add(messageId);
+      try{
+        const source=previousImage(messages)||[...messages].reverse().flatMap(m=>m.attachments||[]).find(a=>a.mimeType.startsWith('image/'))?.dataUrl;
+        const response=await authFetch('/api/agent-runs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({projectId,messageId,personaId:effectiveSelectedPersonaId,steps:targetMsg.execSteps,sourceImage:source})});
+        const data=await response.json();if(!response.ok)throw new Error(data.error||'Could not save background plan');
+        syncBackgroundRun(data.run);toast.success('Plan saved. It can continue after you close this page.');
+      }catch(e){toast.error(e instanceof Error?e.message:'Could not start background plan');}
+      finally{runningPlans.current.delete(messageId);}
+      return;
+    }
     runningPlans.current.add(messageId);
     stoppedPlans.current.delete(messageId);
 
@@ -3075,14 +3118,14 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
 
           <div className="flex flex-wrap items-center gap-2">
             <label className="text-xs text-zinc-400">Project
-              <select aria-label="Super Agent project" disabled={isSending || isLiveVoiceCallActive || isStudioLoading || isCloningVoice || messages.some(m=>m.isExecuting || m.execSteps?.some(s=>s.isActionLoading)) || historySaving || historySaveFailed} value={projectId} onChange={e=>onProjectChange(e.target.value)} className="ml-2 max-w-48 rounded-lg border border-white/15 bg-zinc-900 p-2 text-sm text-zinc-100">
+              <select aria-label="Super Agent project" disabled={isSending || isLiveVoiceCallActive || isStudioLoading || isCloningVoice || messages.some(m=>(m.isExecuting && !m.backgroundRunId) || m.execSteps?.some(s=>s.isActionLoading)) || historySaving || historySaveFailed} value={projectId} onChange={e=>onProjectChange(e.target.value)} className="ml-2 max-w-48 rounded-lg border border-white/15 bg-zinc-900 p-2 text-sm text-zinc-100">
                 {projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </label>
             <details className="relative text-xs text-zinc-300"><summary className="cursor-pointer">New project</summary>
               <form onSubmit={e=>{e.preventDefault();onCreateProject(projectName);}} className="absolute top-8 left-0 z-50 w-64 rounded-xl border border-white/15 bg-zinc-900 p-3 shadow-xl">
                 <input aria-label="New project name" value={projectName} onChange={e=>setProjectName(e.target.value)} maxLength={80} placeholder="Campaign name" className="w-full rounded-lg bg-black/30 p-2" />
-                <button disabled={!projectName.trim() || isSending || isLiveVoiceCallActive || isStudioLoading || isCloningVoice || messages.some(m=>m.isExecuting || m.execSteps?.some(s=>s.isActionLoading)) || historySaving || historySaveFailed} className="mt-2 rounded-lg bg-[#E7C477] px-3 py-2 text-black disabled:opacity-40">Create project</button>
+                <button disabled={!projectName.trim() || isSending || isLiveVoiceCallActive || isStudioLoading || isCloningVoice || messages.some(m=>(m.isExecuting && !m.backgroundRunId) || m.execSteps?.some(s=>s.isActionLoading)) || historySaving || historySaveFailed} className="mt-2 rounded-lg bg-[#E7C477] px-3 py-2 text-black disabled:opacity-40">Create project</button>
               </form>
             </details>
             <span role="status" className="text-xs text-zinc-400">{historySaveFailed ? 'History not saved' : historySaving ? 'Saving history…' : ''}</span>
@@ -3622,7 +3665,13 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                               </div>
                             ))}
                           </div>
-                          {msg.isExecuting && <button type="button" onClick={() => {stoppedPlans.current.add(msg.id); toast('Stopping after the current step.');}} className="text-xs text-zinc-300 underline">Stop after current step</button>}
+                          {msg.isExecuting && <button type="button" onClick={() => {if(msg.backgroundRunId){void backgroundAction(msg.backgroundRunId,'stop');}else{stoppedPlans.current.add(msg.id); toast('Stopping after the current step.');}}} className="text-xs text-zinc-300 underline">Stop after current step</button>}
+                          {msg.backgroundRunId && <p role="status" className="text-sm text-zinc-300">{msg.backgroundStatus==='running'?'Running in background — you can close this page':msg.backgroundStatus==='paused'?'Paused before the next step':msg.backgroundStatus==='succeeded'?'Completed and saved in Library':'Needs attention'} · {msg.execSteps?.filter(s=>s.status==='success').length || 0} of {msg.execSteps?.length || 0} steps complete</p>}
+                          {msg.backgroundStatus==='failed' && <p className="text-sm text-amber-200">{msg.execLogs?.[0]}</p>}
+                          {msg.backgroundStatus==='failed' && <button type="button" onClick={()=>void backgroundAction(msg.backgroundRunId!,'retry')} className="text-sm text-[#E7C477] underline">Retry failed step (may charge again)</button>}
+                          {msg.backgroundStatus==='paused' && <button type="button" onClick={()=>void backgroundAction(msg.backgroundRunId!,'resume')} className="text-sm text-[#E7C477] underline">Resume saved plan</button>}
+                          {backgroundError && msg.backgroundRunId && <p role="status" className="text-sm text-amber-200">{backgroundError}. Your saved plan may still be running.</p>}
+                          {!msg.backgroundRunId && msg.execSteps && <p className="text-xs text-zinc-400">{supportsBackground(msg.execSteps)?'Runs in the background after approval.':'Keep this page open while this plan runs.'}</p>}
                           {msg.status === 'clarifying' && !msg.isExecuting && (
                             <button
                               type="button"

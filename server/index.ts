@@ -1,3 +1,4 @@
+import { registerAgentRuns } from './agentRuns';
 import { mediaJobAttemptWhere } from './mediaJobLease';
 import { runProviderCandidates } from './providerFailover';
 import { equivalentRoutes } from '../shared/modelRouting';
@@ -8693,6 +8694,8 @@ app.get('/api/media-jobs', async (req: AuthenticatedRequest, res) => {
 
 // Vercel Cron recovery path. Immediate requests use waitUntil; this worker
 // resumes queued or interrupted jobs if an individual function instance ends.
+const advanceAgentRuns = registerAgentRuns(app, db, scheduleMediaJobExecution, readPersonasForUser);
+
 app.get('/api/media-jobs/worker', async (req, res) => {
   if (!db) return res.status(503).json({ error: 'Media job storage is unavailable' });
   const cronSecret = process.env.CRON_SECRET;
@@ -8701,6 +8704,7 @@ app.get('/api/media-jobs/worker', async (req, res) => {
     return res.status(401).json({ error: 'Unauthorized worker request' });
   }
 
+  await advanceAgentRuns();
   const staleBefore = new Date(Date.now() - 90_000);
   const recoverable = await db.select().from(mediaJobs).where(and(
     eq(mediaJobs.cancelRequested, false),
@@ -9327,6 +9331,15 @@ async function pushSchema() {
       );
       ALTER TABLE planned_posts ADD COLUMN IF NOT EXISTS user_id TEXT;
 
+      CREATE TABLE IF NOT EXISTS agent_runs (
+        id TEXT PRIMARY KEY, user_id TEXT NOT NULL, project_id TEXT NOT NULL,
+        message_id TEXT NOT NULL, persona_id TEXT NOT NULL, status TEXT NOT NULL,
+        steps TEXT NOT NULL, source_image TEXT, error TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      ALTER TABLE agent_runs ENABLE ROW LEVEL SECURITY;
+      CREATE INDEX IF NOT EXISTS agent_runs_worker ON agent_runs(status, updated_at);
+      CREATE INDEX IF NOT EXISTS agent_runs_owner ON agent_runs(user_id, project_id);
       CREATE TABLE IF NOT EXISTS media_jobs (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
