@@ -114,6 +114,16 @@ export function registerAgentRuns(app: any, db: any, schedule: (id: string, user
             if (!personas.some((p: any) => p.id === personaId))
                 return res.status(400).json({ error: 'Choose a saved persona first.' });
             const id = createHash('sha256').update(JSON.stringify([req.user.id, projectId, messageId])).digest('hex');
+            const [existing] = await db.select({id:agentRuns.id}).from(agentRuns).where(and(eq(agentRuns.id,id),eq(agentRuns.userId,req.user.id)));
+            // Repeated approval retrieves the same run without requiring credits
+            // already consumed by it. New runs always use server-owned balance.
+            if (!existing) {
+                if(!price)return res.status(503).json({error:'Pricing unavailable. No generation was started.'});
+                const [owner]=await db.select({email:users.email,credits:users.credits}).from(users).where(eq(users.id,req.user.id));
+                if(!owner)return res.status(404).json({error:'Account not found'});
+                const estimate=await quotePlan(steps,price,owner.credits||0,bypassesInternalCredits(owner.email));
+                if(estimate.insufficientCredits)return res.status(402).json({error:`Insufficient credits. The priced steps need an estimated ${estimate.estimatedCredits} credits; your balance is ${estimate.balance}. No generation was started.`});
+            }
             await db.insert(agentRuns).values({ id, userId: req.user.id, projectId, messageId, personaId, steps: JSON.stringify(steps), sourceImage: sourceImage || null, status: 'running' }).onConflictDoNothing();
             const row = await advance(id, req.user);
             return res.json({ run: publicRun(row) });

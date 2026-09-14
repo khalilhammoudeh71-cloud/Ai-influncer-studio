@@ -24,11 +24,17 @@ test('approved plan survives reconnect, advances once, pauses/resumes and isolat
         assert.equal(estimate.insufficientCredits,true);
         assert.equal(estimate.complete,false);
         assert.equal((await db.select().from(mediaJobs)).length,0,'quoting never starts a generation');
+        const denied = await call('POST /api/agent-runs', body);
+        assert.equal(denied.code,402);
+        assert.equal((await db.select().from(agentRuns)).length,0,'insufficient credit must not create a plan');
+        assert.equal(scheduled.length,0,'insufficient credit must not schedule a job');
+        await pg.exec("UPDATE users SET credits=10 WHERE id='owner'");
         const first = await call('POST /api/agent-runs', body);
         assert.equal(first.code, 200);
         const precision=await pg.query('SELECT (extract(microseconds from updated_at)::bigint % 1000) AS remainder FROM media_jobs');
         assert.equal(Number(precision.rows[0].remainder),0,'worker claim timestamps must round-trip through JavaScript');
         await pg.exec("UPDATE media_jobs SET updated_at = '2026-09-14 14:30:09.684752+00'");
+        await pg.exec("UPDATE users SET credits=0 WHERE id='owner'");
         const second = await call('POST /api/agent-runs', body);
         const recoveredPrecision=await pg.query('SELECT (extract(microseconds from updated_at)::bigint % 1000) AS remainder FROM media_jobs');
         assert.equal(Number(recoveredPrecision.rows[0].remainder),0,'legacy queued timestamp must become claimable');
