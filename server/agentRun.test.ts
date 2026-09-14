@@ -33,3 +33,7 @@ test('an edit returning its source cannot advance the plan', () => {
 test('source-based image plans use the edit path instead of discarding the source',()=>{
  assert.equal(validateRunSteps([{type:'generate_image',params:{prompt:'Make the cup blue',sourceImage:'previous_result'}}])[0].type,'edit_image');
 });
+test('custom edit labels remain eligible while browser-only image tools do not',()=>{
+ assert.equal(validateRunSteps([{type:'edit_image',params:{prompt:'Make it green',editType:'recolor',sourceImage:'previous_result'}}])[0].type,'edit_image');
+ assert.throws(()=>validateRunSteps([{type:'edit_image',params:{prompt:'Swap face',editType:'face-swap'}}]));
+});

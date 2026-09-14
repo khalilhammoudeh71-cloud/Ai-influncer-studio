@@ -7,7 +7,7 @@ export type RunStep = {
     error?: string;
 };
 export function supportsBackground(steps: any[]): boolean {
-    return Boolean(steps?.length) && steps.every(s => ['generate_image', 'generate_video', 'edit_image'].includes(s.type) && !(s.type === 'edit_image' && s.params?.editType && !['custom edit', 'upscale'].includes(s.params.editType)) && !s.params?.sourceVideo && (s.params?.sourceImageFromStepIndex === undefined || steps[s.params.sourceImageFromStepIndex]?.type !== 'generate_video'));
+    return Boolean(steps?.length) && steps.every(s => ['generate_image', 'generate_video', 'edit_image'].includes(s.type) && !(s.type === 'edit_image' && ['bg-remover', 'face-swap', 'virtual-tryon'].includes(s.params?.editType)) && !s.params?.sourceVideo && (s.params?.sourceImageFromStepIndex === undefined || steps[s.params.sourceImageFromStepIndex]?.type !== 'generate_video'));
 }
 export function validateRunSteps(steps: any): RunStep[] {
     if (!Array.isArray(steps) || !supportsBackground(steps) || steps.length > 20)
