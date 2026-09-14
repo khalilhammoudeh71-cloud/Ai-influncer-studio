@@ -1,3 +1,4 @@
+import { frontierModel, runFrontierChat } from './frontierModels';
 import { workspaceWriteRevision } from './workspaceRevision';
 import { agentIdentityContext } from './agentIdentity';
 import { researchSources } from './agentResearch';
@@ -3961,6 +3962,17 @@ Do not wrap your response in markdown code blocks or HTML tags. Return ONLY the 
       completionTokens?: number;
       costUsd?: number;
     } | null = null;
+
+    if (frontierModel(chatLlmModel)) {
+      try {
+        const key = frontierModel(chatLlmModel)!.provider === 'xai' ? XAI_KEY : (process.env.Gemini_api_key || process.env.gemini_api_key || process.env.GEMINI_API_KEY || '');
+        const result = await runFrontierChat(chatLlmModel,key,messages,systemInstruction);
+        text=result.text;
+        superAgentMode={provider:result.provider,model:result.model,effort:'smart',research:Boolean(sources.length),toolRounds:0};
+      } catch(e) {
+        return res.status(502).json({error:'selected_model_unavailable',text:e instanceof Error?e.message:'Selected model unavailable',status:'normal',suggestedSteps:[]});
+      }
+    }
 
     // Support Ollama Local Engine (100% Free / Uncensored Local LLM)
     if (chatLlmModel === 'ollama' || chatLlmModel?.includes('ollama')) {

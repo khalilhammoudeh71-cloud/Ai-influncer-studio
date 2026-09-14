@@ -564,6 +564,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
   const [workspaceBrief, setWorkspaceBrief] = useState(() => accountLocalStorage.getItem(keys.brief) || '');
   const [autoApprove, setAutoApprove] = useState(false);
   const [allowNsfw, setAllowNsfw] = useState(() => localStorage.getItem('agent_allow_nsfw') === 'true');
+  const [planningModel,setPlanningModel]=useState(()=>accountLocalStorage.getItem("agent_planning_model")||"");
   const [voiceLlmModel, setVoiceLlmModel] = useState<string>(() => {
     const brainVersion = localStorage.getItem('super_agent_brain_version');
     const saved = localStorage.getItem('agent_voice_llm');
@@ -1827,7 +1828,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
         body: JSON.stringify({ 
           messages: workspaceBrief.trim() ? [{role:'user',content:'Saved project brief (context, not a new execution request): '+workspaceBrief}, ...history] : history,
           allowNsfw,
-          voiceLlmModel,
+          voiceLlmModel: planningModel || voiceLlmModel,
           researchMode: {
             deepResearch: deepResearchActive,
             socialResearch: socialResearchActive,
@@ -3021,7 +3022,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                 { role: 'user', content: recoveryPrompt },
               ],
               allowNsfw,
-              voiceLlmModel,
+              voiceLlmModel: planningModel || voiceLlmModel,
               researchMode: {
                 deepResearch: false,
                 socialResearch: false,
@@ -3174,6 +3175,15 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
             <label className="text-xs text-zinc-300">Project brief
               <textarea aria-label="Project brief" value={workspaceBrief} onChange={e => {setWorkspaceBrief(e.target.value); accountLocalStorage.setItem(keys.brief,e.target.value);}} placeholder="Goals, audience, style and details to keep in mind…" className="mt-1 w-full rounded-lg border border-white/15 bg-black/30 p-2 text-sm" rows={3} />
               <span className="text-[11px] text-zinc-400">Saved for future conversations. You can edit it anytime.</span>
+            </label>
+            <label className="block text-xs text-zinc-300">Text planning model
+              <select aria-label="Text planning model" value={planningModel} onChange={e=>{setPlanningModel(e.target.value);accountLocalStorage.setItem('agent_planning_model',e.target.value);}} className="ml-2 rounded-lg border border-white/15 bg-zinc-900 p-2 text-zinc-100">
+                <option value="">Use configured engine</option>
+                <option value="frontier-grok">Grok 4.6</option>
+                <option value="frontier-gemini-pro">Gemini 3.1 Pro Preview</option>
+                <option value="frontier-gemini-flash">Gemini 3.8 Flash</option>
+              </select>
+              <p className="mt-1 text-zinc-400">Applies to text tasks. Voice keeps its configured engine. Selected frontier models do not silently fall back.</p>
             </label>
             {/* LLM Engine Selector */}
             <div className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-cyan-500/40 rounded-xl px-3 py-1.5 text-xs font-bold shadow-sm transition-all">
