@@ -145,6 +145,8 @@ export const POPULAR_PERSONALITY_TRAITS = [
 
 export { VOICE_CLONING_MODELS } from '../../shared/voiceCloningModels';
 
+const VOICE_MODEL_PROVIDER_ORDER = Array.from(new Set(VOICE_CLONING_MODELS.map(model => model.provider)));
+
 const WIZARD_STEPS = [
   {
     id: 'influencerType',
@@ -956,9 +958,6 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
     contentBoundaries,
     studioStep,
   ]);
-
-  const handleTestVoiceSample = async () => { await playDraftPreview(selectedVoiceId, selectedVoiceModel);
-  };
 
   const [isGeneratingAiAvatar, setIsGeneratingAiAvatar] = useState(false);
 
@@ -1881,75 +1880,103 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
 
           {voiceTab === 'clone' && (
             <div className="space-y-5">
-              <fieldset disabled={isCloning || isSaving} className="space-y-3">
-                <legend className="text-sm font-bold text-white mb-2">Voice models — all APIs ({VOICE_CLONING_MODELS.length})</legend>
-                <p className="text-xs text-slate-400">Choose a model, prepare a voice, then save it to your persona. Your current voice stays selected while you compare models.</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {VOICE_CLONING_MODELS.map(model=><label key={model.id} className={cn('rounded-xl border p-3 cursor-pointer space-y-2',cloneModel===model.id?'border-[#E7C477] bg-[#242428]':'border-white/10 bg-[#0E0E10]')}>
-                    <span className="flex items-start gap-2 text-xs font-bold text-white"><input type="radio" name="persona-clone-model" value={model.id} checked={cloneModel===model.id} onChange={()=>{voiceDraftGuard.current.change();stopVoicePreviews();setCloneModel(model.id);setClonePreset(model.voices?.[0]||'');setCloneResult(null);setCloneError('');}} className="mt-0.5 accent-[#E7C477]"/>{model.name}</span>
-                    <span className="block text-[11px] font-semibold text-[#E7C477]">{model.provider} · {model.kind==='reference'?'Reference cloning':model.kind==='enrollment'?'Reusable voice clone':model.kind==='preset'?'Preset speech':model.kind==='singing'?'Singing clone':'Needs integration'}</span>
-                    <span className="block text-[11px] leading-relaxed text-slate-400">{model.description}</span>
-                  </label>)}
+              <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] gap-4">
+                <section className="rounded-2xl border border-white/10 bg-[#0E0E10] p-4 space-y-3" aria-labelledby="voice-files-heading">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h4 id="voice-files-heading" className="text-sm font-bold text-white">1. Add voice files</h4>
+                      <p className="text-xs text-slate-400 mt-1">Upload one or more audio or video files. Long media is sampled automatically.</p>
+                    </div>
+                    <span className="shrink-0 rounded-full bg-[#E7C477]/15 px-2.5 py-1 text-[11px] font-bold text-[#F2D58D]">{audioSampleList.length} ready</span>
+                  </div>
+                  <input
+                    type="file"
+                    ref={audioInputRef}
+                    onChange={handleAudioUpload}
+                    accept="audio/*,video/*,.aac,.flac,.m4a,.mp3,.ogg,.wav,.webm,.3gp,.avi,.m4v,.mkv,.mov,.mp4"
+                    multiple
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => audioInputRef.current?.click()}
+                    disabled={isCloning || isSaving}
+                    className="w-full rounded-xl border border-[#E7C477]/40 bg-[#E7C477]/12 px-4 py-3 text-xs font-bold text-[#F2D58D] transition-colors hover:bg-[#E7C477]/20 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {isCloning ? 'Reading files…' : 'Choose audio or video files'}
+                  </button>
+                  {audioSampleList.length > 0 && <button type="button" onClick={handleResetVoiceSamples} disabled={isCloning || isSaving} className="w-full rounded-xl border border-white/10 bg-[#18181B] px-4 py-2 text-xs font-semibold text-slate-400 transition-colors hover:border-white/20 hover:text-white disabled:cursor-not-allowed disabled:opacity-40">Clear uploaded files</button>}
+                  <p className="text-[11px] text-slate-500">Up to 10 files. The first file is the primary reference.</p>
+                </section>
+
+                <section className="rounded-2xl border border-white/10 bg-[#0E0E10] p-4 space-y-3" aria-labelledby="voice-model-heading">
+                  <div>
+                    <h4 id="voice-model-heading" className="text-sm font-bold text-white">2. Choose a model</h4>
+                    <p className="text-xs text-slate-400 mt-1">Pick the provider that should render your preview.</p>
+                  </div>
+                  <label className="block text-xs font-semibold text-slate-300" htmlFor="persona-voice-model">
+                    Voice model
+                    <select
+                      id="persona-voice-model"
+                      aria-describedby="persona-voice-model-help"
+                      value={cloneModel}
+                      onChange={e => {
+                        const next = voiceCloningModel(e.target.value);
+                        if (!next) return;
+                        voiceDraftGuard.current.change(); stopVoicePreviews();
+                        setCloneModel(next.id); setClonePreset(next.voices?.[0] || ''); setCloneResult(null); setCloneError('');
+                      }}
+                      disabled={isCloning || isSaving}
+                      className="luxury-input mt-1 block w-full p-2.5 text-sm"
+                    >
+                      {VOICE_MODEL_PROVIDER_ORDER.map(provider => {
+                        const models = VOICE_CLONING_MODELS.filter(model => model.provider === provider);
+                        return <optgroup key={provider} label={`${provider} (${models.length})`}>
+                          {models.map(model => <option key={model.id} value={model.id}>{model.name}</option>)}
+                        </optgroup>;
+                      })}
+                    </select>
+                  </label>
+                  <div id="persona-voice-model-help" className="space-y-2 rounded-xl bg-[#18181B] p-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-[#E7C477]/15 px-2 py-1 text-[10px] font-bold text-[#F2D58D]">{cloneChoice.provider}</span>
+                      <span className="rounded-full border border-white/10 px-2 py-1 text-[10px] font-semibold text-slate-400">{cloneChoice.kind==='reference'?'Reference clone':cloneChoice.kind==='enrollment'?'Reusable clone':cloneChoice.kind==='preset'?'Preset voice':cloneChoice.kind==='singing'?'Singing voice':'Needs integration'}</span>
+                    </div>
+                    <p className="text-xs leading-relaxed text-slate-300">{cloneChoice.description}</p>
+                  </div>
+                </section>
+              </div>
+
+              <div className="space-y-3 rounded-2xl border border-white/10 bg-[#0E0E10] p-4 text-sm text-slate-300">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h4 className="text-sm font-bold text-white">3. Prepare this model</h4>
+                    <p className="mt-1 text-xs text-slate-400">Only the settings needed by the selected model appear here.</p>
+                  </div>
+                  {cloneChoice.kind === 'unavailable' && <span className="rounded-full bg-rose-500/10 px-2 py-1 text-[10px] font-bold text-rose-300">Unavailable</span>}
                 </div>
-              </fieldset>
-              <div className="space-y-3 text-sm text-slate-300">
-                <p className="font-semibold text-white">{cloneChoice.name} · {cloneChoice.provider}</p>
-                <p className="text-xs text-slate-400">{cloneChoice.kind==='preset'?cloneChoice.description:cloneChoice.id==='elevenlabs'?'Use 1–2 minutes of clear speech from one speaker. Audio and video uploads are accepted; long media is sampled automatically.':cloneChoice.kind==='unavailable'?cloneChoice.description:'This model uses the primary recording. Audio and video uploads are accepted; long media is sampled automatically.'}</p>
-                {cloneChoice.voices && <label className="block text-xs">Preset voice<select aria-label="Model preset voice" value={clonePreset||cloneChoice.voices[0]} onChange={e=>{setClonePreset(e.target.value);setCloneResult(null);}} disabled={isCloning} className="luxury-input block mt-1 p-2">{cloneChoice.voices.map(voice=><option key={voice} value={voice}>{voice}</option>)}</select></label>}
-                {cloneChoice.kind!=='preset' && cloneChoice.kind!=='unavailable' && <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={speakerAuthorized} disabled={isCloning} onChange={e => setSpeakerAuthorized(e.target.checked)} />I am the speaker or have the speaker’s permission to clone and use this voice.</label>}
-                {cloneChoice.kind==='reference' && <label className="block text-xs">Reference recording transcript {cloneChoice.transcriptRequired?'(required)':'(optional)'}<textarea aria-label="Reference recording transcript" value={voiceReferenceText} onChange={e=>{setVoiceReferenceText(e.target.value);setCloneResult(null);}} disabled={isCloning} maxLength={5000} rows={2} className="luxury-input block w-full mt-1 p-2" placeholder="The exact words spoken in your primary recording"/></label>}
-                <button type="button" onClick={() => runClone()} disabled={isCloning || cloneChoice.kind==='unavailable' || (cloneChoice.kind!=='preset'&&(!speakerAuthorized||!audioSampleList.length)) || (cloneChoice.transcriptRequired&&!voiceReferenceText.trim()) || Boolean(cloneResult)} className="btn-gold-primary px-4 py-2 disabled:opacity-40">{isCloning ? 'Preparing voice…' : cloneChoice.kind==='preset'?'Preview and select voice':cloneChoice.kind==='singing'?'Create singing voice':'Create voice clone'}</button>
-                {(cloneResult || cloneError) && <div role="status" className="space-y-2 rounded-xl border border-white/10 p-3 text-xs">
-                  <p>{cloneError || cloneResult?.message || cloneResult?.status}</p>
+                {cloneChoice.voices && <label className="block text-xs">Preset voice<select aria-label="Model preset voice" value={clonePreset||cloneChoice.voices[0]} onChange={e=>{setClonePreset(e.target.value);setCloneResult(null);}} disabled={isCloning || isSaving} className="luxury-input block mt-1 p-2.5 text-sm">{cloneChoice.voices.map(voice=><option key={voice} value={voice}>{voice}</option>)}</select></label>}
+                {cloneChoice.kind!=='preset' && cloneChoice.kind!=='unavailable' && <label className="flex items-start gap-2 text-xs leading-relaxed"><input type="checkbox" checked={speakerAuthorized} disabled={isCloning || isSaving} onChange={e => setSpeakerAuthorized(e.target.checked)} className="mt-0.5 accent-[#E7C477]" />I am the speaker or have the speaker’s permission to clone and use this voice.</label>}
+                {cloneChoice.kind==='reference' && <label className="block text-xs">Reference recording transcript {cloneChoice.transcriptRequired?'(required)':'(optional)'}<textarea aria-label="Reference recording transcript" value={voiceReferenceText} onChange={e=>{setVoiceReferenceText(e.target.value);setCloneResult(null);}} disabled={isCloning || isSaving} maxLength={5000} rows={2} className="luxury-input block w-full mt-1 p-2.5 text-sm" placeholder="The exact words spoken in your primary recording"/></label>}
+              </div>
+
+              <div className="rounded-2xl border border-[#E7C477]/25 bg-[#E7C477]/[0.04] p-4 space-y-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h4 className="text-sm font-bold text-white">4. Render a voice preview</h4>
+                    <p className="mt-1 text-xs text-slate-400">Your uploaded reference and selected model are used together.</p>
+                  </div>
+                  <button type="button" onClick={() => runClone()} disabled={isCloning || isSaving || cloneChoice.kind==='unavailable' || (cloneChoice.kind!=='preset'&&(!speakerAuthorized||!audioSampleList.length)) || (cloneChoice.transcriptRequired&&!voiceReferenceText.trim()) || Boolean(cloneResult)} className="btn-gold-primary shrink-0 px-4 py-2.5 text-xs disabled:cursor-not-allowed disabled:opacity-40">{isCloning ? 'Rendering preview…' : cloneChoice.kind==='preset'?'Render & preview':cloneChoice.kind==='singing'?'Create & preview singing voice':'Render & preview voice'}</button>
+                </div>
+                {(cloneResult || cloneError) && <div role="status" aria-live="polite" className="space-y-2 rounded-xl border border-white/10 bg-[#0E0E10] p-3 text-xs">
+                  <p className="font-semibold text-slate-200">{cloneError || cloneResult?.message || cloneResult?.status}</p>
                   {cloneResult && cloneResult.status !== 'ready' && <button type="button" disabled={isCloning} onClick={() => runClone(true)} className="underline">Check clone status</button>}
                   {cloneResult?.status === 'failed' && !cloneResult.engine && <button type="button" disabled={isCloning || !speakerAuthorized} onClick={() => runClone(false, true)} className="block underline">Retry after fixing the provider issue</button>}
                   {cloneResult?.status === 'verification_required' && <a href="https://elevenlabs.io/app/voices" target="_blank" rel="noreferrer" className="block underline">Open ElevenLabs to verify the speaker</a>}
                   {cloneResult?.audioUrl && <audio controls src={cloneResult.audioUrl} className="w-full" aria-label="Prepared voice preview"/>}
                   {cloneResult?.assetKind==='singing' && cloneResult.voiceId && <p>Mureka vocal ID: <code className="select-all">{cloneResult.voiceId}</code>. Saved to this account; your speaking voice remains selected.</p>}
                 </div>}
-                <p className="text-xs text-slate-400">Your saved voice stays active until a ready replacement is saved. Removing draft samples does not delete a remote voice.</p>
-              </div>
-
-              <div className="flex items-center justify-between gap-3 flex-wrap border-t border-white/10 pt-4">
-                <input
-                  type="file"
-                  ref={audioInputRef}
-                  onChange={handleAudioUpload}
-                  accept="audio/*,video/*,.aac,.flac,.m4a,.mp3,.ogg,.wav,.webm,.3gp,.avi,.m4v,.mkv,.mov,.mp4"
-                  multiple
-                  className="hidden"
-                />
-                <button
-                  type="button"
-                  onClick={() => audioInputRef.current?.click()}
-                  disabled={isCloning}
-                  className="btn-gold-primary px-5 py-2.5 text-xs font-bold flex items-center gap-2 shadow-sm cursor-pointer"
-                >
-                  {isCloning ? <Loader2 size={15} className="animate-spin text-[#161108]" /> : <Upload size={15} />}
-                  <span>Upload Audio Clips ({audioSampleList.length})</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleTestVoiceSample}
-                  disabled={isTestingVoice}
-                  className="px-4 py-2.5 rounded-xl bg-[#1C1C20] hover:bg-[#242428] border border-white/10 text-slate-200 text-xs font-bold flex items-center gap-2 cursor-pointer"
-                >
-                  {isTestingVoice ? <Loader2 size={15} className="animate-spin text-[#D9BA72]" /> : (isPlayingSample ? <VolumeX size={15} className="text-rose-400" /> : <Volume2 size={15} className="text-[#D9BA72]" />)}
-                  <span>{isPlayingSample ? 'Stop Preview' : 'Preview Voice'}</span>
-                </button>
-
-                {audioSampleList.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={handleResetVoiceSamples}
-                    className="px-3.5 py-2.5 rounded-xl bg-[#18181B] hover:bg-[#242428] border border-white/10 hover:border-white/20 text-[#A1A1AA] hover:text-[#F5F1E8] text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm group"
-                    title="Clear and remove all voice reference samples"
-                  >
-                    <Trash2 size={14} className="text-[#A1A1AA] group-hover:text-[#F5F1E8] transition-colors" />
-                    <span>Reset All Voice Samples</span>
-                  </button>
-                )}
+                <p className="text-[11px] text-slate-500">Your current saved voice stays active until a new preview is ready and you save the persona.</p>
               </div>
 
               {audioSampleList.length > 0 && (
