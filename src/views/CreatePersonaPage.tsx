@@ -1,4 +1,4 @@
-import { ARABIC_DIALECTS, type ArabicDialect } from '../../shared/personaLanguage';
+import { ARABIC_DIALECTS, recognitionLanguage, type ArabicDialect } from '../../shared/personaLanguage';
 import { VOICE_CLONING_MODELS, voiceCloningModel } from '../../shared/voiceCloningModels';
 import { LatestVoicePreview, VoiceDraftGuard, type CloneResult } from '../../shared/personaVoiceLifecycle';
 import { restoreSavedVoice, type SavedPersonaVoice } from '../../shared/personaVoiceLibrary';
@@ -443,6 +443,45 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
     gulf: 'يا هلا، شلونك؟ وش أخبارك اليوم؟ قل لي وش ودّك نسولف عنه الحين.',
     msa: 'مرحباً، كيف حالك اليوم؟ أخبرني، ما الموضوع الذي تودّ أن نتحدث عنه؟',
   };
+  const [isDictating, setIsDictating] = useState(false);
+  const dictationRef = useRef<any>(null);
+  const stopDictation = () => {
+    const recognition = dictationRef.current;
+    dictationRef.current = null;
+    if (recognition) {
+      recognition.onresult = null; recognition.onerror = null; recognition.onend = null;
+      recognition.abort();
+    }
+    setIsDictating(false);
+  };
+  const toggleDictation = () => {
+    if (dictationRef.current) { dictationRef.current.stop(); return; }
+    const Recognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!Recognition) { toast.error('Voice typing is unavailable in this browser. Open the studio in Chrome to dictate.'); return; }
+    stopVoicePreviews();
+    const recognition = new Recognition();
+    dictationRef.current = recognition;
+    recognition.lang = recognitionLanguage({personalitySettings: {language: auditionLanguage, dialect: previewDialect}}).browser;
+    recognition.continuous = true;
+    recognition.interimResults = false;
+    recognition.onresult = (event: any) => {
+      if (dictationRef.current !== recognition) return;
+      let transcript = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        if (event.results[i].isFinal) transcript += event.results[i][0].transcript + ' ';
+      }
+      if (transcript.trim()) setVoicePreviewText(previous => [previous.trim(), transcript.trim()].filter(Boolean).join(' ').slice(0, 500));
+    };
+    recognition.onerror = (event: any) => {
+      if (dictationRef.current !== recognition) return;
+      stopDictation();
+      if (event.error !== 'aborted') toast.error(event.error === 'not-allowed' ? 'Allow microphone access to dictate.' : event.error === 'no-speech' ? 'No speech detected. Tap the microphone to try again.' : 'Voice typing failed. Please try again.');
+    };
+    recognition.onend = () => { if (dictationRef.current === recognition) { dictationRef.current = null; setIsDictating(false); } };
+    try { recognition.start(); setIsDictating(true); }
+    catch { stopDictation(); toast.error('Could not start voice typing. Please try again.'); }
+  };
+  useEffect(() => { stopDictation(); return stopDictation; }, [previewLanguage, auditionLanguage, previewDialect, studioStep, voiceTab, editingPersona?.id]);
   const cloneBusyRef = useRef(false);
   const readySamples = useRef<{samples:Array<{name:string;base64:string}>;transcript:string}>({samples:[],transcript:''});
   const voiceSelectionChanged = useRef(false);
@@ -482,6 +521,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
     toast.success('Saved voice selected. Save the persona to make it the default again.');
   };
   const playDraftPreview = async (id: string, engine: string, previewUrl?: string) => {
+    stopDictation();
     const key = `${engine}:${id}`;
     if (voicePreviewKey.current === key) { stopVoicePreviews(); return; }
     stopVoicePreviews(); voicePreviewKey.current = key;
@@ -1127,6 +1167,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   };
 
   const runClone = async (checkOnly = false, retryRejected = false) => {
+    stopDictation();
     if (cloneBusyRef.current) return;
     if (!checkOnly && cloneChoice.kind !== 'preset' && !speakerAuthorized) { toast.error('Confirm speaker authorization first.'); return; }
     cloneBusyRef.current = true; setIsCloning(true); setCloneError('');
@@ -1195,6 +1236,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   };
 
   const handleSave = async () => {
+    stopDictation();
     if (!name.trim()) {
       toast.error('Please enter a persona name');
       return;
@@ -2363,7 +2405,14 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
           <section aria-label="Voice preview" className="space-y-3 rounded-2xl border border-[#E7C477]/25 bg-[#0E0E10] p-5">
             <h4 className="text-sm font-bold text-white">Preview your voice</h4>
 
-            <label className="block">Audition text<input dir="auto" value={voicePreviewText} onChange={e => setVoicePreviewText(e.target.value)} maxLength={500} placeholder={sampleTextForPreview} className="mt-1 w-full rounded-xl border border-white/10 bg-[#0E0E10] px-3 py-2 text-white" /></label>
+            <div>
+              <label htmlFor="voice-audition-text" className="block text-sm text-slate-300">Audition text</label>
+              <div className="mt-1 flex items-center gap-2">
+                <input id="voice-audition-text" dir="auto" value={voicePreviewText} onChange={e => setVoicePreviewText(e.target.value)} maxLength={500} placeholder={sampleTextForPreview} className="min-w-0 flex-1 rounded-xl border border-white/10 bg-[#0E0E10] px-3 py-2 text-white" />
+                <button type="button" onClick={toggleDictation} disabled={isSaving || isCloning} aria-label={isDictating ? 'Stop voice typing' : 'Dictate audition text'} aria-pressed={isDictating} title={isDictating ? 'Stop voice typing' : 'Dictate audition text'} className={cn('shrink-0 rounded-xl border p-3 disabled:opacity-40', isDictating ? 'border-rose-400 bg-rose-500/20 text-rose-300' : 'border-white/10 text-[#E7C477] hover:bg-white/5')}><Mic size={18} /></button>
+              </div>
+              {isDictating && <p role="status" className="mt-1 text-xs text-rose-300">Listening… Tap the microphone to stop.</p>}
+            </div>
             <label className="flex flex-wrap items-center gap-2 text-xs text-slate-300">Preview language
               <select aria-label="Preview language" disabled={isCloning || isSaving} value={previewLanguage} onChange={e => { stopVoicePreviews(); setPreviewLanguage(e.target.value as 'persona' | 'en' | ArabicDialect); setVoicePreviewText(''); }} className="luxury-input rounded-xl px-3 py-2.5">
                 <option value="persona">Persona language</option>
