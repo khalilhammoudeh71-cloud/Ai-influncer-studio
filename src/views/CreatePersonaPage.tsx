@@ -481,7 +481,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
         const settings = { stability: voiceStability / 100, similarity_boost: voiceLikeness / 100, style: voiceStyleExaggeration / 100, speed: voiceSpeakingSpeed };
         const result = engine === 'elevenlabs'
           ? await api.voice.previewVoice(id, sampleTextForPreview, settings)
-          : await api.voice.generateSpeech({ voiceId: id, engine, text: sampleTextForPreview, voiceSettings: settings, isPreview: true, voiceReference: readySamples.current.samples[0]?.base64 || audioSampleList[0]?.base64, voiceReferenceText, voicePrompt });
+          : await api.voice.generateSpeech({ voiceId: id, engine, text: sampleTextForPreview, voiceSettings: settings, isPreview: true, voiceReference: readySamples.current.samples[0]?.base64 || audioSampleList[0]?.base64, voiceReferenceText: readySamples.current.samples.length ? readySamples.current.transcript : voiceReferenceText, voicePrompt });
         return result.audioUrl;
       }, url => {
         const audio = new Audio(url);
@@ -1806,6 +1806,10 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
             <label className="block">Voice name<input value={selectedSavedVoiceName} onChange={e => setSelectedSavedVoiceName(e.target.value)} maxLength={120} placeholder={selectedVoiceName} className="mt-1 w-full rounded-xl border border-white/10 bg-[#0E0E10] px-3 py-2 text-white" /></label>
             <p>Auditions use the selected voice provider. Live calls use the provider chosen in the call dialog.</p>
             <label className="block">Audition text<input value={voicePreviewText} onChange={e => setVoicePreviewText(e.target.value)} maxLength={500} placeholder={sampleTextForPreview} className="mt-1 w-full rounded-xl border border-white/10 bg-[#0E0E10] px-3 py-2 text-white" /></label>
+            <button type="button" onClick={() => playDraftPreview(selectedVoiceId, selectedVoiceModel)} disabled={isCloning || isSaving || (!selectedVoiceId && !readySamples.current.samples.length)} className="btn-gold-primary px-4 py-2.5 text-xs disabled:opacity-40">
+              {isTestingVoice ? 'Cancel preview' : isPlayingSample ? 'Stop preview' : 'Preview voice'}
+            </button>
+            <p>Previews {selectedVoiceName} using {voiceCloningModel(selectedVoiceModel)?.name || selectedVoiceModel}. Render a new model to select its prepared voice.</p>
           </div>
 
           <SavedPersonaVoices
@@ -1977,6 +1981,10 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                   {cloneResult?.assetKind==='singing' && cloneResult.voiceId && <p>Mureka vocal ID: <code className="select-all">{cloneResult.voiceId}</code>. Saved to this account; your speaking voice remains selected.</p>}
                 </div>}
                 <p className="text-[11px] text-slate-500">Your current saved voice stays active until a new preview is ready and you save the persona.</p>
+                <button type="button" onClick={() => playDraftPreview(selectedVoiceId, selectedVoiceModel)} disabled={isCloning || isSaving || (!selectedVoiceId && !readySamples.current.samples.length)} className="btn-gold-primary px-4 py-2.5 text-xs disabled:opacity-40">
+                  {isTestingVoice ? 'Cancel preview' : isPlayingSample ? 'Stop preview' : 'Preview voice'}
+                </button>
+                <p className="text-xs text-slate-400">Preview selected voice: {selectedVoiceName} · {voiceCloningModel(selectedVoiceModel)?.name || selectedVoiceModel}. Replay or change the audition text above without cloning again.</p>
               </div>
 
               {audioSampleList.length > 0 && (
