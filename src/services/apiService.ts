@@ -1,7 +1,7 @@
 import type { CloneResult } from '../../shared/personaVoiceLifecycle';
 import type { Persona, GeneratedImage, RevenueEntry, PlannedPost } from '../types';
 import { supabase } from '../lib/supabase';
-import { preparePersonaMediaForStorage, resolvePersonaMediaFromStorage } from './workspaceMediaService';
+import { preparePersonaMediaForStorage, resolvePersonaMediaFromStorage, persistMediaStringsForPlayback } from './workspaceMediaService';
 import { apiRetryDelayMs, shouldRetryApiRequest } from './apiResilience';
 
 export type SocialPlatform = 'instagram' | 'tiktok';
@@ -360,22 +360,22 @@ export const api = {
         support_locale: boolean;
         preview_audio_url: string;
       }>; hasMore: boolean; nextToken: string | null }>('/heygen-voices'),
-    cloneVoice: (name: string, description: string, sampleBase64: string | string[], speakerAuthorized: boolean, retryRejected = false) =>
+    cloneVoice: async (name: string, description: string, sampleBase64: string | string[], speakerAuthorized: boolean, retryRejected = false) =>
       requestWithBody<CloneResult>('/elevenlabs-clone-voice', {
         speakerAuthorized,
         retryRejected,
         name,
         description,
-        ...(Array.isArray(sampleBase64) ? { sampleBase64s: sampleBase64 } : { sampleBase64 })
+        ...(Array.isArray(sampleBase64) ? { sampleBase64s: await persistMediaStringsForPlayback(sampleBase64) } : { sampleBase64: (await persistMediaStringsForPlayback([sampleBase64]))[0] })
       }),
     voiceStatus: (id: string, personaId: string) => request<{ voiceId: string; name?: string; status: string }>(`/persona-voice-status/${encodeURIComponent(id)}?personaId=${encodeURIComponent(personaId)}`),
     cloneStatus: (id: string) => request<CloneResult>(`/voice-clones/${encodeURIComponent(id)}`),
-    cloneWithModel: (input:{engine:string;name:string;reference:string;text:string;speakerAuthorized:boolean;retryRejected?:boolean})=>requestWithBody<CloneResult>('/voice-model-clones',input),
+    cloneWithModel: async (input:{engine:string;name:string;reference:string;text:string;speakerAuthorized:boolean;retryRejected?:boolean})=>requestWithBody<CloneResult>('/voice-model-clones',{...input,reference:(await persistMediaStringsForPlayback([input.reference]))[0]}),
     modelCloneStatus:(id:string)=>request<CloneResult>(`/voice-model-clones/${encodeURIComponent(id)}`),
     previewVoice: (voiceId: string, text: string, voiceSettings?: Record<string, number>, emotion?: string) => requestWithBody<{ audioUrl: string; voiceId: string }>('/persona-voice-preview', { voiceId, text, voiceSettings, emotion }),
     generateScript: (params: { topic: string; persona: Persona; mode?: string; existingScript?: string; length?: string }) =>
       requestWithBody<{ script: string }>('/generate-voice-script', params),
-    generateSpeech: (params: {
+    generateSpeech: async (params: {
       activePersona?: Partial<Persona>;
       text: string;
       voice?: string;
@@ -397,7 +397,7 @@ export const api = {
       voiceStyleExaggeration?: number;
       voiceSpeakingSpeed?: number;
     }) =>
-      requestWithBody<{ audioUrl: string; engine?: string }>('/generate-speech', params),
+      requestWithBody<{ audioUrl: string; engine?: string }>('/generate-speech', await resolvePersonaMediaFromStorage(await preparePersonaMediaForStorage(params))),
     translateText: (params: { text: string; targetLanguage: string }) =>
       requestWithBody<{ translatedText: string }>('/translate-text', params),
     testVoiceClone: (params: {

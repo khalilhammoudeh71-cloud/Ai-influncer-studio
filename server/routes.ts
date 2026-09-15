@@ -1,3 +1,4 @@
+import { loadVoiceUploadReferences } from './voiceUploadReferences';
 import { createNativeVoiceRouter } from './nativeVoice';
 import { createReviewedSpeech } from '../shared/reviewedSpeech';
 import { once } from 'node:events';
@@ -1580,7 +1581,7 @@ function voiceError(res: Response, error: unknown) {
 }
 router.post('/elevenlabs-clone-voice', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const result = await personaVoices.clone({ owner: req.user.id, apiKey: elevenKey(), name: req.body.name, description: req.body.description, speakerAuthorized: req.body.speakerAuthorized === true, retryRejected: req.body.retryRejected === true, sampleBase64s: req.body.sampleBase64s || (req.body.sampleBase64 ? [req.body.sampleBase64] : []) });
+    const result = await personaVoices.clone({ owner: req.user.id, apiKey: elevenKey(), name: req.body.name, description: req.body.description, speakerAuthorized: req.body.speakerAuthorized === true, retryRejected: req.body.retryRejected === true, sampleBase64s: await loadVoiceUploadReferences(req.body.sampleBase64s || (req.body.sampleBase64 ? [req.body.sampleBase64] : []), req.user.id, process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '') });
     res.setHeader('Cache-Control', 'no-store');
     return res.json(result);
   } catch (error) { return voiceError(res, error); }
