@@ -19,3 +19,20 @@ export const VOICE_CLONING_MODELS: VoiceCloningModel[] = [
  {id:'qwen-tts',name:'Qwen3-TTS Preset Voices',provider:'WaveSpeed',kind:'preset',model:'wavespeed-ai/qwen3-tts/text-to-speech',description:'Generate speech with a Qwen preset voice.',voices:['Vivian','Serena','Ryan','Aiden']},
 ];
 export const voiceCloningModel = (id: unknown): VoiceCloningModel | undefined => typeof id === 'string' ? VOICE_CLONING_MODELS.find(model=>model.id===id || model.aliases?.includes(id)) : undefined;
+
+// File counts describe this application's adapters. Sampling caps are app policy,
+// except MiniMax's documented 300-second provider maximum.
+export function voiceSamplePolicy(model: VoiceCloningModel) {
+  if (model.kind === 'preset') return { files: 0, seconds: 0, label: 'No recording needed' };
+  if (model.kind === 'unavailable') return { files: 0, seconds: 0, label: 'Unavailable' };
+  const guidance: Record<string, [number, string]> = {
+    elevenlabs: [120, '1–10 files · ideal 1–2 min total'],
+    'wavespeed:qwen3-clone': [15, '1 file · ideal 3–15 sec'],
+    'wavespeed:omnivoice': [30, '1 file · ideal 6–30 sec'],
+    'wiro-voice:k2-fsa/omnivoice': [30, '1 file · ideal 6–30 sec'],
+    'wiro-voice:fishaudio/s2-pro': [30, '1 file · ideal 10–30 sec'],
+    'minimax-clone': [300, '1 file · accepted 10 sec–5 min'],
+  };
+  const [seconds, label] = guidance[model.id] || [15, '1 file · app sample up to 15 sec'];
+  return { files: model.id === 'elevenlabs' ? 10 : 1, seconds, label };
+}

@@ -1,3 +1,4 @@
+import { voiceSamplePolicy } from '../../shared/voiceCloningModels';
 import { ARABIC_DIALECTS, recognitionLanguage, type ArabicDialect } from '../../shared/personaLanguage';
 import { VOICE_CLONING_MODELS, voiceCloningModel } from '../../shared/voiceCloningModels';
 import { LatestVoicePreview, VoiceDraftGuard, type CloneResult } from '../../shared/personaVoiceLifecycle';
@@ -21,7 +22,7 @@ import { studioImageJob } from '../services/mediaJobService';
 import { persistPersonaReferenceImages } from '../services/personaMediaService';
 import { supabase } from '../lib/supabase';
 import { cn } from '../utils/cn';
-import { readCloneSampleFile } from '../utils/audioUtils';
+import { readCloneSampleFile, cropVoiceReference } from '../utils/audioUtils';
 import { accountLocalStorage } from '../utils/accountStorage';
 import {
   clearPersonaDraftReferenceImages,
@@ -1166,6 +1167,8 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
     finally { setIsCloning(false); if (audioInputRef.current) audioInputRef.current.value = ''; }
   };
 
+  const originalVoiceSamples = useRef(new Map<string, { name: string; base64: string }>());
+  const voiceSampleCaps = useRef(new Map<string, number>());
   const runClone = async (checkOnly = false, retryRejected = false) => {
     stopDictation();
     if (cloneBusyRef.current) return;
@@ -1173,12 +1176,32 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
     cloneBusyRef.current = true; setIsCloning(true); setCloneError('');
     const draft = voiceDraftGuard.current.begin();
     try {
+      const policy = voiceSamplePolicy(cloneChoice);
+      let preparedSamples = audioSampleList;
+      if (!checkOnly && policy.files) {
+        const selected = audioSampleList.slice(0, policy.files);
+        const cap = policy.seconds / (cloneChoice.id === 'elevenlabs' ? selected.length : 1);
+        const prepared = await Promise.all(selected.map(sample => cropVoiceReference(voiceSampleCaps.current.get(sample.base64) === cap ? sample : originalVoiceSamples.current.get(sample.base64) || sample, cap)));
+        if (!voiceDraftGuard.current.isCurrent(draft)) return;
+        if (cloneChoice.id === 'minimax-clone' && prepared[0]?.duration < 10) throw new Error('MiniMax needs at least 10 seconds of reference audio.');
+        prepared.forEach((sample, index) => originalVoiceSamples.current.set(sample.base64, originalVoiceSamples.current.get(selected[index].base64) || selected[index]));
+        prepared.forEach(sample => voiceSampleCaps.current.set(sample.base64, cap));
+        preparedSamples = prepared;
+        if (prepared.some(sample => sample.cropped)) {
+          toast.success(`Reference trimmed to ${policy.seconds} seconds${policy.files > 1 ? ' total' : ''}.`);
+          if (voiceReferenceText.trim()) {
+            setAudioSampleList(prepared);
+            setVoiceReferenceText('');
+            throw new Error('Reference trimmed. Listen to the updated thumbnail and enter its matching transcript before rendering again.');
+          }
+        }
+      }
       let result:CloneResult;
       if(checkOnly && cloneResult)result=cloneResult.engine && cloneResult.engine!=='elevenlabs'?await api.voice.modelCloneStatus(cloneResult.id):await api.voice.cloneStatus(cloneResult.id);
-      else if(cloneChoice.id==='elevenlabs')result=await api.voice.cloneVoice(name || 'New Persona','Persona voice',audioSampleList.map(s=>s.base64),speakerAuthorized,retryRejected);
-      else if(cloneChoice.kind==='enrollment'||cloneChoice.kind==='singing')result=await api.voice.cloneWithModel({engine:cloneChoice.id,name:selectedSavedVoiceName||name||'My voice',reference:audioSampleList[0]?.base64,text:sampleTextForPreview,speakerAuthorized,retryRejected});
+      else if(cloneChoice.id==='elevenlabs')result=await api.voice.cloneVoice(name || 'New Persona','Persona voice',preparedSamples.map(s=>s.base64),speakerAuthorized,retryRejected);
+      else if(cloneChoice.kind==='enrollment'||cloneChoice.kind==='singing')result=await api.voice.cloneWithModel({engine:cloneChoice.id,name:selectedSavedVoiceName||name||'My voice',reference:preparedSamples[0]?.base64,text:sampleTextForPreview,speakerAuthorized,retryRejected});
       else {
-        const generated=await api.voice.generateSpeech({engine:cloneChoice.id,text:sampleTextForPreview,voiceId:cloneChoice.kind==='preset'?(clonePreset||cloneChoice.voices?.[0]):undefined,voiceReference:cloneChoice.kind==='reference'?audioSampleList[0]?.base64:undefined,voiceReferenceText,voicePrompt,isPreview:true,voiceSettings:{stability:voiceStability/100,similarity_boost:voiceLikeness/100,style:voiceStyleExaggeration/100,speed:voiceSpeakingSpeed}});
+        const generated=await api.voice.generateSpeech({engine:cloneChoice.id,text:sampleTextForPreview,voiceId:cloneChoice.kind==='preset'?(clonePreset||cloneChoice.voices?.[0]):undefined,voiceReference:cloneChoice.kind==='reference'?preparedSamples[0]?.base64:undefined,voiceReferenceText,voicePrompt,isPreview:true,voiceSettings:{stability:voiceStability/100,similarity_boost:voiceLikeness/100,style:voiceStyleExaggeration/100,speed:voiceSpeakingSpeed}});
         if(!generated.audioUrl)throw new Error('The selected model did not return an audio preview.');
         result={id:`preview:${crypto.randomUUID()}`,status:'ready',engine:cloneChoice.id,name:selectedSavedVoiceName||name||cloneChoice.name,voiceId:cloneChoice.kind==='preset'?(clonePreset||cloneChoice.voices?.[0]):'',audioUrl:generated.audioUrl,message:'Voice preview generated. Save the persona to use this voice.'};
       }
@@ -1187,8 +1210,9 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       if (result.status === 'ready' && result.assetKind !== 'singing') {
         setSelectedSavedVoiceName(result.name);
         voiceSelectionChanged.current = true; setSelectedVoiceId(result.voiceId || ''); setSelectedVoiceModel(result.engine || 'elevenlabs'); setDraftSamplesChanged(false);
-        readySamples.current={samples:cloneChoice.kind==='preset'?[]:[...audioSampleList],transcript:voiceReferenceText};
+        readySamples.current={samples:cloneChoice.kind==='preset'?[]:[...preparedSamples],transcript:voiceReferenceText};
         if(cloneChoice.kind==='preset')setAudioSampleList([]);
+        else setAudioSampleList(preparedSamples);
         stopVoicePreviews(); toast.success('Clone ready. Audition it, then save your persona to apply it.');
       }
     } catch (error) {
@@ -2017,12 +2041,12 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                       {VOICE_MODEL_PROVIDER_ORDER.map(provider => {
                         const models = VOICE_CLONING_MODELS.filter(model => model.provider === provider);
                         return <optgroup key={provider} label={`${provider} (${models.length})`}>
-                          {models.map(model => <option key={model.id} value={model.id}>{model.name}</option>)}
+                          {models.map(model => <option key={model.id} value={model.id}>{model.name} — {voiceSamplePolicy(model).label}</option>)}
                         </optgroup>;
                       })}
                     </select>
                   </label>
-
+                  {voiceSamplePolicy(cloneChoice).files > 0 && <p className="text-xs text-slate-400">Auto-trim on render: up to {voiceSamplePolicy(cloneChoice).seconds} sec{cloneChoice.id === 'elevenlabs' ? ' total, shared across files' : ' from your selected reference'} (app sampling limit).</p>}
                 </section>
               </div>
 

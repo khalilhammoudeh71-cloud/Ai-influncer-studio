@@ -50,17 +50,14 @@ export async function processVoiceSampleFile(file: File): Promise<{ name: string
         // Native Web Audio API decodes MP4, MOV, M4A, MP3, WAV, WebM directly in browser memory!
         const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
         
-        // Extract 4 to 12 seconds of clean audio for optimal voice cloning
-        const targetDuration = Math.max(3.0, Math.min(audioBuffer.duration, 12.0));
-        const sampleRate = Math.min(audioBuffer.sampleRate, 44100);
-        const frameCount = Math.floor(targetDuration * sampleRate);
-        const offlineCtx = new OfflineAudioContext(audioBuffer.numberOfChannels, frameCount, sampleRate);
+        // Preserve up to five minutes; the chosen model applies its own cap at render.
+        const targetDuration = Math.min(audioBuffer.duration, 300);
+        const frameCount = Math.floor(targetDuration * 24000);
+        const offlineCtx = new OfflineAudioContext(1, frameCount, 24000);
         
         const source = offlineCtx.createBufferSource();
         source.buffer = audioBuffer;
-        if (audioBuffer.duration < 3.0) {
-          source.loop = true;
-        }
+
         source.connect(offlineCtx.destination);
         source.start(0);
         
@@ -118,8 +115,8 @@ export async function trimAudioBase64To10Sec(dataUrl: string): Promise<string> {
     // Minimum 5.0 seconds, maximum 10.0 seconds for optimal ElevenLabs & zero-shot voice cloning
     const targetDuration = audioBuffer.duration < 5.0 ? Math.max(5.0, audioBuffer.duration * Math.ceil(5.0 / audioBuffer.duration)) : Math.min(audioBuffer.duration, 10.0);
     const sampleRate = audioBuffer.sampleRate;
-    const frameCount = Math.floor(targetDuration * sampleRate);
-    const offlineCtx = new OfflineAudioContext(audioBuffer.numberOfChannels, frameCount, sampleRate);
+    const frameCount = Math.floor(targetDuration * 24000);
+    const offlineCtx = new OfflineAudioContext(1, frameCount, 24000);
 
     // Loop source if original audio is shorter than 5 seconds
     const source = offlineCtx.createBufferSource();
@@ -202,4 +199,24 @@ function audioBufferToWavBlob(buffer: AudioBuffer): Blob {
   }
 
   return new Blob([arrayBuffer], { type: 'audio/wav' });
+}
+
+/** Decode and crop before sending to a provider; never silently bypass the cap. */
+export async function cropVoiceReference(sample: { name: string; base64: string }, maxSeconds: number) {
+  const response = await fetch(sample.base64);
+  if (!response.ok) throw new Error('Could not load the voice reference. Upload it again.');
+  const context = new AudioContext();
+  try {
+    const buffer = await context.decodeAudioData(await response.arrayBuffer());
+    const seconds = Math.min(buffer.duration, maxSeconds);
+    if (!Number.isFinite(seconds) || seconds <= 0) throw new Error('The reference contains no audio.');
+    const offline = new OfflineAudioContext(1, Math.floor(seconds * 24000), 24000);
+    const source = offline.createBufferSource();
+    source.buffer = buffer;
+    source.connect(offline.destination);
+    source.start();
+    const rendered = await offline.startRendering();
+    const result = await readFileAsDataUrl(new File([audioBufferToWavBlob(rendered)], sample.name.replace(/\.[^.]+$/, '') + '.wav', { type: 'audio/wav' }), 'Could not prepare voice audio.');
+    return { ...result, cropped: buffer.duration > maxSeconds + 0.05, duration: seconds };
+  } finally { await context.close(); }
 }
