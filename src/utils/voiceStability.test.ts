@@ -148,3 +148,18 @@ test('missing or non-finite timing evidence never produces a numeric latency sco
  assert.equal(result.speechMs, undefined);
  assert.equal(result.responseMs, undefined);
 });
+
+test('streams Arabic questions without waiting for a long buffer', () => {
+  assert.deepEqual(takeSpeakableSpeechChunk('كيف كان يومك؟ أنا بسمعك'), {
+    chunk: 'كيف كان يومك؟', remainder: 'أنا بسمعك',
+  });
+});
+
+test('starts Arabic speech at a natural comma or semicolon', () => {
+  for (const punctuation of ['،', '؛']) {
+    const phrase = `بعرف إنه يومك كان صعب${punctuation}`;
+    assert.deepEqual(takeSpeakableSpeechChunk(`${phrase} خد راحتك`, { firstChunk: true }), {
+      chunk: phrase, remainder: 'خد راحتك',
+    });
+  }
+});

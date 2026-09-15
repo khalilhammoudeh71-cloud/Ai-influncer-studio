@@ -1,3 +1,5 @@
+import { resolveVoiceMediaDraft } from './voiceMediaDraft';
+
 export interface VoiceConversationMessage {
   id?: string;
   role?: string;
@@ -12,9 +14,9 @@ export interface VoiceConversationHistoryOptions {
   maxMessages?: number;
 }
 
-const GREETING_ONLY = /^(?:hey|hi|hello|hiya|yo|good (?:morning|afternoon|evening)|what'?s up|sup)$/i;
-const SHORT_ACKNOWLEDGEMENT = /^(?:yeah|yes|yep|yup|okay|ok|sure|fine|right|alright|all right|mhm|mm-?hmm|uh-?huh|no|nope|nah|maybe|i guess|go ahead)$/i;
-const PAUSE_REQUEST = /^(?:(?:hold|hang) on(?:\s+(?:hold|hang) on)*|wait(?:\s+(?:a|one)\s+(?:second|sec|minute|moment))?|one\s+(?:second|sec|minute|moment)|give me\s+(?:a|one)\s+(?:second|sec|minute|moment)|just\s+(?:a|one)\s+(?:second|sec|minute|moment)|pause)$/i;
+const GREETING_ONLY = /^(?:hey|hi|hello|hiya|yo|good (?:morning|afternoon|evening)|what'?s up|sup|مرحبا|أهلا|اهلا|صباح الخير|مساء الخير)$/i;
+const SHORT_ACKNOWLEDGEMENT = /^(?:yeah|yes|yep|yup|okay|ok|sure|fine|right|alright|all right|mhm|mm-?hmm|uh-?huh|no|nope|nah|maybe|i guess|go ahead|تمام|طيب|أوكي|اوكي|نعم|آه|اه|لا)$/i;
+const PAUSE_REQUEST = /^(?:(?:hold|hang) on(?:\s+(?:hold|hang) on)*|wait(?:\s+(?:a|one)\s+(?:second|sec|minute|moment))?|one\s+(?:second|sec|minute|moment)|give me\s+(?:a|one)\s+(?:second|sec|minute|moment)|just\s+(?:a|one)\s+(?:second|sec|minute|moment)|pause|لحظة|استنى|استني|انتظر|ثانية)$/i;
 const SHARED_HISTORY_CLARIFICATION = /^(?:what|which)\s+(?:project|conversation|chat|call|plan|idea|trip|date|meeting|experiment|study|work)(?:\s+are\s+you\s+talking\s+about)?$/i;
 const SHORT_CLARIFICATION = /^(?:what|huh|sorry|do what|what do you mean|what are you talking about|say what|say that again|come again|you can do what|why)$/i;
 const ACTION_CLARIFICATION = /^(?:do what|you can do what|what are you talking about)$/i;
@@ -33,7 +35,8 @@ function normalizeTurn(value: unknown): string {
   return String(value || '')
     .toLowerCase()
     .replace(/[\u2018\u2019]/g, "'")
-    .replace(/[^a-z0-9'\s-]/g, ' ')
+    .replace(/[\u0610-\u061a\u064b-\u065f\u0670\u06d6-\u06ed]/g, '')
+    .replace(/[^\p{L}\p{N}'\s-]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -184,7 +187,7 @@ export function buildVoiceConversationHistory(
   const exactCurrentTurn = String(currentUserMessage || '').trim();
   if (!exactCurrentTurn) return [];
 
-  const maxMessages = Math.max(2, Math.min(16, options.maxMessages || 10));
+  const maxMessages = Math.max(2, Math.min(64, options.maxMessages || 64));
   const clean = (Array.isArray(messages) ? messages : [])
     .filter(isDialogueMessage)
     .map(message => ({ ...message, content: String(message.content || '').trim() }));
@@ -210,6 +213,11 @@ export function buildVoiceConversationHistory(
   }
 
   if (isContextUnsafeVoiceTurn(exactCurrentTurn)) {
+    // A direct answer to this call's pending image question needs its scene.
+    // Unrelated acknowledgements still receive only the immediately prior line.
+    if (resolveVoiceMediaDraft(exactCurrentTurn, beforeCurrent).status === 'ready') {
+      return [...beforeCurrent, current].slice(-maxMessages);
+    }
     const immediateAssistant = beforeCurrent.length > 0 && isAssistantRole(beforeCurrent.at(-1)?.role)
       ? beforeCurrent.at(-1)
       : undefined;

@@ -48,7 +48,7 @@ export function isMediaJobStale(updatedAt: Date | string, now = Date.now()): boo
 export function isRetryableMediaJobFailure(status: number, message: string): boolean {
   const normalized = message.toLowerCase();
   if ([400, 401, 402, 403, 404, 409, 422].includes(status)) return false;
-  if (/credit|billing|policy|content filter|moderation|unauthorized|forbidden|missing reference|unknown .*model|not configured/.test(normalized)) {
+  if (/credit|billing|policy|content filter|content flagged|potentially sensitive|safety|moderation|unauthorized|forbidden|missing reference|unknown .*model|not configured/.test(normalized)) {
     return false;
   }
   return status === 408 || status === 429 || status >= 500 || /timeout|timed out|network|busy|overload|temporar|connection|fetch failed/.test(normalized);

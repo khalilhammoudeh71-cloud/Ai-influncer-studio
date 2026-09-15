@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   FAL_MAYA_SAMPLE_RATE,
+  nextMayaAudioChunk,
   buildMayaVoicePrompt,
   extractFalPcmChunk,
   shapeMayaSpeechText,
@@ -36,4 +37,26 @@ test('extracts raw and hex-encoded PCM events while rejecting malformed payloads
   assert.deepEqual(Array.from(extractFalPcmChunk({ audio: '0001ff' }) || []), [0, 1, 255]);
   assert.equal(extractFalPcmChunk({ audio: 'not-hex' }), undefined);
   assert.equal(extractFalPcmChunk({ done: true }), undefined);
+});
+
+test('Maya voice descriptions fit the provider 500-character limit', () => {
+  const prompt = buildMayaVoicePrompt({
+    name: 'Rawan Hasan',
+    tone: 'Warm and expressive. '.repeat(30),
+    voicePrompt: 'Soft, clear conversational voice. '.repeat(30),
+  });
+  assert.ok(prompt.length <= 500);
+  assert.match(prompt, /adult woman/);
+});
+
+
+test('Maya timeout releases a call when no audio arrives', async () => {
+  let aborted = false;
+  await assert.rejects(nextMayaAudioChunk({ next: () => new Promise<never>(() => {}) }, () => { aborted = true; }, 5), /timed out/);
+  assert.equal(aborted, true);
+});
+
+test('Maya forwards available audio without aborting the stream', async () => {
+  const chunk = { done: false as const, value: new Uint8Array([1, 2]) };
+  assert.deepEqual(await nextMayaAudioChunk({ next: async () => chunk }, () => { throw new Error('unexpected abort'); }), chunk);
 });

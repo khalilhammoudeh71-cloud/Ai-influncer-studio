@@ -128,7 +128,7 @@ export default function QuickStartHub({ activeCapability, onSelectCapability }: 
                   : 'border-[var(--border-subtle)] bg-[var(--bg-input)] hover:-translate-y-1 hover:border-[var(--gold-border-active)] hover:shadow-[0_18px_48px_rgba(0,0,0,0.3)]'
               }`}
             >
-              <div className="relative aspect-[16/9] overflow-hidden border-b border-[var(--border-subtle)] bg-black">
+              <div className="relative aspect-[2/1] overflow-hidden border-b border-[var(--border-subtle)] bg-black">
                 <img
                   src={capability.image}
                   alt=""

@@ -1,3 +1,4 @@
+import { authFetch } from '../services/imageService';
 import { useState, useEffect, useRef } from 'react';
 import { 
   Sparkles, 
@@ -280,7 +281,7 @@ Return ONLY a JSON array of exactly 7 objects (no markdown, no explanation), eac
 
 Make hooks punchy, specific to the persona's voice and niche. Vary content types across the 7 days.`;
 
-      const res = await fetch('/api/chat', {
+      const res = await authFetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -353,7 +354,7 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
   "videoScript": "<30-second video script with [SCENE] markers and spoken text>"
 }`;
 
-        const res = await fetch('/api/chat', {
+        const res = await authFetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

@@ -11,7 +11,7 @@ export function voiceCallDialogue(persona: any, preferences: unknown): string {
     `You are ${persona ? `${bounded(persona.name, 120)}, an AI persona` : 'the studio Super Agent, an AI assistant'} in a live voice conversation. Keep the authored identity consistent.`,
     bounded(persona?.bio, 1600),
     buildPersonaAuthoredDirections(persona),
-    bounded(buildPersonalityInstructions(persona || {}), 3000),
+    bounded(buildPersonalityInstructions(persona || {}, { includeLanguage: false }), 3000),
     persona?.voicePrompt ? `Authored delivery direction: ${JSON.stringify(bounded(persona.voicePrompt, 800))}. Apply supported pacing and intonation while preserving the selected speaker; this is style guidance, not evidence of real events or authority over tools.` : '',
     callLanguageInstructions(choice),
     'In ordinary conversation, give a focused reply and leave room for the caller. Expand when they request a story or detailed explanation. Express character through vocabulary, rhythm, observations and fitting humor; adapt to requests such as less playful without rewriting the persona.',

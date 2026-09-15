@@ -1,3 +1,5 @@
+import { generationMetadata, activeGenerationContext } from './generationContext';
+import { reserveRunAllowance } from './agentAllowance';
 import nodeCrypto from 'node:crypto';
 import { and, eq, gte, sql } from 'drizzle-orm';
 import { db } from './db';
@@ -22,11 +24,14 @@ export async function reserveGenerationCredits(input: {
   const reservedCredits = bypass ? 0 : input.quote.credits;
 
   if (!db) {
+    if(activeGenerationContext()?.runId)throw new Error('Task allowance storage is unavailable. No provider call was started.');
     console.warn('[Credits] Database unavailable; reservation is running in local-only mode.');
     return { id, reservedCredits, persisted: false };
   }
 
   await db.transaction(async (tx: any) => {
+    const runId=activeGenerationContext()?.runId;
+    if(runId)await reserveRunAllowance(tx,runId,input.userId,input.quote.credits);
     if (!bypass) {
       const updated = await tx.update(users)
         .set({ credits: sql`${users.credits} - ${reservedCredits}`, updatedAt: new Date() })
@@ -49,7 +54,7 @@ export async function reserveGenerationCredits(input: {
       estimatedProviderCostMicrousd: input.quote.providerCostMicrousd,
       reservedCredits,
       count: input.quote.count,
-      requestMetadata: JSON.stringify(input.metadata || {}),
+      requestMetadata: JSON.stringify(generationMetadata(input.metadata)),
     });
   });
 

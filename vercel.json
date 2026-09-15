@@ -5,15 +5,28 @@
   "outputDirectory": "dist",
   "functions": {
     "api/index.mjs": {
-      "maxDuration": 300
+      "maxDuration": 300,
+      "excludeFiles": "dist/**"
     }
   },
   "crons": [
-    { "path": "/api/media-jobs/worker", "schedule": "* * * * *" },
-    { "path": "/api/model-catalog/refresh", "schedule": "*/15 * * * *" }
+    {
+      "path": "/api/media-jobs/worker",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/model-catalog/refresh",
+      "schedule": "*/15 * * * *"
+    }
   ],
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index.mjs" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index.mjs"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
   ]
 }

@@ -3,6 +3,23 @@ import assert from 'node:assert/strict';
 import { openaiNativeSession, nativeInstructions } from './nativeVoice';
 import { nativeHistory, nativeVoiceChoice } from '../shared/nativeVoice';
 import { OpenAINativeCall } from '../src/utils/nativeVoiceCall';
+import { VoiceLifecycleError } from './personaVoiceLifecycle';
+test('ElevenLabs options and sessions authorize the saved private voice and preserve access errors', async () => {
+ const {createNativeVoiceRouter}=await import('./nativeVoice');
+ const requests:any[]=[];
+ const router=createNativeVoiceRouter({
+  readPersonas:async()=>[{id:'owned',name:'Fixture',voiceId:'privateclone123456789',voiceEngine:null}],
+  assertVoiceAccess:async(req,voiceId,personaId)=>{requests.push([req.user.id,voiceId,personaId]);throw new VoiceLifecycleError('This private voice is not available to your account.',403);},
+  agentChat:async()=>{throw new Error('Unexpected tool call');},
+ });
+ for(const path of ['/elevenlabs/options','/elevenlabs/session']){
+  let status=200;let body:any;
+  const handler=(router.stack.find((l:any)=>l.route?.path===path) as any).route.stack[0].handle;
+  await handler({user:{id:'owner'},query:{personaId:'owned'},body:{personaId:'owned',activePersona:{id:'spoofed'},voiceId:'spoofed'}},{status(s:number){status=s;return this;},json(b:any){body=b;return this;}});
+  assert.equal(status,403);assert.match(body.error,/private voice.*account/);
+ }
+ assert.deepEqual(requests,[['owner','privateclone123456789','owned'],['owner','privateclone123456789','owned']]);
+});
 test('OpenAI session receives selected dialect and authored voice direction without another provider tool',()=>{
  const session=openaiNativeSession({name:'Fixture',voicePrompt:'Speak with dry wit and a measured pace.'},'marin',[],{mode:'arabic',dialect:'egyptian',allowLanguageSwitching:true});
  assert.match(session.instructions,/Egyptian/);
@@ -43,7 +60,7 @@ test('interruption rejects late transcript, duplicate tools execute once, hangup
 });
 test('native endpoints reject another account persona before provider or tool use',async()=>{
  const {createNativeVoiceRouter}=await import('./nativeVoice');let used=0;
- const router=createNativeVoiceRouter({readPersonas:async(id)=>{assert.equal(id,'owner');return [{id:'owned',name:'Fixture'}];},agentChat:async()=>{used++;}});
+ const router=createNativeVoiceRouter({assertVoiceAccess:async()=>{},readPersonas:async(id)=>{assert.equal(id,'owner');return [{id:'owned',name:'Fixture'}];},agentChat:async()=>{used++;}});
  for(const path of ['/openai/session','/elevenlabs/session','/agent']){
   let status=200;let body:any;
   const handler=(router.stack.find((l:any)=>l.route?.path===path) as any).route.stack[0].handle;

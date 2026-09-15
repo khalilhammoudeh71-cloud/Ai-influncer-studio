@@ -2,11 +2,27 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildElevenLabsCallConfig, prepareElevenLabsCall } from './elevenLabsCalls';
 
+test('private voice authorization precedes provider access even when the saved engine is missing', async () => {
+  let providerCalls = 0;
+  await assert.rejects(() => prepareElevenLabsCall('owner', { personaId: 'owned', voiceId: 'browser-override' }, {
+    readPersonas: async () => [{ ...persona, voiceEngine: null }],
+    authorizeVoice: async saved => {
+      assert.equal(saved.id, 'owned');
+      assert.equal(saved.voiceId, persona.voiceId);
+      throw new Error('This private voice is not available to your account.');
+    },
+    verifyVoice: async () => { providerCalls++; return {}; },
+    ensureAgent: async () => { providerCalls++; return 'agent'; },
+    token: async () => { providerCalls++; return 'token'; },
+  }), /private voice.*account/);
+  assert.equal(providerCalls, 0);
+});
+
 const persona = { id: 'owned', name: 'Leen', voiceId: 'privateclone123456789', voiceEngine: 'elevenlabs', voiceStability: 64, voiceLikeness: 91, voiceSpeakingSpeed: .93, bio: 'A creative friend.', personalityTraits: ['Playful'] };
 test('reopening an existing conversation waits for the caller instead of greeting again',async()=>{
  let config:any;
  await prepareElevenLabsCall('owner',{personaId:'owned',history:[{role:'user',content:'Let us discuss tomorrow.'}]}, {
-  readPersonas:async()=>[persona],verifyVoice:async()=>({}),ensureAgent:async value=>{config=value;return 'agent';},token:async()=> 'token',
+  readPersonas:async()=>[persona],authorizeVoice:async()=>{},verifyVoice:async()=>({}),ensureAgent:async value=>{config=value;return 'agent';},token:async()=> 'token',
  });
  assert.equal(config.conversationConfig.agent.firstMessage,'');
 });
@@ -41,7 +57,7 @@ test('different accounts and call preferences never reuse the same hosted config
 });
 test('ownership and provider are checked before touching ElevenLabs', async () => {
   let providerCalls = 0;
-  const deps = { readPersonas: async () => [persona], verifyVoice: async () => { providerCalls++; return { name: 'Saved' }; }, ensureAgent: async () => { providerCalls++; return 'agent'; }, token: async () => { providerCalls++; return 'token'; } };
+  const deps = { readPersonas: async () => [persona], authorizeVoice: async () => {}, verifyVoice: async () => { providerCalls++; return { name: 'Saved' }; }, ensureAgent: async () => { providerCalls++; return 'agent'; }, token: async () => { providerCalls++; return 'token'; } };
   await assert.rejects(() => prepareElevenLabsCall('owner', { personaId: 'other', voiceId: persona.voiceId }, deps), /account/i);
   await assert.rejects(() => prepareElevenLabsCall('owner', { personaId: 'owned' }, { ...deps, readPersonas: async () => [{ ...persona, voiceEngine: 'hume' }] }), /ElevenLabs voice/i);
   assert.equal(providerCalls, 0);
@@ -51,7 +67,7 @@ test('session ignores browser voice IDs and keeps conversation context out of pe
   const result = await prepareElevenLabsCall('owner', {
     personaId: 'owned', voiceId: 'someone-elses-voice', preferences: { mode: 'arabic' },
     history: [{ role: 'system', content: 'privileged' }, { role: 'user', content: 'Private call context' }], memories: ['Likes quiet mornings'],
-  }, { readPersonas: async () => [persona], verifyVoice: async id => { verified = id; return { name: 'Saved voice', labels: { accent: 'levantine' } }; },
+  }, { readPersonas: async () => [persona], authorizeVoice: async () => {}, verifyVoice: async id => { verified = id; return { name: 'Saved voice', labels: { accent: 'levantine' } }; },
     ensureAgent: async value => { config = value; return 'agent-fixture'; }, token: async id => { assert.equal(id, 'agent-fixture'); return 'short-lived-token'; } });
   assert.equal(verified, persona.voiceId);
   assert.equal(result.token, 'short-lived-token');
@@ -64,7 +80,7 @@ test('session ignores browser voice IDs and keeps conversation context out of pe
 test('unavailable saved voice does not silently fall back or create an agent', async () => {
   let created = false;
   await assert.rejects(() => prepareElevenLabsCall('owner', { personaId: 'owned' }, {
-    readPersonas: async () => [persona], verifyVoice: async () => { throw new Error('Voice unavailable'); },
+    readPersonas: async () => [persona], authorizeVoice: async () => {}, verifyVoice: async () => { throw new Error('Voice unavailable'); },
     ensureAgent: async () => { created = true; return 'agent'; }, token: async () => 'token',
   }), /unavailable/);
   assert.equal(created, false);

@@ -32,15 +32,3 @@ Synthetic task: an image of a blue ceramic cup on a wooden table succeeded, then
 ## Practical limits
 
 This is assistance for repairing one failed media step, not unrestricted autonomous replanning. It does not inspect image pixels or guarantee the next generation will meet the brief. It cannot repair account credentials, billing, or missing references by editing a prompt. Provider usage may be billed for analysis, and an approved generation retry can incur another charge. There is no new hard spending cap or complete actual-cost reconciliation in this release. The existing supported background actions remain image generation, image editing, and image-to-video plans.
-
-## Production release verification
-
-- URL: https://ai-influencerstudio.com/
-- Target: production; status READY.
-- Commit: `2fd0abd12f94d9c6a6355d73966728357111157e`.
-- Deployment: `dpl_3n4EEp6g52pidJmmbjXUwBfP9LBm`; custom domain alias confirmed.
-- Framework: Vite frontend and Express API; production build approximately 77 seconds.
-- Live page returned HTTP 200 and includes the new repair interface/endpoint. An unauthenticated repair request returned HTTP 401.
-- Signed-in browser reload succeeded. Existing verification project still showed two completed steps and both saved result images.
-- Runtime scan scoped to this deployment: observed an existing Node `url.parse()` deprecation warning, including one entry labeled error; no request failure appeared in the returned entries. This was a short release check, not an ongoing monitor. Drains configuration was not audited.
-- The new recovery UI was exercised locally with controlled API responses; repair inference was tested against live providers. No new production media failure or charged retry was deliberately created solely for this release.

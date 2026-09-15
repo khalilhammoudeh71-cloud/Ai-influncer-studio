@@ -188,7 +188,8 @@ function normalizeVoiceEchoText(value: unknown): string[] {
   return String(value || '')
     .toLowerCase()
     .replace(/[\u2018\u2019]/g, "'")
-    .replace(/[^a-z0-9'\s]/g, ' ')
+    .replace(/[\u0610-\u061a\u064b-\u065f\u0670\u06d6-\u06ed]/g, '')
+    .replace(/[^\p{L}\p{N}'\s]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     .split(' ')
@@ -306,7 +307,9 @@ export function reviewVoiceCandidate(input: {
   const intimateCliches = response.match(BOOKISH_INTIMATE_CLICHE)?.length || 0;
   if (input.lawfulAdultConversation && intimateCliches >= 2) return 'robotic';
 
-  if ((input.recentAssistantResponses || []).some(previous => repeatsVoiceOpening(response, previous))) {
+  // Repetition is expected when the caller asks for recall or confirmation.
+  const requestedRecall = /\b(?:repeat|recall|remind|confirm|summari[sz]e|say.{0,30}again)\b/i.test(userTurn);
+  if (!requestedRecall && (input.recentAssistantResponses || []).some(previous => repeatsVoiceOpening(response, previous))) {
     return 'repetitive';
   }
   return 'accepted';
@@ -537,8 +540,16 @@ export function shapeNaturalSpokenReply(
   const selectedWords = selected.join(' ').split(/\s+/).filter(Boolean);
   if (selectedWords.length <= maxWords) return selected.join(' ').trim();
 
-  const shortened = selectedWords.slice(0, maxWords).join(' ').replace(/[,;:\s]+$/, '').trim();
-  return /[.!?]$/.test(shortened) ? shortened : `${shortened}.`;
+  // Treat the word target as soft: never turn a complete thought into a fragment.
+  const complete: string[] = [];
+  let wordCount = 0;
+  for (const sentence of selected) {
+    const count = sentence.split(/\s+/).length;
+    if (complete.length && wordCount + count > maxWords) break;
+    complete.push(sentence);
+    wordCount += count;
+  }
+  return complete.join(' ');
 }
 
 function findSafeSpeechBoundary(value: string): number {

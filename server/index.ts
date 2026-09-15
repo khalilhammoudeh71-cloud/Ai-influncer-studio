@@ -1,6 +1,16 @@
 import { buildVoiceDelivery } from '../shared/voiceDelivery';
 import { buildCreatorPhotoContext } from '../shared/creatorPhotoContext';
 import { buildPersonaAuthoredDirections } from '../shared/personaDialogueProfile';
+import { withGenerationContext, activeGenerationContext } from './generationContext';
+import { registerAgentRuns } from './agentRuns';
+import { inspectAgentImage } from './agentVisual';
+import { hydratePersonaReferences, resolveOwnedImageReference } from './personaReferenceResolver';
+import { resolveVideoAspectRatio } from './videoAspectRatio';
+import { frontierModel } from './frontierModels';
+import { mediaJobAttemptWhere } from './mediaJobLease';
+import { runProviderCandidates } from './providerFailover';
+import { equivalentRoutes } from '../shared/modelRouting';
+import { directImageModels, getDirectImageModel } from './openai-image-models';
 import {SEQUENCE_STYLES,validateSequence} from '../shared/carouselSequence';
 import { validateCarousel } from '../shared/carousel';
 import { buildPersonalityInstructions, personalityDelivery } from '../shared/personality';
@@ -884,7 +894,7 @@ async function fetchAtlasCloudModels(): Promise<ModelInfo[]> {
 function getAllModels(wavespeedModels: ModelInfo[], veniceModels: ModelInfo[] = [], atlasCloudModels: ModelInfo[] = []): ModelInfo[] {
   const builtIn: ModelInfo[] = [];
   if (OPENAI_DIRECT_KEY) {
-    builtIn.push({
+    builtIn.push(...directImageModels(), {
       id: 'openai:gpt-image-2',
       name: 'GPT Image 2',
       provider: 'OpenAI',
@@ -918,10 +928,10 @@ async function calculateGenerationQuote(
     quoteSource = 'configured-avatar-estimate';
   } else if (type === 'image') {
     if (modelId) {
-      if (modelId === 'replit:gpt-image-1' || modelId === 'openai:gpt-image-2') {
+      if (modelId === 'replit:gpt-image-1' || !!getDirectImageModel(modelId)) {
         provider = 'OpenAI';
         providerCostUsd = 0.04;
-        quoteSource = 'model-catalog';
+        quoteSource = modelId.includes('gpt-image-2.5-') ? 'configured-openai-estimate' : 'model-catalog';
       } else if (modelId.startsWith('google:')) {
         provider = 'Google';
         providerCostUsd = Number(process.env.GOOGLE_IMAGE_PROVIDER_COST_USD) || 0.04;
@@ -1073,7 +1083,9 @@ function buildPrompt(body: ImageGenRequest, useEditInstructionStyle = false): st
         ? `The only subject is ${creatorName} (${creatorAppearance}). Use the supplied creator reference image for identity.`
         : isDuo
           ? `The scene contains exactly ${personaName} and ${creatorName} (${creatorAppearance}). Use each supplied reference image for the corresponding identity.`
-          : `The subject is ${personaName}. In the request, "you" and "your" refer to ${personaName}; use the persona reference image for identity.`;
+          : personaName
+            ? `The subject is ${personaName}. In the request, "you" and "your" refer to ${personaName}; use the persona reference image for identity.`
+            : 'Use only the subjects described in the request. Do not add a person or portrait.';
       const exactParts = [
         'AUTHORITATIVE USER REQUEST — preserve every requested subject, action, pose, outfit, setting, camera detail, and relationship exactly as written.',
         `USER REQUEST (VERBATIM): ${rawScene}`,
@@ -1444,7 +1456,9 @@ async function convertToSquarePngBuffer(dataUrl: string): Promise<Buffer> {
   return await image.getBuffer('image/png');
 }
 
-async function generateWithDirectOpenAI(prompt: string, referenceImage?: string | string[], aspectRatio?: string, maskImage?: string): Promise<string> {
+async function generateWithDirectOpenAI(prompt: string, referenceImage?: string | string[], aspectRatio?: string, maskImage?: string, modelId = 'openai:gpt-image-2'): Promise<string> {
+  const selectedModel = getDirectImageModel(modelId);
+  if (!selectedModel) throw new Error('Unknown OpenAI image model');
   if (!OPENAI_DIRECT_KEY) throw new Error('OpenAI API key not configured');
   const client = new OpenAI({ apiKey: OPENAI_DIRECT_KEY });
   let response;
@@ -1467,8 +1481,8 @@ async function generateWithDirectOpenAI(prompt: string, referenceImage?: string 
     }));
 
     const editParams: any = {
-      model: 'gpt-image-2',
-      image: imageFiles[0],
+      model: selectedModel.apiModel,
+      image: imageFiles,
       prompt,
       n: 1,
       size: aspectRatioToReplitSize(aspectRatio),
@@ -1490,7 +1504,7 @@ async function generateWithDirectOpenAI(prompt: string, referenceImage?: string 
     response = await client.images.edit(editParams);
   } else {
     response = await client.images.generate({
-      model: 'gpt-image-2',
+      model: selectedModel.apiModel,
       prompt,
       n: 1,
       size: aspectRatioToReplitSize(aspectRatio),
@@ -1725,6 +1739,7 @@ async function convertHeicToJpegIfNecessary(dataUrl: string): Promise<string> {
 async function resolveImageToDataUrl(input: string): Promise<string> {
   let resolved = '';
   if (!input) return '';
+  if(input.startsWith('supabase-media://'))throw new Error('The private reference image must be resolved for this account before generation.');
   if (input.startsWith('data:')) {
     resolved = input;
   } else if (input.startsWith('/uploads/') || input.startsWith('uploads/') || input.startsWith('/')) {
@@ -2001,6 +2016,7 @@ async function generateWithWavespeed(
   console.log('[Wavespeed] Response code:', json.code, 'message:', json.message || '');
 
   if (json.code === 400 && useEditPath && /model not found/i.test(String(json.message || ''))) {
+    if(activeGenerationContext()?.runId)throw new Error('The selected edit model is unavailable. Review the task before retrying.');
     console.log('[Wavespeed] Edit model not found, falling back to text-to-image path:', apiPath);
     const fallbackPayload: Record<string, unknown> = {
       prompt,
@@ -2633,6 +2649,7 @@ app.get('/api/models', requireAuth, async (req, res) => {
     ];
 
     const editModels: ModelInfo[] = [
+      ...(OPENAI_DIRECT_KEY ? directImageModels().map(m => ({ ...m, type: 'image-to-image' as const })) : []),
       ...(OPENAI_DIRECT_KEY ? [{
         id: 'openai:gpt-image-2',
         name: 'GPT Image 2 (OpenAI)',
@@ -2782,10 +2799,9 @@ app.get('/api/models', requireAuth, async (req, res) => {
     const configuredRunwareModels = process.env.RUNWARE_API_KEY ? RUNWARE_CURATED_MODELS : [];
     const configuredWiroModels = WIRO_API_KEY && WIRO_API_SECRET ? WIRO_CURATED_MODELS : [];
     const configuredWiroVideoModels = WIRO_API_KEY && WIRO_API_SECRET ? WIRO_CURATED_VIDEO_MODELS : [];
-    const followsWaveSpeedProviderPolicy = (model: ModelInfo) => !/seedream|seedance/i.test(`${model.id} ${model.name}`);
-    const discoveredImageModels = (providerCatalog?.models || []).filter(followsWaveSpeedProviderPolicy);
-    const discoveredEditModels = (providerCatalog?.editModels || []).filter(followsWaveSpeedProviderPolicy);
-    const discoveredVideoModels = (providerCatalog?.videoModels || []).filter(followsWaveSpeedProviderPolicy);
+    const discoveredImageModels = (providerCatalog?.models || []);
+    const discoveredEditModels = (providerCatalog?.editModels || []);
+    const discoveredVideoModels = (providerCatalog?.videoModels || []);
 
     const sortedImageModels = mergeModels(
       configuredRunwareModels,
@@ -2798,7 +2814,7 @@ app.get('/api/models', requireAuth, async (req, res) => {
     )
       .map(mapPriceForUser);
 
-    const sortedEditModels = mergeModels(localImageModels, editModels.filter(followsWaveSpeedProviderPolicy), discoveredEditModels)
+    const sortedEditModels = mergeModels(localImageModels, editModels, discoveredEditModels)
       .map(mapPriceForUser);
 
     const sortedVideoModels = mergeModels(
@@ -4723,6 +4739,7 @@ NEW ANGLE: ${prompt}` });
     throw new Error(promptFeedback ? `prompt blocked: ${promptFeedback}` : reason);
   };
 
+  if(!activeGenerationContext()?.runId || isGeminiModel){
   try {
     console.log('[Google Imagen] Trying', geminiModel, '| hasRef:', !!referenceImage, '| count:', effectiveCount);
     if (effectiveCount > 1) {
@@ -4747,6 +4764,7 @@ NEW ANGLE: ${prompt}` });
     console.warn('[Google Imagen]', geminiModel, 'fetch error:', geminiBlockReason);
   }
 
+  }
   if (isGeminiModel) {
     throw new Error(`${geminiModel} generation failed (${geminiBlockReason || 'unknown'}). Please try again.`);
   }
@@ -4761,7 +4779,7 @@ NEW ANGLE: ${prompt}` });
   };
   const imagenModel = IMAGEN_MODEL_MAP[modelId] || 'imagen-4.0-generate-001';
 
-  if (hasImages && geminiBlockReason) {
+  if (hasImages && (geminiBlockReason || activeGenerationContext()?.runId)) {
     // Gemini failed with input images — Imagen 4 can't use them either, so throw a clear error
     throw new Error(`Image generation with reference photo failed (${geminiBlockReason}). Try without a reference image, or use a different model.`);
   }
@@ -4933,10 +4951,6 @@ const generateImageHandler = async (req: any, res: any) => {
   }
 
   let modelId = rawModelId;
-  if (/seedream/i.test(modelId) && !modelId.startsWith('wavespeed:')) {
-    console.log(`[Model Provider Policy] Rewriting ${modelId} to WaveSpeed Seedream 5.0 Pro`);
-    modelId = 'wavespeed:bytedance/seedream-v5.0-pro';
-  }
   const fullPromptText = [
     (rest as any).prompt,
     (rest as any).chatPrompt,
@@ -4970,7 +4984,7 @@ const generateImageHandler = async (req: any, res: any) => {
 
   const authReq = req as AuthenticatedRequest;
   let creditReservation: GenerationReservation | null = null;
-  if (!req[INTERNAL_MEDIA_QUALITY_RETRY]) {
+  if (!req[INTERNAL_MEDIA_QUALITY_RETRY] || activeGenerationContext()?.runId) {
     try {
       const quote = await calculateGenerationQuote(modelId, 'image', count, { resolution: (rest as any).resolution });
       creditReservation = await reserveGenerationCredits({
@@ -5008,7 +5022,7 @@ const generateImageHandler = async (req: any, res: any) => {
     let prompt = buildPrompt({ ...rest, creatorProfile: (rest as any).creatorProfile || storedCreator, referenceImage, additionalImages } as any);
 
     // Automatic LLM Visual Prompt Rephraser & Scene Enhancer (Wavespeed-style detailed prompt expander)
-    if (((rest as any).isChatContext || (rest as any).chatPrompt || (rest as any).prompt) && !(rest as any).preservePromptVerbatim) {
+    if (((rest as any).isChatContext || (rest as any).chatPrompt || (rest as any).prompt) && !(rest as any).preservePromptVerbatim && !activeGenerationContext()?.runId) {
       const rawVisualText = (rest as any).chatPrompt || (rest as any).prompt || prompt;
       try {
         const enhanced = await enhanceVisualPromptWithLLM({
@@ -5089,6 +5103,7 @@ const generateImageHandler = async (req: any, res: any) => {
           imageUrls = [generatedUrl];
           modelName = liveWiroModel?.name || WIRO_CURATED_MODELS.find(m => m.id === modelId)?.name || `Wiro (${rawWiroId})`;
         } catch (wiroErr) {
+          if(activeGenerationContext()?.runId)throw wiroErr;
           console.warn('[Wiro Error - Auto Falling back to Runware]:', wiroErr);
           try {
             const runwareGen = await generateWithRunware({
@@ -5127,6 +5142,7 @@ const generateImageHandler = async (req: any, res: any) => {
         imageUrls = generated;
         modelName = discoveredCatalogModel(modelId)?.name || RUNWARE_CURATED_MODELS.find(m => m.id === modelId)?.name || `Runware (${runwareModelId})`;
       } catch (runwareErr) {
+        if(activeGenerationContext()?.runId)throw runwareErr;
         console.warn('[Runware Error - Auto Falling back to Wavespeed]:', runwareErr);
         const wavespeedModels = await fetchWavespeedModels();
         const fallbackModel = wavespeedModels.find(m => (m.id.includes('seedream') || m.id.includes('flux')) && !m.editApiPath) || wavespeedModels.find(m => !m.editApiPath) || wavespeedModels[0];
@@ -5153,22 +5169,22 @@ const generateImageHandler = async (req: any, res: any) => {
         imageUrls = [await generateWithReplit(prompt, replitRefArg, aspectRatio)];
       }
       modelName = 'gpt-image-2';
-    } else if (modelId === 'openai:gpt-image-2') {
+    } else if (!!getDirectImageModel(modelId)) {
       if (!prompt || prompt.length < 10) prompt = buildPrompt({ ...rest, referenceImage });
       const allOpenAIRefs = [referenceImage, ...(additionalImages || [])].filter((x): x is string => !!x);
       const openAIRefArg = allOpenAIRefs.length > 1 ? allOpenAIRefs : allOpenAIRefs[0];
-      console.log('[openai:gpt-image-2] Sending', allOpenAIRefs.length, 'reference image(s) to OpenAI');
+      console.log('[OpenAI] Model', modelId, 'sending', allOpenAIRefs.length, 'reference image(s) to OpenAI');
       if (count > 1) {
-        const results = await Promise.allSettled(Array.from({ length: count }, () => generateWithDirectOpenAI(prompt, openAIRefArg, aspectRatio)));
+        const results = await Promise.allSettled(Array.from({ length: count }, () => generateWithDirectOpenAI(prompt, openAIRefArg, aspectRatio, undefined, modelId)));
         imageUrls = results.filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled').map(r => r.value);
         if (imageUrls.length === 0) {
           const firstErr = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
           throw firstErr ? firstErr.reason : new Error('All image generation requests failed');
         }
       } else {
-        imageUrls = [await generateWithDirectOpenAI(prompt, openAIRefArg, aspectRatio)];
+        imageUrls = [await generateWithDirectOpenAI(prompt, openAIRefArg, aspectRatio, undefined, modelId)];
       }
-      modelName = 'GPT Image 2';
+      modelName = getDirectImageModel(modelId)?.name || 'GPT Image 2';
     } else if (modelId.startsWith('xai:') || modelId.startsWith('grok:')) {
       const rawGrokId = modelId.replace(/^xai:/, '').replace(/^grok:/, '');
       if (!prompt || prompt.length < 10) prompt = buildPrompt({ ...rest, referenceImage });
@@ -5281,6 +5297,7 @@ const generateImageHandler = async (req: any, res: any) => {
             imageUrls = [await generateWithWavespeed(modelInfo.apiPath, modelInfo.editApiPath, modelInfo.editImageField, prompt, referenceImage, imageWeight, modelInfo.editHasStrengthControl, aspectRatio, additionalImages)];
           }
         } catch (wsErr: any) {
+          if(activeGenerationContext()?.runId)throw wsErr;
           console.warn(`[generate-image] Primary Wavespeed model (${modelInfo.name}) failed:`, wsErr?.message || wsErr);
           console.log('[generate-image] Initiating automatic fallback cascade: 1. Qwen 3.0 Pro -> 2. GPT Image 2 -> 3. Nano Banana Pro');
 
@@ -5370,9 +5387,9 @@ app.post('/api/generate-reference', async (req, res) => {
     if (modelId === 'replit:gpt-image-1') {
       imageUrl = await generateWithReplit(prompt);
       modelName = 'gpt-image-2';
-    } else if (modelId === 'openai:gpt-image-2') {
-      imageUrl = await generateWithDirectOpenAI(prompt);
-      modelName = 'GPT Image 2';
+    } else if (!!getDirectImageModel(modelId)) {
+      imageUrl = await generateWithDirectOpenAI(prompt, undefined, undefined, undefined, modelId);
+      modelName = getDirectImageModel(modelId)?.name || 'GPT Image 2';
     } else if (modelId.startsWith('wavespeed:')) {
       const wavespeedModels = await fetchWavespeedModels();
       const modelInfo = wavespeedModels.find(m => m.id === modelId);
@@ -5405,7 +5422,9 @@ const editImageHandler = async (req: any, res: any) => {
     return res.status(400).json({ error: 'sourceImage, prompt, and modelId are required' });
   }
 
+  let reservation:GenerationReservation|null=null;
   try {
+    reservation=await reserveGenerationCredits({userId:req.user.id,email:req.user.email,quote:await calculateGenerationQuote(modelId,'image')});
     let imageUrl: string;
     let modelName = modelId;
     const resolvedAdditional = additionalImage ? await resolveImageToDataUrl(additionalImage) : null;
@@ -5436,7 +5455,7 @@ const editImageHandler = async (req: any, res: any) => {
         imageUrl = await runWiroTask(ownerSlug, modelSlug, input);
       }
       modelName = catalogModel.name;
-    } else if (modelId === 'replit:gpt-image-1' || modelId === 'openai:gpt-image-2') {
+    } else if (modelId === 'replit:gpt-image-1' || !!getDirectImageModel(modelId)) {
       const resolvedSource = await resolveImageToDataUrl(sourceImage);
       const images = [resolvedSource];
       if (resolvedAdditional) images.push(resolvedAdditional);
@@ -5444,10 +5463,12 @@ const editImageHandler = async (req: any, res: any) => {
         if (modelId === 'replit:gpt-image-1') {
           imageUrl = await generateWithReplit(prompt, images, undefined, maskImage);
         } else {
-          imageUrl = await generateWithDirectOpenAI(prompt, images, undefined, maskImage);
+          imageUrl = await generateWithDirectOpenAI(prompt, images, undefined, maskImage, modelId);
         }
-        modelName = 'GPT Image 2';
+        modelName = getDirectImageModel(modelId)?.name || 'GPT Image 2';
       } catch (gptErr) {
+        if(activeGenerationContext()?.runId)throw gptErr;
+        if (modelId.includes('gpt-image-2.5-')) throw gptErr;
         console.warn('[GPT Image 2 fallback] OpenAI inpaint failed, falling back to Seedream 5.0 Pro:', gptErr instanceof Error ? gptErr.message : gptErr);
         await fetchWavespeedModels();
         const fallbackModel = (cachedEditModels || []).find(m => m.id.includes('seedream-v5.0-pro/edit')) || {
@@ -5458,7 +5479,7 @@ const editImageHandler = async (req: any, res: any) => {
         modelName = `${fallbackModel.name} (Fallback)`;
         const payload: Record<string, unknown> = {
           prompt,
-          enable_sync_mode: true,
+          enable_sync_mode: false,
           enable_base64_output: true,
           image: resolvedSource,
           images: [resolvedSource],
@@ -5491,6 +5512,7 @@ const editImageHandler = async (req: any, res: any) => {
         };
         modelName = GOOGLE_NAMES[modelId] || modelId;
       } catch (geminiError) {
+        if(activeGenerationContext()?.runId)throw geminiError;
         console.warn('[Gemini fallback] Direct Gemini failed, falling back to Seedream via Wavespeed:', geminiError instanceof Error ? geminiError.message : geminiError);
         await fetchWavespeedModels();
         const fallbackModel = (cachedEditModels || []).find(m => m.id.includes('seedream-v5.0-pro/edit')) || 
@@ -5504,7 +5526,7 @@ const editImageHandler = async (req: any, res: any) => {
         const b64Url = resolvedSource;
         const payload: Record<string, unknown> = {
           prompt,
-          enable_sync_mode: true,
+          enable_sync_mode: false,
           enable_base64_output: true,
           image: b64Url,
           images: [b64Url],
@@ -5537,7 +5559,7 @@ const editImageHandler = async (req: any, res: any) => {
       const b64Url = await resolveImageToDataUrl(sourceImage);
       const payload: Record<string, unknown> = {
         prompt,
-        enable_sync_mode: true,
+        enable_sync_mode: false,
         enable_base64_output: true,
         image: b64Url,
         images: [b64Url],
@@ -5578,8 +5600,10 @@ const editImageHandler = async (req: any, res: any) => {
       imageUrl = await extractWavespeedOutput(json);
     }
 
+    await finalizeGenerationCredits(reservation,{ok:true});
     return res.json({ imageUrl, model: modelName });
   } catch (err) {
+    await finalizeGenerationCredits(reservation,{ok:false,error:err instanceof Error?err.message:'Image editing failed'});
     console.error('[edit-image] Error:', err instanceof Error ? err.message : err);
     return res.status(500).json({ error: err instanceof Error ? err.message : 'Image editing failed' });
   }
@@ -5824,7 +5848,7 @@ async function resolveVideoUrlOrDataUrl(input: string): Promise<string> {
 }
 
 const generateVideoHandler = async (req: any, res: any) => {
-  req.setTimeout(600000);
+  req.setTimeout?.(600000);
   const { prompt: rawPrompt, modelId: rawModelId, sourceImage, sourceVideo, strength, identityLock, naturalLook, aspectRatio, duration, resolution, allowNsfw } = req.body;
 
   if (!rawPrompt || typeof rawPrompt !== 'string' || !rawPrompt.trim() || !rawModelId) {
@@ -5832,15 +5856,6 @@ const generateVideoHandler = async (req: any, res: any) => {
   }
 
   let modelId = rawModelId as string;
-  if (/seedance/i.test(modelId) && !modelId.startsWith('wavespeed-')) {
-    const version = /seedance[- ]?2\.0/i.test(modelId) ? '2.0' : '2.5';
-    const editMode = /(?:edit|v2v|video-to-video)/i.test(modelId) || Boolean(sourceVideo);
-    modelId = editMode
-      ? `wavespeed-v2v:bytedance/seedance-${version}/edit`
-      : `wavespeed-i2v:bytedance/seedance-${version}`;
-    console.log(`[Model Provider Policy] Rewriting ${rawModelId} to ${modelId}`);
-  }
-
   const identityLockTerms = 'IDENTITY LOCK: Reproduce the exact same facial features in every detail — identical bone structure, eye shape and spacing, nose shape, lip shape, and jawline. This is the same person. Do not reinterpret or alter the face.';
   const realismTerms = 'Candid photography, natural skin texture, subtle skin pores, film grain, not over-retouched, authentic photograph.';
   let prompt = rawPrompt.trim();
@@ -5945,6 +5960,7 @@ const generateVideoHandler = async (req: any, res: any) => {
           await finalizeGenerationCredits(creditReservation, { ok: true });
           return res.json({ videoUrl, model: displayName });
         } catch (wiroErr) {
+          if(activeGenerationContext()?.runId)throw wiroErr;
           console.warn('[Wiro Video Error - Auto Falling back to Wavespeed]:', wiroErr);
         }
       }
@@ -6042,9 +6058,10 @@ const generateVideoHandler = async (req: any, res: any) => {
     };
 
     const supported = activeModel.supportedProperties || [];
-    if (aspectRatio && (supported.includes('aspect_ratio') || supported.includes('aspectRatio') || supported.includes('ratio'))) {
+    const videoAspectRatio = resolveVideoAspectRatio(activeModel.id, aspectRatio, Boolean(sourceImage));
+    if (videoAspectRatio && (supported.includes('aspect_ratio') || supported.includes('aspectRatio') || supported.includes('ratio'))) {
       const field = supported.find(k => k === 'aspect_ratio' || k === 'aspectRatio' || k === 'ratio')!;
-      payload[field] = aspectRatio;
+      payload[field] = videoAspectRatio;
     }
     if (duration !== undefined && (supported.includes('duration') || supported.includes('length') || supported.includes('seconds'))) {
       const field = supported.find(k => k === 'duration' || k === 'length' || k === 'seconds')!;
@@ -6117,6 +6134,30 @@ async function runJsonGenerationHandler(
   req: any,
   body: Record<string, unknown>,
 ): Promise<{ status: number; payload: any }> {
+  if ((handler === generateImageHandler || handler === generateVideoHandler) && !req.__providerRouting && Number(body.count || 1) === 1) {
+    let candidates: ModelInfo[] = [];
+    try {
+      const [wave, venice, atlas, catalog] = await Promise.all([
+        fetchWavespeedModels(), fetchVeniceModels(), fetchAtlasCloudModels(), fetchProviderCatalog(),
+      ]);
+      const available = handler === generateImageHandler
+        ? mergeModels(getAllModels(wave, venice, atlas), catalog.models,
+            process.env.RUNWARE_API_KEY ? RUNWARE_CURATED_MODELS : [],
+            WIRO_API_KEY && WIRO_API_SECRET ? WIRO_CURATED_MODELS : [])
+        : mergeModels(cachedVideoModels || [], catalog.videoModels,
+            WIRO_API_KEY && WIRO_API_SECRET ? WIRO_CURATED_VIDEO_MODELS : []);
+      const selected = available.find(m => m.id === body.modelId);
+      if (selected) candidates = equivalentRoutes(selected, available).filter(m =>
+        !(body.referenceImage || body.sourceImage) || m.hasReferenceImage || m.hasEditVariant || m.type === 'image-to-video');
+    } catch (error) { console.warn('[model-routing] Catalog unavailable; retaining selected model'); }
+    if (candidates.length > 1) {
+      req.__providerRouting = true;
+      try {
+        return await runProviderCandidates(candidates, candidate =>
+          runJsonGenerationHandler(handler, req, {...body, modelId:candidate.id}));
+      } finally { delete req.__providerRouting; }
+    }
+  }
   const originalBody = req.body;
   let status = 200;
   let payload: any;
@@ -6158,6 +6199,7 @@ async function generatePersonaImageWithQuality(
     };
   }
 
+  if(activeGenerationContext()?.runId)return {generation:firstGeneration,imageUrl:firstImageUrl as string,quality:null,qualityRetried:false};
   const firstQuality = await inspectGeneratedImageQuality(firstImageUrl, participants, prompt, 1, strictFidelity);
   if (firstQuality.status !== 'failed') {
     return {
@@ -6259,11 +6301,11 @@ const personaMediaHandler = async (req: AuthenticatedRequest, res: any) => {
         ownerPersonaId: creatorPersona.id,
       });
     }
-    const participants = resolveMediaParticipants(rawPrompt, activePersona, savedPersonas, creatorPersona);
+    const participants = await Promise.all(resolveMediaParticipants(rawPrompt, activePersona, savedPersonas, creatorPersona).map(persona=>hydratePersonaReferences(persona,req.user.id)));
     const participantNames = participants.map(persona => persona.name).filter(Boolean);
     const prompt = composeMultiPersonaPrompt(rawPrompt, participants);
 
-    const primaryReference = referenceImage || getPersonaPrimaryReference(participants[0]);
+    const primaryReference = await resolveOwnedImageReference(referenceImage || getPersonaPrimaryReference(participants[0]),req.user.id);
     const participantReferences = participants
       .slice(1)
       .map(getPersonaPrimaryReference)
@@ -6356,7 +6398,7 @@ const personaMediaHandler = async (req: AuthenticatedRequest, res: any) => {
       });
     }
 
-    let videoSourceImage = primaryReference;
+    let videoSourceImage:string|undefined = primaryReference;
     let keyframeQuality: MediaQualityReport | null = null;
     let keyframeQualityRetried = false;
     if (participants.length > 1) {
@@ -8360,7 +8402,7 @@ async function executeMediaJob(jobId: string, userId: string, user: any, request
     eq(mediaJobs.id, jobId),
     eq(mediaJobs.userId, userId),
   ));
-  if (!job || job.status === 'succeeded' || job.status === 'canceled') return;
+  if (!job || job.cancelRequested || job.status === 'succeeded' || job.status === 'canceled') return;
   if (job.status === 'running' && !isMediaJobStale(job.updatedAt)) return;
 
   const kind = job.kind as MediaJobKind;
@@ -8373,11 +8415,11 @@ async function executeMediaJob(jobId: string, userId: string, user: any, request
       error: 'The stored media request is invalid',
       updatedAt: new Date(),
       completedAt: new Date(),
-    }).where(and(eq(mediaJobs.id, jobId), eq(mediaJobs.userId, userId)));
+    }).where(and(eq(mediaJobs.id, jobId), eq(mediaJobs.userId, userId), eq(mediaJobs.status, job.status), eq(mediaJobs.updatedAt, job.updatedAt), eq(mediaJobs.cancelRequested, false)));
     return;
   }
 
-  const useFallback = Boolean((requestedFallback || job.usedFallback) && job.fallbackModelId);
+  const useFallback = Boolean(!job.agentRunId && (requestedFallback || job.usedFallback) && job.fallbackModelId);
   const executionRequest = useFallback
     ? withMediaJobModel(kind, storedRequest, job.fallbackModelId!)
     : storedRequest;
@@ -8399,8 +8441,10 @@ async function executeMediaJob(jobId: string, userId: string, user: any, request
     eq(mediaJobs.userId, userId),
     eq(mediaJobs.status, job.status),
     eq(mediaJobs.updatedAt, job.updatedAt),
+    eq(mediaJobs.cancelRequested, false),
   )).returning();
   if (!running) return;
+  const ownsAttempt = () => mediaJobAttemptWhere(jobId, userId, running.attempt);
 
   let rejectCancellation: ((error: Error) => void) | null = null;
   const cancellation = new Promise<never>((_resolve, reject) => {
@@ -8412,12 +8456,7 @@ async function executeMediaJob(jobId: string, userId: string, user: any, request
     const [updated] = await db.update(mediaJobs).set({
       ...progress,
       updatedAt: new Date(),
-    }).where(and(
-      eq(mediaJobs.id, jobId),
-      eq(mediaJobs.userId, userId),
-      eq(mediaJobs.status, 'running'),
-      eq(mediaJobs.cancelRequested, false),
-    )).returning({ id: mediaJobs.id });
+    }).where(ownsAttempt()).returning({ id: mediaJobs.id });
     if (!updated) rejectCancellation?.(new MediaJobCanceledError());
   };
   const heartbeatTimer = setInterval(() => {
@@ -8425,11 +8464,11 @@ async function executeMediaJob(jobId: string, userId: string, user: any, request
   }, 10_000);
 
   try {
-    const generationPromise = runJsonGenerationHandler(
+    const generationPromise = withGenerationContext({jobId,attempt:running.attempt,runId:job.agentRunId||undefined}, () => runJsonGenerationHandler(
       mediaJobHandler(kind, executionRequest),
       detachedMediaRequest(user || { id: userId, email: '' }),
       executionRequest,
-    );
+    ));
     // The provider promise may still settle after a cancellation race. Keep a
     // rejection handler attached so it never becomes an unhandled rejection.
     void generationPromise.catch(() => undefined);
@@ -8448,7 +8487,7 @@ async function executeMediaJob(jobId: string, userId: string, user: any, request
     ));
     if (current?.cancelRequested) throw new MediaJobCanceledError();
 
-    await db.update(mediaJobs).set({
+    const [completed] = await db.update(mediaJobs).set({
       status: 'succeeded',
       result: JSON.stringify(output),
       error: null,
@@ -8458,7 +8497,8 @@ async function executeMediaJob(jobId: string, userId: string, user: any, request
       usedFallback: useFallback || /fallback|failover/i.test(output.model || ''),
       updatedAt: new Date(),
       completedAt: new Date(),
-    }).where(and(eq(mediaJobs.id, jobId), eq(mediaJobs.userId, userId)));
+    }).where(ownsAttempt()).returning({ id: mediaJobs.id });
+    if (!completed) return; // A newer attempt or cancellation owns the result now.
 
     const libraryAssets = mediaJobLibraryAssets(jobId, job.personaClientId, kind, storedRequest, output);
     for (const asset of libraryAssets) {
@@ -8492,7 +8532,7 @@ async function executeMediaJob(jobId: string, userId: string, user: any, request
         error: null,
         completedAt: new Date(),
         updatedAt: new Date(),
-      }).where(and(eq(mediaJobs.id, jobId), eq(mediaJobs.userId, userId)));
+      }).where(mediaJobAttemptWhere(jobId, userId, running.attempt, true));
       return;
     }
 
@@ -8509,7 +8549,7 @@ async function executeMediaJob(jobId: string, userId: string, user: any, request
       fallbackModelId: fallback,
       updatedAt: new Date(),
       completedAt: new Date(),
-    }).where(and(eq(mediaJobs.id, jobId), eq(mediaJobs.userId, userId)));
+    }).where(ownsAttempt());
   } finally {
     clearInterval(heartbeatTimer);
   }
@@ -8582,6 +8622,35 @@ app.get('/api/media-jobs', async (req: AuthenticatedRequest, res) => {
 
 // Vercel Cron recovery path. Immediate requests use waitUntil; this worker
 // resumes queued or interrupted jobs if an individual function instance ends.
+async function meteredAgentAnalysis(run:any,model:string,credits:number,work:()=>Promise<any>){
+  const [owner]=await db.select({email:users.email}).from(users).where(eq(users.id,run.userId));
+  if(!owner)throw new Error('Account not found');
+  return withGenerationContext({runId:run.id},async()=>{
+    const quote={...createGenerationQuote({kind:'analysis',provider:model.startsWith('gemini')?'Google':'Selected repair provider',modelId:model,providerCostUsd:credits*.02,quoteSource:'fixed-studio-analysis-fee'}),credits};
+    const reservation=await reserveGenerationCredits({userId:run.userId,email:owner.email,quote});
+    try{const result=await work();await finalizeGenerationCredits(reservation,{ok:true});return result;}
+    catch(e){await finalizeGenerationCredits(reservation,{ok:false,error:e instanceof Error?e.message:'Analysis failed'});throw e;}
+  });
+}
+const advanceAgentRuns = registerAgentRuns(app, db, scheduleMediaJobExecution, readPersonasForUser, calculateGenerationQuote,undefined,{
+  analyze:async(run,work,choice)=>meteredAgentAnalysis(run,frontierModel(choice)?.model || choice,3,work),
+  inspect:async({run,step,outputUrl,sourceImage})=>{
+    if(step.type==='generate_video')return {status:'uncertain',summary:'Video playback needs your review. Watch the saved video and accept it before this plan continues.'};
+    let references:{name:string;image:string}[]=[];
+    if(step.type==='generate_image'&&step.params.usePersona!==false&&!/\b(no people|no person|without people|object only|product only)\b/i.test(step.params.prompt)){
+      const saved=await readPersonasForUser(run.userId),active=saved.find(p=>p.id===run.personaId);
+      if(!active)return{status:'uncertain',summary:'The saved persona is unavailable for visual review.'};
+      const creator=resolveCreatorPersona(saved,await readCreatorProfileForUser(run.userId));
+      const participants=await Promise.all(resolveMediaParticipants(step.params.prompt,active,saved,creator).map(persona=>hydratePersonaReferences(persona,run.userId)));
+      references=participants.map(p=>({name:p.name||'Saved persona',image:getPersonaPrimaryReference(p)||''}));
+      if(references.some(r=>!r.image))return{status:'uncertain',summary:'A saved identity reference is missing. Review the output before continuing.'};
+    }
+    return inspectAgentImage({output:outputUrl,source:step.type==='edit_image'?sourceImage:undefined,prompt:step.params.prompt,references},parts=>meteredAgentAnalysis(run,'gemini-2.5-flash',1,async()=>{
+      const response=await getGeminiDirectClient().models.generateContent({model:'gemini-2.5-flash',contents:[{role:'user',parts}],config:{responseMimeType:'application/json',temperature:0,maxOutputTokens:2048,thinkingConfig:{thinkingBudget:0},httpOptions:{timeout:60000}}});return response.text||'';
+    }));
+  },
+});
+
 app.get('/api/media-jobs/worker', async (req, res) => {
   if (!db) return res.status(503).json({ error: 'Media job storage is unavailable' });
   const cronSecret = process.env.CRON_SECRET;
@@ -8590,6 +8659,7 @@ app.get('/api/media-jobs/worker', async (req, res) => {
     return res.status(401).json({ error: 'Unauthorized worker request' });
   }
 
+  await advanceAgentRuns();
   const staleBefore = new Date(Date.now() - 90_000);
   const recoverable = await db.select().from(mediaJobs).where(and(
     eq(mediaJobs.cancelRequested, false),
@@ -8682,8 +8752,12 @@ app.post('/api/media-jobs/:jobId/cancel', async (req: AuthenticatedRequest, res)
     error: null,
     updatedAt: now,
     completedAt: queued ? now : null,
-  }).where(and(eq(mediaJobs.id, jobId), eq(mediaJobs.userId, req.user.id))).returning();
-  return res.json({ job: publicMediaJob(updated || job) });
+  }).where(and(
+    eq(mediaJobs.id, jobId), eq(mediaJobs.userId, req.user.id),
+    eq(mediaJobs.status, job.status), eq(mediaJobs.attempt, job.attempt),
+  )).returning();
+  if (!updated) return res.status(409).json({ error: 'The job changed while canceling. Refresh its status.' });
+  return res.json({ job: publicMediaJob(updated) });
 });
 
 app.delete('/api/media-jobs/:jobId', async (req: AuthenticatedRequest, res) => {
@@ -9212,6 +9286,20 @@ async function pushSchema() {
       );
       ALTER TABLE planned_posts ADD COLUMN IF NOT EXISTS user_id TEXT;
 
+      CREATE TABLE IF NOT EXISTS agent_runs (
+        id TEXT PRIMARY KEY, user_id TEXT NOT NULL, project_id TEXT NOT NULL,
+        message_id TEXT NOT NULL, persona_id TEXT NOT NULL, status TEXT NOT NULL,
+        steps TEXT NOT NULL, source_image TEXT, error TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS budget_credits INTEGER;
+      ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS used_credits INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS visual_review BOOLEAN NOT NULL DEFAULT false;
+      ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS campaign TEXT;
+      ALTER TABLE agent_runs ENABLE ROW LEVEL SECURITY;
+      REVOKE ALL ON TABLE agent_runs FROM anon, authenticated;
+      CREATE INDEX IF NOT EXISTS agent_runs_worker ON agent_runs(status, updated_at);
+      CREATE INDEX IF NOT EXISTS agent_runs_owner ON agent_runs(user_id, project_id);
       CREATE TABLE IF NOT EXISTS media_jobs (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
@@ -9233,6 +9321,8 @@ async function pushSchema() {
         updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
         completed_at TIMESTAMPTZ
       );
+      ALTER TABLE media_jobs ADD COLUMN IF NOT EXISTS agent_run_id TEXT;
+      REVOKE ALL ON TABLE media_jobs FROM anon, authenticated;
       CREATE TABLE IF NOT EXISTS generation_costs (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
@@ -9315,7 +9405,9 @@ async function pushSchema() {
       ALTER TABLE generation_costs ENABLE ROW LEVEL SECURITY;
       REVOKE ALL ON TABLE personas, generated_images, revenue_entries, planned_posts, media_jobs FROM anon;
       REVOKE ALL ON TABLE generation_costs FROM anon, authenticated;
-      GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE personas, generated_images, revenue_entries, planned_posts, media_jobs TO authenticated;
+      GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE personas, generated_images, revenue_entries, planned_posts TO authenticated;
+      REVOKE ALL ON TABLE media_jobs FROM anon, authenticated;
+      GRANT SELECT ON TABLE media_jobs TO authenticated;
       REVOKE ALL ON SEQUENCE personas_id_seq, generated_images_id_seq, revenue_entries_id_seq, planned_posts_id_seq FROM anon;
       GRANT USAGE, SELECT ON SEQUENCE personas_id_seq, generated_images_id_seq, revenue_entries_id_seq, planned_posts_id_seq TO authenticated;
       DO $account_policies$

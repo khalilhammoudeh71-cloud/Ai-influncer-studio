@@ -2,6 +2,14 @@ import { NativeVoiceCall } from '../components/NativeVoiceCall';
 import { createStreamingSpeech } from '../utils/streamingSpeech';
 import { SpeechEnginePilot } from '../components/SpeechEnginePilot';
 import { shouldInterruptPersonaSpeech, isLikelyPersonaEcho, mergeVoiceTranscriptSegments, getVoiceTurnCommitDelay } from '../utils/voiceStability';
+import { recognitionLanguage } from '../../shared/personaLanguage';
+import { AgentCampaignCard } from '../components/AgentCampaignCard';
+import { validateCampaign, type AgentCampaign } from '../../shared/agentCampaign';
+import { readAgentChatResponse } from '../utils/agentChatResponse';
+import { AgentRecovery } from '../components/AgentRecovery';
+import { AgentAllowance } from '../components/AgentAllowance';
+import { AgentPlanApproval, type PlanApproval } from '../components/AgentPlanApproval';
+import { supportsBackground } from '../../shared/agentRun';
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -62,10 +70,15 @@ import VoiceCloneStudioModal from '../components/VoiceCloneStudioModal';
 import { api } from '../services/apiService';
 import { generatePersonaPlan } from '../utils/personaEngine';
 import { generateImage, upscaleImage, authFetch } from '../services/imageService';
-import { editImageJob, talkingAvatarJob } from '../services/mediaJobService';
+import { editImageJob, talkingAvatarJob, requestPersonaMediaJob } from '../services/mediaJobService';
 import { cn } from '../utils/cn';
 import { trimAudioBase64To10Sec } from '../utils/audioUtils';
-import { accountLocalStorage } from '../utils/accountStorage';
+import { canAutoRun, restoreConversation, imagePersona, requireOutput, previousImage, taskContext } from '../utils/agentWorkspace';
+import { accountLocalStorage, getActiveStorageUserId } from '../utils/accountStorage';
+import { withResultVersion, ResultVersion } from '../utils/agentVersions';
+import { projectKeys, readProjects, AgentProject } from '../utils/agentProjects';
+import { saveAgentHistory } from '../utils/agentHistoryPersistence';
+import { prepareWorkspaceValueForStorage, resolveWorkspaceValueFromStorage } from '../services/workspaceMediaService';
 import toast from 'react-hot-toast';
 import { DEFAULT_VIDEO_MODEL_ID } from '../../shared/mediaDefaults';
 import { buildVoiceConversationHistory } from '../../shared/voiceConversationContext';
@@ -98,6 +111,11 @@ interface CollaborationMsg {
 
 interface Message {
   nativeVoicePlan?: boolean;
+  campaign?: AgentCampaign;
+  backgroundRunId?: string;
+  backgroundStatus?: string;
+  backgroundBudgetCredits?: number;
+  backgroundUsedCredits?: number;
   id: string;
   role: 'user' | 'model';
   content: string;
@@ -116,6 +134,7 @@ interface Message {
     completionTokens?: number;
     costUsd?: number;
   };
+  sources?: Array<{title:string;url:string}>;
   replanDepth?: number;
   planCard?: { title: string; steps: { title: string; estimatedCost: string }[]; totalCost: string };
   isExecuting?: boolean;
@@ -125,7 +144,9 @@ interface Message {
     params: any; 
     status: 'pending' | 'running' | 'success' | 'error' | 'done' | 'executing';
     resultUrl?: string;
+    quality?: {status:string;summary?:string};
     resultUrls?: string[];
+    resultVersions?: ResultVersion[];
     isActionLoading?: 'video' | 'upscale' | 'swap' | null;
   }[];
 }
@@ -485,22 +506,83 @@ function audioBufferToWav(buffer: AudioBuffer): Blob {
 
   return new Blob([bufferArr], { type: 'audio/wav' });
 }
-export default function AgentView({ personas, setPersonas, selectedPersonaId: propSelectedPersonaId, onSelectPersona, nav }: AgentViewProps) {
+export default function AgentView(props: AgentViewProps) {
+  const [projects,setProjects] = useState(() => readProjects(accountLocalStorage.getItem('super_agent_projects')));
+  const [projectId,setProjectId] = useState('default');
+  function createProject(name: string) {
+    if (!name.trim()) return;
+    const project = {id:crypto.randomUUID(),name:name.trim().slice(0,80)};
+    const next = [...projects,project];
+    try { accountLocalStorage.setItem('super_agent_projects',JSON.stringify(next)); }
+    catch { toast.error('Project could not be saved.'); return; }
+    setProjects(next); setProjectId(project.id);
+  }
+  return <AgentProjectView key={projectId} {...props} projectId={projectId} projects={projects} onProjectChange={setProjectId} onCreateProject={createProject} />;
+}
+function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelectedPersonaId, onSelectPersona, nav, projectId, projects, onProjectChange, onCreateProject }: AgentViewProps & {projectId:string;projects:AgentProject[];onProjectChange:(id:string)=>void;onCreateProject:(name:string)=>void}) {
+  const keys = projectKeys(projectId);
+  const [backgroundError,setBackgroundError]=useState('');
+  const syncBackgroundRun = (run:any) => setMessages(prev=>{
+    const index=prev.findIndex(m=>m.id===run.messageId);
+    const original:Message=index>=0?prev[index]:{id:run.messageId,role:'model' as const,content:'Saved background plan'};
+    const updated:Message={...original,campaign:run.campaign || original.campaign,backgroundRunId:run.id,backgroundStatus:run.status,backgroundBudgetCredits:run.budgetCredits,backgroundUsedCredits:run.usedCredits,
+      isExecuting:run.status==='running',status:run.status==='succeeded'?'done':run.status==='running'?'executing':'normal',
+      execSteps:run.steps.map((step:any,i:number)=>({...original.execSteps?.[i],...step})),
+      execLogs:run.error?[run.error]:[run.status==='running'?'Saved on the server. You can close this page.':run.status==='paused'?'Paused before the next step. The current generation may still finish.':run.status==='succeeded'?'All steps completed. Assets are saved in Library.':'Plan needs attention.'],
+    };
+    if(index<0)return [...prev,updated];
+    if(JSON.stringify(original)===JSON.stringify(updated))return prev;
+    return prev.map((m,i)=>i===index?updated:m);
+  });
+  useEffect(()=>{
+    let disposed=false;
+    const refresh=async()=>{
+      try{
+        const res=await authFetch(`/api/agent-runs?projectId=${encodeURIComponent(projectId)}`);
+        const data=await res.json();if(!res.ok)throw new Error(data.error||'Background status unavailable');
+        if(!disposed){setBackgroundError('');for(const run of data.runs||[])syncBackgroundRun(run);}
+      }catch(e){if(!disposed)setBackgroundError(e instanceof Error?e.message:'Background status unavailable');}
+    };
+    void refresh();const timer=setInterval(refresh,5000);
+    return()=>{disposed=true;clearInterval(timer);};
+  },[projectId]);
+  const backgroundAction=async(id:string,action:string)=>{
+    try{const res=await authFetch(`/api/agent-runs/${encodeURIComponent(id)}/${action}`,{method:'POST'});const data=await res.json();if(!res.ok)throw new Error(data.error);syncBackgroundRun(data.run);}catch(e){toast.error(e instanceof Error?e.message:'Could not update plan');}
+  };
+
+  const [projectName,setProjectName] = useState('');
+  const [historySaving,setHistorySaving] = useState(false);
+  const [historySaveFailed,setHistorySaveFailed] = useState(false);
   const effectiveSelectedPersonaId = propSelectedPersonaId;
   const [inputText, setInputText] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>(() => restoreConversation(accountLocalStorage.getItem(keys.history)));
   
+  useEffect(() => {
+    let current = true;
+    setHistorySaving(true);
+    setHistorySaveFailed(false);
+    const accountId = getActiveStorageUserId();
+    void saveAgentHistory(JSON.stringify(messages), async value =>
+      resolveWorkspaceValueFromStorage(await prepareWorkspaceValueForStorage(value)),
+      value => accountLocalStorage.setItem(keys.history, value),
+      () => current && accountId === getActiveStorageUserId(),
+    ).catch(() => { if (current) { setHistorySaveFailed(true); toast.error('Conversation could not be saved. Keep this page open while working.'); } }).finally(() => { if (current) setHistorySaving(false); });
+    return () => { current = false; };
+  }, [messages]);
+
   const [isSending, setIsSending] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [canvasTab, setCanvasTab] = useState<'studio' | 'chat' | 'marketing' | 'media' | 'downloader'>('studio');
   const [customPresets, setCustomPresets] = useState<CustomPreset[]>([]);
 
   // Autopilot, Sub-Agent Delegation & Approval Queue States
-  const [autopilotActive, setAutopilotActive] = useState(false);
-  const [autopilotInterval, setAutopilotInterval] = useState<'30s' | '1h' | '6h' | '12h'>('1h');
+  const runningPlans = useRef(new Set<string>());
+  const stoppedPlans = useRef(new Set<string>());
+  const [workspaceBrief, setWorkspaceBrief] = useState(() => accountLocalStorage.getItem(keys.brief) || '');
   const [autoApprove, setAutoApprove] = useState(false);
   const [allowNsfw, setAllowNsfw] = useState(() => localStorage.getItem('agent_allow_nsfw') === 'true');
+  const [planningModel,setPlanningModel]=useState(()=>accountLocalStorage.getItem("agent_planning_model")||"");
   const [voiceLlmModel, setVoiceLlmModel] = useState<string>(() => {
     const brainVersion = localStorage.getItem('super_agent_brain_version');
     const saved = localStorage.getItem('agent_voice_llm');
@@ -704,42 +786,6 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
     }
   }, []);
 
-  // Self-healing effect: Automatically purge any legacy "hello" execution cards from state
-  useEffect(() => {
-    setMessages(prev => prev.filter(m => {
-      if (m.suggestedSteps) {
-        const contentStr = (m.content || '').toLowerCase();
-        if (contentStr.includes('request: "hello"') || contentStr.includes('seedream') || contentStr.includes('hello')) {
-          return false;
-        }
-      }
-      return true;
-    }));
-  }, []);
-
-  // Background Autopilot Timer Loop
-  useEffect(() => {
-    if (!autopilotActive) return;
-
-    let ms = 3600000; // 1 hour default
-    if (autopilotInterval === '30s') ms = 30000;
-    else if (autopilotInterval === '6h') ms = 21600000;
-    else if (autopilotInterval === '12h') ms = 43200000;
-
-    const timer = setInterval(() => {
-      toast('🤖 [Autopilot Loop]: Triggering scheduled background generation...', { icon: '⚡' });
-      emitSubAgentLog('business', `Autopilot background timer fired (${autopilotInterval}). Initiating automated media cycle...`);
-
-      const randomPreset = BASE_PRESETS[Math.floor(Math.random() * BASE_PRESETS.length)];
-      if (randomPreset) {
-        emitSubAgentLog('copywriter', `Autopilot selected campaign strategy: "${randomPreset.name}"`);
-        sendMessage(randomPreset.prompt);
-      }
-    }, ms);
-
-    return () => clearInterval(timer);
-  }, [autopilotActive, autopilotInterval]);
-
   // Guided Tour Tab auto-switching handler
   useEffect(() => {
     if (tourStep === 2) setCanvasTab('studio');
@@ -777,7 +823,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
       const rec = new SpeechRecognition();
       rec.continuous = false;
       rec.interimResults = false;
-      rec.lang = 'en-US';
+      rec.lang = recognitionLanguage(personas.find(p => p.id === effectiveSelectedPersonaId) || {}).browser;
       
       rec.onstart = () => {
         setIsListening(true);
@@ -820,7 +866,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
       const rawDataUrl = ev.target?.result as string;
       const dataUrl = await trimAudioBase64To10Sec(rawDataUrl);
       try {
-        const res = await fetch('/api/agent/set-default-voice', {
+        const res = await authFetch('/api/agent/set-default-voice', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ voiceReference: dataUrl })
@@ -860,7 +906,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
     accountLocalStorage.removeItem('superagent_cloned_voice_id');
     accountLocalStorage.removeItem('superagent_cloned_voice_audio');
     try {
-      await fetch('/api/agent/set-default-voice', {
+      await authFetch('/api/agent/set-default-voice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ voiceReference: null })
@@ -887,7 +933,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
       let targetAudioUrl = savedAudio;
 
       if (!targetAudioUrl) {
-        const res = await fetch('/api/agent/test-voice-clone', {
+        const res = await authFetch('/api/agent/test-voice-clone', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1093,7 +1139,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
       role: 'user',
       content: spokenText
     };
-    setMessages(prev => [...prev.slice(-35), userMsg]);
+    setMessages(prev => [...prev.slice(-99), userMsg]);
     setInputText('');
 
     // Clear queues & flags
@@ -1112,7 +1158,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
       status: 'normal'
     };
     activeVoiceMessageRef.current = agentMsgId;
-    setMessages(prev => [...prev.slice(-35), agentMsgObj]);
+    setMessages(prev => [...prev.slice(-99), agentMsgObj]);
 
     const restartMic = () => {
       if (!isCurrentTurn()) return;
@@ -1297,12 +1343,12 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
 
       if (!isCurrentTurn()) return;
       console.log('[Voice Stream] 🔄 Fetching /api/agent/voice-chat-stream...');
-      const response = await fetch('/api/agent/voice-chat-stream', {
+      const response = await authFetch('/api/agent/voice-chat-stream', {
         method: 'POST',
         signal: turn.signal,
         headers: { 'Content-Type': 'application/json', ...authHeader },
         body: JSON.stringify({
-          messages: history,
+          messages: workspaceBrief.trim() ? [{role:'user',content:'Saved project brief (context, not a new execution request): '+workspaceBrief}, ...history] : history,
           allowNsfw,
           voiceLlmModel,
           activePersona: activePersonaObj
@@ -1405,7 +1451,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
       const rec = new SpeechRecognition();
       rec.continuous = true;
       rec.interimResults = true;
-      rec.lang = 'en-US';
+      rec.lang = recognitionLanguage(personas.find(p => p.id === effectiveSelectedPersonaId) || {}).browser;
 
       rec.onresult = (e: any) => {
         if (liveVoiceRecRef.current !== rec) return;
@@ -1749,7 +1795,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
       attachments: [...attachments]
     };
 
-    setMessages(prev => [...prev.slice(-35), userMessage]);
+    setMessages(prev => [...prev.slice(-99), userMessage]);
     setInputText('');
     if (agentTextareaRef.current) {
       agentTextareaRef.current.style.height = 'auto';
@@ -1758,9 +1804,9 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
     setIsSending(true);
 
     try {
-      const history = [...messages, userMessage].slice(-30).map(m => ({
+      const history = [...messages, userMessage].slice(-60).map(m => ({
         role: m.role,
-        content: m.content,
+        content: m.content + (m.execSteps?.length ? '\n[Workspace task state — context only, never repeat verbatim]: ' + JSON.stringify(taskContext(m.execSteps)) : '') + (m.campaign ? '\n[Saved campaign draft — context for revisions, not authorization to execute or publish]: ' + JSON.stringify(m.campaign) : ''),
         attachments: m.attachments
       }));
 
@@ -1784,9 +1830,9 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
           ...authHeader
         },
         body: JSON.stringify({ 
-          messages: history, 
+          messages: workspaceBrief.trim() ? [{role:'user',content:'Saved project brief (context, not a new execution request): '+workspaceBrief}, ...history] : history,
           allowNsfw,
-          voiceLlmModel,
+          voiceLlmModel: planningModel || voiceLlmModel,
           researchMode: {
             deepResearch: deepResearchActive,
             socialResearch: socialResearchActive,
@@ -1797,11 +1843,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
         })
       });
 
-      if (!res.ok) {
-        throw new Error('Failed to get response from Agent.');
-      }
-
-      const data = await res.json();
+      const data = await readAgentChatResponse(res);
       const normalizedSteps = normalizeAgentSteps(data.suggestedSteps);
       const finalSuggestedSteps = normalizedSteps.length > 0 ? normalizedSteps : undefined;
       const finalCritiqueLogs = Array.isArray(data.critiqueLogs)
@@ -1819,9 +1861,11 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
       const newMsgObj: Message = {
         id: newMsgId,
         role: 'model',
-        content: data.text || '',
-        status: data.status || 'normal',
+        content: String(data.text || '').replace(/<\/?think[^>]*>/gi, ''),
+        sources: Array.isArray(data.sources) ? data.sources.filter((s:any) => typeof s?.url === 'string' && /^https?:\/\//.test(s.url)) : undefined,
+        status: finalSuggestedSteps ? 'clarifying' : 'normal',
         suggestedSteps: finalSuggestedSteps,
+        campaign: validateCampaign(data.campaign, finalSuggestedSteps || []),
         critiqueLogs: finalCritiqueLogs,
         collaborationLogs: finalCollaborationLogs,
         agentMode: data.agentMode && typeof data.agentMode === 'object' ? data.agentMode : undefined,
@@ -1831,9 +1875,9 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
         execLogs: finalSuggestedSteps ? [] : undefined
       };
 
-      setMessages(prev => [...prev.slice(-35), newMsgObj]);
+      setMessages(prev => [...prev.slice(-99), newMsgObj]);
 
-      if (newMsgObj.execSteps && newMsgObj.execSteps.length > 0) {
+      if (newMsgObj.execSteps?.length && canAutoRun(autoApprove, userMessage.content)) {
         setTimeout(() => {
           runPipeline(newMsgId, newMsgObj);
         }, 50);
@@ -1841,14 +1885,14 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
     } catch (err: any) {
       console.warn('Agent chat fallback triggered:', err);
       const fallbackMsgId = Math.random().toString();
-      const textReply = `Hey there! How can I help you build, design, or market your AI influencer today? You can ask me to generate photos, create videos, plan content, or manage personas!`;
+      const textReply = err instanceof Error ? err.message : 'I could not complete that request. Your message is saved; please retry. No actions were started.';
       const chatMsgObj: Message = {
         id: fallbackMsgId,
         role: 'model',
         content: textReply,
         status: 'normal'
       };
-      setMessages(prev => [...prev.slice(-25), chatMsgObj]);
+      setMessages(prev => [...prev.slice(-99), chatMsgObj]);
     } finally {
       setIsSending(false);
     }
@@ -1892,7 +1936,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
       setMessages(prev => prev.map(m => {
         if (m.id === messageId && m.execSteps) {
           const updated = [...m.execSteps];
-          updated[stepIdx].resultUrl = result.imageUrl;
+          updated[stepIdx] = withResultVersion(updated[stepIdx], result.imageUrl);
           updated[stepIdx].isActionLoading = null;
           return { ...m, execSteps: updated };
         }
@@ -1980,7 +2024,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
         const targetMsg = messages.find(m => m.id === msgId);
         const originalImageUrl = targetMsg?.execSteps?.[stepIdx].resultUrl || '';
 
-        const res = await fetch('/api/face-swap', {
+        const res = await authFetch('/api/face-swap', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -2000,7 +2044,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
         setMessages(prev => prev.map(m => {
           if (m.id === msgId && m.execSteps) {
             const updated = [...m.execSteps];
-            updated[stepIdx].resultUrl = data.imageUrl;
+            updated[stepIdx] = withResultVersion(updated[stepIdx], data.imageUrl);
             updated[stepIdx].isActionLoading = null;
             return { ...m, execSteps: updated };
           }
@@ -2104,7 +2148,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
     if (voiceEngine === 'elevenlabs') {
       toast.loading(`Cloning voice '${voiceNameInput}' via ElevenLabs...`, { id: 'studio-job' });
       try {
-        const cloneRes = await fetch('/api/elevenlabs-clone-voice', {
+        const cloneRes = await authFetch('/api/elevenlabs-clone-voice', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -2122,7 +2166,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
         
         toast.loading(`Synthesizing test speech with cloned voice ID...`, { id: 'studio-job' });
         
-        const speechRes = await fetch('/api/generate-speech', {
+        const speechRes = await authFetch('/api/generate-speech', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -2145,7 +2189,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
     } else {
       toast.loading('Cloning voice via OmniVoice API...', { id: 'studio-job' });
       try {
-        const res = await fetch('/api/voice-clone', {
+        const res = await authFetch('/api/voice-clone', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -2179,7 +2223,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
     toast.loading('Creating Talking Avatar (OmniVoice + InfiniteTalk)...', { id: 'studio-job' });
 
     try {
-      const res = await fetch('/api/talking-avatar', {
+      const res = await authFetch('/api/talking-avatar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2213,7 +2257,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
     setIsPersonaTyping(true);
 
     try {
-      const res = await fetch('/api/agent/persona-chat', {
+      const res = await authFetch('/api/agent/persona-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2272,7 +2316,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
     }
 
     accountLocalStorage.setItem(`planner_pending_asset_${targetPersona.id}`, JSON.stringify({
-      url: result.videoUrl,
+      url: requireOutput(result.videoUrl, 'Video generation'),
       title: result.title || `${result.platform} video`,
       platform: result.platform,
       kind: 'video',
@@ -2283,9 +2327,23 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
   };
 
   // ─── Pipeline runner execution ──────────────────────────────────────────────
-  const runPipeline = async (messageId: string, directMsg?: Message) => {
+  const runPipeline = async (messageId: string, directMsg?: Message, approval?: PlanApproval) => {
     const targetMsg = directMsg || messages.find(m => m.id === messageId);
-    if (!targetMsg || !targetMsg.execSteps || targetMsg.isExecuting) return;
+    if (!targetMsg || !targetMsg.execSteps || targetMsg.isExecuting || runningPlans.current.has(messageId)) return;
+    if(supportsBackground(targetMsg.execSteps) && !targetMsg.execSteps.some(s=>['success','done'].includes(s.status))){
+      if(!approval){toast('Review the plan cost and set an allowance before starting.');return;}
+      runningPlans.current.add(messageId);
+      try{
+        const source=previousImage(messages)||[...messages].reverse().flatMap(m=>m.attachments||[]).find(a=>a.mimeType.startsWith('image/'))?.dataUrl;
+        const response=await authFetch('/api/agent-runs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({projectId,messageId,personaId:effectiveSelectedPersonaId,steps:targetMsg.execSteps,campaign:targetMsg.campaign,sourceImage:source,...approval})});
+        const data=await response.json();if(!response.ok)throw new Error(data.error||'Could not save background plan');
+        syncBackgroundRun(data.run);toast.success('Plan saved. It can continue after you close this page.');
+      }catch(e){toast.error(e instanceof Error?e.message:'Could not start background plan');}
+      finally{runningPlans.current.delete(messageId);}
+      return;
+    }
+    runningPlans.current.add(messageId);
+    stoppedPlans.current.delete(messageId);
 
     setMessages(prev => prev.map(m => m.id === messageId ? { ...m, isExecuting: true, status: 'executing' } : m));
 
@@ -2302,23 +2360,24 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
       }));
     };
 
-    const updateStepStatus = (stepIdx: number, status: 'pending' | 'running' | 'success' | 'error', resultUrl?: string) => {
+    const updateStepStatus = (stepIdx: number, status: 'pending' | 'running' | 'success' | 'error', resultUrl?: string, sourceUrl?: string) => {
+      stepsList[stepIdx] = {...(resultUrl ? withResultVersion({...stepsList[stepIdx],resultUrl:stepsList[stepIdx].resultUrl || sourceUrl},resultUrl) : stepsList[stepIdx]),status};
       setMessages(prev => prev.map(m => {
         if (m.id === messageId && m.execSteps) {
           const updated = [...m.execSteps];
           updated[stepIdx].status = status;
-          if (resultUrl) updated[stepIdx].resultUrl = resultUrl;
+          if (resultUrl) updated[stepIdx] = withResultVersion({...updated[stepIdx],resultUrl:updated[stepIdx].resultUrl || sourceUrl}, resultUrl);
           return { ...m, execSteps: updated };
         }
         return m;
       }));
     };
 
-    addLocalLog('🤖 Auto-Pilot Pipeline initialized...', true);
+    addLocalLog('Starting approved task plan...', true);
     
     let activeStepIndex = -1;
     const executionReport: Array<{ index: number; type: string; status: 'success' | 'error'; error?: string }> = [];
-    const stepsList = targetMsg.execSteps || targetMsg.suggestedSteps || [];
+    const stepsList = (targetMsg.execSteps || []).map(step => ({...step,params:{...step.params}}));
 
     try {
       let memoryFaceImage: string | null = null;
@@ -2353,53 +2412,29 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
       }
 
       const ensurePersona = async (): Promise<Persona> => {
-        if (createdPersona && createdPersona.id && createdPersona.id !== 'empty') return createdPersona;
-        const existing = personas.find(p => p.id && p.id !== 'empty');
+        if (createdPersona && createdPersona.id && createdPersona.id !== 'empty') return {...createdPersona};
+        const existing = personas.find(p => p.id === effectiveSelectedPersonaId && p.id !== 'empty');
         if (existing) {
           createdPersona = existing;
           createdPersonaId = existing.id;
-          return existing;
+          return {...existing};
         }
 
-        addLocalLog(`👤 Auto-architecting default studio persona profile...`);
-        const uniqueId = `persona-${Date.now()}`;
-        const defaultP: Persona = {
-          id: uniqueId,
-          name: 'Studio Influencer',
-          niche: 'Lifestyle',
-          tone: 'Confident',
-          platform: 'Instagram',
-          status: 'Active',
-          avatar: memoryFaceImage || 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=400&q=80',
-          referenceImage: memoryFaceImage || undefined,
-          personalityTraits: ['Charming', 'Photogenic'],
-          visualStyle: 'Photorealistic',
-          audienceType: 'General',
-          contentBoundaries: 'None',
-          bio: 'Official Studio AI Influencer',
-          brandVoiceRules: '',
-          contentGoals: '',
-          personaNotes: ''
-        };
-
-        let saved = defaultP;
-        try {
-          saved = await api.personas.create(defaultP);
-        } catch (err) {
-          console.warn('[Persona DB fallback]: Using local persona instance', err);
-        }
-        createdPersona = saved;
-        createdPersonaId = saved.id;
-        setPersonas(prev => [...prev.filter(p => p.id !== 'empty'), saved]);
-        onSelectPersona(saved.id);
-        addLocalLog(`✅ Default Persona '${saved.name}' created & activated.`);
-        return saved;
+        throw new Error('Choose a persona before running this task, or ask me to create a new persona first.');
       };
 
       for (let i = 0; i < stepsList.length; i++) {
         const step = stepsList[i];
+        if (step.status === 'success' || step.status === 'done') {
+          executionReport.push({index:i,type:step.type,status:'success'});
+          continue;
+        }
+        if (stoppedPlans.current.has(messageId)) throw new Error('Stopped before the next step. Completed assets are kept.');
         activeStepIndex = i;
         updateStepStatus(i, 'running');
+        if (['generate_image', 'generate_video'].includes(step.type) && (typeof step.params.prompt !== 'string' || !step.params.prompt.trim())) {
+          throw new Error('This plan is missing its image or video instructions. Add the complete description before running it.');
+        }
 
         if (step.type === 'create_persona') {
           addLocalLog(`⏳ Building persona profile '${step.params.name}'...`);
@@ -2450,7 +2485,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
 
         else if (step.type === 'generate_content_plan') {
           if (!createdPersona) {
-            createdPersona = personas[0] || null;
+            createdPersona = personas.find(p => p.id === effectiveSelectedPersonaId && p.id !== 'empty') || null;
             if (!createdPersona || createdPersona.id === 'empty') throw new Error('No active persona detected.');
             createdPersonaId = createdPersona.id;
           }
@@ -2465,9 +2500,9 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
         }
 
         else if (step.type === 'generate_image') {
-          const activeP = await ensurePersona();
+          const activeP = imagePersona(await ensurePersona(), step.params);
 
-          if (memoryFaceImage) {
+          if (memoryFaceImage && step.params.usePersona !== false && activeP.identityLock !== false) {
             addLocalLog(`🧠 [Memory System]: Syncing reference face photo for visual generation.`);
             activeP.referenceImage = memoryFaceImage;
           }
@@ -2477,27 +2512,28 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
           addLocalLog(`⏳ Spinning up visual generation pipeline...`);
           addLocalLog(`📝 Prompt: "${step.params.prompt}"`);
 
-          const modelCascade = [
-            modelId,
-            'wavespeed:bytedance/seedream-v5.0-pro',
-            'wavespeed:wavespeed-ai/qwen-3.0-pro',
-            'openai:gpt-image-2',
-            'google:nano-banana-pro'
-          ].filter((m, idx, arr) => arr.indexOf(m) === idx);
+          const modelCascade = [modelId];
 
           let result: any = null;
           let lastError: any = null;
 
           for (const currentModel of modelCascade) {
             try {
-              result = await generateImage({
+              if (activeP.identityLock !== false) {
+                const generated = await requestPersonaMediaJob({type:'image',persona:activeP,prompt:step.params.prompt,imageModelId:currentModel,aspectRatio:step.params.aspectRatio || '1:1',strictFidelity:true});
+                result = {imageUrl:generated.url,model:generated.model,promptUsed:generated.promptUsed};
+              } else result = await generateImage({
                 persona: activeP,
                 modelId: currentModel,
                 environment: step.params.environment,
                 outfitStyle: step.params.outfit,
                 framing: step.params.framing,
                 prompt: step.params.prompt,
-                aspectRatio: '1:1',
+                isChatContext: true,
+                chatPrompt: step.params.prompt,
+                preservePromptVerbatim: true,
+                identityLock: activeP.identityLock !== false && Boolean(activeP.referenceImage || activeP.avatar),
+                aspectRatio: step.params.aspectRatio || '1:1',
                 resolution: 'standard',
                 count: 1
               });
@@ -2509,10 +2545,11 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
           }
 
           if (!result) {
-            throw new Error(`All model cascades failed for image generation. Last error: ${lastError?.message || 'Unknown'}`);
+            throw new Error(`Image generation failed: ${lastError?.message || 'Unknown'}`);
           }
 
-          const imageUrl = Array.isArray(result) ? result[0].imageUrl : result.imageUrl;
+          const imageUrl = requireOutput(Array.isArray(result) ? result[0]?.imageUrl : result.imageUrl, 'Image generation');
+          if (imageUrl === activeP.referenceImage || imageUrl === activeP.avatar) throw new Error('The provider returned the reference image unchanged. No new image was confirmed.');
           const promptUsed = Array.isArray(result) ? result[0].promptUsed : result.promptUsed;
           const resolvedModel = Array.isArray(result) ? result[0].model : result.model;
 
@@ -2529,20 +2566,12 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
             mediaType: 'image' as const
           };
 
-          await api.images.create(createdPersonaId, imgPayload);
+          const savedImage = await api.images.create(createdPersonaId, imgPayload);
           addLocalLog(`✅ Visual asset generated & saved to library.`);
 
-          const updatedPersona: Persona = {
-            ...activeP,
-            avatar: imageUrl,
-            referenceImage: imageUrl
-          };
-          const savedPersona = await api.personas.update(updatedPersona);
-          
-          setPersonas(prev => prev.map(p => p.id === createdPersonaId ? savedPersona : p));
+          // Creating an asset never changes the persona's saved identity or avatar.
 
-          addLocalLog(`✅ Profile avatar fully synced!`);
-          updateStepStatus(i, 'success', imageUrl);
+          updateStepStatus(i, 'success', requireOutput(savedImage.url, 'Saved image'));
         }
 
         else if (step.type === 'generate_video') {
@@ -2605,7 +2634,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
 
           const videoPayload = {
             id: 'video-' + Math.random().toString(36).substring(2, 9),
-            url: result.videoUrl,
+            url: requireOutput(result.videoUrl, 'Video generation'),
             prompt: step.params.prompt,
             timestamp: Date.now(),
             isFavorite: true,
@@ -2637,12 +2666,13 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
           } catch (stitchErr: any) {
             addLocalLog(`❌ Stitching failed: ${stitchErr.message}`);
             updateStepStatus(i, 'error');
+            throw stitchErr;
           }
         }
 
         else if (step.type === 'generate_voice') {
           if (!createdPersona) {
-            createdPersona = personas[0] || null;
+            createdPersona = personas.find(p => p.id === effectiveSelectedPersonaId && p.id !== 'empty') || null;
             if (!createdPersona || createdPersona.id === 'empty') throw new Error('No active persona detected.');
             createdPersonaId = createdPersona.id;
           }
@@ -2652,7 +2682,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
           addLocalLog(`Chosen Voice: ${voiceId} (${engine})`, true, true);
           addLocalLog(`⏳ Synthesizing voice script narration...`);
 
-          const response = await fetch('/api/generate-speech', {
+          const response = await authFetch('/api/generate-speech', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -2669,12 +2699,12 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
 
           const data = await response.json();
           addLocalLog(`✅ Audio narration generated successfully.`);
-          updateStepStatus(i, 'success', data.audioUrl);
+          updateStepStatus(i, 'success', requireOutput(data.audioUrl, 'Speech'));
         }
 
         else if (step.type === 'generate_3d') {
           if (!createdPersona) {
-            createdPersona = personas[0] || null;
+            createdPersona = personas.find(p => p.id === effectiveSelectedPersonaId && p.id !== 'empty') || null;
             if (!createdPersona || createdPersona.id === 'empty') throw new Error('No active persona detected.');
             createdPersonaId = createdPersona.id;
           }
@@ -2684,7 +2714,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
           addLocalLog(`Chosen 3D Model: ${modelId}`, true, true);
           addLocalLog(`⏳ Synthesizing 3D GLB asset mesh...`);
 
-          const res = await fetch('/api/generate-3d', {
+          const res = await authFetch('/api/generate-3d', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -2699,7 +2729,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
 
           const payload = {
             id: '3d-' + Math.random().toString(36).substring(2, 9),
-            url: data.modelUrl,
+            url: requireOutput(data.modelUrl, '3D generation'),
             prompt: step.params.prompt || '3D Asset Mesh',
             timestamp: Date.now(),
             model: data.model || modelId,
@@ -2713,7 +2743,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
 
         else if (step.type === 'generate_talking_head') {
           if (!createdPersona) {
-            createdPersona = personas[0] || null;
+            createdPersona = personas.find(p => p.id === effectiveSelectedPersonaId && p.id !== 'empty') || null;
             if (!createdPersona || createdPersona.id === 'empty') throw new Error('No active persona detected.');
             createdPersonaId = createdPersona.id;
           }
@@ -2773,10 +2803,11 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
           const voiceName = step.params.voiceName || 'Cloned Voice Sample';
           addLocalLog(`⏳ Extracting audio features & cloning voice via ${engine}...`);
 
-          let clonedId = 'voice-' + Math.random().toString(36).substring(2, 9);
+          let clonedId = '';
+          if (!audioDataUrl) throw new Error('Attach a voice recording before cloning a voice.');
           if (audioDataUrl) {
             try {
-              const res = await fetch('/api/clone-voice', {
+              const res = await authFetch('/api/clone-voice', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -2786,9 +2817,10 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                 })
               });
               const data = await res.json();
-              if (data.voiceId) clonedId = data.voiceId;
+              if (!res.ok) throw new Error(data.error || 'Voice cloning failed');
+              clonedId = requireOutput(data.voiceId, 'Voice cloning');
             } catch (cloneErr) {
-              addLocalLog(`⚠️ Voice clone fallback active. Generated ID: ${clonedId}`);
+              throw cloneErr;
             }
           }
 
@@ -2800,7 +2832,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
 
         else if (step.type === 'storyboard_sequence') {
           if (!createdPersona) {
-            createdPersona = personas[0] || null;
+            createdPersona = personas.find(p => p.id === effectiveSelectedPersonaId && p.id !== 'empty') || null;
             if (!createdPersona || createdPersona.id === 'empty') throw new Error('No active persona detected.');
             createdPersonaId = createdPersona.id;
           }
@@ -2857,15 +2889,16 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
         else if (step.type === 'edit_image') {
           const activeP = await ensurePersona();
 
-          const editType = step.params.editType || 'upscale';
-          const srcImg = step.params.sourceImage || activeP.avatar || activeP.referenceImage;
+          const editType = step.params.editType || (step.params.prompt ? 'custom edit' : 'upscale');
+          const explicitSource = step.params.sourceImage;
+          const srcImg = explicitSource && explicitSource !== 'previous_result' ? explicitSource : previousImage([{execSteps:stepsList.slice(0,i)}]) || previousImage(messages) || memoryFaceImage;
           if (!srcImg) throw new Error('Source image is required for image editing.');
 
           addLocalLog(`⏳ Executing AI Tool edit: ${editType}...`);
 
           let editedUrl = '';
           if (editType === 'bg-remover') {
-            const res = await fetch('/api/remove-bg', {
+            const res = await authFetch('/api/remove-bg', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ image: srcImg })
@@ -2874,7 +2907,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
             if (!res.ok) throw new Error(data.error || 'BG removal failed');
             editedUrl = data.imageUrl;
           } else if (editType === 'face-swap') {
-            const res = await fetch('/api/face-swap', {
+            const res = await authFetch('/api/face-swap', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ targetImage: srcImg, swapImage: step.params.secondImage || srcImg })
@@ -2883,7 +2916,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
             if (!res.ok) throw new Error(data.error || 'Face swap failed');
             editedUrl = data.imageUrl;
           } else if (editType === 'virtual-tryon') {
-            const res = await fetch('/api/virtual-tryon', {
+            const res = await authFetch('/api/virtual-tryon', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ personImage: srcImg, garmentImage: step.params.secondImage || srcImg })
@@ -2911,14 +2944,16 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
             mediaType: 'image' as const
           };
 
-          await api.images.create(createdPersonaId, payload);
+          requireOutput(editedUrl, 'Image editing');
+          if (editedUrl === srcImg) throw new Error('The edit returned the original image unchanged.');
+          const savedEdit = await api.images.create(createdPersonaId, payload);
           addLocalLog(`✅ AI Tool edit (${editType}) completed & saved to library.`);
-          updateStepStatus(i, 'success', editedUrl);
+          updateStepStatus(i, 'success', requireOutput(savedEdit.url, 'Saved edit'), srcImg);
         }
 
         else if (step.type === 'log_revenue') {
           if (!createdPersona) {
-            createdPersona = personas[0] || null;
+            createdPersona = personas.find(p => p.id === effectiveSelectedPersonaId && p.id !== 'empty') || null;
             if (!createdPersona || createdPersona.id === 'empty') throw new Error('No active persona detected.');
             createdPersonaId = createdPersona.id;
           }
@@ -2943,12 +2978,13 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
         executionReport.push({ index: i, type: step.type, status: 'success' });
       }
 
-      addLocalLog('🏆 Auto-Pilot pipeline executions finished successfully!');
+      addLocalLog('All requested steps completed.');
       setMessages(prev => prev.map(m => m.id === messageId ? { ...m, status: 'done' } : m));
       toast.success('Agent completed all tasks successfully!');
       
     } catch (err: any) {
       const failureMessage = err.message || 'Workflow execution halted.';
+      setMessages(prev => prev.map(m => m.id === messageId ? {...m,status:'clarifying'} : m));
       const failedStep = stepsList[activeStepIndex];
       executionReport.push({
         index: activeStepIndex,
@@ -2978,7 +3014,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
 
           const originalUserMessage = [...messages].reverse().find(message => message.role === 'user');
           const recoveryPrompt = `The previous studio workflow failed. Review the execution report and create a corrected plan containing only the failed and unfinished work. Do not repeat successful steps. Execution report: ${JSON.stringify(executionReport)}`;
-          const recoveryResponse = await fetch('/api/agent/chat', {
+          const recoveryResponse = await authFetch('/api/agent/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...authHeader },
             body: JSON.stringify({
@@ -2988,7 +3024,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                 { role: 'user', content: recoveryPrompt },
               ],
               allowNsfw,
-              voiceLlmModel,
+              voiceLlmModel: planningModel || voiceLlmModel,
               researchMode: {
                 deepResearch: false,
                 socialResearch: false,
@@ -3015,7 +3051,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                 agentMode: recoveryData.agentMode,
                 replanDepth: 1,
               };
-              setMessages(prev => [...prev.slice(-35), recoveryMessage]);
+              setMessages(prev => [...prev.slice(-99), recoveryMessage]);
               toast.success('A corrected plan is ready for review.');
             }
           }
@@ -3024,6 +3060,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
         }
       }
     } finally {
+      runningPlans.current.delete(messageId);
       setMessages(prev => prev.map(m => m.id === messageId ? { ...m, isExecuting: false } : m));
     }
   };
@@ -3073,7 +3110,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
       {/* LEFT COLUMN: Agent Conversational Console (Expanded) */}
       <div className="flex-1 flex flex-col h-full border-r border-white/5 relative min-w-0">
         {/* Header with Autopilot & Sub-Agent Controls (Unified Theme) */}
-        <div className="flex-none flex flex-col md:flex-row md:items-center justify-between border-b border-[#E7C477]/10 px-6 py-3 bg-[#050914] gap-2 select-none">
+        <div className="flex-none flex flex-col md:flex-row md:flex-wrap md:items-center justify-between border-b border-[#E7C477]/10 px-6 py-3 bg-[#050914] gap-2 select-none">
           <div className="flex items-center gap-3">
             <h1 className="text-xl md:text-2xl font-serif text-[#F5F1E8] tracking-tight flex items-center gap-2">
               AI assistant
@@ -3083,34 +3120,23 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
             </span>
           </div>
 
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="text-xs text-zinc-400">Project
+              <select aria-label="Super Agent project" disabled={isSending || isLiveVoiceCallActive || isStudioLoading || isCloningVoice || messages.some(m=>(m.isExecuting && !m.backgroundRunId) || m.execSteps?.some(s=>s.isActionLoading)) || historySaving || historySaveFailed} value={projectId} onChange={e=>onProjectChange(e.target.value)} className="ml-2 max-w-48 rounded-lg border border-white/15 bg-zinc-900 p-2 text-sm text-zinc-100">
+                {projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </label>
+            <details className="relative text-xs text-zinc-300"><summary className="cursor-pointer">New project</summary>
+              <form onSubmit={e=>{e.preventDefault();onCreateProject(projectName);}} className="absolute top-8 left-0 z-50 w-64 rounded-xl border border-white/15 bg-zinc-900 p-3 shadow-xl">
+                <input aria-label="New project name" value={projectName} onChange={e=>setProjectName(e.target.value)} maxLength={80} placeholder="Campaign name" className="w-full rounded-lg bg-black/30 p-2" />
+                <button disabled={!projectName.trim() || isSending || isLiveVoiceCallActive || isStudioLoading || isCloningVoice || messages.some(m=>(m.isExecuting && !m.backgroundRunId) || m.execSteps?.some(s=>s.isActionLoading)) || historySaving || historySaveFailed} className="mt-2 rounded-lg bg-[#E7C477] px-3 py-2 text-black disabled:opacity-40">Create project</button>
+              </form>
+            </details>
+            <span role="status" className="text-xs text-zinc-400">{historySaveFailed ? 'History not saved' : historySaving ? 'Saving history…' : ''}</span>
+          </div>
+
           {/* Unified Controls Toolbar */}
           <div className="flex flex-wrap items-center gap-2">
-            {/* Autopilot Button */}
-            <button
-              onClick={() => setAutopilotActive(!autopilotActive)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold tracking-wide flex items-center gap-2 transition-all border cursor-pointer ${
-                autopilotActive
-                  ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50 shadow-md shadow-cyan-500/10'
-                  : 'bg-white/5 text-zinc-300 border-white/10 hover:border-white/20 hover:bg-white/10'
-              }`}
-            >
-              {autopilotActive ? <Pause className="w-3.5 h-3.5 text-cyan-400 animate-pulse" /> : <Play className="w-3.5 h-3.5 text-zinc-400" />}
-              <span>{autopilotActive ? 'Autopilot Active' : 'Start Autopilot'}</span>
-            </button>
-
-            {autopilotActive && (
-              <select
-                value={autopilotInterval}
-                onChange={(e: any) => setAutopilotInterval(e.target.value)}
-                className="bg-black/60 border border-cyan-500/30 text-cyan-300 text-xs rounded-xl px-2.5 py-1.5 font-bold outline-none cursor-pointer"
-              >
-                <option value="30s">Every 30s (Demo)</option>
-                <option value="1h">Every 1 hr</option>
-                <option value="6h">Every 6 hrs</option>
-                <option value="12h">Every 12 hrs</option>
-              </select>
-            )}
-
             {/* Approval Queue Toggle */}
             <button
               onClick={() => setAutoApprove(!autoApprove)}
@@ -3119,9 +3145,9 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                   ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
                   : 'bg-white/5 text-zinc-300 border-white/10 hover:border-white/20 hover:bg-white/10'
               }`}
-              title="Toggle Human-in-the-Loop review queue vs direct publishing"
+              title="Review plans before running, or run requested tasks automatically"
             >
-              <span>{autoApprove ? 'Auto-publish' : 'Review required'}</span>
+              <span>{autoApprove ? 'Run automatically' : 'Review required'}</span>
             </button>
 
             {/* Uncensored NSFW Toggle */}
@@ -3148,6 +3174,19 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                 <Sliders size={13} className="text-cyan-400" /> Agent setup
               </summary>
               <div className="absolute right-0 top-full mt-2 flex w-[min(92vw,430px)] flex-col gap-2 rounded-2xl border border-white/10 bg-[#11131a]/98 p-3 shadow-2xl backdrop-blur-xl">
+            <label className="text-xs text-zinc-300">Project brief
+              <textarea aria-label="Project brief" value={workspaceBrief} onChange={e => {setWorkspaceBrief(e.target.value); accountLocalStorage.setItem(keys.brief,e.target.value);}} placeholder="Goals, audience, style and details to keep in mind…" className="mt-1 w-full rounded-lg border border-white/15 bg-black/30 p-2 text-sm" rows={3} />
+              <span className="text-[11px] text-zinc-400">Saved for future conversations. You can edit it anytime.</span>
+            </label>
+            <label className="block text-xs text-zinc-300">Text planning model
+              <select aria-label="Text planning model" value={planningModel} onChange={e=>{setPlanningModel(e.target.value);accountLocalStorage.setItem('agent_planning_model',e.target.value);}} className="ml-2 rounded-lg border border-white/15 bg-zinc-900 p-2 text-zinc-100">
+                <option value="">Use configured engine</option>
+                <option value="frontier-grok">Grok 4.6</option>
+                <option value="frontier-gemini-pro">Gemini 3.1 Pro Preview</option>
+                <option value="frontier-gemini-flash">Gemini 3.8 Flash</option>
+              </select>
+              <p className="mt-1 text-zinc-400">Applies to text tasks. Voice keeps its configured engine. Selected frontier models do not silently fall back.</p>
+            </label>
             {/* LLM Engine Selector */}
             <div className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-cyan-500/40 rounded-xl px-3 py-1.5 text-xs font-bold shadow-sm transition-all">
               <span className="text-[10px] text-zinc-400 font-extrabold uppercase tracking-wider hidden sm:inline">Engine:</span>
@@ -3202,10 +3241,10 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                   <option value="llama3.3" className="bg-zinc-900 text-white">🦙 Meta Llama 3.3 70B (Cloud API)</option>
                 </optgroup>
                 <optgroup label="☁️ CLOUD API ENGINES (HIGH-SPEED CLOUD GPU)">
-                  <option value="qwen" className="bg-zinc-900 text-white">🔮 Qwen 2.5 72B (Cloud API)</option>
-                  <option value="deepseek" className="bg-zinc-900 text-white">🧠 DeepSeek R1 Reasoner (Cloud API)</option>
+                  <option value="qwen" className="bg-zinc-900 text-white">Qwen — Available reasoning route</option>
+                  <option value="deepseek" className="bg-zinc-900 text-white">DeepSeek — Available reasoning route</option>
                   <option value="venice" className="bg-zinc-900 text-white">Venice Uncensored 1.2 (Cloud)</option>
-                  <option value="grok" className="bg-zinc-900 text-white">🚀 xAI Grok 2 (Cloud API)</option>
+                  <option value="grok" className="bg-zinc-900 text-white">xAI Grok — Current configured model</option>
                   <option value="gemini" className="bg-zinc-900 text-white">🤖 Gemini 2.5 Flash (Cloud API)</option>
                 </optgroup>
               </select>
@@ -3482,9 +3521,8 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                   <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
                     <Sparkles size={24} />
                   </div>
-                  <div className="text-sm font-bold text-white">Super Agent Co-Pilot Studio</div>
                   <div className="text-xs text-zinc-400 max-w-sm leading-relaxed">
-                    Message Super Agent below to generate photos, videos, plan content, or chat naturally.
+                    Describe what you want to accomplish. I’ll help you work through it.
                   </div>
                 </div>
               ) : (
@@ -3497,7 +3535,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                       {msg.role === 'model' ? '🤖 Agent' : '👤 You'}
                       {msg.role === 'model' && msg.agentMode && (
                         <span className="ml-2 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2 py-0.5 text-cyan-300">
-                          {msg.agentMode.provider} · {msg.agentMode.effort}
+                          {msg.agentMode.provider} · {msg.agentMode.model} · {msg.agentMode.effort}
                           {msg.agentMode.research ? ' · research' : ''}
                           {typeof msg.agentMode.costUsd === 'number' ? ` · $${msg.agentMode.costUsd.toFixed(5)}` : ''}
                         </span>
@@ -3510,6 +3548,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                         : 'bg-white/5 border-white/10 text-zinc-100 rounded-tl-none'
                     }`}>
                       <div className="whitespace-pre-wrap">{msg.content}</div>
+                      {msg.sources?.length ? <div className="mt-3 flex flex-wrap gap-2" aria-label="Research sources">{msg.sources.map(source => <a key={source.url} href={source.url} target="_blank" rel="noreferrer" className="rounded-lg border border-[#E7C477]/25 px-2 py-1 text-xs text-[#E7C477] underline">{source.title}</a>)}</div> : null}
 
                       {/* Attachments rendering */}
                       {msg.attachments && msg.attachments.length > 0 && (
@@ -3588,22 +3627,24 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                       )}
 
                       {/* Interactive Execution Pipeline Cards inside Chat Bubble */}
+                      {msg.campaign && <AgentCampaignCard campaign={msg.campaign} steps={msg.execSteps || []} />}
                       {msg.role === 'model' && msg.execSteps && msg.execSteps.length > 0 && (
                         <div className="mt-4 p-4 bg-[#0a0d18]/90 border border-cyan-500/30 rounded-2xl space-y-4 shadow-2xl">
                           <div className="flex items-center justify-between border-b border-white/10 pb-2">
                             <div className="flex items-center gap-2">
                               <Cpu className="w-4 h-4 text-cyan-400 animate-pulse" />
-                              <span className="font-extrabold text-xs text-white uppercase tracking-wider">Super Agent Task Pipeline</span>
+                              <span className="font-extrabold text-xs text-white uppercase tracking-wider">Task plan</span>
                             </div>
                             <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border ${
                               msg.status === 'done' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' :
                               msg.status === 'executing' ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 animate-pulse' :
                               'bg-amber-500/20 text-amber-300 border-amber-500/40'
                             }`}>
-                              {msg.status === 'done' ? 'Completed' : msg.status === 'executing' ? 'Executing' : 'Pending'}
+                              {msg.status === 'done' ? 'Completed' : msg.status === 'executing' ? 'Working' : msg.execSteps?.some(s => s.status === 'error') ? 'Needs attention' : 'Review plan'}
                             </span>
                           </div>
 
+                          {msg.execSteps.some(s => s.status === 'error') && <p role="alert" className="text-xs text-amber-200">{msg.execLogs?.at(-1) || 'A step failed. Completed results are kept; unfinished work needs review.'}</p>}
                           <div className="space-y-3">
                             {msg.execSteps.map((step, sIdx) => (
                               <div key={sIdx} className="p-3 rounded-xl bg-white/5 border border-white/5 space-y-2">
@@ -3620,25 +3661,41 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                                   </div>
                                 </div>
 
+                                {!msg.isExecuting && (step.status === 'pending' || step.status === 'error') && <textarea readOnly={Boolean(msg.backgroundRunId)} aria-label={`Instructions for step ${sIdx + 1}`} value={step.params.prompt || step.params.text || ''} onChange={e => setMessages(prev => prev.map(m => m.id === msg.id ? {...m,execSteps:m.execSteps?.map((s,index) => index === sIdx ? {...s,params:{...s.params,[s.type === 'generate_voice' ? 'text' : 'prompt']:e.target.value}} : s)} : m))} className="w-full rounded-lg border border-white/10 bg-black/20 p-2 text-xs text-zinc-200" rows={3} />}
+                                {(step.resultVersions?.length || 0) > 1 && ['generate_image','edit_image'].includes(step.type) && <details className="text-xs text-zinc-300">
+                                  <summary className="cursor-pointer py-2">Compare versions ({step.resultVersions!.length})</summary>
+                                  <div className="grid grid-cols-2 gap-2">{step.resultVersions!.map((version,index)=><figure key={index} className="min-w-0 rounded-lg border border-white/10 p-2">
+                                    <img src={version.url} alt={`Version ${index+1}`} className="h-40 w-full object-contain" />
+                                    <figcaption className="mt-2 flex flex-wrap justify-between gap-2"><span>Version {index+1}</span><button type="button" onClick={()=>handleEditImageAction(version.url)} className="text-[#E7C477] underline">Edit this version</button></figcaption>
+                                  </figure>)}</div>
+                                </details>}
+                                {step.quality && <p role="status" className="text-xs text-zinc-300">{step.quality.status==='checking'?'Checking this result against your request…':step.quality.status==='passed'?'Visual check passed.':step.quality.summary}</p>}
                                 {step.resultUrl && (
                                   <div className="mt-2 rounded-xl overflow-hidden border border-white/10 bg-black/50">
-                                    {step.type.includes('video') ? (
-                                      <video src={step.resultUrl} controls className="w-full max-h-64 object-cover" />
+                                    {step.type === 'generate_voice' ? <audio src={step.resultUrl} controls className="w-full" /> : step.type === 'generate_3d' ? <a href={step.resultUrl} target="_blank" rel="noreferrer">Open 3D asset</a> : step.type.includes('video') || step.type === 'generate_talking_head' || step.type === 'storyboard_sequence' ? (
+                                      <video src={step.resultUrl} controls className="w-full max-h-64 object-contain" />
                                     ) : (
-                                      <img src={step.resultUrl} alt="Result" className="w-full max-h-64 object-cover" />
+                                      <img src={step.resultUrl} alt="Result" className="w-full max-h-64 object-contain" />
                                     )}
                                   </div>
                                 )}
                               </div>
                             ))}
                           </div>
-                          {msg.status === 'clarifying' && !msg.isExecuting && (
+                          {msg.isExecuting && <button type="button" onClick={() => {if(msg.backgroundRunId){void backgroundAction(msg.backgroundRunId,'stop');}else{stoppedPlans.current.add(msg.id); toast('Stopping after the current step.');}}} className="text-xs text-zinc-300 underline">Stop after current step</button>}
+                          {msg.backgroundRunId && <p role="status" className="text-sm text-zinc-300">{msg.backgroundStatus==='running'?'Running in background — you can close this page':msg.backgroundStatus==='paused'?'Paused before the next step':msg.backgroundStatus==='succeeded'?'Completed and saved in Library':'Needs attention'} · {msg.execSteps?.filter(s=>s.status==='success').length || 0} of {msg.execSteps?.length || 0} steps complete</p>}
+                          {msg.backgroundRunId && <AgentAllowance id={msg.backgroundRunId} used={msg.backgroundUsedCredits||0} limit={msg.backgroundBudgetCredits} onSaved={syncBackgroundRun} />}
+                          {msg.backgroundStatus==='failed' && <AgentRecovery key={msg.backgroundRunId} id={msg.backgroundRunId!} planningModel={planningModel} onRecovered={syncBackgroundRun} />}
+                          {msg.backgroundStatus==='paused' && <button type="button" onClick={()=>void backgroundAction(msg.backgroundRunId!,'resume')} className="text-sm text-[#E7C477] underline">Resume saved plan</button>}
+                          {backgroundError && msg.backgroundRunId && <p role="status" className="text-sm text-amber-200">{backgroundError}. Your saved plan may still be running.</p>}
+                          {!msg.backgroundRunId && msg.execSteps && <p className="text-xs text-zinc-400">{supportsBackground(msg.execSteps)?'Runs in the background after approval.':'Keep this page open while this plan runs.'}</p>}
+                          {msg.status === 'clarifying' && !msg.isExecuting && (supportsBackground(msg.execSteps || []) ? <AgentPlanApproval steps={msg.execSteps || []} onApprove={approval=>void runPipeline(msg.id,msg,approval)} /> :
                             <button
                               type="button"
                               onClick={() => runPipeline(msg.id, msg)}
                               className="flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-400/40 bg-cyan-500/15 px-4 py-2.5 text-xs font-extrabold text-cyan-200 transition-colors hover:bg-cyan-500/25"
                             >
-                              <RefreshCw size={14} /> {msg.nativeVoicePlan ? 'Approve and run plan' : 'Run corrected plan'}
+                              <RefreshCw size={14} /> Approve & run plan
                             </button>
                           )}
                         </div>
@@ -3858,23 +3915,6 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                     )}
                   </AnimatePresence>
                 </div>
-
-                {/* Workflows Menu */}
-                <select
-                  onChange={(e) => {
-                    if (e.target.value) {
-                      setInputText(e.target.value);
-                      e.target.value = "";
-                    }
-                  }}
-                  className="h-9 px-2.5 rounded-xl border border-white/10 bg-white/5 hover:border-cyan-500/30 text-xs font-bold text-cyan-300 outline-none cursor-pointer transition-all shadow"
-                >
-                  <option value="">⚡ Workflows ▾</option>
-                  <option value="Generate 3 photorealistic portrait photos of my AI influencer in a luxury penthouse wearing elegant evening outfit.">📸 Photoshoot</option>
-                  <option value="Create a 1-minute video storyboard with 4 scenes: talking avatar intro, workout action shot, protein shake, and call to action.">🎬 1-Min Video Storyboard</option>
-                  <option value="Clone the voice from my uploaded video sample and generate a talking avatar saying 'Welcome to my exclusive channel!'">🎙️ Voice Clone & Avatar</option>
-                  <option value="Architect a 7-day content schedule for Instagram with high-converting hooks, viral caption ideas, and revenue strategies.">📈 7-Day Content Plan</option>
-                </select>
 
                 {/* Mic Input Trigger */}
                 <button
@@ -4590,7 +4630,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                       setDownloaderResult(null);
                       const toastId = toast.loading('Extracting video from link...');
                       try {
-                        const res = await fetch('/api/download-social-video', {
+                        const res = await authFetch('/api/download-social-video', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ url: downloaderUrl })
@@ -4832,7 +4872,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                     setDownloaderResult(null);
                     const toastId = toast.loading('Extracting video from link...');
                     try {
-                      const res = await fetch('/api/download-social-video', {
+                      const res = await authFetch('/api/download-social-video', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ url: downloaderUrl })

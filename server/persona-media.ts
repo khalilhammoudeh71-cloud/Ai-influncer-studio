@@ -84,7 +84,8 @@ export function resolveMediaParticipants(
   const referencesCreatorInSubjectList =
     /\b(?:of|with|featuring|showing|include|including|containing)\b(?:\s+[a-z0-9]+){0,16}\s+(?:and|plus|alongside)\s+(?:me|myself)\b/i.test(creatorReferencePrompt)
     || /\b(?:of|with|featuring|showing|include|including|containing)\s+(?:me|myself)\b(?:\s+[a-z0-9]+){0,16}\s+(?:and|plus|alongside)\b/i.test(creatorReferencePrompt);
-  const referencesCreator = referencesCreatorDirectly || referencesCreatorInSubjectList;
+  const referencesCreatorAsSubject = /\b(?:of|showing|featuring|include|including)\s+(?:me|myself)\s+(?:[a-z]+ing|beside|next to|behind|in front of)\b/i.test(creatorReferencePrompt);
+  const referencesCreator = referencesCreatorDirectly || referencesCreatorInSubjectList || referencesCreatorAsSubject;
   if (referencesCreator && creatorPersona) {
     const creatorId = creatorPersona.id || `creator:${normalizeForMatch(creatorPersona.name || 'owner')}`;
     if (creatorId !== activeId) byId.set(creatorId, creatorPersona);

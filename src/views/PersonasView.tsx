@@ -209,6 +209,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
         )}
       </div>
 
+      <details className="border-t border-white/10 pt-4"><summary className="cursor-pointer text-sm text-[var(--text-secondary)]">Creation shortcuts & inspiration</summary>
       {/* ── FEATURE CARDS ROW (3 CARDS IN CHARCOAL & GOLD) ── */}
       <section aria-labelledby="generation-options-heading" className="border-t border-white/10 pt-8 sm:pt-10 space-y-5">
         <header>
@@ -308,7 +309,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
           ))}
         </div>
       </motion.section>
-
+      </details>
     </div>
   );
 }

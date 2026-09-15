@@ -1,39 +1,39 @@
 # Super Agent upgrade progress — September 13, 2026
 
-The first upgrade batch is deployed at https://ai-influencerstudio.com. The full eight-part roadmap is not complete.
+The complete roadmap is not finished. This batch adds the foundations below; it does not establish parity with Higgsfield or Venice.
 
-## Deployed
+## Implemented in this batch
 
-- Named projects with separate conversations and saved briefs. Main workspace retains the existing conversation. Switching is blocked during active work, voice calls, or unsaved history.
-- Removed a legacy cleanup routine that deleted saved plan replies containing “Seedream” or “hello” whenever the agent opened. This was the specific cause of the disappearing Seedream replies.
-- Media storage hardening: use saved library URLs, externalize inline media before local history writes, surface upload failures, guard asynchronous saves, and reject delayed older history writes on the server.
-- Explicit creator context: the planner resolves the human creator separately from the selected persona and receives an accurate saved-reference count. The live check identified Dr.H, Rawan Hasan, and one creator reference.
-- Image version comparison and editing from an earlier version. A live mint-green-to-cobalt-blue edit produced the requested change and displayed original and revision side by side.
-- Header wrapping and project controls adjusted for narrower workspaces.
+- Media-heavy conversation persistence: newly generated and edited images use the library's saved URL. Existing inline media is externalized before writing local history. Outdated asynchronous saves cannot replace newer messages. Upload errors propagate instead of silently falling back to the original base64. The storage-quota mechanism is reproduced in a bounded-storage test. On the custom domain, a fresh checkpoint reply and cobalt-blue image edit survived the first reload, but a later cloud reload dropped the edit reply again. Server-side write ordering is now added to reject delayed older saves; full live verification remains open.
+- Named projects: independent conversations and briefs, preserving the original history under Main workspace. Project switching is disabled while a task is running or history is unsaved. New projects and briefs use account-scoped cloud-sync keys.
+- Creator identity: the planner now resolves the signed-in account creator independently from the selected persona and includes an accurate reference count without copying image bytes into text context.
+- Version preservation: in-place image revisions preserve earlier results, with a comparison view and an action to edit a chosen version. This is not yet a full cross-project asset version graph.
 
 ## Verification
 
-- 41 core targeted tests passed during the first batch.
-- Additional creator/identity checks and write-revision checks passed, as did the final 15-test focused suite.
-- TypeScript, frontend production build, and API bundle compilation passed.
-- Project creation, isolation, brief retention, and reply retention passed in the isolated browser fixture. Its model responses were mocked.
-- The destructive cleanup was reproduced in the browser before removal: a Seedream plan appeared and then disappeared after reload. The same case passed repeated reloads after removal.
-- On production after the final fix, an actionable Seedream plan survived two completed reloads with cloud hydration. No additional paid image job was needed for this final deletion regression.
-- Earlier single-refresh image tests were insufficient: the reply was deleted on a later mount. Those intermediate passes are not treated as proof of the final fix.
-- Grok timed out during the live identity check. Adaptive Fast answered correctly. All models are not verified healthy.
-- A database transaction probe could not connect because the certificate chain was not trusted. Certificate verification was not disabled.
+- 41 targeted tests passed.
+- TypeScript check passed.
+- Production frontend build passed.
+- Isolated browser test: create project, add brief, get a mocked reply, switch to Main workspace, reload, switch back. Both project-specific brief and reply survived; the original conversation remained separate.
+- Mocked browser replies are not live model-quality tests.
 
-Final deployed code: 2e0e0d220212e9a8984634933ad9de9e44891eae.
-Original Grok and Adult-mode settings were restored after tests. Previously deleted replies are not automatically reconstructed; separately saved library images remain available.
+## Still to implement or verify
 
-## Remaining roadmap
+1. Open: repeated cloud reload verification after server-side write ordering. The first refresh alone was insufficient.
+2. Project asset collections, preferences, rename/archive, and cross-device conflict behavior.
+3. Creator context is implemented; explicit creator/persona/scene reference controls and further participant generation tests remain.
+4. End-to-end storyboard, images, video, narration, and assembled export.
+5. Durable whole-plan execution outside the browser. Individual media jobs already have a worker; the whole plan currently remains client-orchestrated.
+6. Verified price quotes, budget enforcement, model health and quality-based routing. Unknown prices must remain unknown.
+7. Cross-step revision lineage, richer comparisons, and asset version management.
+8. Connected research/files/calendar/publishing with explicit approval for external actions. Actual connected-account availability must be verified.
 
-- Project asset collections, per-project preferences, rename/archive, and cross-device conflict handling.
-- Explicit creator/persona/scene reference selection controls and more participant-generation tests.
-- Complete storyboard → images → video → narration → assembled export workflows.
-- Durable whole-plan execution independent of the browser. Individual media jobs already have a worker; the full plan remains client-orchestrated.
-- Verified cost quotes, enforced budgets, provider-health monitoring and measured model routing.
-- Richer asset lineage and cross-step version management.
-- Connected files, calendar, and publishing flows with approval for external actions.
+No new account permissions, provider credentials, or publishing actions were added in this batch.
 
-These remaining features are not represented as finished or as parity with Higgsfield/Venice.
+## Additional verification
+
+Creator identity and existing identity-grounding checks: 15 tests passed. Write-revision and cloud-sync checks: 5 tests passed. Type check, frontend build, and API bundle checks passed. A database transaction probe could not connect because the configured certificate chain was not trusted; certificate verification was not disabled.
+
+## Root cause found after repeated refresh testing
+
+A legacy mount effect in AgentView deleted every message with suggestedSteps when its text contained `seedream` or `hello`. This precisely reproduced the observed behavior: user requests and ordinary replies survived, while model-named generation plans disappeared. Browser regression: a mocked Seedream plan appeared, then disappeared after the mount effect ran on reload. The cleanup effect has been removed. The quota and delayed-save protections remain useful hardening but were not the direct cause of that deletion.

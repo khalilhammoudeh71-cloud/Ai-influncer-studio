@@ -5,7 +5,8 @@ import { createHash } from 'node:crypto';
 import { type AuthenticatedRequest, requireAuth } from './auth';
 import { voiceCallDialogue } from '../shared/voiceCallDialogue';
 import { nativeHistory, nativeVoiceChoice } from '../shared/nativeVoice';
-import { ElevenLabsCallError, elevenLabsCallDependencies, ownedElevenLabsPersona, prepareElevenLabsCall } from './elevenLabsCalls';
+import { ElevenLabsCallError, elevenLabsCallDependencies, authorizedElevenLabsPersona, prepareElevenLabsCall } from './elevenLabsCalls';
+import { VoiceLifecycleError } from './personaVoiceLifecycle';
 
 export const STUDIO_VOICE_TOOL = { type: 'function' as const, name: 'ask_studio', description: 'Ask the studio Super Agent to research or prepare an actionable plan. Returned actions require review in the existing studio UI. Never claim that a plan was executed.', parameters: { type: 'object', properties: { request: { type: 'string', description: 'The user’s current request, with enough context to answer it.' } }, required: ['request'], additionalProperties: false } };
 export function nativeInstructions(persona: any, memories: unknown, preferences?: unknown) {
@@ -16,13 +17,17 @@ export function openaiNativeSession(persona: any, voice: unknown, memories: unkn
   return { type: 'realtime' as const, model: process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime-2.1', instructions: nativeInstructions(persona, memories, preferences), output_modalities: ['audio' as const], max_output_tokens: 700,
     audio: { input: { noise_reduction: { type: 'near_field' as const }, transcription: { model: 'gpt-4o-mini-transcribe' }, turn_detection: { type: 'semantic_vad' as const, eagerness: 'low' as const, create_response: true, interrupt_response: true } }, output: { voice: nativeVoiceChoice(voice) as 'marin' } }, tools: [STUDIO_VOICE_TOOL], tool_choice: 'auto' as const };
 }
-export function createNativeVoiceRouter(deps: { readPersonas(userId: string): Promise<any[]>; agentChat(req: AuthenticatedRequest,res: Response): Promise<any> }) {
+export function createNativeVoiceRouter(deps: { readPersonas(userId: string): Promise<any[]>; assertVoiceAccess(req: AuthenticatedRequest, voiceId: string, personaId: string): Promise<void>; agentChat(req: AuthenticatedRequest,res: Response): Promise<any> }) {
   const router = Router();
   router.use(requireAuth);
   router.use((_req,res,next)=>{res.setHeader('Cache-Control','no-store');next();});
   const elevenlabs = elevenLabsCallDependencies(deps.readPersonas);
+  const callDependencies = (req: AuthenticatedRequest) => ({ ...elevenlabs,
+    authorizeVoice: (persona: any) => deps.assertVoiceAccess(req, persona.voiceId, persona.id),
+  });
   function elevenLabsError(error: any, res: Response) {
     if (error instanceof ElevenLabsCallError) return res.status(error.status).json({error:error.message});
+    if (error instanceof VoiceLifecycleError) return res.status(error.statusCode).json({error:error.message});
     const status = error?.statusCode;
     return res.status(503).json({error: status === 401 || status === 403
       ? 'ElevenLabs access is unavailable. The server key needs Voices and Agents permissions.'
@@ -31,13 +36,13 @@ export function createNativeVoiceRouter(deps: { readPersonas(userId: string): Pr
   }
   router.get('/elevenlabs/options', async(req: AuthenticatedRequest,res)=>{
     try {
-      const persona = await ownedElevenLabsPersona(req.user.id, req.query.personaId, deps.readPersonas);
+      const persona = await authorizedElevenLabsPersona(req.user.id, req.query.personaId, callDependencies(req));
       const voice = await elevenlabs.verifyVoice(persona.voiceId);
       res.json({voice:persona.voiceId,voiceName:voice.name || persona.voiceName || persona.name,voiceAccent:voice.labels?.accent || '',personaName:persona.name});
     } catch(error) {elevenLabsError(error,res);}
   });
   router.post('/elevenlabs/session', async(req: AuthenticatedRequest,res)=>{
-    try {res.json(await prepareElevenLabsCall(req.user.id,req.body,elevenlabs));}
+    try {res.json(await prepareElevenLabsCall(req.user.id,req.body,callDependencies(req)));}
     catch(error) {elevenLabsError(error,res);}
   });
   async function owned(req: AuthenticatedRequest) {

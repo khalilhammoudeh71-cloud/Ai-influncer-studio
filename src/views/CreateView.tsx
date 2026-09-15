@@ -1,3 +1,4 @@
+import CarouselImageDialog from '../components/CarouselImageDialog';
 import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -58,6 +59,7 @@ import VideoStitcher from '../components/VideoStitcher';
 import QuickStartHub, { type CreationCapabilityId } from '../components/QuickStartHub';
 import GuidedCreationWorkspace from '../components/GuidedCreationWorkspace';
 import {
+  authFetch,
   generateImage,
   generateVideo,
   generateContent,
@@ -198,7 +200,7 @@ const ANONYMOUS_PERSONA: Persona = {
 interface CreateViewProps {
   persona: Persona;
   personas: Persona[];
-  setPersonas: (personas: Persona[]) => void;
+  setPersonas: React.Dispatch<React.SetStateAction<Persona[]>>;
   onSelectPersona: (id: string) => void;
   subView?: string;
   initialBrief?: CreationBrief;
@@ -528,6 +530,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
   const [activeQuickStyle, setActiveQuickStyle] = useState<string | null>(null);
   const [styleOptionsOpen, setStyleOptionsOpen] = useState(false);
+  const [referencePickerOpen,setReferencePickerOpen]=useState(false);
   const [personaPickerOpen, setPersonaPickerOpen] = useState(false);
   const [selectedAspectRatio, setSelectedAspectRatio] = useState('1:1');
   const [isModelModalOpen, setIsModelModalOpen] = useState(false);
@@ -1115,26 +1118,22 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   };
 
   const saveMediaToLibrary = async (media: GeneratedImage) => {
-    const updatedPersonas = personas.map(p => {
-      if (p.id === persona.id) {
-        return { ...p, visualLibrary: [...(p.visualLibrary || []), media] };
-      }
-      return p;
-    });
-    setPersonas(updatedPersonas);
-
-    try {
-      await fetch(`/api/personas/${persona.id}/images`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(media),
-      });
-    } catch (err) {
-      console.error('Failed to persist media:', err);
+    setSaved(false);
+    setGlobalError(null);
+    if (!personas.some(p => p.id === persona.id)) {
+      setGlobalError('Choose a persona before saving to their library. You can also download the image directly.');
+      return;
     }
-
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    try {
+      const persisted = await api.images.create(persona.id, media);
+      setPersonas(prev => prev.map(p => p.id === persona.id
+        ? { ...p, visualLibrary: [...(p.visualLibrary || []), persisted] }
+        : p));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err) {
+      setGlobalError(err instanceof Error ? err.message : 'Could not save to the library. Please try again.');
+    }
   };
 
   const handleImageGenerate = async () => {
@@ -1362,7 +1361,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     setExtendError(null);
     setExtendResult(null);
     try {
-      const frameRes = await fetch('/api/extract-last-frame', {
+      const frameRes = await authFetch('/api/extract-last-frame', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ videoUrl: videoResult.videoUrl }),
@@ -1742,6 +1741,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           <div className="relative">
             <select
               value={selectedVideoModel}
+                  data-video-model-select
+                  aria-label="Video model"
               onChange={e => setSelectedVideoModel(e.target.value)}
               className="w-full bg-[var(--bg-elevated)] border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white focus:ring-2 focus:ring-pink-500 outline-none appearance-none pr-10"
             >
@@ -1991,48 +1992,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             )}
           </div>
         ) : (
-          /* Sleek Thin Visual Showcase Banner (h-16 md:h-20) */
-          <div className="w-full relative h-16 md:h-20 bg-[#161618] border border-white/10 rounded-2xl overflow-hidden shadow-lg p-2 flex items-center justify-between gap-3 font-sans select-none">
-            <div className="flex items-center gap-2.5 pl-1.5">
-              <div className="w-8 h-8 rounded-lg bg-[#242428] border border-[#E7C477]/30 flex items-center justify-center shadow-md text-[#F2D58D] shrink-0">
-                <Sparkles className="w-4 h-4 animate-pulse" />
-              </div>
-              <div className="flex flex-col">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[8px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-[#E7C477]/15 border border-[#E7C477]/30 text-[#F2D58D]">
-                    Featured Models
-                  </span>
-                  <span className="text-[9px] font-bold text-slate-400 truncate">GPT Image 2 • Nano Banana • Seedream 5.0 • Wan 7</span>
-                </div>
-                <h2 className="text-xs font-bold text-white tracking-tight leading-tight mt-0.5 font-serif">
-                  Photorealistic Persona & Studio Visual Generator
-                </h2>
-              </div>
-            </div>
-            {/* Visual Showcase Thumbnails Strip */}
-            <div className="hidden sm:flex items-center gap-1.5 pr-1 shrink-0">
-              {[
-                { title: 'Editorial', img: '/persona_showcase_1.png' },
-                { title: 'Cinematic', img: '/persona_showcase_2.png' },
-                { title: 'Portrait', img: '/persona_showcase_3.png' },
-                { title: 'Studio', img: '/persona_showcase_4.png' }
-              ].map((item, idx) => (
-                <div key={idx} className="relative w-11 h-11 md:w-12 md:h-12 rounded-xl overflow-hidden border border-white/20 shadow-md hover:scale-105 transition-all duration-300 group">
-                  <img
-                    src={item.img}
-                    alt={item.title}
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = '/isabella_laurent_reference.png';
-                    }}
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-transparent flex items-end p-0.5">
-                    <span className="text-[6px] font-bold text-white uppercase tracking-wider leading-none drop-shadow">{item.title}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+          null
         )}
 
         {/* Post Generation Toolkit for Active Version */}
@@ -2046,9 +2006,16 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 <ArrowUpCircle className="w-3.5 h-3.5" /> Upscale 4K
               </button>
               <button onClick={handleSaveImage} disabled={saved} className="flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 btn-gold-secondary transition-all disabled:opacity-50 shadow-md">
-                {saved ? <><Check className="w-3.5 h-3.5 text-[#E7C477]" /> Saved!</> : <><CheckCircle className="w-3.5 h-3.5" /> Save to Vault</>}
+                {saved ? <><Check className="w-3.5 h-3.5 text-[#E7C477]" /> Saved!</> : <><CheckCircle className="w-3.5 h-3.5" /> Save to Library</>}
               </button>
             </div>
+
+            {actionError && (
+              <div role="alert" className="rounded-xl border border-red-400/40 bg-red-950/30 p-3 text-sm text-red-100">
+                <p className="font-semibold">Image update failed — your original image is still displayed.</p>
+                <p className="mt-1">{actionError}</p>
+              </div>
+            )}
 
             {postAction === 'edit' && (
               <div className="bg-[#161618] border border-white/10 rounded-xl p-3.5 space-y-3">
@@ -2081,7 +2048,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         {/* ── INTERMEDIATE SECTION: Variation History Stream Thumbnails ── */}
         {activeVersion && generatedFeed.length > 0 && (
           <div className="space-y-2 bg-[#0E0E10] border border-white/10 p-3.5 rounded-2xl">
-            <span className="text-[10px] font-bold text-[#F2D58D] uppercase tracking-wider block">Creations History Stream</span>
+            <span className="text-[10px] font-bold text-[#F2D58D] uppercase tracking-wider block">Recent creations</span>
             <div className="flex gap-2.5 overflow-x-auto pb-1 scrollbar-hide select-none">
               {generatedFeed.map(entry => {
                 const isFocused = focusedEntryId === entry.id;
@@ -2125,6 +2092,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             <div className="relative shrink-0">
               <button
                 type="button"
+                aria-label="Add reference image"
                 onClick={() => setUploadMenuOpen(!uploadMenuOpen)}
                 className="w-10 h-10 rounded-2xl bg-white/[0.04] border border-white/10 flex items-center justify-center text-slate-350 hover:bg-white/10 hover:text-white transition-all shadow-md"
               >
@@ -2135,6 +2103,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 <>
                   <div className="fixed inset-0 z-29" onClick={() => setUploadMenuOpen(false)} />
                   <div className="absolute left-0 top-full mt-2 w-48 rounded-xl border border-white/10 bg-[#141416] p-1.5 shadow-2xl z-30 space-y-0.5">
+                    <button type="button" onClick={()=>{setUploadMenuOpen(false);setReferencePickerOpen(true)}} className="w-full text-left px-3 py-2 rounded-lg text-xs text-slate-200 hover:bg-white/5 flex items-center gap-2 font-bold"><ImageIcon size={14}/>Persona reference images</button>
                     <button
                       type="button"
                       onClick={() => {
@@ -2178,8 +2147,9 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               <textarea
                 value={imagePrompt}
                 onChange={e => setImagePrompt(e.target.value)}
-                placeholder="Describe what you want the AI to create in vivid details..."
-                className="w-full bg-transparent border-0 outline-none resize-none text-sm text-white placeholder-slate-500 h-48 md:h-56 min-h-[180px] focus:ring-0 p-0"
+                aria-label="Describe your image"
+                placeholder="Describe the image: subject, setting, style, and lighting…"
+                className="w-full bg-transparent border-0 outline-none resize-none text-sm text-white placeholder-slate-500 h-28 md:h-32 min-h-[112px] focus:ring-0 p-0"
               />
             </div>
 
@@ -2367,10 +2337,10 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               <div className="relative shrink-0">
                 <select
                   value={refPersonaId}
-                  onChange={(e) => setRefPersonaId(e.target.value)}
+                  onChange={(e) => {const id=e.target.value;setRefPersonaId(id);setLocalPersonaId(id);onSelectPersona(id==='none'?'empty':id);}}
                   className="bg-[#141416] border border-white/10 rounded-xl px-2.5 py-1 text-xs font-semibold text-slate-200 outline-none appearance-none pr-6 hover:bg-[#1E1E22] hover:border-white/20 transition-all cursor-pointer h-8 text-ellipsis overflow-hidden max-w-[140px]"
                 >
-                  <option value="none">No identity reference</option>
+                  <option value="none">None — create freely</option>
                   {personas.map(p => (
                     <option key={p.id} value={p.id}>{p.name}</option>
                   ))}
@@ -2595,6 +2565,12 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     return (
       <div className="flex flex-col gap-4 w-full max-w-5xl mx-auto pb-10">
         
+        {extendError && (
+          <div role="alert" className="rounded-xl border border-red-400/40 bg-red-950/30 p-3 text-sm text-red-100">
+            <p className="font-semibold">Video extension failed. Your previous video is unchanged.</p>
+            <p className="mt-1">{extendError}</p>
+          </div>
+        )}
         {/* ── TOP SECTION: Alternating Hero Slideshow / Video Output Canvas ── */}
         <div className={`relative w-full ${videoResult?.videoUrl || isGenerating || isExtending ? 'min-h-[460px] md:min-h-[560px] max-h-[680px]' : 'h-44 md:h-52 max-h-[220px]'} rounded-[24px] border border-white/10 bg-[#08080A] overflow-hidden shadow-2xl transition-all duration-500`}>
           {isGenerating || isExtending ? (
@@ -2635,8 +2611,6 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                       mediaType: 'video',
                     };
                     saveMediaToLibrary(media);
-                    setSaved(true);
-                    setTimeout(() => setSaved(false), 2000);
                   }}
                   className="px-3 py-1.5 bg-black/80 backdrop-blur-sm rounded-xl text-white hover:bg-black transition-all border border-white/10 hover:border-[#E7C477] shadow-lg flex items-center gap-1.5 text-xs font-bold cursor-pointer"
                   title="Save to Library"
@@ -2972,6 +2946,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               {isPro && <div className="relative">
                 <select
                   value={selectedVideoModel}
+                  data-video-model-select
+                  aria-label="Video model"
                   onChange={e => setSelectedVideoModel(e.target.value)}
                   className="bg-[#161f30] border border-white/10 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-200 outline-none appearance-none pr-6 hover:bg-white/[0.08] hover:border-white/20 transition-all cursor-pointer h-8 text-ellipsis overflow-hidden max-w-[215px]"
                 >
@@ -4135,7 +4111,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         onPersonaChange={personaId => {
           setLocalPersonaId(personaId);
           if (mode === 'video') setVideoSourcePersonaId(personaId);
-          if (personaId !== 'none') onSelectPersona(personaId);
+          setRefPersonaId(personaId);
+          onSelectPersona(personaId === 'none' ? 'empty' : personaId);
         }}
         estimate={estimate}
         timeEstimate={mode === 'video' ? 'Usually 1–4 minutes' : mode === 'talking-avatar' ? 'Usually 1–3 minutes' : 'Usually 10–45 seconds'}
@@ -4200,16 +4177,6 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       {/* ── CREATE HUB HEADER ── */}
       <div className="mb-4 flex flex-col md:flex-row md:items-center justify-between gap-3 px-1 border-b border-[#E7C477]/10 pb-3">
         <div>
-          {isCapabilityWorkspace && (
-            <button
-              type="button"
-              onClick={() => nav.replace({ view: 'create' })}
-              className="mb-3 inline-flex cursor-pointer items-center gap-2 rounded-full border border-[var(--gold-border-active)] bg-[var(--gold-bg-subtle)] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--gold-bright)] transition-colors hover:bg-[var(--gold-bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]"
-            >
-              <ArrowLeft size={13} />
-              All creation tools
-            </button>
-          )}
           <h1 className="text-2xl md:text-3xl font-serif text-[#F5F1E8] tracking-tight flex items-center gap-2">
             {isCapabilityWorkspace ? activeWorkspaceMeta.title : 'Create content'}
           </h1>
@@ -4237,7 +4204,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       )}
 
       {globalError && !globalError.includes('Failed query:') && !globalError.includes('DrizzleQueryError') && (
-        <div className="mb-4 bg-rose-500/10 border border-rose-500/20 rounded-xl p-3 flex items-start gap-2">
+        <div role="alert" className="mb-4 bg-rose-500/10 border border-rose-500/20 rounded-xl p-3 flex items-start gap-2">
           <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
           <p className="text-sm text-rose-300">{globalError}</p>
         </div>
@@ -4528,6 +4495,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         </div>
       )}
 
+      {referencePickerOpen&&<CarouselImageDialog purpose="reference" format="instagram" personaPhotos={[activePersona.referenceImage,activePersona.avatar,...(activePersona.additionalReferenceImages||[])].filter((u):u is string=>!!u)} libraryPhotos={(activePersona.visualLibrary||[]).map(i=>i.url)} onChoose={url=>{if(url)setRefImages(prev=>prev.some(i=>i.url===url)?prev:[...prev,{id:crypto.randomUUID(),url,name:'Persona reference'}]);setReferencePickerOpen(false)}} onClose={()=>setReferencePickerOpen(false)}/>}
       <AssetPickerModal
         isOpen={isCreateAssetPickerOpen}
         onClose={() => setIsCreateAssetPickerOpen(false)}

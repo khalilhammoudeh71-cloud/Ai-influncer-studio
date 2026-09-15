@@ -1,3 +1,4 @@
+import { authFetch } from '../services/imageService';
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -62,7 +63,7 @@ export default function ViralPredictorModal({
   const fetchAnalysis = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/predict-viral-score', {
+      const res = await authFetch('/api/predict-viral-score', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt, caption, platform, personaName })

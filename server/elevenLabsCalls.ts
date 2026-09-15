@@ -69,6 +69,7 @@ export function buildElevenLabsCallConfig(owner: string, persona: any, input: un
 
 type Dependencies = {
   readPersonas(owner: string): Promise<any[]>;
+  authorizeVoice(persona: any): Promise<void>;
   verifyVoice(id: string): Promise<{ name?: string; labels?: Record<string, string> }>;
   ensureAgent(config: ReturnType<typeof buildElevenLabsCallConfig>): Promise<string>;
   token(agentId: string): Promise<string>;
@@ -82,8 +83,13 @@ export async function ownedElevenLabsPersona(owner: string, personaId: unknown, 
   }
   return persona;
 }
+export async function authorizedElevenLabsPersona(owner: string, personaId: unknown, deps: Pick<Dependencies, 'readPersonas' | 'authorizeVoice'>) {
+  const persona = await ownedElevenLabsPersona(owner, personaId, deps.readPersonas);
+  await deps.authorizeVoice(persona);
+  return persona;
+}
 export async function prepareElevenLabsCall(owner: string, input: any, deps: Dependencies) {
-  const persona = await ownedElevenLabsPersona(owner, input?.personaId, deps.readPersonas);
+  const persona = await authorizedElevenLabsPersona(owner, input?.personaId, deps);
   const preferences = normalizeCallPreferences(input?.preferences);
   const voice = await deps.verifyVoice(persona.voiceId);
   const agentId = await deps.ensureAgent(buildElevenLabsCallConfig(owner, persona, preferences, nativeHistory(input?.history).length > 0));
@@ -94,7 +100,7 @@ export async function prepareElevenLabsCall(owner: string, input: any, deps: Dep
     preferences, dynamicVariables: { call_context: JSON.stringify({ history: nativeHistory(input?.history), memories }) }, userId: hash(owner) };
 }
 
-export function elevenLabsCallDependencies(readPersonas: Dependencies['readPersonas']): Dependencies {
+export function elevenLabsCallDependencies(readPersonas: Dependencies['readPersonas']): Omit<Dependencies, 'authorizeVoice'> {
   const pending = new Map<string, Promise<string>>();
   const cached = new Map<string, { id: string; expires: number }>();
   function client() {

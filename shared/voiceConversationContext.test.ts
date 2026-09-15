@@ -160,3 +160,38 @@ test('voice memory recall is relevant and excludes one-time media commands', () 
     'My son is training for the Cairo marathon',
   ]);
 });
+
+test('long calls retain earlier facts and subsequent corrections in order', () => {
+  const messages = [
+    { role: 'user', type: 'text', content: 'Our meeting is Saturday at seven.' },
+    ...Array.from({ length: 20 }, (_, index) => ({ role: index % 2 ? 'persona' : 'user', type: 'text', content: `Conversation detail ${index}` })),
+    { role: 'user', type: 'text', content: 'Correction: Sunday at six.' },
+  ];
+  const result = buildVoiceConversationHistory(messages, 'When is our meeting?');
+  assert.equal(result[0].content, messages[0].content);
+  assert.equal(result.at(-2)?.content, 'Correction: Sunday at six.');
+  assert.equal(result.at(-1)?.content, 'When is our meeting?');
+});
+
+test('Arabic-only recall keeps corrected appointment details in history', () => {
+  const messages = [
+    {role:'user',content:'الخميس الساعة سبعة بمطعم الياسمين، بدون مكسرات'},
+    {role:'assistant',content:'تمام'},
+    {role:'user',content:'تصحيح، الجمعة الساعة تمانية والمطعم نفسه'},
+    {role:'assistant',content:'وصل التصحيح'},
+    {role:'user',content:'ذكّريني شو اتفقنا على الموعد والمكان والأكل؟'},
+  ];
+  assert.equal(isContextUnsafeVoiceTurn(messages[4].content), false);
+  assert.deepEqual(buildVoiceConversationHistory(messages,messages[4].content).map(m=>m.content),messages.map(m=>m.content));
+});
+
+test('distinct Arabic turns are not mistaken for the current utterance', () => {
+  const messages=[{role:'user',content:'بدي قهوة'},{role:'assistant',content:'أي نوع؟'}];
+  assert.deepEqual(buildVoiceConversationHistory(messages,'بدون سكر').map(m=>m.content),['بدي قهوة','أي نوع؟','بدون سكر']);
+});
+
+test('Arabic greeting and acknowledgement keep short-turn boundaries', () => {
+ const messages=[{role:'user',content:'خطط رحلة للجمعة'},{role:'assistant',content:'أهلا'}];
+ assert.deepEqual(buildVoiceConversationHistory(messages,'مرحبا').map(m=>m.content),['مرحبا']);
+ assert.deepEqual(buildVoiceConversationHistory(messages,'تمام').map(m=>m.content),['أهلا','تمام']);
+});

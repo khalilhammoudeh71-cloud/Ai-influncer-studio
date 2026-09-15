@@ -2,6 +2,9 @@ import { NativeVoiceCall } from '../components/NativeVoiceCall';
 import { createStreamingSpeech } from '../utils/streamingSpeech';
 import { getSavedPersonaVoice } from '../utils/personaVoiceEngine';
 import { SpeechEnginePilot } from '../components/SpeechEnginePilot';
+import { recognitionLanguage } from '../../shared/personaLanguage';
+import { createPortal } from 'react-dom';
+import { uniqueModels } from '../../shared/modelRouting';
 import { buildPersonalityInstructions } from '../../shared/personality';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Send, Bot, ChevronDown, ImageIcon, Video, Loader2, AlertCircle, Camera, MessageSquareQuote, Copy, Bookmark, Check, Phone, PhoneOff, Volume2, VolumeX, Mic, MicOff, RotateCcw, Trash2, Plus, Upload, Music, Film, X, Play, Sparkles, Paperclip, FileText, SlidersHorizontal, Settings, Hand, Maximize2, Download, Shirt, Heart, Pencil, BookOpen, ShieldCheck, Brain, Pin, Search, ArrowUpCircle, Wand2 } from 'lucide-react';
@@ -93,6 +96,7 @@ import {
   type VoiceLatencySnapshot,
   type VoiceTurnTiming,
 } from '../utils/voiceStability';
+import { resolveVoiceMediaDraft } from '../../shared/voiceMediaDraft';
 import { buildVoiceConversationHistory } from '../../shared/voiceConversationContext';
 import {
   detectExplicitMediaCreationRequest,
@@ -425,12 +429,12 @@ function detectIntent(message: string): 'image' | 'video' | 'chat' {
 }
 
 export const VOICE_CALL_ENGINES = [
-  { id: AUTO_PERSONA_VOICE_ENGINE, name: 'Automatic Persona Voice', simpleLabel: 'Recommended for this persona', badge: 'Recommended', desc: 'Clones use Eleven v3 with Flash fallback; uncloned personas use Maya' },
+  { id: AUTO_PERSONA_VOICE_ENGINE, name: 'Use persona’s saved voice', simpleLabel: 'Recommended for this persona', badge: 'Recommended', desc: 'Clones use Eleven v3 with Flash fallback; uncloned personas use Maya' },
   { id: 'eleven_v3_conversational', name: 'ElevenLabs v3 Conversational', simpleLabel: 'Most expressive cloned voice', badge: 'Human (~280ms)', desc: 'Most expressive delivery using the saved cloned voice' },
   { id: 'eleven_flash_v2_5', name: 'ElevenLabs Flash 2.5', simpleLabel: 'Fastest cloned voice', badge: 'Ultra Fast (~75ms)', desc: 'Fastest delivery using the saved cloned voice' },
-  { id: 'fal_maya_stream', name: 'Fal Maya Stream', simpleLabel: 'Emotional voice without a clone', badge: 'Live (~400ms)', desc: 'Emotional prompt-designed voice for personas without a clone' },
+  { id: 'fal_maya_stream', name: 'Fal Maya Stream', simpleLabel: 'Emotional voice without a clone', badge: 'Variable latency', desc: 'Emotional prompt-designed voice for personas without a clone' },
   { id: 'eleven_turbo_v2_5', name: 'ElevenLabs Turbo 2.5', simpleLabel: 'Natural tone with quick replies', badge: 'Fast (~250ms)', desc: 'Rich human tone and nuance' },
-  { id: 'cartesia-sonic', name: 'Cartesia Sonic', simpleLabel: 'Fastest turn-taking', badge: 'Extreme Speed (~90ms)', desc: 'Fastest conversational turn-taking' },
+  { id: 'cartesia-sonic', name: 'Cartesia Sonic 3.5', simpleLabel: 'Alternative voice', badge: 'Stock voice', desc: 'Uses a Cartesia stock voice, not your saved persona voice' },
   { id: 'eleven_multilingual_v2', name: 'ElevenLabs Multilingual v2', simpleLabel: 'Most cinematic emotion', badge: 'Expressive (~800ms)', desc: 'High cinematic emotion' },
 ];
 
@@ -511,7 +515,10 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     return savedEngine || AUTO_PERSONA_VOICE_ENGINE;
   });
 
+  const [voicePlaybackNotice, setVoicePlaybackNotice] = useState('');
+
   const handleVoiceEngineChange = (engineId: string) => {
+    setVoicePlaybackNotice('');
     setSelectedVoiceEngine(engineId);
     localStorage.setItem('agent_voice_engine', engineId);
     const found = VOICE_CALL_ENGINES.find(e => e.id === engineId);
@@ -544,6 +551,16 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   const [replyInput, setReplyInput] = useState('');
   const [generatedReplies, setGeneratedReplies] = useState<string[]>([]);
   const [showEngineSettings, setShowEngineSettings] = useState(false);
+  const engineDialogRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!showEngineSettings) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    engineDialogRef.current?.focus();
+    return () => { document.body.style.overflow = overflow; previous?.focus(); };
+  }, [showEngineSettings]);
+
   const [strictMediaFidelity, setStrictMediaFidelity] = useState(() => localStorage.getItem('persona_strict_media_fidelity') !== 'false');
   const [isReferenceModalOpen, setIsReferenceModalOpen] = useState(false);
   const [showMemoryCenter, setShowMemoryCenter] = useState(false);
@@ -1422,7 +1439,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           vadThreshold: 0.42,
           minSpeechDurationMs: 80,
           minSilenceDurationMs: 140,
-          languageCode: 'en',
+          languageCode: recognitionLanguage(activePersona).scribe,
           keyterms: buildVoiceKeyterms(voiceAccuracyProfileRef.current, [
             ...personas.map(persona => persona.name),
             activePersona?.name,
@@ -1594,12 +1611,14 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     return `${current} ${tail}`.trim();
   }, []);
 
-  const stopStreamingAudio = useCallback(() => {
+  const stopStreamingAudio = useCallback((closeContext = false) => {
     for (const source of streamingAudioSourcesRef.current) {
       try { source.stop(); } catch {}
       try { source.disconnect(); } catch {}
     }
     streamingAudioSourcesRef.current.clear();
+    // Keep the gesture-unlocked context during the call, including interruptions.
+    if (!closeContext) return;
     const context = streamingAudioContextRef.current;
     streamingAudioContextRef.current = null;
     if (context && context.state !== 'closed') {
@@ -1678,7 +1697,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       const rec = new SpeechRecognition();
       rec.continuous = true;
       rec.interimResults = true;
-      rec.lang = 'en-US';
+      rec.lang = recognitionLanguage(activePersona).browser;
       rec.maxAlternatives = 1;
       recognitionStartIndexRef.current = 0;
 
@@ -1750,7 +1769,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         // retain enough breathing room for the speaker to continue naturally.
         const pauseDelay = getVoiceTurnCommitDelay(trimmed, {
           source: 'browser',
-          hasTerminalPunctuation: /[.?!]$/.test(trimmed),
+          hasTerminalPunctuation: /[.?!؟]$/.test(trimmed),
         });
 
         const resultCountAtSchedule = e.results.length;
@@ -1830,6 +1849,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   useEffect(() => {
     isMutedRef.current = isMuted;
     if (isMuted) {
+      clearPendingRealtimeTranscript();
+      setLiveUserSpeech('');
       try { scribeConnectionRef.current?.mute(); } catch {}
       stopSpeechRecognition();
     } else if (isCallActiveRef.current) {
@@ -2053,6 +2074,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       if (currentVoice.voiceModel === 'fal_maya_stream') {
         try {
           await playMayaSpeechStream(text, currentVoice, controller, () => {
+            setVoicePlaybackNotice('');
             if (!isCallActiveRef.current) return;
             setCallStatus('speaking');
             isAgentSpeakingRef.current = true;
@@ -2256,7 +2278,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       // request become the apparent current instruction (for example, "Yeah"
       // was interpreted as approval of a request from an earlier chat).
       const conversationContext = buildVoiceConversationHistory(updatedHistory, text, {
-        maxMessages: 10,
+        maxMessages: 64,
       });
       const activeCallIds = new Set(updatedHistory.map(message => message.id));
       const recalledConversation = selectGroundedVoiceRecall(
@@ -2379,6 +2401,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           streamingPlayback = streamingPlayback.then(async () => {
             try {
               const played = await playMayaSpeechStream(cleanSegment, targetVoiceRouting, controller, () => {
+                setVoicePlaybackNotice('');
                 streamingAudioPlayed = true;
                 recordFirstAudioLatency();
                 personaSpeakingStartTimeRef.current = Date.now();
@@ -2506,9 +2529,12 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       const voiceMediaConversationOnly = isConversationalMediaMention(text);
       const voiceImageRevisionCandidate = resolveImageRevisionContext(text, updatedHistory, callRevisionSource);
       const incompleteVoiceMediaRequest = detectIncompleteMediaCreationRequest(text);
-      const executableVoiceMediaIntent = voiceMediaConversationOnly
-        ? undefined
-        : resolveExecutableMediaCreationRequest(text, { hasImageRevision: voiceImageRevisionCandidate.isRevision });
+      const voiceMediaDraft = resolveVoiceMediaDraft(text, updatedHistory);
+      const executableVoiceMediaIntent = !voiceMediaConversationOnly && voiceMediaDraft.status === 'ready'
+        ? voiceMediaDraft.type
+        : !voiceMediaConversationOnly && voiceMediaDraft.status === 'none' && voiceImageRevisionCandidate.isRevision
+          ? resolveExecutableMediaCreationRequest(text, { hasImageRevision: true })
+          : undefined;
       const isVoiceImageIntent = executableVoiceMediaIntent === 'image';
       const isVoiceVideoIntent = executableVoiceMediaIntent === 'video';
 
@@ -2552,7 +2578,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           type: 'loading',
           content: callGenerationLabel,
         }]);
-        const exactMediaRequest = String(data.action?.prompt || text).trim();
+        const exactMediaRequest = voiceMediaDraft.prompt || String(data.action?.prompt || text).trim();
         const rawMediaPrompt = exactMediaRequest || `${activePersona.name}, ${activePersona.niche}, ${mediaType === 'image' ? 'photorealistic portrait' : 'cinematic motion video clip'}`;
         const modelSelection = resolveMediaModelFromPrompt(
           rawMediaPrompt,
@@ -2976,7 +3002,9 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       `Hey—good to hear you.`
     ];
 
-    const fallbackPool = isRecentContinuation ? continuationPool : (isAdultOrFlirty ? intimatePools : luxuryPools);
+    const fallbackPool = recognitionLanguage(persona).scribe === 'ar'
+      ? (isRecentContinuation ? ['أهلاً، رجعنا. وين كنا؟'] : ['أهلاً، كيفك؟'])
+      : isRecentContinuation ? continuationPool : (isAdultOrFlirty ? intimatePools : luxuryPools);
     const fallbackGreeting = fallbackPool[Math.floor(Math.random() * fallbackPool.length)];
 
     try {
@@ -3028,6 +3056,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     cancelVoiceEnrollment(true);
     setIgnoredSpeakerCount(0);
     setLastSpeakerMatchScore(null);
+    setVoicePlaybackNotice('');
     setCallStatus('connecting');
     setCallDuration(0);
     isAgentSpeakingRef.current = false;
@@ -3041,7 +3070,9 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       audioRef.current.volume = 1.0;
       audioRef.current.muted = false;
       audioRef.current.play().catch(() => {});
-      if (resolvePersonaVoiceEngine(activePersona, selectedVoiceEngine) === 'fal_maya_stream') {
+      {
+        // Unlock Web Audio while the call-start click still has user activation.
+        // The caller can switch to streaming speech later in this same call.
         const AudioContextConstructor = window.AudioContext || (window as any).webkitAudioContext;
         if (AudioContextConstructor && (!streamingAudioContextRef.current || streamingAudioContextRef.current.state === 'closed')) {
           streamingAudioContextRef.current = new AudioContextConstructor({ sampleRate: 24_000 }) as AudioContext;
@@ -3171,7 +3202,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       } catch {}
       audioRef.current = null;
     }
-    stopStreamingAudio();
+    stopStreamingAudio(true);
 
     // Cancel browser speech synthesis immediately
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
@@ -3199,7 +3230,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         try { audioRef.current.pause(); audioRef.current.src = ''; } catch {}
         audioRef.current = null;
       }
-      stopStreamingAudio();
+      stopStreamingAudio(true);
       if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
         try { window.speechSynthesis.cancel(); } catch {}
       }
@@ -3226,7 +3257,9 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   const selectedVideoModel = videoModels.find(m => m.id === selectedVideoModelId);
 
   useEffect(() => {
-    fetchAllModelTypes().then(({ editModels: em, videoModels: vm }) => {
+    fetchAllModelTypes().then(({ models, videoModels: rawVideoModels }) => {
+      const em = uniqueModels(models);
+      const vm = uniqueModels(rawVideoModels);
       setEditModels(em);
       setVideoModels(vm);
       if (em.length > 0) {
@@ -4451,13 +4484,13 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
             className="absolute inset-0 z-50 bg-[#121316]/98 backdrop-blur-2xl flex flex-col justify-between p-4 sm:p-6 overflow-y-auto custom-scrollbar rounded-2xl sm:rounded-3xl border border-white/[0.12] shadow-2xl"
           >
             {/* Header */}
-            <div className="flex items-center justify-between flex-shrink-0 mb-2">
-              <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 flex-shrink-0 mb-3">
+              <div className="flex min-w-0 items-center gap-3">
                 {activePersona?.avatar || activePersona?.referenceImage ? (
                   <img 
                     src={activePersona.avatar || activePersona.referenceImage} 
                     alt={activePersona.name} 
-                    className="w-10 h-10 rounded-full border border-white/20 object-cover shadow-sm" 
+                    className="w-10 h-10 shrink-0 rounded-full border border-white/20 object-cover shadow-sm"
                     onError={(e) => {
                       const target = e.target as HTMLImageElement;
                       const fallback = activePersona?.referenceImage && target.src !== activePersona.referenceImage
@@ -4478,19 +4511,19 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
               </div>
               
               {/* Voice Status & Voice Engine Selector & Call Duration */}
-              <div className="flex items-center gap-2">
+              <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
                 <div 
                   className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/25 text-emerald-300 text-[11px] font-semibold rounded-lg px-2.5 py-1 backdrop-blur-md transition-all shadow-sm max-w-[150px] truncate"
-                  title={`Voice strictly locked to ${activePersona.name}'s cloned voice`}
+                  title={selectedVoiceEngine === 'cartesia-sonic' ? 'Cartesia stock voice; not the saved persona clone' : selectedVoiceEngine === 'fal_maya_stream' ? 'Maya generated voice; not the saved persona clone' : `Using ${activePersona.name}'s saved voice`}
                 >
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
                   <span className="truncate">🎙️ {activePersona.name}</span>
                 </div>
-                <div className="relative">
+                <div className="relative min-w-0 flex-1 basis-48">
                   <select
                     value={voiceLlmModel}
                     onChange={event => handleVoiceLlmChange(event.target.value)}
-                    className="max-w-[190px] bg-[#1c1d22] hover:bg-[#222329] border border-cyan-400/25 text-cyan-100 text-[11px] font-semibold rounded-lg px-2.5 py-1 outline-none cursor-pointer backdrop-blur-md transition-all"
+                    className="w-full min-w-0 bg-[#1c1d22] hover:bg-[#222329] border border-cyan-400/25 text-cyan-100 text-[11px] font-semibold rounded-lg px-2.5 py-1 outline-none cursor-pointer backdrop-blur-md transition-all"
                     title={isPro ? 'Select conversation LLM' : 'Choose what the conversation should prioritize'}
                     aria-label={isPro ? 'Conversation LLM' : 'Conversation priority'}
                   >
@@ -4501,17 +4534,17 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                     ))}
                   </select>
                 </div>
-                <div className="relative">
+                <div className="relative min-w-0 flex-1 basis-48">
                   <select
                     value={selectedVoiceEngine}
                     onChange={e => handleVoiceEngineChange(e.target.value)}
-                    className="bg-[#1c1d22] hover:bg-[#222329] border border-white/[0.12] text-zinc-200 text-[11px] font-semibold rounded-lg px-2.5 py-1 outline-none cursor-pointer backdrop-blur-md transition-all"
+                    className="w-full min-w-0 bg-[#1c1d22] hover:bg-[#222329] border border-white/[0.12] text-zinc-200 text-[11px] font-semibold rounded-lg px-2.5 py-1 outline-none cursor-pointer backdrop-blur-md transition-all"
                     title={isPro ? 'Select Voice Engine' : 'Choose what the voice should prioritize'}
                     aria-label={isPro ? 'Voice engine' : 'Voice priority'}
                   >
                     {VOICE_CALL_ENGINES.map(eng => (
-                      <option key={eng.id} value={eng.id} className="bg-[#1c1d22] text-white">
-                        {isPro ? `${eng.name} (${eng.badge})` : eng.simpleLabel}
+                      <option key={eng.id} value={eng.id} disabled={eng.id === 'fal_maya_stream' && recognitionLanguage(activePersona).scribe === 'ar'} className="bg-[#1c1d22] text-white">
+                        {eng.id === 'fal_maya_stream' && recognitionLanguage(activePersona).scribe === 'ar' ? 'Maya — unavailable for Arabic' : isPro ? `${eng.name} (${eng.badge})` : eng.simpleLabel}
                       </option>
                     ))}
                   </select>
@@ -4553,13 +4586,16 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                     Reply estimate {formatLatency(lastVoiceLatency.responseMs)}
                   </div>
                 )}
-                {isPro && lastVoiceRoute && (
+                {voicePlaybackNotice && (
+                  <p role="status" className="basis-full text-xs text-[#E7C477]">{voicePlaybackNotice}</p>
+                )}
+                {lastVoiceRoute && (
                   <div
-                    className="hidden lg:flex max-w-[220px] items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/[0.08] px-2.5 py-1 text-[10px] font-semibold text-emerald-200"
+                    className="flex max-w-full items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/[0.08] px-2.5 py-1 text-[10px] font-semibold text-emerald-200"
                     title={`Requested ${lastVoiceRoute.requestedModel}; answered by ${lastVoiceRoute.provider}`}
                   >
                     <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" />
-                    <span className="truncate">{lastVoiceRoute.provider}</span>
+                    <span className="truncate">Answered by {lastVoiceRoute.provider}</span>
                   </div>
                 )}
                 {callStatus !== 'connecting' && (
@@ -4800,7 +4836,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
             </AnimatePresence>
 
             {/* Visualizer Area */}
-            <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-3 my-2 relative">
+            <div className="flex-none w-full flex flex-col items-center justify-start gap-3 my-2 relative">
               {/* Status Indicator */}
               <div className="text-center z-10 min-h-[38px] flex flex-col items-center justify-center px-4">
                 {pendingVoiceConfirmation ? (
@@ -5293,13 +5329,23 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
       </AnimatePresence>
 
       {/* Ultra-Premium Luxury Studio Settings Modal */}
-      <AnimatePresence>
+      <>
         {showEngineSettings && (
-          <motion.div
+          createPortal(<motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/85 backdrop-blur-xl flex items-center justify-center p-4 sm:p-6"
+            ref={engineDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Models and voice"
+            onKeyDown={event => {
+              if (event.key === 'Escape') setShowEngineSettings(false);
+              if (event.key === 'Tab') {
+                const nodes = Array.from(engineDialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), select:not(:disabled), input:not(:disabled)') || []);
+                const first = nodes[0], last = nodes[nodes.length - 1];
+                if (event.shiftKey && (document.activeElement === first || document.activeElement === engineDialogRef.current)) { event.preventDefault(); last?.focus(); }
+                else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+              }
+            }}
+            className="fixed inset-0 z-[200] bg-black/85 backdrop-blur-xl flex items-center justify-center p-4 sm:p-6"
             onClick={() => setShowEngineSettings(false)}
           >
             <motion.div
@@ -5308,7 +5354,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
               exit={{ opacity: 0, scale: 0.95, y: 15 }}
               transition={{ duration: 0.2, ease: "easeOut" }}
               onClick={e => e.stopPropagation()}
-              className="w-full max-w-xl bg-[#0b0e14]/98 border border-white/[0.12] rounded-3xl p-6 sm:p-7 shadow-[0_30px_90px_rgba(0,0,0,0.95)] space-y-6 max-h-[90vh] overflow-y-auto custom-scrollbar"
+              className="w-full max-w-xl bg-[#0b0e14]/98 border border-white/[0.12] rounded-3xl p-5 shadow-[0_30px_90px_rgba(0,0,0,0.6)] flex flex-col gap-4 max-h-[calc(100dvh-2rem)] overflow-hidden"
             >
               {/* Header */}
               <div className="flex items-center justify-between border-b border-white/[0.08] pb-4">
@@ -5318,11 +5364,11 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                   </div>
                   <div>
                     <h3 className="text-base font-bold text-white tracking-tight">
-                      {isPro ? 'Studio AI & Model Configuration' : 'Choose How Your Persona Responds'}
+                      {isPro ? 'Models & voice' : 'Choose How Your Persona Responds'}
                     </h3>
                     <p className="text-xs text-zinc-400 mt-0.5">
                       {isPro
-                        ? 'Customize neural reasoning, generative visuals & voice synthesis'
+                        ? 'Choose your conversation, image, video, and voice settings.'
                         : 'Pick the result you want; the studio chooses the technology behind it'}
                     </p>
                   </div>
@@ -5335,19 +5381,13 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                 </button>
               </div>
 
-              <div className="space-y-5 text-xs">
+              <div className="space-y-4 text-xs overflow-y-auto overscroll-contain min-h-0 custom-scrollbar pr-1">
                 
                 {/* 1. Intelligence & Reasoning Card */}
                 <div className="p-4 rounded-2xl bg-white/[0.025] border border-white/[0.06] space-y-2.5">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-300">
                       {isPro ? 'Reasoning & Conversation Engine' : 'Conversation priority'}
-                    </span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">
-                      {(() => {
-                        const selected = PERSONA_LLM_OPTIONS.find(model => model.id === voiceLlmModel);
-                        return selected ? (isPro ? selected.name : selected.simpleLabel) : 'Best overall conversation';
-                      })()}
                     </span>
                   </div>
                   <div className="relative">
@@ -5378,12 +5418,6 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                     <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-300">
                       {isPro ? 'Voice Persona & Synthesis' : 'Voice priority'}
                     </span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/[0.06] text-zinc-300 border border-white/[0.08] font-semibold">
-                      {(() => {
-                        const selected = VOICE_CALL_ENGINES.find(engine => engine.id === selectedVoiceEngine);
-                        return selected ? (isPro ? selected.name : selected.simpleLabel) : 'Recommended for this persona';
-                      })()}
-                    </span>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -5392,23 +5426,20 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                       <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
                         Voice Identity
                       </label>
-                      <div className="w-full bg-[#1c1d22] border border-emerald-500/30 rounded-xl px-3 py-2.5 flex items-center justify-between shadow-inner">
+                      <div className="w-full bg-[#1c1d22] border border-white/10 rounded-xl px-3 py-2.5 flex items-center justify-between shadow-inner">
                         <div className="flex items-center gap-2 truncate">
-                          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
+                          <span className="w-2 h-2 rounded-full bg-[#E7C477] flex-shrink-0" />
                           <span className="text-xs text-white font-medium truncate">
                             🎙️ {activePersona.name}
                           </span>
                         </div>
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 font-semibold flex-shrink-0">
-                          Locked
-                        </span>
-                      </div>
+                          </div>
                     </div>
 
                     {/* Synthesis Latency Engine */}
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-                        {isPro ? 'Latency & Audio Engine' : 'What should the voice prioritize?'}
+                        {isPro ? 'Voice engine' : 'What should the voice prioritize?'}
                       </label>
                       <div className="relative">
                         <select
@@ -5418,8 +5449,8 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                           aria-label={isPro ? 'Voice engine' : 'Voice priority'}
                         >
                           {VOICE_CALL_ENGINES.map(eng => (
-                            <option key={eng.id} value={eng.id} className="bg-[#1c1d22] text-white">
-                              {isPro ? `${eng.name} (${eng.badge})` : eng.simpleLabel}
+                            <option key={eng.id} value={eng.id} disabled={eng.id === 'fal_maya_stream' && recognitionLanguage(activePersona).scribe === 'ar'} className="bg-[#1c1d22] text-white">
+                              {eng.id === 'fal_maya_stream' && recognitionLanguage(activePersona).scribe === 'ar' ? 'Maya — unavailable for Arabic' : isPro ? `${eng.name} (${eng.badge})` : eng.simpleLabel}
                             </option>
                           ))}
                         </select>
@@ -5429,14 +5460,13 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                   </div>
                 </div>
 
+                <p className="text-xs text-zinc-400">Uses this persona’s voice clone when available. Otherwise, the studio uses its default voice engine.</p>
+
                 {/* 3. Generative Visuals Card (Image & Video) */}
                 <div className="p-4 rounded-2xl bg-white/[0.025] border border-white/[0.06] space-y-3.5">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-300">
-                      Visual & Video Creation Pipelines
-                    </span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-semibold">
-                      Seedream 5.0 Pro • Seedance 2.0 Mini
+                      Image & video
                     </span>
                   </div>
 
@@ -5450,6 +5480,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                       </div>
                       <div className="relative">
                         <select
+                          aria-label="Image model"
                           value={selectedEditModelId}
                           onChange={e => setSelectedEditModelId(e.target.value)}
                           disabled={!modelsLoaded || editModels.length === 0}
@@ -5464,7 +5495,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                         <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
                       </div>
                       <p className="text-[10px] text-zinc-500">
-                        Default: <strong className="text-zinc-300">ByteDance {DEFAULT_IMAGE_MODEL_NAME} (WaveSpeed)</strong>
+                        Default: <strong className="text-zinc-300">{DEFAULT_IMAGE_MODEL_NAME}</strong>
                       </p>
                     </div>
 
@@ -5477,6 +5508,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                       </div>
                       <div className="relative">
                         <select
+                          aria-label="Video model"
                           value={selectedVideoModelId}
                           onChange={e => setSelectedVideoModelId(e.target.value)}
                           disabled={!modelsLoaded || videoModels.length === 0}
@@ -5516,7 +5548,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
               </div>
 
               {/* Footer Actions */}
-              <div className="pt-2 flex items-center justify-between border-t border-white/[0.08]">
+              <div className="shrink-0 pt-3 flex items-center justify-between border-t border-white/[0.08]">
                 <button
                   type="button"
                   onClick={() => {
@@ -5541,15 +5573,15 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
 
                 <button
                   onClick={() => setShowEngineSettings(false)}
-                  className="px-6 py-2.5 rounded-xl bg-white hover:bg-zinc-200 text-zinc-950 font-bold text-xs transition-all cursor-pointer shadow-lg active:scale-95"
+                  className="px-6 py-2.5 rounded-xl bg-[#E7C477] hover:brightness-110 text-[#161108] font-bold text-xs transition-all cursor-pointer shadow-lg active:scale-95"
                 >
                   Apply & Close
                 </button>
               </div>
             </motion.div>
-          </motion.div>
+          </motion.div>, document.body)
         )}
-      </AnimatePresence>
+      </>
 
       {/* Persona Reference Photo Gallery & Primary Selector Modal */}
       <PersonaReferenceModal

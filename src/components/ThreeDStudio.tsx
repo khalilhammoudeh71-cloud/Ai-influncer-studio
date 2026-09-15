@@ -1,3 +1,4 @@
+import { authFetch } from '../services/imageService';
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -111,11 +112,12 @@ export default function ThreeDStudio({ persona, personas, onSelectPersona, onClo
     };
 
     try {
-      await fetch(`/api/personas/${persona.id}/images`, {
+      const response = await authFetch(`/api/personas/${persona.id}/images`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(media),
       });
+      if (!response.ok) throw new Error('Could not save 3D asset');
       setSaved(true);
       toast.success('3D Asset saved to Visual Library!');
       setTimeout(() => setSaved(false), 2000);

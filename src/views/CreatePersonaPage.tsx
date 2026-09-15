@@ -1,6 +1,7 @@
 import { LatestVoicePreview, VoiceDraftGuard, type CloneResult } from '../../shared/personaVoiceLifecycle';
 import { restoreSavedVoice, type SavedPersonaVoice } from '../../shared/personaVoiceLibrary';
 import SavedPersonaVoices from '../components/SavedPersonaVoices';
+import { authFetch } from '../services/imageService';
 import PersonalityControls from '../components/PersonalityControls';
 import { normalizePersonality, type PersonalitySettings } from '../../shared/personality';
 import React, { useState, useRef, useEffect, ChangeEvent } from 'react';

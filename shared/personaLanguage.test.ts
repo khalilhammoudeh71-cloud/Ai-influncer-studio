@@ -1,0 +1,6 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {encodePersonality,decodePersonality,buildPersonalityInstructions,normalizePersonality} from './personality';
+import {recognitionLanguage,languageInstructions} from './personaLanguage';
+test('Arabic dialect persists for existing personas without replacing voice',()=>{const p={personalityTraits:[],personalitySettings:{language:'ar',dialect:'jordanian-syrian'}};const saved=decodePersonality(encodePersonality(p));assert.equal(saved.personalitySettings.language,'ar');assert.equal(saved.personalitySettings.dialect,'jordanian-syrian');assert.match(buildPersonalityInstructions(saved),/Jordanian/);});
+test('legacy and invalid language values use English safely',()=>{assert.equal(normalizePersonality({}).language,'en');assert.equal(recognitionLanguage({personalitySettings:{language:'ar'}}).browser,'ar-JO');assert.equal(recognitionLanguage({}).scribe,'en');assert.equal(recognitionLanguage({personalitySettings:{language:'injected'}}).scribe,'en');});
+test('dialect instructions preserve identity and requested glottal qaf',()=>{assert.match(languageInstructions({personalitySettings:{language:'ar',dialect:'jordanian-syrian'}}),/glottal/);assert.match(languageInstructions({personalitySettings:{language:'ar',dialect:'egyptian'}}),/Egyptian/);});
