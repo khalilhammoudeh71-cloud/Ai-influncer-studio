@@ -429,13 +429,15 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   }, [editingPersona?.id, editingPersona?.voiceId]);
   const [voiceSearch, setVoiceSearch] = useState('');
   const [voicePreviewText, setVoicePreviewText] = useState('');
+  const [previewLanguage, setPreviewLanguage] = useState<'persona' | 'ar' | 'en'>('persona');
+  const auditionLanguage = previewLanguage === 'persona' ? (personalitySettings.language === 'ar' ? 'ar' : 'en') : previewLanguage;
   const cloneBusyRef = useRef(false);
   const readySamples = useRef<{samples:Array<{name:string;base64:string}>;transcript:string}>({samples:[],transcript:''});
   const voiceSelectionChanged = useRef(false);
   const voiceDraftGuard = useRef(new VoiceDraftGuard());
   const voicePreviewPlayer = useRef(new LatestVoicePreview());
   const voicePreviewKey = useRef('');
-  const sampleTextForPreview = voicePreviewText.trim() || `Hi, I'm ${name || 'your creator'}. Let's take a moment to talk about ${niche || 'what inspires us'}. What would you like to create today?`;
+  const sampleTextForPreview = voicePreviewText.trim() || (auditionLanguage === 'ar' ? 'أهلين، كيفك؟ شو أخبارك اليوم؟ احكيلي، شو حابب نحكي هلأ؟ أنا هون معك، خُد راحتك.' : `Hi, I'm ${name || 'your creator'}. Let's take a moment to talk about ${niche || 'what inspires us'}. What would you like to create today?`);
   const stopVoicePreviews = () => {
     voicePreviewKey.current = '';
     voicePreviewPlayer.current.stop();
@@ -496,7 +498,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       if (voicePreviewKey.current === key) { stopVoicePreviews(); toast.error(error instanceof Error ? error.message : 'Voice preview unavailable.'); }
     }
   };
-  useEffect(() => { stopVoicePreviews(); }, [voiceTab, studioStep, voicePreviewText, voiceLikeness, voiceStability, voiceStyleExaggeration, voiceSpeakingSpeed]);
+  useEffect(() => { stopVoicePreviews(); }, [voiceTab, studioStep, voicePreviewText, auditionLanguage, voiceLikeness, voiceStability, voiceStyleExaggeration, voiceSpeakingSpeed]);
   useEffect(() => () => { voiceDraftGuard.current.change(); voicePreviewPlayer.current.stop(); }, [editingPersona?.id]);
   const audioInputRef = useRef<HTMLInputElement>(null);
 
@@ -1805,11 +1807,18 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
             <p>Selected voice: {selectedVoiceName}. Changes apply on the next voice turn after saving.</p>
             <label className="block">Voice name<input value={selectedSavedVoiceName} onChange={e => setSelectedSavedVoiceName(e.target.value)} maxLength={120} placeholder={selectedVoiceName} className="mt-1 w-full rounded-xl border border-white/10 bg-[#0E0E10] px-3 py-2 text-white" /></label>
             <p>Auditions use the selected voice provider. Live calls use the provider chosen in the call dialog.</p>
-            <label className="block">Audition text<input value={voicePreviewText} onChange={e => setVoicePreviewText(e.target.value)} maxLength={500} placeholder={sampleTextForPreview} className="mt-1 w-full rounded-xl border border-white/10 bg-[#0E0E10] px-3 py-2 text-white" /></label>
+            <label className="block">Audition text<input dir="auto" value={voicePreviewText} onChange={e => setVoicePreviewText(e.target.value)} maxLength={500} placeholder={sampleTextForPreview} className="mt-1 w-full rounded-xl border border-white/10 bg-[#0E0E10] px-3 py-2 text-white" /></label>
+            <label className="inline-flex items-center gap-2 mr-3 text-xs text-slate-300">Preview language
+              <select aria-label="Preview language" disabled={isCloning || isSaving} value={previewLanguage} onChange={e => { stopVoicePreviews(); setPreviewLanguage(e.target.value as 'persona' | 'ar' | 'en'); setVoicePreviewText(''); }} className="luxury-input rounded-xl px-3 py-2.5">
+                <option value="persona">Persona language</option>
+                <option value="ar">Arabic · العربية</option>
+                <option value="en">English</option>
+              </select>
+            </label>
             <button type="button" onClick={() => playDraftPreview(selectedVoiceId, selectedVoiceModel)} disabled={isCloning || isSaving || (!selectedVoiceId && !readySamples.current.samples.length)} className="btn-gold-primary px-4 py-2.5 text-xs disabled:opacity-40">
               {isTestingVoice ? 'Cancel preview' : isPlayingSample ? 'Stop preview' : 'Preview voice'}
             </button>
-            <p>Previews {selectedVoiceName} using {voiceCloningModel(selectedVoiceModel)?.name || selectedVoiceModel}. Render a new model to select its prepared voice.</p>
+            <p>{auditionLanguage === 'ar' ? 'Arabic sample uses Jordanian/Syrian phrasing. ' : ''}Edit the audition text for your own sample. Switching preview language resets that text. Previews {selectedVoiceName} using {voiceCloningModel(selectedVoiceModel)?.name || selectedVoiceModel}. Render a new model to select its prepared voice.</p>
           </div>
 
           <SavedPersonaVoices
@@ -1981,7 +1990,14 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                   {cloneResult?.assetKind==='singing' && cloneResult.voiceId && <p>Mureka vocal ID: <code className="select-all">{cloneResult.voiceId}</code>. Saved to this account; your speaking voice remains selected.</p>}
                 </div>}
                 <p className="text-[11px] text-slate-500">Your current saved voice stays active until a new preview is ready and you save the persona.</p>
-                <button type="button" onClick={() => playDraftPreview(selectedVoiceId, selectedVoiceModel)} disabled={isCloning || isSaving || (!selectedVoiceId && !readySamples.current.samples.length)} className="btn-gold-primary px-4 py-2.5 text-xs disabled:opacity-40">
+                <label className="inline-flex items-center gap-2 mr-3 text-xs text-slate-300">Preview language
+              <select aria-label="Preview language" disabled={isCloning || isSaving} value={previewLanguage} onChange={e => { stopVoicePreviews(); setPreviewLanguage(e.target.value as 'persona' | 'ar' | 'en'); setVoicePreviewText(''); }} className="luxury-input rounded-xl px-3 py-2.5">
+                <option value="persona">Persona language</option>
+                <option value="ar">Arabic · العربية</option>
+                <option value="en">English</option>
+              </select>
+            </label>
+            <button type="button" onClick={() => playDraftPreview(selectedVoiceId, selectedVoiceModel)} disabled={isCloning || isSaving || (!selectedVoiceId && !readySamples.current.samples.length)} className="btn-gold-primary px-4 py-2.5 text-xs disabled:opacity-40">
                   {isTestingVoice ? 'Cancel preview' : isPlayingSample ? 'Stop preview' : 'Preview voice'}
                 </button>
                 <p className="text-xs text-slate-400">Preview selected voice: {selectedVoiceName} · {voiceCloningModel(selectedVoiceModel)?.name || selectedVoiceModel}. Replay or change the audition text above without cloning again.</p>
