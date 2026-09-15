@@ -498,7 +498,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       if (voicePreviewKey.current === key) { stopVoicePreviews(); toast.error(error instanceof Error ? error.message : 'Voice preview unavailable.'); }
     }
   };
-  useEffect(() => { stopVoicePreviews(); }, [voiceTab, studioStep, voicePreviewText, auditionLanguage, voiceLikeness, voiceStability, voiceStyleExaggeration, voiceSpeakingSpeed]);
+  useEffect(() => { stopVoicePreviews(); }, [voiceTab, studioStep, voicePreviewText, voicePrompt, auditionLanguage, voiceLikeness, voiceStability, voiceStyleExaggeration, voiceSpeakingSpeed]);
   useEffect(() => () => { voiceDraftGuard.current.change(); voicePreviewPlayer.current.stop(); }, [editingPersona?.id]);
   const audioInputRef = useRef<HTMLInputElement>(null);
 
@@ -1810,18 +1810,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
             <p>Selected voice: {selectedVoiceName}. Changes apply on the next voice turn after saving.</p>
             <label className="block">Voice name<input value={selectedSavedVoiceName} onChange={e => setSelectedSavedVoiceName(e.target.value)} maxLength={120} placeholder={selectedVoiceName} className="mt-1 w-full rounded-xl border border-white/10 bg-[#0E0E10] px-3 py-2 text-white" /></label>
             <p>Auditions use the selected voice provider. Live calls use the provider chosen in the call dialog.</p>
-            <label className="block">Audition text<input dir="auto" value={voicePreviewText} onChange={e => setVoicePreviewText(e.target.value)} maxLength={500} placeholder={sampleTextForPreview} className="mt-1 w-full rounded-xl border border-white/10 bg-[#0E0E10] px-3 py-2 text-white" /></label>
-            <label className="inline-flex items-center gap-2 mr-3 text-xs text-slate-300">Preview language
-              <select aria-label="Preview language" disabled={isCloning || isSaving} value={previewLanguage} onChange={e => { stopVoicePreviews(); setPreviewLanguage(e.target.value as 'persona' | 'ar' | 'en'); setVoicePreviewText(''); }} className="luxury-input rounded-xl px-3 py-2.5">
-                <option value="persona">Persona language</option>
-                <option value="ar">Arabic · العربية</option>
-                <option value="en">English</option>
-              </select>
-            </label>
-            <button type="button" onClick={() => playDraftPreview(selectedVoiceId, selectedVoiceModel)} disabled={isCloning || isSaving || (!selectedVoiceId && !readySamples.current.samples.length)} className="btn-gold-primary px-4 py-2.5 text-xs disabled:opacity-40">
-              {isTestingVoice ? 'Cancel preview' : isPlayingSample ? 'Stop preview' : 'Preview voice'}
-            </button>
-            <p>{auditionLanguage === 'ar' ? 'Arabic sample uses Jordanian/Syrian phrasing. ' : ''}Edit the audition text for your own sample. Switching preview language resets that text. Previews {selectedVoiceName} using {voiceCloningModel(selectedVoiceModel)?.name || selectedVoiceModel}. Render a new model to select its prepared voice.</p>
+
           </div>
 
           {voiceTab === 'saved' && <SavedPersonaVoices
@@ -1974,6 +1963,34 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                 </section>
               </div>
 
+              {audioSampleList.length > 0 && (
+                <section aria-label="Uploaded voice files" className="space-y-3">
+                  <h4 className="text-xs font-semibold text-slate-300">Uploaded files ({audioSampleList.length})</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                    {audioSampleList.map((sample, idx) => (
+                      <article key={`${idx}:${sample.name}`} className={cn("min-w-0 overflow-hidden rounded-xl border bg-[#0E0E10]", idx === 0 ? "border-[#E7C477]/60" : "border-white/10")}>
+                        <div className="relative flex h-24 items-center justify-center bg-[#242428]">
+                          <Music2 size={32} className="text-[#D9BA72]" aria-hidden="true" />
+                          {idx === 0 && <span className="absolute left-2 top-2 rounded-md bg-[#E7C477] px-2 py-1 text-[10px] font-bold text-[#161618]">Primary</span>}
+                          <button type="button" aria-label={`Remove sample: ${sample.name}`} disabled={isCloning || isSaving} onClick={() => removeAudioSample(idx)} className="absolute right-2 top-2 rounded-lg bg-black/40 p-2 text-slate-300 hover:text-rose-300 disabled:opacity-40"><X size={16} /></button>
+                        </div>
+                        <div className="space-y-3 p-3">
+                          <p title={sample.name} className="truncate text-xs font-semibold text-white">{sample.name}</p>
+                          <audio controls preload="none" src={sample.base64} aria-label={`Play uploaded recording: ${sample.name}`} className="h-8 w-full" onPlay={event => {
+                            const player = event.currentTarget;
+                            if (activeAudioRef.current === player) activeAudioRef.current = null;
+                            stopVoicePreviews();
+                            player.closest('section')?.querySelectorAll('audio').forEach(audio => { if (audio !== player) audio.pause(); });
+                            activeAudioRef.current = player;
+                          }} />
+                          <button type="button" disabled={idx === 0 || isCloning || isSaving} onClick={() => setPrimaryAudioSample(idx)} className="text-xs font-semibold text-[#E7C477] disabled:text-slate-500">{idx === 0 ? 'Primary voice reference' : 'Use as primary reference'}</button>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+              )}
+
               <div className="space-y-3 rounded-2xl border border-white/10 bg-[#0E0E10] p-4 text-sm text-slate-300">
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -2007,55 +2024,6 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
 
               </div>
 
-              {audioSampleList.length > 0 && (
-                <div className="space-y-1.5">
-                  <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                    <span>Uploaded Voice Reference Samples ({audioSampleList.length}):</span>
-                    <span className="text-[10px] text-[#D9BA72] font-normal lowercase">(First sample is active primary)</span>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {audioSampleList.map((sample, idx) => (
-                      <div
-                        key={idx}
-                        className={cn(
-                          "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all",
-                          idx === 0
-                            ? "bg-[#242428] border-[#E7C477] text-[#F2D58D] shadow-md"
-                            : "bg-[#0E0E10] border-white/10 text-slate-300 hover:border-white/20"
-                        )}
-                      >
-                        <Volume2 size={13} className={idx === 0 ? "text-[#E7C477] animate-pulse" : "text-slate-400"} />
-                        <span className="max-w-[160px] truncate">{sample.name}</span>
-
-                        {idx === 0 ? (
-                          <span className="text-[10px] bg-[#E7C477]/20 text-[#F2D58D] px-1.5 py-0.5 rounded font-bold tracking-wide">
-                            ⭐ PRIMARY
-                          </span>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => setPrimaryAudioSample(idx)}
-                            className="text-[10px] text-slate-400 hover:text-[#F2D58D] underline font-medium"
-                            title="Set as active primary voice sample"
-                          >
-                            Set Primary
-                          </button>
-                        )}
-
-                        <button
-                          type="button"
-                          onClick={() => removeAudioSample(idx)}
-                          className="hover:text-rose-400 text-slate-400 ml-1"
-                          title="Remove sample"
-                        >
-                          <X size={13} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               {/* Advanced Voice Fine-Tuning & Voice Description Panel */}
               <div className="space-y-4 bg-[#0E0E10] p-5 rounded-2xl border border-white/10 mt-4">
                 <div className="flex items-center justify-between border-b border-white/10 pb-3">
@@ -2071,7 +2039,17 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                   <label className="block text-xs font-bold text-slate-300">
                     Voice Description & Tone Prompt (Guided Vocal Style):
                   </label>
+                  <p id="voice-prompt-support" className="text-xs leading-relaxed text-[#F2D58D]">
+                    Written delivery prompts: ByteDance Seed Speech 2.0 (WaveSpeed).
+                  </p>
+                  <p className="text-xs text-slate-400">
+                    {cloneChoice.id === 'wavespeed:seed-speech'
+                      ? 'This model applies these directions when generating speech. Render with it, then preview below.'
+                      : `${cloneChoice.name} does not apply this written prompt in voice previews. Use its supported tuning controls instead.`}
+                  </p>
                   <textarea
+                    aria-label="Voice description and tone prompt"
+                    aria-describedby="voice-prompt-support"
                     value={voicePrompt}
                     onChange={e => setVoicePrompt(e.target.value)}
                     placeholder="e.g. A warm, seductive female voice with a soft Middle Eastern accent, low breathy cadence, and energetic conversational tone."
@@ -2393,6 +2371,23 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
               )}
             </div>
           )}
+
+          <section aria-label="Voice preview" className="space-y-3 rounded-2xl border border-[#E7C477]/25 bg-[#0E0E10] p-5">
+            <h4 className="text-sm font-bold text-white">Preview your voice</h4>
+            <p className="text-xs text-slate-400">Listen after choosing your voice and adjusting the supported settings.</p>
+            <label className="block">Audition text<input dir="auto" value={voicePreviewText} onChange={e => setVoicePreviewText(e.target.value)} maxLength={500} placeholder={sampleTextForPreview} className="mt-1 w-full rounded-xl border border-white/10 bg-[#0E0E10] px-3 py-2 text-white" /></label>
+            <label className="inline-flex items-center gap-2 mr-3 text-xs text-slate-300">Preview language
+              <select aria-label="Preview language" disabled={isCloning || isSaving} value={previewLanguage} onChange={e => { stopVoicePreviews(); setPreviewLanguage(e.target.value as 'persona' | 'ar' | 'en'); setVoicePreviewText(''); }} className="luxury-input rounded-xl px-3 py-2.5">
+                <option value="persona">Persona language</option>
+                <option value="ar">Arabic · العربية</option>
+                <option value="en">English</option>
+              </select>
+            </label>
+            <button type="button" onClick={() => playDraftPreview(selectedVoiceId, selectedVoiceModel)} disabled={isCloning || isSaving || (!selectedVoiceId && !readySamples.current.samples.length)} className="btn-gold-primary px-4 py-2.5 text-xs disabled:opacity-40">
+              {isTestingVoice ? 'Cancel preview' : isPlayingSample ? 'Stop preview' : 'Preview voice'}
+            </button>
+            <p>{auditionLanguage === 'ar' ? 'Arabic sample uses Jordanian/Syrian phrasing. ' : ''}Edit the audition text for your own sample. Switching preview language resets that text. Previews {selectedVoiceName} using {voiceCloningModel(selectedVoiceModel)?.name || selectedVoiceModel}. Render a new model to select its prepared voice.</p>
+          </section>
 
         </div>
         )}
