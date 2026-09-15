@@ -1187,6 +1187,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
         prepared.forEach((sample, index) => originalVoiceSamples.current.set(sample.base64, originalVoiceSamples.current.get(selected[index].base64) || selected[index]));
         prepared.forEach(sample => voiceSampleCaps.current.set(sample.base64, cap));
         preparedSamples = prepared;
+        setAudioSampleList(prepared);
         if (prepared.some(sample => sample.cropped)) {
           toast.success(`Reference trimmed to ${policy.seconds} seconds${policy.files > 1 ? ' total' : ''}.`);
           if (voiceReferenceText.trim()) {
