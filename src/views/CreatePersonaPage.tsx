@@ -1,3 +1,4 @@
+import { videoThumbnail, type VoiceSample } from '../utils/voiceThumbnail';
 import { voiceSamplePolicy } from '../../shared/voiceCloningModels';
 import { ARABIC_DIALECTS, recognitionLanguage, type ArabicDialect } from '../../shared/personaLanguage';
 import { VOICE_CLONING_MODELS, voiceCloningModel } from '../../shared/voiceCloningModels';
@@ -22,7 +23,7 @@ import { studioImageJob } from '../services/mediaJobService';
 import { persistPersonaReferenceImages } from '../services/personaMediaService';
 import { supabase } from '../lib/supabase';
 import { cn } from '../utils/cn';
-import { readCloneSampleFile, cropVoiceReference } from '../utils/audioUtils';
+import { readCloneSampleFile, cropVoiceReference, isCloneVideoFile } from '../utils/audioUtils';
 import { accountLocalStorage } from '../utils/accountStorage';
 import {
   clearPersonaDraftReferenceImages,
@@ -484,7 +485,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   };
   useEffect(() => { stopDictation(); return stopDictation; }, [previewLanguage, auditionLanguage, previewDialect, studioStep, voiceTab, editingPersona?.id]);
   const cloneBusyRef = useRef(false);
-  const readySamples = useRef<{samples:Array<{name:string;base64:string}>;transcript:string}>({samples:[],transcript:''});
+  const readySamples = useRef<{samples:Array<VoiceSample>;transcript:string}>({samples:[],transcript:''});
   const voiceSelectionChanged = useRef(false);
   const voiceDraftGuard = useRef(new VoiceDraftGuard());
   const voicePreviewPlayer = useRef(new LatestVoicePreview());
@@ -735,7 +736,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   const [isTestingVoice, setIsTestingVoice] = useState(false);
   const [isPlayingSample, setIsPlayingSample] = useState(false);
   const [audioSampleBase64, setAudioSampleBase64] = useState<string>('');
-  const [audioSampleList, setAudioSampleList] = useState<Array<{ name: string; base64: string }>>([]);
+  const [audioSampleList, setAudioSampleList] = useState<Array<VoiceSample>>([]);
   const activeAudioRef = useRef<HTMLAudioElement | null>(null);
   const samplePlayers = useRef(new Map<number, HTMLAudioElement>());
 
@@ -1157,7 +1158,10 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
     setIsCloning(true); stopVoicePreviews();
     try {
       if (files.length > 10) throw new Error('Choose up to 10 audio or video files.');
-      const samples = await Promise.all(files.map(readCloneSampleFile));
+      const samples = await Promise.all(files.map(async file => {
+        const [sample, thumbnail] = await Promise.all([readCloneSampleFile(file), isCloneVideoFile(file) ? videoThumbnail(file) : Promise.resolve(undefined)]);
+        return { ...sample, ...(thumbnail ? { thumbnail } : {}) };
+      }));
       if (!voiceDraftGuard.current.isCurrent(draft)) return;
       setAudioSampleList(samples); setAudioSampleBase64(samples[0].base64); setAudioSampleName(samples.map(s => s.name).join(', '));
       setDraftSamplesChanged(true); setCloneResult(null); setCloneError(''); setSpeakerAuthorized(false);
@@ -1181,7 +1185,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       if (!checkOnly && policy.files) {
         const selected = audioSampleList.slice(0, policy.files);
         const cap = policy.seconds / (cloneChoice.id === 'elevenlabs' ? selected.length : 1);
-        const prepared = await Promise.all(selected.map(sample => cropVoiceReference(voiceSampleCaps.current.get(sample.base64) === cap ? sample : originalVoiceSamples.current.get(sample.base64) || sample, cap)));
+        const prepared = await Promise.all(selected.map(sample => cropVoiceReference(voiceSampleCaps.current.get(sample.base64) === cap ? sample : originalVoiceSamples.current.get(sample.base64) || sample, cap).then(prepared => ({ ...prepared, thumbnail: sample.thumbnail }))));
         if (!voiceDraftGuard.current.isCurrent(draft)) return;
         if (cloneChoice.id === 'minimax-clone' && prepared[0]?.duration < 10) throw new Error('MiniMax needs at least 10 seconds of reference audio.');
         prepared.forEach((sample, index) => originalVoiceSamples.current.set(sample.base64, originalVoiceSamples.current.get(selected[index].base64) || selected[index]));
@@ -1310,7 +1314,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
           voiceEngine: voiceEngineToSave,
           companionType: companionType || 'intimate',
           voiceSampleUrl: savedSampleUrl,
-          audioSamples: savedSamples.map(s => ({ name: s.name, base64: s.base64 })),
+          audioSamples: savedSamples.map(s => ({ name: s.name, base64: s.base64, ...(s.thumbnail ? { thumbnail: s.thumbnail } : {}) })),
           ...voiceSettingsToSave,
           personaNotes: voicePrompt ? `${voicePrompt}. ${defaultNotes}` : (editingPersona.personaNotes || defaultNotes),
         } as Persona;
@@ -1346,7 +1350,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
           voiceEngine: voiceEngineToSave,
           companionType: companionType || 'intimate',
           voiceSampleUrl: savedSampleUrl,
-          audioSamples: savedSamples.map(s => ({ name: s.name, base64: s.base64 })),
+          audioSamples: savedSamples.map(s => ({ name: s.name, base64: s.base64, ...(s.thumbnail ? { thumbnail: s.thumbnail } : {}) })),
           ...voiceSettingsToSave,
           personaNotes: voicePrompt ? `${voicePrompt}. ${defaultNotes}` : defaultNotes,
           createdAt: new Date().toISOString()
@@ -2009,7 +2013,10 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                         if (!audio.paused) { audio.pause(); return; }
                         stopVoicePreviews(); activeAudioRef.current = audio;
                         void audio.play().catch(() => toast.error('Could not play this recording.'));
-                      }} className="flex h-20 w-full items-center justify-center rounded-lg bg-[#242428] text-[#E7C477] hover:bg-[#303036]"><Play size={24} /></button>
+                      }} className="group relative block w-full overflow-hidden rounded-lg bg-[#242428] text-[#E7C477]">
+                        <img src={sample.thumbnail || '/audio-reference.svg'} alt={sample.thumbnail ? `Video frame: ${sample.name}` : 'Audio recording'} className="block h-auto w-full" />
+                        <span className="absolute inset-0 flex items-center justify-center bg-black/10 group-hover:bg-black/25"><span className="rounded-full bg-black/60 p-2"><Play size={22} /></span></span>
+                      </button>
                       <audio ref={element => { if (element) samplePlayers.current.set(idx, element); else samplePlayers.current.delete(idx); }} src={sample.base64} preload="none" />
                       <p title={sample.name} className="mt-2 truncate text-[11px] text-slate-300">{sample.name}</p>
                       <button type="button" aria-pressed={idx === 0} disabled={isCloning || isSaving} onClick={() => { stopVoicePreviews(); setPrimaryAudioSample(idx); }} className="mt-1 w-full py-1 text-[11px] text-[#E7C477]">{idx === 0 ? '✓ Reference' : 'Use as reference'}</button>

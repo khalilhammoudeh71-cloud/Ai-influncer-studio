@@ -20,6 +20,7 @@ export function rememberPersonaVoices(library: SavedPersonaVoice[], previous: Re
       audioSamples: (voice.audioSamples?.length ? voice.audioSamples : existing?.audioSamples || []).map((sample: any) => ({
         name: typeof sample === 'string' ? 'Voice recording' : sample.name || 'Voice recording',
         base64: permanentVoiceReference(typeof sample === 'string' ? sample : sample.base64 || ''),
+        ...(typeof sample.thumbnail === 'string' && sample.thumbnail.startsWith('data:image/jpeg;base64,') && sample.thumbnail.length < 200000 ? { thumbnail: sample.thumbnail } : {}),
       })),
       provider: voice.voiceBinding?.provider || existing?.provider,
       account: voice.voiceBinding?.account || existing?.account,

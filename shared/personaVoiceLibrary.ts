@@ -6,7 +6,7 @@ export interface SavedPersonaVoice {
   voiceId?: string;
   voiceEngine?: string;
   voiceSampleUrl?: string;
-  audioSamples?: Array<{ name: string; base64: string }>;
+  audioSamples?: Array<{ name: string; base64: string; thumbnail?: string }>;
   voicePrompt?: string;
   voiceReferenceText?: string;
   voiceLikeness?: number;
