@@ -1,3 +1,4 @@
+import { ARABIC_DIALECTS, type ArabicDialect } from '../../shared/personaLanguage';
 import { VOICE_CLONING_MODELS, voiceCloningModel } from '../../shared/voiceCloningModels';
 import { LatestVoicePreview, VoiceDraftGuard, type CloneResult } from '../../shared/personaVoiceLifecycle';
 import { restoreSavedVoice, type SavedPersonaVoice } from '../../shared/personaVoiceLibrary';
@@ -429,15 +430,26 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   }, [editingPersona?.id, editingPersona?.voiceId]);
   const [voiceSearch, setVoiceSearch] = useState('');
   const [voicePreviewText, setVoicePreviewText] = useState('');
-  const [previewLanguage, setPreviewLanguage] = useState<'persona' | 'ar' | 'en'>('persona');
-  const auditionLanguage = previewLanguage === 'persona' ? (personalitySettings.language === 'ar' ? 'ar' : 'en') : previewLanguage;
+  const [previewLanguage, setPreviewLanguage] = useState<'persona' | 'en' | ArabicDialect>('persona');
+  const auditionLanguage = previewLanguage === 'persona' ? (personalitySettings.language === 'ar' ? 'ar' : 'en') : previewLanguage === 'en' ? 'en' : 'ar';
+  const previewDialect = previewLanguage === 'persona' ? (personalitySettings.dialect || 'jordanian-syrian') : previewLanguage;
+  const arabicPreviewSamples: Record<string, string> = {
+    'jordanian-syrian': 'أهلين، كيفك؟ شو أخبارك اليوم؟ احكيلي، شو حابب نحكي هلأ؟',
+    jordanian: 'يا هلا، كيفك؟ شو أخبارك اليوم؟ احكيلي شو بدك نعمل هسّا.',
+    syrian: 'أهلين، كيفك؟ شو أخبارك اليوم؟ احكيلي شو حابب نحكي هلّق.',
+    lebanese: 'أهلا، كيفك؟ شو أخبارك اليوم؟ خبرني شو بدّك نحكي هلّق.',
+    palestinian: 'يا هلا، كيفك؟ شو أخبارك اليوم؟ احكيلي شو بدّك نحكي هسّا.',
+    egyptian: 'أهلاً، إزيّك؟ عامل إيه النهارده؟ قولّي حابب نتكلم عن إيه دلوقتي.',
+    gulf: 'يا هلا، شلونك؟ وش أخبارك اليوم؟ قل لي وش ودّك نسولف عنه الحين.',
+    msa: 'مرحباً، كيف حالك اليوم؟ أخبرني، ما الموضوع الذي تودّ أن نتحدث عنه؟',
+  };
   const cloneBusyRef = useRef(false);
   const readySamples = useRef<{samples:Array<{name:string;base64:string}>;transcript:string}>({samples:[],transcript:''});
   const voiceSelectionChanged = useRef(false);
   const voiceDraftGuard = useRef(new VoiceDraftGuard());
   const voicePreviewPlayer = useRef(new LatestVoicePreview());
   const voicePreviewKey = useRef('');
-  const sampleTextForPreview = voicePreviewText.trim() || (auditionLanguage === 'ar' ? 'أهلين، كيفك؟ شو أخبارك اليوم؟ احكيلي، شو حابب نحكي هلأ؟ أنا هون معك، خُد راحتك.' : `Hi, I'm ${name || 'your creator'}. Let's take a moment to talk about ${niche || 'what inspires us'}. What would you like to create today?`);
+  const sampleTextForPreview = voicePreviewText.trim() || (auditionLanguage === 'ar' ? (arabicPreviewSamples[previewDialect] || arabicPreviewSamples['jordanian-syrian']) : `Hi, I'm ${name || 'your creator'}. Let's take a moment to talk about ${niche || 'what inspires us'}. What would you like to create today?`);
   const stopVoicePreviews = () => {
     voicePreviewKey.current = '';
     voicePreviewPlayer.current.stop();
@@ -498,7 +510,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       if (voicePreviewKey.current === key) { stopVoicePreviews(); toast.error(error instanceof Error ? error.message : 'Voice preview unavailable.'); }
     }
   };
-  useEffect(() => { stopVoicePreviews(); }, [voiceTab, studioStep, voicePreviewText, voicePrompt, auditionLanguage, voiceLikeness, voiceStability, voiceStyleExaggeration, voiceSpeakingSpeed]);
+  useEffect(() => { stopVoicePreviews(); }, [voiceTab, studioStep, voicePreviewText, voicePrompt, auditionLanguage, previewDialect, voiceLikeness, voiceStability, voiceStyleExaggeration, voiceSpeakingSpeed]);
   useEffect(() => () => { voiceDraftGuard.current.change(); voicePreviewPlayer.current.stop(); }, [editingPersona?.id]);
   const audioInputRef = useRef<HTMLInputElement>(null);
 
@@ -684,6 +696,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   const [audioSampleBase64, setAudioSampleBase64] = useState<string>('');
   const [audioSampleList, setAudioSampleList] = useState<Array<{ name: string; base64: string }>>([]);
   const activeAudioRef = useRef<HTMLAudioElement | null>(null);
+  const samplePlayers = useRef(new Map<number, HTMLAudioElement>());
 
   useEffect(() => {
     const fetchAccountVoices = async () => {
@@ -1322,7 +1335,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   return (
     <div ref={studioTopRef} className="relative min-h-screen bg-[#050914] text-[#F5F1E8] p-4 sm:p-6 lg:p-10 pb-20 overflow-y-auto select-none">
       <div className="relative z-10 max-w-[1300px] mx-auto space-y-8">
-        
+
         {/* ── HEADER BAR ── */}
         {!editingPersona && <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 sm:gap-6 luxury-card p-4 sm:p-6 md:p-8">
           <div>
@@ -1714,15 +1727,15 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                     idx === 0 ? "border-[#E7C477] ring-2 ring-[#E7C477]/20" : "border-white/10"
                   )}
                 >
-                  <img 
-                    src={imgUrl} 
-                    alt="" 
-                    className="w-full h-full object-cover" 
+                  <img
+                    src={imgUrl}
+                    alt=""
+                    className="w-full h-full object-cover"
                     onError={(e) => {
                       (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?q=80&w=600&auto=format&fit=crop';
                     }}
                   />
-                  
+
                   <div className="absolute top-2 left-2 right-2 flex items-center justify-between z-10">
                     {idx === 0 ? (
                       <span className="px-2 py-0.5 rounded bg-[#E7C477] text-[#161618] text-[9px] font-bold uppercase">
@@ -1921,6 +1934,21 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                   >
                     {isCloning ? 'Reading files…' : 'Choose audio or video files'}
                   </button>
+                  {audioSampleList.length > 0 && <div aria-label="Uploaded voice files" className="grid grid-cols-2 min-[420px]:grid-cols-3 gap-2">
+                    {audioSampleList.map((sample, idx) => <article key={`${idx}:${sample.name}`} className={cn("relative min-w-0 rounded-xl border p-2", idx === 0 ? "border-[#E7C477]" : "border-white/10")}>
+                      <button type="button" aria-label={`Play recording: ${sample.name}`} disabled={isCloning || isSaving} onClick={() => {
+                        const audio = samplePlayers.current.get(idx);
+                        if (!audio) return;
+                        if (!audio.paused) { audio.pause(); return; }
+                        stopVoicePreviews(); activeAudioRef.current = audio;
+                        void audio.play().catch(() => toast.error('Could not play this recording.'));
+                      }} className="flex h-20 w-full items-center justify-center rounded-lg bg-[#242428] text-[#E7C477] hover:bg-[#303036]"><Play size={24} /></button>
+                      <audio ref={element => { if (element) samplePlayers.current.set(idx, element); else samplePlayers.current.delete(idx); }} src={sample.base64} preload="none" />
+                      <p title={sample.name} className="mt-2 truncate text-[11px] text-slate-300">{sample.name}</p>
+                      <button type="button" aria-pressed={idx === 0} disabled={isCloning || isSaving} onClick={() => { stopVoicePreviews(); setPrimaryAudioSample(idx); }} className="mt-1 w-full py-1 text-[11px] text-[#E7C477]">{idx === 0 ? '✓ Reference' : 'Use as reference'}</button>
+                      <button type="button" aria-label={`Remove sample: ${sample.name}`} disabled={isCloning || isSaving} onClick={() => { stopVoicePreviews(); removeAudioSample(idx); }} className="absolute right-1 top-1 rounded-full bg-black/80 p-1.5 text-white"><X size={13} /></button>
+                    </article>)}
+                  </div>}
                   {audioSampleList.length > 0 && <button type="button" onClick={handleResetVoiceSamples} disabled={isCloning || isSaving} className="w-full rounded-xl border border-white/10 bg-[#18181B] px-4 py-2 text-xs font-semibold text-slate-400 transition-colors hover:border-white/20 hover:text-white disabled:cursor-not-allowed disabled:opacity-40">Clear uploaded files</button>}
                   <p className="text-[11px] text-slate-500">Up to 10 files. The first file is the primary reference.</p>
                 </section>
@@ -1934,7 +1962,6 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                     Voice model
                     <select
                       id="persona-voice-model"
-                      aria-describedby="persona-voice-model-help"
                       value={cloneModel}
                       onChange={e => {
                         const next = voiceCloningModel(e.target.value);
@@ -1953,75 +1980,14 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                       })}
                     </select>
                   </label>
-                  <div id="persona-voice-model-help" className="space-y-2 rounded-xl bg-[#18181B] p-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded-full bg-[#E7C477]/15 px-2 py-1 text-[10px] font-bold text-[#F2D58D]">{cloneChoice.provider}</span>
-                      <span className="rounded-full border border-white/10 px-2 py-1 text-[10px] font-semibold text-slate-400">{cloneChoice.kind==='reference'?'Reference clone':cloneChoice.kind==='enrollment'?'Reusable clone':cloneChoice.kind==='preset'?'Preset voice':cloneChoice.kind==='singing'?'Singing voice':'Needs integration'}</span>
-                    </div>
-                    <p className="text-xs leading-relaxed text-slate-300">{cloneChoice.description}</p>
-                  </div>
+
                 </section>
               </div>
 
-              {audioSampleList.length > 0 && (
-                <section aria-label="Uploaded voice files" className="space-y-3">
-                  <h4 className="text-xs font-semibold text-slate-300">Uploaded files ({audioSampleList.length})</h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-                    {audioSampleList.map((sample, idx) => (
-                      <article key={`${idx}:${sample.name}`} className={cn("min-w-0 overflow-hidden rounded-xl border bg-[#0E0E10]", idx === 0 ? "border-[#E7C477]/60" : "border-white/10")}>
-                        <div className="relative flex h-24 items-center justify-center bg-[#242428]">
-                          <Music2 size={32} className="text-[#D9BA72]" aria-hidden="true" />
-                          {idx === 0 && <span className="absolute left-2 top-2 rounded-md bg-[#E7C477] px-2 py-1 text-[10px] font-bold text-[#161618]">Primary</span>}
-                          <button type="button" aria-label={`Remove sample: ${sample.name}`} disabled={isCloning || isSaving} onClick={() => removeAudioSample(idx)} className="absolute right-2 top-2 rounded-lg bg-black/40 p-2 text-slate-300 hover:text-rose-300 disabled:opacity-40"><X size={16} /></button>
-                        </div>
-                        <div className="space-y-3 p-3">
-                          <p title={sample.name} className="truncate text-xs font-semibold text-white">{sample.name}</p>
-                          <audio controls preload="none" src={sample.base64} aria-label={`Play uploaded recording: ${sample.name}`} className="h-8 w-full" onPlay={event => {
-                            const player = event.currentTarget;
-                            if (activeAudioRef.current === player) activeAudioRef.current = null;
-                            stopVoicePreviews();
-                            player.closest('section')?.querySelectorAll('audio').forEach(audio => { if (audio !== player) audio.pause(); });
-                            activeAudioRef.current = player;
-                          }} />
-                          <button type="button" disabled={idx === 0 || isCloning || isSaving} onClick={() => setPrimaryAudioSample(idx)} className="text-xs font-semibold text-[#E7C477] disabled:text-slate-500">{idx === 0 ? 'Primary voice reference' : 'Use as primary reference'}</button>
-                        </div>
-                      </article>
-                    ))}
-                  </div>
-                </section>
-              )}
-
               <div className="space-y-3 rounded-2xl border border-white/10 bg-[#0E0E10] p-4 text-sm text-slate-300">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h4 className="text-sm font-bold text-white">3. Prepare this model</h4>
-                    <p className="mt-1 text-xs text-slate-400">Only the settings needed by the selected model appear here.</p>
-                  </div>
-                  {cloneChoice.kind === 'unavailable' && <span className="rounded-full bg-rose-500/10 px-2 py-1 text-[10px] font-bold text-rose-300">Unavailable</span>}
-                </div>
                 {cloneChoice.voices && <label className="block text-xs">Preset voice<select aria-label="Model preset voice" value={clonePreset||cloneChoice.voices[0]} onChange={e=>{setClonePreset(e.target.value);setCloneResult(null);}} disabled={isCloning || isSaving} className="luxury-input block mt-1 p-2.5 text-sm">{cloneChoice.voices.map(voice=><option key={voice} value={voice}>{voice}</option>)}</select></label>}
                 {cloneChoice.kind!=='preset' && cloneChoice.kind!=='unavailable' && <label className="flex items-start gap-2 text-xs leading-relaxed"><input type="checkbox" checked={speakerAuthorized} disabled={isCloning || isSaving} onChange={e => setSpeakerAuthorized(e.target.checked)} className="mt-0.5 accent-[#E7C477]" />I am the speaker or have the speaker’s permission to clone and use this voice.</label>}
                 {cloneChoice.kind==='reference' && <label className="block text-xs">Reference recording transcript {cloneChoice.transcriptRequired?'(required)':'(optional)'}<textarea aria-label="Reference recording transcript" value={voiceReferenceText} onChange={e=>{setVoiceReferenceText(e.target.value);setCloneResult(null);}} disabled={isCloning || isSaving} maxLength={5000} rows={2} className="luxury-input block w-full mt-1 p-2.5 text-sm" placeholder="The exact words spoken in your primary recording"/></label>}
-              </div>
-
-              <div className="rounded-2xl border border-[#E7C477]/25 bg-[#E7C477]/[0.04] p-4 space-y-3">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <h4 className="text-sm font-bold text-white">4. Render a voice preview</h4>
-                    <p className="mt-1 text-xs text-slate-400">Your uploaded reference and selected model are used together.</p>
-                  </div>
-                  <button type="button" onClick={() => runClone()} disabled={isCloning || isSaving || cloneChoice.kind==='unavailable' || (cloneChoice.kind!=='preset'&&(!speakerAuthorized||!audioSampleList.length)) || (cloneChoice.transcriptRequired&&!voiceReferenceText.trim()) || Boolean(cloneResult)} className="btn-gold-primary shrink-0 px-4 py-2.5 text-xs disabled:cursor-not-allowed disabled:opacity-40">{isCloning ? 'Rendering preview…' : cloneChoice.kind==='preset'?'Render & preview':cloneChoice.kind==='singing'?'Create & preview singing voice':'Render & preview voice'}</button>
-                </div>
-                {(cloneResult || cloneError) && <div role="status" aria-live="polite" className="space-y-2 rounded-xl border border-white/10 bg-[#0E0E10] p-3 text-xs">
-                  <p className="font-semibold text-slate-200">{cloneError || cloneResult?.message || cloneResult?.status}</p>
-                  {cloneResult && cloneResult.status !== 'ready' && <button type="button" disabled={isCloning} onClick={() => runClone(true)} className="underline">Check clone status</button>}
-                  {cloneResult?.status === 'failed' && !cloneResult.engine && <button type="button" disabled={isCloning || !speakerAuthorized} onClick={() => runClone(false, true)} className="block underline">Retry after fixing the provider issue</button>}
-                  {cloneResult?.status === 'verification_required' && <a href="https://elevenlabs.io/app/voices" target="_blank" rel="noreferrer" className="block underline">Open ElevenLabs to verify the speaker</a>}
-                  {cloneResult?.audioUrl && <audio controls src={cloneResult.audioUrl} className="w-full" aria-label="Prepared voice preview"/>}
-                  {cloneResult?.assetKind==='singing' && cloneResult.voiceId && <p>Mureka vocal ID: <code className="select-all">{cloneResult.voiceId}</code>. Saved to this account; your speaking voice remains selected.</p>}
-                </div>}
-                <p className="text-[11px] text-slate-500">Your current saved voice stays active until a new preview is ready and you save the persona.</p>
-
               </div>
 
               {/* Advanced Voice Fine-Tuning & Voice Description Panel */}
@@ -2059,7 +2025,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                 </div>
 
                 {/* Sliders Grid: Likeness / Similarity, Stability, Style Exaggeration, Speaking Speed */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-1">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 pt-1">
                   {/* 1. Voice Likeness / Similarity Boost */}
                   <div className="space-y-1.5 bg-[#08080A] p-3 rounded-xl border border-white/10">
                     <div className="flex items-center justify-between text-xs font-bold">
@@ -2372,21 +2338,46 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
             </div>
           )}
 
+          {voiceTab === 'clone' && (
+<div className="rounded-2xl border border-[#E7C477]/25 bg-[#E7C477]/[0.04] p-4 space-y-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h4 className="text-sm font-bold text-white">Render voice</h4>
+
+                  </div>
+                  <button type="button" onClick={() => runClone()} disabled={isCloning || isSaving || cloneChoice.kind==='unavailable' || (cloneChoice.kind!=='preset'&&(!speakerAuthorized||!audioSampleList.length)) || (cloneChoice.transcriptRequired&&!voiceReferenceText.trim()) || Boolean(cloneResult)} className="btn-gold-primary shrink-0 px-4 py-2.5 text-xs disabled:cursor-not-allowed disabled:opacity-40">{isCloning ? 'Rendering…' : 'Render voice'}</button>
+                </div>
+                {(cloneResult || cloneError) && <div role="status" aria-live="polite" className="space-y-2 rounded-xl border border-white/10 bg-[#0E0E10] p-3 text-xs">
+                  <p className="font-semibold text-slate-200">{cloneError || cloneResult?.message || cloneResult?.status}</p>
+                  {cloneResult && cloneResult.status !== 'ready' && <button type="button" disabled={isCloning} onClick={() => runClone(true)} className="underline">Check clone status</button>}
+                  {cloneResult?.status === 'failed' && !cloneResult.engine && <button type="button" disabled={isCloning || !speakerAuthorized} onClick={() => runClone(false, true)} className="block underline">Retry after fixing the provider issue</button>}
+                  {cloneResult?.status === 'verification_required' && <a href="https://elevenlabs.io/app/voices" target="_blank" rel="noreferrer" className="block underline">Open ElevenLabs to verify the speaker</a>}
+                  {cloneResult?.audioUrl && <audio controls src={cloneResult.audioUrl} className="w-full" aria-label="Prepared voice preview"/>}
+                  {cloneResult?.assetKind==='singing' && cloneResult.voiceId && <p>Mureka vocal ID: <code className="select-all">{cloneResult.voiceId}</code>. Saved to this account; your speaking voice remains selected.</p>}
+                </div>}
+
+
+              </div>
+          )}
+
           <section aria-label="Voice preview" className="space-y-3 rounded-2xl border border-[#E7C477]/25 bg-[#0E0E10] p-5">
             <h4 className="text-sm font-bold text-white">Preview your voice</h4>
-            <p className="text-xs text-slate-400">Listen after choosing your voice and adjusting the supported settings.</p>
+
             <label className="block">Audition text<input dir="auto" value={voicePreviewText} onChange={e => setVoicePreviewText(e.target.value)} maxLength={500} placeholder={sampleTextForPreview} className="mt-1 w-full rounded-xl border border-white/10 bg-[#0E0E10] px-3 py-2 text-white" /></label>
-            <label className="inline-flex items-center gap-2 mr-3 text-xs text-slate-300">Preview language
-              <select aria-label="Preview language" disabled={isCloning || isSaving} value={previewLanguage} onChange={e => { stopVoicePreviews(); setPreviewLanguage(e.target.value as 'persona' | 'ar' | 'en'); setVoicePreviewText(''); }} className="luxury-input rounded-xl px-3 py-2.5">
+            <label className="flex flex-wrap items-center gap-2 text-xs text-slate-300">Preview language
+              <select aria-label="Preview language" disabled={isCloning || isSaving} value={previewLanguage} onChange={e => { stopVoicePreviews(); setPreviewLanguage(e.target.value as 'persona' | 'en' | ArabicDialect); setVoicePreviewText(''); }} className="luxury-input rounded-xl px-3 py-2.5">
                 <option value="persona">Persona language</option>
-                <option value="ar">Arabic · العربية</option>
+                <optgroup label="Arabic dialects">{Object.entries(ARABIC_DIALECTS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</optgroup>
                 <option value="en">English</option>
               </select>
             </label>
+            <div className="flex flex-wrap gap-2">
             <button type="button" onClick={() => playDraftPreview(selectedVoiceId, selectedVoiceModel)} disabled={isCloning || isSaving || (!selectedVoiceId && !readySamples.current.samples.length)} className="btn-gold-primary px-4 py-2.5 text-xs disabled:opacity-40">
               {isTestingVoice ? 'Cancel preview' : isPlayingSample ? 'Stop preview' : 'Preview voice'}
             </button>
-            <p>{auditionLanguage === 'ar' ? 'Arabic sample uses Jordanian/Syrian phrasing. ' : ''}Edit the audition text for your own sample. Switching preview language resets that text. Previews {selectedVoiceName} using {voiceCloningModel(selectedVoiceModel)?.name || selectedVoiceModel}. Render a new model to select its prepared voice.</p>
+            <button type="button" onClick={handleSave} disabled={isCloning || isSaving || draftSamplesChanged || (!selectedVoiceId && !readySamples.current.samples.length)} className="btn-gold-primary px-4 py-2.5 text-xs disabled:opacity-40">{isSaving ? 'Saving…' : 'Save as default'}</button>
+            </div>
+
           </section>
 
         </div>
