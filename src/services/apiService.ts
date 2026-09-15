@@ -369,6 +369,8 @@ export const api = {
       }),
     voiceStatus: (id: string, personaId: string) => request<{ voiceId: string; name?: string; status: string }>(`/persona-voice-status/${encodeURIComponent(id)}?personaId=${encodeURIComponent(personaId)}`),
     cloneStatus: (id: string) => request<CloneResult>(`/voice-clones/${encodeURIComponent(id)}`),
+    cloneWithModel: (input:{engine:string;name:string;reference:string;text:string;speakerAuthorized:boolean;retryRejected?:boolean})=>requestWithBody<CloneResult>('/voice-model-clones',input),
+    modelCloneStatus:(id:string)=>request<CloneResult>(`/voice-model-clones/${encodeURIComponent(id)}`),
     previewVoice: (voiceId: string, text: string, voiceSettings?: Record<string, number>, emotion?: string) => requestWithBody<{ audioUrl: string; voiceId: string }>('/persona-voice-preview', { voiceId, text, voiceSettings, emotion }),
     generateScript: (params: { topic: string; persona: Persona; mode?: string; existingScript?: string; length?: string }) =>
       requestWithBody<{ script: string }>('/generate-voice-script', params),
@@ -384,6 +386,7 @@ export const api = {
       voiceId?: string;
       voiceSettings?: { stability?: number; similarity_boost?: number; style?: number; speed?: number };
       voiceReference?: string;
+      voiceReferenceText?: string;
       voiceReferences?: string[];
       personaName?: string;
       isPreview?: boolean;

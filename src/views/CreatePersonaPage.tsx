@@ -1,3 +1,4 @@
+import { VOICE_CLONING_MODELS, voiceCloningModel } from '../../shared/voiceCloningModels';
 import { LatestVoicePreview, VoiceDraftGuard, type CloneResult } from '../../shared/personaVoiceLifecycle';
 import { restoreSavedVoice, type SavedPersonaVoice } from '../../shared/personaVoiceLibrary';
 import SavedPersonaVoices from '../components/SavedPersonaVoices';
@@ -142,29 +143,7 @@ export const POPULAR_PERSONALITY_TRAITS = [
   'Intimate', 'Submissive', 'Uncensored', 'Sensual', 'Witty', 'Strategic'
 ];
 
-export const VOICE_CLONING_MODELS = [
-  // ─── Wavespeed AI Neural Voice Engines ───
-  { id: 'wavespeed:zonos2', name: 'Wavespeed Zonos Neural', badge: 'Wavespeed AI', desc: 'Advanced zero-shot voice cloning with deep emotion and pitch control via Wavespeed.' },
-  { id: 'wavespeed:qwen3-clone', name: 'Wavespeed Qwen 3.0 TTS', badge: 'Wavespeed AI', desc: 'Natural cadence, multi-accent preservation, and smooth conversational tone via Wavespeed.' },
-  { id: 'wavespeed:seed-speech', name: 'ByteDance Seed-Speech 2.0', badge: 'Wavespeed AI', desc: 'Hyper-realistic expressive voice cloning powered by ByteDance neural engine on Wavespeed.' },
-  { id: 'wavespeed:omnivoice', name: 'Wavespeed OmniVoice 600+', badge: 'Wavespeed AI', desc: 'Accent-preserving global zero-shot voice cloning across 600+ languages on Wavespeed.' },
-
-  // ─── ElevenLabs Ultra-HD & Conversational ───
-  { id: 'elevenlabs', name: 'ElevenLabs V3 Ultra-HD', badge: 'ElevenLabs Turbo', desc: 'Highest fidelity human realism, authentic emotion, and 29+ language zero-shot cloning.' },
-  { id: 'elevenlabs:playht', name: 'ElevenLabs PlayHT Conversational', badge: 'ElevenLabs Fast', desc: 'Ultra low-latency natural banter and dynamic podcast pacing.' },
-  { id: 'elevenlabs:f5-tts', name: 'ElevenLabs CosyVoice & F5', badge: 'ElevenLabs Fast', desc: 'Smooth vocal timbre matching and dynamic conversational energy.' },
-  { id: 'elevenlabs:mureka-vocal', name: 'ElevenLabs Mureka Creator', badge: 'ElevenLabs Fast', desc: 'Specialized for lifestyle creator dialogue, storytelling, and social video voiceovers.' },
-
-  // ─── Wiro Zero-Shot Multi-Lingual Engines ───
-  { id: 'wiro-voice:openmoss/moss-tts-v1-5', name: 'OpenMOSS MOSS-TTS v1.5', badge: 'Wiro (20+ Langs)', desc: 'Zero-shot voice cloning with natural multilingual cadence via Wiro.' },
-  { id: 'wiro-voice:k2-fsa/omnivoice', name: 'OmniVoice 600+ Languages', badge: 'Wiro (600+ Langs)', desc: 'Zero-shot voice cloning across 600+ languages and accents at 24kHz via Wiro.' },
-  { id: 'wiro-voice:resemble-ai/chatterbox-multilingual', name: 'Resemble AI Chatterbox', badge: 'Wiro (Conversational)', desc: 'Expressive speech and instant timbre matching in 23 languages via Wiro.' },
-  { id: 'wiro-voice:openbmb/voxcpm2', name: 'OpenBMB VoxCPM 2', badge: 'Wiro (Tokenizer-Free)', desc: 'Context-aware speech generation with true-to-life voice cloning via Wiro.' },
-  { id: 'wiro-voice:fishaudio/s2-pro', name: 'Fish Audio S2 Pro', badge: 'Wiro (Multi-Speaker)', desc: 'High-fidelity speech synthesis with multi-speaker dialogue cloning via Wiro.' },
-
-  // ─── OpenAI Audio ───
-  { id: 'openai:tts', name: 'OpenAI Nova & Onyx HD', badge: 'OpenAI Audio', desc: 'Studio broadcast vocal clarity and high intelligibility.' },
-];
+export { VOICE_CLONING_MODELS } from '../../shared/voiceCloningModels';
 
 const WIZARD_STEPS = [
   {
@@ -420,6 +399,10 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   const [voiceTab, setVoiceTab] = useState<'clone' | 'preset' | 'custom' | 'account' | 'heygen'>('preset');
   const [selectedVoiceId, setSelectedVoiceId] = useState('kore');
   const [selectedVoiceModel, setSelectedVoiceModel] = useState('omnivoice');
+  const [cloneModel, setCloneModel] = useState('elevenlabs');
+  const [clonePreset, setClonePreset] = useState('');
+  const [voiceReferenceText, setVoiceReferenceText] = useState('');
+  const cloneChoice = voiceCloningModel(cloneModel)!;
   const [selectedSavedVoiceName, setSelectedSavedVoiceName] = useState('');
   const [audioSampleName, setAudioSampleName] = useState('');
   const [voicePrompt, setVoicePrompt] = useState('');
@@ -445,6 +428,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   const [voiceSearch, setVoiceSearch] = useState('');
   const [voicePreviewText, setVoicePreviewText] = useState('');
   const cloneBusyRef = useRef(false);
+  const readySamples = useRef<{samples:Array<{name:string;base64:string}>;transcript:string}>({samples:[],transcript:''});
   const voiceSelectionChanged = useRef(false);
   const voiceDraftGuard = useRef(new VoiceDraftGuard());
   const voicePreviewPlayer = useRef(new LatestVoicePreview());
@@ -460,13 +444,22 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
     voiceSelectionChanged.current = true; voiceDraftGuard.current.change(); stopVoicePreviews();
     setSelectedVoiceId(id); setSelectedVoiceModel(engine);
     setSelectedSavedVoiceName(''); setAudioSampleList([]); setDraftSamplesChanged(false);
+    readySamples.current={samples:[],transcript:''};setVoiceReferenceText('');
   };
   const selectSavedVoice = (voice: SavedPersonaVoice) => {
     const restored = restoreSavedVoice(voice);
     selectDraftVoice(restored.voiceId, restored.voiceEngine);
     setSelectedSavedVoiceName(restored.voiceName);
-    setAudioSampleList(restored.audioSamples.length ? restored.audioSamples : restored.voiceSampleUrl ? [{ name: 'Saved voice recording', base64: restored.voiceSampleUrl }] : []);
-    setAudioSampleBase64(restored.voiceSampleUrl); setAudioSampleName(voice.name);
+    const restoredSamples = restored.audioSamples.length
+      ? restored.audioSamples
+      : restored.voiceSampleUrl
+        ? [{ name: 'Saved voice recording', base64: restored.voiceSampleUrl }]
+        : [];
+    setAudioSampleList(restoredSamples);
+    setAudioSampleBase64(restored.voiceSampleUrl || restoredSamples[0]?.base64 || ''); setAudioSampleName(voice.name);
+    readySamples.current={samples:restoredSamples,transcript:restored.voiceReferenceText};
+    setVoiceReferenceText(restored.voiceReferenceText);
+    setCloneModel(voiceCloningModel(restored.voiceEngine)?.id || 'elevenlabs');
     setVoicePrompt(restored.voicePrompt); setVoiceLikeness(restored.voiceLikeness);
     setVoiceStability(restored.voiceStability); setVoiceStyleExaggeration(restored.voiceStyleExaggeration); setVoiceSpeakingSpeed(restored.voiceSpeakingSpeed);
     setCloneResult(null); setCloneError('');
@@ -486,7 +479,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
         const settings = { stability: voiceStability / 100, similarity_boost: voiceLikeness / 100, style: voiceStyleExaggeration / 100, speed: voiceSpeakingSpeed };
         const result = engine === 'elevenlabs'
           ? await api.voice.previewVoice(id, sampleTextForPreview, settings)
-          : await api.voice.generateSpeech({ voiceId: id, engine, text: sampleTextForPreview, voiceSettings: settings, isPreview: true });
+          : await api.voice.generateSpeech({ voiceId: id, engine, text: sampleTextForPreview, voiceSettings: settings, isPreview: true, voiceReference: readySamples.current.samples[0]?.base64 || audioSampleList[0]?.base64, voiceReferenceText, voicePrompt });
         return result.audioUrl;
       }, url => {
         const audio = new Audio(url);
@@ -797,6 +790,10 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       voiceSelectionChanged.current = false;
       setSelectedSavedVoiceName(editingPersona.voiceName || '');
       setSelectedVoiceId(editingPersona.voiceId || '');
+      setCloneModel(voiceCloningModel(editingPersona.voiceEngine)?.id || 'elevenlabs');
+      setClonePreset(editingPersona.voiceId || '');
+      setVoiceReferenceText(editingPersona.voiceReferenceText || '');
+      readySamples.current={samples:editingPersona.audioSamples?.length?editingPersona.audioSamples:editingPersona.voiceSampleUrl?[{name:'Saved recording',base64:editingPersona.voiceSampleUrl}]:[],transcript:editingPersona.voiceReferenceText || ''};
       if (editingPersona.voiceEngine) {
         setSelectedVoiceModel(editingPersona.voiceEngine);
         const hasSavedVoiceSamples = Boolean(
@@ -841,6 +838,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       setContentGoals('');
       setContentBoundaries('');
       setVoicePrompt('');
+      setVoiceReferenceText('');
       setVoiceLikeness(85);
       setVoiceStability(75);
       setVoiceStyleExaggeration(20);
@@ -850,6 +848,9 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       setSelectedSavedVoiceName('');
       setSelectedVoiceId('kore');
       setSelectedVoiceModel('elevenlabs');
+      setCloneModel('elevenlabs');
+      setClonePreset('');
+      readySamples.current={samples:[],transcript:''};
       setAudioSampleBase64('');
       setAudioSampleList([]);
 
@@ -1105,6 +1106,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       if (!voiceDraftGuard.current.isCurrent(draft)) return;
       setAudioSampleList(samples); setAudioSampleBase64(samples[0].base64); setAudioSampleName(samples.map(s => s.name).join(', '));
       setDraftSamplesChanged(true); setCloneResult(null); setCloneError(''); setSpeakerAuthorized(false);
+      setVoiceReferenceText('');
       toast.success('Samples added. Confirm speaker authorization, then create the clone.');
     } catch (error) { toast.error(error instanceof Error ? error.message : 'Could not read audio.'); }
     finally { setIsCloning(false); if (audioInputRef.current) audioInputRef.current.value = ''; }
@@ -1112,18 +1114,26 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
 
   const runClone = async (checkOnly = false, retryRejected = false) => {
     if (cloneBusyRef.current) return;
-    if (!checkOnly && !speakerAuthorized) { toast.error('Confirm speaker authorization first.'); return; }
+    if (!checkOnly && cloneChoice.kind !== 'preset' && !speakerAuthorized) { toast.error('Confirm speaker authorization first.'); return; }
     cloneBusyRef.current = true; setIsCloning(true); setCloneError('');
     const draft = voiceDraftGuard.current.begin();
     try {
-      const result = checkOnly && cloneResult
-        ? await api.voice.cloneStatus(cloneResult.id)
-        : await api.voice.cloneVoice(name || 'New Persona', 'Persona voice', audioSampleList.map(s => s.base64), speakerAuthorized, retryRejected);
+      let result:CloneResult;
+      if(checkOnly && cloneResult)result=cloneResult.engine && cloneResult.engine!=='elevenlabs'?await api.voice.modelCloneStatus(cloneResult.id):await api.voice.cloneStatus(cloneResult.id);
+      else if(cloneChoice.id==='elevenlabs')result=await api.voice.cloneVoice(name || 'New Persona','Persona voice',audioSampleList.map(s=>s.base64),speakerAuthorized,retryRejected);
+      else if(cloneChoice.kind==='enrollment'||cloneChoice.kind==='singing')result=await api.voice.cloneWithModel({engine:cloneChoice.id,name:selectedSavedVoiceName||name||'My voice',reference:audioSampleList[0]?.base64,text:sampleTextForPreview,speakerAuthorized,retryRejected});
+      else {
+        const generated=await api.voice.generateSpeech({engine:cloneChoice.id,text:sampleTextForPreview,voiceId:cloneChoice.kind==='preset'?(clonePreset||cloneChoice.voices?.[0]):undefined,voiceReference:cloneChoice.kind==='reference'?audioSampleList[0]?.base64:undefined,voiceReferenceText,voicePrompt,isPreview:true,voiceSettings:{stability:voiceStability/100,similarity_boost:voiceLikeness/100,style:voiceStyleExaggeration/100,speed:voiceSpeakingSpeed}});
+        if(!generated.audioUrl)throw new Error('The selected model did not return an audio preview.');
+        result={id:`preview:${crypto.randomUUID()}`,status:'ready',engine:cloneChoice.id,name:selectedSavedVoiceName||name||cloneChoice.name,voiceId:cloneChoice.kind==='preset'?(clonePreset||cloneChoice.voices?.[0]):'',audioUrl:generated.audioUrl,message:'Voice preview generated. Save the persona to use this voice.'};
+      }
       if (!voiceDraftGuard.current.isCurrent(draft)) return;
       setCloneResult(result);
-      if (result.status === 'ready' && result.voiceId) {
+      if (result.status === 'ready' && result.assetKind !== 'singing') {
         setSelectedSavedVoiceName(result.name);
-        voiceSelectionChanged.current = true; setSelectedVoiceId(result.voiceId); setSelectedVoiceModel('elevenlabs'); setDraftSamplesChanged(false);
+        voiceSelectionChanged.current = true; setSelectedVoiceId(result.voiceId || ''); setSelectedVoiceModel(result.engine || 'elevenlabs'); setDraftSamplesChanged(false);
+        readySamples.current={samples:cloneChoice.kind==='preset'?[]:[...audioSampleList],transcript:voiceReferenceText};
+        if(cloneChoice.kind==='preset')setAudioSampleList([]);
         stopVoicePreviews(); toast.success('Clone ready. Audition it, then save your persona to apply it.');
       }
     } catch (error) {
@@ -1189,9 +1199,9 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       const voiceRuleToSave = creatorVoiceRule.trim() || (editingPersona?.brandVoiceRules || defaultVoiceRule);
       const defaultNotes = `Fully uncensored. Adores her creator as her master partner and indulges every request willingly.`;
       const voiceEngineToSave = editingPersona && !voiceSelectionChanged.current ? editingPersona.voiceEngine : selectedVoiceModel;
-      const savedSamples = draftSamplesChanged ? (editingPersona?.audioSamples || []) : audioSampleList;
-      const savedSampleUrl = draftSamplesChanged ? (editingPersona?.voiceSampleUrl || '') : (audioSampleList[0]?.base64 || '');
-      const draftSettings = { voicePrompt, voiceLikeness, voiceStability, voiceStyleExaggeration, voiceSpeakingSpeed };
+      const savedSamples = draftSamplesChanged ? readySamples.current.samples : audioSampleList;
+      const savedSampleUrl = savedSamples[0]?.base64 || '';
+      const draftSettings = { voicePrompt, voiceReferenceText:draftSamplesChanged?readySamples.current.transcript:voiceReferenceText, voiceLikeness, voiceStability, voiceStyleExaggeration, voiceSpeakingSpeed };
       const defaults = { voicePrompt: '', voiceLikeness: 85, voiceStability: 75, voiceStyleExaggeration: 20, voiceSpeakingSpeed: 1 };
       const voiceSettingsToSave = Object.fromEntries(Object.entries(draftSettings).filter(([key, value]) => !editingPersona || editingPersona[key as keyof Persona] !== undefined || value !== defaults[key as keyof typeof defaults]));
 
@@ -1795,7 +1805,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
             <p role="status">{savedVoiceStatus}</p>
             <p>Selected voice: {selectedVoiceName}. Changes apply on the next voice turn after saving.</p>
             <label className="block">Voice name<input value={selectedSavedVoiceName} onChange={e => setSelectedSavedVoiceName(e.target.value)} maxLength={120} placeholder={selectedVoiceName} className="mt-1 w-full rounded-xl border border-white/10 bg-[#0E0E10] px-3 py-2 text-white" /></label>
-            <p>Studio auditions use Eleven Turbo v2.5 and the settings below. Calls use your configured conversation model.</p>
+            <p>Auditions use the selected voice provider. Live calls use the provider chosen in the call dialog.</p>
             <label className="block">Audition text<input value={voicePreviewText} onChange={e => setVoicePreviewText(e.target.value)} maxLength={500} placeholder={sampleTextForPreview} className="mt-1 w-full rounded-xl border border-white/10 bg-[#0E0E10] px-3 py-2 text-white" /></label>
           </div>
 
@@ -1871,16 +1881,31 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
 
           {voiceTab === 'clone' && (
             <div className="space-y-5">
+              <fieldset disabled={isCloning || isSaving} className="space-y-3">
+                <legend className="text-sm font-bold text-white mb-2">Voice models — all APIs ({VOICE_CLONING_MODELS.length})</legend>
+                <p className="text-xs text-slate-400">Choose a model, prepare a voice, then save it to your persona. Your current voice stays selected while you compare models.</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {VOICE_CLONING_MODELS.map(model=><label key={model.id} className={cn('rounded-xl border p-3 cursor-pointer space-y-2',cloneModel===model.id?'border-[#E7C477] bg-[#242428]':'border-white/10 bg-[#0E0E10]')}>
+                    <span className="flex items-start gap-2 text-xs font-bold text-white"><input type="radio" name="persona-clone-model" value={model.id} checked={cloneModel===model.id} onChange={()=>{voiceDraftGuard.current.change();stopVoicePreviews();setCloneModel(model.id);setClonePreset(model.voices?.[0]||'');setCloneResult(null);setCloneError('');}} className="mt-0.5 accent-[#E7C477]"/>{model.name}</span>
+                    <span className="block text-[11px] font-semibold text-[#E7C477]">{model.provider} · {model.kind==='reference'?'Reference cloning':model.kind==='enrollment'?'Reusable voice clone':model.kind==='preset'?'Preset speech':model.kind==='singing'?'Singing clone':'Needs integration'}</span>
+                    <span className="block text-[11px] leading-relaxed text-slate-400">{model.description}</span>
+                  </label>)}
+                </div>
+              </fieldset>
               <div className="space-y-3 text-sm text-slate-300">
-                <p className="font-semibold text-white">Create an ElevenLabs instant voice clone</p>
-                <p className="text-xs text-slate-400">Use 1–2 minutes of clear audio from one speaker. Upload up to 10 audio files, 20 MB total. Original recordings are kept intact.</p>
-                <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={speakerAuthorized} onChange={e => setSpeakerAuthorized(e.target.checked)} />I am the speaker or have the speaker’s permission to clone and use this voice.</label>
-                <button type="button" onClick={() => runClone()} disabled={isCloning || !speakerAuthorized || !audioSampleList.length || Boolean(cloneResult)} className="btn-gold-primary px-4 py-2 disabled:opacity-40">{isCloning ? 'Checking voice…' : 'Create voice clone'}</button>
+                <p className="font-semibold text-white">{cloneChoice.name} · {cloneChoice.provider}</p>
+                <p className="text-xs text-slate-400">{cloneChoice.kind==='preset'?cloneChoice.description:cloneChoice.id==='elevenlabs'?'Use 1–2 minutes of clear audio from one speaker. Upload up to 10 files, 20 MB total.':cloneChoice.kind==='unavailable'?cloneChoice.description:'This model uses the primary recording. Additional recordings remain saved for other models. Upload up to 20 MB total.'}</p>
+                {cloneChoice.voices && <label className="block text-xs">Preset voice<select aria-label="Model preset voice" value={clonePreset||cloneChoice.voices[0]} onChange={e=>{setClonePreset(e.target.value);setCloneResult(null);}} disabled={isCloning} className="luxury-input block mt-1 p-2">{cloneChoice.voices.map(voice=><option key={voice} value={voice}>{voice}</option>)}</select></label>}
+                {cloneChoice.kind!=='preset' && cloneChoice.kind!=='unavailable' && <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={speakerAuthorized} disabled={isCloning} onChange={e => setSpeakerAuthorized(e.target.checked)} />I am the speaker or have the speaker’s permission to clone and use this voice.</label>}
+                {cloneChoice.kind==='reference' && <label className="block text-xs">Reference recording transcript {cloneChoice.transcriptRequired?'(required)':'(optional)'}<textarea aria-label="Reference recording transcript" value={voiceReferenceText} onChange={e=>{setVoiceReferenceText(e.target.value);setCloneResult(null);}} disabled={isCloning} maxLength={5000} rows={2} className="luxury-input block w-full mt-1 p-2" placeholder="The exact words spoken in your primary recording"/></label>}
+                <button type="button" onClick={() => runClone()} disabled={isCloning || cloneChoice.kind==='unavailable' || (cloneChoice.kind!=='preset'&&(!speakerAuthorized||!audioSampleList.length)) || (cloneChoice.transcriptRequired&&!voiceReferenceText.trim()) || Boolean(cloneResult)} className="btn-gold-primary px-4 py-2 disabled:opacity-40">{isCloning ? 'Preparing voice…' : cloneChoice.kind==='preset'?'Preview and select voice':cloneChoice.kind==='singing'?'Create singing voice':'Create voice clone'}</button>
                 {(cloneResult || cloneError) && <div role="status" className="space-y-2 rounded-xl border border-white/10 p-3 text-xs">
                   <p>{cloneError || cloneResult?.message || cloneResult?.status}</p>
                   {cloneResult && cloneResult.status !== 'ready' && <button type="button" disabled={isCloning} onClick={() => runClone(true)} className="underline">Check clone status</button>}
-                  {cloneResult?.status === 'failed' && <button type="button" disabled={isCloning || !speakerAuthorized} onClick={() => runClone(false, true)} className="block underline">Retry after fixing the provider issue</button>}
+                  {cloneResult?.status === 'failed' && !cloneResult.engine && <button type="button" disabled={isCloning || !speakerAuthorized} onClick={() => runClone(false, true)} className="block underline">Retry after fixing the provider issue</button>}
                   {cloneResult?.status === 'verification_required' && <a href="https://elevenlabs.io/app/voices" target="_blank" rel="noreferrer" className="block underline">Open ElevenLabs to verify the speaker</a>}
+                  {cloneResult?.audioUrl && <audio controls src={cloneResult.audioUrl} className="w-full" aria-label="Prepared voice preview"/>}
+                  {cloneResult?.assetKind==='singing' && cloneResult.voiceId && <p>Mureka vocal ID: <code className="select-all">{cloneResult.voiceId}</code>. Saved to this account; your speaking voice remains selected.</p>}
                 </div>}
                 <p className="text-xs text-slate-400">Your saved voice stays active until a ready replacement is saved. Removing draft samples does not delete a remote voice.</p>
               </div>
@@ -1983,7 +2008,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                     <Sliders size={14} className="text-[#D9BA72]" />
                     Advanced Voice Tuning & Voice Description Prompt
                   </span>
-                  <span className="text-[10px] text-slate-400 font-medium">Supported across ElevenLabs, Qwen 3.0, Zonos & Seed-Speech</span>
+                  <span className="text-[10px] text-slate-400 font-medium">Available controls depend on the selected model</span>
                 </div>
 
                 {/* Voice Description Prompt */}

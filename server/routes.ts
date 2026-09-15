@@ -4,6 +4,10 @@ import { once } from 'node:events';
 import { activateAgentVoice } from './agentVoiceActivation';
 import { buildVoiceDelivery, DEFAULT_SPEECH_MODEL } from '../shared/voiceDelivery';
 import { dispatchSelectedSpeech, SelectedSpeechError } from './selectedSpeech';
+import { renderReferenceSpeech } from './referenceSpeech';
+import { ModelVoiceClones } from './modelVoiceClones';
+import { claimVoiceState, replaceVoiceState } from './personaVoiceStore';
+import { voiceCloningModel } from '../shared/voiceCloningModels';
 import { buildCreatorPhotoContext } from '../shared/creatorPhotoContext';
 import { buildPersonaAuthoredDirections } from '../shared/personaDialogueProfile';
 import { mergeVoiceDraft } from '../shared/personaVoiceLifecycle';
@@ -521,6 +525,7 @@ router.get('/personas', async (req: AuthenticatedRequest, res: Response) => {
 });
 
 async function verifyPersonaVoice(req: AuthenticatedRequest, voice: Record<string, any>) {
+  if(voice.voiceEngine==='minimax-clone'){await modelVoiceClones.authorize(req.user.id,String(voice.voiceId||''));return;}
   if (!isElevenLabsVoiceEngine(voice.voiceEngine) && voice.voiceEngine !== 'elevenlabs') return;
   if (!isDirectElevenLabsVoiceId(voice.voiceId)) return; // Legacy preset identifiers keep their existing routing.
   await assertVoiceAccess(req, voice.voiceId);
@@ -1520,6 +1525,15 @@ router.post('/agent/update-elevenlabs-key', async (req: AuthenticatedRequest, re
 });
 
 const elevenKey = () => process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key || '';
+const modelVoiceClones=new ModelVoiceClones({get:readVoiceState,put:writeVoiceState,claim:claimVoiceState,replace:replaceVoiceState});
+router.post('/voice-model-clones',async(req:AuthenticatedRequest,res:Response)=>{
+ try{return res.json(await modelVoiceClones.create(req.user.id,req.body));}
+ catch(error){return res.status(error instanceof SelectedSpeechError?error.status:503).json({error:error instanceof Error?error.message:'Clone unavailable'});}
+});
+router.get('/voice-model-clones/:id',async(req:AuthenticatedRequest,res:Response)=>{
+ try{return res.json(await modelVoiceClones.status(req.user.id,String(req.params.id)));}
+ catch(error){return res.status(error instanceof SelectedSpeechError?error.status:503).json({error:error instanceof Error?error.message:'Clone unavailable'});}
+});
 async function assertVoiceAccess(req: AuthenticatedRequest, voiceId: string, personaId: unknown = req.body?.activePersona?.id || req.query?.personaId) {
   if (typeof personaId === 'string') {
     const binding = await readVoiceState(req.user.id, `binding:${voiceAccount(personaId)}`);
@@ -1603,7 +1617,9 @@ const handleGenerateSpeech = async (req: AuthenticatedRequest, res: Response) =>
   const onClose = () => { if (!res.writableEnded) cancelled.abort(); };
   res.on('close', onClose);
   try {
-    const body = req.body || {};
+    const originalBody = req.body || {};
+    const canonical=voiceCloningModel(originalBody.engine);
+    const body = {...originalBody,...(canonical?{engine:canonical.id}:{}),...(originalBody.engine==='elevenlabs-v3'?{speechModel:'eleven_v3'}:{})};
     if (typeof body.text !== 'string' || !body.text.trim()) return res.status(400).json({ error: 'text is required' });
     const speechModel = body.engine === 'openai' || body.engine === 'openai:tts' ? 'tts-1' : (!body.engine || body.engine === 'elevenlabs') ? (body.speechModel || DEFAULT_SPEECH_MODEL) : body.engine;
     const delivery = buildVoiceDelivery(body.engine || 'elevenlabs', speechModel, body.text, body.activePersona, body.voiceSettings, body.emotion);
@@ -1623,7 +1639,7 @@ const handleGenerateSpeech = async (req: AuthenticatedRequest, res: Response) =>
       if (!buffer.length) throw new SelectedSpeechError('The voice provider returned empty audio.', 502);
       return `data:audio/mpeg;base64,${buffer.toString('base64')}`;
     };
-    const result = await dispatchSelectedSpeech(body, {
+    const result = await dispatchSelectedSpeech({...body, voiceReference: body.voiceReference || body.activePersona?.voiceSampleUrl}, {
       elevenlabs: async voiceId => {
         await assertVoiceAccess(req, voiceId);
         const key = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key;
@@ -1643,9 +1659,14 @@ const handleGenerateSpeech = async (req: AuthenticatedRequest, res: Response) =>
           body: JSON.stringify({ model: 'tts-1', input: body.text, voice: voiceId, response_format: 'mp3', speed: voiceSettings.speed ?? 1 }),
         }));
       },
-      clone: (engine, reference) => synthesizeClonedAudioWithWavespeed(reference, body.text, engine, {
-        speed: voiceSettings.speed ?? 1, exaggeration: voiceSettings.style ?? 0.3, exactEngine: true,
-      }),
+      clone: async (engine, reference) => {
+        if(engine==='minimax-clone')await modelVoiceClones.authorize(req.user.id,String(body.voiceId||body.voice||''));
+        return renderReferenceSpeech(engine, body.text, {
+        reference, referenceText: body.voiceReferenceText ?? body.activePersona?.voiceReferenceText,
+        voiceId: body.voiceId || body.voice, voicePrompt: body.voicePrompt || body.activePersona?.voicePrompt,
+        speed: voiceSettings.speed ?? 1, exaggeration: voiceSettings.style ?? 0.3, signal: cancelled.signal,
+        });
+      },
     });
     if (res.writableEnded) return;
     if (!cancelled.signal.aborted) return res.json({ ...result, model: speechModel, delivery: { emotion: delivery.emotion, settings: voiceSettings, unsupported: delivery.unsupported } });

@@ -8,6 +8,7 @@ export interface SavedPersonaVoice {
   voiceSampleUrl?: string;
   audioSamples?: Array<{ name: string; base64: string }>;
   voicePrompt?: string;
+  voiceReferenceText?: string;
   voiceLikeness?: number;
   voiceStability?: number;
   voiceStyleExaggeration?: number;
@@ -24,6 +25,7 @@ export function restoreSavedVoice(voice: SavedPersonaVoice) {
     voiceSampleUrl: voice.voiceSampleUrl || '',
     audioSamples: structuredClone(voice.audioSamples || []),
     voicePrompt: voice.voicePrompt || '',
+    voiceReferenceText: voice.voiceReferenceText || '',
     voiceLikeness: voice.voiceLikeness ?? 85,
     voiceStability: voice.voiceStability ?? 75,
     voiceStyleExaggeration: voice.voiceStyleExaggeration ?? 20,

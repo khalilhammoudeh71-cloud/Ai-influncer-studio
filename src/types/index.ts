@@ -72,6 +72,7 @@ export type Persona = {
   clientId?: string;
   audioSamples?: any[];
   voicePrompt?: string;
+  voiceReferenceText?: string;
   voiceLikeness?: number;
   voiceStability?: number;
   voiceStyleExaggeration?: number;

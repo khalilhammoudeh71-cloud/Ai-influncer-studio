@@ -1,4 +1,4 @@
-export const voiceFields = ['voiceId', 'voiceEngine', 'voiceName', 'voiceSampleUrl', 'audioSamples', 'voicePrompt', 'voiceLikeness', 'voiceStability', 'voiceStyleExaggeration', 'voiceSpeakingSpeed'] as const;
+export const voiceFields = ['voiceId', 'voiceEngine', 'voiceName', 'voiceSampleUrl', 'audioSamples', 'voiceReferenceText', 'voicePrompt', 'voiceLikeness', 'voiceStability', 'voiceStyleExaggeration', 'voiceSpeakingSpeed'] as const;
 export function mergeVoiceDraft(saved: Record<string, any>, draft: Record<string, any>) {
   return Object.fromEntries(voiceFields.flatMap(key => {
     const value = draft[key] === undefined ? saved[key] : draft[key];
@@ -41,4 +41,7 @@ export interface CloneResult {
   status: CloneStatus;
   voiceId?: string;
   message?: string;
+  engine?: string;
+  assetKind?: 'speech' | 'singing';
+  audioUrl?: string;
 }

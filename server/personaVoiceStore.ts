@@ -16,6 +16,13 @@ export async function writeVoiceState(owner: string, key: string, value: unknown
     target: [workspaceStates.userId, workspaceStates.stateKey], set: { value: JSON.stringify(value), updatedAt: new Date() },
   });
 }
+export async function claimVoiceState(owner:string,key:string,value:unknown) {
+  if(!db)throw new VoiceLifecycleError('Voice persistence is unavailable. No clone was submitted.',503);
+  return (await db.insert(workspaceStates).values({userId:voiceStateOwner(owner),stateKey:key,value:JSON.stringify(value)}).onConflictDoNothing().returning()).length===1;
+}
+export async function replaceVoiceState(owner:string,key:string,previous:unknown,next:unknown) {
+  return (await db.update(workspaceStates).set({value:JSON.stringify(next),updatedAt:new Date()}).where(and(eq(workspaceStates.userId,voiceStateOwner(owner)),eq(workspaceStates.stateKey,key),eq(workspaceStates.value,JSON.stringify(previous)))).returning()).length===1;
+}
 export async function ownedVoiceOperations(owner: string): Promise<VoiceOperation[]> {
   if (!db) throw new VoiceLifecycleError('Voice persistence is unavailable.', 503);
   const rows = await db.select().from(workspaceStates).where(and(eq(workspaceStates.userId, voiceStateOwner(owner)), like(workspaceStates.stateKey, 'clone:%')));
