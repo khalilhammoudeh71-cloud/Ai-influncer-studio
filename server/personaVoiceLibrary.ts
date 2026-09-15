@@ -28,3 +28,12 @@ export function rememberPersonaVoices(library: SavedPersonaVoice[], previous: Re
   }
   return [...entries.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
+
+export function removeRememberedVoice(library: SavedPersonaVoice[], current: Record<string, any>, personaName: string, entryId: string) {
+  const entries = rememberPersonaVoices(library, {}, current, personaName);
+  if (!entries.some(voice => voice.id === entryId)) return null;
+  return {
+    library: entries.filter(voice => voice.id !== entryId),
+    removingCurrent: rememberPersonaVoices([], {}, current, personaName)[0]?.id === entryId,
+  };
+}

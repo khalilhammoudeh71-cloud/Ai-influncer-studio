@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { rememberPersonaVoices } from './personaVoiceLibrary';
+import { rememberPersonaVoices, removeRememberedVoice } from './personaVoiceLibrary';
 import { restoreSavedVoice } from '../shared/personaVoiceLibrary';
 
 const a = { voiceId: 'clone-a', voiceEngine: 'elevenlabs', voiceName: 'Warm original', voiceLikeness: 92, voiceStability: 64, voiceSampleUrl: 'supabase-media://alice/audio/a.wav', audioSamples: [{ name: 'Original', base64: 'supabase-media://alice/audio/a.wav' }] };
@@ -68,4 +68,21 @@ test('clearing active enrollment samples does not erase recordings from the save
   assert.equal(library.length, 1);
   assert.equal(library[0].voiceSampleUrl, 'supabase-media://alice/audio/a.wav');
   assert.equal(library[0].audioSamples?.length, 1);
+});
+
+
+test('removal clears an active binding without restoring it on the next library read', () => {
+  const library = rememberPersonaVoices([], a, b, 'Persona');
+  const removal = removeRememberedVoice(library, b, 'Persona', library.find(v => v.voiceId === b.voiceId)!.id)!;
+  assert.equal(removal.removingCurrent, true);
+  assert.deepEqual(rememberPersonaVoices(removal.library, {}, {}, 'Persona').map(v => v.voiceId), [a.voiceId]);
+});
+
+test('removing a historical reference voice preserves the active voice and rejects foreign entries', () => {
+  const reference = { ...a, voiceId: '', voiceEngine: 'wiro-voice:fishaudio/s2-pro' };
+  const library = rememberPersonaVoices([], reference, b, 'Persona');
+  const removal = removeRememberedVoice(library, b, 'Persona', library.find(v => v.voiceEngine === reference.voiceEngine)!.id)!;
+  assert.equal(removal.removingCurrent, false);
+  assert.deepEqual(removal.library.map(v => v.voiceId), [b.voiceId]);
+  assert.equal(removeRememberedVoice(library, b, 'Persona', 'not-in-this-persona'), null);
 });

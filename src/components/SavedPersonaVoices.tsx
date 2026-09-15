@@ -5,15 +5,16 @@ interface Props {
   current: Parameters<typeof personaVoiceIdentity>[0];
   onSelect: (voice: SavedPersonaVoice) => void;
   disabled?: boolean;
+  onRemove?: (voice: SavedPersonaVoice) => void;
   actionLabel?: string;
 }
 
-export default function SavedPersonaVoices({ voices, current, onSelect, disabled, actionLabel = 'Select voice' }: Props) {
+export default function SavedPersonaVoices({ voices, current, onSelect, onRemove, disabled, actionLabel = 'Select voice' }: Props) {
   return (
     <section aria-label="Saved persona voices" className="space-y-3 rounded-xl border border-white/10 bg-white/[0.025] p-4">
       <div>
         <h4 className="text-sm font-semibold text-white">Saved voices</h4>
-        <p className="mt-1 text-xs text-slate-400">Every voice saved as this persona’s default stays here, with its recordings and settings, so you can switch back.</p>
+        <p className="mt-1 text-xs text-slate-400">Voices previously applied to this persona by saving it, across all models. Temporary renders are not added.</p>
       </div>
       {voices.length === 0 ? <p className="text-xs text-slate-400">Save a default voice to add it to this library.</p> : (
         <ul className="max-h-64 space-y-2 overflow-y-auto">
@@ -28,6 +29,7 @@ export default function SavedPersonaVoices({ voices, current, onSelect, disabled
                 <button type="button" aria-label={`${actionLabel}: ${voice.name}`} aria-pressed={selected} disabled={disabled || selected} onClick={() => onSelect(voice)} className="shrink-0 rounded-lg border border-[#E7C477]/30 px-3 py-2 text-xs font-semibold text-[#E7C477] hover:bg-[#E7C477]/10 disabled:opacity-50">
                   {selected ? 'Selected' : actionLabel}
                 </button>
+                {onRemove && <button type="button" aria-label={`Remove saved voice: ${voice.name}`} disabled={disabled} onClick={() => onRemove(voice)} className="rounded-lg px-3 py-2 text-xs text-rose-300 hover:bg-rose-500/10 disabled:opacity-50">Remove</button>}
               </li>
             );
           })}

@@ -398,7 +398,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   };
 
   // Voice State
-  const [voiceTab, setVoiceTab] = useState<'clone' | 'preset' | 'custom' | 'account' | 'heygen'>('preset');
+  const [voiceTab, setVoiceTab] = useState<'clone' | 'preset' | 'custom' | 'account' | 'heygen' | 'saved'>('preset');
   const [selectedVoiceId, setSelectedVoiceId] = useState('kore');
   const [selectedVoiceModel, setSelectedVoiceModel] = useState('omnivoice');
   const [cloneModel, setCloneModel] = useState('elevenlabs');
@@ -446,7 +446,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   };
   const selectDraftVoice = (id: string, engine: string) => {
     voiceSelectionChanged.current = true; voiceDraftGuard.current.change(); stopVoicePreviews();
-    setSelectedVoiceId(id); setSelectedVoiceModel(engine);
+    setSelectedVoiceId(id); setSelectedVoiceModel(engine); setSavedVoiceStatus('');
     setSelectedSavedVoiceName(''); setAudioSampleList([]); setDraftSamplesChanged(false);
     readySamples.current={samples:[],transcript:''};setVoiceReferenceText('');
   };
@@ -798,8 +798,8 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       setClonePreset(editingPersona.voiceId || '');
       setVoiceReferenceText(editingPersona.voiceReferenceText || '');
       readySamples.current={samples:editingPersona.audioSamples?.length?editingPersona.audioSamples:editingPersona.voiceSampleUrl?[{name:'Saved recording',base64:editingPersona.voiceSampleUrl}]:[],transcript:editingPersona.voiceReferenceText || ''};
+      setSelectedVoiceModel(editingPersona.voiceEngine || '');
       if (editingPersona.voiceEngine) {
-        setSelectedVoiceModel(editingPersona.voiceEngine);
         const hasSavedVoiceSamples = Boolean(
           editingPersona.voiceSampleUrl ||
           (Array.isArray(editingPersona.audioSamples) && editingPersona.audioSamples.length > 0)
@@ -850,8 +850,8 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       setReferenceImages([]);
       setGenerationsVault([]);
       setSelectedSavedVoiceName('');
-      setSelectedVoiceId('kore');
-      setSelectedVoiceModel('elevenlabs');
+      setSelectedVoiceId('');
+      setSelectedVoiceModel('');
       setCloneModel('elevenlabs');
       setClonePreset('');
       readySamples.current={samples:[],transcript:''};
@@ -1776,6 +1776,9 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
               >
                 Studio Voices
               </button>
+              <button type="button" onClick={() => setVoiceTab('saved')} className={cn("px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer", voiceTab === 'saved' ? "bg-[#E7C477] text-[#161618]" : "text-slate-400 hover:text-white")}>
+                Saved voices ({editingPersona?.savedVoices?.length || 0})
+              </button>
               <button
                 type="button"
                 onClick={() => setVoiceTab('clone')}
@@ -1821,12 +1824,23 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
             <p>{auditionLanguage === 'ar' ? 'Arabic sample uses Jordanian/Syrian phrasing. ' : ''}Edit the audition text for your own sample. Switching preview language resets that text. Previews {selectedVoiceName} using {voiceCloningModel(selectedVoiceModel)?.name || selectedVoiceModel}. Render a new model to select its prepared voice.</p>
           </div>
 
-          <SavedPersonaVoices
+          {voiceTab === 'saved' && <SavedPersonaVoices
             voices={editingPersona?.savedVoices || []}
             current={{ voiceId: selectedVoiceId, voiceEngine: selectedVoiceModel, voiceSampleUrl: audioSampleList[0]?.base64, audioSamples: audioSampleList }}
             onSelect={selectSavedVoice}
+            onRemove={async voice => {
+              if (!editingPersona) return;
+              setIsSaving(true); stopVoicePreviews(); voiceDraftGuard.current.change();
+              try {
+                const updated = await api.personas.removeSavedVoice(editingPersona.id, voice.id);
+                setPersonas(personas.map(p => p.id === updated.id ? updated : p));
+                setSavedVoiceStatus(''); setCloneResult(null); setCloneError('');
+                toast.success('Voice removed from this persona.');
+              } catch (error) { toast.error(error instanceof Error ? error.message : 'Could not remove voice.'); }
+              finally { setIsSaving(false); }
+            }}
             disabled={isSaving || isCloning}
-          />
+          />}
 
           {voiceTab === 'preset' && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
@@ -1990,17 +2004,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                   {cloneResult?.assetKind==='singing' && cloneResult.voiceId && <p>Mureka vocal ID: <code className="select-all">{cloneResult.voiceId}</code>. Saved to this account; your speaking voice remains selected.</p>}
                 </div>}
                 <p className="text-[11px] text-slate-500">Your current saved voice stays active until a new preview is ready and you save the persona.</p>
-                <label className="inline-flex items-center gap-2 mr-3 text-xs text-slate-300">Preview language
-              <select aria-label="Preview language" disabled={isCloning || isSaving} value={previewLanguage} onChange={e => { stopVoicePreviews(); setPreviewLanguage(e.target.value as 'persona' | 'ar' | 'en'); setVoicePreviewText(''); }} className="luxury-input rounded-xl px-3 py-2.5">
-                <option value="persona">Persona language</option>
-                <option value="ar">Arabic · العربية</option>
-                <option value="en">English</option>
-              </select>
-            </label>
-            <button type="button" onClick={() => playDraftPreview(selectedVoiceId, selectedVoiceModel)} disabled={isCloning || isSaving || (!selectedVoiceId && !readySamples.current.samples.length)} className="btn-gold-primary px-4 py-2.5 text-xs disabled:opacity-40">
-                  {isTestingVoice ? 'Cancel preview' : isPlayingSample ? 'Stop preview' : 'Preview voice'}
-                </button>
-                <p className="text-xs text-slate-400">Preview selected voice: {selectedVoiceName} · {voiceCloningModel(selectedVoiceModel)?.name || selectedVoiceModel}. Replay or change the audition text above without cloning again.</p>
+
               </div>
 
               {audioSampleList.length > 0 && (

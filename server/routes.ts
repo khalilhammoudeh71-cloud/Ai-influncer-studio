@@ -12,7 +12,7 @@ import { buildCreatorPhotoContext } from '../shared/creatorPhotoContext';
 import { buildPersonaAuthoredDirections } from '../shared/personaDialogueProfile';
 import { mergeVoiceDraft } from '../shared/personaVoiceLifecycle';
 import { prepareVoiceSave } from './personaVoiceSave';
-import { rememberPersonaVoices } from './personaVoiceLibrary';
+import { rememberPersonaVoices, removeRememberedVoice } from './personaVoiceLibrary';
 import { personaVoices, ensureLegacyVoiceAccess, accessiblePrivateVoiceIds, readVoiceState, writeVoiceState } from './personaVoiceStore';
 import { VoiceLifecycleError, voiceAccount, voiceReadiness, VOICE_MODEL } from './personaVoiceLifecycle';
 import { needsDetailedVoiceReply } from '../shared/voiceReplyBudget';
@@ -672,6 +672,36 @@ router.put('/personas/:clientId', async (req: AuthenticatedRequest, res: Respons
   } catch (err) {
     console.error('[API] PUT /personas error:', err);
     res.status((err instanceof PersonaMediaPersistenceError || err instanceof VoiceLifecycleError) ? err.statusCode : 500).json({ error: err instanceof Error ? err.message : 'Unknown error' });
+  }
+});
+
+// Removes only this persona's association/history; never deletes a provider voice.
+router.delete('/personas/:clientId/saved-voices/:voiceId', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const clientId = String(req.params.clientId);
+    const entryId = String(req.params.voiceId);
+    const row = await db.transaction(async (tx: any) => {
+      const [existing] = await tx.select().from(personas).where(and(eq(personas.clientId, clientId), eq(personas.userId, req.user.id))).for('update');
+      if (!existing) throw new VoiceLifecycleError('Persona not found for this account', 404);
+      const bindingKey = `binding:${voiceAccount(clientId)}`;
+      const libraryKey = `library:${voiceAccount(clientId)}`;
+      const binding = await readVoiceState(req.user.id, bindingKey, tx);
+      const current = { ...binding?.settings, ...existing, audioSamples: JSON.parse(existing.audioSamples || '[]') };
+      const removal = removeRememberedVoice(await readVoiceState(req.user.id, libraryKey, tx) || [], current, existing.name, entryId);
+      if (!removal) throw new VoiceLifecycleError('Saved voice not found', 404);
+      await writeVoiceState(req.user.id, libraryKey, removal.library, tx);
+      const { removingCurrent } = removal;
+      if (removingCurrent) await writeVoiceState(req.user.id, bindingKey, {}, tx);
+      const [updated] = await tx.update(personas).set({
+        ...(removingCurrent ? { voiceId: null, voiceEngine: null, voiceSampleUrl: null, audioSamples: '[]' } : {}),
+        updatedAt: new Date(),
+      }).where(and(eq(personas.clientId, clientId), eq(personas.userId, req.user.id))).returning();
+      return updated;
+    });
+    const images = await db.select().from(generatedImages).where(and(eq(generatedImages.personaClientId, clientId), eq(generatedImages.userId, req.user.id)));
+    res.json(await personaToClient(row, images));
+  } catch (error) {
+    res.status(error instanceof VoiceLifecycleError ? error.statusCode : 500).json({ error: error instanceof Error ? error.message : 'Could not remove saved voice' });
   }
 });
 

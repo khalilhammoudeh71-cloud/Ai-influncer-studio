@@ -214,6 +214,7 @@ export const api = {
   },
 
   personas: {
+    removeSavedVoice: async (personaId: string, voiceId: string) => resolvePersonaMediaFromStorage(await request<Persona>(`/personas/${encodeURIComponent(personaId)}/saved-voices/${encodeURIComponent(voiceId)}`, { method: 'DELETE' })),
     list: async () => Promise.all((await request<Persona[]>('/personas')).map(hydrateAndMigratePersonaMedia)),
     create: async (p: Persona) => {
       const prepared = await preparePersonaMediaForStorage(p);
