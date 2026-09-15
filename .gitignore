@@ -1,5 +1,7 @@
 node_modules
 .env
+.env.*
+!.env.example
 .vercel
 dist
 dist-api
@@ -13,3 +15,5 @@ public/uploads/
 rewrite*.py
 rewrite.py
 test_db.ts
+work/
+.DS_Store

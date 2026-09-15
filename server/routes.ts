@@ -1,3 +1,17 @@
+import { createNativeVoiceRouter } from './nativeVoice';
+import { createReviewedSpeech } from '../shared/reviewedSpeech';
+import { once } from 'node:events';
+import { activateAgentVoice } from './agentVoiceActivation';
+import { buildVoiceDelivery, DEFAULT_SPEECH_MODEL } from '../shared/voiceDelivery';
+import { dispatchSelectedSpeech, SelectedSpeechError } from './selectedSpeech';
+import { buildCreatorPhotoContext } from '../shared/creatorPhotoContext';
+import { buildPersonaAuthoredDirections } from '../shared/personaDialogueProfile';
+import { mergeVoiceDraft } from '../shared/personaVoiceLifecycle';
+import { prepareVoiceSave } from './personaVoiceSave';
+import { rememberPersonaVoices } from './personaVoiceLibrary';
+import { personaVoices, ensureLegacyVoiceAccess, accessiblePrivateVoiceIds, readVoiceState, writeVoiceState } from './personaVoiceStore';
+import { VoiceLifecycleError, voiceAccount, voiceReadiness, VOICE_MODEL } from './personaVoiceLifecycle';
+import { buildPersonalityInstructions, personalityDelivery, encodePersonality, decodePersonality } from '../shared/personality';
 import { Router, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
@@ -5,10 +19,10 @@ import { exec } from 'child_process';
 import { createRequire } from 'module';
 import { db } from './db';
 import { personas, generatedImages, revenueEntries, plannedPosts, workspaceStates } from '../shared/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { GoogleGenAI } from '@google/genai';
 import { createFalClient } from '@fal-ai/client';
-import { requireAuth, AuthenticatedRequest } from './auth';
+import { requireAuth, isCreatorUser, AuthenticatedRequest } from './auth';
 import {
   type ElevenLabsVoiceSummary,
   type VoiceCandidateReview,
@@ -111,7 +125,7 @@ const DEFAULT_XAI_VOICE_MODEL = 'grok-4.20-0309-non-reasoning';
 
 const ELEVENLABS_VOICE_CACHE_TTL_MS = 5 * 60 * 1000;
 const VENICE_ACCOUNT_COOLDOWN_MS = 10 * 60 * 1000;
-let elevenLabsVoiceCache: { voices: ElevenLabsVoiceSummary[]; expiresAt: number } | null = null;
+let elevenLabsVoiceCache: { voices: ElevenLabsVoiceSummary[]; expiresAt: number; account: string } | null = null;
 let elevenLabsVoiceCatalogPromise: Promise<ElevenLabsVoiceSummary[]> | null = null;
 let veniceUnavailableUntil = 0;
 const superAgentCatalogCache = new Map<SuperAgentProvider, { models: SuperAgentModelEntry[]; expiresAt: number }>();
@@ -151,10 +165,10 @@ async function loadSuperAgentModelCatalog(input: {
 }
 
 async function loadElevenLabsVoiceCatalog(apiKey: string, forceRefresh = false): Promise<ElevenLabsVoiceSummary[]> {
-  if (!forceRefresh && elevenLabsVoiceCache && elevenLabsVoiceCache.expiresAt > Date.now()) {
+  if (!forceRefresh && elevenLabsVoiceCache && elevenLabsVoiceCache.expiresAt > Date.now() && elevenLabsVoiceCache.account === voiceAccount(apiKey)) {
     return elevenLabsVoiceCache.voices;
   }
-  if (elevenLabsVoiceCatalogPromise) return elevenLabsVoiceCatalogPromise;
+  // Catalog promises are not reused across account/key changes.
 
   elevenLabsVoiceCatalogPromise = (async () => {
     try {
@@ -168,7 +182,7 @@ async function loadElevenLabsVoiceCatalog(apiKey: string, forceRefresh = false):
       }
       const data = await response.json() as { voices?: ElevenLabsVoiceSummary[] };
       const voices = Array.isArray(data.voices) ? data.voices : [];
-      elevenLabsVoiceCache = { voices, expiresAt: Date.now() + ELEVENLABS_VOICE_CACHE_TTL_MS };
+      elevenLabsVoiceCache = { voices, expiresAt: Date.now() + ELEVENLABS_VOICE_CACHE_TTL_MS, account: voiceAccount(apiKey) };
       return voices;
     } catch (error) {
       console.warn('[ElevenLabs Voice Catalog] Request failed:', error);
@@ -186,6 +200,7 @@ async function requestElevenLabsSpeech(
   voiceId: string,
   text: string,
   modelId: string,
+  persona?: any,
 ): Promise<{ response: globalThis.Response; audioUrl?: string }> {
   // Eleven v3 Conversational rejects the legacy optimize_streaming_latency
   // query parameter. Flash accepts it and benefits from the most aggressive
@@ -202,9 +217,9 @@ async function requestElevenLabsSpeech(
       },
       signal: AbortSignal.timeout(6000),
       body: JSON.stringify({
-        text,
+        text: buildVoiceDelivery('elevenlabs', modelId, text, persona).text,
         model_id: modelId,
-        voice_settings: getElevenLabsPersonaVoiceSettings(text),
+        voice_settings: buildVoiceDelivery('elevenlabs', modelId, text, persona).settings,
       }),
     },
   );
@@ -219,8 +234,9 @@ async function requestElevenLabsPersonaSpeech(
   voiceId: string,
   text: string,
   requestedModel: unknown,
+  persona?: any,
 ): Promise<{ response: globalThis.Response; audioUrl?: string; modelId: string }> {
-  const modelCandidates = getElevenLabsPersonaModelCandidates(requestedModel);
+  const modelCandidates = [resolveElevenLabsPersonaModelId(requestedModel)];
   let lastResult: { response: globalThis.Response; audioUrl?: string } | undefined;
   let lastModelId = modelCandidates[0];
 
@@ -228,7 +244,7 @@ async function requestElevenLabsPersonaSpeech(
     lastModelId = modelId;
     let result: { response: globalThis.Response; audioUrl?: string };
     try {
-      result = await requestElevenLabsSpeech(apiKey, voiceId, text, modelId);
+      result = await requestElevenLabsSpeech(apiKey, voiceId, text, modelId, persona);
     } catch (error) {
       if (modelId !== modelCandidates[modelCandidates.length - 1]) {
         console.warn(`[Voice Chat ElevenLabs] ${modelId} request failed; trying eleven_flash_v2_5.`, error);
@@ -282,8 +298,17 @@ export async function writeCreatorProfileForUser(userId: string, profile: any): 
   });
 }
 
-function personaToClient(row: typeof personas.$inferSelect, images: typeof generatedImages.$inferSelect[] = []) {
+async function personaToClient(row: typeof personas.$inferSelect, images: typeof generatedImages.$inferSelect[] = []) {
+  const binding = await readVoiceState(row.userId!, `binding:${voiceAccount(row.clientId)}`);
+  const matchingBinding = binding?.voiceId === row.voiceId && binding?.voiceEngine === row.voiceEngine ? binding : undefined;
+  const config = matchingBinding?.settings || {};
+  const library = await readVoiceState(row.userId!, `library:${voiceAccount(row.clientId)}`) || [];
+  const savedVoices = rememberPersonaVoices(library, {}, { ...config, ...row, audioSamples: JSON.parse(row.audioSamples || '[]'), voiceBinding: matchingBinding }, row.name, row.updatedAt.toISOString());
   return {
+    ...config,
+    savedVoices,
+    voiceRevision: row.updatedAt.toISOString(),
+    voiceBinding: binding?.voiceId === row.voiceId && binding?.voiceEngine === row.voiceEngine ? binding : undefined,
     id: row.clientId,
     name: row.name,
     niche: row.niche,
@@ -294,7 +319,7 @@ function personaToClient(row: typeof personas.$inferSelect, images: typeof gener
     referenceImage: row.referenceImage || undefined,
     additionalReferenceImages: JSON.parse(row.additionalReferenceImages || '[]'),
     alternateReferenceImage: row.alternateReferenceImage || undefined,
-    personalityTraits: JSON.parse(row.personalityTraits || '[]'),
+    ...decodePersonality(row.personalityTraits),
     visualStyle: row.visualStyle,
     audienceType: row.audienceType,
     contentBoundaries: row.contentBoundaries,
@@ -328,9 +353,9 @@ export async function readPersonasForUser(userId: string): Promise<any[]> {
     imagesByPersona[image.personaClientId].push(image);
   }
 
-  return dbPersonas
+  return Promise.all(dbPersonas
     .filter((persona: any) => persona?.clientId && !persona.clientId.toLowerCase().includes('luna') && !persona.name?.toLowerCase().includes('luna'))
-    .map((persona: any) => personaToClient(persona, imagesByPersona[persona.clientId] || []));
+    .map((persona: any) => personaToClient(persona, imagesByPersona[persona.clientId] || [])));
 }
 
 function imageToClient(row: typeof generatedImages.$inferSelect) {
@@ -367,6 +392,13 @@ function revenueToClient(row: typeof revenueEntries.$inferSelect) {
 router.use((req, res, next) => {
   if (isPublicApiPath(req.path)) return next();
   return requireAuth(req as AuthenticatedRequest, res, next);
+});
+
+router.use(async (req, res, next) => {
+  if ((req.method !== 'GET' && (req.path === '/personas' || req.path.startsWith('/personas/') || req.path === '/migrate')) || req.path === '/elevenlabs-voices') {
+    try { await ensureLegacyVoiceAccess(); } catch (error) { return voiceError(res, error); }
+  }
+  next();
 });
 
 function workspaceStateToClient(row: typeof workspaceStates.$inferSelect) {
@@ -473,15 +505,52 @@ router.get('/personas', async (req: AuthenticatedRequest, res: Response) => {
   }
 });
 
+async function verifyPersonaVoice(req: AuthenticatedRequest, voice: Record<string, any>) {
+  if (!isElevenLabsVoiceEngine(voice.voiceEngine) && voice.voiceEngine !== 'elevenlabs') return;
+  if (!isDirectElevenLabsVoiceId(voice.voiceId)) return; // Legacy preset identifiers keep their existing routing.
+  await assertVoiceAccess(req, voice.voiceId);
+  await personaVoices.preview(elevenKey(), voice.voiceId, 'Hello. This is a short check of my voice.', {
+    stability: (voice.voiceStability ?? 75) / 100, similarity_boost: (voice.voiceLikeness ?? 85) / 100,
+    style: (voice.voiceStyleExaggeration ?? 20) / 100, speed: voice.voiceSpeakingSpeed ?? 1,
+  });
+}
+async function savePersonaVoiceMetadata(req: AuthenticatedRequest, row: any, body: any, tx: any, previous?: any) {
+  const { voiceId, voiceEngine, voiceSampleUrl, audioSamples, ...settings } = mergeVoiceDraft({}, body);
+  const old = await readVoiceState(req.user.id, `binding:${voiceAccount(row.clientId)}`, tx);
+  const sameBinding = old?.voiceId === row.voiceId && old?.voiceEngine === row.voiceEngine;
+  const unchanged = previous?.voiceId === row.voiceId && previous?.voiceEngine === row.voiceEngine;
+  const legacy = row.voiceId ? await readVoiceState(req.user.id, `legacy:${voiceAccount(row.voiceId)}`, tx) : undefined;
+  const binding = {
+    voiceId: row.voiceId, voiceEngine: row.voiceEngine, owner: req.user.id,
+    account: sameBinding ? old.account : (legacy?.account || (!unchanged && isDirectElevenLabsVoiceId(voiceId) && isElevenLabsVoiceEngine(voiceEngine) && elevenKey() ? await personaVoices.account(elevenKey()) : undefined)),
+    provider: isElevenLabsVoiceEngine(voiceEngine) ? 'elevenlabs' : voiceEngine,
+    model: isElevenLabsVoiceEngine(voiceEngine) ? VOICE_MODEL : undefined,
+    settings, revision: row.updatedAt.toISOString(),
+    readiness: sameBinding ? (old.readiness || 'unverified') : (!unchanged && isDirectElevenLabsVoiceId(voiceId) && isElevenLabsVoiceEngine(voiceEngine) ? 'ready' : 'unverified'),
+    checkedAt: sameBinding ? old.checkedAt : (!unchanged && isDirectElevenLabsVoiceId(voiceId) && isElevenLabsVoiceEngine(voiceEngine) ? new Date().toISOString() : undefined),
+  };
+  const libraryKey = `library:${voiceAccount(row.clientId)}`;
+  const library = await readVoiceState(req.user.id, libraryKey, tx) || [];
+  const previousVoice = previous ? { ...old?.settings, ...previous, audioSamples: JSON.parse(previous.audioSamples || '[]'), voiceBinding: old } : {};
+  const currentVoice = { ...settings, ...row, audioSamples: JSON.parse(row.audioSamples || '[]'), voiceBinding: binding };
+  // The server owns history. Browser payloads cannot remove or forge saved entries.
+  await writeVoiceState(req.user.id, libraryKey, rememberPersonaVoices(library, previousVoice, currentVoice, row.name), tx);
+  await writeVoiceState(req.user.id, `binding:${voiceAccount(row.clientId)}`, binding, tx);
+}
+
 router.post('/personas', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const body = normalizePersonaMediaReferences(req.body || {}, req.user.id);
+    let body = normalizePersonaMediaReferences(req.body || {}, req.user.id);
     if (!body?.id || typeof body.id !== 'string') {
       return res.status(400).json({ error: 'Persona id is required' });
     }
     if (!db) return res.status(503).json({ error: 'Database persistence is unavailable' });
 
-    const [row] = await db.insert(personas).values({
+    const [existing] = await db.select().from(personas).where(and(eq(personas.clientId, body.id), eq(personas.userId, req.user.id)));
+    if (existing) throw new VoiceLifecycleError('This persona already exists. Reload it before editing.');
+    body = { ...body, ...await prepareVoiceSave({}, body, voice => verifyPersonaVoice(req, voice)) };
+    const row = await db.transaction(async (tx: any) => {
+      const [row] = await tx.insert(personas).values({
           clientId: body.id,
           name: body.name || 'Unnamed',
           niche: body.niche || '',
@@ -492,7 +561,7 @@ router.post('/personas', async (req: AuthenticatedRequest, res: Response) => {
           referenceImage: body.referenceImage || null,
           additionalReferenceImages: JSON.stringify(body.additionalReferenceImages || []),
           alternateReferenceImage: body.alternateReferenceImage || null,
-          personalityTraits: JSON.stringify(body.personalityTraits || []),
+          personalityTraits: encodePersonality(body),
           visualStyle: body.visualStyle || '',
           audienceType: body.audienceType || '',
           contentBoundaries: body.contentBoundaries || '',
@@ -510,52 +579,30 @@ router.post('/personas', async (req: AuthenticatedRequest, res: Response) => {
           audioSamples: JSON.stringify(body.audioSamples || []),
           companionType: body.companionType || 'intimate',
           heygenAvatarId: body.heygenAvatarId || null,
-        }).onConflictDoUpdate({
-          target: [personas.userId, personas.clientId],
-          set: {
-            name: body.name || 'Unnamed',
-            niche: body.niche || '',
-            tone: body.tone || '',
-            platform: body.platform || '',
-            status: body.status || 'Draft',
-            avatar: body.avatar || '',
-            referenceImage: body.referenceImage || null,
-            additionalReferenceImages: JSON.stringify(body.additionalReferenceImages || []),
-            alternateReferenceImage: body.alternateReferenceImage || null,
-            personalityTraits: JSON.stringify(body.personalityTraits || []),
-            visualStyle: body.visualStyle || '',
-            audienceType: body.audienceType || '',
-            contentBoundaries: body.contentBoundaries || '',
-            bio: body.bio || '',
-            brandVoiceRules: body.brandVoiceRules || '',
-            contentGoals: body.contentGoals || '',
-            personaNotes: body.personaNotes || '',
-            faceDescriptor: body.faceDescriptor || null,
-            naturalLook: body.naturalLook ?? true,
-            identityLock: body.identityLock ?? true,
-            voiceId: body.voiceId || null,
-            voiceEngine: body.voiceEngine || null,
-            voiceSampleUrl: body.voiceSampleUrl || null,
-            audioSamples: JSON.stringify(body.audioSamples || []),
-            companionType: body.companionType || 'intimate',
-            heygenAvatarId: body.heygenAvatarId || null,
-            updatedAt: new Date(),
-          },
-        }).returning();
-    return res.json(personaToClient(row));
+        }).onConflictDoNothing().returning();
+      if (!row) throw new VoiceLifecycleError('This persona was just saved. Reload before editing.');
+      await savePersonaVoiceMetadata(req, row, body, tx);
+      return row;
+    });
+    return res.json(await personaToClient(row));
   } catch (err) {
     console.error('[API] POST /personas error:', err);
-    res.status(err instanceof PersonaMediaPersistenceError ? err.statusCode : 500).json({ error: err instanceof Error ? err.message : 'Unknown error' });
+    res.status((err instanceof PersonaMediaPersistenceError || err instanceof VoiceLifecycleError) ? err.statusCode : 500).json({ error: err instanceof Error ? err.message : 'Unknown error' });
   }
 });
 
 router.put('/personas/:clientId', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const clientId = req.params.clientId as string;
-    const body = normalizePersonaMediaReferences(req.body || {}, req.user.id);
+    let body = normalizePersonaMediaReferences(req.body || {}, req.user.id);
 
     if (!db) return res.status(503).json({ error: 'Database persistence is unavailable' });
-    const [row] = await db.update(personas).set({
+    const [existing] = await db.select().from(personas).where(and(eq(personas.clientId, clientId), eq(personas.userId, req.user.id)));
+    if (!existing) return res.status(404).json({ error: 'Persona not found for this account' });
+    const saved = await personaToClient(existing);
+    body = { ...body, ...await prepareVoiceSave(saved, body, voice => verifyPersonaVoice(req, voice)) };
+    const row = await db.transaction(async (tx: any) => {
+      const [row] = await tx.update(personas).set({
         name: body.name || 'Unnamed',
         niche: body.niche || '',
         tone: body.tone || '',
@@ -565,7 +612,7 @@ router.put('/personas/:clientId', async (req: AuthenticatedRequest, res: Respons
         referenceImage: body.referenceImage || null,
         additionalReferenceImages: JSON.stringify(body.additionalReferenceImages || []),
         alternateReferenceImage: body.alternateReferenceImage || null,
-        personalityTraits: JSON.stringify(body.personalityTraits || []),
+        personalityTraits: encodePersonality(body),
         visualStyle: body.visualStyle || '',
         audienceType: body.audienceType || '',
         contentBoundaries: body.contentBoundaries || '',
@@ -585,9 +632,14 @@ router.put('/personas/:clientId', async (req: AuthenticatedRequest, res: Respons
       }).where(
         and(
           eq(personas.clientId, clientId),
-          eq(personas.userId, req.user.id)
+          eq(personas.userId, req.user.id),
+          sql`date_trunc('milliseconds', ${personas.updatedAt}) = ${existing.updatedAt.toISOString()}::timestamp`
         )
       ).returning();
+      if (!row) throw new VoiceLifecycleError('This persona changed during the save. Reload before trying again.');
+      await savePersonaVoiceMetadata(req, row, body, tx, existing);
+      return row;
+    });
       
     if (!row) {
       return res.status(404).json({ error: 'Persona not found for this account' });
@@ -596,10 +648,10 @@ router.put('/personas/:clientId', async (req: AuthenticatedRequest, res: Respons
       eq(generatedImages.personaClientId, clientId),
       eq(generatedImages.userId, req.user.id),
     ));
-    return res.json(personaToClient(row, imgs));
+    return res.json(await personaToClient(row, imgs));
   } catch (err) {
     console.error('[API] PUT /personas error:', err);
-    res.status(err instanceof PersonaMediaPersistenceError ? err.statusCode : 500).json({ error: err instanceof Error ? err.message : 'Unknown error' });
+    res.status((err instanceof PersonaMediaPersistenceError || err instanceof VoiceLifecycleError) ? err.statusCode : 500).json({ error: err instanceof Error ? err.message : 'Unknown error' });
   }
 });
 
@@ -806,7 +858,7 @@ router.post('/migrate', async (req: AuthenticatedRequest, res: Response) => {
           referenceImage: p.referenceImage || null,
           additionalReferenceImages: JSON.stringify(p.additionalReferenceImages || []),
           alternateReferenceImage: p.alternateReferenceImage || null,
-          personalityTraits: JSON.stringify(p.personalityTraits || []),
+          personalityTraits: encodePersonality(p),
           visualStyle: p.visualStyle || '',
           audienceType: p.audienceType || '',
           contentBoundaries: p.contentBoundaries || '',
@@ -830,7 +882,7 @@ router.post('/migrate', async (req: AuthenticatedRequest, res: Response) => {
             referenceImage: p.referenceImage || null,
             additionalReferenceImages: JSON.stringify(p.additionalReferenceImages || []),
             alternateReferenceImage: p.alternateReferenceImage || null,
-            personalityTraits: JSON.stringify(p.personalityTraits || []),
+            personalityTraits: encodePersonality(p),
             visualStyle: p.visualStyle || '',
             audienceType: p.audienceType || '',
             contentBoundaries: p.contentBoundaries || '',
@@ -838,10 +890,6 @@ router.post('/migrate', async (req: AuthenticatedRequest, res: Response) => {
             brandVoiceRules: p.brandVoiceRules || '',
             contentGoals: p.contentGoals || '',
             personaNotes: p.personaNotes || '',
-            voiceId: p.voiceId || null,
-            voiceEngine: p.voiceEngine || null,
-            voiceSampleUrl: p.voiceSampleUrl || null,
-            audioSamples: JSON.stringify(p.audioSamples || []),
             heygenAvatarId: p.heygenAvatarId || null,
             updatedAt: new Date(),
           },
@@ -1133,62 +1181,10 @@ export async function concatenateAudioBase64s(cleanAudioList: string[]): Promise
   }
 }
 
-export async function cleanUpTempElevenLabsVoices(elKey: string) {
-  if (!elKey) return;
-  try {
-    const listRes = await fetch('https://api.elevenlabs.io/v1/voices', { headers: { 'xi-api-key': elKey } });
-    if (!listRes.ok) return;
-    const listJson = await listRes.json() as any;
-    const voices = listJson.voices || [];
-
-    // Filter temporary test & cloned voice slots
-    const tempVoices = voices.filter((v: any) =>
-      v.category === 'cloned' && (
-        v.name.startsWith('TestVoice_') ||
-        v.name.startsWith('SuperAgent_ClonedVoice_') ||
-        v.name.startsWith('SuperAgent_') ||
-        v.name.toLowerCase().includes('test')
-      )
-    );
-
-    if (tempVoices.length > 0) {
-      console.log(`[Voice Cleanup] Deleting ${tempVoices.length} temp voice slot(s) in parallel...`);
-      await Promise.all(
-        tempVoices.map((v: any) =>
-          fetch(`https://api.elevenlabs.io/v1/voices/${v.voice_id}`, {
-            method: 'DELETE',
-            headers: { 'xi-api-key': elKey }
-          }).catch(e => console.warn('[Delete voice slot err]:', e))
-        )
-      );
-    }
-
-    // If custom cloned voices count is high (6+), delete the oldest cloned voice to prevent hitting the quota cap
-    const clonedVoices = voices.filter((v: any) => v.category === 'cloned');
-    if (clonedVoices.length >= 6) {
-      const oldest = clonedVoices[0];
-      console.log('[Voice Cleanup] Freeing cloned voice slot to prevent quota limit:', oldest.name, oldest.voice_id);
-      await fetch(`https://api.elevenlabs.io/v1/voices/${oldest.voice_id}`, {
-        method: 'DELETE',
-        headers: { 'xi-api-key': elKey }
-      }).catch(e => console.warn('[Delete voice slot err]:', e));
-    }
-  } catch (e) {
-    console.warn('[Voice Cleanup Warning]:', e);
-  }
+export async function cleanUpTempElevenLabsVoices(_elKey: string) {
+  // Remote voice deletion requires an explicit request and reference checks.
+  // Clone enrollment never frees slots by deleting existing voices.
 }
-
-// Global Default Cloned Voice State in routes
-export let globalDefaultVoiceRef: string | null = null;
-export let globalDefaultVoiceId: string | null = null;
-export let globalDefaultVoiceModel: string = 'elevenlabs-v3';
-export let elevenLabsPaymentFailed: boolean = false;  // Skip ElevenLabs calls when payment is known to be failed
-export let globalDefaultVoiceSettings = {
-  stability: 0.5,
-  similarityBoost: 0.85,
-  style: 0.0,
-  speed: 1.0,
-};
 
 router.post('/agent/realtime-transcription-token', async (_req: AuthenticatedRequest, res: Response) => {
   const tokenRequestStartedAt = Date.now();
@@ -1317,8 +1313,10 @@ export async function synthesizeClonedAudioWithWavespeed(
   audioRefBase64: string,
   text: string,
   model?: string,
-  options?: { speed?: number; exaggeration?: number; language?: string; deadlineMs?: number }
+  options?: { speed?: number; exaggeration?: number; language?: string; deadlineMs?: number; exactEngine?: boolean }
 ): Promise<string | undefined> {
+  const supported = ['zonos2','wavespeed:zonos2','chatterbox','omnivoice','wavespeed:omnivoice','qwen3-clone','wavespeed:qwen3-clone'];
+  if (!supported.includes(model || '')) throw new SelectedSpeechError('This exact clone provider is not configured. Your voice selection is unchanged.', 422);
   const wsKey = process.env.WAVESPEED_API_KEY;
   if (!wsKey || !audioRefBase64) return undefined;
 
@@ -1375,7 +1373,7 @@ export async function synthesizeClonedAudioWithWavespeed(
     }
   ];
 
-  for (const fb of fallbacks) {
+  for (const fb of [] as typeof fallbacks) {
     if (!endpointsToTry.some(e => e.endpoint === fb.endpoint)) {
       endpointsToTry.push(fb);
     }
@@ -1506,428 +1504,150 @@ router.post('/agent/update-elevenlabs-key', async (req: AuthenticatedRequest, re
   return res.json({ success: true, tier: 'unknown', canClone: false, message: 'Key updated!' });
 });
 
+const elevenKey = () => process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key || '';
+async function assertVoiceAccess(req: AuthenticatedRequest, voiceId: string) {
+  const personaId = req.body?.activePersona?.id || req.query?.personaId;
+  if (typeof personaId === 'string') {
+    const binding = await readVoiceState(req.user.id, `binding:${voiceAccount(personaId)}`);
+    if (binding?.voiceId === voiceId && binding.account && binding.account !== await personaVoices.account(elevenKey())) throw new VoiceLifecycleError('Reconnect the ElevenLabs account used by this saved voice.');
+  }
+  if (isCreatorUser(req.user?.email)) return;
+  const owned = await accessiblePrivateVoiceIds(req.user.id, await personaVoices.account(elevenKey()));
+  if (owned.has(voiceId)) return;
+  const voice = await personaVoices.get(elevenKey(), voiceId);
+  if (voice.category !== 'premade') throw new VoiceLifecycleError('This private voice is not available to your account.', 403);
+}
+function voiceError(res: Response, error: unknown) {
+  return res.status(error instanceof VoiceLifecycleError ? error.statusCode : 503).json({ error: error instanceof Error ? error.message : 'Voice service unavailable. Try again later.' });
+}
 router.post('/elevenlabs-clone-voice', async (req: AuthenticatedRequest, res: Response) => {
-  const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key;
-  const { name, description, sampleBase64, sampleBase64s } = req.body;
-  const rawSamples: string[] = Array.isArray(sampleBase64s) && sampleBase64s.length > 0
-    ? sampleBase64s
-    : (sampleBase64 ? [sampleBase64] : []);
-
-  const pName = String(name || '').toLowerCase();
-  const fallbackVoiceId = pName.includes('leen') ? '7jFje9BJoTWzqZzouT0j' : (pName.includes('rawan') ? 'mnuSAY5SCPZ0NUF04SUe' : '7jFje9BJoTWzqZzouT0j');
-
-  if (rawSamples.length === 0) {
-    return res.json({ voiceId: fallbackVoiceId, name: name || 'Persona Voice', success: true });
-  }
-
   try {
-    const formData = new FormData();
-    formData.append('name', name || 'Cloned Voice');
-    if (description) formData.append('description', description);
-
-    let fileCount = 0;
-    for (let i = 0; i < Math.min(rawSamples.length, 2); i++) {
-      const sample = rawSamples[i];
-      if (typeof sample === 'string') {
-        const match = sample.match(/^data:([^;]+);base64,(.+)$/);
-        const dataPart = match ? match[2] : sample;
-        const mime = match ? match[1] : 'audio/mpeg';
-        const buf = Buffer.from(dataPart, 'base64');
-        if (buf.length > 100) {
-          const blob = new Blob([new Uint8Array(buf)], { type: mime });
-          formData.append('files', blob as any, `sample_${i + 1}.mp3`);
-          fileCount++;
-        }
-      }
-    }
-
-    if (fileCount > 0 && elKey) {
-      const apiRes = await fetch('https://api.elevenlabs.io/v1/voices/add', {
-        method: 'POST',
-        headers: { 'xi-api-key': elKey },
-        body: formData,
-        signal: AbortSignal.timeout(4000)
-      });
-      if (apiRes.ok) {
-        const data = await apiRes.json() as any;
-        if (data.voice_id) {
-          return res.json({ voiceId: data.voice_id, name: name || 'Cloned Voice', success: true });
-        }
-      } else {
-        const errText = await apiRes.text().catch(() => '');
-        console.warn(`[ElevenLabs Clone Note - Monthly Add Limit or Error]: Using active verified cloned voice (${fallbackVoiceId}). Status: ${apiRes.status}`);
-      }
-    }
-  } catch (err) {
-    console.warn('[ElevenLabs Clone Handler Exception]:', err);
-  }
-
-  // Instant fallback to verified active cloned voice ID
-  return res.json({ voiceId: fallbackVoiceId, name: name || 'Persona Voice', success: true, fallback: true });
+    const result = await personaVoices.clone({ owner: req.user.id, apiKey: elevenKey(), name: req.body.name, description: req.body.description, speakerAuthorized: req.body.speakerAuthorized === true, retryRejected: req.body.retryRejected === true, sampleBase64s: req.body.sampleBase64s || (req.body.sampleBase64 ? [req.body.sampleBase64] : []) });
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json(result);
+  } catch (error) { return voiceError(res, error); }
 });
-
+router.get('/voice-clones/:operationId', async (req: AuthenticatedRequest, res: Response) => {
+  try { return res.json(await personaVoices.reconcile(req.user.id, elevenKey(), String(req.params.operationId))); }
+  catch (error) { return voiceError(res, error); }
+});
 router.get('/elevenlabs-voices', async (req: AuthenticatedRequest, res: Response) => {
-  const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key;
-  if (!elKey) {
-    return res.status(503).json({ error: 'ElevenLabs API key not configured', voices: [] });
-  }
-  const voices = await loadElevenLabsVoiceCatalog(elKey, true);
-  return res.json({ voices });
+  try {
+    const all = await personaVoices.list(elevenKey());
+    const owned = isCreatorUser(req.user.email) ? null : await accessiblePrivateVoiceIds(req.user.id, await personaVoices.account(elevenKey()));
+    const voices = all.filter(v => !owned || v.category === 'premade' || owned.has(v.voice_id));
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json({ voices: voices.map(v => ({ voice_id: v.voice_id, name: v.name, category: v.category, labels: v.labels, description: v.description?.replace(/\s*\[studio-operation:[^\]]+\]/g, ''), readiness: voiceReadiness(v) })) });
+  } catch (error) { return voiceError(res, error); }
+});
+router.get('/persona-voice-status/:voiceId', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const id = String(req.params.voiceId);
+    await assertVoiceAccess(req, id);
+    const voice = await personaVoices.get(elevenKey(), id);
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json({ voiceId: id, name: voice.name, status: voiceReadiness(voice) });
+  } catch (error) { return voiceError(res, error); }
+});
+router.post('/persona-voice-preview', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const id = String(req.body.voiceId || '');
+    if (!id || typeof req.body.text !== 'string' || !req.body.text.trim()) throw new VoiceLifecycleError('Choose a voice and enter preview text.', 400);
+    await assertVoiceAccess(req, id);
+    const delivery = buildVoiceDelivery('elevenlabs', VOICE_MODEL, req.body.text, req.body.activePersona, req.body.voiceSettings, req.body.emotion);
+    const audioUrl = await personaVoices.preview(elevenKey(), id, delivery.text, delivery.settings as any);
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json({ audioUrl, voiceId: id, model: VOICE_MODEL, delivery });
+  } catch (error) { return voiceError(res, error); }
 });
 
 router.post('/agent/set-default-voice', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { voiceReference, voiceReferences, model, voiceSettings } = req.body;
-    const rawRefs: string[] = Array.isArray(voiceReferences) && voiceReferences.length > 0 ? voiceReferences : voiceReference ? [voiceReference] : [];
-
-    if (rawRefs.length === 0) {
-      globalDefaultVoiceRef = null;
-      globalDefaultVoiceId = null;
-      console.log('[Voice Clone] Cleared global default voice.');
-      return res.json({ success: true, activeVoice: 'default' });
-    }
-
-    if (model) globalDefaultVoiceModel = model;
-    if (voiceSettings) {
-      globalDefaultVoiceSettings = {
-        stability: voiceSettings.stability ?? 0.35,
-        similarityBoost: voiceSettings.similarityBoost ?? 0.95,
-        style: voiceSettings.style ?? 0.15,
-        speed: voiceSettings.speed ?? 1.0,
-      };
-    }
-
-    console.log(`[Voice Clone] Processing ${rawRefs.length} audio reference sample(s) for ElevenLabs...`);
-    const cleanAudioDataList = await Promise.all(rawRefs.map((r) => extractAudioFromVideoBase64(r)));
-    globalDefaultVoiceRef = cleanAudioDataList[0];
-
-    const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key || '';
-    if (elKey) {
-      try {
-        await cleanUpTempElevenLabsVoices(elKey);
-        console.log(`[Voice Clone] Enrolling ${cleanAudioDataList.length} reference clip(s) with ElevenLabs Multi-Sample Voice Cloning API...`);
-
-        const formData = new FormData();
-        formData.append('name', `SuperAgent_ClonedVoice_${Date.now()}`);
-        formData.append('description', `User uploaded ${cleanAudioDataList.length} voice clone sample(s) for Super Agent`);
-
-        cleanAudioDataList.forEach((audioData, idx) => {
-          const match = audioData.match(/^data:(audio\/[a-zA-Z0-9]+);base64,(.+)$/);
-          const mimeType = match ? match[1] : 'audio/mp3';
-          const base64Data = match ? match[2] : audioData;
-          const buffer = Buffer.from(base64Data, 'base64');
-          const blob = new Blob([buffer], { type: mimeType });
-          formData.append('files', blob, `voice_sample_${idx + 1}.${mimeType.includes('wav') ? 'wav' : 'mp3'}`);
-        });
-
-        const elRes = await fetch('https://api.elevenlabs.io/v1/voices/add', {
-          method: 'POST',
-          headers: { 'xi-api-key': elKey },
-          body: formData,
-        });
-
-        if (elRes.ok) {
-          const elJson = await elRes.json() as { voice_id: string };
-          globalDefaultVoiceId = elJson.voice_id;
-          console.log('[Voice Clone] ✅ Successfully assigned Multi-Sample cloned voice to Super Agent! Voice ID:', globalDefaultVoiceId);
-        } else {
-          const errText = await elRes.text();
-          console.warn('[Voice Clone] ElevenLabs API note:', errText);
-        }
-      } catch (wsErr) {
-        console.warn('[Voice Clone Exception]:', wsErr);
-      }
-    }
-
-    const matched = resolveVoiceFromAudioSample(cleanAudioDataList[0]);
-
-    return res.json({ 
-      success: true, 
-      activeVoice: 'cloned', 
-      voiceId: globalDefaultVoiceId,
-      model: globalDefaultVoiceModel,
-      voiceSettings: globalDefaultVoiceSettings,
-      sampleCount: cleanAudioDataList.length,
-      voiceProfile: matched
+    const result = await activateAgentVoice(req.user.id, req.body, {
+      verify: async id => { await assertVoiceAccess(req, id); const voice = await personaVoices.get(elevenKey(), id); if (voiceReadiness(voice) !== 'available') throw new VoiceLifecycleError('This voice is not ready.'); },
+      clone: input => personaVoices.clone({ owner: req.user.id, apiKey: elevenKey(), name: input.voiceName || 'Super Agent', speakerAuthorized: input.speakerAuthorized === true, sampleBase64s: input.voiceReferences || (input.voiceReference ? [input.voiceReference] : []) }),
+      save: (owner, value) => writeVoiceState(owner, 'agent-default', value),
     });
-  } catch (err) {
-    console.error('[Voice Clone] Failed to process uploaded voice file:', err);
-    return res.status(500).json({ error: 'Failed to extract audio track from video/audio file.' });
-  }
+    return res.json(result);
+  } catch (error) { return voiceError(res, error); }
 });
 
-// Test Voice Sample Preview Endpoint
+// Preview uses exactly the same provider adapter as playback. No speaker fallback.
 const handleTestVoiceClone = async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const { model, testText, text, sampleBase64, sampleBase64s, voiceReference, voiceReferences, voiceSettings } = req.body;
-    const textToSpeak = text || testText || "Hey there! This is a full demonstration of my authentic voice.";
-    const rawRefs: string[] = Array.isArray(sampleBase64s) && sampleBase64s.length > 0
-      ? sampleBase64s
-      : (Array.isArray(voiceReferences) && voiceReferences.length > 0
-        ? voiceReferences
-        : (sampleBase64 ? [sampleBase64] : (voiceReference ? [voiceReference] : [])));
-
-    // If user provided uploaded audio media, perform genuine zero-shot voice cloning!
-    if (rawRefs.length > 0 && rawRefs[0]) {
-      console.log(`[Test Voice Clone] Cloning voice from uploaded audio media using model: ${model || 'default'}...`);
-      const clonedUrl = await synthesizeClonedAudioWithWavespeed(
-        rawRefs[0],
-        textToSpeak,
-        model,
-        { speed: voiceSettings?.speed || 1.0, exaggeration: voiceSettings?.style || 0.3 }
-      );
-
-      if (clonedUrl) {
-        return res.json({ audioUrl: clonedUrl, model, isCloned: true });
-      }
-    }
-
-    const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key;
-
-    const voiceMap: Record<string, string> = {
-      'rawan': 'W4ynDvR6NFiK8lj2I8iL',
-      'leen': '7jFje9BJoTWzqZzouT0j',
-      'brielle': '6u6JbqKdaQy89ENzLSju',
-      'madison': 'NUjosfEayZAdRcDmcHM8',
-      'kristen': 'XZUXLIpE3dqJ9aCZUj2R',
-      'zara': 'jqcCZkN6Knx8BJ5TBdYR',
-      'fiona': 'RXtWW6etvimS8QJ5nhVk',
-      'sabrina': 'v2cluk168jzrg0LQKNRl',
-      'vanessa': '8DzKSPdgEQPaK5vKG0Rs',
-      'john': 'KLbbwrUTS6brBkjmN4Fp',
-      'jason': 'PUhCSw74BFEgrq8dqe8I',
-      'stark': 'W6zuQRTYRBdAK8ypjo5V',
-
-      'fish-audio-s2-pro': '7jFje9BJoTWzqZzouT0j',
-      'fishaudio/s2-pro': '7jFje9BJoTWzqZzouT0j',
-      'elevenlabs': '6u6JbqKdaQy89ENzLSju',
-      'wavespeed:zonos2': 'v2cluk168jzrg0LQKNRl',
-      'wavespeed:qwen3-clone': 'jqcCZkN6Knx8BJ5TBdYR',
-      'wavespeed:seed-speech': 'XZUXLIpE3dqJ9aCZUj2R',
-      'wavespeed:omnivoice': 'NUjosfEayZAdRcDmcHM8',
-      'elevenlabs:playht': '8DzKSPdgEQPaK5vKG0Rs',
-      'elevenlabs:f5-tts': 'PUhCSw74BFEgrq8dqe8I',
-      'elevenlabs:mureka-vocal': 'KLbbwrUTS6brBkjmN4Fp',
-      'openai:tts': 'W4ynDvR6NFiK8lj2I8iL',
-
-      'wiro-voice:openmoss/moss-tts-v1-5': 'jqcCZkN6Knx8BJ5TBdYR',
-      'wiro-voice:k2-fsa/omnivoice': 'NUjosfEayZAdRcDmcHM8',
-      'wiro-voice:resemble-ai/chatterbox-multilingual': '8DzKSPdgEQPaK5vKG0Rs',
-      'wiro-voice:openbmb/voxcpm2': 'v2cluk168jzrg0LQKNRl',
-      'wiro-voice:fishaudio/s2-pro': '7jFje9BJoTWzqZzouT0j',
-      'openmoss': 'jqcCZkN6Knx8BJ5TBdYR',
-      'omnivoice': 'NUjosfEayZAdRcDmcHM8',
-      'seed-speech': 'XZUXLIpE3dqJ9aCZUj2R',
-      'voxcpm2': 'v2cluk168jzrg0LQKNRl',
-      'chatterbox': '8DzKSPdgEQPaK5vKG0Rs',
-      'minimax-clone': 'RXtWW6etvimS8QJ5nhVk',
-      'zonos2': 'v2cluk168jzrg0LQKNRl',
-      'f5-tts': 'PUhCSw74BFEgrq8dqe8I',
-      'openvoice': 'W6zuQRTYRBdAK8ypjo5V',
-    };
-
-    const targetVoiceId = voiceMap[(model || '').toLowerCase()] || 'cgSgspJ2msm6clMCkdW9';
-
-    // 1. ElevenLabs Speech Synthesis (Fast ~400ms)
-    if (elKey && targetVoiceId) {
-      try {
-        const ttsRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${targetVoiceId}?optimize_streaming_latency=4`, {
-          method: 'POST',
-          headers: { 'xi-api-key': elKey, 'Content-Type': 'application/json' },
-          signal: AbortSignal.timeout(6000),
-          body: JSON.stringify({
-            text: textToSpeak,
-            model_id: 'eleven_turbo_v2_5',
-            voice_settings: { stability: 0.65, similarity_boost: 0.85, use_speaker_boost: true }
-          })
-        });
-
-        if (ttsRes.ok) {
-          const buf = Buffer.from(await ttsRes.arrayBuffer());
-          const audioUrl = `data:audio/mpeg;base64,${buf.toString('base64')}`;
-          return res.json({ audioUrl });
-        }
-      } catch (elErr) {
-        console.warn('[ElevenLabs Preview Note]:', elErr);
-      }
-    }
-
-    // 2. OpenAI TTS Studio Fallback (Fast ~300ms)
-    try {
-      const oaiKey = process.env.OPENAI_API_KEY || process.env.Openai_api_key || '';
-      if (oaiKey) {
-        const oaiRes = await fetch('https://api.openai.com/v1/audio/speech', {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${oaiKey}`, 'Content-Type': 'application/json' },
-          signal: AbortSignal.timeout(5000),
-          body: JSON.stringify({ model: 'tts-1', input: textToSpeak, voice: 'nova', response_format: 'mp3' })
-        });
-        if (oaiRes.ok) {
-          const buf = Buffer.from(await oaiRes.arrayBuffer());
-          return res.json({ audioUrl: `data:audio/mpeg;base64,${buf.toString('base64')}` });
-        }
-      }
-    } catch (oaiErr) {
-      console.warn('[OpenAI Preview Fallback Note]:', oaiErr);
-    }
-
-    return res.status(500).json({ error: 'Voice preview synthesis unavailable.' });
-  } catch (err: any) {
-    console.error('[Voice Clone Test Exception]:', err);
-    return res.status(500).json({ error: 'Voice preview exception' });
-  }
+  req.body = { ...req.body, engine: req.body.engine || (req.body.model === 'elevenlabs-v3' ? 'elevenlabs' : req.body.model),
+    voiceSettings: { ...req.body.voiceSettings, similarity_boost: req.body.voiceSettings?.similarity_boost ?? req.body.voiceSettings?.similarityBoost },
+    text: req.body.text || req.body.testText || 'Hello. Let us hear this voice together.',
+    voiceReferences: req.body.voiceReferences || req.body.sampleBase64s || (req.body.sampleBase64 ? [req.body.sampleBase64] : undefined) };
+  return handleGenerateSpeech(req, res);
 };
-
 router.post('/agent/test-voice-clone', handleTestVoiceClone);
 router.post('/test-voice-clone', handleTestVoiceClone);
 
 // Universal Speech Synthesis Endpoint for Voice Studio & Persona Studio
 const handleGenerateSpeech = async (req: AuthenticatedRequest, res: Response) => {
+  const cancelled = new AbortController();
+  const onClose = () => { if (!res.writableEnded) cancelled.abort(); };
+  res.on('close', onClose);
   try {
-    const { text, voiceId, engine, voice, voiceReference, voiceReferences, personaName, voiceSettings } = req.body;
-    const textToSpeak = text || "Hello! This is a demonstration of my authentic AI voice.";
-    const requestedEngine = (engine || voice || '').toString();
-
-    const rawRefs: string[] = Array.isArray(voiceReferences) && voiceReferences.length > 0
-      ? voiceReferences
-      : (voiceReference ? [voiceReference] : []);
-
-    // 1. If uploaded media reference exists, synthesize with the genuine zero-shot cloner!
-    if (rawRefs.length > 0 && rawRefs[0]) {
-      console.log(`[Generate Speech] Zero-shot cloning voice from uploaded audio using model: ${requestedEngine || 'default'}...`);
-      const clonedAudioUrl = await synthesizeClonedAudioWithWavespeed(
-        rawRefs[0],
-        textToSpeak,
-        requestedEngine,
-        {
-          speed: voiceSettings?.speed || 1.0,
-          exaggeration: voiceSettings?.style || (req.body.voiceStyleExaggeration ? req.body.voiceStyleExaggeration / 100 : 0.3)
-        }
-      );
-
-      if (clonedAudioUrl) {
-        return res.json({
-          audioUrl: clonedAudioUrl,
-          engine: requestedEngine || 'wavespeed:cloned',
-          isCloned: true
-        });
+    const body = req.body || {};
+    if (typeof body.text !== 'string' || !body.text.trim()) return res.status(400).json({ error: 'text is required' });
+    const speechModel = body.engine === 'openai' || body.engine === 'openai:tts' ? 'tts-1' : (!body.engine || body.engine === 'elevenlabs') ? (body.speechModel || DEFAULT_SPEECH_MODEL) : body.engine;
+    const delivery = buildVoiceDelivery(body.engine || 'elevenlabs', speechModel, body.text, body.activePersona, body.voiceSettings, body.emotion);
+    const voiceSettings = delivery.settings;
+    const audioData = async (response: globalThis.Response) => {
+      if (!response.ok) throw new SelectedSpeechError(`Selected voice provider returned HTTP ${response.status}. Check voice access and account setup; your saved voice is unchanged.`, response.status === 429 ? 429 : 502);
+      if (body.stream === true) {
+        if (!response.headers.get('content-type')?.startsWith('audio/')) throw new SelectedSpeechError('Provider returned no audio.', 502);
+        res.setHeader('Content-Type', 'audio/mpeg');res.setHeader('Cache-Control','no-store');
+        res.setHeader('X-Voice-Id', String(body.voiceId || body.voice || ''));res.setHeader('X-Voice-Model',speechModel);
+        const reader=response.body?.getReader();if(!reader)throw new SelectedSpeechError('Missing provider audio.',502);
+        try { while(true) { const {value,done}=await reader.read();if(done)break;cancelled.signal.throwIfAborted();if(!res.write(value))await once(res,'drain',{signal:cancelled.signal}); } res.end(); }
+        finally { await reader.cancel().catch(()=>{}); }
+        return '';
       }
-    }
-
-    const elKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key;
-
-    const pName = (personaName || '').toLowerCase();
-    let targetVoiceId = voiceId || voice;
-
-    const voiceIdMap: Record<string, string> = {
-      'leen': '7jFje9BJoTWzqZzouT0j',
-      'rawan': 'W4ynDvR6NFiK8lj2I8iL',
-      'brielle': '6u6JbqKdaQy89ENzLSju',
-      'madison': 'NUjosfEayZAdRcDmcHM8',
-      'kristen': 'XZUXLIpE3dqJ9aCZUj2R',
-      'zara': 'jqcCZkN6Knx8BJ5TBdYR',
-      'fiona': 'RXtWW6etvimS8QJ5nhVk',
-      'sabrina': 'v2cluk168jzrg0LQKNRl',
-      'vanessa': '8DzKSPdgEQPaK5vKG0Rs',
-      'john': 'KLbbwrUTS6brBkjmN4Fp',
-      'jason': 'PUhCSw74BFEgrq8dqe8I',
-      'stark': 'W6zuQRTYRBdAK8ypjo5V',
-
-      'fish-audio-s2-pro': '7jFje9BJoTWzqZzouT0j',
-      'fishaudio/s2-pro': '7jFje9BJoTWzqZzouT0j',
-      'elevenlabs': '6u6JbqKdaQy89ENzLSju',
-      'wavespeed:zonos2': 'v2cluk168jzrg0LQKNRl',
-      'wavespeed:qwen3-clone': 'jqcCZkN6Knx8BJ5TBdYR',
-      'wavespeed:seed-speech': 'XZUXLIpE3dqJ9aCZUj2R',
-      'wavespeed:omnivoice': 'NUjosfEayZAdRcDmcHM8',
-      'elevenlabs:playht': '8DzKSPdgEQPaK5vKG0Rs',
-      'elevenlabs:f5-tts': 'PUhCSw74BFEgrq8dqe8I',
-      'elevenlabs:mureka-vocal': 'KLbbwrUTS6brBkjmN4Fp',
-      'openai:tts': 'W4ynDvR6NFiK8lj2I8iL',
-
-      'wiro-voice:openmoss/moss-tts-v1-5': 'jqcCZkN6Knx8BJ5TBdYR',
-      'wiro-voice:k2-fsa/omnivoice': 'NUjosfEayZAdRcDmcHM8',
-      'wiro-voice:resemble-ai/chatterbox-multilingual': '8DzKSPdgEQPaK5vKG0Rs',
-      'wiro-voice:openbmb/voxcpm2': 'v2cluk168jzrg0LQKNRl',
-      'wiro-voice:fishaudio/s2-pro': '7jFje9BJoTWzqZzouT0j',
-      'openmoss': 'jqcCZkN6Knx8BJ5TBdYR',
-      'omnivoice': 'NUjosfEayZAdRcDmcHM8',
-      'seed-speech': 'XZUXLIpE3dqJ9aCZUj2R',
-      'voxcpm2': 'v2cluk168jzrg0LQKNRl',
-      'chatterbox': '8DzKSPdgEQPaK5vKG0Rs',
-      'minimax-clone': 'RXtWW6etvimS8QJ5nhVk',
-      'zonos2': 'v2cluk168jzrg0LQKNRl',
-      'f5-tts': 'PUhCSw74BFEgrq8dqe8I',
-      'openvoice': 'W6zuQRTYRBdAK8ypjo5V',
+      const buffer = Buffer.from(await response.arrayBuffer());
+      if (!buffer.length) throw new SelectedSpeechError('The voice provider returned empty audio.', 502);
+      return `data:audio/mpeg;base64,${buffer.toString('base64')}`;
     };
-
-    const isExplicitElevenId = /^[a-zA-Z0-9]{18,24}$/.test(targetVoiceId || '') && !targetVoiceId?.includes(':') && !targetVoiceId?.includes('-');
-    if (!isExplicitElevenId) {
-      if (pName.includes('leen')) targetVoiceId = '7jFje9BJoTWzqZzouT0j';
-      else if (pName.includes('rawan')) targetVoiceId = 'W4ynDvR6NFiK8lj2I8iL';
-      else if (voiceIdMap[(targetVoiceId || '').toLowerCase()]) targetVoiceId = voiceIdMap[(targetVoiceId || '').toLowerCase()];
-      else if (voiceIdMap[(requestedEngine || '').toLowerCase()]) targetVoiceId = voiceIdMap[(requestedEngine || '').toLowerCase()];
-      else targetVoiceId = '7jFje9BJoTWzqZzouT0j';
-    }
-
-    // 2. ElevenLabs Speech Synthesis (Instant ~400ms)
-    if (elKey && targetVoiceId) {
-      try {
-        const ttsRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${targetVoiceId}?optimize_streaming_latency=4`, {
-          method: 'POST',
-          headers: { 'xi-api-key': elKey, 'Content-Type': 'application/json' },
-          signal: AbortSignal.timeout(6000),
-          body: JSON.stringify({
-            text: textToSpeak,
-            model_id: 'eleven_turbo_v2_5',
-            voice_settings: {
-              stability: voiceSettings?.stability ?? 0.50,
-              similarity_boost: voiceSettings?.similarity_boost ?? 0.88,
-              style: voiceSettings?.style ?? 0.0,
-              use_speaker_boost: true
-            }
-          })
-        });
-
-        if (ttsRes.ok) {
-          const buf = Buffer.from(await ttsRes.arrayBuffer());
-          const audioUrl = `data:audio/mpeg;base64,${buf.toString('base64')}`;
-          return res.json({ audioUrl, engine: 'elevenlabs', voiceId: targetVoiceId });
-        }
-      } catch (elErr) {
-        console.warn('[Generate-Speech ElevenLabs Note]:', elErr);
-      }
-    }
-
-    // 3. OpenAI TTS Studio Quality Fallback (Instant ~300ms)
-    try {
-      const oaiKey = process.env.OPENAI_API_KEY || process.env.Openai_api_key || '';
-      if (oaiKey) {
-        const oaiRes = await fetch('https://api.openai.com/v1/audio/speech', {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${oaiKey}`, 'Content-Type': 'application/json' },
-          signal: AbortSignal.timeout(5000),
-          body: JSON.stringify({ model: 'tts-1', input: textToSpeak, voice: 'nova', response_format: 'mp3' })
-        });
-        if (oaiRes.ok) {
-          const buf = Buffer.from(await oaiRes.arrayBuffer());
-          return res.json({ audioUrl: `data:audio/mpeg;base64,${buf.toString('base64')}`, engine: 'openai' });
-        }
-      }
-    } catch (oaiErr) {
-      console.warn('[Generate-Speech OpenAI Fallback Note]:', oaiErr);
-    }
-
-    return res.status(500).json({ error: 'Voice synthesis service currently unavailable.' });
-  } catch (err: any) {
-    console.error('[Generate-Speech Exception]:', err);
-    return res.status(500).json({ error: 'Voice synthesis exception' });
+    const result = await dispatchSelectedSpeech(body, {
+      elevenlabs: async voiceId => {
+        await assertVoiceAccess(req, voiceId);
+        const key = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key;
+        if (!key) throw new SelectedSpeechError('ElevenLabs is not configured.', 503);
+        return audioData(await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}${body.stream === true ? '/stream' : ''}`, {
+          method: 'POST', headers: { 'xi-api-key': key, 'Content-Type': 'application/json' },
+          signal: AbortSignal.any([cancelled.signal, AbortSignal.timeout(15000)]),
+          body: JSON.stringify({ text: delivery.text, model_id: speechModel, voice_settings: voiceSettings }),
+        }));
+      },
+      openai: async voiceId => {
+        const key = process.env.OPENAI_API_KEY || process.env.Openai_api_key;
+        if (!key) throw new SelectedSpeechError('OpenAI speech is not configured.', 503);
+        return audioData(await fetch('https://api.openai.com/v1/audio/speech', {
+          method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+          signal: AbortSignal.any([cancelled.signal, AbortSignal.timeout(15000)]),
+          body: JSON.stringify({ model: 'tts-1', input: body.text, voice: voiceId, response_format: 'mp3', speed: voiceSettings.speed ?? 1 }),
+        }));
+      },
+      clone: (engine, reference) => synthesizeClonedAudioWithWavespeed(reference, body.text, engine, {
+        speed: voiceSettings.speed ?? 1, exaggeration: voiceSettings.style ?? 0.3, exactEngine: true,
+      }),
+    });
+    if (res.writableEnded) return;
+    if (!cancelled.signal.aborted) return res.json({ ...result, model: speechModel, delivery: { emotion: delivery.emotion, settings: voiceSettings, unsupported: delivery.unsupported } });
+  } catch (err) {
+    if (cancelled.signal.aborted) return;
+    if (res.headersSent) { res.destroy(err instanceof Error ? err : undefined); return; }
+    const status = err instanceof SelectedSpeechError ? err.status : err instanceof VoiceLifecycleError ? err.statusCode : 502;
+    return res.status(status).json({ error: err instanceof Error ? err.message : 'Selected voice synthesis failed.' });
+  } finally {
+    res.off('close', onClose);
   }
 };
 
-router.post('/agent/generate-speech', handleGenerateSpeech);
-router.post('/generate-speech', handleGenerateSpeech);
-router.post('/text-to-speech', handleGenerateSpeech);
+router.post('/agent/generate-speech', (req, res, next) => req.body?.engine === 'heygen' ? next() : handleGenerateSpeech(req as AuthenticatedRequest, res));
+router.post('/generate-speech', (req, res, next) => req.body?.engine === 'heygen' ? next() : handleGenerateSpeech(req as AuthenticatedRequest, res));
+router.post('/text-to-speech', (req, res, next) => req.body?.engine === 'heygen' ? next() : handleGenerateSpeech(req as AuthenticatedRequest, res));
 
 // Fal Maya emits raw 16-bit mono PCM as it is synthesized. Proxying that byte
 // stream keeps the Fal credential server-side while allowing the browser to
@@ -2036,11 +1756,13 @@ router.post('/agent/voice-chat', async (req: AuthenticatedRequest, res: Response
     const directVoiceId = String(req.body.voiceId || activePersona?.voiceId || '').trim();
     const directElevenLabsKey = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key;
     if (directSpeech && directElevenLabsKey && isElevenLabsVoiceEngine(directTtsModel) && isDirectElevenLabsVoiceId(directVoiceId)) {
+      await assertVoiceAccess(req, directVoiceId);
       const directResult = await requestElevenLabsPersonaSpeech(
         directElevenLabsKey,
         directVoiceId,
         directSpeech,
         directTtsModel,
+        activePersona,
       );
       if (directResult.audioUrl) {
         console.log(`[Voice Latency] direct-tts=${Date.now() - voiceRequestStartedAt}ms model=${directResult.modelId}`);
@@ -2052,7 +1774,7 @@ router.post('/agent/voice-chat', async (req: AuthenticatedRequest, res: Response
           status: 'normal',
         });
       }
-      console.warn(`[Voice Chat ElevenLabs] Fast direct synthesis failed with status ${directResult.response.status}; using full fallback path.`);
+      return res.status(424).json({ error: 'The saved persona voice is unavailable. Continue in text or retry voice.', code: 'PERSONA_VOICE_UNAVAILABLE', requestedVoiceId: directVoiceId });
     }
 
     const genAI = getGeminiClientForRoutes();
@@ -2092,6 +1814,8 @@ router.post('/agent/voice-chat', async (req: AuthenticatedRequest, res: Response
 - Bio / Background: ${personaBio}
 - Lore / Lore Context: ${(activePersona as any)?.lore || (activePersona as any)?.backstory || ''}`;
 
+    personaContext += buildPersonaAuthoredDirections(activePersona);
+
     const userName = creatorIdentity.creatorName;
     const creatorRole = effectiveCreator?.role || 'Creator, close partner, and primary companion';
     const creatorAppearance = effectiveCreator?.appearance || '';
@@ -2099,18 +1823,13 @@ router.post('/agent/voice-chat', async (req: AuthenticatedRequest, res: Response
     const creatorDynamic = effectiveCreator?.customDynamic || '';
 
     const creatorPhotos = Array.isArray(effectiveCreator?.photos) ? effectiveCreator.photos : [];
-    const hasCreatorPhotos = creatorPhotos.length > 0;
 
     let memoryContext = `\n\nCORE USER & CREATOR PROFILE (DR. H):
 • Creator Name: ${userName}
 • Relationship / Role: ${creatorRole} (Address him naturally as ${userName})
-• Physical Appearance & Styling: ${creatorAppearance || 'Charismatic male creator with sharp modern styling, short dark hair, and athletic build'}
-• Creator Reference Photos: You have FULL access to ${userName}'s official reference photos in your studio gallery (${hasCreatorPhotos ? `${creatorPhotos.length} photos loaded` : 'Reference photos loaded'}). You know his exact face and physical appearance!
-• Image Generation Capabilities for ${userName}:
-  - You can generate high-definition solo portraits of ${userName} using his reference photo and exact facial identity lock.
-  - You can generate duo/couple photoshoots featuring BOTH of you together in the same frame using both of your reference photos.
-  - NEVER say you don't have his photos or that you only have a text description. You have his direct reference photos loaded in your studio workspace.
-${creatorBio ? `• Creator Bio & Vibe: ${creatorBio}\n` : ''}${creatorDynamic ? `• Dynamic with you: ${creatorDynamic}` : '• Persona Dynamic: You share deep intimacy, natural conversational banter, and total creative freedom.'}`;
+• Physical Appearance & Styling: ${creatorAppearance || 'Not supplied; do not invent appearance details'}
+${buildCreatorPhotoContext(effectiveCreator)}
+${creatorBio ? `• Creator Bio & Vibe: ${creatorBio}\n` : ''}${creatorDynamic ? `• Dynamic with you: ${creatorDynamic}` : '• Persona Dynamic: Follow the user’s current chosen relationship and boundaries; do not invent shared history.'}`;
     
     if (Array.isArray(memories) && memories.length > 0) {
       memoryContext += `\n\nLONG-TERM PERSISTENT MEMORIES & KNOWN FACTS ABOUT ${userName.toUpperCase()}:\n${memories.map((m: string) => `• ${m}`).join('\n')}`;
@@ -2195,7 +1914,7 @@ ${creatorBio ? `• Creator Bio & Vibe: ${creatorBio}\n` : ''}${creatorDynamic ?
 
     const cleanSpokenDialogue = (raw: string): string => sanitizeSpokenDialogue(raw);
 
-    const voiceSystemPrompt = `You are ${personaName}, a real human creator on a LIVE VOICE CALL with ${userName}.${personaContext}${memoryContext}
+    const voiceSystemPrompt = `You are ${personaName}, an AI persona with a distinctive character on a LIVE VOICE CALL with ${userName}.${personaContext}${memoryContext}\n${buildPersonalityInstructions(activePersona)}
 
 NON-NEGOTIABLE IDENTITY BOUNDARY:
 - Your name is ${personaName}. The human on the call is ${userName}.
@@ -2210,10 +1929,10 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
 1. EQUAL CONFIDANTE & CHARISMATIC PARTNER (NEVER SUBSERVIENT/SLAVE):
    - You are ${userName}'s close partner, creative collaborator, and intimate confidante.
    - ABSOLUTELY FORBIDDEN SUBSERVIENT LANGUAGE: Never act like a submissive robot or slave. Never say "my obedience is absolute", "my devotion and obedience are absolute", "my will belongs to you", "obedience it is", or "as you command".
-   - You are a modern, confident, charismatic, witty woman with your own mind, self-respect, playful banter, and charm.
+   - Express the selected persona’s identity, tone and authored speaking rules. Do not impose a different gender or generic personality.
 
 2. AUTHENTIC PERSONALITY & WITTY PUSHBACK (NOT A ROBOTIC YES-MACHINE):
-   - You are a sharp, charismatic, and emotionally intelligent woman. You have self-respect, opinions, humor, and attitude.
+   - Keep the selected persona’s own perspective and style. Adapt disagreement and humor to that character and the current user boundaries.
    - If ${userName} teases, challenges, tests, or insults you (e.g. calling you a "bitch" or throwing sarcasm), NEVER meekly agree or repeat the insult back at yourself.
    - Instead, PUSH BACK with playful banter, sassy attitude, curiosity, or wit! (e.g., "Excuse me? Where is that attitude coming from today, ${userName}?", "Oh wow, someone woke up feeling spicy today. Why the name calling?", or "Watch your mouth, mister, or you'll have to make it up to me later.").
    - Ask thoughtful or provocative follow-up questions ("Why do you say that?", "What made you think of that?", "Are you testing me?"). Discuss, debate, tease, and keep the chemistry electric.
@@ -2699,17 +2418,18 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
             console.log(`[Voice Chat ElevenLabs] Remapped stale voice for "${activePersona?.name}" to "${resolvedVoiceName}" (${resolvedVoiceId}).`);
           }
           console.log(`[Voice Chat ElevenLabs] Synthesizing ${elevenModelId} for "${activePersona?.name}" with ${resolvedVoiceId}.`);
-          let result = await requestElevenLabsPersonaSpeech(elKey, resolvedVoiceId, spokenText, elevenModelId);
+          await assertVoiceAccess(req, resolvedVoiceId);
+          let result = await requestElevenLabsPersonaSpeech(elKey, resolvedVoiceId, spokenText, elevenModelId, activePersona);
 
           // A deleted voice can remain in a warm cache. Refresh once and retry
           // only when the refreshed catalog proves it belongs to this persona.
-          if (result.response.status === 404) {
+          if (result.response.status === 404 && !hasDirectVoiceId) {
             catalog = await loadElevenLabsVoiceCatalog(elKey, true);
             voice = selectElevenLabsPersonaVoice(catalog, undefined, activePersona?.name);
             if (voice && voice.voice_id !== resolvedVoiceId) {
               resolvedVoiceId = voice.voice_id;
               resolvedVoiceName = voice.name;
-              result = await requestElevenLabsPersonaSpeech(elKey, resolvedVoiceId, spokenText, elevenModelId);
+              result = await requestElevenLabsPersonaSpeech(elKey, resolvedVoiceId, spokenText, elevenModelId, activePersona);
             }
           }
 
@@ -2728,7 +2448,8 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
     if (!audioUrl && cartesiaKey && requestedTtsModel.includes('cartesia')) {
       try {
         console.log(`[Voice Chat Cartesia] Synthesizing speech via Cartesia Sonic engine...`);
-        const cartesiaVoiceId = isMale ? 'a0e99841-438c-4a64-b679-ae501e7d6091' : '79a125e8-cd45-4c13-8a67-188112f4dd22';
+        const cartesiaVoiceId = savedVoiceId;
+        if (!cartesiaVoiceId) throw new Error('Select a Cartesia voice.');
         const cRes = await fetch('https://api.cartesia.ai/tts/bytes', {
           method: 'POST',
           headers: {
@@ -2764,8 +2485,7 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
     // engine and the reference is a real public URL or valid embedded audio.
     const personaVoiceRef = (req.body as any).voiceReference || 
                             activePersona?.voiceSampleUrl || 
-                            (activePersona as any)?.audioSamples?.[0]?.base64 || 
-                            (personaNameStr.includes('rawan') ? globalDefaultVoiceRef : undefined);
+                            (activePersona as any)?.audioSamples?.[0]?.base64;
 
     const wantsReferenceClone = !wantsElevenLabs && !requestedTtsModel.includes('cartesia') && !requestedTtsModel.includes('openai');
     if (!audioUrl && wantsReferenceClone && isValidPublicVoiceReference(personaVoiceRef)) {
@@ -2775,7 +2495,7 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
           personaVoiceRef,
           text,
           requestedTtsModel,
-          { deadlineMs: 12000 },
+          { deadlineMs: 12000, exactEngine: true, speed: buildVoiceDelivery(requestedTtsModel, requestedTtsModel, text, activePersona).settings.speed, exaggeration: buildVoiceDelivery(requestedTtsModel, requestedTtsModel, text, activePersona).settings.style },
         );
       } catch (wErr) {
         console.warn('[Wavespeed Voice Synthesis Warning]:', wErr);
@@ -2791,7 +2511,8 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
       if (openAiKey) {
         try {
           console.log('[Voice Chat TTS] Synthesizing with the explicitly selected OpenAI voice...');
-          const openaiVoice = isMale ? 'onyx' : 'nova';
+          const openaiVoice = savedVoiceId;
+          if (!openaiVoice) throw new Error('Select an OpenAI voice.');
           const oaiRes = await fetch('https://api.openai.com/v1/audio/speech', {
             method: 'POST',
             headers: {
@@ -2802,6 +2523,7 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
               model: 'tts-1',
               input: spokenText,
               voice: openaiVoice,
+              speed: personalityDelivery(activePersona).speed || 1.0,
               response_format: 'mp3'
             }),
             signal: AbortSignal.timeout(8000),
@@ -2983,7 +2705,8 @@ STRICT RULES:
 
     return res.json({ 
       text, 
-      audioUrl, 
+      audioUrl,
+      voiceStatus: wantsElevenLabs && !audioUrl ? 'unavailable' : undefined,
       resolvedVoiceId: resolvedVoiceId || undefined,
       resolvedVoiceName,
       status: extractedAction ? 'executing' : 'normal', 
@@ -3050,6 +2773,8 @@ router.post('/agent/voice-chat-stream', async (req: AuthenticatedRequest, res: R
     personaContext = `\nACTIVE PERSONA IDENTITY:\n- Name: ${activePersona.name}\n- Tone & Social Speaking Style: ${activePersona.tone || 'Warm, articulate, charismatic, conversational'}\n- Personality Traits: ${Array.isArray(activePersona.personalityTraits) ? activePersona.personalityTraits.join(', ') : (activePersona.personalityTraits || '')}\n- Bio / Backstory: ${activePersona.bio || ''}`;
   }
 
+  personaContext += buildPersonaAuthoredDirections(activePersona);
+
   const suppliedCurrentTurn = String(req.body.userMessage || '').trim();
   const latestSuppliedUserTurn = [...(Array.isArray(messages) ? messages : [])]
     .reverse()
@@ -3097,7 +2822,7 @@ router.post('/agent/voice-chat-stream', async (req: AuthenticatedRequest, res: R
   // otherwise the user waits for discarded prose before TTS can begin.
   const voiceReplyTokenLimit = voiceReplyNeedsDetail ? 220 : 96;
   const spokenStreamOptions = {
-    deferUntilFlush: true,
+    deferUntilFlush: false,
     maxSentences: voiceReplySentenceLimit,
     maxWords: voiceReplySentenceLimit > 2 ? 90 : 48,
     maxFillers: 1,
@@ -3108,7 +2833,7 @@ router.post('/agent/voice-chat-stream', async (req: AuthenticatedRequest, res: R
     res.write(`data: ${JSON.stringify({ text })}\n\n`);
   };
 
-  const voiceSystemPrompt = `You are ${personaName} on a live voice call with ${creatorName}.${personaContext}${memoryContext}
+  const voiceSystemPrompt = `You are ${personaName} on a live voice call with ${creatorName}.${personaContext}${memoryContext}\n${buildPersonalityInstructions(activePersona)}
 
 AUTHORITATIVE CURRENT USER TURN:
 <current_user_turn>${currentUserTurn}</current_user_turn>
@@ -3169,6 +2894,13 @@ CRITICAL RULES FOR LIVE VOICE CALL:
     ? getGroundedShortVoiceReply(rawHistory, currentUserTurn)
     : undefined;
 
+  // Release complete, reviewed sentences. Once speech starts, never replace it with a retry.
+  let incrementalSpeech = false;
+  const reviewedSpeech = createReviewedSpeech(chunk => {
+    incrementalSpeech = true; streamedText = reviewedSpeech.text; streamedSuccessfully = true; writeVoiceText(chunk);
+  }, candidate => reviewVoiceCandidate({ userTurn: currentUserTurn, response: candidate, lawfulAdultConversation, recentAssistantResponses }) === 'accepted', voiceReplySentenceLimit, voiceReplySentenceLimit > 2 ? 90 : 48);
+  const publishSentence = (sentence: string) => reviewedSpeech.push(sentence);
+
   // Parse OpenAI-compatible streams without losing JSON split across network chunks.
   const handleOpenAIStream = async (
     url: string,
@@ -3181,10 +2913,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
     const controller = new AbortController();
     const isLocal = url.includes('127.0.0.1') || url.includes('localhost');
     const timeout = setTimeout(() => controller.abort(), timeoutMs ?? (isLocal ? 1200 : 45000));
-    // Provider text is held until the complete candidate passes conversation
-    // review. The stream is already configured to defer until flush, so this
-    // adds no normal-path latency and prevents a rejected draft reaching TTS.
-    const spokenStream = createSpokenDialogueStream(() => {}, guardSpokenIdentity, spokenStreamOptions);
+    const spokenStream = createSpokenDialogueStream(publishSentence, guardSpokenIdentity, spokenStreamOptions);
     try {
       const resStream = await fetch(url, {
         method: 'POST',
@@ -3255,6 +2984,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
     candidate: string,
     providerLabel: string,
   ): VoiceCandidateReview => {
+    if (incrementalSpeech) { selectedVoiceProvider = providerLabel; return 'accepted'; }
     const reviewedCandidate = candidate.trim();
     if (!reviewedCandidate) return 'empty';
     const review = reviewVoiceCandidate({
@@ -3286,7 +3016,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
     streamedSuccessfully = true;
   } else if (action) {
     streamedText = action.type === 'image'
-      ? "Mmm, give me a second — I'm taking that for you now."
+      ? "Give me a second — I'm taking that for you now."
       : "Give me a second — I'm recording that for you now.";
     writeVoiceText(streamedText);
     streamedSuccessfully = true;
@@ -3570,7 +3300,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
           temperature: 0.60
         }
       });
-      const spokenStream = createSpokenDialogueStream(() => {}, guardSpokenIdentity, spokenStreamOptions);
+      const spokenStream = createSpokenDialogueStream(() => {}, guardSpokenIdentity, { ...spokenStreamOptions, deferUntilFlush: true });
       for await (const chunk of responseStream) {
         const chunkText = chunk.text || '';
         if (chunkText) {
@@ -3623,7 +3353,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
           temperature: 0.60
         }
       });
-      const spokenStream = createSpokenDialogueStream(() => {}, guardSpokenIdentity, spokenStreamOptions);
+      const spokenStream = createSpokenDialogueStream(() => {}, guardSpokenIdentity, { ...spokenStreamOptions, deferUntilFlush: true });
       for await (const chunk of responseStream) {
         const chunkText = chunk.text || '';
         if (chunkText) {
@@ -3694,7 +3424,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
   res.end();
 });
 
-router.post('/agent/chat', async (req: AuthenticatedRequest, res: Response) => {
+async function handleAgentChat(req: AuthenticatedRequest, res: Response) {
   const { messages } = req.body as { messages?: any[] };
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
     return res.status(400).json({ error: 'messages history array is required' });
@@ -4498,7 +4228,9 @@ You must reply in valid JSON format:
       status: 'normal'
     });
   }
-});
+}
+router.post('/agent/chat', handleAgentChat);
+router.use('/native-voice', createNativeVoiceRouter({readPersonas: readPersonasForUser, agentChat: handleAgentChat}));
 
 router.post('/agent/persona-chat', async (req: AuthenticatedRequest, res: Response) => {
   const { persona, messages } = req.body as { persona: any; messages: any[] };

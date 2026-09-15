@@ -1,3 +1,4 @@
+import type { CloneResult } from '../../shared/personaVoiceLifecycle';
 import type { Persona, GeneratedImage, RevenueEntry, PlannedPost } from '../types';
 import { supabase } from '../lib/supabase';
 import { preparePersonaMediaForStorage, resolvePersonaMediaFromStorage } from './workspaceMediaService';
@@ -273,7 +274,9 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(prepared),
     });
-    return resolvePersonaMediaFromStorage(saved);
+    const hydrated = await resolvePersonaMediaFromStorage(saved);
+    window.dispatchEvent(new CustomEvent('persona-updated', { detail: hydrated }));
+    return hydrated;
   },
 
   getConfigStatus: async () => {
@@ -356,22 +359,30 @@ export const api = {
         support_locale: boolean;
         preview_audio_url: string;
       }>; hasMore: boolean; nextToken: string | null }>('/heygen-voices'),
-    cloneVoice: (name: string, description: string, sampleBase64: string | string[]) =>
-      requestWithBody<{ voiceId: string; name: string }>('/elevenlabs-clone-voice', {
+    cloneVoice: (name: string, description: string, sampleBase64: string | string[], speakerAuthorized: boolean, retryRejected = false) =>
+      requestWithBody<CloneResult>('/elevenlabs-clone-voice', {
+        speakerAuthorized,
+        retryRejected,
         name,
         description,
         ...(Array.isArray(sampleBase64) ? { sampleBase64s: sampleBase64 } : { sampleBase64 })
       }),
+    voiceStatus: (id: string, personaId: string) => request<{ voiceId: string; name?: string; status: string }>(`/persona-voice-status/${encodeURIComponent(id)}?personaId=${encodeURIComponent(personaId)}`),
+    cloneStatus: (id: string) => request<CloneResult>(`/voice-clones/${encodeURIComponent(id)}`),
+    previewVoice: (voiceId: string, text: string, voiceSettings?: Record<string, number>, emotion?: string) => requestWithBody<{ audioUrl: string; voiceId: string }>('/persona-voice-preview', { voiceId, text, voiceSettings, emotion }),
     generateScript: (params: { topic: string; persona: Persona; mode?: string; existingScript?: string; length?: string }) =>
       requestWithBody<{ script: string }>('/generate-voice-script', params),
     generateSpeech: (params: {
+      activePersona?: Partial<Persona>;
       text: string;
       voice?: string;
+      emotion?: string;
+      speechModel?: string;
       performancePrompt?: string;
       backgroundAtmosphere?: string;
       engine?: 'elevenlabs' | 'heygen' | 'openai' | 'gemini' | 'omnivoice' | 'minimax-clone' | 'qwen3-clone' | 'seed-speech' | 'chatterbox' | 'mureka-vocal' | 'qwen-tts' | string;
       voiceId?: string;
-      voiceSettings?: { stability?: number; similarity_boost?: number; style?: number };
+      voiceSettings?: { stability?: number; similarity_boost?: number; style?: number; speed?: number };
       voiceReference?: string;
       voiceReferences?: string[];
       personaName?: string;
@@ -386,6 +397,7 @@ export const api = {
     translateText: (params: { text: string; targetLanguage: string }) =>
       requestWithBody<{ translatedText: string }>('/translate-text', params),
     testVoiceClone: (params: {
+      voiceId?: string;
       sampleBase64?: string;
       sampleBase64s?: string[];
       model: string;
@@ -393,6 +405,8 @@ export const api = {
       testText?: string;
     }) => requestWithBody<{ audioUrl: string }>('/agent/test-voice-clone', params),
     setDefaultVoice: (params: {
+      voiceId?: string;
+      speakerAuthorized?: boolean;
       voiceReference?: string;
       voiceReferences?: string[];
       voiceName: string;

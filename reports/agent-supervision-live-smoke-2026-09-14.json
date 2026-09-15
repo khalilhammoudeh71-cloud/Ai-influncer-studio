@@ -1,0 +1,88 @@
+[
+  {
+    "kind": "visual",
+    "prompt": "A solid blue square, no other objects or text",
+    "status": "passed",
+    "summary": "The image displays a solid blue square with no other objects or text, perfectly matching the user's request.",
+    "ms": 1596
+  },
+  {
+    "kind": "visual",
+    "prompt": "A solid green square, no other objects or text",
+    "status": "failed",
+    "summary": "The image shows a solid blue square, not a solid green square as requested. There are no other objects or text, which matches the request.",
+    "ms": 1047
+  },
+  {
+    "kind": "unchanged",
+    "status": "failed",
+    "summary": "The returned image has the same pixels as a source/reference photo. The requested new image was not produced.",
+    "paidCalls": 0
+  },
+  {
+    "kind": "repair",
+    "choice": "frontier-gemini-flash",
+    "proposal": {
+      "action": "revise",
+      "reason": "The edit model may have missed the edit directive; explicitly specifying the color transition from blue to green and instructing preservation of the surrounding table and scene may help apply the change.",
+      "proposedPrompt": "Change the blue ceramic cup to green ceramic. Keep the cup's position, shape, and reflections unchanged, and preserve the wooden table and background entirely.",
+      "model": "gemini-3.8-flash",
+      "provider": "google",
+      "remainingPrompts": [
+        {
+          "index": 1,
+          "prompt": "Change the blue ceramic cup to green ceramic. Keep the cup's position, shape, and reflections unchanged, and preserve the wooden table and background entirely."
+        },
+        {
+          "index": 2,
+          "prompt": "Slow camera move around the cup"
+        }
+      ]
+    },
+    "ms": 4409
+  },
+  {
+    "kind": "repair",
+    "choice": "frontier-gemini-pro",
+    "proposal": {
+      "action": "revise",
+      "reason": "The image editor may have returned an unchanged image because the instruction was too brief to reliably isolate the target object. Expanding the prompt to explicitly describe the subject being changed and what to preserve might help.",
+      "proposedPrompt": "Change the color of the ceramic cup from blue to green, preserving the wooden table and the rest of the original image exactly as they are.",
+      "model": "gemini-3.1-pro-preview",
+      "provider": "google",
+      "remainingPrompts": [
+        {
+          "index": 1,
+          "prompt": "Change the color of the ceramic cup from blue to green, preserving the wooden table and the rest of the original image exactly as they are."
+        },
+        {
+          "index": 2,
+          "prompt": "Slow camera move around the green ceramic cup on the wooden table"
+        }
+      ]
+    },
+    "ms": 9365
+  },
+  {
+    "kind": "repair",
+    "choice": "frontier-grok",
+    "proposal": {
+      "action": "revise",
+      "reason": "The edit returned the source unchanged; the color change may not have been applied, or a transient processing issue occurred. A more explicit recolor-only instruction that preserves the rest of the scene might help, but the cause is uncertain without inspecting the image.",
+      "proposedPrompt": "In the supplied image, change only the ceramic cup’s color to green. Preserve the wooden table, lighting, camera angle, composition, and every other detail exactly as they are.",
+      "model": "grok-4.6",
+      "provider": "xai",
+      "remainingPrompts": [
+        {
+          "index": 1,
+          "prompt": "In the supplied image, change only the ceramic cup’s color to green. Preserve the wooden table, lighting, camera angle, composition, and every other detail exactly as they are."
+        },
+        {
+          "index": 2,
+          "prompt": "Slow camera move around the cup"
+        }
+      ]
+    },
+    "ms": 27709
+  }
+]

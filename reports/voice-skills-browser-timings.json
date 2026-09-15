@@ -1,0 +1,63 @@
+{
+  "provider": "elevenlabs",
+  "label": "Leen · Fixture speaker",
+  "preferences": {
+    "mode": "arabic",
+    "dialect": "levantine",
+    "allowLanguageSwitching": true
+  },
+  "summary": [
+    {
+      "event": "session_preparation",
+      "source": "client-control",
+      "count": 1,
+      "medianMs": 2,
+      "p95Ms": 2
+    },
+    {
+      "event": "transcript_to_speaking",
+      "source": "provider-event",
+      "count": 1,
+      "medianMs": 0,
+      "p95Ms": 0
+    },
+    {
+      "event": "transcript_to_output_audio_detected",
+      "source": "browser-render",
+      "count": 1,
+      "medianMs": 7,
+      "p95Ms": 7
+    }
+  ],
+  "metrics": [
+    {
+      "event": "session_preparation",
+      "source": "client-control",
+      "at": 17406.400000035763,
+      "ms": 1.9000000357627869
+    },
+    {
+      "event": "connected",
+      "source": "client-control",
+      "at": 17406.30000001192
+    },
+    {
+      "event": "user_transcript_final",
+      "source": "provider-event",
+      "at": 17453.900000035763
+    },
+    {
+      "event": "transcript_to_speaking",
+      "source": "provider-event",
+      "at": 17454,
+      "ms": 0.19999998807907104
+    },
+    {
+      "event": "transcript_to_output_audio_detected",
+      "source": "browser-render",
+      "at": 17461,
+      "ms": 7.199999988079071
+    }
+  ],
+  "notes": "No raw audio recorded. Browser render and provider events are separately labeled."
+}

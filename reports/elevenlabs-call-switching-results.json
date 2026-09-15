@@ -1,0 +1,7 @@
+{
+  "startedIn": "English",
+  "switchedToArabic": "أكيد، صباح الخير. طريقة حلوة لتستمتع بقهوتك الصبح هي إنك تشربها على رواق، وتتأمل شوي بهدوء قبل ما تبلش يومك.",
+  "switchedBackToEnglish": "Okay, switching back to English. Coffee is a wonderful way to start the day.",
+  "input": "typed synthetic prompts in an actual WebRTC audio call; silent synthetic microphone",
+  "voice": "stock George; dialect/accent quality not assessed"
+}

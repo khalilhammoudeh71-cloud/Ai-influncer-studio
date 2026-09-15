@@ -1,0 +1,41 @@
+{
+  "method": "Secondary automated audio review by gemini-2.5-flash; not a human listening score or proof of exact speaker/accent fidelity.",
+  "reviews": [
+    {
+      "sample": 1,
+      "review": {
+        "transcriptArabic": "يا حبيبتي معلش هلا بترتاحي وبتنسي التعب كله. كل يوم صعب بيمرق وبيجي بعده يوم أحسن خليكي متفائلة.",
+        "mainLanguage": "Arabic",
+        "understandable": true,
+        "dialectEvidence": "The use of 'هلا' (halla - now), 'بترتاحي' (bitirta7i - you rest, feminine), 'بتنسي' (bitinsi - you forget, feminine), 'بيمرق' (biyemroq - passes), 'بيجي' (biyiji - comes), and 'خليكي' (khalliki - stay, feminine) are strong indicators of a Levantine dialect.",
+        "delivery": "The pacing is moderate and consistent, with natural pauses between sentences. The intonation is gentle and reassuring, conveying an encouraging tone.",
+        "defects": [],
+        "confidence": "high"
+      }
+    },
+    {
+      "sample": 2,
+      "review": {
+        "transcriptArabic": "طيب شو رأيك نطلع على شي مكان هذه في قعدة حلوة ونشرب شاي نعنع طازة ونحكي شوي قبل ما تروح الشمس هيك بنغير جو وبنرتاح",
+        "mainLanguage": "Arabic",
+        "understandable": true,
+        "dialectEvidence": "The use of \"شو رأيك\" (shu ra'ik), \"شي مكان\" (shi makan), \"قعدة\" (qa'da), and the 'بـ' prefix for the present tense verbs like \"بنغير\" (bn'ghayyer) and \"وبنرتاح\" (w bnertaah) are strong indicators of a Levantine dialect.",
+        "delivery": "The pacing is moderate and natural, with appropriate pauses. The intonation is expressive and clear, conveying a conversational tone.",
+        "defects": [],
+        "confidence": "high"
+      }
+    },
+    {
+      "sample": 3,
+      "review": {
+        "transcriptArabic": "تمام يعني بكره الساعة 7 المساء بنطلع على مكان هذه لنشرب شاي نعناع ونحكي",
+        "mainLanguage": "Arabic",
+        "understandable": true,
+        "dialectEvidence": "The use of 'بكره' (bukra), the present tense prefix 'بـ' (b-) in 'بنطلع' (bintala'), and the word 'نحكي' (nahki) are strong indicators of a Levantine dialect.",
+        "delivery": "The delivery is at a normal, steady pace with clear articulation. There are no noticeable pauses, and the intonation is natural and declarative.",
+        "defects": [],
+        "confidence": "high"
+      }
+    }
+  ]
+}

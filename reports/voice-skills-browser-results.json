@@ -1,0 +1,13 @@
+{
+  "sharedLanguageControls": true,
+  "hume3ArabicGate": true,
+  "typedEchoDeduplicated": true,
+  "interruptedTranscriptPersistedOnReconnect": true,
+  "oldSessionRejected": true,
+  "draftPreserved": true,
+  "timingExport": true,
+  "mobileNoOverflow": true,
+  "personaAndSignoutCleanup": true,
+  "pageErrors": [],
+  "method": "Real React component and call adapter; ElevenLabs SDK connection mocked, fake microphone. Not provider latency or listening quality."
+}

@@ -1,0 +1,56 @@
+[
+  {
+    "engine": "eleven_v3_conversational",
+    "code": 200,
+    "ms": 3017,
+    "model": "eleven_v3_conversational",
+    "file": "/Users/Shared/AI-Influencer-Studio/reports/arabic-audio/eleven_v3_conversational.mp3",
+    "transcriptionStatus": 200,
+    "transcript": "أهلًا خليل. كيفك؟ بعرف إنه يومك كان صعب. خذ راحتك أنا بسمعك. وبعدها إذا بتحب منشرب قهوة ومنتمشى شوي"
+  },
+  {
+    "engine": "eleven_flash_v2_5",
+    "code": 200,
+    "ms": 575,
+    "model": "eleven_flash_v2_5",
+    "file": "/Users/Shared/AI-Influencer-Studio/reports/arabic-audio/eleven_flash_v2_5.mp3",
+    "transcriptionStatus": 200,
+    "transcript": "أهلًا خليل، كيفك؟ بعرف إنه يومك كان صعب. خد راحتك أنا بسمعك، وبعدها إذا بتحب منشرب قهوة ومنتمشى شوي"
+  },
+  {
+    "engine": "eleven_turbo_v2_5",
+    "code": 200,
+    "ms": 354,
+    "model": "eleven_turbo_v2_5",
+    "file": "/Users/Shared/AI-Influencer-Studio/reports/arabic-audio/eleven_turbo_v2_5.mp3",
+    "transcriptionStatus": 200,
+    "transcript": "أهلًا خليل، كيفك؟ بعرف إنه يومك كان صعب. خذ راحتك، أنا بسمعك. وبعدها إذا بتحب بنشرب قهوة وبنتمشى شوي."
+  },
+  {
+    "engine": "eleven_multilingual_v2",
+    "code": 200,
+    "ms": 1426,
+    "model": "eleven_multilingual_v2",
+    "file": "/Users/Shared/AI-Influencer-Studio/reports/arabic-audio/eleven_multilingual_v2.mp3",
+    "transcriptionStatus": 200,
+    "transcript": "أهلًا خليل، كيفك؟ بعرف إنه يومك كان صعب. خد راحتك أنا بسمعك. وبعدها إذا بتحب منشرب قهوة ومنتمشى شوي"
+  },
+  {
+    "engine": "cartesia-sonic",
+    "code": 200,
+    "ms": 1987,
+    "file": "/Users/Shared/AI-Influencer-Studio/reports/arabic-audio/cartesia-sonic.mp3",
+    "transcriptionStatus": 200,
+    "transcript": "أهلًا خليل. كيفك؟ بعرف إنه يومك كان صعب. خد راحتك، أنا بسمعك. وبعدها إذا بتحب، بنشرب قهوة ونتمشى شوي"
+  },
+  {
+    "engine": "fal_maya_stream",
+    "code": 200,
+    "ms": 9262,
+    "firstChunkMs": 1997,
+    "bytes": 1155072,
+    "file": "/Users/Shared/AI-Influencer-Studio/reports/arabic-audio/fal_maya_stream.wav",
+    "transcriptionStatus": 200,
+    "transcript": "Halithil Nellis Hill Hal Hal Nellison Nellison Hal Hial Hial Hial Melisau Menshare Hiah Hiah Hiah Hiah Hiah Hiah"
+  }
+]

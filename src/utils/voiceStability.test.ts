@@ -141,3 +141,10 @@ test('flushes a complete short answer immediately', () => {
     remainder: '',
   });
 });
+
+test('missing or non-finite timing evidence never produces a numeric latency score', () => {
+ const result = summarizeVoiceLatency({ requestStartedAt: 100, firstTextAt: NaN, firstAudioAt: Infinity });
+ assert.equal(result.modelMs, undefined);
+ assert.equal(result.speechMs, undefined);
+ assert.equal(result.responseMs, undefined);
+});

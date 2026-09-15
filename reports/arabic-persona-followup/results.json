@@ -1,0 +1,93 @@
+{
+  "script": "أهلا خليل، كيفك؟ بعرف إنه يومك كان صعب. خد راحتك، أنا بسمعك. ألتلك من قبل، إنت مش لحالك. وهلأ إذا بتحب، منشرب قهوة ومنتمشى شوي.",
+  "rows": [
+    {
+      "name": "Rawan",
+      "voiceId": "W4ynDvR6NFiK8lj2I8iL",
+      "engine": "eleven_v3_conversational",
+      "status": 200,
+      "ms": 3637,
+      "model": "eleven_v3_conversational",
+      "file": "/Users/Shared/AI-Influencer-Studio/reports/arabic-persona-followup/Rawan-W4ynDvR6NFiK8lj2I8iL-eleven_v3_conversational.mp3",
+      "transcriptionStatus": 200,
+      "transcript": "أهلًا خليل. كيفك؟ بعرف إنه يومك كان صعب. خذ راحتك أنا بسمعك. قلت لك من قبل أنت مش لحالك. وهلأ إذا بتحب نشرب قهوة ونتمشى شوي"
+    },
+    {
+      "name": "Rawan",
+      "voiceId": "W4ynDvR6NFiK8lj2I8iL",
+      "engine": "eleven_flash_v2_5",
+      "status": 200,
+      "ms": 395,
+      "model": "eleven_flash_v2_5",
+      "file": "/Users/Shared/AI-Influencer-Studio/reports/arabic-persona-followup/Rawan-W4ynDvR6NFiK8lj2I8iL-eleven_flash_v2_5.mp3",
+      "transcriptionStatus": 200,
+      "transcript": "أهلًا خليل، كيفك؟ بعرف إنه يومك كان صعب. خد راحتك أنا بسمعك. قلت لك من قبل إنت مش لحالك. وهلأ إذا بتحب نشرب قهوة ونتمشى شوي"
+    },
+    {
+      "name": "Rawan",
+      "voiceId": "mnuSAY5SCPZ0NUF04SUe",
+      "engine": "eleven_v3_conversational",
+      "status": 200,
+      "ms": 3631,
+      "model": "eleven_v3_conversational",
+      "file": "/Users/Shared/AI-Influencer-Studio/reports/arabic-persona-followup/Rawan-mnuSAY5SCPZ0NUF04SUe-eleven_v3_conversational.mp3",
+      "transcriptionStatus": 200,
+      "transcript": "أهلًا خليل، كيفك؟ بعرف إنه يومك كان صعب. خد راحتك، أنا بسمعك. قلت لك من قبل، أنت مش لحالك. وهلأ إذا بتحب نشرب قهوة ونتمشى شوي."
+    },
+    {
+      "name": "Rawan",
+      "voiceId": "mnuSAY5SCPZ0NUF04SUe",
+      "engine": "eleven_flash_v2_5",
+      "status": 200,
+      "ms": 597,
+      "model": "eleven_flash_v2_5",
+      "file": "/Users/Shared/AI-Influencer-Studio/reports/arabic-persona-followup/Rawan-mnuSAY5SCPZ0NUF04SUe-eleven_flash_v2_5.mp3",
+      "transcriptionStatus": 200,
+      "transcript": "أهلًا خليل، كيفك؟ بعرف إنه يومك كان صعب. خد راحتك، أنا بسمعك. قلت لك من قبل إنت مش لحالك. وهلأ إذا بتحب بنشرب قهوة وبنتمشى شوي."
+    },
+    {
+      "name": "Leen",
+      "voiceId": "7jFje9BJoTWzqZzouT0j",
+      "engine": "eleven_v3_conversational",
+      "status": 200,
+      "ms": 3683,
+      "model": "eleven_v3_conversational",
+      "file": "/Users/Shared/AI-Influencer-Studio/reports/arabic-persona-followup/Leen-7jFje9BJoTWzqZzouT0j-eleven_v3_conversational.mp3",
+      "transcriptionStatus": 200,
+      "transcript": "أهلًا خليل، كيفك؟ بعرف إنه يومك كان صعب. خد راحتك، أنا بسمعك. قلت لك من قبل، أنت مش لحالك. وهلأ إذا بتحب نشرب قهوة ونتمشى شوي"
+    },
+    {
+      "name": "Leen",
+      "voiceId": "7jFje9BJoTWzqZzouT0j",
+      "engine": "eleven_flash_v2_5",
+      "status": 200,
+      "ms": 491,
+      "model": "eleven_flash_v2_5",
+      "file": "/Users/Shared/AI-Influencer-Studio/reports/arabic-persona-followup/Leen-7jFje9BJoTWzqZzouT0j-eleven_flash_v2_5.mp3",
+      "transcriptionStatus": 200,
+      "transcript": "أهلًا خليل، كيفك؟ بعرف إنه يومك كان صعب. خذ راحتك أنا بسمعك. قلت لك من قبل إنت مش لحالك. وهلأ إذا بتحب بنشرب قهوة وبنتمشى شوي"
+    },
+    {
+      "name": "Leen",
+      "voiceId": "AHH52fHFo5USbpK1GDEd",
+      "engine": "eleven_v3_conversational",
+      "status": 200,
+      "ms": 3794,
+      "model": "eleven_v3_conversational",
+      "file": "/Users/Shared/AI-Influencer-Studio/reports/arabic-persona-followup/Leen-AHH52fHFo5USbpK1GDEd-eleven_v3_conversational.mp3",
+      "transcriptionStatus": 200,
+      "transcript": "أهلًا خليل. كيفك؟ بعرف إنه يومك كان صعب. خد راحتك أنا بسمعك. قلت لك من قبل أنت مش لحالك. وهلأ إذا بتحب نشرب قهوة ونتمشى شوي."
+    },
+    {
+      "name": "Leen",
+      "voiceId": "AHH52fHFo5USbpK1GDEd",
+      "engine": "eleven_flash_v2_5",
+      "status": 200,
+      "ms": 709,
+      "model": "eleven_flash_v2_5",
+      "file": "/Users/Shared/AI-Influencer-Studio/reports/arabic-persona-followup/Leen-AHH52fHFo5USbpK1GDEd-eleven_flash_v2_5.mp3",
+      "transcriptionStatus": 200,
+      "transcript": "أهلًا خليل، كيفك؟ بعرف إنه يومك كان صعب. خذ راحتك أنا بسمعك. قلت لك من قبل أنت مش لحالك. وهلأ إذا بتحب بنشرب قهوة وبنتمشى شوي"
+    }
+  ]
+}

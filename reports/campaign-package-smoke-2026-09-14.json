@@ -1,0 +1,307 @@
+[
+  {
+    "scenario": "campaign-planning",
+    "choice": "frontier-gemini-flash",
+    "code": 200,
+    "ms": 9721,
+    "text": "Here is the comprehensive five-day campaign plan for Rawan Hasan around 'Small Morning Rituals' spanning September 15–19, 2026.\n\n### Model Selection\n- **Images (Steps 0–4)**: `wavespeed:bytedance/seedream-v5.0-pro` ($0.035/gen) ensures photorealistic coherence and modest lifestyle styling.\n- **Video (Step 5)**: `wavespeed-i2v:alibaba/wan-3.0/image-to-video` ($0.08/gen) as default image-to-video to animate Day 1's portrait.\n- *Note*: You can select any alternative model (such as Runware FLUX or Kling) via the studio dropdown or request any model by name in chat.\n\n### Budget & Credit Breakdown\n- **Base Generations**: 5 photos × 4 credits = 20 credits\n- **Video Generation**: 1 video × 12 credits = 12 credits\n- **Visual Reviews**: 2 visual reviews × 2 credits = 4 credits\n- **Subtotal Used**: 36 credits\n- **Contingency Reserve**: 6 credits (reserved for 1 edit + 1 review)\n- **Total Committed**: 42 credits\n- **Remaining Unallocated Budget**: 3 credits remaining from your 45-credit budget.\n\n### App Scope & Publishing Limitations\nThe workspace does not auto-schedule or publish directly to Instagram; publishing is manual. The studio generates, links assets, and bundles your captions, tags, and media into an exportable ZIP once generated.",
+    "status": "clarifying",
+    "suggestedSteps": [
+      {
+        "type": "generate_image",
+        "params": {
+          "prompt": "Portrait of adult lifestyle creator Rawan Hasan standing by a sunlit kitchen window in the early morning, holding a neutral warm ceramic mug with both hands, calm and serene expression, modest knit loungewear, soft warm morning lighting, photorealistic lifestyle aesthetic, 8k resolution",
+          "modelId": "wavespeed:bytedance/seedream-v5.0-pro",
+          "usePersona": true,
+          "aspectRatio": "4:5"
+        },
+        "status": "pending"
+      },
+      {
+        "type": "generate_image",
+        "params": {
+          "prompt": "Rawan Hasan sitting comfortably on a neutral-toned linen sofa reading a hardcover book, peaceful morning atmosphere, soft daylight filtering through sheer curtains, modest cream sweater, authentic lifestyle photography, photorealistic",
+          "modelId": "wavespeed:bytedance/seedream-v5.0-pro",
+          "usePersona": true,
+          "aspectRatio": "4:5"
+        },
+        "status": "pending"
+      },
+      {
+        "type": "generate_image",
+        "params": {
+          "prompt": "Rawan Hasan taking an early morning walk along a peaceful tree-lined neighborhood pathway, holding a light scarf, modest casual autumnal attire, soft golden morning light, natural candid expression, photorealistic",
+          "modelId": "wavespeed:bytedance/seedream-v5.0-pro",
+          "usePersona": true,
+          "aspectRatio": "4:5"
+        },
+        "status": "pending"
+      },
+      {
+        "type": "generate_image",
+        "params": {
+          "prompt": "Rawan Hasan sitting at a minimalist wooden breakfast table journaling with a fountain pen in an open linen notebook, contemplative expression, modest everyday long-sleeve top, soft natural morning side-lighting, photorealistic",
+          "modelId": "wavespeed:bytedance/seedream-v5.0-pro",
+          "usePersona": true,
+          "aspectRatio": "4:5"
+        },
+        "status": "pending"
+      },
+      {
+        "type": "generate_image",
+        "params": {
+          "prompt": "Outdoor portrait of Rawan Hasan in a serene botanical garden, lush green foliage and morning dew in the soft background, modest tailored jacket, gentle natural smile looking slightly off-camera, cinematic morning daylight, photorealistic",
+          "modelId": "wavespeed:bytedance/seedream-v5.0-pro",
+          "usePersona": true,
+          "aspectRatio": "4:5"
+        },
+        "status": "pending"
+      },
+      {
+        "type": "generate_video",
+        "params": {
+          "prompt": "Cinematic subtle motion of Rawan Hasan standing by the window holding her coffee mug, steam rising slowly from the mug, soft gentle blinking, warm morning light shifting gently, realistic micro-movements, high quality",
+          "modelId": "wavespeed-i2v:alibaba/wan-3.0/image-to-video",
+          "sourceImageFromStepIndex": 0,
+          "duration": 5,
+          "aspectRatio": "4:5"
+        },
+        "status": "pending"
+      }
+    ],
+    "campaign": {
+      "title": "Small Morning Rituals",
+      "platform": "Instagram",
+      "posts": [
+        {
+          "date": "2026-09-15",
+          "title": "Day 1 - Quiet Dawn & First Sip",
+          "format": "image",
+          "caption": "Finding calm in the stillness before the city wakes. A warm ceramic mug, early morning light, and five quiet minutes to just be. What is your non-negotiable morning ritual? #MorningRituals #SlowLiving #RawanHasan #MindfulMornings",
+          "assets": [
+            {
+              "stepIndex": 0,
+              "alt": "Rawan Hasan smiling gently by a sunlit kitchen window, holding a warm ceramic coffee mug in cozy modest loungewear."
+            }
+          ]
+        },
+        {
+          "date": "2026-09-16",
+          "title": "Day 2 - Three Anchors of My Morning",
+          "format": "carousel",
+          "caption": "Three small practices that ground my day: 10 pages of mindful reading, a brisk breath of morning air, and putting thoughts onto paper. Swipe through my morning rhythm. Which one do you need most today? #DailyHabits #MorningRoutine #IntentionalLiving #Carousels",
+          "assets": [
+            {
+              "stepIndex": 1,
+              "alt": "Rawan Hasan reading a hardcover book on a sun-drenched neutral sofa with soft morning lighting."
+            },
+            {
+              "stepIndex": 2,
+              "alt": "Rawan Hasan taking a peaceful morning walk along a tree-lined neighborhood sidewalk in a modest knit sweater."
+            },
+            {
+              "stepIndex": 3,
+              "alt": "Close portrait of Rawan Hasan writing in a minimalist linen journal at a wooden desk with a morning glow."
+            }
+          ]
+        },
+        {
+          "date": "2026-09-17",
+          "title": "Day 3 - Breathing in the Fresh Air",
+          "format": "image",
+          "caption": "Stepping outside before opening any screens. Nature has an effortless way of resetting perspective before the day's to-do list begins. Take a deep breath with me today. #OutdoorRituals #Mindfulness #FreshAir #Lifestyle",
+          "assets": [
+            {
+              "stepIndex": 4,
+              "alt": "Rawan Hasan standing in a tranquil botanical garden in modest outdoor attire with soft golden hour morning light."
+            }
+          ]
+        },
+        {
+          "date": "2026-09-18",
+          "title": "Day 4 - Movement & Stillness in Motion",
+          "format": "video",
+          "caption": "Breathe in, exhale slowly. Bringing Tuesday's quiet morning moment to life. May your weekend approach with ease and gentle rhythm. #SlowLivingVideo #MorningMotion #CalmMoments #RawanHasan",
+          "assets": [
+            {
+              "stepIndex": 5,
+              "alt": "Cinematic 5-second video of Rawan Hasan sipping coffee by the window as morning light and steam gently drift."
+            }
+          ]
+        },
+        {
+          "date": "2026-09-19",
+          "title": "Day 5 - Weekend Q&A: Your Morning Habits",
+          "format": "text",
+          "caption": "Q&A Saturday: You have seen my rituals this week—now I want to hear yours. Drop your favorite morning habit below, or ask me anything about building a routine that actually sticks. Let us chat in the comments! #CommunityChat #MorningRoutineQA #SlowLiving #RawanHasan",
+          "assets": [
+            {
+              "stepIndex": 4,
+              "alt": "Rawan Hasan outdoor botanical garden portrait reused for the Saturday Q&A community check-in."
+            }
+          ]
+        }
+      ]
+    },
+    "sources": [],
+    "agentMode": {
+      "provider": "google",
+      "model": "gemini-3.8-flash",
+      "effort": "smart",
+      "research": false,
+      "toolRounds": 0
+    }
+  },
+  {
+    "scenario": "campaign-planning",
+    "choice": "frontier-gemini-pro",
+    "code": 200,
+    "ms": 41801,
+    "text": "Here is the complete plan for Rawan's 'Small Morning Rituals' campaign (Sept 15–19, 2026). As requested, I have set up five new photos and one image-to-video animation step using WaveSpeed's Seedream 5.0 Pro and Wan 3.0 Image-to-Video models.\n\nLet's break down the test budget calculation:\n- 5 photos at 4 credits each = 20 credits\n- 1 video at 12 credits = 12 credits\n- 2 visual reviews at 2 credits each = 4 credits\nSubtotal for planned generation: 36 credits.\nAdding your 6-credit reserve for one edit plus review brings the total to 42 credits.\nOut of your 45-credit budget, you have 3 credits remaining.\n\nPlease note a few app limitations: publishing to Instagram is a manual process. The app neatly groups your captions and visual assets for each day and allows you to export them as a single ZIP file once generation is complete, but it does not support automated posting, custom overlays, or built-in packaging tools.\n\nReview the generation steps below, and let me know if you're ready to proceed with these assets!",
+    "status": "clarifying",
+    "suggestedSteps": [
+      {
+        "type": "generate_image",
+        "params": {
+          "prompt": "Rawan Hasan sitting in a cozy sunlit kitchen, wearing a modest everyday sweater, smiling warmly while holding a mug of morning coffee.",
+          "usePersona": true,
+          "aspectRatio": "4:5",
+          "modelId": "wavespeed:bytedance/seedream-v5.0-pro"
+        },
+        "status": "pending"
+      },
+      {
+        "type": "generate_image",
+        "params": {
+          "prompt": "Rawan Hasan relaxing on a comfortable sofa reading a hardcover book, wearing a modest everyday outfit, soft morning lighting.",
+          "usePersona": true,
+          "aspectRatio": "4:5",
+          "modelId": "wavespeed:bytedance/seedream-v5.0-pro"
+        },
+        "status": "pending"
+      },
+      {
+        "type": "generate_image",
+        "params": {
+          "prompt": "Rawan Hasan walking along a tree-lined path in a park during early morning, wearing modest everyday casual clothing, smiling gently.",
+          "usePersona": true,
+          "aspectRatio": "4:5",
+          "modelId": "wavespeed:bytedance/seedream-v5.0-pro"
+        },
+        "status": "pending"
+      },
+      {
+        "type": "generate_image",
+        "params": {
+          "prompt": "Rawan Hasan sitting at a small wooden desk by a window, writing thoughtfully in a journal, wearing modest everyday clothing, natural light.",
+          "usePersona": true,
+          "aspectRatio": "4:5",
+          "modelId": "wavespeed:bytedance/seedream-v5.0-pro"
+        },
+        "status": "pending"
+      },
+      {
+        "type": "generate_image",
+        "params": {
+          "prompt": "Rawan Hasan standing outdoors in a scenic natural setting, wearing a stylish but modest everyday sweater, looking relaxed and smiling at the camera.",
+          "usePersona": true,
+          "aspectRatio": "4:5",
+          "modelId": "wavespeed:bytedance/seedream-v5.0-pro"
+        },
+        "status": "pending"
+      },
+      {
+        "type": "generate_video",
+        "params": {
+          "prompt": "Subtle animation of Rawan Hasan smiling and holding a mug of coffee in a sunlit kitchen, gentle morning atmosphere.",
+          "modelId": "wavespeed-i2v:alibaba/wan-3.0/image-to-video",
+          "duration": 5,
+          "sourceImageFromStepIndex": 0
+        },
+        "status": "pending"
+      }
+    ],
+    "campaign": {
+      "title": "Small Morning Rituals",
+      "platform": "Instagram",
+      "posts": [
+        {
+          "date": "2026-09-15",
+          "title": "Morning Coffee",
+          "format": "image",
+          "caption": "Starting the day right. A quiet moment and a warm cup of coffee set the tone for everything else. ☕️✨",
+          "assets": [
+            {
+              "stepIndex": 0,
+              "alt": "Rawan Hasan smiling warmly while holding a mug of coffee in a cozy sunlit kitchen."
+            }
+          ]
+        },
+        {
+          "date": "2026-09-16",
+          "title": "Moments of Peace",
+          "format": "carousel",
+          "caption": "Swipe for my favorite ways to clear my head: getting lost in a good book, taking a brisk morning walk, and writing down my thoughts. How do you center yourself?",
+          "assets": [
+            {
+              "stepIndex": 1,
+              "alt": "Rawan Hasan reading a book on a comfortable sofa."
+            },
+            {
+              "stepIndex": 2,
+              "alt": "Rawan Hasan walking through a lush green park in the morning light."
+            },
+            {
+              "stepIndex": 3,
+              "alt": "Rawan Hasan writing in a journal at a small wooden desk."
+            }
+          ]
+        },
+        {
+          "date": "2026-09-17",
+          "title": "Fresh Air",
+          "format": "image",
+          "caption": "Nothing beats the clarity that comes from a breath of fresh air. Taking a moment to appreciate the outdoors today. 🍃",
+          "assets": [
+            {
+              "stepIndex": 4,
+              "alt": "Rawan Hasan standing outdoors in a scenic natural setting, wearing a modest everyday sweater, smiling at the camera."
+            }
+          ]
+        },
+        {
+          "date": "2026-09-18",
+          "title": "Coffee in Motion",
+          "format": "video",
+          "caption": "A little movement for the morning calm. Still savoring this coffee! ☕️",
+          "assets": [
+            {
+              "stepIndex": 5,
+              "alt": "A 5-second video of Rawan Hasan gently moving while holding a coffee mug, animated from the first day's photo."
+            }
+          ]
+        },
+        {
+          "date": "2026-09-19",
+          "title": "Q&A Time",
+          "format": "image",
+          "caption": "You asked, I answered! Check the comments for my responses to your most asked questions about my morning routines and finding time for myself.",
+          "assets": [
+            {
+              "stepIndex": 4,
+              "alt": "Rawan Hasan standing outdoors in a scenic natural setting, wearing a modest everyday sweater, smiling at the camera."
+            }
+          ]
+        }
+      ]
+    },
+    "sources": [],
+    "agentMode": {
+      "provider": "google",
+      "model": "gemini-3.1-pro-preview",
+      "effort": "smart",
+      "research": false,
+      "toolRounds": 0
+    }
+  }
+]

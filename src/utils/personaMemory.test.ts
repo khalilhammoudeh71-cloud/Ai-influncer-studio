@@ -99,3 +99,30 @@ test('repairs legacy object memories and pins seeded defaults once', () => {
   assert.equal(notes.find(note => note.id === 'default-old')?.source, 'default');
   assert.equal(notes.some(note => note.text === 'You have three sisters.'), true);
 });
+
+test('does not promote credentials, explicit fiction or opt-out statements to durable facts', () => {
+  for (const text of ['Remember that my API key is sk-' + 'x'.repeat(32), 'I am a wizard in this roleplay.', 'Remember that I prefer tea, but do not remember this.']) assert.equal(isDurablePersonaMemoryText(text), false);
+});
+
+test('a delayed automatic write cannot undo a deletion or cross an account switch', async () => {
+  values.clear(); setActiveStorageUserId('fixture-owner');
+  const { capturePersonaMemoryWriteScope } = await import('./personaMemory');
+  const note = addPersonaMemoryNote('fixture-persona', 'I prefer tea.')[0];
+  const scope = capturePersonaMemoryWriteScope('fixture-persona');
+  deletePersonaMemoryNote('fixture-persona', note.id);
+  assert.deepEqual(addPersonaMemoryNote('fixture-persona', 'I prefer tea.', 'automatic', [], scope), []);
+  const next = capturePersonaMemoryWriteScope('fixture-persona');
+  setActiveStorageUserId('fixture-other');
+  assert.deepEqual(addPersonaMemoryNote('fixture-persona', 'I prefer tea.', 'automatic', [], next), []);
+});
+
+test('corrections invalidate a delayed old fact and persona scopes cannot be reused', async () => {
+  values.clear(); setActiveStorageUserId('fixture-correction-owner');
+  const { capturePersonaMemoryWriteScope } = await import('./personaMemory');
+  const note = addPersonaMemoryNote('fixture-persona', 'I prefer tea.')[0];
+  const scope = capturePersonaMemoryWriteScope('fixture-persona');
+  updatePersonaMemoryNote('fixture-persona', note.id, 'I prefer coffee.');
+  const notes = addPersonaMemoryNote('fixture-persona', 'I prefer tea.', 'automatic', [], scope);
+  assert.deepEqual(notes.map(n => n.text), ['I prefer coffee.']);
+  assert.deepEqual(addPersonaMemoryNote('different-persona', 'I prefer tea.', 'automatic', [], scope), []);
+});

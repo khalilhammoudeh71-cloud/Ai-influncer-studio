@@ -46,11 +46,11 @@ export default function CommandPalette({
   const allItems: CommandItem[] = useMemo(() => {
     const nav: CommandItem[] = [
       { id: 'nav-personas', label: 'Personas', description: 'Manage your AI personas', icon: <Users size={16} />, category: 'Navigation', action: () => onNavigate('personas'), keywords: ['home', 'dashboard'] },
-      { id: 'nav-create', label: 'AI Studio', description: 'Generate images, videos & content', icon: <PlusCircle size={16} />, category: 'Navigation', action: () => onNavigate('create'), keywords: ['generate', 'make', 'studio'] },
-      { id: 'nav-toolbox', label: 'AI Toolbox', description: 'Visual editors & marketing strategy', icon: <Wrench size={16} />, category: 'Navigation', action: () => onNavigate('intelligence'), keywords: ['tools', 'edit', 'beautify', 'swap', 'brand', 'analytics'] },
+      { id: 'nav-create', label: 'Create content', description: 'Generate images, videos & content', icon: <PlusCircle size={16} />, category: 'Navigation', action: () => onNavigate('create'), keywords: ['generate', 'make', 'studio'] },
+      { id: 'nav-toolbox', label: 'Editing tools', description: 'Visual editors & marketing strategy', icon: <Wrench size={16} />, category: 'Navigation', action: () => onNavigate('intelligence'), keywords: ['tools', 'edit', 'beautify', 'swap', 'brand', 'analytics'] },
       { id: 'nav-planner', label: 'Planner', description: 'Schedule posts & calendar campaigns', icon: <Calendar size={16} />, category: 'Navigation', action: () => onNavigate('planner'), keywords: ['schedule', 'plan', 'calendar', 'week'] },
-      { id: 'nav-gallery', label: 'Gallery', description: 'Browse all generated assets', icon: <Sparkles size={16} />, category: 'Navigation', action: () => onNavigate('gallery'), keywords: ['vault', 'library', 'images', 'media'] },
-      { id: 'nav-assistant', label: 'AI Assistant', description: 'Chat with your persona', icon: <MessageSquare size={16} />, category: 'Navigation', action: () => onNavigate('assistant'), keywords: ['chat', 'talk', 'ask'] },
+      { id: 'nav-gallery', label: 'Library', description: 'Browse all generated assets', icon: <Sparkles size={16} />, category: 'Navigation', action: () => onNavigate('gallery'), keywords: ['vault', 'library', 'images', 'media'] },
+      { id: 'nav-assistant', label: 'Persona Chat', description: 'Chat with your persona', icon: <MessageSquare size={16} />, category: 'Navigation', action: () => onNavigate('assistant'), keywords: ['chat', 'talk', 'ask'] },
       { id: 'nav-settings', label: 'Settings', description: 'Theme, account & preferences', icon: <Settings size={16} />, category: 'Navigation', action: () => onNavigate('settings'), keywords: ['preferences', 'config', 'theme', 'dark', 'light'] },
     ];
 

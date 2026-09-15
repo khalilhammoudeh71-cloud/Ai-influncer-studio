@@ -1,3 +1,16 @@
+// Instant Voice Cloning keeps the original recording; never loop or crop it.
+export async function readCloneSampleFile(file: File): Promise<{ name: string; base64: string }> {
+  if (!file.type.startsWith('audio/') || file.size < 100 || file.size > 20 * 1024 * 1024) {
+    throw new Error('Choose an audio file up to 20 MB. Use 1–2 minutes of clean speech from one authorized speaker.');
+  }
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve({ name: file.name, base64: String(reader.result) });
+    reader.onerror = () => reject(new Error('Could not read this audio file. Choose it again.'));
+    reader.readAsDataURL(file);
+  });
+}
+
 export async function processVoiceSampleFile(file: File): Promise<{ name: string; base64: string }> {
   try {
     const arrayBuffer = await file.arrayBuffer();

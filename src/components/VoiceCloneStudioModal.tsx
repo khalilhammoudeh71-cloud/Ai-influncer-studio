@@ -20,7 +20,6 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../services/apiService';
-import { trimAudioBase64To10Sec } from '../utils/audioUtils';
 import { 
   getAllSavedVoices, 
   saveVoiceItem, 
@@ -50,9 +49,12 @@ export default function VoiceCloneStudioModal({
   onClose,
   onVoiceCloned,
 }: VoiceCloneStudioModalProps) {
+  const [existingVoices, setExistingVoices] = useState<Array<{voice_id:string;name:string}>>([]);
+  useEffect(() => { if(isOpen) void api.voice.getElevenLabsVoices().then(data => setExistingVoices(data.voices)).catch(() => setExistingVoices([])); }, [isOpen]);
   const [activeTab, setActiveTab] = useState<'library' | 'clone'>('clone');
 
   // Form State
+  const [speakerAuthorized, setSpeakerAuthorized] = useState(false);
   const [voiceName, setVoiceName] = useState('My Cloned Voice');
   const [voiceDescription, setVoiceDescription] = useState('');
   const [selectedModel, setSelectedModel] = useState('elevenlabs-v3');
@@ -227,6 +229,7 @@ export default function VoiceCloneStudioModal({
       description: voiceDescription || 'Custom voice clone with fine-tuned pitch and accent retention.',
       model: selectedModel,
       audioRef: samples[0].base64,
+      audioRefs: samples.map(s => s.base64),
       sampleAudioUrl: aiSampleUrl, // Stores AI synthesized preview audio
       dateCreated: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
       settings: {
@@ -247,35 +250,24 @@ export default function VoiceCloneStudioModal({
   const handleActivateSavedVoice = async (voice: SavedVoice) => {
     const toastId = toast.loading(`Activating "${voice.name}" as Super Agent's Voice...`);
     try {
-      // Save locally first so Super Agent voice activation NEVER fails even if network has a hiccup
-      try {
-        accountLocalStorage.setItem('superagent_cloned_voice', 'active');
-        accountLocalStorage.setItem('superagent_cloned_voice_audio', voice.audioRef);
-        if (voice.id) accountLocalStorage.setItem('superagent_cloned_voice_id', voice.id);
-      } catch (e) {}
-
-      try {
-        const data = await api.voice.setDefaultVoice({
-          voiceReference: voice.audioRef,
-          voiceName: voice.name,
-          model: voice.model,
-          voiceSettings: {
-            stability: voice.settings.stability,
-            similarityBoost: voice.settings.similarityBoost,
-            style: voice.settings.styleExaggeration ?? voice.settings.stability,
-            speed: voice.settings.speechSpeed ?? 1.0
-          }
-        });
-        if (data && data.voiceId) {
-          try { accountLocalStorage.setItem('superagent_cloned_voice_id', data.voiceId); } catch (e) {}
-        }
-      } catch (srvErr) {
-        console.warn('[SetDefaultVoice Server Note, activated locally]:', srvErr);
-      }
+      if (!voice.providerVoiceId) throw new Error('This older library entry has its recording but no verified provider voice ID. Keep it saved and select its existing voice in Voice Studio; restoration will not create a replacement clone.');
+      const data = await api.voice.setDefaultVoice({
+        voiceId: voice.providerVoiceId,
+        voiceReferences: voice.audioRefs || [voice.audioRef],
+        voiceName: voice.name, model: voice.model, speakerAuthorized,
+        voiceSettings: { stability: voice.settings.stability, similarityBoost: voice.settings.similarityBoost, style: voice.settings.styleExaggeration, speed: voice.settings.speechSpeed },
+      });
+      if (!data.success || !data.voiceId) throw new Error('The provider has not confirmed a ready voice.');
+      const updated = await saveVoiceItem({ ...voice, providerVoiceId: data.voiceId, model: data.model || voice.model });
+      setSavedVoices(updated);
+      accountLocalStorage.setItem('superagent_cloned_voice_id', data.voiceId);
+      accountLocalStorage.setItem('superagent_cloned_voice', 'active');
+      accountLocalStorage.setItem('superagent_cloned_voice_audio', voice.audioRef);
+      accountLocalStorage.setItem('superagent_voice_settings', JSON.stringify(voice.settings));
 
       toast.success(`"${voice.name}" activated as Super Agent's voice!`, { id: toastId });
       onVoiceCloned({
-        voiceId: voice.id,
+        voiceId: data.voiceId,
         name: voice.name,
         model: voice.model
       });
@@ -306,7 +298,8 @@ export default function VoiceCloneStudioModal({
     }
 
     setPlayingSavedId(voice.id);
-    let audioUrlToPlay = voice.sampleAudioUrl;
+    // Legacy caches may contain a substituted speaker. Keep the library, regenerate exact previews.
+    let audioUrlToPlay: string | undefined;
 
     // CDN URLs (cloudfront.net) expire after a few hours — treat as missing and re-synthesize
     const isExpiredCdnUrl = audioUrlToPlay && (audioUrlToPlay.includes('cloudfront.net') || audioUrlToPlay.includes('wavespeed'));
@@ -316,6 +309,7 @@ export default function VoiceCloneStudioModal({
       const toastId = toast.loading(`Synthesizing AI voice sample preview for "${voice.name}"...`);
       try {
         const data = await api.voice.testVoiceClone({
+          voiceId: voice.providerVoiceId,
           sampleBase64: voice.audioRef,
           model: voice.model,
           voiceSettings: {
@@ -374,39 +368,23 @@ export default function VoiceCloneStudioModal({
     const toastId = toast.loading(`Enrolling voice reference sample into AI voice engine...`);
 
     try {
-      // Save locally first
-      try {
-        accountLocalStorage.setItem('superagent_cloned_voice', 'active');
-        accountLocalStorage.setItem('superagent_cloned_voice_audio', samples[0]?.base64);
-      } catch (e) {}
-
-      let data: any = { success: true };
-      try {
-        data = await api.voice.setDefaultVoice({
-          voiceReferences: samples.map((s) => s.base64),
-          voiceReference: samples[0]?.base64,
-          voiceName: voiceName || 'Cloned Voice',
-          model: selectedModel,
-          voiceSettings: {
-            stability,
-            similarityBoost,
-            style: styleExaggeration,
-            speed: speechSpeed,
-          },
-        });
-      } catch (e) {
-        console.warn('[SetDefaultVoice Server Note, activated locally]:', e);
-      }
+      const data = await api.voice.setDefaultVoice({
+        voiceReferences: samples.map(s => s.base64), voiceName, model: selectedModel, speakerAuthorized,
+        voiceSettings: { stability, similarityBoost, style: styleExaggeration, speed: speechSpeed },
+      });
+      if (!data.success || !data.voiceId) throw new Error('The provider has not confirmed a ready voice.');
 
       // Auto-save to My Voices IndexedDB if not already present
-      const existing = savedVoices.find(v => v.name === voiceName);
+      const existing = savedVoices.find(v => v.providerVoiceId === data.voiceId);
       if (!existing) {
         const autoSaved: SavedVoice = {
           id: `voice_${Date.now()}`,
+          providerVoiceId: data.voiceId,
           name: voiceName || 'Cloned Voice',
           description: voiceDescription || 'Custom voice clone with fine-tuned pitch and accent retention.',
           model: selectedModel,
           audioRef: samples[0].base64,
+      audioRefs: samples.map(s => s.base64),
           sampleAudioUrl: testAudioUrl || undefined,
           dateCreated: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
           settings: { stability, similarityBoost, styleExaggeration, speechSpeed }
@@ -415,9 +393,13 @@ export default function VoiceCloneStudioModal({
         setSavedVoices(updated);
       }
 
+      accountLocalStorage.setItem('superagent_cloned_voice_id', data.voiceId);
+      accountLocalStorage.setItem('superagent_cloned_voice', 'active');
+      accountLocalStorage.setItem('superagent_cloned_voice_audio', samples[0].base64);
+      accountLocalStorage.setItem('superagent_voice_settings', JSON.stringify({stability,similarityBoost,styleExaggeration,speechSpeed}));
       toast.success(`Voice Cloned & Activated! Model: ${getModelLabel(selectedModel)}`, { id: toastId });
       onVoiceCloned({
-        voiceId: data?.voiceId || 'cloned-voice',
+        voiceId: data.voiceId,
         name: voiceName || 'Cloned Voice',
         model: selectedModel,
       });
@@ -538,7 +520,8 @@ export default function VoiceCloneStudioModal({
           <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
 
             {/* Persistent Error Banner */}
-            {modalError && (
+            <label className="flex items-center gap-2 text-xs p-3"><input type="checkbox" checked={speakerAuthorized} onChange={e => setSpeakerAuthorized(e.target.checked)} />I have permission to clone this speaker. Existing provider voices can be restored without re-enrollment.</label>
+          {modalError && (
               <div className="p-3.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-200 text-xs flex items-start justify-between gap-3 shadow-md">
                 <div className="flex items-start gap-2.5">
                   <AlertCircle size={16} className="text-rose-400 shrink-0 mt-0.5" />
@@ -623,6 +606,15 @@ export default function VoiceCloneStudioModal({
                             </div>
                           )}
                         </div>
+
+                        {!v.providerVoiceId && ['elevenlabs','elevenlabs-v3'].includes(v.model) && <label className="text-xs text-zinc-300">Link this recording to its existing voice
+                          <select aria-label={`Existing provider voice for ${v.name}`} defaultValue="" className="w-full bg-zinc-900 p-2 mt-1 rounded" onChange={async event => {
+                            const id=event.target.value;if(!id)return;
+                            try { const status=await api.voice.voiceStatus(id,'');if(status.status!=='available')throw new Error('That voice is not ready.');
+                              setSavedVoices(await saveVoiceItem({...v,providerVoiceId:id,model:'elevenlabs'}));toast.success('Existing voice linked. Your recording is preserved.');
+                            } catch(error) { toast.error(error instanceof Error?error.message:'Voice unavailable.'); }
+                          }}><option value="">Select the original provider voice</option>{existingVoices.map(voice=><option key={voice.voice_id} value={voice.voice_id}>{voice.name} · {voice.voice_id.slice(-4)}</option>)}</select>
+                        </label>}
 
                         {/* Action Buttons for Saved Voice Card */}
                         <div className="flex items-center justify-between pt-2 border-t border-white/10">

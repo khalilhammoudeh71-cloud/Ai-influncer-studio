@@ -4190,7 +4190,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     },
   };
   const activeWorkspaceMeta = workspaceMeta[mode] || {
-    title: 'Create Studio',
+    title: 'Create content',
     description: 'Build your next AI-powered asset.',
   };
 
@@ -4211,12 +4211,12 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             </button>
           )}
           <h1 className="text-2xl md:text-3xl font-serif text-[#F5F1E8] tracking-tight flex items-center gap-2">
-            {isCapabilityWorkspace ? activeWorkspaceMeta.title : 'Create Studio'} <span className="text-[#E7C477] text-lg">✨</span>
+            {isCapabilityWorkspace ? activeWorkspaceMeta.title : 'Create content'}
           </h1>
           <p className="text-xs text-[#8C909A] mt-0.5 max-w-3xl font-sans">
             {isCapabilityWorkspace
               ? activeWorkspaceMeta.description
-              : 'Choose what you want to make, then use the guided workflow or open Pro controls for every model and fine-tuning option.'}
+              : 'Choose a format below. The guided editor will help you describe and create your content.'}
           </p>
         </div>
       </div>

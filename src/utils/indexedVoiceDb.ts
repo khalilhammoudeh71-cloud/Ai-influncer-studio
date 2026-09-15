@@ -2,6 +2,8 @@ import { accountLocalStorage, getActiveStorageUserId } from './accountStorage';
 
 export interface SavedVoiceItem {
   id: string;
+  providerVoiceId?: string;
+  audioRefs?: string[];
   name: string;
   description: string;
   model: string;

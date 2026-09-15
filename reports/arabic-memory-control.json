@@ -1,0 +1,171 @@
+[
+  {
+    "model": "xAI Grok 4.20 Non-Reasoning",
+    "id": "grok",
+    "case": "memory",
+    "prompt": "Recall details: ذكّريني شو اتفقنا على الموعد والمكان والأكل؟",
+    "elapsedMs": 603,
+    "done": true,
+    "text": "الجمعة الساعة تمانية بمطعم الياسمين، بدون مكسرات.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 486,
+      "firstTextMs": 601,
+      "totalMs": 601
+    },
+    "provider": "xAI grok-4.20-0309-non-reasoning",
+    "requestedModel": "grok"
+  },
+  {
+    "model": "Atlas Doubao Seed Character",
+    "id": "atlas-seed-character",
+    "case": "memory",
+    "prompt": "Recall details: ذكّريني شو اتفقنا على الموعد والمكان والأكل؟",
+    "elapsedMs": 1042,
+    "done": true,
+    "text": "اتفقنا على الجمعة الساعة تمانية بمطعم الياسمين، وبدون مكسرات بسبب الحساسية.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 709,
+      "firstTextMs": 1042,
+      "totalMs": 1042
+    },
+    "provider": "Atlas bytedance/doubao-seed-character-260628",
+    "requestedModel": "atlas-seed-character"
+  },
+  {
+    "model": "Venice Uncensored 1.2",
+    "id": "venice",
+    "case": "memory",
+    "prompt": "Recall details: ذكّريني شو اتفقنا على الموعد والمكان والأكل؟",
+    "elapsedMs": 1011,
+    "done": true,
+    "text": "اتفقنا على الموعد الجمعة الساعة تمانية، والمكان مطعم الياسمين، والأكل بدون مكسرات بسبب حساسية.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 712,
+      "firstTextMs": 1010,
+      "totalMs": 1010
+    },
+    "provider": "Venice venice-uncensored-1-2",
+    "requestedModel": "venice"
+  },
+  {
+    "model": "Atlas DeepSeek V3.2",
+    "id": "atlas-deepseek",
+    "case": "memory",
+    "prompt": "Recall details: ذكّريني شو اتفقنا على الموعد والمكان والأكل؟",
+    "elapsedMs": 2576,
+    "done": true,
+    "text": "اتفقنا نتقابل الجمعة الساعة تمانية بمطعم الياسمين. وأكيد رح أخلي الأكل خالي من المكسرات عشان الحساسية.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 1401,
+      "firstTextMs": 2576,
+      "totalMs": 2576
+    },
+    "provider": "Atlas deepseek-ai/deepseek-v3.2",
+    "requestedModel": "atlas-deepseek"
+  },
+  {
+    "model": "Gemini 2.5 Flash",
+    "id": "gemini",
+    "case": "memory",
+    "prompt": "Recall details: ذكّريني شو اتفقنا على الموعد والمكان والأكل؟",
+    "elapsedMs": 655,
+    "done": true,
+    "text": "اتفقنا على يوم الجمعة، الساعة ثمانية بالليل، بمطعم الياسمين، والأكل بدون مكسرات عشان حساسيتك.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 431,
+      "firstTextMs": 655,
+      "totalMs": 655
+    },
+    "provider": "Gemini fast path",
+    "requestedModel": "gemini"
+  },
+  {
+    "model": "Runware DeepSeek V4 Pro",
+    "id": "runware",
+    "case": "memory",
+    "prompt": "Recall details: ذكّريني شو اتفقنا على الموعد والمكان والأكل؟",
+    "elapsedMs": 2328,
+    "done": true,
+    "text": "اتفقنا الجمعة الساعة تمانية بمطعم الياسمين، وطلبت بدون مكسرات عشان الحساسية.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 2190,
+      "firstTextMs": 2328,
+      "totalMs": 2328
+    },
+    "provider": "Runware deepseek:v4@pro",
+    "requestedModel": "runware"
+  },
+  {
+    "model": "Atlas Qwen 3.6 Plus",
+    "id": "atlas-qwen",
+    "case": "memory",
+    "prompt": "Recall details: ذكّريني شو اتفقنا على الموعد والمكان والأكل؟",
+    "elapsedMs": 1140,
+    "done": true,
+    "text": "الجمعة الساعة ثمانية، بمطعم الياسمين. وأكل بدون مكسرات بسبب الحساسية.",
+    "serverTiming": {
+      "identityMs": 1,
+      "firstTokenMs": 699,
+      "firstTextMs": 1139,
+      "totalMs": 1140
+    },
+    "provider": "Atlas qwen/qwen3.6-plus",
+    "requestedModel": "atlas-qwen"
+  },
+  {
+    "model": "WaveSpeed DeepSeek V4 Flash",
+    "id": "deepseek",
+    "case": "memory",
+    "prompt": "Recall details: ذكّريني شو اتفقنا على الموعد والمكان والأكل؟",
+    "elapsedMs": 3016,
+    "done": true,
+    "text": "أكيد. اتفقنا على الجمعة الساعة تمانية بمطعم الياسمين، وبدون مكسرات بسبب حساسيتك.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 1964,
+      "firstTextMs": 3016,
+      "totalMs": 3016
+    },
+    "provider": "WaveSpeed deepseek/deepseek-v4-flash",
+    "requestedModel": "deepseek"
+  },
+  {
+    "model": "Atlas GLM-4.6",
+    "id": "atlas-glm",
+    "case": "memory",
+    "prompt": "Recall details: ذكّريني شو اتفقنا على الموعد والمكان والأكل؟",
+    "elapsedMs": 2960,
+    "done": true,
+    "text": "اتفقنا إننا الجمعة الساعة تمانية بمطعم الياسمين، والأكل لازم يكون بدون مكسرات.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 2347,
+      "firstTextMs": 2960,
+      "totalMs": 2960
+    },
+    "provider": "Atlas zai-org/GLM-4.6",
+    "requestedModel": "atlas-glm"
+  },
+  {
+    "model": "Wiro Seed 2.1 Turbo",
+    "id": "wiro",
+    "case": "memory",
+    "prompt": "Recall details: ذكّريني شو اتفقنا على الموعد والمكان والأكل؟",
+    "elapsedMs": 8253,
+    "done": true,
+    "text": "اتفقنا على الجمعة الساعة تمانية بمطعم الياسمين، وبدون مكسرات بسبب حساسيتك.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTextMs": 8253,
+      "totalMs": 8253
+    },
+    "provider": "Wiro seed-v2.1-turbo-uncensored",
+    "requestedModel": "wiro"
+  }
+]

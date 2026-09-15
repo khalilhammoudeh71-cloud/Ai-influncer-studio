@@ -1,0 +1,64 @@
+{
+  "persona": "Leen Hasan",
+  "voiceId": "7jFje9BJoTWzqZzouT0j",
+  "profile": "Temporary everyday nonsexual QA configuration; saved persona unchanged",
+  "method": "Live ElevenLabs conversational WebSocket session using app backend configuration builder; three synthesized Arabic caller utterances streamed in real time as PCM. Replies are actual call output audio, not separate TTS previews. WebRTC app component separately connected with this profile but browser capture harness stalled, so these clips use WebSocket transport.",
+  "model": "eleven_flash_v2_5",
+  "turns": [
+    {
+      "sample": "leen-arabic-1",
+      "callerScript": "مرحبا لين، اليوم كان طويل وتعبان شوي. احكي معي باللهجة الشامية، واحكيلي كلمتين يهونوا علي، بدون ما تسأليني سؤال.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "مرحبًا لين، اليوم كان طويل وتعبان شوي. احكي معي باللهجة الشامية، واحكيلي كلمتين يهونو علي بدون ما تسأليني سؤال."
+        },
+        {
+          "role": "model",
+          "content": "يا حبيبتي، معلش هلأ بترتاحي وبتنسي التعب كلو. كل يوم صعب بيمرق، وبيجي بعدو يوم أحسن، خليكي متفائلة."
+        }
+      ],
+      "audio": {
+        "seconds": 6.732375,
+        "inputEndToReceivedAudioMs": 2659
+      }
+    },
+    {
+      "sample": "leen-arabic-2",
+      "callerScript": "خلينا نتخيل طلعة بكرا الساعة خمسة. أنا بحب شاي النعنع، مش القهوة. اقترحي علينا مشوار بسيط بجملتين.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "خلينا نتخيل طلعة بكرة الساعة خمسة. أنا بحب شاي النعنع مش القهوة. اقترحي علينا مشوار بسيط بجملتين."
+        },
+        {
+          "role": "model",
+          "content": "طيب شو رأيك نطلع على شي مكان هادي فيه قعدة حلوة، ونشرب شاي نعنع طازة ونحكي شوي قبل ما تروح الشمس؟ هيك بنغير جو وبنرتاح."
+        }
+      ],
+      "audio": {
+        "seconds": 7.640125,
+        "inputEndToReceivedAudioMs": 1189
+      }
+    },
+    {
+      "sample": "leen-arabic-3",
+      "callerScript": "استني، قصدي الساعة سبعة المسا، مش خمسة. ذكريني على شو اتفقنا، وخلي الرد قصير.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "استني، قصدي الساعة سبعة المساء مش خمسة. ذكّريني على شو اتفقنا وخلي الردّ قصير."
+        },
+        {
+          "role": "model",
+          "content": "تمام، يعني بكرة الساعة سبعة المسا بنطلع على مكان هادي لنشرب شاي نعنع ونحكي."
+        }
+      ],
+      "audio": {
+        "seconds": 4.8411875,
+        "inputEndToReceivedAudioMs": 979
+      }
+    }
+  ],
+  "events": []
+}

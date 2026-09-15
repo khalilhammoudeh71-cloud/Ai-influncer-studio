@@ -184,13 +184,13 @@ export default function RevenueView({ persona }: RevenueViewProps) {
         <div>
           <div className="flex items-center gap-2 mb-1">
             <div className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.5)]" />
-            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#94A3B8]">Revenue & ROI Analytics</span>
+            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#94A3B8]">Income overview</span>
           </div>
           <h1 className="text-3xl font-extrabold tracking-tight">
-            <span className="gradient-text">Creator Treasury</span>
+            <span className="gradient-text">Revenue</span>
           </h1>
           <p className="text-[var(--text-tertiary)] text-xs mt-1.5 font-medium">
-            Financial metrics and engagement ROI for <span className="text-violet-400 font-bold">{persona.name}</span>
+            Track income and performance for <span className="text-violet-400 font-bold">{persona.name}</span>
           </p>
         </div>
 

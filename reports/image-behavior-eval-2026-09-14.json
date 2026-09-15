@@ -1,0 +1,16 @@
+[
+  {
+    "name": "live-non-explicit-generation",
+    "status": 200,
+    "ms": 51521,
+    "hasImage": true,
+    "model": "Seedream V5.0 Pro"
+  },
+  {
+    "name": "simulated-provider-rejection",
+    "status": 500,
+    "ms": 59,
+    "hasImage": false,
+    "error": "Wavespeed request failed"
+  }
+]

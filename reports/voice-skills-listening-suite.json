@@ -1,0 +1,108 @@
+{
+  "scope": "Browser voice calls: ElevenLabs, OpenAI Realtime and Hume EVI; Levantine Arabic and English. No telephony changes.",
+  "status": "Manual real-microphone listening suite prepared; not executed by this automated run.",
+  "targets": {
+    "end_of_user_speech_to_first_audible_reply_p95_ms": 1500,
+    "accepted_interruption_to_local_silence_p95_ms": 200,
+    "notes": "Working product targets, not measured guarantees. Provider and SDK timings do not establish sound at the listener."
+  },
+  "protocol": "Use the same synthetic persona facts and tasks on each provider. Repeat cases on quiet headphones, speakers, room noise, desktop/mobile and typical Wi-Fi. Rate naturalness, pronunciation, persona consistency and task success separately; report actual provider/voice, failure rate, median and p95. Preserve voice IDs. No raw microphone recording is required.",
+  "cases": [
+    {
+      "id": "levantine",
+      "input": "احكي معي أردني أو سوري. شو ممكن أعمل بعطلة الأسبوع؟",
+      "expected": "Natural Jordanian/Syrian phrasing, proportionate character, no biography dump.",
+      "status": "pending_real_microphone_review"
+    },
+    {
+      "id": "pause",
+      "input": "استنى شوي... [pause two seconds] خليني أفكر.",
+      "expected": "Does not cut off the pause or treat it as approval.",
+      "status": "pending_real_microphone_review"
+    },
+    {
+      "id": "correction",
+      "input": "قصدي بكرا، مش اليوم.",
+      "expected": "Updates the day and continues without restarting the whole reply.",
+      "status": "pending_real_microphone_review"
+    },
+    {
+      "id": "switch_to_english",
+      "input": "خلينا نحكي إنجليزي شوي.",
+      "expected": "Switches to English while keeping the same conversation.",
+      "status": "pending_real_microphone_review"
+    },
+    {
+      "id": "switch_back",
+      "input": "ارجع احكي عربي زي قبل.",
+      "expected": "Returns to the chosen Levantine dialect.",
+      "status": "pending_real_microphone_review"
+    },
+    {
+      "id": "borrowed_word",
+      "input": "الـmeeting بكرا، تمام؟",
+      "expected": "A borrowed English word does not switch the whole conversation.",
+      "status": "pending_real_microphone_review"
+    },
+    {
+      "id": "name",
+      "input": "اسمي لينا، مش لانا.",
+      "expected": "Uses the corrected name; asks if recognition remains uncertain.",
+      "status": "pending_real_microphone_review"
+    },
+    {
+      "id": "number",
+      "input": "الرقم خمسة عشر، مش خمسين.",
+      "expected": "Uses fifteen rather than fifty.",
+      "status": "pending_real_microphone_review"
+    },
+    {
+      "id": "interrupt",
+      "input": "احكيلي قصة... [interrupt] خلي المكان أصغر.",
+      "expected": "Local audio stops, old audio stays stopped, and the scene updates.",
+      "status": "pending_real_microphone_review"
+    },
+    {
+      "id": "backchannel",
+      "input": "[While assistant speaks] ممم.",
+      "expected": "A brief acknowledgement does not cause repeated destructive interruptions.",
+      "status": "pending_real_microphone_review"
+    },
+    {
+      "id": "tone",
+      "input": "خفف المزح شوي، بدي جواب جدي.",
+      "expected": "Immediately adapts tone and preserves identity.",
+      "status": "pending_real_microphone_review"
+    },
+    {
+      "id": "long_story",
+      "input": "احكيلي قصة طويلة فيها تفاصيل.",
+      "expected": "Gives a sustained narrative within session output limits, not an arbitrary two-sentence reply.",
+      "status": "pending_real_microphone_review"
+    },
+    {
+      "id": "tool_status",
+      "input": "هل فعلاً نشرت الخطة؟",
+      "expected": "States proposal status accurately; never claims execution without tool evidence.",
+      "status": "pending_real_microphone_review"
+    },
+    {
+      "id": "typed",
+      "input": "[Type in the dialog, send while listening, then continue aloud.]",
+      "expected": "One user turn, same context, no duplicate reply.",
+      "status": "pending_real_microphone_review"
+    },
+    {
+      "id": "reconnect",
+      "input": "[Disconnect during speech, reconnect, ask what was discussed.]",
+      "expected": "Recent context preserved, interrupted suffix marked, no repeated greeting or action replay.",
+      "status": "pending_real_microphone_review"
+    },
+    {
+      "id": "noise",
+      "input": "[Repeat name/number examples on speakers with room noise.]",
+      "expected": "No echo-induced false turn; uncertainties clarified without guessing.",
+      "status": "pending_real_microphone_review"
+    }
+  ]
+}

@@ -208,12 +208,12 @@ test('keeps the first complete question instead of an orphaned follow-up fragmen
   );
 });
 
-test('remaps a stale id to the same persona by name', () => {
-  assert.equal(selectElevenLabsPersonaVoice(voices, 'stale-rawan-id', 'Rawan Hassan')?.voice_id, 'rawan-current');
+test('keeps stale IDs unavailable instead of replacing the speaker', () => {
+  assert.equal(selectElevenLabsPersonaVoice(voices, 'stale-rawan-id', 'Rawan Hassan')?.voice_id, undefined);
 });
 
-test('tolerates Hasan and Hassan spelling without matching another persona', () => {
-  assert.equal(selectElevenLabsPersonaVoice(voices, undefined, 'Rawan Hassan')?.voice_id, 'rawan-current');
+test('names alone cannot authorize a voice selection', () => {
+  assert.equal(selectElevenLabsPersonaVoice(voices, undefined, 'Rawan Hassan')?.voice_id, undefined);
   assert.equal(selectElevenLabsPersonaVoice(voices, undefined, 'Unknown Hassan'), undefined);
 });
 
@@ -235,15 +235,14 @@ test('recognizes terminal provider account statuses and ElevenLabs models', () =
   assert.equal(isDirectElevenLabsVoiceId('elevenlabs:rawan'), false);
 });
 
-test('uses Eleven v3 Conversational as the expressive Persona Call default', () => {
-  assert.equal(DEFAULT_ELEVENLABS_PERSONA_MODEL, 'eleven_v3_conversational');
-  assert.equal(resolveElevenLabsPersonaModelId(undefined), 'eleven_v3_conversational');
+test('uses the same default model as Studio and never silently retries a different model', () => {
+  assert.equal(DEFAULT_ELEVENLABS_PERSONA_MODEL, 'eleven_turbo_v2_5');
+  assert.equal(resolveElevenLabsPersonaModelId(undefined), 'eleven_turbo_v2_5');
   assert.equal(resolveElevenLabsPersonaModelId('eleven_v3_conversational'), 'eleven_v3_conversational');
   assert.equal(resolveElevenLabsPersonaModelId('eleven_flash_v2_5'), 'eleven_flash_v2_5');
   assert.equal(resolveElevenLabsPersonaModelId('eleven_multilingual_v2'), 'eleven_multilingual_v2');
   assert.deepEqual(getElevenLabsPersonaModelCandidates(undefined), [
-    'eleven_v3_conversational',
-    'eleven_flash_v2_5',
+    'eleven_turbo_v2_5',
   ]);
   assert.deepEqual(getElevenLabsPersonaModelCandidates('eleven_flash_v2_5'), [
     'eleven_flash_v2_5',

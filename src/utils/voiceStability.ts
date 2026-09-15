@@ -13,6 +13,7 @@ export interface VoiceTurnTiming {
   transcriptCommittedAt?: number;
   requestStartedAt: number;
   firstTextAt?: number;
+  /** Client playback event/scheduling estimate, not acoustically observed sound. */
   firstAudioAt?: number;
 }
 
@@ -213,7 +214,7 @@ export function drainSseData(buffer: string, flush = false): { data: string[]; r
 }
 
 const positiveDelta = (end?: number, start?: number): number | undefined => {
-  if (typeof end !== 'number' || typeof start !== 'number' || end < start) return undefined;
+  if (typeof end !== 'number' || typeof start !== 'number' || !Number.isFinite(end) || !Number.isFinite(start) || end < start) return undefined;
   return Math.round(end - start);
 };
 

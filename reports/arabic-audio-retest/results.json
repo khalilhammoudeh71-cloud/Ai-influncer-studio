@@ -1,0 +1,56 @@
+[
+  {
+    "engine": "eleven_v3_conversational",
+    "code": 200,
+    "ms": 3937,
+    "model": "eleven_v3_conversational",
+    "file": "/Users/Shared/AI-Influencer-Studio/reports/arabic-audio-retest/eleven_v3_conversational.mp3",
+    "transcriptionStatus": 200,
+    "transcript": "أهلًا خليل. كيفك؟ بعرف إنه يومك كان صعب. خد راحتك أنا بسمعك. وبعدها إذا بتحب نشرب قهوة ونتمشى شوي"
+  },
+  {
+    "engine": "eleven_flash_v2_5",
+    "code": 200,
+    "ms": 423,
+    "model": "eleven_flash_v2_5",
+    "file": "/Users/Shared/AI-Influencer-Studio/reports/arabic-audio-retest/eleven_flash_v2_5.mp3",
+    "transcriptionStatus": 200,
+    "transcript": "أهلًا خليل، كيفك؟ بعرف إنه يومك كان صعب. خذ راحتك أنا بسمعك، وبعدها إذا بتحب بنشرب قهوة وبنتمشى شوي"
+  },
+  {
+    "engine": "eleven_turbo_v2_5",
+    "code": 200,
+    "ms": 421,
+    "model": "eleven_turbo_v2_5",
+    "file": "/Users/Shared/AI-Influencer-Studio/reports/arabic-audio-retest/eleven_turbo_v2_5.mp3",
+    "transcriptionStatus": 200,
+    "transcript": "أهلًا خليل، كيفك؟ بعرف إنه يومك كان صعب. خد راحتك أنا بسمعك. وبعدها إذا بتحب بنشرب قهوة ونتمشى شوي"
+  },
+  {
+    "engine": "eleven_multilingual_v2",
+    "code": 200,
+    "ms": 1356,
+    "model": "eleven_multilingual_v2",
+    "file": "/Users/Shared/AI-Influencer-Studio/reports/arabic-audio-retest/eleven_multilingual_v2.mp3",
+    "transcriptionStatus": 200,
+    "transcript": "أهلًا خليل، كيفك؟ بعرف إنه يومك كان صعب. خد راحتك أنا بسمعك، وبعدها إذا بتحب بنشرب قهوة وبنتمشى شوي"
+  },
+  {
+    "engine": "cartesia-sonic",
+    "code": 200,
+    "ms": 1827,
+    "file": "/Users/Shared/AI-Influencer-Studio/reports/arabic-audio-retest/cartesia-sonic.mp3",
+    "transcriptionStatus": 200,
+    "transcript": "أهلًا خليل، كيفك؟ بعرف إنه يومك كان صعب. خد راحتك، أنا بسمعك. وبعدها إذا بتحب منشرب قهوة ومنتمشى شوي."
+  },
+  {
+    "engine": "fal_maya_stream",
+    "code": 200,
+    "ms": 8810,
+    "firstChunkMs": 2066,
+    "bytes": 1155072,
+    "file": "/Users/Shared/AI-Influencer-Studio/reports/arabic-audio-retest/fal_maya_stream.wav",
+    "transcriptionStatus": 200,
+    "transcript": "[sighs] La la la la la la la. La la la la. Ha la la la. La la la la. Me la la la. [outro jingle]"
+  }
+]

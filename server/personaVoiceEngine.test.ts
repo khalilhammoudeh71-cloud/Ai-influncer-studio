@@ -8,7 +8,7 @@ import {
   resolvePersonaVoiceEngine,
 } from '../src/utils/personaVoiceEngine';
 
-test('routes an uploaded persona voice clone through Eleven v3 Conversational', () => {
+test('retains a legacy ElevenLabs-shaped ID without changing its speaker', () => {
   const persona = {
     name: 'New Persona',
     voiceId: 'AbCdEfGhIjKlMnOpQrSt',
@@ -22,24 +22,24 @@ test('routes an uploaded persona voice clone through Eleven v3 Conversational', 
   );
 });
 
-test('routes a persona without a clone through Maya', () => {
+test('requires selection for an unbound persona', () => {
   const persona = { name: 'Uncloned Persona', voiceId: 'default' };
 
   assert.equal(hasSavedPersonaVoiceClone(persona), false);
   assert.equal(
     resolvePersonaVoiceEngine(persona, AUTO_PERSONA_VOICE_ENGINE),
-    MAYA_UNCLONED_VOICE_MODEL,
+    'voice_selection_required',
   );
 });
 
-test('keeps the bundled Leen and Rawan clones on ElevenLabs', () => {
+test('does not invent bundled voices from names', () => {
   assert.equal(
     resolvePersonaVoiceEngine({ name: 'Leen Hassan' }, AUTO_PERSONA_VOICE_ENGINE),
-    ELEVENLABS_CLONED_VOICE_MODEL,
+    'voice_selection_required',
   );
   assert.equal(
     resolvePersonaVoiceEngine({ name: 'Rawan Hasan' }, AUTO_PERSONA_VOICE_ENGINE),
-    ELEVENLABS_CLONED_VOICE_MODEL,
+    'voice_selection_required',
   );
 });
 

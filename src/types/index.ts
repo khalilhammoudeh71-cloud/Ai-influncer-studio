@@ -48,6 +48,7 @@ export type Persona = {
   additionalReferenceImages?: string[]; // Extra reference images uploaded alongside the primary
   alternateReferenceImage?: string; // Secondary reference (style, outfit, pose, etc.)
   personalityTraits: string[];
+  personalitySettings?: import("../../shared/personality").PersonalitySettings;
   visualStyle: string;
   audienceType: string;
   contentBoundaries: string;
@@ -59,8 +60,12 @@ export type Persona = {
   naturalLook?: boolean;
   identityLock?: boolean;
   visualLibrary?: GeneratedImage[];
+  voiceRevision?: string;
+  voiceBinding?: { provider?: string; account?: string; model?: string; revision?: string };
   voiceId?: string;
   voiceEngine?: string;
+  voiceName?: string;
+  savedVoices?: import('../../shared/personaVoiceLibrary').SavedPersonaVoice[];
   companionType?: string;
   voiceSampleUrl?: string;
   heygenAvatarId?: string;

@@ -155,13 +155,13 @@ export default function TrendView({ persona: activePersona, nav }: TrendViewProp
         <div>
           <div className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-[#E7C477]">
             <span className="h-1.5 w-1.5 rounded-full bg-[#00F5C2]" />
-            Public social intelligence
+            Discover content ideas
           </div>
           <h1 className="flex items-center gap-3 font-serif text-3xl tracking-tight text-[#F5F1E8] md:text-4xl">
-            Trend Radar <span className="text-xl text-[#E7C477]">✨</span>
+            Trends
           </h1>
           <p className="mt-1 max-w-2xl text-xs text-[#8C909A] md:text-sm">
-            Live public Instagram and TikTok signals, ranked from the metrics actually returned by each platform.
+            Explore public Instagram and TikTok posts to find ideas for your next creation.
           </p>
         </div>
 

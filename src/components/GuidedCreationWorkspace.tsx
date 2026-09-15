@@ -60,7 +60,7 @@ const MODE_OPTIONS = [
   { id: 'talking-avatar' as const, label: 'Talking avatar', detail: 'Photo + voice', icon: UserRound },
 ];
 
-const STEP_LABELS = ['Choose', 'Shape', 'Create'];
+const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-elevated)]';
 
 export default function GuidedCreationWorkspace({
   mode,
@@ -88,160 +88,111 @@ export default function GuidedCreationWorkspace({
   fineTuneOpen,
   onToggleFineTune,
 }: GuidedCreationWorkspaceProps) {
+  const selectedOutcome = outcomes.find(option => option.id === outcome);
+  const selectedPersona = personas.find(persona => persona.id === selectedPersonaId);
+  const selectedFormat = formatOptions.find(option => option.value === format);
+
   return (
-    <section
-      aria-labelledby="guided-create-heading"
-      className="mb-5 overflow-hidden rounded-[24px] border border-[var(--border-default)] bg-[var(--bg-elevated)] shadow-[0_24px_80px_rgba(0,0,0,0.24)]"
-    >
-      <div className="border-b border-[var(--border-subtle)] bg-[linear-gradient(135deg,rgba(231,196,119,0.10),transparent_55%)] px-4 py-4 sm:px-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="mb-1 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--accent-primary)]">
-              <Sparkles size={13} /> Guided creation
-            </div>
-            <h2 id="guided-create-heading" className="text-lg font-semibold text-[var(--text-primary)] sm:text-xl">
-              Make something in three simple steps
-            </h2>
-            <p className="mt-1 text-[11px] text-[var(--text-muted)]">
-              Tell us the result you want. The studio chooses the model and sensible defaults.
-            </p>
-          </div>
-          <div className="flex items-center gap-1.5" aria-label="Creation progress">
-            {STEP_LABELS.map((label, index) => (
-              <div key={label} className="flex items-center gap-1.5">
-                {index > 0 && <div className="h-px w-3 bg-[var(--border-default)] sm:w-5" />}
-                <span className="flex h-6 w-6 items-center justify-center rounded-full border border-[var(--border-strong)] bg-[var(--accent-muted)] text-[9px] font-bold text-[var(--accent-primary)]">
-                  {index + 1}
-                </span>
-                <span className="hidden text-[9px] font-semibold text-[var(--text-tertiary)] sm:inline">{label}</span>
-              </div>
-            ))}
-          </div>
+    <section aria-labelledby="guided-create-heading" className="mb-6 overflow-hidden rounded-3xl border border-[var(--border-default)] bg-[var(--bg-elevated)] shadow-xl">
+      <div className="border-b border-[var(--border-subtle)] bg-[var(--gradient-surface)] p-5 sm:p-7">
+        <div className="mb-2 flex items-center gap-2 text-xs font-semibold tracking-wide text-[var(--accent-primary)]">
+          <Sparkles size={15} aria-hidden="true" /> Your creative workspace
+        </div>
+        <h2 id="guided-create-heading" className="text-2xl font-semibold tracking-tight text-[var(--text-primary)] sm:text-3xl">Bring your idea to life.</h2>
+        <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--text-tertiary)]">Choose a format, set the style, and tell us what you imagine.</p>
+        <div className="mt-6 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap" aria-label="Creation type">
+          {MODE_OPTIONS.map(option => {
+            const Icon = option.icon;
+            const active = option.id === mode;
+            return (
+              <button key={option.id} type="button" onClick={() => onModeChange(option.id)} aria-pressed={active}
+                className={`${FOCUS} flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-medium transition-colors ${active ? 'border-[var(--gold-border-active)] bg-[var(--accent-muted)] text-[var(--accent-primary)]' : 'border-[var(--border-subtle)] bg-[var(--bg-input)] text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)]'}`}>
+                <Icon size={18} aria-hidden="true" /> {option.label}
+                {active && <Check size={14} aria-hidden="true" />}
+              </button>
+            );
+          })}
+          <button type="button" onClick={onEnhance} className={`${FOCUS} flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-overlay)] sm:ml-auto`}>
+            <WandSparkles size={18} aria-hidden="true" /> Enhance
+          </button>
         </div>
       </div>
 
-      <div className="grid gap-0 lg:grid-cols-[0.9fr_1.1fr_1.35fr]">
-        <div className="border-b border-[var(--border-subtle)] p-4 sm:p-5 lg:border-b-0 lg:border-r">
-          <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--text-tertiary)]">1. What are you making?</p>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-2">
-            {MODE_OPTIONS.map(option => {
-              const Icon = option.icon;
-              const active = option.id === mode;
-              return (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => onModeChange(option.id)}
-                  aria-pressed={active}
-                  className={`cursor-pointer rounded-xl border p-3 text-left transition-all ${active ? 'border-[var(--border-strong)] bg-[var(--accent-muted)] shadow-[0_8px_24px_rgba(0,0,0,0.16)]' : 'border-[var(--border-subtle)] bg-[var(--bg-input)] hover:border-[var(--border-default)]'}`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <Icon size={16} className={active ? 'text-[var(--accent-primary)]' : 'text-[var(--text-tertiary)]'} />
-                    {active && <Check size={13} className="text-[var(--accent-primary)]" />}
-                  </div>
-                  <span className="mt-2 block text-[11px] font-semibold text-[var(--text-primary)]">{option.label}</span>
-                  <span className="mt-0.5 block text-[9px] text-[var(--text-muted)]">{option.detail}</span>
-                </button>
-              );
-            })}
-            <button
-              type="button"
-              onClick={onEnhance}
-              className="cursor-pointer rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-input)] p-3 text-left transition-all hover:border-[var(--border-default)]"
-            >
-              <WandSparkles size={16} className="text-[var(--text-tertiary)]" />
-              <span className="mt-2 block text-[11px] font-semibold text-[var(--text-primary)]">Enhance</span>
-              <span className="mt-0.5 block text-[9px] text-[var(--text-muted)]">Improve existing media</span>
-            </button>
-          </div>
-        </div>
-
-        <div className="border-b border-[var(--border-subtle)] p-4 sm:p-5 lg:border-b-0 lg:border-r">
-          <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--text-tertiary)]">2. What should it feel like?</p>
-          <div className="grid grid-cols-2 gap-2">
+      <div className="grid lg:grid-cols-[minmax(240px,0.85fr)_minmax(0,1.6fr)]">
+        <div className="min-w-0 border-b border-[var(--border-subtle)] p-5 sm:p-7 lg:border-b-0 lg:border-r">
+          <h3 className="text-sm font-semibold text-[var(--text-primary)]">Choose your style</h3>
+          <p className="mb-4 mt-1 text-xs leading-5 text-[var(--text-tertiary)]">A starting point for the look and feel.</p>
+          <div className="grid grid-cols-2 gap-2 lg:grid-cols-1" aria-label="Creative style">
             {outcomes.map(option => {
               const active = option.id === outcome;
               return (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => onOutcomeChange(option.id)}
-                  aria-pressed={active}
-                  className={`cursor-pointer rounded-xl border px-3 py-2.5 text-left transition-all ${active ? 'border-[var(--border-strong)] bg-[var(--accent-muted)]' : 'border-[var(--border-subtle)] bg-[var(--bg-input)] hover:border-[var(--border-default)]'}`}
-                >
-                  <span className={`block text-[10px] font-bold ${active ? 'text-[var(--accent-primary)]' : 'text-[var(--text-tertiary)]'}`}>{option.icon}</span>
-                  <span className="mt-1 block text-[10px] font-semibold text-[var(--text-primary)]">{option.label}</span>
-                  <span className="mt-0.5 block text-[8px] leading-3 text-[var(--text-muted)]">{option.detail}</span>
+                <button key={option.id} type="button" onClick={() => onOutcomeChange(option.id)} aria-pressed={active}
+                  className={`${FOCUS} flex cursor-pointer items-start gap-3 rounded-xl border p-3 text-left transition-colors ${active ? 'border-[var(--gold-border-active)] bg-[var(--accent-subtle)]' : 'border-transparent hover:border-[var(--border-subtle)] hover:bg-[var(--bg-input)]'}`}>
+                  <span aria-hidden="true" className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs ${active ? 'bg-[var(--accent-muted)] text-[var(--accent-primary)]' : 'bg-[var(--bg-overlay)] text-[var(--text-tertiary)]'}`}>{option.icon}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className={`block text-sm font-medium ${active ? 'text-[var(--accent-primary)]' : 'text-[var(--text-secondary)]'}`}>{option.label}</span>
+                    <span className="mt-1 hidden text-xs leading-5 text-[var(--text-tertiary)] sm:block">{option.detail}</span>
+                  </span>
+                  {active && <Check size={15} className="mt-2 hidden shrink-0 text-[var(--accent-primary)] sm:block" aria-hidden="true" />}
                 </button>
               );
             })}
           </div>
         </div>
 
-        <div className="p-4 sm:p-5">
-          <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--text-tertiary)]">3. Describe the result</p>
-          <label className="sr-only" htmlFor="guided-creation-prompt">{promptLabel}</label>
-          <textarea
-            id="guided-creation-prompt"
-            value={prompt}
-            onChange={event => onPromptChange(event.target.value)}
-            placeholder={promptPlaceholder}
-            rows={4}
-            className="w-full resize-none rounded-xl border border-[var(--border-default)] bg-[var(--bg-input)] px-3.5 py-3 text-xs leading-relaxed text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-muted)] focus:border-[var(--border-strong)]"
-          />
+        <div className="min-w-0 p-5 sm:p-7">
+          <label htmlFor="guided-creation-prompt" className="block text-base font-semibold text-[var(--text-primary)]">{promptLabel}</label>
+          <p id="guided-prompt-help" className="mb-4 mt-1 text-sm leading-6 text-[var(--text-tertiary)]">
+            {mode === 'talking-avatar' ? 'Write naturally, as if you were speaking to your audience.' : 'Include the subject, setting, lighting, and mood. A little detail goes a long way.'}
+          </p>
+          <textarea id="guided-creation-prompt" value={prompt} onChange={event => onPromptChange(event.target.value)} placeholder={promptPlaceholder}
+            aria-describedby="guided-prompt-help" rows={7}
+            className={`${FOCUS} min-h-48 w-full resize-y rounded-2xl border border-[var(--border-default)] bg-[var(--bg-input)] p-4 text-base leading-7 text-[var(--text-primary)] placeholder:text-[var(--text-muted)]`} />
 
-          <div className="mt-2.5 grid gap-2 sm:grid-cols-2">
-            <label className="relative">
-              <span className="sr-only">Format</span>
-              <select
-                value={format}
-                onChange={event => onFormatChange(event.target.value)}
-                className="w-full cursor-pointer appearance-none rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-input)] px-3 py-2.5 pr-8 text-[10px] font-semibold text-[var(--text-secondary)] outline-none focus:border-[var(--border-strong)]"
-              >
-                {formatOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-              </select>
-              <ChevronDown size={13} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+          <div className="mt-5 grid gap-4 sm:grid-cols-2">
+            <label className="block text-sm font-medium text-[var(--text-secondary)]">
+              Format
+              <span className="relative mt-2 block">
+                <select value={format} onChange={event => onFormatChange(event.target.value)} className={`${FOCUS} min-h-12 w-full cursor-pointer appearance-none rounded-xl border border-[var(--border-default)] bg-[var(--bg-input)] py-3 pl-3 pr-9 text-sm text-[var(--text-primary)]`}>
+                  {formatOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+                <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]" aria-hidden="true" />
+              </span>
             </label>
-
-            <label className="relative">
-              <span className="sr-only">Persona or subject</span>
-              <select
-                value={selectedPersonaId}
-                onChange={event => onPersonaChange(event.target.value)}
-                className="w-full cursor-pointer appearance-none rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-input)] px-3 py-2.5 pr-8 text-[10px] font-semibold text-[var(--text-secondary)] outline-none focus:border-[var(--border-strong)]"
-              >
-                <option value="none">No persona — create freely</option>
-                {personas.map(persona => <option key={persona.id} value={persona.id}>{persona.name}</option>)}
-              </select>
-              <ChevronDown size={13} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+            <label className="block text-sm font-medium text-[var(--text-secondary)]">
+              Persona or subject
+              <span className="relative mt-2 block">
+                <select value={selectedPersonaId} onChange={event => onPersonaChange(event.target.value)} className={`${FOCUS} min-h-12 w-full cursor-pointer appearance-none rounded-xl border border-[var(--border-default)] bg-[var(--bg-input)] py-3 pl-3 pr-9 text-sm text-[var(--text-primary)]`}>
+                  <option value="none">Create without a persona</option>
+                  {personas.map(persona => <option key={persona.id} value={persona.id}>{persona.name}</option>)}
+                </select>
+                <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]" aria-hidden="true" />
+              </span>
             </label>
           </div>
 
-          <div className="mt-3 flex flex-col gap-3 rounded-xl border border-[var(--border-subtle)] bg-black/10 p-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-[10px] font-semibold text-[var(--text-secondary)]">{estimate}</p>
-              <p className="mt-0.5 text-[9px] text-[var(--text-muted)]">{timeEstimate} · You can keep working while it runs.</p>
-            </div>
-            <button
-              type="button"
-              onClick={onGenerate}
-              disabled={!canGenerate || isGenerating}
-              className="btn-gold-primary inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-45"
-            >
-              {isGenerating ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
-              {isGenerating ? 'Creating…' : actionLabel}
-              {!isGenerating && <ArrowRight size={14} />}
-            </button>
-          </div>
-
-          <button
-            type="button"
-            onClick={onToggleFineTune}
-            className="mt-3 inline-flex cursor-pointer items-center gap-2 text-[10px] font-semibold text-[var(--text-tertiary)] transition-colors hover:text-[var(--accent-primary)]"
-          >
-            <SlidersHorizontal size={13} />
-            {fineTuneOpen ? 'Hide fine-tuning controls' : 'Fine-tune style, references, and settings'}
+          <button type="button" onClick={onToggleFineTune} aria-expanded={fineTuneOpen} aria-controls="advanced-creation-controls"
+            className={`${FOCUS} mt-4 inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg px-1 text-sm font-medium text-[var(--text-tertiary)] transition-colors hover:text-[var(--accent-primary)]`}>
+            <SlidersHorizontal size={16} aria-hidden="true" /> {fineTuneOpen ? 'Hide advanced settings' : 'References & advanced settings'}
+            <ChevronDown size={14} aria-hidden="true" className={`transition-transform ${fineTuneOpen ? 'rotate-180' : ''}`} />
           </button>
+
+          <div className="mt-5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-input)] p-4 sm:p-5">
+            <div className="mb-4 flex flex-wrap gap-2 text-xs text-[var(--text-secondary)]" aria-label="Creation summary">
+              {[selectedOutcome?.label, selectedFormat?.label, selectedPersona?.name].filter(Boolean).map((label, index) => (
+                <span key={index} className="rounded-md bg-[var(--bg-overlay)] px-2.5 py-1.5">{label}</span>
+              ))}
+            </div>
+            <p className="text-sm font-medium text-[var(--text-primary)]">{estimate}</p>
+            <p className="mt-1 text-xs leading-5 text-[var(--text-tertiary)]">{timeEstimate} · Keep working while we create.</p>
+            <button type="button" onClick={onGenerate} disabled={!canGenerate || isGenerating} aria-busy={isGenerating}
+              className={`${FOCUS} btn-gold-primary mt-5 inline-flex min-h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-45`}>
+              {isGenerating ? <Loader2 size={18} className="animate-spin" aria-hidden="true" /> : <Sparkles size={18} aria-hidden="true" />}
+              {isGenerating ? 'Creating…' : actionLabel}
+              {!isGenerating && <ArrowRight size={16} aria-hidden="true" />}
+            </button>
+            {!prompt.trim() && <p className="mt-3 text-center text-xs text-[var(--text-tertiary)]">Add {mode === 'talking-avatar' ? 'a script' : 'a description'} to get started.</p>}
+          </div>
         </div>
       </div>
     </section>

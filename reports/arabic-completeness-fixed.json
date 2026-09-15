@@ -1,0 +1,171 @@
+[
+  {
+    "model": "xAI Grok 4.20 Non-Reasoning",
+    "id": "grok",
+    "case": "reasoning",
+    "prompt": "معي مية دينار. اشتريت ثلاث تذاكر، الواحدة بثمانتعش، ودفعت سبعة للمواصلات. قديش بقي معي؟ وإذا رجعت تذكرة وحدة واسترديت تمنها كامل، قديش بصير معي؟",
+    "elapsedMs": 1968,
+    "done": true,
+    "text": "مية ناقص ٥٤ للتذاكر (٣×١٨) وناقص ٧ للمواصلات = بقي معك ٣٩ دينار. لو رجعت تذكرة واسترديت ١٨، بصير معك ٣٩ + ١٨ = ٥٧ دينار.",
+    "serverTiming": {
+      "identityMs": 4,
+      "firstTokenMs": 1199,
+      "firstTextMs": 1965,
+      "totalMs": 1965
+    },
+    "provider": "xAI grok-4.20-0309-non-reasoning",
+    "requestedModel": "grok"
+  },
+  {
+    "model": "Atlas Doubao Seed Character",
+    "id": "atlas-seed-character",
+    "case": "reasoning",
+    "prompt": "معي مية دينار. اشتريت ثلاث تذاكر، الواحدة بثمانتعش، ودفعت سبعة للمواصلات. قديش بقي معي؟ وإذا رجعت تذكرة وحدة واسترديت تمنها كامل، قديش بصير معي؟",
+    "elapsedMs": 2796,
+    "done": true,
+    "text": "حسابي بسيط، خليل. أولًا، بقي معك 38 دينار. وإذا رجعت تذكرة، بصير معك 57 دينار. الشرح: التذاكر التلاتة بتكلف 54 دينار (18×3)، زيادة 7 دينار مواصلات، المجموع 61 دينار. 100 ناقص 61 بيعطيك 38. لما ترجع تذكرة ب18 دينار، بتضيفها على ال38، فتصير 57.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 1286,
+      "firstTextMs": 2795,
+      "totalMs": 2796
+    },
+    "provider": "Atlas bytedance/doubao-seed-character-260628",
+    "requestedModel": "atlas-seed-character"
+  },
+  {
+    "model": "Venice Uncensored 1.2",
+    "id": "venice",
+    "case": "reasoning",
+    "prompt": "معي مية دينار. اشتريت ثلاث تذاكر، الواحدة بثمانتعش، ودفعت سبعة للمواصلات. قديش بقي معي؟ وإذا رجعت تذكرة وحدة واسترديت تمنها كامل، قديش بصير معي؟",
+    "elapsedMs": 909,
+    "done": true,
+    "text": "بقي معك أربعون دينار. إذا رجعت تذكرة وحدة واسترديت عشرة دينار، راح يبقي عندك خمسون دينار.",
+    "serverTiming": {
+      "identityMs": 1,
+      "firstTokenMs": 623,
+      "firstTextMs": 908,
+      "totalMs": 908
+    },
+    "provider": "Venice venice-uncensored-1-2",
+    "requestedModel": "venice"
+  },
+  {
+    "model": "Gemini 2.5 Flash",
+    "id": "gemini",
+    "case": "reasoning",
+    "prompt": "معي مية دينار. اشتريت ثلاث تذاكر، الواحدة بثمانتعش، ودفعت سبعة للمواصلات. قديش بقي معي؟ وإذا رجعت تذكرة وحدة واسترديت تمنها كامل، قديش بصير معي؟",
+    "elapsedMs": 861,
+    "done": true,
+    "text": "أهلاً خليل، بقي معك تسعة وثلاثين دينار. وإذا رجعت التذكرة، بصير معك سبعة وخمسين دينار.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 603,
+      "firstTextMs": 861,
+      "totalMs": 861
+    },
+    "provider": "Gemini fast path",
+    "requestedModel": "gemini"
+  },
+  {
+    "model": "Atlas DeepSeek V3.2",
+    "id": "atlas-deepseek",
+    "case": "reasoning",
+    "prompt": "معي مية دينار. اشتريت ثلاث تذاكر، الواحدة بثمانتعش، ودفعت سبعة للمواصلات. قديش بقي معي؟ وإذا رجعت تذكرة وحدة واسترديت تمنها كامل، قديش بصير معي؟",
+    "elapsedMs": 4702,
+    "done": true,
+    "text": "(تفكير بصوت معتدل) طيب، خلّي نحسب. معك مية دينار، اشتريت ثلاث تذاكر، كل وحدة بثمانية عشر، يعني ثلاث تمانتعش... صاروا أربعة وخمسين دينار. دفعت سبعة للمواصلات، يعني صرفنا واحد وستين. بقي معك تسعة وتلاتين دينار. إذا رجعت تذكرة وحدة واسترديت تمنها كامل (يعني تمنها ثمانية عشر)، هتزيد معك هالسبعة عشر دينار على التسعة وتلاتين. صار المجموع سبعة وخمسين دينار.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 1382,
+      "firstTextMs": 4700,
+      "totalMs": 4700
+    },
+    "provider": "Atlas deepseek-ai/deepseek-v3.2",
+    "requestedModel": "atlas-deepseek"
+  },
+  {
+    "model": "Runware DeepSeek V4 Pro",
+    "id": "runware",
+    "case": "reasoning",
+    "prompt": "معي مية دينار. اشتريت ثلاث تذاكر، الواحدة بثمانتعش، ودفعت سبعة للمواصلات. قديش بقي معي؟ وإذا رجعت تذكرة وحدة واسترديت تمنها كامل، قديش بصير معي؟",
+    "elapsedMs": 6517,
+    "done": true,
+    "text": "تمام، خلينا نحسبها خطوة خطوة. ثلاث تذاكر، الواحدة بثمانتعش، يعني 3 × 18 = 54 دينار. زائد 7 للمواصلات، صار المجموع 61 دينار. يعني بقي معك.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 1424,
+      "firstTextMs": 6516,
+      "totalMs": 6517
+    },
+    "provider": "Runware deepseek:v4@pro",
+    "requestedModel": "runware"
+  },
+  {
+    "model": "Atlas Qwen 3.6 Plus",
+    "id": "atlas-qwen",
+    "case": "reasoning",
+    "prompt": "معي مية دينار. اشتريت ثلاث تذاكر، الواحدة بثمانتعش، ودفعت سبعة للمواصلات. قديش بقي معي؟ وإذا رجعت تذكرة وحدة واسترديت تمنها كامل، قديش بصير معي؟",
+    "elapsedMs": 2775,
+    "done": true,
+    "text": "بقي معك تسعة وثلاثين دينار. الحساب بسيط: التذاكر الثلاث كلفتك أربعة وخمسين، زائد السبعة مواصلات، يعني صرفت واحد وستين من المية. لو رجعت تذكرة وحدة واستلمت تمنها، بيرجع معك سبعة وخمسين دينار.",
+    "serverTiming": {
+      "identityMs": 1,
+      "firstTokenMs": 1501,
+      "firstTextMs": 2775,
+      "totalMs": 2775
+    },
+    "provider": "Atlas qwen/qwen3.6-plus",
+    "requestedModel": "atlas-qwen"
+  },
+  {
+    "model": "WaveSpeed DeepSeek V4 Flash",
+    "id": "deepseek",
+    "case": "reasoning",
+    "prompt": "معي مية دينار. اشتريت ثلاث تذاكر، الواحدة بثمانتعش، ودفعت سبعة للمواصلات. قديش بقي معي؟ وإذا رجعت تذكرة وحدة واسترديت تمنها كامل، قديش بصير معي؟",
+    "elapsedMs": 7118,
+    "done": true,
+    "text": "خلّص، معك مية دينار. التلات تذاكر كل وحدة بثمانتعش، يعني ١٨ × ٣ = ٥٤ دينار. ضفنا المواصلات ٧، صار المجموع ٦١. هيك بقي معك ٣٩ دينار. إذا رجعت تذكرة وحدة واسترديت تمنها كامل، يعني بترجع ١٨ دينار. هيك بصير معك ٣٩ + ١٨ = ٥٧ دينار. تمام؟.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 2023,
+      "firstTextMs": 7118,
+      "totalMs": 7118
+    },
+    "provider": "WaveSpeed deepseek/deepseek-v4-flash",
+    "requestedModel": "deepseek"
+  },
+  {
+    "model": "Wiro Seed 2.1 Turbo",
+    "id": "wiro",
+    "case": "reasoning",
+    "prompt": "معي مية دينار. اشتريت ثلاث تذاكر، الواحدة بثمانتعش، ودفعت سبعة للمواصلات. قديش بقي معي؟ وإذا رجعت تذكرة وحدة واسترديت تمنها كامل، قديش بصير معي؟",
+    "elapsedMs": 10169,
+    "done": true,
+    "text": "بقي معك تسعة وثلاثين دينار. إذا رجعت تذكرة وحدة ورجعت تمنها كامل، بصير معك سبعة وخمسين دينار. ثلاث تذاكر بثمانتعش بتعملو أربعة وخمسين، زائد سبعة مواصلات بتكون واحد وستين، من مية بتبقى تسعة وثلاثين. ولما تسترد ثمن تذكرة وحدة اللي هو ثمانتعش، بتزودهم على التسعة والثلاثين فيصيرو سبعة وخمسين.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTextMs": 10169,
+      "totalMs": 10169
+    },
+    "provider": "Wiro seed-v2.1-turbo-uncensored",
+    "requestedModel": "wiro"
+  },
+  {
+    "model": "Atlas GLM-4.6",
+    "id": "atlas-glm",
+    "case": "reasoning",
+    "prompt": "معي مية دينار. اشتريت ثلاث تذاكر، الواحدة بثمانتعش، ودفعت سبعة للمواصلات. قديش بقي معي؟ وإذا رجعت تذكرة وحدة واسترديت تمنها كامل، قديش بصير معي؟",
+    "elapsedMs": 5540,
+    "done": true,
+    "text": "بتصير معك تسعة وستون دينار. وإذا رجعت تذكرة ورجعلك تمنها كامل، بتصير معك سبعة وسبعين دينار.",
+    "serverTiming": {
+      "identityMs": 1,
+      "firstTokenMs": 4653,
+      "firstTextMs": 5539,
+      "totalMs": 5539
+    },
+    "provider": "Atlas zai-org/GLM-4.6",
+    "requestedModel": "atlas-glm"
+  }
+]

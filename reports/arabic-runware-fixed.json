@@ -1,0 +1,19 @@
+[
+  {
+    "model": "Runware DeepSeek V4 Pro",
+    "id": "runware",
+    "case": "reasoning",
+    "prompt": "معي مية دينار. اشتريت ثلاث تذاكر، الواحدة بثمانتعش، ودفعت سبعة للمواصلات. قديش بقي معي؟ وإذا رجعت تذكرة وحدة واسترديت تمنها كامل، قديش بصير معي؟",
+    "elapsedMs": 2578,
+    "done": true,
+    "text": "حسبتها بسرعة... معك 39 دينار. ولو رجّعت تذكرة وحدة واستردّيت الـ18 كاملة، بصير معك 57 دينار.",
+    "serverTiming": {
+      "identityMs": 2,
+      "firstTokenMs": 1525,
+      "firstTextMs": 2575,
+      "totalMs": 2575
+    },
+    "provider": "Runware deepseek:v4@pro",
+    "requestedModel": "runware"
+  }
+]

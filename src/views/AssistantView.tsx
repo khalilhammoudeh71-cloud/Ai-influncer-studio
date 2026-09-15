@@ -1,3 +1,8 @@
+import { NativeVoiceCall } from '../components/NativeVoiceCall';
+import { createStreamingSpeech } from '../utils/streamingSpeech';
+import { getSavedPersonaVoice } from '../utils/personaVoiceEngine';
+import { SpeechEnginePilot } from '../components/SpeechEnginePilot';
+import { buildPersonalityInstructions } from '../../shared/personality';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Send, Bot, ChevronDown, ImageIcon, Video, Loader2, AlertCircle, Camera, MessageSquareQuote, Copy, Bookmark, Check, Phone, PhoneOff, Volume2, VolumeX, Mic, MicOff, RotateCcw, Trash2, Plus, Upload, Music, Film, X, Play, Sparkles, Paperclip, FileText, SlidersHorizontal, Settings, Hand, Maximize2, Download, Shirt, Heart, Pencil, BookOpen, ShieldCheck, Brain, Pin, Search, ArrowUpCircle, Wand2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -37,6 +42,9 @@ import {
 } from '../utils/conversationContinuity';
 import {
   addPersonaMemoryNote,
+  capturePersonaMemoryWriteScope,
+  isPersonaMemoryWriteScopeCurrent,
+  type PersonaMemoryWriteScope,
   buildRecentConversationSummary,
   deletePersonaMemoryNote,
   loadPersonaMemoryNotes,
@@ -286,7 +294,8 @@ function getDefaultPersonaMemoryFacts(): string[] {
   ];
 }
 
-function savePersonaMemory(personaId: string, memoryText: string) {
+function savePersonaMemory(personaId: string, memoryText: string, writeScope?: PersonaMemoryWriteScope) {
+  if (writeScope && !isPersonaMemoryWriteScopeCurrent(writeScope)) return;
   try {
     const trimmed = memoryText.trim();
     if (!trimmed) return;
@@ -308,7 +317,7 @@ function savePersonaMemory(personaId: string, memoryText: string) {
       return;
     }
 
-    addPersonaMemoryNote(personaId, trimmed, 'automatic', getDefaultPersonaMemoryFacts());
+    addPersonaMemoryNote(personaId, trimmed, 'automatic', getDefaultPersonaMemoryFacts(), writeScope);
   } catch { /* quota */ }
 }
 
@@ -441,57 +450,7 @@ export const PERSONA_VOICE_CHARACTERS = [
 ];
 
 export function getActivePersonaVoice(persona?: Persona | null) {
-  if (!persona) return { voiceId: 'W4ynDvR6NFiK8lj2I8iL', voiceReference: undefined };
-  const name = (persona.name || '').toLowerCase();
-  let voiceId = persona.voiceId;
-  const staleRawanVoice = name.includes('rawan') && [
-    'ov7JSkufAlSs386OYTaC',
-    'FkiPCg9ZhlwLIOml7TKM',
-    'bEp1nJ6RU85e3wsylRfE',
-  ].includes(voiceId || '');
-  
-  if (!voiceId || voiceId === 'default' || voiceId === 'female_default' || staleRawanVoice || (name.includes('leen') && (voiceId === 'ov7JSkufAlSs386OYTaC' || voiceId === 'W4ynDvR6NFiK8lj2I8iL'))) {
-    if (name.includes('leen')) {
-      voiceId = '7jFje9BJoTWzqZzouT0j';
-    } else if (name.includes('rawan')) {
-      voiceId = 'W4ynDvR6NFiK8lj2I8iL';
-    } else if (name.includes('brielle')) {
-      voiceId = '6u6JbqKdaQy89ENzLSju';
-    } else if (name.includes('sabrina')) {
-      voiceId = 'v2cluk168jzrg0LQKNRl';
-    } else if (name.includes('madison')) {
-      voiceId = 'NUjosfEayZAdRcDmcHM8';
-    } else if (name.includes('kristen')) {
-      voiceId = 'XZUXLIpE3dqJ9aCZUj2R';
-    } else if (name.includes('zara')) {
-      voiceId = 'jqcCZkN6Knx8BJ5TBdYR';
-    } else if (name.includes('fiona')) {
-      voiceId = 'RXtWW6etvimS8QJ5nhVk';
-    } else if (name.includes('vanessa')) {
-      voiceId = '8DzKSPdgEQPaK5vKG0Rs';
-    } else if (name.includes('crystal')) {
-      voiceId = 'pq3wL6Xv3fuEM14W6ZCg';
-    } else if (name.includes('navya')) {
-      voiceId = 'h2dQOVyUfIDqY2whPOMo';
-    } else if (name.includes('kendra')) {
-      voiceId = 'Xkem7o24n3aQyiwIXNeT';
-    } else if (name.includes('john')) {
-      voiceId = 'KLbbwrUTS6brBkjmN4Fp';
-    } else if (name.includes('jason')) {
-      voiceId = 'PUhCSw74BFEgrq8dqe8I';
-    } else if (name.includes('stark')) {
-      voiceId = 'W6zuQRTYRBdAK8ypjo5V';
-    } else {
-      voiceId = 'W4ynDvR6NFiK8lj2I8iL';
-    }
-  }
-
-  const voiceReference = persona.voiceSampleUrl || 
-                         (persona as any)?.audioSamples?.[0]?.base64 || 
-                         (persona as any)?.voiceFile || 
-                         (persona as any)?.voiceReference;
-
-  return { voiceId, voiceReference };
+  return getSavedPersonaVoice(persona) as { voiceId?: string; voiceReference?: string };
 }
 
 function uid(): string {
@@ -2105,47 +2064,31 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           return;
         } catch (error: any) {
           if (error?.name === 'AbortError') throw error;
-          console.warn('[Maya Voice Playback] Falling back to the saved ElevenLabs persona voice:', error);
           stopStreamingAudio();
-          currentVoice = { ...currentVoice, voiceModel: 'eleven_v3_conversational' };
+          throw error;
         }
       }
 
-      const ttsRes = await authFetch('/api/agent/voice-chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          activePersona: speechPersona,
-          directTTS: text,
-          voiceId: currentVoice.voiceId,
-          voiceReference: currentVoice.voiceReference,
-          voiceModel: currentVoice.voiceModel,
-          ttsModel: currentVoice.voiceModel,
-        }),
-        signal: controller.signal,
-      });
-      const ttsData = await ttsRes.json().catch(() => ({}));
-      if (!ttsRes.ok) {
-        if (ttsData.code === 'PERSONA_VOICE_UNAVAILABLE') {
-          const message = ttsData.error || `${speechPersona.name}'s saved voice is unavailable. Reselect it in Voice Studio.`;
-          toast.error(message, { id: 'persona-voice-unavailable', duration: 7000 });
-          onPlaybackComplete();
-          return;
-        }
-        throw new Error(ttsData.error || `Voice synthesis failed (${ttsRes.status})`);
+      let audio: HTMLAudioElement;
+      const isEleven = currentVoice.voiceModel.startsWith('eleven');
+      if (isEleven && currentVoice.voiceId) {
+        const response = await authFetch('/api/generate-speech', {
+          method:'POST', headers:{'Content-Type':'application/json'}, signal:controller.signal,
+          body:JSON.stringify({engine:'elevenlabs',voiceId:currentVoice.voiceId,text,activePersona:speechPersona,speechModel:currentVoice.voiceModel,stream:true}),
+        });
+        audio = await createStreamingSpeech(response,currentVoice.voiceId,controller.signal);
+      } else {
+        const response = await authFetch('/api/generate-speech', {
+          method:'POST',headers:{'Content-Type':'application/json'},signal:controller.signal,
+          body:JSON.stringify({engine:currentVoice.voiceModel,voiceId:currentVoice.voiceId,voiceReference:currentVoice.voiceReference,text,activePersona:speechPersona}),
+        });
+        const data=await response.json();if(!response.ok)throw new Error(data.error || 'Selected voice unavailable.');
+        if(data.voiceId && data.voiceId!==currentVoice.voiceId)throw new Error('The selected voice changed.');
+        if(!data.audioUrl)throw new Error('No speech audio returned.');
+        audio=new Audio(data.audioUrl);
       }
-      const audioUrl = ttsData.audioUrl;
-      
-      if (!audioUrl || !isCallActiveRef.current) {
-        onPlaybackComplete();
-        return;
-      }
-
-      // Create a fresh Audio element for each playback to avoid stale state
-      const audio = new Audio();
+      if (!isCallActiveRef.current || controller.signal.aborted) { audio.pause(); return; }
       audioRef.current = audio;
-      
-      audio.src = audioUrl;
       audio.volume = 1.0;
 
       audio.onplay = () => {
@@ -2231,6 +2174,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     voiceCallBusyRef.current = true;
     setPendingVoiceConfirmation(null);
     const callTurnId = ++callTurnIdRef.current;
+    const memoryWriteScope = capturePersonaMemoryWriteScope(activePersona.id);
     isAgentSpeakingRef.current = false;
     restartSpeechRecognition();
 
@@ -2354,52 +2298,35 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         toast.error(message, { id: 'persona-voice-unavailable', duration: 7000 });
       };
 
-      const synthesizeSpeechSegment = async (
-        segment: string,
-        voiceModel = targetVoiceRouting.voiceModel,
-      ): Promise<string | undefined> => {
+      const synthesizeSpeechSegment = async (segment: string): Promise<HTMLAudioElement | undefined> => {
         if (terminalTtsError) return undefined;
-        for (let attempt = 0; attempt < 2; attempt++) {
-          try {
-            const ttsResponse = await authFetch('/api/agent/voice-chat', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                activePersona,
-                directTTS: segment,
-                voiceId: targetVoiceRouting.voiceId,
-                voiceReference: targetVoiceRouting.voiceReference,
-                voiceModel,
-                ttsModel: voiceModel,
-              }),
-              signal: controller.signal,
-            });
-            const ttsData = await ttsResponse.json().catch(() => ({}));
-            if (ttsResponse.ok && ttsData.audioUrl) return ttsData.audioUrl;
-            if (ttsData.code === 'PERSONA_VOICE_UNAVAILABLE') {
-              reportTerminalTtsError(
-                ttsData.error || `${activePersona.name}'s saved voice is unavailable. Reselect it in Voice Studio.`,
-              );
-              return undefined;
-            }
-          } catch (error: any) {
-            if (error?.name === 'AbortError') throw error;
-          }
-          if (attempt === 0 && !controller.signal.aborted) {
-            await new Promise(resolve => setTimeout(resolve, 250));
-          }
+        try {
+          const isEleven = targetVoiceRouting.voiceModel.startsWith('eleven');
+          const response = await authFetch('/api/generate-speech', {
+            method:'POST',headers:{'Content-Type':'application/json'},signal:controller.signal,
+            body:JSON.stringify({activePersona,text:segment,voiceId:targetVoiceRouting.voiceId,voiceReference:targetVoiceRouting.voiceReference,
+              engine:isEleven?'elevenlabs':targetVoiceRouting.voiceModel,speechModel:targetVoiceRouting.voiceModel,stream:isEleven}),
+          });
+          if(isEleven && targetVoiceRouting.voiceId) return await createStreamingSpeech(response,targetVoiceRouting.voiceId,controller.signal);
+          const data=await response.json();
+          if(!response.ok || !data.audioUrl)throw new Error(data.error || 'Selected voice unavailable.');
+          if(data.voiceId && data.voiceId!==targetVoiceRouting.voiceId)throw new Error('The returned voice does not match the selection.');
+          return new Audio(data.audioUrl);
+        } catch(error:any) {
+          if(error?.name==='AbortError')throw error;
+          reportTerminalTtsError(error?.message || 'The selected voice is unavailable. Your saved voice is unchanged.');
+          return undefined;
         }
-        return undefined;
       };
 
-      const playPreparedSegment = async (segment: string, audioPromise: Promise<string | undefined>, playbackAttempt = 0): Promise<void> => {
-        const audioUrl = await audioPromise.catch(() => undefined);
-        if (!audioUrl || controller.signal.aborted || callTurnId !== callTurnIdRef.current || !isCallActiveRef.current) return;
+      const playPreparedSegment = async (segment: string, audioPromise: Promise<HTMLAudioElement | undefined>, playbackAttempt = 0): Promise<void> => {
+        const preparedAudio = await audioPromise.catch(() => undefined);
+        if (!preparedAudio || controller.signal.aborted || callTurnId !== callTurnIdRef.current || !isCallActiveRef.current) return;
 
+        let playbackStarted = false;
         const playedToEnd = await new Promise<boolean>((resolve) => {
-          const audio = new Audio();
+          const audio = preparedAudio;
           audioRef.current = audio;
-          audio.src = audioUrl;
           audio.volume = 1;
           let settled = false;
 
@@ -2423,6 +2350,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           audio.onended = () => finish(true);
           audio.onerror = () => finish(false);
           audio.onplay = () => {
+            playbackStarted = true;
             streamingAudioPlayed = true;
             recordFirstAudioLatency();
             personaSpeakingStartTimeRef.current = Date.now();
@@ -2438,7 +2366,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 
         // A temporary CDN/audio-element failure should not silently remove the
         // final phrase. Re-synthesize and replay that phrase once.
-        if (!playedToEnd && !terminalTtsError && playbackAttempt === 0 && !controller.signal.aborted && callTurnId === callTurnIdRef.current) {
+        if (!playedToEnd && !playbackStarted && !terminalTtsError && playbackAttempt === 0 && !controller.signal.aborted && callTurnId === callTurnIdRef.current) {
           await playPreparedSegment(segment, synthesizeSpeechSegment(segment), 1);
         }
       };
@@ -2462,16 +2390,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
               streamingAudioPlayed ||= played;
             } catch (error: any) {
               if (error?.name === 'AbortError') throw error;
-              console.warn('[Maya Voice Playback] Streaming failed; trying the saved ElevenLabs persona voice:', error);
               stopStreamingAudio();
-              streamingAudioPlayed = false;
-              const fallbackAudio = await synthesizeSpeechSegment(cleanSegment, 'eleven_v3_conversational');
-              if (fallbackAudio) {
-                await playPreparedSegment(cleanSegment, Promise.resolve(fallbackAudio), 1);
-              }
-              if (!streamingAudioPlayed) {
-                reportTerminalTtsError('Maya and the fallback persona voice are temporarily unavailable. Try again in a moment.');
-              }
+              reportTerminalTtsError('The selected Maya voice is unavailable. No replacement voice was used.');
             }
           });
           return;
@@ -2481,14 +2401,12 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       };
 
       const flushSpeechBuffer = () => {
-        if (streamingSpeechQueued) return;
         const finalSegment = speechBuffer.replace(/\s+/g, ' ').trim();
         speechBuffer = '';
         if (finalSegment) queueSpeechSegment(finalSegment);
       };
 
-      // Buffer the short, shaped reply and synthesize it once. Two independent
-      // clips made the same cloned speaker change cadence at the seam.
+      // Start each complete, reviewed sentence promptly with the same frozen voice binding.
       const res = await authFetch('/api/agent/voice-chat-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2536,6 +2454,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           }
           streamedReply += payload.text;
           speechBuffer += payload.text;
+          if (/[.!?]["'”’]?\s*$/.test(speechBuffer)) flushSpeechBuffer();
           currentPersonaSpeechRef.current = streamedReply.toLowerCase().trim();
         }
         if (payload.done) {
@@ -2601,7 +2520,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       
       // Auto-extract and save user memory if user introduced new facts
       if (text.length > 5 && isDurablePersonaMemoryText(text)) {
-        savePersonaMemory(activePersona.id, text);
+        savePersonaMemory(activePersona.id, text, memoryWriteScope);
       }
       
       appendConversationMessages([{
@@ -3777,6 +3696,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 Niche: ${activePersona.niche}
 Tone & Speaking Style: ${activePersona.tone}
 Personality: ${Array.isArray(activePersona.personalityTraits) ? activePersona.personalityTraits.join(', ') : (activePersona.personalityTraits || 'Charismatic, witty, authentic')}
+${buildPersonalityInstructions(activePersona)}
 Bio: ${activePersona.bio || ''}
 
 A fan or collaborator left this comment/DM on your post:
@@ -3958,6 +3878,11 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                 <Trash2 size={14} />
               </button>
 
+              <NativeVoiceCall personaId={propActivePersona.id} disabled={isCallActive} memories={loadPersonaMemories(propActivePersona.id)} history={messages}
+                onMessage={message=>setMessages(previous=>previous.some(item=>item.id===message.id)?previous.map(item=>item.id===message.id?{...item,content:message.content}:item):[...previous,{...message,role:message.role==='user'?'user':'persona',type:'text',timestamp:new Date(),source:'voice'}])}
+                onPlan={data=>setMessages(previous=>[...previous,{id:crypto.randomUUID(),role:'persona',content:(data.text||'Studio plan ready.')+'\n'+(data.suggestedSteps||[]).map((step:any,index:number)=>`${index+1}. ${String(step.description||step.type||'Proposed task').replace(/_/g,' ')}`).join('\n')+'\nProposed only. Open Super Agent to review and execute studio actions.',type:'text',timestamp:new Date(),source:'voice'}])}/>
+              <SpeechEnginePilot personaId={propActivePersona.id} disabled={isCallActive} model={voiceLlmModel} memories={loadPersonaMemories(propActivePersona.id)} history={messages.map(message=>({role:message.role==='user'?'user':'model',content:message.content}))}
+                onMessage={message=>setMessages(previous=>previous.some(item=>item.id===message.id)?previous.map(item=>item.id===message.id?{...item,content:message.content}:item):[...previous,{...message,role:message.role==='user'?'user':'persona',type:'text',timestamp:new Date(),source:'voice'}])}/>
               {/* Live Voice Call Button */}
               <motion.button
                 whileHover={{ scale: 1.02 }}
@@ -4622,10 +4547,10 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                 {lastVoiceLatency?.responseMs !== undefined && (
                   <div
                     className="hidden md:flex items-center gap-1.5 bg-cyan-500/[0.08] border border-cyan-500/20 rounded-full px-2.5 py-1 text-[10px] font-semibold text-cyan-200"
-                    title={`Last reply: recognition ${formatLatency(lastVoiceLatency.recognitionMs)}, AI ${formatLatency(lastVoiceLatency.modelMs)}, voice ${formatLatency(lastVoiceLatency.speechMs)}`}
+                    title={`Client playback estimate, not acoustic latency. Speech start to transcript: ${formatLatency(lastVoiceLatency.recognitionMs)}; request to text: ${formatLatency(lastVoiceLatency.modelMs)}; text to playback: ${formatLatency(lastVoiceLatency.speechMs)}` }
                   >
                     <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
-                    Reply {formatLatency(lastVoiceLatency.responseMs)}
+                    Reply estimate {formatLatency(lastVoiceLatency.responseMs)}
                   </div>
                 )}
                 {isPro && lastVoiceRoute && (

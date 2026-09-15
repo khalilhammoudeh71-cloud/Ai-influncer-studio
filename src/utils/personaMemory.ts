@@ -1,4 +1,4 @@
-import { accountLocalStorage } from './accountStorage';
+import { accountLocalStorage, getActiveStorageUserId } from './accountStorage';
 import type { ConversationRecord } from './conversationContinuity';
 
 export type PersonaMemorySource = 'automatic' | 'manual' | 'default';
@@ -10,6 +10,17 @@ export interface PersonaMemoryNote {
   source: PersonaMemorySource;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface PersonaMemoryWriteScope { personaId: string; userId: string | null; revision: string | null }
+const memoryRevisionKey = (personaId: string) => `persona_memories_revision_${personaId}`;
+export function capturePersonaMemoryWriteScope(personaId: string): PersonaMemoryWriteScope {
+  return { personaId, userId: getActiveStorageUserId(), revision: accountLocalStorage.getItem(memoryRevisionKey(personaId)) };
+}
+
+export function isPersonaMemoryWriteScopeCurrent(scope: PersonaMemoryWriteScope): boolean {
+  return scope.userId === getActiveStorageUserId()
+    && scope.revision === accountLocalStorage.getItem(memoryRevisionKey(scope.personaId));
 }
 
 const MAX_MEMORY_NOTES = 60;
@@ -44,6 +55,8 @@ function isCorruptedLegacyMemory(text: string): boolean {
 export function isDurablePersonaMemoryText(value: unknown): boolean {
   const text = normalizeText(value);
   if (!text || text.length > 320 || /\?$/.test(text)) return false;
+  if (/\b(?:api[ _-]?key|password|secret|access[ _-]?token|bearer|authorization)\b|\b(?:sk-|ghp_|github_pat_)[a-zA-Z0-9_-]{8,}|[?&](?:token|key|secret)=/i.test(text)) return false;
+  if (/\b(?:role[ -]?play|fictional|pretend|imagine|in this scene|do not remember|don't remember|do not store|don't store)\b/i.test(text)) return false;
   if (/^(?:and|but|so|yes|no|okay|ok|well|oh|um|uh|hmm|listen)\b/i.test(text)) return false;
   if (/\b(?:send|show|take|snap|generate|create|make|render|record|edit|change|remove|undress|strip)\b[\s\S]{0,80}\b(?:image|photo|picture|selfie|video|clip|clothes|nude|naked|topless)\b/i.test(text)) return false;
 
@@ -161,9 +174,12 @@ export function addPersonaMemoryNote(
   text: string,
   source: PersonaMemorySource = 'manual',
   defaultFacts: string[] = [],
+  writeScope?: PersonaMemoryWriteScope,
 ): PersonaMemoryNote[] {
+  if (writeScope && (writeScope.personaId !== personaId || !isPersonaMemoryWriteScopeCurrent(writeScope))) return loadPersonaMemoryNotes(personaId);
   const cleanText = normalizeText(text);
   const existing = loadPersonaMemoryNotes(personaId, defaultFacts);
+  if (source === 'automatic' && !isDurablePersonaMemoryText(cleanText)) return existing;
   if (!cleanText || existing.some(note => note.text.toLowerCase() === cleanText.toLowerCase())) return existing;
   return savePersonaMemoryNotes(personaId, [createNote(cleanText, source), ...existing]);
 }
@@ -172,6 +188,7 @@ export function updatePersonaMemoryNote(personaId: string, noteId: string, text:
   const cleanText = normalizeText(text);
   if (!cleanText) return loadPersonaMemoryNotes(personaId);
   const now = new Date().toISOString();
+  accountLocalStorage.setItem(memoryRevisionKey(personaId), createId());
   return savePersonaMemoryNotes(personaId, loadPersonaMemoryNotes(personaId).map(note => (
     note.id === noteId ? { ...note, text: cleanText, updatedAt: now, source: 'manual' as const } : note
   )));
@@ -185,6 +202,7 @@ export function togglePersonaMemoryPinned(personaId: string, noteId: string): Pe
 }
 
 export function deletePersonaMemoryNote(personaId: string, noteId: string): PersonaMemoryNote[] {
+  accountLocalStorage.setItem(memoryRevisionKey(personaId), createId());
   return savePersonaMemoryNotes(personaId, loadPersonaMemoryNotes(personaId).filter(note => note.id !== noteId));
 }
 

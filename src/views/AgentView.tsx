@@ -1,3 +1,7 @@
+import { NativeVoiceCall } from '../components/NativeVoiceCall';
+import { createStreamingSpeech } from '../utils/streamingSpeech';
+import { SpeechEnginePilot } from '../components/SpeechEnginePilot';
+import { shouldInterruptPersonaSpeech, isLikelyPersonaEcho, mergeVoiceTranscriptSegments, getVoiceTurnCommitDelay } from '../utils/voiceStability';
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -64,7 +68,10 @@ import { trimAudioBase64To10Sec } from '../utils/audioUtils';
 import { accountLocalStorage } from '../utils/accountStorage';
 import toast from 'react-hot-toast';
 import { DEFAULT_VIDEO_MODEL_ID } from '../../shared/mediaDefaults';
+import { buildVoiceConversationHistory } from '../../shared/voiceConversationContext';
 import { normalizeAgentSteps } from '../utils/agentStepValidation';
+import { readVoiceTextStream, VoiceTurnScope } from '../utils/voiceStream';
+import { buildAgentSpeechRequest, validateAgentSpeechResponse } from '../utils/agentVoice';
 
 interface AgentViewProps {
   personas: Persona[];
@@ -90,6 +97,7 @@ interface CollaborationMsg {
 }
 
 interface Message {
+  nativeVoicePlan?: boolean;
   id: string;
   role: 'user' | 'model';
   content: string;
@@ -928,6 +936,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
   const audioSegmentsRef = useRef<Record<number, any>>({});
   const audioPlayingRef = useRef<boolean>(false);
   const streamActiveRef = useRef<boolean>(false);
+  const voiceTurnScopeRef = useRef(new VoiceTurnScope());
 
   useEffect(() => {
     isLiveVoiceCallActiveRef.current = isLiveVoiceCallActive;
@@ -954,10 +963,80 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
     return () => clearInterval(interval);
   }, [isLiveVoiceCallActive]);
 
+  const recentAgentSpeechRef = useRef({ text: '', until: 0 });
+  const agentSegmentTextRef = useRef<Record<number, string>>({});
+  const voiceEnergyUntilRef = useRef(0);
+  const pendingSpeechRef = useRef('');
+  const lastVoiceDispatchAtRef = useRef(0);
+  const voiceSenderRef = useRef<(text: string) => void>(() => {});
+  const activeVoiceMessageRef = useRef<string | null>(null);
+
+  // Acoustic energy corroborates non-echo transcripts; it never interrupts alone.
+  useEffect(() => {
+    if (!isLiveVoiceCallActive) return;
+    let disposed = false;
+    let stream: MediaStream | undefined;
+    let context: AudioContext | undefined;
+    let frame = 0;
+    void (async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: {
+          echoCancellation: true, noiseSuppression: true, autoGainControl: true,
+        } });
+        if (disposed) { stream.getTracks().forEach(track => track.stop()); return; }
+        context = new AudioContext();
+        await context.resume();
+        if (disposed) return;
+        const analyser = context.createAnalyser();
+        analyser.fftSize = 512;
+        context.createMediaStreamSource(stream).connect(analyser);
+        const data = new Uint8Array(analyser.frequencyBinCount);
+        let aboveSince = 0;
+        const tick = () => {
+          if (disposed) return;
+          analyser.getByteFrequencyData(data);
+          const first = Math.floor(180 * analyser.fftSize / context!.sampleRate);
+          const last = Math.min(data.length - 1, Math.ceil(3200 * analyser.fftSize / context!.sampleRate));
+          let sum = 0;
+          for (let i = first; i <= last; i++) sum += data[i];
+          const energy = sum / ((last - first + 1) * 255);
+          const now = performance.now();
+          if (energy > 0.12) {
+            aboveSince ||= now;
+            if (now - aboveSince >= 120) voiceEnergyUntilRef.current = Date.now() + 750;
+          } else aboveSince = 0;
+          frame = requestAnimationFrame(tick);
+        };
+        tick();
+      } catch {
+        stream?.getTracks().forEach(track => track.stop());
+        if (context && context.state !== 'closed') void context.close().catch(() => {});
+        // Explicit spoken interruptions and the visible stop control remain usable.
+      }
+    })();
+    return () => {
+      disposed = true;
+      cancelAnimationFrame(frame);
+      stream?.getTracks().forEach(track => track.stop());
+      if (context && context.state !== 'closed') void context.close().catch(() => {});
+      voiceEnergyUntilRef.current = 0;
+    };
+  }, [isLiveVoiceCallActive, effectiveSelectedPersonaId]);
+
   const lastRestartTimeRef = useRef<number>(0);
   const restartCountRef = useRef<number>(0);
 
   const stopAllAgentAudio = () => {
+    if (activeVoiceMessageRef.current && voiceCallBusyRef.current) {
+      const id = activeVoiceMessageRef.current;
+      setMessages(prev => prev.map(message => message.id === id
+        ? { ...message, content: `${message.content}\n[Voice reply interrupted; some text may not have played.]` }
+        : message));
+    }
+    activeVoiceMessageRef.current = null;
+    if (audioPlayingRef.current) recentAgentSpeechRef.current.until = Date.now() + 1500;
+    voiceTurnScopeRef.current.cancel();
+    voiceCallBusyRef.current = false;
     console.log('[Voice] 🛑 Stopping all audio playback and flushing queues');
     if (liveVoiceAudioRef.current) {
       try {
@@ -990,29 +1069,22 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
       return;
     }
 
+    const turn = voiceTurnScopeRef.current.start();
+    const isCurrentTurn = () => turn.isCurrent() && isLiveVoiceCallActiveRef.current;
     voiceCallBusyRef.current = true;
     isAgentSpeakingRef.current = true;
     console.log('[Voice] 📤 Sending:', spokenText);
 
     // Watchdog timer: automatically recover state if pipeline stalls >12 seconds
     const watchdogTimer = setTimeout(() => {
-      if (voiceCallBusyRef.current) {
+      if (isCurrentTurn() && voiceCallBusyRef.current) {
         console.warn('[Voice Watchdog] ⏰ Processing timed out after 12s, auto-recovering...');
         stopAllAgentAudio();
-        restartMic();
+        if (isLiveVoiceCallActiveRef.current) restartSpeechRecognition();
       }
     }, 12000);
+    turn.signal.addEventListener('abort', () => clearTimeout(watchdogTimer), { once: true });
 
-    // Stop mic cleanly while we process
-    if (liveVoiceRecRef.current) {
-      try {
-        liveVoiceRecRef.current.onend = null;
-        liveVoiceRecRef.current.onerror = null;
-        liveVoiceRecRef.current.onresult = null;
-        liveVoiceRecRef.current.abort();
-      } catch {}
-      liveVoiceRecRef.current = null;
-    }
     setIsUserSpeaking(false);
 
     // Add user message to chat
@@ -1039,20 +1111,22 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
       content: '',
       status: 'normal'
     };
+    activeVoiceMessageRef.current = agentMsgId;
     setMessages(prev => [...prev.slice(-35), agentMsgObj]);
 
     const restartMic = () => {
+      if (!isCurrentTurn()) return;
       clearTimeout(watchdogTimer);
       console.log('[Voice] 🎤 Restarting mic...');
       voiceCallBusyRef.current = false;
       isAgentSpeakingRef.current = false;
+      activeVoiceMessageRef.current = null;
       lastDispatchedTextRef.current = '';
-      if (isLiveVoiceCallActiveRef.current) {
-        restartSpeechRecognition();
-      }
+      if (isLiveVoiceCallActiveRef.current && !liveVoiceRecRef.current) restartSpeechRecognition();
     };
 
     const checkPlaybackFinished = () => {
+      if (!isCurrentTurn()) return;
       const nextIdx = playbackIndexRef.current;
       const totalSentences = sentenceIndexRef.current;
 
@@ -1067,7 +1141,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
     };
 
     const playPlaybackQueue = async () => {
-      if (audioPlayingRef.current) return;
+      if (!isCurrentTurn() || audioPlayingRef.current) return;
 
       const nextIdx = playbackIndexRef.current;
       const segment = audioSegmentsRef.current[nextIdx];
@@ -1088,19 +1162,26 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
       }
 
       audioPlayingRef.current = true;
+      clearTimeout(watchdogTimer); // The setup watchdog must not cut off audible replies.
       liveVoiceAudioRef.current = segment;
+      recentAgentSpeechRef.current = { text: agentSegmentTextRef.current[nextIdx] || '', until: Infinity };
       isAgentSpeakingRef.current = true;
 
       const safetyTimer = setTimeout(() => {
+        if (!isCurrentTurn()) return;
         console.warn(`[Voice Playback] ⏰ Segment ${nextIdx} safety timeout`);
         try { segment.pause(); } catch {}
+        recentAgentSpeechRef.current.until = Date.now() + 1500;
         audioPlayingRef.current = false;
         isAgentSpeakingRef.current = false;
         checkPlaybackFinished();
       }, 120000); // 2 minute safety timeout to prevent long sentence cutoffs
 
+      turn.signal.addEventListener('abort', () => clearTimeout(safetyTimer), { once: true });
       segment.onended = () => {
         clearTimeout(safetyTimer);
+        if (!isCurrentTurn()) return;
+        recentAgentSpeechRef.current.until = Date.now() + 1500;
         audioPlayingRef.current = false;
         isAgentSpeakingRef.current = false;
         checkPlaybackFinished();
@@ -1108,7 +1189,9 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
 
       segment.onerror = () => {
         clearTimeout(safetyTimer);
+        if (!isCurrentTurn()) return;
         console.warn(`[Voice Playback] ❌ Audio play error on segment ${nextIdx}`);
+        recentAgentSpeechRef.current.until = Date.now() + 1500;
         audioPlayingRef.current = false;
         isAgentSpeakingRef.current = false;
         checkPlaybackFinished();
@@ -1117,164 +1200,85 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
       try {
         await segment.play();
       } catch (err) {
+        if (!isCurrentTurn()) return;
         console.warn(`[Voice Playback] ❌ segment.play() error on segment ${nextIdx}:`, err);
         clearTimeout(safetyTimer);
+        recentAgentSpeechRef.current.until = Date.now() + 1500;
         audioPlayingRef.current = false;
         isAgentSpeakingRef.current = false;
         checkPlaybackFinished();
       }
     };
 
-    const createWebSpeechAudioSegment = (text: string) => {
-      let isCancelled = false;
-      return {
-        play: function() {
-          return new Promise<void>((resolve) => {
-            if (typeof window === 'undefined' || !window.speechSynthesis || isCancelled) {
-              if (this.onended) this.onended();
-              resolve();
-              return;
-            }
-            const synth = window.speechSynthesis;
-            if (synth.paused) {
-              try { synth.resume(); } catch {}
-            }
-
-            const utterance = new SpeechSynthesisUtterance(text);
-            utterance.rate = 1.05;
-            utterance.pitch = 1.0;
-
-            const voices = synth.getVoices();
-            const preferred = voices.find(v => v.lang.startsWith('en') && (v.name.includes('Natural') || v.name.includes('Samantha') || v.name.includes('Google') || v.name.includes('Karen') || v.name.includes('Victoria')));
-            if (preferred) utterance.voice = preferred;
-
-            let finished = false;
-
-            const done = () => {
-              if (finished) return;
-              finished = true;
-              if (this.onended) this.onended();
-              resolve();
-            };
-
-            utterance.onend = () => { clearTimeout(safetyTimeout); done(); };
-            utterance.onerror = () => { clearTimeout(safetyTimeout); done(); };
-
-            // Safety timeout: 8 seconds max per sentence segment so Chrome WebSpeech never hangs the queue
-            const safetyTimeout = setTimeout(done, 8000);
-
-            try {
-              if (synth.speaking || synth.pending) {
-                try { synth.cancel(); } catch {}
-              }
-              synth.speak(utterance);
-            } catch (err) {
-              console.warn('[WebSpeech] synth.speak error:', err);
-              clearTimeout(safetyTimeout);
-              done();
-            }
-          });
-        },
-        pause: function() {
-          isCancelled = true;
-          if (typeof window !== 'undefined' && window.speechSynthesis) {
-            try { window.speechSynthesis.cancel(); } catch {}
-          }
-          if (this.onended) this.onended();
-        },
-        onended: null as (() => void) | null,
-        onerror: null as (() => void) | null,
-      };
-    };
-
-    // Split long text into short clause-sized chunks safe for Chrome WebSpeech (< 12 seconds each)
-    const splitIntoShortClauses = (text: string): string[] => {
-      // If short enough, return as-is
-      if (text.length <= 80) return [text];
-      
-      // Split on commas, semicolons, colons, dashes, "and", "but", "or", "so", "because"
-      const clauseRegex = /[^,;:\-–—]+(?:[,;:\-–—]|(?:\s+(?:and|but|or|so|because|then|which|where|when)\s+))/gi;
-      const clauses: string[] = [];
-      let lastIdx = 0;
-      let currentChunk = '';
-      let match;
-
-      while ((match = clauseRegex.exec(text)) !== null) {
-        const piece = match[0].trim();
-        if ((currentChunk + ' ' + piece).trim().length > 100 && currentChunk.length > 10) {
-          clauses.push(currentChunk.trim());
-          currentChunk = piece;
-        } else {
-          currentChunk = (currentChunk + ' ' + piece).trim();
-        }
-        lastIdx = clauseRegex.lastIndex;
-      }
-
-      // Append remainder
-      const remainder = text.substring(lastIdx).trim();
-      if (remainder) {
-        currentChunk = (currentChunk + ' ' + remainder).trim();
-      }
-      if (currentChunk.trim()) {
-        clauses.push(currentChunk.trim());
-      }
-
-      return clauses.length > 0 ? clauses : [text];
-    };
-
-    const fetchTtsSegment = async (sentence: string, index: number) => {
-      const activePersonaObj = (effectiveSelectedPersonaId && effectiveSelectedPersonaId !== 'empty')
+    const turnPersona = (effectiveSelectedPersonaId && effectiveSelectedPersonaId !== 'empty')
         ? personas.find(p => p.id === effectiveSelectedPersonaId)
         : undefined;
 
-      const voiceIdToUse = activePersonaObj?.voiceId || accountLocalStorage.getItem('superagent_cloned_voice_id') || undefined;
-      const voiceSampleToUse = activePersonaObj?.voiceSampleUrl || accountLocalStorage.getItem('superagent_cloned_voice_audio') || undefined;
-      const engineToUse = activePersonaObj?.voiceEngine || (voiceIdToUse ? 'elevenlabs' : (voiceEngine || 'omnivoice'));
-      const voiceNameObj = activePersonaObj?.name || 'Aoede';
+    const savedAgentVoiceId = accountLocalStorage.getItem('superagent_cloned_voice_id') || undefined;
+    let savedAgentSettings: any = {};
+    try { savedAgentSettings = JSON.parse(accountLocalStorage.getItem('superagent_voice_settings') || '{}'); } catch {}
+    const turnSpeechRequest = buildAgentSpeechRequest('', turnPersona, {
+        voiceId: savedAgentVoiceId,
+        voiceStability: savedAgentSettings.stability === undefined ? undefined : savedAgentSettings.stability * 100,
+        voiceLikeness: savedAgentSettings.similarityBoost === undefined ? undefined : savedAgentSettings.similarityBoost * 100,
+        voiceStyleExaggeration: savedAgentSettings.styleExaggeration === undefined ? undefined : savedAgentSettings.styleExaggeration * 100,
+        voiceSpeakingSpeed: savedAgentSettings.speechSpeed,
+        voiceSampleUrl: accountLocalStorage.getItem('superagent_cloned_voice_audio') || undefined,
+        voiceEngine: savedAgentVoiceId ? 'elevenlabs' : (voiceEngine || undefined),
+      });
 
-      // Try fast Cloud TTS first (OpenAI / ElevenLabs / Wavespeed)
+    let voiceFailureReported = false;
+
+    const fetchTtsSegment = async (sentence: string, index: number) => {
+      if (!isCurrentTurn()) return;
+      agentSegmentTextRef.current[index] = sentence;
+      const speechRequest = { ...turnSpeechRequest, text: sentence };
+
+      // All segment requests belong to this turn, including their body reads.
+      const controller = new AbortController();
+      const cancelRequest = () => controller.abort();
+      turn.signal.addEventListener('abort', cancelRequest, { once: true });
+      const ttsTimeout = setTimeout(cancelRequest, 30000);
       try {
-        const controller = new AbortController();
-        const ttsTimeout = setTimeout(() => controller.abort(), 30000);
 
         const ttsRes = await authFetch('/api/generate-speech', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           signal: controller.signal,
-          body: JSON.stringify({
-            text: sentence,
-            voiceName: voiceNameObj,
-            voiceReference: voiceSampleToUse,
-            voiceId: voiceIdToUse,
-            engine: engineToUse,
-            allowNsfw
-          })
+          body: JSON.stringify({ ...speechRequest, allowNsfw, stream: speechRequest.engine === 'elevenlabs' })
         });
 
-        clearTimeout(ttsTimeout);
-
-        if (ttsRes.ok) {
+        if (!isCurrentTurn()) return;
+        if (!ttsRes.ok) throw new Error(`Speech unavailable (${ttsRes.status})`);
+        if (speechRequest.engine === 'elevenlabs' && speechRequest.voiceId) {
+          audioSegmentsRef.current[index] = await createStreamingSpeech(ttsRes, speechRequest.voiceId, turn.signal);
+        } else {
           const ttsData = await ttsRes.json();
-          if (ttsData.audioUrl) {
-            console.log(`[Voice TTS] 🎵 Cloud TTS audio ready for segment ${index} (${engineToUse})`);
-            const audio = new Audio(ttsData.audioUrl);
-            audioSegmentsRef.current[index] = audio;
-            playPlaybackQueue();
-            return;
-          }
+          if (!isCurrentTurn()) return;
+          audioSegmentsRef.current[index] = new Audio(validateAgentSpeechResponse(speechRequest, ttsData));
         }
+        playPlaybackQueue();
+        return;
       } catch (err) {
-        console.warn(`[Voice TTS] Cloud TTS timed out/failed for segment ${index}, using WebSpeech fallback`, err);
+        if (!isCurrentTurn()) return;
+        console.warn(`[Voice TTS] Cloud TTS timed out/failed for segment ${index}`, err);
+      } finally {
+        clearTimeout(ttsTimeout);
+        turn.signal.removeEventListener('abort', cancelRequest);
       }
+      if (!isCurrentTurn()) return;
 
-      console.log(`[Voice TTS] 🔊 Using WebSpeech fallback for segment ${index}`);
-      audioSegmentsRef.current[index] = createWebSpeechAudioSegment(sentence);
+      if (!voiceFailureReported) {
+        voiceFailureReported = true;
+        toast.error('Voice unavailable. Your reply is still available as text; retry or choose a voice in Voice Studio.');
+      }
+      audioSegmentsRef.current[index] = 'failed';
       playPlaybackQueue();
     };
 
     try {
       // Build history
-      const history = [...messages, userMsg].slice(-20).map(m => ({
+      const history = buildVoiceConversationHistory([...messages, userMsg], spokenText, { maxMessages: 10 }).map(m => ({
         role: m.role,
         content: m.content
       }));
@@ -1291,9 +1295,11 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
         ? personas.find(p => p.id === effectiveSelectedPersonaId)
         : undefined;
 
+      if (!isCurrentTurn()) return;
       console.log('[Voice Stream] 🔄 Fetching /api/agent/voice-chat-stream...');
       const response = await fetch('/api/agent/voice-chat-stream', {
         method: 'POST',
+        signal: turn.signal,
         headers: { 'Content-Type': 'application/json', ...authHeader },
         body: JSON.stringify({
           messages: history,
@@ -1304,63 +1310,25 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
       });
 
       if (!response.ok) throw new Error(`Stream error ${response.status}`);
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('No readable stream reader');
-
-      const decoder = new TextDecoder('utf-8');
+      if (!response.body) throw new Error('No readable stream reader');
       let buffer = '';
       let accumulatedText = '';
-
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-
-        const textChunk = decoder.decode(value, { stream: true });
-        const lines = textChunk.split('\n');
-
-        for (const line of lines) {
-          const cleanLine = line.trim();
-          if (cleanLine.startsWith('data: ')) {
-            const dataStr = cleanLine.substring(6);
-            try {
-              const parsed = JSON.parse(dataStr);
-              if (parsed.done) {
-                console.log('[Voice Stream] 🏁 Stream complete marker received');
-                break;
-              }
-              if (parsed.error) {
-                throw new Error(parsed.error);
-              }
-              if (parsed.text) {
-                const delta = parsed.text;
-                accumulatedText += delta;
-                buffer += delta;
-
-                // Update placeholder message content in chat in real-time
-                setMessages(prev => prev.map(m => m.id === agentMsgId ? { ...m, content: accumulatedText } : m));
-
-                // Regex to find complete sentences (at least 6 chars to avoid tiny "Oh," cutoffs)
-                const sentenceRegex = /[^.!?\n]+[.!?]+(?:\s+|$)/g;
-                let match;
-                let lastIndex = 0;
-
-                while ((match = sentenceRegex.exec(buffer)) !== null) {
-                  const sentence = match[0].replace(/[*_#`\\\\]/g, '').trim();
-                  if (sentence.length > 5) {
-                    const currentIdx = sentenceIndexRef.current++;
-                    fetchTtsSegment(sentence, currentIdx);
-                  }
-                  lastIndex = sentenceRegex.lastIndex;
-                }
-
-                if (lastIndex > 0) {
-                  buffer = buffer.substring(lastIndex);
-                }
-              }
-            } catch {}
-          }
+      await readVoiceTextStream(response.body, delta => {
+        if (!isCurrentTurn()) return;
+        accumulatedText += delta;
+        buffer += delta;
+        setMessages(prev => prev.map(m => m.id === agentMsgId ? { ...m, content: accumulatedText } : m));
+        const sentenceRegex = /[^.!?\n]+[.!?]+(?:\s+|$)/g;
+        let match;
+        let lastIndex = 0;
+        while ((match = sentenceRegex.exec(buffer)) !== null) {
+          const sentence = match[0].replace(/[*_#`\\]/g, '').trim();
+          if (sentence) void fetchTtsSegment(sentence, sentenceIndexRef.current++);
+          lastIndex = sentenceRegex.lastIndex;
         }
-      }
+        if (lastIndex > 0) buffer = buffer.substring(lastIndex);
+      }, turn.signal);
+      if (!isCurrentTurn()) return;
 
       // Finish remaining buffer
       streamActiveRef.current = false; // LLM stream is finished enqueuing
@@ -1377,18 +1345,22 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
       }, 500);
 
     } catch (err) {
+      if (!isCurrentTurn()) return;
       console.error('[Voice Stream] ❌ Pipeline error:', err);
       streamActiveRef.current = false;
       setMessages(prev => prev.map(m => m.id === agentMsgId ? { ...m, content: 'Sorry, I ran into a streaming error. Please try speaking again!' } : m));
-      restartMic();
+      stopAllAgentAudio();
+      if (isLiveVoiceCallActiveRef.current) restartSpeechRecognition();
     }
   };
+
+  voiceSenderRef.current = text => { void sendVoiceMessage(text); };
 
   // ─── Speech Recognition ──────────────────────────────────────────────────────
   const isStartingRecRef = useRef(false);
 
   const restartSpeechRecognition = () => {
-    if (!isLiveVoiceCallActiveRef.current || isStartingRecRef.current || isAgentSpeakingRef.current || voiceCallBusyRef.current) return;
+    if (!isLiveVoiceCallActiveRef.current || isStartingRecRef.current) return;
     isStartingRecRef.current = true;
 
     // Rate-limiting to prevent CPU lockups & rapid restart loops
@@ -1400,7 +1372,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
         isStartingRecRef.current = false;
         setTimeout(() => {
           restartCountRef.current = 0;
-          if (isLiveVoiceCallActiveRef.current && !voiceCallBusyRef.current) {
+          if (isLiveVoiceCallActiveRef.current) {
             restartSpeechRecognition();
           }
         }, 2500);
@@ -1438,12 +1410,6 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
       rec.onresult = (e: any) => {
         if (liveVoiceRecRef.current !== rec) return;
         
-        // Acoustic Feedback Protection: Mute mic processing while agent is actively speaking
-        if (isAgentSpeakingRef.current) {
-          console.log('[Voice] 🔇 Suppressing microphone acoustic feedback while agent speaks');
-          return;
-        }
-
         let finalText = '';
         let interimText = '';
         let hasFinal = false;
@@ -1457,28 +1423,40 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
           }
         }
 
-        // Live visualizer feedback for interim speech
-        if (!hasFinal || !finalText.trim() || finalText.trim().length < 2) {
-          if (interimText.trim().length > 1) {
-            setIsUserSpeaking(true);
-            setInputText(interimText.trim());
-          }
-          return;
+        const candidate = (finalText || interimText).trim();
+        if (!candidate) return;
+        if (candidate === lastDispatchedTextRef.current && Date.now() - lastVoiceDispatchAtRef.current < 1500) return;
+        const recent = recentAgentSpeechRef.current;
+        const audible = audioPlayingRef.current;
+        const echoText = audible || Date.now() < recent.until ? recent.text : '';
+        const normalized = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+        if (echoText && (normalized(candidate) === normalized(echoText) || isLikelyPersonaEcho(candidate, echoText))) return;
+        if (voiceCallBusyRef.current) {
+          if (!shouldInterruptPersonaSpeech(candidate, {
+            source: 'browser', personaIsSpeaking: audible, responseIsPending: true,
+            personaSpeech: echoText, hasFreshVoiceEnergy: Date.now() < voiceEnergyUntilRef.current,
+          })) return;
+          stopAllAgentAudio();
+          recentAgentSpeechRef.current.until = Date.now() + 1500;
+          lastDispatchedTextRef.current = '';
         }
-
-        const speech = finalText.trim();
-        setIsUserSpeaking(true);
-        setInputText(speech);
-
-        // Debounce: wait 350ms after user finishes sentence, then send complete speech
         if (speechDebounceTimerRef.current) clearTimeout(speechDebounceTimerRef.current);
+        setIsUserSpeaking(true);
+        if (hasFinal && finalText.trim()) pendingSpeechRef.current = mergeVoiceTranscriptSegments(pendingSpeechRef.current, finalText);
+        setInputText([pendingSpeechRef.current, interimText.trim()].filter(Boolean).join(' '));
+        // Provisional speech can stop audio, but only finalized words create a turn.
+        if (interimText.trim() || !hasFinal) return;
         speechDebounceTimerRef.current = setTimeout(() => {
+          if (!isLiveVoiceCallActiveRef.current || liveVoiceRecRef.current !== rec) return;
+          const speech = pendingSpeechRef.current;
+          pendingSpeechRef.current = '';
           setIsUserSpeaking(false);
           if (speech && speech !== lastDispatchedTextRef.current) {
             lastDispatchedTextRef.current = speech;
-            sendVoiceMessage(speech);
+            lastVoiceDispatchAtRef.current = Date.now();
+            voiceSenderRef.current(speech);
           }
-        }, 350);
+        }, getVoiceTurnCommitDelay(pendingSpeechRef.current, { source: 'browser' }));
       };
 
       rec.onerror = (e: any) => {
@@ -1486,7 +1464,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
         console.warn('[Voice] Recognition error:', e.error);
         if (e.error !== 'no-speech' && e.error !== 'aborted') {
           setTimeout(() => {
-            if (isLiveVoiceCallActiveRef.current && !voiceCallBusyRef.current && liveVoiceRecRef.current === rec) {
+            if (isLiveVoiceCallActiveRef.current && liveVoiceRecRef.current === rec) {
               restartSpeechRecognition();
             }
           }, 1500);
@@ -1496,10 +1474,10 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
       rec.onend = () => {
         setIsUserSpeaking(false);
         if (liveVoiceRecRef.current !== rec) return; // Stale instance, do not restart
-        // Auto-restart if call is still active and we're not busy processing
-        if (isLiveVoiceCallActiveRef.current && !voiceCallBusyRef.current) {
+        // Keep recognition available during both generation and playback.
+        if (isLiveVoiceCallActiveRef.current) {
           setTimeout(() => {
-            if (isLiveVoiceCallActiveRef.current && !voiceCallBusyRef.current) {
+            if (isLiveVoiceCallActiveRef.current && liveVoiceRecRef.current === rec) {
               restartSpeechRecognition();
             }
           }, 1000);
@@ -1522,14 +1500,16 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
     setIsLiveVoiceCallActive(true);
     isLiveVoiceCallActiveRef.current = true;
     lastDispatchedTextRef.current = '';
+    pendingSpeechRef.current = '';
+    recentAgentSpeechRef.current = { text: '', until: 0 };
     toast.success('Live Voice Call Active — Speak naturally with Super Agent');
     restartSpeechRecognition();
   };
 
   const stopLiveVoiceCall = () => {
     setIsLiveVoiceCallActive(false);
+    pendingSpeechRef.current = '';
     isLiveVoiceCallActiveRef.current = false;
-    voiceCallBusyRef.current = false;
     stopAllAgentAudio();
     if (speechDebounceTimerRef.current) {
       clearTimeout(speechDebounceTimerRef.current);
@@ -1546,6 +1526,20 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
     }
     toast('Live Voice Call Ended');
   };
+
+  useEffect(() => () => {
+    isLiveVoiceCallActiveRef.current = false;
+    setIsLiveVoiceCallActive(false);
+    stopAllAgentAudio();
+    if (speechDebounceTimerRef.current) clearTimeout(speechDebounceTimerRef.current);
+    if (liveVoiceRecRef.current) {
+      liveVoiceRecRef.current.onend = null;
+      liveVoiceRecRef.current.onresult = null;
+      liveVoiceRecRef.current.onerror = null;
+      try { liveVoiceRecRef.current.abort(); } catch {}
+      liveVoiceRecRef.current = null;
+    }
+  }, [effectiveSelectedPersonaId]);
 
   const prevMsgLengthRef = useRef(messages.length);
   useEffect(() => {
@@ -3082,10 +3076,10 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
         <div className="flex-none flex flex-col md:flex-row md:items-center justify-between border-b border-[#E7C477]/10 px-6 py-3 bg-[#050914] gap-2 select-none">
           <div className="flex items-center gap-3">
             <h1 className="text-xl md:text-2xl font-serif text-[#F5F1E8] tracking-tight flex items-center gap-2">
-              Super Agent <span className="text-[#E7C477] text-base">✨</span>
+              AI assistant
             </h1>
             <span className="text-[10px] font-semibold px-2.5 py-0.5 rounded-full bg-[#E7C477]/10 text-[#F2D58D] border border-[#E7C477]/25">
-              Autonomous Co-Pilot
+              Multi-step tasks
             </span>
           </div>
 
@@ -3455,6 +3449,8 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
 
             {/* End Call Button */}
             <button
+              type="button"
+              aria-label="End Call"
               onClick={stopLiveVoiceCall}
               style={{
                 width: 64, height: 64, borderRadius: '50%',
@@ -3642,7 +3638,7 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                               onClick={() => runPipeline(msg.id, msg)}
                               className="flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-400/40 bg-cyan-500/15 px-4 py-2.5 text-xs font-extrabold text-cyan-200 transition-colors hover:bg-cyan-500/25"
                             >
-                              <RefreshCw size={14} /> Run corrected plan
+                              <RefreshCw size={14} /> {msg.nativeVoicePlan ? 'Approve and run plan' : 'Run corrected plan'}
                             </button>
                           )}
                         </div>
@@ -3896,6 +3892,11 @@ export default function AgentView({ personas, setPersonas, selectedPersonaId: pr
                 </button>
 
                 {/* Hands-Free Live Voice Call Button */}
+                <NativeVoiceCall personaId={effectiveSelectedPersonaId} disabled={isLiveVoiceCallActive} history={messages}
+                  onMessage={message=>setMessages(previous=>previous.some(item=>item.id===message.id)?previous.map(item=>item.id===message.id?{...item,content:message.content}:item):[...previous,message])}
+                  onPlan={data=>setMessages(previous=>[...previous,{id:crypto.randomUUID(),role:'model',content:data.text||'Studio plan ready for review.',nativeVoicePlan:true,status:'clarifying',suggestedSteps:normalizeAgentSteps(data.suggestedSteps),execSteps:normalizeAgentSteps(data.suggestedSteps).map(step=>({...step,status:'pending' as const}))}])}/>
+                <SpeechEnginePilot personaId={effectiveSelectedPersonaId} disabled={isLiveVoiceCallActive} history={messages} model={voiceLlmModel}
+                    onMessage={message=>setMessages(previous=>previous.some(item=>item.id===message.id)?previous.map(item=>item.id===message.id?{...item,content:message.content}:item):[...previous.slice(-35),message])}/>
                 <button
                   type="button"
                   onClick={isLiveVoiceCallActive ? stopLiveVoiceCall : startLiveVoiceCall}

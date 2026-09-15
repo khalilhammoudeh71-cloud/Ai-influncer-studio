@@ -1,10 +1,11 @@
 export const AUTO_PERSONA_VOICE_ENGINE = 'persona_voice_auto';
-export const ELEVENLABS_CLONED_VOICE_MODEL = 'eleven_v3_conversational';
+export const ELEVENLABS_CLONED_VOICE_MODEL = 'eleven_turbo_v2_5';
 export const ELEVENLABS_LOW_LATENCY_FALLBACK_MODEL = 'eleven_flash_v2_5';
 export const MAYA_UNCLONED_VOICE_MODEL = 'fal_maya_stream';
 
 type PersonaVoiceSource = {
   name?: unknown;
+  voiceEngine?: unknown;
   voiceId?: unknown;
   voiceSampleUrl?: unknown;
   voiceFile?: unknown;
@@ -13,7 +14,6 @@ type PersonaVoiceSource = {
 };
 
 const DIRECT_ELEVENLABS_VOICE_ID = /^[a-zA-Z0-9]{18,24}$/;
-const BUILT_IN_CLONED_PERSONA = /\b(?:leen|rawan)\s+hass?an\b/i;
 
 export function hasSavedPersonaVoiceClone(persona?: PersonaVoiceSource | null): boolean {
   if (!persona) return false;
@@ -26,9 +26,8 @@ export function hasSavedPersonaVoiceClone(persona?: PersonaVoiceSource | null): 
   );
   const voiceId = String(persona.voiceId || '').trim();
   const hasSavedElevenLabsVoiceId = DIRECT_ELEVENLABS_VOICE_ID.test(voiceId);
-  const usesBundledClone = BUILT_IN_CLONED_PERSONA.test(String(persona.name || ''));
 
-  return hasUploadedReference || hasSavedElevenLabsVoiceId || usesBundledClone;
+  return hasUploadedReference || hasSavedElevenLabsVoiceId;
 }
 
 export function resolvePersonaVoiceEngine(
@@ -36,7 +35,16 @@ export function resolvePersonaVoiceEngine(
   selectedEngine: string,
 ): string {
   if (selectedEngine !== AUTO_PERSONA_VOICE_ENGINE) return selectedEngine;
-  return hasSavedPersonaVoiceClone(persona)
-    ? ELEVENLABS_CLONED_VOICE_MODEL
-    : MAYA_UNCLONED_VOICE_MODEL;
+  const provider = String(persona?.voiceEngine || '').trim();
+  if (provider) return provider === 'elevenlabs' ? ELEVENLABS_CLONED_VOICE_MODEL : provider;
+  // Legacy ID-only records retain ElevenLabs, but names and recordings are not provider identities.
+  if (DIRECT_ELEVENLABS_VOICE_ID.test(String(persona?.voiceId || ''))) return ELEVENLABS_CLONED_VOICE_MODEL;
+  return 'voice_selection_required';
+}
+
+export function getSavedPersonaVoice(persona?: PersonaVoiceSource | null) {
+  return {
+    voiceId: typeof persona?.voiceId === 'string' ? persona.voiceId : undefined,
+    voiceReference: persona?.voiceSampleUrl || persona?.audioSamples?.[0]?.base64 || persona?.voiceFile || persona?.voiceReference,
+  };
 }

@@ -1,0 +1,21 @@
+{
+  "calls": [
+    {
+      "mode": "arabic",
+      "audioBytes": 1162,
+      "transcript": "أهلين، كيفك؟",
+      "cleanup": "all microphone tracks ended and peer connections closed"
+    },
+    {
+      "mode": "english-arabic-accent",
+      "audioBytes": 577,
+      "transcript": "أهلين، كيفك؟Hey, I’m here. How are you?",
+      "cleanup": "all microphone tracks ended and peer connections closed"
+    }
+  ],
+  "persistedPreferences": true,
+  "personaIsolation": true,
+  "mobileNoHorizontalOverflow": true,
+  "signOutClosesDialog": true,
+  "pageErrors": []
+}

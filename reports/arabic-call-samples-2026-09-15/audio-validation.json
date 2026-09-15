@@ -1,0 +1,29 @@
+[
+  {
+    "file": "leen-arabic-1.wav",
+    "seconds": 6.732,
+    "sampleRate": 16000,
+    "bytes": 215480,
+    "peak": 0.9148,
+    "rms": 0.1403,
+    "clippedSamples": 0
+  },
+  {
+    "file": "leen-arabic-2.wav",
+    "seconds": 7.64,
+    "sampleRate": 16000,
+    "bytes": 244528,
+    "peak": 0.8832,
+    "rms": 0.1549,
+    "clippedSamples": 0
+  },
+  {
+    "file": "leen-arabic-3.wav",
+    "seconds": 4.841,
+    "sampleRate": 16000,
+    "bytes": 154962,
+    "peak": 0.6378,
+    "rms": 0.0956,
+    "clippedSamples": 0
+  }
+]

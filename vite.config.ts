@@ -71,15 +71,15 @@ export default defineConfig(({ command }) => ({
     cors: true,
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:3001',
+        target: process.env.VOICE_PILOT_APP_ORIGIN || 'http://127.0.0.1:3001',
         changeOrigin: true,
-        secure: false,
+        secure: Boolean(process.env.VOICE_PILOT_APP_ORIGIN),
         ws: true,
       },
       '/agent': {
-        target: 'http://127.0.0.1:3001',
+        target: process.env.VOICE_PILOT_APP_ORIGIN || 'http://127.0.0.1:3001',
         changeOrigin: true,
-        secure: false,
+        secure: Boolean(process.env.VOICE_PILOT_APP_ORIGIN),
         ws: true,
       },
     },

@@ -21,35 +21,7 @@ export function selectElevenLabsPersonaVoice(
   personaName: unknown,
 ): ElevenLabsVoiceSummary | undefined {
   const requestedId = typeof requestedVoiceId === 'string' ? requestedVoiceId.trim() : '';
-  if (requestedId) {
-    const exactId = voices.find(voice => voice.voice_id === requestedId);
-    if (exactId) return exactId;
-  }
-
-  const persona = normalizeName(typeof personaName === 'string' ? personaName : '');
-  if (!persona) return undefined;
-
-  const personaParts = persona.split(' ');
-  const firstName = personaParts[0];
-  const lastName = personaParts.length > 1 ? personaParts[personaParts.length - 1] : '';
-
-  const ranked = voices
-    .map((voice, index) => {
-      const candidate = normalizeName(voice.name || '');
-      const parts = candidate.split(' ').filter(Boolean);
-      let score = 0;
-      if (candidate === persona) score = 100;
-      else if (candidate.startsWith(`${persona} `)) score = 95;
-      else if (parts[0] === firstName) score = 70;
-
-      if (score > 0 && lastName && parts.includes(lastName)) score += 15;
-      if (score > 0 && voice.category?.toLowerCase().includes('clon')) score += 5;
-      return { voice, score, index };
-    })
-    .filter(item => item.score > 0)
-    .sort((a, b) => b.score - a.score || a.index - b.index);
-
-  return ranked[0]?.voice;
+  return requestedId ? voices.find(voice => voice.voice_id === requestedId) : undefined;
 }
 
 export function isValidPublicVoiceReference(value: unknown): value is string {
@@ -91,7 +63,7 @@ const VOICE_PROVIDER_REFUSAL = /(?:cannot\s+and\s+will\s+not|content\s+polic|sex
 
 export const DEFAULT_VENICE_PERSONA_MODEL = 'venice-uncensored-1-2';
 export const DEFAULT_WAVESPEED_PERSONA_FALLBACK_MODEL = 'deepseek/deepseek-v4-flash';
-export const DEFAULT_ELEVENLABS_PERSONA_MODEL = 'eleven_v3_conversational';
+export const DEFAULT_ELEVENLABS_PERSONA_MODEL = 'eleven_turbo_v2_5';
 
 export interface ElevenLabsPersonaVoiceSettings {
   stability: number;
@@ -147,10 +119,7 @@ export function resolveElevenLabsPersonaModelId(requestedModel?: unknown): strin
 }
 
 export function getElevenLabsPersonaModelCandidates(requestedModel?: unknown): string[] {
-  const primaryModel = resolveElevenLabsPersonaModelId(requestedModel);
-  return primaryModel === DEFAULT_ELEVENLABS_PERSONA_MODEL
-    ? [primaryModel, 'eleven_flash_v2_5']
-    : [primaryModel];
+  return [resolveElevenLabsPersonaModelId(requestedModel)];
 }
 
 export function getElevenLabsTtsQuery(modelId: string): string {

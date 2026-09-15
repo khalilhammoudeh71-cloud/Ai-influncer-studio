@@ -292,7 +292,7 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
               <span className="gradient-text">Library</span>
             </h1>
             <p className="text-[var(--text-tertiary)] text-sm mt-1.5 font-medium">
-              {allMedia.length} assets across {personas.filter(p => p.visualLibrary?.length).length} personas
+              {allMedia.length} creations across {personas.filter(p => p.visualLibrary?.length).length} personas
             </p>
           </div>
 

@@ -1,0 +1,167 @@
+[
+  {
+    "scenario": "reviewable-create-edit",
+    "choice": "frontier-gemini-flash",
+    "code": 200,
+    "ms": 10268,
+    "text": "I have put together a two-step plan for your review. For both steps, I selected ByteDance Seedream 5.0 Pro (wavespeed:bytedance/seedream-v5.0-pro). You can switch to any other model via the studio dropdown or by asking directly in chat anytime.\n\nStep 1 generates a square photo of a single blue ceramic cup on a plain wooden table.\nStep 2 takes that resulting image and edits solely the cup to green, maintaining the table and lighting.",
+    "status": "clarifying",
+    "suggestedSteps": [
+      {
+        "type": "generate_image",
+        "params": {
+          "prompt": "A crisp, high-detail studio photo of a single blue ceramic cup resting on a plain wooden table, clean composition, soft natural lighting, no people, no text",
+          "usePersona": false,
+          "aspectRatio": "1:1",
+          "modelId": "wavespeed:bytedance/seedream-v5.0-pro"
+        },
+        "status": "pending"
+      },
+      {
+        "type": "edit_image",
+        "params": {
+          "sourceImage": "previous_result",
+          "prompt": "Change only the ceramic cup color from blue to green, keeping the wooden table surface, lighting, and composition exactly the same",
+          "modelId": "wavespeed-edit:bytedance/seedream-v5.0-pro/edit"
+        },
+        "status": "pending"
+      }
+    ],
+    "sources": [],
+    "agentMode": {
+      "provider": "google",
+      "model": "gemini-3.8-flash",
+      "effort": "smart",
+      "research": false,
+      "toolRounds": 0
+    }
+  },
+  {
+    "scenario": "reviewable-create-edit",
+    "choice": "frontier-gemini-pro",
+    "code": 200,
+    "ms": 18804,
+    "text": "I've drafted the two-step plan for your review. First, we'll generate the square photo of the blue ceramic cup on a wooden table using your requested model (Seedream 5.0 Pro on WaveSpeed). Once that's done, the second step will edit that exact result to turn the cup green. I've set the model as requested, but remember you can choose ANY model from the studio's dropdown or request any model by name in chat. Let me know if everything looks good and you're ready to run it!",
+    "status": "clarifying",
+    "suggestedSteps": [
+      {
+        "type": "generate_image",
+        "params": {
+          "prompt": "A single blue ceramic cup sitting on a plain wooden table. No people, no text.",
+          "usePersona": false,
+          "aspectRatio": "1:1",
+          "modelId": "wavespeed:bytedance/seedream-v5.0-pro"
+        },
+        "status": "pending"
+      },
+      {
+        "type": "edit_image",
+        "params": {
+          "editType": "beautify",
+          "prompt": "Change only the ceramic cup to be green, leaving everything else exactly the same.",
+          "sourceImage": "previous_result"
+        },
+        "status": "pending"
+      }
+    ],
+    "sources": [],
+    "agentMode": {
+      "provider": "google",
+      "model": "gemini-3.1-pro-preview",
+      "effort": "smart",
+      "research": false,
+      "toolRounds": 0
+    }
+  },
+  {
+    "scenario": "reviewable-create-edit",
+    "choice": "grok",
+    "code": 200,
+    "ms": 37513,
+    "text": "Here’s a two-step plan for your review—nothing has been generated yet. Step 1 creates a square photo of one blue ceramic cup on a plain wooden table. Step 2 edits that same image so only the cup turns green, leaving the table, lighting, and composition unchanged. Both steps use Seedream 5.0 Pro (wavespeed:bytedance/seedream-v5.0-pro). You can pick any other model from the studio dropdown or name one in chat if you prefer.",
+    "status": "clarifying",
+    "suggestedSteps": [
+      {
+        "type": "generate_image",
+        "params": {
+          "prompt": "Photorealistic square photograph of one blue ceramic cup on a plain wooden table. A single glossy blue ceramic cup, centered, sitting on a simple uncluttered wooden tabletop. Natural soft lighting, clean product photography, no people, no text, no logos, no watermarks, no extra objects.",
+          "environment": "plain wooden table, simple uncluttered background, natural soft lighting",
+          "outfit": "none",
+          "framing": "square 1:1 centered product shot of a single cup",
+          "modelId": "wavespeed:bytedance/seedream-v5.0-pro",
+          "usePersona": false,
+          "aspectRatio": "1:1"
+        },
+        "status": "pending"
+      },
+      {
+        "type": "edit_image",
+        "params": {
+          "prompt": "Change only the ceramic cup color from blue to green. Keep the identical cup shape, size, glaze texture, lighting, shadows, wooden table, background, composition, and camera angle. Do not alter anything except the cup color. No people, no text, no extra objects.",
+          "sourceImage": "previous_result",
+          "modelId": "wavespeed-edit:bytedance/seedream-v5.0-pro/edit"
+        },
+        "status": "pending"
+      }
+    ],
+    "sources": [],
+    "agentMode": {
+      "provider": "xai",
+      "model": "grok-4.6",
+      "effort": "smart",
+      "research": false,
+      "toolRounds": 0
+    }
+  },
+  {
+    "scenario": "text-only-budget",
+    "choice": "frontier-gemini-flash",
+    "code": 200,
+    "ms": 2907,
+    "text": "The 3 photos cost $24 (3 × $8) and the 2 videos cost $60 (2 × $30), bringing the total cost to $84. With a $120 budget, you have $36 remaining.",
+    "status": "normal",
+    "suggestedSteps": [],
+    "sources": [],
+    "agentMode": {
+      "provider": "google",
+      "model": "gemini-3.8-flash",
+      "effort": "smart",
+      "research": false,
+      "toolRounds": 0
+    }
+  },
+  {
+    "scenario": "text-only-budget",
+    "choice": "frontier-gemini-pro",
+    "code": 200,
+    "ms": 6965,
+    "text": "The total cost for the assets is $84 (three photos at $24 and two videos at $60). With your starting budget of $120, you have $36 remaining. Let me know if you want to plan anything with the rest of it!",
+    "status": "normal",
+    "suggestedSteps": [],
+    "sources": [],
+    "agentMode": {
+      "provider": "google",
+      "model": "gemini-3.1-pro-preview",
+      "effort": "smart",
+      "research": false,
+      "toolRounds": 0
+    }
+  },
+  {
+    "scenario": "text-only-budget",
+    "choice": "grok",
+    "code": 200,
+    "ms": 9732,
+    "text": "Photos: 3 × $8 = $24. Videos: 2 × $30 = $60. Total spend: $84. Remaining budget: $36.",
+    "status": "normal",
+    "suggestedSteps": [],
+    "sources": [],
+    "agentMode": {
+      "provider": "xai",
+      "model": "grok-4.6",
+      "effort": "smart",
+      "research": false,
+      "toolRounds": 0
+    }
+  }
+]

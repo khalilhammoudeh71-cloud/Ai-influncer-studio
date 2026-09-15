@@ -1,0 +1,119 @@
+{
+  "provider": "elevenlabs",
+  "label": "Leen test · George - Warm, Captivating Storyteller",
+  "preferences": {
+    "mode": "arabic",
+    "dialect": "levantine",
+    "allowLanguageSwitching": true
+  },
+  "summary": [
+    {
+      "event": "session_preparation",
+      "source": "client-control",
+      "count": 1,
+      "medianMs": 2383,
+      "p95Ms": 2383
+    },
+    {
+      "event": "text_to_speaking",
+      "source": "provider-event",
+      "count": 4,
+      "medianMs": 1622,
+      "p95Ms": 2641
+    },
+    {
+      "event": "text_to_output_audio_detected",
+      "source": "browser-render",
+      "count": 4,
+      "medianMs": 1705,
+      "p95Ms": 2662
+    }
+  ],
+  "metrics": [
+    {
+      "event": "session_preparation",
+      "source": "client-control",
+      "at": 19272.100000023842,
+      "ms": 2383.300000011921
+    },
+    {
+      "event": "connected",
+      "source": "client-control",
+      "at": 20323.30000001192
+    },
+    {
+      "event": "text_sent",
+      "source": "client-control",
+      "at": 22493.600000023842
+    },
+    {
+      "event": "provider_interruption",
+      "source": "provider-event",
+      "at": 22574.600000023842
+    },
+    {
+      "event": "text_to_speaking",
+      "source": "provider-event",
+      "at": 24660.30000001192,
+      "ms": 2167
+    },
+    {
+      "event": "text_to_output_audio_detected",
+      "source": "browser-render",
+      "at": 24825.100000023842,
+      "ms": 2331.800000011921
+    },
+    {
+      "event": "text_sent",
+      "source": "client-control",
+      "at": 36728.30000001192
+    },
+    {
+      "event": "text_to_speaking",
+      "source": "provider-event",
+      "at": 39369.60000002384,
+      "ms": 2641.199999988079
+    },
+    {
+      "event": "text_to_output_audio_detected",
+      "source": "browser-render",
+      "at": 39389.80000001192,
+      "ms": 2661.5
+    },
+    {
+      "event": "text_sent",
+      "source": "client-control",
+      "at": 53398.80000001192
+    },
+    {
+      "event": "text_to_speaking",
+      "source": "provider-event",
+      "at": 54279.19999998808,
+      "ms": 880.3999999761581
+    },
+    {
+      "event": "text_to_output_audio_detected",
+      "source": "browser-render",
+      "at": 54331.10000002384,
+      "ms": 932.3000000119209
+    },
+    {
+      "event": "text_sent",
+      "source": "client-control",
+      "at": 56348.30000001192
+    },
+    {
+      "event": "text_to_speaking",
+      "source": "provider-event",
+      "at": 57425.10000002384,
+      "ms": 1076.9000000357628
+    },
+    {
+      "event": "text_to_output_audio_detected",
+      "source": "browser-render",
+      "at": 57425.5,
+      "ms": 1077.300000011921
+    }
+  ],
+  "notes": "No raw audio recorded. Browser render and provider events are separately labeled."
+}

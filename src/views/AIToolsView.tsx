@@ -1,6 +1,8 @@
+import CarouselCreator from '../components/CarouselCreator';
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
+  Layers,
   Wand2, 
   Weight, 
   Dumbbell, 
@@ -69,12 +71,14 @@ interface AIToolsViewProps {
   onSelectPersona: (id: string) => void;
   nav: NavActions;
   initialTool?: ToolType;
+  onToolOpenChange?: (open: boolean) => void;
   billingInfo?: any;
 }
 
-type ToolType = 'beautify' | 'morph' | 'muscle' | 'ink' | 'teleport' | 'canvas' | 'face-swap' | 'bg-remover' | 'virtual-tryon' | 'video-edit' | 'skin-enhancer' | 'upscaler' | 'camera-angles' | 'inpaint' | '3d-studio' | 'batch-face-swap' | 'batch-edit' | 'group-photoshoot' | null;
+type ToolType = 'carousel-creator' | 'beautify' | 'morph' | 'muscle' | 'ink' | 'teleport' | 'canvas' | 'face-swap' | 'bg-remover' | 'virtual-tryon' | 'video-edit' | 'skin-enhancer' | 'upscaler' | 'camera-angles' | 'inpaint' | '3d-studio' | 'batch-face-swap' | 'batch-edit' | 'group-photoshoot' | null;
 
 const TOOLS = [
+  {id:'carousel-creator',title:'Carousel Creator',icon:Layers,desc:'Design swipeable Instagram and TikTok posts with editable slides, persona photos, and JPG exports.',color:'from-amber-400 to-orange-500',demoBefore:'/demo/carousel-creator.svg',demoAfter:'/demo/carousel-creator.svg'},
   { 
     id: 'beautify', title: 'Beautify Core', icon: Droplets, 
     desc: 'Refine nose contours, smooth undereyes and skin perfectly.', 
@@ -156,8 +160,8 @@ const TOOLS = [
     id: 'camera-angles', title: 'Camera Angles', icon: Camera, 
     desc: 'Generate 9-angle identity sheets or adjust camera perspective.', 
     color: 'from-cyan-500 to-sky-500',
-    demoBefore: '/demo/faceswap_before.png',
-    demoAfter: '/demo/teleport_after.png',
+    demoBefore: '/demo/camera-angle-front.jpg',
+    demoAfter: '/demo/camera-angle-side.jpg',
   },
   { 
     id: 'upscaler', title: 'Image Upscaler', icon: ArrowUpCircle, 
@@ -227,8 +231,9 @@ const DISTANCE_OPTIONS = [
   { id: 2,  label: 'Wide Shot'    },
 ];
 
-export default function AIToolsView({ persona, personas, onSelectPersona, nav, initialTool, billingInfo }: AIToolsViewProps) {
+export default function AIToolsView({ persona, personas, onSelectPersona, nav, initialTool, billingInfo, onToolOpenChange }: AIToolsViewProps) {
   const [activeTool, setActiveTool] = useState<ToolType>(initialTool || null);
+  useEffect(() => { onToolOpenChange?.(!!activeTool); }, [activeTool, onToolOpenChange]);
   const [toolSearch, setToolSearch] = useState('');
   const [toolListMode, setToolListMode] = useState<'all' | 'favorites' | 'recent'>('all');
   const [favoriteTools, setFavoriteTools] = useState<string[]>(() => {
@@ -1421,6 +1426,14 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
     );
   };
 
+  if (activeTool === 'carousel-creator') {
+    return <div className="p-4 sm:p-6 space-y-5">
+      <button type="button" onClick={() => setActiveTool(null)} className="btn-gold-secondary px-4 py-2 text-sm">Back to tools</button>
+      <p className="text-sm text-slate-400">AI ToolKit / Carousel Creator</p>
+      <CarouselCreator key={persona.id} persona={persona} />
+    </div>;
+  }
+
   if (activeTool === 'camera-angles') {
     return renderAngleToolMode();
   }
@@ -1470,7 +1483,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
         <div className="max-w-6xl mx-auto space-y-8">
           <div className="flex flex-col gap-4 border-b border-[#E7C477]/10 pb-6">
             <div>
-              <h2 className="text-2xl font-serif text-[#F5F1E8] tracking-tight">Creative tools</h2>
+              <h2 className="text-2xl font-serif text-[#F5F1E8] tracking-tight">Photo and video tools</h2>
               <p className="text-xs md:text-sm text-[#8C909A] mt-1.5 font-medium">Unified AI visual creation and neural editing suite for your creator personas</p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -1524,6 +1537,9 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                     <Star size={14} fill={favoriteTools.includes(tool.id) ? 'currentColor' : 'none'} />
                   </button>
                   <div className="relative h-48 w-full flex bg-black overflow-hidden shrink-0">
+                    {tool.id === 'carousel-creator' ? (
+                      <img src={tool.demoBefore} alt="Three coordinated carousel slides" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+                    ) : <>
                     {/* Before Image */}
                     <div className="relative w-1/2 h-full border-r border-white/10 overflow-hidden">
                       {tool.demoBefore.endsWith('.mp4') ? (
@@ -1547,6 +1563,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                     <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-[#18181B] border border-[#E7C477]/40 flex items-center justify-center z-10 shadow-2xl group-hover:rotate-180 transition-transform duration-700 text-[#F2D58D]">
                        <Wand2 size={13} />
                     </div>
+                    </>}
                   </div>
                   
                   <div className="p-5 relative flex-1 flex flex-col justify-center">

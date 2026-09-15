@@ -1,0 +1,40 @@
+[
+  {
+    "scenario": "reviewable-create-edit",
+    "choice": "frontier-gemini-pro",
+    "code": 200,
+    "ms": 11206,
+    "text": "Here is the two-step plan for your review. First, we'll generate the square photo of the blue ceramic cup on the wooden table, and then we'll run an edit on that exact image to turn the cup green. I've selected ByteDance Seedream 5.0 Pro (wavespeed:bytedance/seedream-v5.0-pro) for both steps as requested. Remember, you can always choose any other model from the studio's dropdown or request a different one by name. Let me know if this looks good and I'll execute the steps!",
+    "status": "clarifying",
+    "suggestedSteps": [
+      {
+        "type": "generate_image",
+        "params": {
+          "prompt": "A single blue ceramic cup sitting on a plain wooden table. Minimalist, no people, no text.",
+          "usePersona": false,
+          "aspectRatio": "1:1",
+          "modelId": "wavespeed:bytedance/seedream-v5.0-pro"
+        },
+        "status": "pending"
+      },
+      {
+        "type": "edit_image",
+        "params": {
+          "prompt": "Change the color of the ceramic cup to green. Keep the plain wooden table and all other details exactly the same.",
+          "sourceImageFromStepIndex": 0,
+          "modelId": "wavespeed-edit:bytedance/seedream-v5.0-pro/edit",
+          "aspectRatio": "1:1"
+        },
+        "status": "pending"
+      }
+    ],
+    "sources": [],
+    "agentMode": {
+      "provider": "google",
+      "model": "gemini-3.1-pro-preview",
+      "effort": "smart",
+      "research": false,
+      "toolRounds": 0
+    }
+  }
+]

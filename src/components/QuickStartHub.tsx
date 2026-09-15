@@ -34,7 +34,7 @@ const CAPABILITIES: CreationCapability[] = [
     id: 'image',
     label: 'Images',
     eyebrow: 'Create a visual',
-    description: 'Generate polished images with optional persona identity lock.',
+    description: 'Describe a photo. Add a persona to keep their appearance consistent.',
     action: 'Open Image Studio',
     icon: ImageIcon,
     image: '/assets/create-hub/image-studio.jpg',
@@ -43,7 +43,7 @@ const CAPABILITIES: CreationCapability[] = [
     id: 'video',
     label: 'Videos',
     eyebrow: 'Bring a scene to life',
-    description: 'Turn a prompt or reference image into cinematic motion.',
+    description: 'Describe a scene or animate an image you already have.',
     action: 'Open Video Studio',
     icon: Film,
     image: '/assets/create-hub/video-studio.jpg',
@@ -96,14 +96,14 @@ export default function QuickStartHub({ activeCapability, onSelectCapability }: 
     <section className="mb-5 overflow-hidden rounded-[24px] border border-[var(--border-default)] bg-[var(--bg-elevated)] shadow-[0_24px_80px_rgba(0,0,0,0.24)]">
       <div className="border-b border-[var(--border-subtle)] bg-[linear-gradient(135deg,rgba(231,196,119,0.11),transparent_58%)] px-4 py-4 sm:px-6">
         <div>
-          <div className="mb-1 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--accent-primary)]">
-            <Sparkles size={13} /> Creation formats
+          <div className="mb-1 flex items-center gap-2 text-xs font-bold tracking-normal text-[var(--accent-primary)]">
+            <Sparkles size={13} /> Choose your format
           </div>
           <h2 className="text-lg font-semibold text-[var(--text-primary)] sm:text-xl">
             What would you like to make?
           </h2>
           <p className="mt-1 max-w-2xl text-[11px] leading-relaxed text-[var(--text-muted)]">
-            Start with the outcome. The studio opens the right workflow, while Pro mode keeps every model and fine-tuning control available.
+            Pick a format to open its guided editor. You can switch to Advanced controls whenever you need more options.
           </p>
         </div>
       </div>
@@ -142,7 +142,7 @@ export default function QuickStartHub({ activeCapability, onSelectCapability }: 
                 <span className={`absolute bottom-3 left-3 flex h-10 w-10 items-center justify-center rounded-xl border shadow-[0_8px_28px_rgba(0,0,0,0.38)] backdrop-blur-md ${active ? 'border-[var(--gold-border-active)] bg-[var(--gold-bg-hover)] text-[var(--gold-bright)]' : 'border-white/15 bg-black/55 text-[var(--gold-primary)] group-hover:border-[var(--gold-border-active)]'}`}>
                   <Icon size={18} />
                 </span>
-                <span className={`absolute right-3 top-3 rounded-full border px-2.5 py-1.5 text-[8px] font-bold uppercase tracking-[0.16em] shadow-[0_8px_24px_rgba(0,0,0,0.32)] backdrop-blur-md ${active ? 'border-[var(--gold-border-active)] bg-[var(--gold-bg-hover)] text-[var(--gold-bright)]' : 'border-white/15 bg-black/55 text-white/75'}`}>
+                <span className={`absolute right-3 top-3 rounded-full border px-2.5 py-1.5 text-[11px] font-bold tracking-normal shadow-[0_8px_24px_rgba(0,0,0,0.32)] backdrop-blur-md ${active ? 'border-[var(--gold-border-active)] bg-[var(--gold-bg-hover)] text-[var(--gold-bright)]' : 'border-white/15 bg-black/55 text-white/75'}`}>
                   {active ? 'Selected' : capability.eyebrow}
                 </span>
               </div>
@@ -151,9 +151,9 @@ export default function QuickStartHub({ activeCapability, onSelectCapability }: 
                 <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_100%_0%,rgba(231,196,119,0.11),transparent_48%)] opacity-70" />
                 <div className="relative flex h-full flex-1 flex-col">
                   <h3 className="text-[15px] font-semibold text-[var(--text-primary)]">{capability.label}</h3>
-                  <p className="mt-1.5 text-[10px] leading-relaxed text-[var(--text-muted)]">{capability.description}</p>
+                  <p className="mt-1.5 text-xs leading-relaxed text-[var(--text-muted)]">{capability.description}</p>
 
-                  <span className={`mt-auto flex items-center gap-1.5 pt-4 text-[9px] font-bold uppercase tracking-[0.12em] transition-colors ${active ? 'text-[var(--gold-bright)]' : 'text-[var(--text-tertiary)] group-hover:text-[var(--gold-primary)]'}`}>
+                  <span className={`mt-auto flex items-center gap-1.5 pt-4 text-xs font-bold tracking-normal transition-colors ${active ? 'text-[var(--gold-bright)]' : 'text-[var(--text-tertiary)] group-hover:text-[var(--gold-primary)]'}`}>
                     {capability.action}
                     <ArrowRight size={12} className="transition-transform group-hover:translate-x-1" />
                   </span>

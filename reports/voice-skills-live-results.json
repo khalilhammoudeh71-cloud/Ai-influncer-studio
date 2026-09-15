@@ -1,0 +1,27 @@
+{
+  "turns": [
+    {
+      "input": "احكي معي أردني أو سوري. اقترح علي شغلة بسيطة أعملها مع قهوتي الصبح، بجملتين بس.",
+      "reply": "يا صباح الخير، تكرم عينك. شو رأيك تجرب مع قهوتك الصبح قطعة شوكولاتة صغيرة؟ بتغيرلك المزاج وبتعطيك طاقة خفيفة لتبلش يومك."
+    },
+    {
+      "input": "قصدي المسا مش الصبح. عدّل الاقتراح وبلا قهوة، وما تسأل سؤال بآخر الجواب.",
+      "reply": "مساء الخير يا سيدي، بما إنه المسا وبلا قهوة، ليش ما تجرب تقعد هيك على رواق وتسمعلك شي أغنية بتحبها، أو تقرأ كم صفحة من كتاب؟ هيك بتنهي يومك براحة وهدوء."
+    },
+    {
+      "input": "Let’s switch to English. Which time of day did I correct it to?",
+      "reply": "You corrected it to the evening."
+    },
+    {
+      "input": "ارجع نحكي عربي. ذكرني بالوقت اللي اتفقنا عليه، بجملة وحدة.",
+      "reply": "اتفقنا على وقت المسا."
+    }
+  ],
+  "reconnectReply": "حكينا عن وقت المسا.",
+  "noRepeatedGreeting": true,
+  "typedMessagesCommittedOnce": true,
+  "inboundAudioBytes": 357300,
+  "tracksAndPeersClosed": true,
+  "pageErrors": [],
+  "method": "Live ElevenLabs SDK/WebRTC, stock George voice, silent fake microphone and typed synthetic caller. Text/content and transport validation; no accent listening score or real-microphone latency benchmark."
+}

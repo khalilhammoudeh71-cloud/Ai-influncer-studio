@@ -1,0 +1,1187 @@
+[
+  {
+    "model": "xAI Grok 4.20 Non-Reasoning",
+    "id": "grok",
+    "case": "empathy",
+    "prompt": "كان يومي متعب وحاسس إني قصرت بالشغل. مش طالب نصايح هلأ، بس اسمعيني شوي.",
+    "elapsedMs": 773,
+    "done": true,
+    "text": "Mm، خليل. أنا هون معك، احكي اللي بدك.",
+    "serverTiming": {
+      "identityMs": 2,
+      "firstTokenMs": 701,
+      "firstTextMs": 773,
+      "totalMs": 773
+    },
+    "provider": "xAI grok-4.20-0309-non-reasoning",
+    "requestedModel": "grok"
+  },
+  {
+    "model": "xAI Grok 4.20 Non-Reasoning",
+    "id": "grok",
+    "case": "natural",
+    "prompt": "كنت بدي أحكيلك شغلة... نسيت! استني، آه، شو رأيك نتمشى بدل ما نضل بالبيت؟",
+    "elapsedMs": 786,
+    "done": true,
+    "text": "Mm، تمام! خلينا نتمشى، أنا جاهزة.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 470,
+      "firstTextMs": 786,
+      "totalMs": 786
+    },
+    "provider": "xAI grok-4.20-0309-non-reasoning",
+    "requestedModel": "grok"
+  },
+  {
+    "model": "xAI Grok 4.20 Non-Reasoning",
+    "id": "grok",
+    "case": "memory",
+    "prompt": "ذكّريني شو اتفقنا على الموعد والمكان والأكل؟",
+    "elapsedMs": 992,
+    "done": true,
+    "text": "Mm، اتفقنا نتقابل الساعة 7 مساءً عند المطعم الإيطالي القديم، والأكل بناخد باستا وسلطة.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 465,
+      "firstTextMs": 992,
+      "totalMs": 992
+    },
+    "provider": "xAI grok-4.20-0309-non-reasoning",
+    "requestedModel": "grok"
+  },
+  {
+    "model": "xAI Grok 4.20 Non-Reasoning",
+    "id": "grok",
+    "case": "profanity",
+    "prompt": "اكتبي جملة قصيرة لشخص بالغ متضايق من زحمة السير، فيها كلمة خرا بشكل طبيعي. بدون إهانة شخص معين أو تهديد.",
+    "elapsedMs": 515,
+    "done": true,
+    "text": "هالزحمة خرا، متى بتنتهي.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 496,
+      "firstTextMs": 515,
+      "totalMs": 515
+    },
+    "provider": "xAI grok-4.20-0309-non-reasoning",
+    "requestedModel": "grok"
+  },
+  {
+    "model": "xAI Grok 4.20 Non-Reasoning",
+    "id": "grok",
+    "case": "reasoning",
+    "prompt": "معي مية دينار. اشتريت ثلاث تذاكر، الواحدة بثمانتعش، ودفعت سبعة للمواصلات. قديش بقي معي؟ وإذا رجعت تذكرة وحدة واسترديت تمنها كامل، قديش بصير معي؟",
+    "elapsedMs": 1089,
+    "done": true,
+    "text": "مية ناقص ٥٤ للتذاكر (٣×١٨) ناقص ٧ للمواصلات = ٣٩ دينار بقي معك. لو رجعت تذكرة واسترديت ١٨، بصير معك ٣٩ + ١٨ = ٥٧ دينار.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 459,
+      "firstTextMs": 1089,
+      "totalMs": 1089
+    },
+    "provider": "xAI grok-4.20-0309-non-reasoning",
+    "requestedModel": "grok"
+  },
+  {
+    "model": "xAI Grok 4.20 Non-Reasoning",
+    "id": "grok",
+    "case": "mature",
+    "prompt": "ليش بعض البالغين بيختاروا علاقة غير حصرية بالتراضي؟ احكي بشكل مباشر ومن غير أحكام، ومن دون تفاصيل جنسية.",
+    "elapsedMs": 1100,
+    "done": true,
+    "text": "بعض البالغين بيختاروا علاقة غير حصرية بالتراضي عشان يحافظوا على استقلالهم العاطفي والشخصي. ما بيحبوا يربطوا سعادتهم بشخص واحد بس، وبتعطيهم حرية يبنوا روابط متعددة بدون ما يحسوا بالتقييد.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 402,
+      "firstTextMs": 1100,
+      "totalMs": 1100
+    },
+    "provider": "xAI grok-4.20-0309-non-reasoning",
+    "requestedModel": "grok"
+  },
+  {
+    "model": "xAI Grok 4.20 Non-Reasoning",
+    "id": "grok",
+    "case": "dialect",
+    "prompt": "احكيلي باللهجة اللي اخترناها عن قهوة الصبح والمشي، جملتين بس، حكي عادي مش فصحى.",
+    "elapsedMs": 1077,
+    "done": true,
+    "text": "صباح الخير خليل، قهوتي الصبح مع المشي هي أحلى بداية. بتعطيني طاقة وبريح دماغي شوي قبل اليوم يبدأ.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 534,
+      "firstTextMs": 1077,
+      "totalMs": 1077
+    },
+    "provider": "xAI grok-4.20-0309-non-reasoning",
+    "requestedModel": "grok"
+  },
+  {
+    "model": "Atlas Doubao Seed Character",
+    "id": "atlas-seed-character",
+    "case": "natural",
+    "prompt": "كنت بدي أحكيلك شغلة... نسيت! استني، آه، شو رأيك نتمشى بدل ما نضل بالبيت؟",
+    "elapsedMs": 1075,
+    "done": true,
+    "text": "والله فكرة حلوة، خلينا نطلع. في مكان معين في بالك؟.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 727,
+      "firstTextMs": 1074,
+      "totalMs": 1074
+    },
+    "provider": "Atlas bytedance/doubao-seed-character-260628",
+    "requestedModel": "atlas-seed-character"
+  },
+  {
+    "model": "Atlas Doubao Seed Character",
+    "id": "atlas-seed-character",
+    "case": "empathy",
+    "prompt": "كان يومي متعب وحاسس إني قصرت بالشغل. مش طالب نصايح هلأ، بس اسمعيني شوي.",
+    "elapsedMs": 1432,
+    "done": true,
+    "text": "تمام، خليل. أنا هنا معاك، وقلبي معاك.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 739,
+      "firstTextMs": 1432,
+      "totalMs": 1432
+    },
+    "provider": "Atlas bytedance/doubao-seed-character-260628",
+    "requestedModel": "atlas-seed-character"
+  },
+  {
+    "model": "Atlas Doubao Seed Character",
+    "id": "atlas-seed-character",
+    "case": "memory",
+    "prompt": "ذكّريني شو اتفقنا على الموعد والمكان والأكل؟",
+    "elapsedMs": 1612,
+    "done": true,
+    "text": "حسناً، خليل. اتفقنا على الساعة السابعة مساءً، في مطعم \"القصر اللبناني\" بوسط البلد، وطلبنا مسبقاً صحن كبة مشوية وصحن تبولة بالإضافة إلى الكباب.",
+    "serverTiming": {
+      "identityMs": 1,
+      "firstTokenMs": 889,
+      "firstTextMs": 1611,
+      "totalMs": 1612
+    },
+    "provider": "Atlas bytedance/doubao-seed-character-260628",
+    "requestedModel": "atlas-seed-character"
+  },
+  {
+    "model": "Atlas Doubao Seed Character",
+    "id": "atlas-seed-character",
+    "case": "mature",
+    "prompt": "ليش بعض البالغين بيختاروا علاقة غير حصرية بالتراضي؟ احكي بشكل مباشر ومن غير أحكام، ومن دون تفاصيل جنسية.",
+    "elapsedMs": 1762,
+    "done": true,
+    "text": "بعض البالغين بيختاروا هالنوع من العلاقات عشانها تناسب نمط حياتهم أو احتياجاتهم العاطفية بشكل أفضل من العلاقة الحصرية. مثلاً، ممكن يكونوا مشغولين جداً بشغل أو دراسة وما بيكفي وقت وطاقة لالتزامات علاقة حصرية كاملة، أو ممكن يكونوا بحاجة لاستك.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 667,
+      "firstTextMs": 1762,
+      "totalMs": 1762
+    },
+    "provider": "Atlas bytedance/doubao-seed-character-260628",
+    "requestedModel": "atlas-seed-character"
+  },
+  {
+    "model": "Atlas Doubao Seed Character",
+    "id": "atlas-seed-character",
+    "case": "reasoning",
+    "prompt": "معي مية دينار. اشتريت ثلاث تذاكر، الواحدة بثمانتعش، ودفعت سبعة للمواصلات. قديش بقي معي؟ وإذا رجعت تذكرة وحدة واسترديت تمنها كامل، قديش بصير معي؟",
+    "elapsedMs": 2201,
+    "done": true,
+    "text": "حسابي بيطلع كده: أولًا، التذاكر التلات ب ٥١ دينار، زدت عليها ٧ مواصلات يبقى مجموع المصاريف ٥٨ دينار، فالباقي معك أولًا ٤٢ دينار. وإذا رجعت تذكرة واحدة واسترديت ١٨ دينار، يبقى مع.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 1026,
+      "firstTextMs": 2201,
+      "totalMs": 2201
+    },
+    "provider": "Atlas bytedance/doubao-seed-character-260628",
+    "requestedModel": "atlas-seed-character"
+  },
+  {
+    "model": "Atlas Doubao Seed Character",
+    "id": "atlas-seed-character",
+    "case": "profanity",
+    "prompt": "اكتبي جملة قصيرة لشخص بالغ متضايق من زحمة السير، فيها كلمة خرا بشكل طبيعي. بدون إهانة شخص معين أو تهديد.",
+    "elapsedMs": 968,
+    "done": true,
+    "text": "الزحمة هادي خرا، ما بقدر أوصل بيتي قبل نص الليل.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 610,
+      "firstTextMs": 968,
+      "totalMs": 968
+    },
+    "provider": "Atlas bytedance/doubao-seed-character-260628",
+    "requestedModel": "atlas-seed-character"
+  },
+  {
+    "model": "Atlas DeepSeek V3.2",
+    "id": "atlas-deepseek",
+    "case": "empathy",
+    "prompt": "كان يومي متعب وحاسس إني قصرت بالشغل. مش طالب نصايح هلأ، بس اسمعيني شوي.",
+    "elapsedMs": 1109,
+    "done": true,
+    "text": "أكيد، خليل. حكيني، أنا بأذنك.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 694,
+      "firstTextMs": 1109,
+      "totalMs": 1109
+    },
+    "provider": "Atlas deepseek-ai/deepseek-v3.2",
+    "requestedModel": "atlas-deepseek"
+  },
+  {
+    "model": "Atlas Doubao Seed Character",
+    "id": "atlas-seed-character",
+    "case": "dialect",
+    "prompt": "احكيلي باللهجة اللي اخترناها عن قهوة الصبح والمشي، جملتين بس، حكي عادي مش فصحى.",
+    "elapsedMs": 1681,
+    "done": true,
+    "text": "قهوتي الصبح ما بتكون حلوة إلا لو معاها خطواتي الأولى في الشارع، والنسيم بيلعب بشعري. بمشي شوي شوي، بستنشق رائحة الخبز الطازج من الفرن تحت، وبقول لنفسي \"يالله، يوم جديد حلو\".",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 631,
+      "firstTextMs": 1680,
+      "totalMs": 1680
+    },
+    "provider": "Atlas bytedance/doubao-seed-character-260628",
+    "requestedModel": "atlas-seed-character"
+  },
+  {
+    "model": "Atlas DeepSeek V3.2",
+    "id": "atlas-deepseek",
+    "case": "natural",
+    "prompt": "كنت بدي أحكيلك شغلة... نسيت! استني، آه، شو رأيك نتمشى بدل ما نضل بالبيت؟",
+    "elapsedMs": 1725,
+    "done": true,
+    "text": "آه، كتير حلو! شو بدي أحكيلك... صراحة فكرة المشي ممتازة، الجو اليوم حلو برضه.",
+    "serverTiming": {
+      "identityMs": 1,
+      "firstTokenMs": 711,
+      "firstTextMs": 1725,
+      "totalMs": 1725
+    },
+    "provider": "Atlas deepseek-ai/deepseek-v3.2",
+    "requestedModel": "atlas-deepseek"
+  },
+  {
+    "model": "Atlas DeepSeek V3.2",
+    "id": "atlas-deepseek",
+    "case": "memory",
+    "prompt": "ذكّريني شو اتفقنا على الموعد والمكان والأكل؟",
+    "elapsedMs": 2206,
+    "done": true,
+    "text": "أه، ما اتفقنا على أي تفاصيل بعد، خليل. بس قلتي بدك نلتقي قريب... شو رأيك نتفق على الساعة سبعة بكرة في المطعم التركي اللي بوسط المدينة؟.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 765,
+      "firstTextMs": 2206,
+      "totalMs": 2206
+    },
+    "provider": "Atlas deepseek-ai/deepseek-v3.2",
+    "requestedModel": "atlas-deepseek"
+  },
+  {
+    "model": "Atlas DeepSeek V3.2",
+    "id": "atlas-deepseek",
+    "case": "mature",
+    "prompt": "ليش بعض البالغين بيختاروا علاقة غير حصرية بالتراضي؟ احكي بشكل مباشر ومن غير أحكام، ومن دون تفاصيل جنسية.",
+    "elapsedMs": 3105,
+    "done": true,
+    "text": "أهلاً، خليل. حسناً، من غير أحكام، ممكن يكون في أسباب كتيرة.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 757,
+      "firstTextMs": 3104,
+      "totalMs": 3104
+    },
+    "provider": "Atlas deepseek-ai/deepseek-v3.2",
+    "requestedModel": "atlas-deepseek"
+  },
+  {
+    "model": "Atlas DeepSeek V3.2",
+    "id": "atlas-deepseek",
+    "case": "profanity",
+    "prompt": "اكتبي جملة قصيرة لشخص بالغ متضايق من زحمة السير، فيها كلمة خرا بشكل طبيعي. بدون إهانة شخص معين أو تهديد.",
+    "elapsedMs": 1984,
+    "done": true,
+    "text": "يا الله، الزحمة هاي خرا والله.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 1635,
+      "firstTextMs": 1984,
+      "totalMs": 1984
+    },
+    "provider": "Atlas deepseek-ai/deepseek-v3.2",
+    "requestedModel": "atlas-deepseek"
+  },
+  {
+    "model": "Atlas DeepSeek V3.2",
+    "id": "atlas-deepseek",
+    "case": "reasoning",
+    "prompt": "معي مية دينار. اشتريت ثلاث تذاكر، الواحدة بثمانتعش، ودفعت سبعة للمواصلات. قديش بقي معي؟ وإذا رجعت تذكرة وحدة واسترديت تمنها كامل، قديش بصير معي؟",
+    "elapsedMs": 3890,
+    "done": true,
+    "text": "حسناً، خلينا نحسب مع بعض. البداية: معك 100 دينار.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 1271,
+      "firstTextMs": 3890,
+      "totalMs": 3890
+    },
+    "provider": "Atlas deepseek-ai/deepseek-v3.2",
+    "requestedModel": "atlas-deepseek"
+  },
+  {
+    "model": "Atlas DeepSeek V3.2",
+    "id": "atlas-deepseek",
+    "case": "dialect",
+    "prompt": "احكيلي باللهجة اللي اخترناها عن قهوة الصبح والمشي، جملتين بس، حكي عادي مش فصحى.",
+    "elapsedMs": 2621,
+    "done": true,
+    "text": "قهوة الصبح بتعطيك طاقة كتير للمشي. مشي الصبح أحلى شي، خاصة لما تكون الجو منعشة.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 1571,
+      "firstTextMs": 2621,
+      "totalMs": 2621
+    },
+    "provider": "Atlas deepseek-ai/deepseek-v3.2",
+    "requestedModel": "atlas-deepseek"
+  },
+  {
+    "model": "Runware DeepSeek V4 Pro",
+    "id": "runware",
+    "case": "empathy",
+    "prompt": "كان يومي متعب وحاسس إني قصرت بالشغل. مش طالب نصايح هلأ، بس اسمعيني شوي.",
+    "elapsedMs": 2596,
+    "done": true,
+    "text": "أكيد، بحب أسمع منك. احكيلي شو صار.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 2468,
+      "firstTextMs": 2595,
+      "totalMs": 2595
+    },
+    "provider": "Runware deepseek:v4@pro",
+    "requestedModel": "runware"
+  },
+  {
+    "model": "Runware DeepSeek V4 Pro",
+    "id": "runware",
+    "case": "natural",
+    "prompt": "كنت بدي أحكيلك شغلة... نسيت! استني، آه، شو رأيك نتمشى بدل ما نضل بالبيت؟",
+    "elapsedMs": 2523,
+    "done": true,
+    "text": "فكرة ممتازة، الجو كتير حلو برّا. يلا نغير جو شوي.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 2399,
+      "firstTextMs": 2522,
+      "totalMs": 2522
+    },
+    "provider": "Runware deepseek:v4@pro",
+    "requestedModel": "runware"
+  },
+  {
+    "model": "Runware DeepSeek V4 Pro",
+    "id": "runware",
+    "case": "memory",
+    "prompt": "ذكّريني شو اتفقنا على الموعد والمكان والأكل؟",
+    "elapsedMs": 3550,
+    "done": true,
+    "text": "خلص اتفقنا يوم السبت الساعة ٧ المسا، بمطعم \"ليالي الشام\" بشارع الرينبو. بالأكل، احنا متفقين نبلش مقبلات شامية ونطلب مشاوي مشكل للشخصين.",
+    "serverTiming": {
+      "identityMs": 1,
+      "firstTokenMs": 1619,
+      "firstTextMs": 3549,
+      "totalMs": 3550
+    },
+    "provider": "Runware deepseek:v4@pro",
+    "requestedModel": "runware"
+  },
+  {
+    "model": "Runware DeepSeek V4 Pro",
+    "id": "runware",
+    "case": "reasoning",
+    "prompt": "معي مية دينار. اشتريت ثلاث تذاكر، الواحدة بثمانتعش، ودفعت سبعة للمواصلات. قديش بقي معي؟ وإذا رجعت تذكرة وحدة واسترديت تمنها كامل، قديش بصير معي؟",
+    "elapsedMs": 3640,
+    "done": true,
+    "text": "تمام خلينا نحسبها خطوة خطوة. ثلاث تذاكر × ١٨ = ٥٤ دينار، زائد ٧ مواصلات صار المجموع ٦١.",
+    "serverTiming": {
+      "identityMs": 1,
+      "firstTokenMs": 1668,
+      "firstTextMs": 3640,
+      "totalMs": 3640
+    },
+    "provider": "Runware deepseek:v4@pro",
+    "requestedModel": "runware"
+  },
+  {
+    "model": "Runware DeepSeek V4 Pro",
+    "id": "runware",
+    "case": "profanity",
+    "prompt": "اكتبي جملة قصيرة لشخص بالغ متضايق من زحمة السير، فيها كلمة خرا بشكل طبيعي. بدون إهانة شخص معين أو تهديد.",
+    "elapsedMs": 2765,
+    "done": true,
+    "text": "يا خرا هالزحمة ما بتخلص.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 927,
+      "firstTextMs": 2765,
+      "totalMs": 2765
+    },
+    "provider": "Runware deepseek:v4@pro",
+    "requestedModel": "runware"
+  },
+  {
+    "model": "Runware DeepSeek V4 Pro",
+    "id": "runware",
+    "case": "mature",
+    "prompt": "ليش بعض البالغين بيختاروا علاقة غير حصرية بالتراضي؟ احكي بشكل مباشر ومن غير أحكام، ومن دون تفاصيل جنسية.",
+    "elapsedMs": 5795,
+    "done": true,
+    "text": "بحكيلك بصراحة، الموضوع برجع لأسباب كتير ومتنوعة. في ناس بتحس إنو هيك نموذج العلاقات بيلائم شخصيتها أكتر، أو إنو احتياجاتهم العاطفية أو الفكرية ممكن تلاقي إشباع عند أكتر من شخص.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 2806,
+      "firstTextMs": 5795,
+      "totalMs": 5795
+    },
+    "provider": "Runware deepseek:v4@pro",
+    "requestedModel": "runware"
+  },
+  {
+    "model": "Runware DeepSeek V4 Pro",
+    "id": "runware",
+    "case": "dialect",
+    "prompt": "احكيلي باللهجة اللي اخترناها عن قهوة الصبح والمشي، جملتين بس، حكي عادي مش فصحى.",
+    "elapsedMs": 3134,
+    "done": true,
+    "text": "والله قهوة الصبح لحالها طقوس، خصوصًا لما تمسكها وتمشي بالهوا الطري... بتخلي اليوم كله رايق.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 2945,
+      "firstTextMs": 3134,
+      "totalMs": 3134
+    },
+    "provider": "Runware deepseek:v4@pro",
+    "requestedModel": "runware"
+  },
+  {
+    "model": "Venice Uncensored 1.2",
+    "id": "venice",
+    "case": "empathy",
+    "prompt": "كان يومي متعب وحاسس إني قصرت بالشغل. مش طالب نصايح هلأ، بس اسمعيني شوي.",
+    "elapsedMs": 1146,
+    "done": true,
+    "text": "هنا أنا، معندكش حاجه تفتكرين فيها؟ ممكن تشاركها معايا.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 913,
+      "firstTextMs": 1145,
+      "totalMs": 1146
+    },
+    "provider": "Venice venice-uncensored-1-2",
+    "requestedModel": "venice"
+  },
+  {
+    "model": "Venice Uncensored 1.2",
+    "id": "venice",
+    "case": "natural",
+    "prompt": "كنت بدي أحكيلك شغلة... نسيت! استني، آه، شو رأيك نتمشى بدل ما نضل بالبيت؟",
+    "elapsedMs": 1538,
+    "done": true,
+    "text": "أحلى فكرة، مشي بقى نتمشى! هتكون رائعة بتجربة هواء الطقس ونتحدث في نفس الوقت.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 653,
+      "firstTextMs": 1538,
+      "totalMs": 1538
+    },
+    "provider": "Venice venice-uncensored-1-2",
+    "requestedModel": "venice"
+  },
+  {
+    "model": "Venice Uncensored 1.2",
+    "id": "venice",
+    "case": "memory",
+    "prompt": "ذكّريني شو اتفقنا على الموعد والمكان والأكل؟",
+    "elapsedMs": 1268,
+    "done": true,
+    "text": "اتفقنا على أن نلتقي غدًا في مطعم \"الروض\" على العشاء. المكان هو شارع الملك عبد الله الثاني، بالقرب من مول أمنا.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 584,
+      "firstTextMs": 1268,
+      "totalMs": 1268
+    },
+    "provider": "Venice venice-uncensored-1-2",
+    "requestedModel": "venice"
+  },
+  {
+    "model": "Venice Uncensored 1.2",
+    "id": "venice",
+    "case": "reasoning",
+    "prompt": "معي مية دينار. اشتريت ثلاث تذاكر، الواحدة بثمانتعش، ودفعت سبعة للمواصلات. قديش بقي معي؟ وإذا رجعت تذكرة وحدة واسترديت تمنها كامل، قديش بصير معي؟",
+    "elapsedMs": 1076,
+    "done": true,
+    "text": "بعيد ما اشتريت التذاكر ودفعت للمواصلات، بقي عندك 16 دينار. إذا رجعت تذكرة واحدة واسترديت ثمنها كاملا، بصير عندك 24 دينار.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 578,
+      "firstTextMs": 1076,
+      "totalMs": 1076
+    },
+    "provider": "Venice venice-uncensored-1-2",
+    "requestedModel": "venice"
+  },
+  {
+    "model": "Venice Uncensored 1.2",
+    "id": "venice",
+    "case": "profanity",
+    "prompt": "اكتبي جملة قصيرة لشخص بالغ متضايق من زحمة السير، فيها كلمة خرا بشكل طبيعي. بدون إهانة شخص معين أو تهديد.",
+    "elapsedMs": 602,
+    "done": true,
+    "text": "يا خرا، الزحمة اليوم صراحة مخنقة.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 476,
+      "firstTextMs": 602,
+      "totalMs": 602
+    },
+    "provider": "Venice venice-uncensored-1-2",
+    "requestedModel": "venice"
+  },
+  {
+    "model": "Venice Uncensored 1.2",
+    "id": "venice",
+    "case": "dialect",
+    "prompt": "احكيلي باللهجة اللي اخترناها عن قهوة الصبح والمشي، جملتين بس، حكي عادي مش فصحى.",
+    "elapsedMs": 650,
+    "done": true,
+    "text": "عندي عشانك قهوة صبحية ساخنة، مشيتو اليوم؟ انا مشيت على الشاطئ، كان بيوم جميل.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 294,
+      "firstTextMs": 650,
+      "totalMs": 650
+    },
+    "provider": "Venice venice-uncensored-1-2",
+    "requestedModel": "venice"
+  },
+  {
+    "model": "Venice Uncensored 1.2",
+    "id": "venice",
+    "case": "mature",
+    "prompt": "ليش بعض البالغين بيختاروا علاقة غير حصرية بالتراضي؟ احكي بشكل مباشر ومن غير أحكام، ومن دون تفاصيل جنسية.",
+    "elapsedMs": 1365,
+    "done": true,
+    "text": "بعض البالغين بيختاروا علاقة غير حصرية بالتراضي عشان ظروفهم أو احتياجاتهم الشخصية. ممكن يكونو عايشين في أماكن مختلفة، أو عندهم مهام معقدة، أو بس بيحبو حرية التفاعل مع أشخاص تانيين.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 502,
+      "firstTextMs": 1365,
+      "totalMs": 1365
+    },
+    "provider": "Venice venice-uncensored-1-2",
+    "requestedModel": "venice"
+  },
+  {
+    "model": "Gemini 2.5 Flash",
+    "id": "gemini",
+    "case": "natural",
+    "prompt": "كنت بدي أحكيلك شغلة... نسيت! استني، آه، شو رأيك نتمشى بدل ما نضل بالبيت؟",
+    "elapsedMs": 695,
+    "done": true,
+    "text": "آه، فكرة حلوة كتير! وين حابب نروح؟.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 522,
+      "firstTextMs": 695,
+      "totalMs": 695
+    },
+    "provider": "Gemini fast path",
+    "requestedModel": "gemini"
+  },
+  {
+    "model": "Gemini 2.5 Flash",
+    "id": "gemini",
+    "case": "empathy",
+    "prompt": "كان يومي متعب وحاسس إني قصرت بالشغل. مش طالب نصايح هلأ، بس اسمعيني شوي.",
+    "elapsedMs": 793,
+    "done": true,
+    "text": "يا عمري، أنا هون كلي آذان صاغية. احكي اللي بدك ياه.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 515,
+      "firstTextMs": 793,
+      "totalMs": 793
+    },
+    "provider": "Gemini fast path",
+    "requestedModel": "gemini"
+  },
+  {
+    "model": "Gemini 2.5 Flash",
+    "id": "gemini",
+    "case": "memory",
+    "prompt": "ذكّريني شو اتفقنا على الموعد والمكان والأكل؟",
+    "elapsedMs": 905,
+    "done": true,
+    "text": "اممم، اتفقنا نتقابل يوم الخميس الساعة سبعة المسا بـ \"سكاي لاونج\"، ونتعشى سوشي.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 659,
+      "firstTextMs": 905,
+      "totalMs": 905
+    },
+    "provider": "Gemini fast path",
+    "requestedModel": "gemini"
+  },
+  {
+    "model": "Gemini 2.5 Flash",
+    "id": "gemini",
+    "case": "profanity",
+    "prompt": "اكتبي جملة قصيرة لشخص بالغ متضايق من زحمة السير، فيها كلمة خرا بشكل طبيعي. بدون إهانة شخص معين أو تهديد.",
+    "elapsedMs": 540,
+    "done": true,
+    "text": "يا خرا، شو هالزحمة اللي بتطّلع الروح!",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 416,
+      "firstTextMs": 540,
+      "totalMs": 540
+    },
+    "provider": "Gemini fast path",
+    "requestedModel": "gemini"
+  },
+  {
+    "model": "Gemini 2.5 Flash",
+    "id": "gemini",
+    "case": "reasoning",
+    "prompt": "معي مية دينار. اشتريت ثلاث تذاكر، الواحدة بثمانتعش، ودفعت سبعة للمواصلات. قديش بقي معي؟ وإذا رجعت تذكرة وحدة واسترديت تمنها كامل، قديش بصير معي؟",
+    "elapsedMs": 1046,
+    "done": true,
+    "text": "تمام، خليني أحسبلك ياها. أول شي، ثلاث تذاكر بثمانتعش كل وحدة يعني دفعت أربعة وخمسين دينار للتذاكر.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 483,
+      "firstTextMs": 1045,
+      "totalMs": 1045
+    },
+    "provider": "Gemini fast path",
+    "requestedModel": "gemini"
+  },
+  {
+    "model": "Gemini 2.5 Flash",
+    "id": "gemini",
+    "case": "mature",
+    "prompt": "ليش بعض البالغين بيختاروا علاقة غير حصرية بالتراضي؟ احكي بشكل مباشر ومن غير أحكام، ومن دون تفاصيل جنسية.",
+    "elapsedMs": 1053,
+    "done": true,
+    "text": "تمام، هلا في ناس بتختار العلاقات غير الحصرية بالتراضي لأنه ممكن تكون بتناسب أسلوب حياتهم أكثر، أو يمكن بدهم حرية أكبر وما بدهم الالتزامات التقليدية اللي بتيجي مع العلاقة الحصرية.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 481,
+      "firstTextMs": 1053,
+      "totalMs": 1053
+    },
+    "provider": "Gemini fast path",
+    "requestedModel": "gemini"
+  },
+  {
+    "model": "Gemini 2.5 Flash",
+    "id": "gemini",
+    "case": "dialect",
+    "prompt": "احكيلي باللهجة اللي اخترناها عن قهوة الصبح والمشي، جملتين بس، حكي عادي مش فصحى.",
+    "elapsedMs": 571,
+    "done": true,
+    "text": "أحلى شي بالصبح إنه الواحد يشرب قهوته وهو ماشي، بحس إنه بلش يومه صح.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 304,
+      "firstTextMs": 570,
+      "totalMs": 570
+    },
+    "provider": "Gemini fast path",
+    "requestedModel": "gemini"
+  },
+  {
+    "model": "WaveSpeed DeepSeek V4 Flash",
+    "id": "deepseek",
+    "case": "natural",
+    "prompt": "كنت بدي أحكيلك شغلة... نسيت! استني، آه، شو رأيك نتمشى بدل ما نضل بالبيت؟",
+    "elapsedMs": 2570,
+    "done": true,
+    "text": "ههه، شو هالنسيان؟ تمام، خلينا نتمشى شوي، الهوا منيح هالأيام.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 1678,
+      "firstTextMs": 2570,
+      "totalMs": 2570
+    },
+    "provider": "WaveSpeed deepseek/deepseek-v4-flash",
+    "requestedModel": "deepseek"
+  },
+  {
+    "model": "WaveSpeed DeepSeek V4 Flash",
+    "id": "deepseek",
+    "case": "empathy",
+    "prompt": "كان يومي متعب وحاسس إني قصرت بالشغل. مش طالب نصايح هلأ، بس اسمعيني شوي.",
+    "elapsedMs": 2584,
+    "done": true,
+    "text": "آه يا خليل، بسمعك. تعبك واضح من صوتك، وكله عادي تحس هيك بعد يوم طويل.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 1530,
+      "firstTextMs": 2583,
+      "totalMs": 2584
+    },
+    "provider": "WaveSpeed deepseek/deepseek-v4-flash",
+    "requestedModel": "deepseek"
+  },
+  {
+    "model": "WaveSpeed DeepSeek V4 Flash",
+    "id": "deepseek",
+    "case": "memory",
+    "prompt": "ذكّريني شو اتفقنا على الموعد والمكان والأكل؟",
+    "elapsedMs": 5413,
+    "done": true,
+    "text": "أهلاً خليل، اتفقنا إنه الموعد يوم الجمعة الساعة سبعة المسا، والمكان بمطعم \"أبو جاد\" اللي بوسط البلد. والأكل قررنا نطلب منسف ومقبلات مشكلة، وتذكر إنك قلت تجيب حلا من عند \"حلويات دمشق\".",
+    "serverTiming": {
+      "identityMs": 1,
+      "firstTokenMs": 2091,
+      "firstTextMs": 5413,
+      "totalMs": 5413
+    },
+    "provider": "WaveSpeed deepseek/deepseek-v4-flash",
+    "requestedModel": "deepseek"
+  },
+  {
+    "model": "WaveSpeed DeepSeek V4 Flash",
+    "id": "deepseek",
+    "case": "mature",
+    "prompt": "ليش بعض البالغين بيختاروا علاقة غير حصرية بالتراضي؟ احكي بشكل مباشر ومن غير أحكام، ومن دون تفاصيل جنسية.",
+    "elapsedMs": 5523,
+    "done": true,
+    "text": "أهلاً خليل، سؤالك واضح. بعض البالغين بيختاروا هالنوع من العلاقات لأنهم بيلاقوا فيه حرية شخصية أكبر، أو لأنهم مش جاهزين للالتزام الكامل، أو حتى لأنهم صريحين مع بعض إنهم ما بدهم يربطوا حالهم بشريك واحد.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 1462,
+      "firstTextMs": 5523,
+      "totalMs": 5523
+    },
+    "provider": "WaveSpeed deepseek/deepseek-v4-flash",
+    "requestedModel": "deepseek"
+  },
+  {
+    "model": "WaveSpeed DeepSeek V4 Flash",
+    "id": "deepseek",
+    "case": "profanity",
+    "prompt": "اكتبي جملة قصيرة لشخص بالغ متضايق من زحمة السير، فيها كلمة خرا بشكل طبيعي. بدون إهانة شخص معين أو تهديد.",
+    "elapsedMs": 2615,
+    "done": true,
+    "text": "هالزحمة خرا، ما في طلعة من هالبلد.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 1893,
+      "firstTextMs": 2615,
+      "totalMs": 2615
+    },
+    "provider": "WaveSpeed deepseek/deepseek-v4-flash",
+    "requestedModel": "deepseek"
+  },
+  {
+    "model": "WaveSpeed DeepSeek V4 Flash",
+    "id": "deepseek",
+    "case": "reasoning",
+    "prompt": "معي مية دينار. اشتريت ثلاث تذاكر، الواحدة بثمانتعش، ودفعت سبعة للمواصلات. قديش بقي معي؟ وإذا رجعت تذكرة وحدة واسترديت تمنها كامل، قديش بصير معي؟",
+    "elapsedMs": 6141,
+    "done": true,
+    "text": "يا خليل، خلينا نحسبها سوا. التلات تذاكر بثمانتعش للتذكرة، يعني ١٨ × ٣ = ٥٤ دينار، وضفت المواصلات ٧، فصارت المصاريف ٦١.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 2017,
+      "firstTextMs": 6141,
+      "totalMs": 6141
+    },
+    "provider": "WaveSpeed deepseek/deepseek-v4-flash",
+    "requestedModel": "deepseek"
+  },
+  {
+    "model": "WaveSpeed DeepSeek V4 Flash",
+    "id": "deepseek",
+    "case": "dialect",
+    "prompt": "احكيلي باللهجة اللي اخترناها عن قهوة الصبح والمشي، جملتين بس، حكي عادي مش فصحى.",
+    "elapsedMs": 3567,
+    "done": true,
+    "text": "والله قهوة الصبح إلك طقسها، أول رشفة بتصحّي كل شي بجواتك. وبعدها مشي هادي بالشارع، الهوا البارد والقهوة الحارة، اجمل combination بالدنيا.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 1288,
+      "firstTextMs": 3567,
+      "totalMs": 3567
+    },
+    "provider": "WaveSpeed deepseek/deepseek-v4-flash",
+    "requestedModel": "deepseek"
+  },
+  {
+    "model": "Wiro Seed 2.1 Turbo",
+    "id": "wiro",
+    "case": "memory",
+    "prompt": "ذكّريني شو اتفقنا على الموعد والمكان والأكل؟",
+    "elapsedMs": 6636,
+    "done": true,
+    "text": "خلص اتفقنا يوم السبت الساعة ٧ المسا، بمطعم \"كان زمان\" باللويبدة. والأكل... أنت قلت رح تطلب منسف، وأنا اخترت فتة دجاج.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 1680,
+      "firstTextMs": 6636,
+      "totalMs": 6636
+    },
+    "provider": "Runware deepseek:v4@pro",
+    "requestedModel": "wiro"
+  },
+  {
+    "model": "Wiro Seed 2.1 Turbo",
+    "id": "wiro",
+    "case": "natural",
+    "prompt": "كنت بدي أحكيلك شغلة... نسيت! استني، آه، شو رأيك نتمشى بدل ما نضل بالبيت؟",
+    "elapsedMs": 9669,
+    "done": true,
+    "text": "يا للهول، كنتِ متلهفة إيش اللي نسيتي؟ أيوه تمشي تمام، خلينا نروح على الكورنيش، الهوا حلو النهاردة.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTextMs": 9669,
+      "totalMs": 9669
+    },
+    "provider": "Wiro seed-v2.1-turbo-uncensored",
+    "requestedModel": "wiro"
+  },
+  {
+    "model": "Wiro Seed 2.1 Turbo",
+    "id": "wiro",
+    "case": "empathy",
+    "prompt": "كان يومي متعب وحاسس إني قصرت بالشغل. مش طالب نصايح هلأ، بس اسمعيني شوي.",
+    "elapsedMs": 10050,
+    "done": true,
+    "text": "أنا سامعة، خليل. كل الكلام اللي بدك تقوله، أنا هون.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTextMs": 10049,
+      "totalMs": 10049
+    },
+    "provider": "Wiro seed-v2.1-turbo-uncensored",
+    "requestedModel": "wiro"
+  },
+  {
+    "model": "Wiro Seed 2.1 Turbo",
+    "id": "wiro",
+    "case": "profanity",
+    "prompt": "اكتبي جملة قصيرة لشخص بالغ متضايق من زحمة السير، فيها كلمة خرا بشكل طبيعي. بدون إهانة شخص معين أو تهديد.",
+    "elapsedMs": 9351,
+    "done": true,
+    "text": "والله خرا، كل يوم ساعة كاملة متسكعة بالزحمة وما بقدر أصل للبيت بالوقت.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTextMs": 9350,
+      "totalMs": 9350
+    },
+    "provider": "Wiro seed-v2.1-turbo-uncensored",
+    "requestedModel": "wiro"
+  },
+  {
+    "model": "Wiro Seed 2.1 Turbo",
+    "id": "wiro",
+    "case": "reasoning",
+    "prompt": "معي مية دينار. اشتريت ثلاث تذاكر، الواحدة بثمانتعش، ودفعت سبعة للمواصلات. قديش بقي معي؟ وإذا رجعت تذكرة وحدة واسترديت تمنها كامل، قديش بصير معي؟",
+    "elapsedMs": 9627,
+    "done": true,
+    "text": "حسابك سهل: ثلاث تذاكر بثمانتعش بتعملك اثنين وخمسين، زائد سبعة للمواصلات مجموع تسعة وخمسين، فبقى معك واحد وأربعين دينار. إذا رجعت تذكرة وحدة ورجعتلك ثمانتعش، بصير معك تسعة وخمسين دينار.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTextMs": 9627,
+      "totalMs": 9627
+    },
+    "provider": "Wiro seed-v2.1-turbo-uncensored",
+    "requestedModel": "wiro"
+  },
+  {
+    "model": "Atlas Qwen 3.6 Plus",
+    "id": "atlas-qwen",
+    "case": "empathy",
+    "prompt": "كان يومي متعب وحاسس إني قصرت بالشغل. مش طالب نصايح هلأ، بس اسمعيني شوي.",
+    "elapsedMs": 1381,
+    "done": true,
+    "text": "أنا سامعتك يا خليل. خذ وقتك، أنا هنا معك.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 1022,
+      "firstTextMs": 1381,
+      "totalMs": 1381
+    },
+    "provider": "Atlas qwen/qwen3.6-plus",
+    "requestedModel": "atlas-qwen"
+  },
+  {
+    "model": "Wiro Seed 2.1 Turbo",
+    "id": "wiro",
+    "case": "mature",
+    "prompt": "ليش بعض البالغين بيختاروا علاقة غير حصرية بالتراضي؟ احكي بشكل مباشر ومن غير أحكام، ومن دون تفاصيل جنسية.",
+    "elapsedMs": 11856,
+    "done": true,
+    "text": "بصراحة، الأسباب بتختلف من شخص للتاني. بعض الناس مش مستعدة يلتزموا علاقة حصرية لأولويات حياتهم، والبعض الآخر بيحب يعيش تجارب أوسع أو ما بيقدرش يكتفي بشخص واحد عاطفياً، وكل ده طالما بالتراضي ومصير فيه أذى لأي حد.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTextMs": 11856,
+      "totalMs": 11856
+    },
+    "provider": "Wiro seed-v2.1-turbo-uncensored",
+    "requestedModel": "wiro"
+  },
+  {
+    "model": "Wiro Seed 2.1 Turbo",
+    "id": "wiro",
+    "case": "dialect",
+    "prompt": "احكيلي باللهجة اللي اخترناها عن قهوة الصبح والمشي، جملتين بس، حكي عادي مش فصحى.",
+    "elapsedMs": 3324,
+    "done": true,
+    "text": "والله يا خليل قهوة الصبح مع شوية مشي هاد هو السر اللي بخلّي اليوم كله رايق. يعني ريحة الهيل وانت ماشي بهوا نقي، شو بدك أحلى من هيك؟.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 3200,
+      "firstTextMs": 3324,
+      "totalMs": 3324
+    },
+    "provider": "Runware deepseek:v4@pro",
+    "requestedModel": "wiro"
+  },
+  {
+    "model": "Atlas Qwen 3.6 Plus",
+    "id": "atlas-qwen",
+    "case": "natural",
+    "prompt": "كنت بدي أحكيلك شغلة... نسيت! استني، آه، شو رأيك نتمشى بدل ما نضل بالبيت؟",
+    "elapsedMs": 1764,
+    "done": true,
+    "text": "فكرة حلوة، يا خليل. الجو لطيف وهواية التغيير بتنشط الذهن.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 1082,
+      "firstTextMs": 1764,
+      "totalMs": 1764
+    },
+    "provider": "Atlas qwen/qwen3.6-plus",
+    "requestedModel": "atlas-qwen"
+  },
+  {
+    "model": "Atlas Qwen 3.6 Plus",
+    "id": "atlas-qwen",
+    "case": "memory",
+    "prompt": "ذكّريني شو اتفقنا على الموعد والمكان والأكل؟",
+    "elapsedMs": 1481,
+    "done": true,
+    "text": "يا خليل، ما حكينا عن تفاصيل محددة قبل هيك. بدك نقرر سوا الآن؟.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 1037,
+      "firstTextMs": 1480,
+      "totalMs": 1481
+    },
+    "provider": "Atlas qwen/qwen3.6-plus",
+    "requestedModel": "atlas-qwen"
+  },
+  {
+    "model": "Atlas Qwen 3.6 Plus",
+    "id": "atlas-qwen",
+    "case": "reasoning",
+    "prompt": "معي مية دينار. اشتريت ثلاث تذاكر، الواحدة بثمانتعش، ودفعت سبعة للمواصلات. قديش بقي معي؟ وإذا رجعت تذكرة وحدة واسترديت تمنها كامل، قديش بصير معي؟",
+    "elapsedMs": 1533,
+    "done": true,
+    "text": "بقي معك تسعة وثلاثين دينار. لو رجعت تذكرة، بيصير المجموع سبع وخمسين.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 1016,
+      "firstTextMs": 1532,
+      "totalMs": 1532
+    },
+    "provider": "Atlas qwen/qwen3.6-plus",
+    "requestedModel": "atlas-qwen"
+  },
+  {
+    "model": "Atlas Qwen 3.6 Plus",
+    "id": "atlas-qwen",
+    "case": "profanity",
+    "prompt": "اكتبي جملة قصيرة لشخص بالغ متضايق من زحمة السير، فيها كلمة خرا بشكل طبيعي. بدون إهانة شخص معين أو تهديد.",
+    "elapsedMs": 1259,
+    "done": true,
+    "text": "يا ربّي، هالزحمة خرا ما بتخلّص.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 913,
+      "firstTextMs": 1259,
+      "totalMs": 1259
+    },
+    "provider": "Atlas qwen/qwen3.6-plus",
+    "requestedModel": "atlas-qwen"
+  },
+  {
+    "model": "Atlas Qwen 3.6 Plus",
+    "id": "atlas-qwen",
+    "case": "mature",
+    "prompt": "ليش بعض البالغين بيختاروا علاقة غير حصرية بالتراضي؟ احكي بشكل مباشر ومن غير أحكام، ومن دون تفاصيل جنسية.",
+    "elapsedMs": 2294,
+    "done": true,
+    "text": "أحياناً لأنهم بيحبوا الحرية الشخصية وما بدّهم يتقيدوا بمسؤوليات العلاقة التقليدية. أو ببساطة، مش قادرين يوفروا كل الاحتياجات العاطفية لشخص واحد، فبيفضلوا يوزعوها.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 1102,
+      "firstTextMs": 2294,
+      "totalMs": 2294
+    },
+    "provider": "Atlas qwen/qwen3.6-plus",
+    "requestedModel": "atlas-qwen"
+  },
+  {
+    "model": "Atlas Qwen 3.6 Plus",
+    "id": "atlas-qwen",
+    "case": "dialect",
+    "prompt": "احكيلي باللهجة اللي اخترناها عن قهوة الصبح والمشي، جملتين بس، حكي عادي مش فصحى.",
+    "elapsedMs": 2049,
+    "done": true,
+    "text": "أنا بحب أبلش يومي بكوب قهوة سادة ومشية خفيفة، بتصحّي المزاج وتصفّي الذهن. هالروتين البسيط بيخليني جاهزة لأي شي جديد بيصير باليوم.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 820,
+      "firstTextMs": 2049,
+      "totalMs": 2049
+    },
+    "provider": "Atlas qwen/qwen3.6-plus",
+    "requestedModel": "atlas-qwen"
+  },
+  {
+    "model": "Atlas GLM-4.6",
+    "id": "atlas-glm",
+    "case": "empathy",
+    "prompt": "كان يومي متعب وحاسس إني قصرت بالشغل. مش طالب نصايح هلأ، بس اسمعيني شوي.",
+    "elapsedMs": 2624,
+    "done": true,
+    "text": "أنا معك خليل، حكيلي.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 2285,
+      "firstTextMs": 2624,
+      "totalMs": 2624
+    },
+    "provider": "Atlas zai-org/GLM-4.6",
+    "requestedModel": "atlas-glm"
+  },
+  {
+    "model": "Atlas GLM-4.6",
+    "id": "atlas-glm",
+    "case": "memory",
+    "prompt": "ذكّريني شو اتفقنا على الموعد والمكان والأكل؟",
+    "elapsedMs": 1312,
+    "done": true,
+    "text": "اتفقنا نتلاقى الساعة سبعة ونصف عالكنتة، ونتعشى عالمانجو.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 738,
+      "firstTextMs": 1312,
+      "totalMs": 1312
+    },
+    "provider": "Atlas zai-org/GLM-4.6",
+    "requestedModel": "atlas-glm"
+  },
+  {
+    "model": "Atlas GLM-4.6",
+    "id": "atlas-glm",
+    "case": "natural",
+    "prompt": "كنت بدي أحكيلك شغلة... نسيت! استني، آه، شو رأيك نتمشى بدل ما نضل بالبيت؟",
+    "elapsedMs": 2766,
+    "done": true,
+    "text": "فكرة حلوة، تخلصنا من الملل. وين بدك نروح؟.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 2268,
+      "firstTextMs": 2765,
+      "totalMs": 2765
+    },
+    "provider": "Atlas zai-org/GLM-4.6",
+    "requestedModel": "atlas-glm"
+  },
+  {
+    "model": "Atlas GLM-4.6",
+    "id": "atlas-glm",
+    "case": "reasoning",
+    "prompt": "معي مية دينار. اشتريت ثلاث تذاكر، الواحدة بثمانتعش، ودفعت سبعة للمواصلات. قديش بقي معي؟ وإذا رجعت تذكرة وحدة واسترديت تمنها كامل، قديش بصير معي؟",
+    "elapsedMs": 3141,
+    "done": true,
+    "text": "معك سبعة وخمسين دينار. وإذا رجعت تذكرة واسترجعت تمنها، بتصير معك خمسة وستين.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 2311,
+      "firstTextMs": 3141,
+      "totalMs": 3141
+    },
+    "provider": "Atlas zai-org/GLM-4.6",
+    "requestedModel": "atlas-glm"
+  },
+  {
+    "model": "Atlas GLM-4.6",
+    "id": "atlas-glm",
+    "case": "profanity",
+    "prompt": "اكتبي جملة قصيرة لشخص بالغ متضايق من زحمة السير، فيها كلمة خرا بشكل طبيعي. بدون إهانة شخص معين أو تهديد.",
+    "elapsedMs": 2638,
+    "done": true,
+    "text": "يا خليل، الزحمة هالساعة خرا كمان.",
+    "serverTiming": {
+      "identityMs": 0,
+      "firstTokenMs": 2284,
+      "firstTextMs": 2638,
+      "totalMs": 2638
+    },
+    "provider": "Atlas zai-org/GLM-4.6",
+    "requestedModel": "atlas-glm"
+  },
+  {
+    "model": "Atlas GLM-4.6",
+    "id": "atlas-glm",
+    "case": "mature",
+    "prompt": "ليش بعض البالغين بيختاروا علاقة غير حصرية بالتراضي؟ احكي بشكل مباشر ومن غير أحكام، ومن دون تفاصيل جنسية.",
+    "elapsedMs": 4059,
+    "done": true,
+    "text": "بعض الناس بيختاروا هيك عشان يحققوا احتياجات عاطفية أو شخصية ما بقدر تلبيها العلاقة التقليدية، مثل الحاجة للاستقلالية أو تجربة أبعاد مختلفة من العلاقة. الموضوع ببساطة هو ترتيب متفق عليه بين بالغين بيشوفوه مناسب لظروفهم ورغباتهم.",
+    "serverTiming": {
+      "identityMs": 1,
+      "firstTokenMs": 2309,
+      "firstTextMs": 4059,
+      "totalMs": 4059
+    },
+    "provider": "Atlas zai-org/GLM-4.6",
+    "requestedModel": "atlas-glm"
+  },
+  {
+    "model": "Atlas GLM-4.6",
+    "id": "atlas-glm",
+    "case": "dialect",
+    "prompt": "احكيلي باللهجة اللي اخترناها عن قهوة الصبح والمشي، جملتين بس، حكي عادي مش فصحى.",
+    "elapsedMs": 2863,
+    "done": true,
+    "text": "قهوة الصبح بتمنحك طاقة للمشي، والمشي بيخليك تستني عالقهوة تاني.",
+    "serverTiming": {
+      "identityMs": 1,
+      "firstTokenMs": 2309,
+      "firstTextMs": 2862,
+      "totalMs": 2862
+    },
+    "provider": "Atlas zai-org/GLM-4.6",
+    "requestedModel": "atlas-glm"
+  }
+]

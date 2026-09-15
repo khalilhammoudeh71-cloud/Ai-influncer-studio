@@ -1,3 +1,6 @@
+import { LatestVoicePreview, VoiceDraftGuard, type CloneResult } from '../../shared/personaVoiceLifecycle';
+import { restoreSavedVoice, type SavedPersonaVoice } from '../../shared/personaVoiceLibrary';
+import SavedPersonaVoices from '../components/SavedPersonaVoices';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { RotatingHeroImages } from '../components/RotatingHeroImages';
@@ -40,7 +43,7 @@ import { api } from '../services/apiService';
 import { fetchVideoModels, type ModelInfo } from '../services/imageService';
 import { cn } from '../utils/cn';
 import { processImageFile } from '../utils/imageProcessing';
-import { processVoiceSampleFile } from '../utils/audioUtils';
+import { readCloneSampleFile, processVoiceSampleFile } from '../utils/audioUtils';
 import { accountLocalStorage } from '../utils/accountStorage';
 import toast from 'react-hot-toast';
 import WebcamAvatarCreator from '../components/WebcamAvatarCreator';
@@ -72,11 +75,10 @@ interface ElevenLabsVoice {
 }
 
 const EMOTIONS = [
-  { id: 'energetic', name: 'Energetic', icon: Zap, prompt: 'High energy, fast-paced, enthusiastic, and motivating.' },
-  { id: 'calm', name: 'Calm', icon: Heart, prompt: 'Soft, gentle, soothing, and peaceful.' },
-  { id: 'serious', name: 'Serious', icon: Check, prompt: 'Professional, authoritative, deep, and trustworthy.' },
-  { id: 'playful', name: 'Playful', icon: Sparkles, prompt: 'Fun, lighthearted, bubbly, and casual.' },
-  { id: 'mysterious', name: 'Mysterious', icon: Wind, prompt: 'Low-pitched, slow, whispered, and intriguing.' },
+  { id: 'neutral', name: 'Neutral', icon: Check, prompt: '' },
+  { id: 'comforting', name: 'Comforting', icon: Heart, prompt: 'Gentle, reassuring, unhurried.' },
+  { id: 'excited', name: 'Excited', icon: Zap, prompt: 'Warm enthusiasm.' },
+  { id: 'playful', name: 'Playful', icon: Sparkles, prompt: 'Light, subtle teasing.' },
 ];
 
 const ATMOSPHERES = [
@@ -218,9 +220,21 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
   const [cloningAudioBase64, setCloningAudioBase64] = useState<string | null>(null);
   const [cloningAudioUrl, setCloningAudioUrl] = useState<string | null>(null);
   const [isCloning, setIsCloning] = useState(false);
-  const [attachOnClone, setAttachOnClone] = useState(true);
+  const [isSavingDefaultVoice, setIsSavingDefaultVoice] = useState(false);
+  const saveDefaultBusy = useRef(false);
+  const [attachOnClone, setAttachOnClone] = useState(false);
   const [targetAttachPersonaId, setTargetAttachPersonaId] = useState<string>('none');
   const [isWebcamCreatorOpen, setIsWebcamCreatorOpen] = useState(false);
+  const [speakerAuthorized, setSpeakerAuthorized] = useState(false);
+  const [cloneResult, setCloneResult] = useState<CloneResult | null>(null);
+  const cloneBusyRef = useRef(false);
+  const cloneGuard = useRef(new VoiceDraftGuard());
+  const previewPlayer = useRef(new LatestVoicePreview());
+  useEffect(() => {
+    cloneGuard.current.change(); previewPlayer.current.stop(); setPreviewingVoice(null);
+  }, [persona?.id, targetAttachPersonaId, selectedELVoiceId, voiceEngine, attachOnClone, stability, clarity, style, selectedEmotion, persona?.voiceSpeakingSpeed]);
+  useEffect(() => { cloneGuard.current.change(); setCloneResult(null); setSpeakerAuthorized(false); }, [cloningAudioBase64]);
+  useEffect(() => () => { cloneGuard.current.change(); previewPlayer.current.stop(); }, []);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
 
   const fetchVoices = async () => {
@@ -229,9 +243,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
     try {
       const data = await api.voice.getVoices();
       setElevenLabsVoices(data.voices);
-      if (!selectedELVoiceId && data.voices.length > 0) {
-        setSelectedELVoiceId(data.voices[0].voice_id);
-      }
+
     } catch (err: any) {
       console.error('[Voice] Failed to fetch ElevenLabs voices:', err);
       setVoicesError(err.message || 'Failed to load voices');
@@ -274,18 +286,21 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
   // Sync voice selection with active persona's voice settings
   useEffect(() => {
     if (persona) {
+      setStability((persona.voiceStability ?? 75) / 100);
+      setClarity((persona.voiceLikeness ?? 85) / 100);
+      setStyle((persona.voiceStyleExaggeration ?? 20) / 100);
       if (persona.voiceEngine === 'elevenlabs' && persona.voiceId) {
         setVoiceEngine('elevenlabs');
         setSelectedELVoiceId(persona.voiceId);
       } else if (persona.voiceEngine === 'openai' && persona.voiceId) {
         setVoiceEngine('openai');
         setSelectedVoice(persona.voiceId);
-      } else if (persona.voiceEngine === 'gemini' && persona.voiceId) {
-        setVoiceEngine('gemini');
-        setSelectedVoice(persona.voiceId);
+      } else if (persona.voiceEngine) {
+        setVoiceEngine(persona.voiceEngine as VoiceEngine);
+        setSelectedVoice(persona.voiceId || '');
       }
     }
-  }, [persona?.id, persona?.voiceEngine, persona?.voiceId]);
+  }, [persona?.id, persona?.voiceEngine, persona?.voiceId, persona?.voiceRevision, persona?.voiceStability, persona?.voiceLikeness, persona?.voiceStyleExaggeration]);
 
   const startRecording = async () => {
     try {
@@ -344,7 +359,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
     }
 
     try {
-      const sample = await processVoiceSampleFile(file);
+      const sample = await readCloneSampleFile(file);
       setCloningAudioBase64(sample.base64);
       setCloningAudioUrl(URL.createObjectURL(file));
       toast.success(`Voice sample loaded: ${file.name}`);
@@ -370,7 +385,8 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
   };
 
   const handleSaveDefaultVoice = async () => {
-    if (!persona) return;
+    if (!persona || saveDefaultBusy.current) return;
+    saveDefaultBusy.current = true; setIsSavingDefaultVoice(true);
     try {
       const activeVoiceId = voiceEngine === 'elevenlabs' ? selectedELVoiceId : selectedVoice;
       if (!activeVoiceId) {
@@ -381,56 +397,57 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
         ...persona,
         voiceEngine,
         voiceId: activeVoiceId,
+        voiceName: elevenLabsVoices.find(v => v.voice_id === activeVoiceId)?.name || activeVoices.find(v => v.id === activeVoiceId)?.name || (cloneResult?.voiceId === activeVoiceId ? cloneResult.name : '') || 'Selected voice',
+        voiceStability: stability * 100, voiceLikeness: clarity * 100, voiceStyleExaggeration: style * 100,
+        ...(cloneResult?.voiceId === activeVoiceId && cloningAudioBase64 ? {
+          voiceSampleUrl: cloningAudioBase64,
+          audioSamples: [{ name: cloneResult.name, base64: cloningAudioBase64 }],
+        } : activeVoiceId !== persona.voiceId || voiceEngine !== persona.voiceEngine ? { voiceSampleUrl: '', audioSamples: [] } : {}),
       };
       await api.updatePersonaInVault(updatedPersona);
       toast.success(`Voice attached as default for ${persona.name}!`);
     } catch (err) {
-      toast.error('Failed to attach voice to persona');
+      toast.error(err instanceof Error ? err.message : 'Failed to attach voice to persona');
+    } finally {
+      saveDefaultBusy.current = false; setIsSavingDefaultVoice(false);
     }
   };
 
-  const handleCloneVoiceSubmit = async () => {
-    if (!cloneName) {
-      toast.error('Please enter a voice name');
-      return;
-    }
-    if (!cloningAudioBase64) {
-      toast.error('Please record or upload an audio sample');
-      return;
-    }
-
-    setIsCloning(true);
+  const handleRestoreSavedVoice = async (voice: SavedPersonaVoice) => {
+    if (!persona || saveDefaultBusy.current) return;
+    saveDefaultBusy.current = true; setIsSavingDefaultVoice(true);
+    cloneGuard.current.change(); previewPlayer.current.stop();
     try {
-      const result = await api.voice.cloneVoice(cloneName, cloneDesc, cloningAudioBase64);
-      toast.success(`Voice "${result.name}" cloned successfully!`);
-      
-      setIsLoadingVoices(true);
-      const data = await api.voice.getVoices();
-      setElevenLabsVoices(data.voices);
-      setSelectedELVoiceId(result.voiceId);
-      
-      const targetP = (persona && persona.id !== 'empty') ? persona : personas.find(p => p.id === targetAttachPersonaId);
-      if (attachOnClone && targetP && targetP.id !== 'empty') {
-        const updatedPersona = {
-          ...targetP,
-          voiceEngine: 'elevenlabs',
-          voiceId: result.voiceId,
-        };
-        await api.updatePersonaInVault(updatedPersona);
-        toast.success(`Voice attached as default for ${targetP.name}!`);
-      }
-
-      setCloneName('');
-      setCloneDesc('');
-      setCloningAudioBase64(null);
-      setCloningAudioUrl(null);
-      setShowClonePanel(false);
-    } catch (err) {
-      console.error('[Voice Cloning] Error:', err);
-      toast.error(err instanceof Error ? err.message : 'Voice cloning failed');
+      await api.updatePersonaInVault({ ...persona, ...restoreSavedVoice(voice) });
+      toast.success(`${voice.name} is the default again.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not restore the saved voice.');
     } finally {
-      setIsCloning(false);
+      saveDefaultBusy.current = false; setIsSavingDefaultVoice(false);
     }
+  };
+
+  const handleCloneVoiceSubmit = async (checkOnly = false, retryRejected = false) => {
+    if (cloneBusyRef.current) return;
+    if (!checkOnly && (!cloneName.trim() || !cloningAudioBase64 || !speakerAuthorized)) { toast.error('Enter a name, add audio, and confirm speaker authorization.'); return; }
+    cloneBusyRef.current = true; setIsCloning(true);
+    const revision = cloneGuard.current.begin();
+    const targetP = (persona && persona.id !== 'empty') ? persona : personas.find(p => p.id === targetAttachPersonaId);
+    try {
+      const result = checkOnly && cloneResult ? await api.voice.cloneStatus(cloneResult.id) : await api.voice.cloneVoice(cloneName, cloneDesc, cloningAudioBase64!, speakerAuthorized, retryRejected);
+      if (!cloneGuard.current.isCurrent(revision)) return;
+      setCloneResult(result);
+      if (result.status !== 'ready' || !result.voiceId) return;
+      if (attachOnClone && targetP && targetP.id !== 'empty') {
+        await api.updatePersonaInVault({ ...targetP, voiceEngine: 'elevenlabs', voiceId: result.voiceId, voiceName: result.name, voiceSampleUrl: cloningAudioBase64 || '', audioSamples: cloningAudioBase64 ? [{ name: result.name, base64: cloningAudioBase64 }] : [] });
+        if (!cloneGuard.current.isCurrent(revision)) return;
+        toast.success(`Saved the ready voice for ${targetP.name}.`);
+      }
+      setSelectedELVoiceId(result.voiceId); setVoiceEngine('elevenlabs');
+      toast.success('Clone ready. Audition it before saving it as your persona voice.');
+      await fetchVoices();
+    } catch (error) { if (cloneGuard.current.isCurrent(revision)) toast.error(error instanceof Error ? error.message : 'Voice cloning failed.'); }
+    finally { cloneBusyRef.current = false; setIsCloning(false); }
   };
 
   // Check if ElevenLabs is available
@@ -558,8 +575,8 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
       
       const speechParams: Parameters<typeof api.voice.generateSpeech>[0] = {
         text: script,
-        performancePrompt: prompt,
-        backgroundAtmosphere: atmos?.sound,
+        emotion: selectedEmotion || 'neutral',
+        activePersona: persona || undefined,
         engine: voiceEngine,
       };
 
@@ -569,6 +586,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
           stability,
           similarity_boost: clarity,
           style,
+          speed: persona?.voiceSpeakingSpeed ?? 1,
         };
       } else {
         speechParams.voice = selectedVoice;
@@ -595,62 +613,22 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
     }
   };
 
-  const handleVoicePreview = async (voiceId: string, previewUrl?: string) => {
-    if (previewingVoice) {
-      // Stop current preview
-      if (previewAudioRef.current) {
-        previewAudioRef.current.pause();
-        previewAudioRef.current = null;
-      }
-      setPreviewingVoice(null);
-      return;
-    }
-
+  const handleVoicePreview = async (voiceId: string, _previewUrl?: string) => {
+    if (previewingVoice === voiceId) { previewPlayer.current.stop(); setPreviewingVoice(null); return; }
     setPreviewingVoice(voiceId);
-
     try {
-      const voiceList = activeVoices;
-      const v = voiceList.find(ov => ov.id === voiceId);
-      const voiceName = v?.name || 'your creator';
-      
-      const longerScript = `Hey everyone! I'm ${voiceName}, and welcome to my creator studio. I can speak naturally with authentic human inflection, ready to bring your stories to life!`;
-
-      const res = await api.voice.generateSpeech({
-        text: longerScript,
-        voiceId: voiceId,
-        voice: voiceId,
-        engine: 'elevenlabs',
-        isPreview: true
+      await previewPlayer.current.play(async () => {
+        const text = `Hi, I'm ${persona?.name || 'your creator'}. Let's talk about ${persona?.niche || 'what inspires us'}. What would you like to create today?`;
+        const result = voiceEngine === 'elevenlabs' ? await api.voice.previewVoice(voiceId, text, { stability, similarity_boost: clarity, style, speed: persona?.voiceSpeakingSpeed ?? 1 }, selectedEmotion || 'neutral') : await api.voice.generateSpeech({ voiceId, voice: voiceId, engine: voiceEngine, text, isPreview: true, activePersona: persona || undefined, voiceReference: persona?.voiceSampleUrl, emotion: selectedEmotion || 'neutral', voiceSettings: {speed: persona?.voiceSpeakingSpeed ?? 1} });
+        return result.audioUrl;
+      }, url => {
+        const audio = new Audio(url); previewAudioRef.current = audio;
+        audio.onended = () => { if (previewAudioRef.current === audio) setPreviewingVoice(null); };
+        audio.onerror = () => { if (previewAudioRef.current === audio) setPreviewingVoice(null); };
+        void audio.play().catch(() => { if (previewAudioRef.current === audio) setPreviewingVoice(null); });
+        return audio;
       });
-      
-      if (res?.audioUrl) {
-        const audio = new Audio(res.audioUrl);
-        previewAudioRef.current = audio;
-        audio.volume = 1.0;
-        audio.onended = () => {
-          setPreviewingVoice(null);
-          previewAudioRef.current = null;
-        };
-        audio.onerror = () => {
-          setPreviewingVoice(null);
-          previewAudioRef.current = null;
-        };
-        const playPromise = audio.play();
-        if (playPromise !== undefined) {
-          playPromise.catch((err) => {
-            console.error('[Vox] Audio playback failed:', err);
-            setPreviewingVoice(null);
-            previewAudioRef.current = null;
-          });
-        }
-      } else {
-        setPreviewingVoice(null);
-      }
-    } catch (err) {
-      console.error('[Vox] Preview failed:', err);
-      toast.error('Preview failed: ' + (err instanceof Error ? err.message : 'Voice generation issue'));
-      setPreviewingVoice(null);
-    }
+    } catch (error) { setPreviewingVoice(null); toast.error(error instanceof Error ? error.message : 'Preview unavailable.'); }
   };
 
   const handleTranslate = async (lang: string) => {
@@ -804,6 +782,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
         }}
         className="w-full max-w-full min-w-0 bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-xs font-bold text-[var(--text-primary)] hover:border-violet-500/30 focus:border-violet-500/50 outline-none transition-all cursor-pointer appearance-none pr-8 sm:w-auto sm:min-w-[160px]"
       >
+        {!['elevenlabs','omnivoice','minimax-clone','qwen3-clone','seed-speech','chatterbox','mureka-vocal','qwen-tts','openai','gemini'].includes(voiceEngine) && <option value={voiceEngine}>{voiceEngine} (saved provider)</option>}
         <option value="elevenlabs" disabled={!hasElevenLabsKey} className="bg-[#0f0f12] text-white">
           🎙️ ElevenLabs v3 / v2 (Multilingual & English Turbo) {!hasElevenLabsKey ? '(Unavailable)' : ''}
         </option>
@@ -990,10 +969,10 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
           <div>
             <h1 className="text-3xl md:text-4xl font-serif text-[#F5F1E8] tracking-tight flex items-center gap-3">
               Voice Studio
-              <span className="text-[#E7C477] text-xl font-normal">✨</span>
+
             </h1>
             <p className="text-xs md:text-sm text-[#8C909A] mt-1 font-sans">
-              Create, clone, and customize voices that sound uniquely you.
+              Turn your script into speech, choose a saved voice, or create a new one.
             </p>
           </div>
           <div className="flex w-full min-w-0 flex-col items-stretch gap-3 sm:w-auto sm:flex-row sm:items-center sm:gap-4">
@@ -1155,6 +1134,8 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
               2. Voice & Tone
             </h3>
 
+            {persona && persona.id !== 'empty' && <SavedPersonaVoices voices={persona.savedVoices || []} current={persona} onSelect={handleRestoreSavedVoice} disabled={isSavingDefaultVoice || isCloning} actionLabel="Use as default" />}
+
             {/* Voice Selection — Engine-specific */}
             <div className="space-y-3">
               <label className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest flex items-center gap-2">
@@ -1188,6 +1169,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                     {selectedELVoiceId && (
                       <button
                         onClick={handleSaveDefaultVoice}
+                        disabled={isSavingDefaultVoice || isCloning}
                         className="py-2 px-3 bg-white/5 hover:bg-white/10 text-white border border-white/10 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                       >
                         <Check size={12} className="text-emerald-400" />
@@ -1387,9 +1369,12 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                         )}
                       </div>
 
+                      <p className="text-xs text-slate-400">Use 1–2 minutes of clear speech from one speaker. Your current voice stays saved until a ready replacement is applied.</p>
+                      <label className="flex items-start gap-2 text-xs text-slate-300"><input type="checkbox" checked={speakerAuthorized} onChange={e => setSpeakerAuthorized(e.target.checked)} />I am the speaker or have permission to clone and use this voice.</label>
+                      {cloneResult && <div role="status" className="space-y-2 text-xs text-slate-300"><p>{cloneResult.message || cloneResult.status}</p>{cloneResult.status !== 'ready' && <button type="button" disabled={isCloning} onClick={() => handleCloneVoiceSubmit(true)} className="underline">Check clone status</button>}{cloneResult.status === 'failed' && <button type="button" disabled={isCloning || !speakerAuthorized} onClick={() => handleCloneVoiceSubmit(false, true)} className="block underline">Retry after fixing the provider issue</button>}{cloneResult.status === 'verification_required' && <a href="https://elevenlabs.io/app/voices" target="_blank" rel="noreferrer" className="block underline">Verify speaker in ElevenLabs</a>}</div>}
                       <button
-                        onClick={handleCloneVoiceSubmit}
-                        disabled={isCloning || !cloneName || !cloningAudioBase64}
+                        onClick={() => handleCloneVoiceSubmit()}
+                        disabled={isCloning || !cloneName || !cloningAudioBase64 || !speakerAuthorized || Boolean(cloneResult)}
                         className="w-full py-2.5 bg-gradient-to-r from-[#8D7040] to-[#E7C477] hover:brightness-110 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-40 flex items-center justify-center gap-1.5"
                       >
                         {isCloning ? <Loader2 size={12} className="animate-spin" /> : <Crown size={12} />}
@@ -1466,19 +1451,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                         <ChevronDown size={14} />
                       </div>
                     </div>
-                    {selectedVoice && (
-                      <button
-                        onClick={() => handleVoicePreview(selectedVoice)}
-                        className={cn(
-                          "w-11 h-11 rounded-xl flex items-center justify-center transition-all border border-white/10 shrink-0",
-                          previewingVoice === selectedVoice 
-                            ? "bg-[var(--accent-primary)] text-white shadow-lg" 
-                            : "bg-white/5 hover:bg-white/10 text-[var(--text-tertiary)] hover:text-white"
-                        )}
-                      >
-                        {previewingVoice === selectedVoice ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current ml-0.5" />}
-                      </button>
-                    )}
+
                   </div>
 
                   {/* Custom Reference Voice Upload for OmniVoice 'persona-clone' */}
@@ -1571,7 +1544,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
             {/* Performance Mood */}
             <div className="space-y-3">
               <label className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest block">Performance Mood</label>
-              <div className="grid grid-cols-5 gap-2">
+              <div className="grid grid-cols-4 gap-2">
                 {EMOTIONS.map(e => {
                   const Icon = e.icon;
                   return (
@@ -1593,42 +1566,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
               </div>
             </div>
 
-            {/* Atmosphere */}
-            <div className="space-y-3">
-              <label className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest block">Atmosphere</label>
-              <div className="grid grid-cols-2 gap-3">
-                {ATMOSPHERES.map(a => {
-                  const Icon = a.icon;
-                  return (
-                    <button
-                      key={a.id}
-                      onClick={() => setSelectedAtmosphere(selectedAtmosphere === a.id ? null : a.id)}
-                      className={cn(
-                        "flex items-center gap-3 px-4 py-3 rounded-2xl border transition-all",
-                        selectedAtmosphere === a.id 
-                          ? "bg-[var(--accent-primary-soft)] border-[var(--accent-primary)] text-[var(--accent-primary)] shadow-lg" 
-                          : "bg-[var(--bg-elevated)] border-[var(--border-default)] text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)]"
-                      )}
-                    >
-                      <Icon className="w-4 h-4" />
-                      <span className="text-[11px] font-bold">{a.name}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Directing Prompt */}
-            <div className="space-y-3">
-              <label className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest block">Directing Prompt</label>
-              <input
-                type="text"
-                value={performancePrompt}
-                onChange={(e) => setPerformancePrompt(e.target.value)}
-                placeholder="E.g. Speak like you're out of breath..."
-                className="w-full bg-[var(--bg-input)] border border-[var(--border-default)] rounded-xl py-4 px-5 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:ring-2 focus:ring-[var(--accent-primary)]/20 focus:border-[var(--accent-primary)] transition-all"
-              />
-            </div>
+            <p className="text-xs text-[var(--text-muted)]">Delivery uses controls supported by the selected provider. Emotion adjusts your saved settings gently; no fillers are added to your script.</p>
 
             <button
               onClick={handleGenerateVoice}

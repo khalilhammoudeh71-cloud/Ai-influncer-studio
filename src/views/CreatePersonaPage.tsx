@@ -1,3 +1,8 @@
+import { LatestVoicePreview, VoiceDraftGuard, type CloneResult } from '../../shared/personaVoiceLifecycle';
+import { restoreSavedVoice, type SavedPersonaVoice } from '../../shared/personaVoiceLibrary';
+import SavedPersonaVoices from '../components/SavedPersonaVoices';
+import PersonalityControls from '../components/PersonalityControls';
+import { normalizePersonality, type PersonalitySettings } from '../../shared/personality';
 import React, { useState, useRef, useEffect, ChangeEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -13,7 +18,7 @@ import { studioImageJob } from '../services/mediaJobService';
 import { persistPersonaReferenceImages } from '../services/personaMediaService';
 import { supabase } from '../lib/supabase';
 import { cn } from '../utils/cn';
-import { processVoiceSampleFile } from '../utils/audioUtils';
+import { readCloneSampleFile } from '../utils/audioUtils';
 import { accountLocalStorage } from '../utils/accountStorage';
 import {
   clearPersonaDraftReferenceImages,
@@ -53,7 +58,7 @@ const QUICK_PRESETS = [
     visualStyle: 'High-end Paris/Milan aesthetic, warm golden hour light',
     bio: 'Digital style icon & fashion creator sharing aesthetics and lifestyle storytelling.',
     traits: 'Sophisticated, Elegant, Authentic, Visionary',
-    image: '/sample_persona_portrait.jpg'
+    image: '/examples/persona-ideas/fashion-beauty-nano-pro.jpg'
   },
   {
     icon: '⚡',
@@ -63,7 +68,7 @@ const QUICK_PRESETS = [
     visualStyle: 'Modern minimal studio with sleek lighting',
     bio: 'Tech architect exploring future technology, AI, and digital innovation.',
     traits: 'Analytical, Brilliant, Bold, Trendsetter',
-    image: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?q=80&w=800&auto=format&fit=crop'
+    image: '/examples/persona-ideas/tech-ai-nano-pro.jpg'
   },
   {
     icon: '🏋️',
@@ -73,7 +78,7 @@ const QUICK_PRESETS = [
     visualStyle: 'High-performance athletic workout lighting',
     bio: 'Fitness creator helping followers optimize workout routines and daily mindset.',
     traits: 'Disciplined, Motivating, High-Energy, Authentic',
-    image: 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?q=80&w=800&auto=format&fit=crop'
+    image: '/examples/persona-ideas/fitness-health-nano-pro.jpg'
   },
   {
     icon: '🌴',
@@ -83,7 +88,7 @@ const QUICK_PRESETS = [
     visualStyle: 'Cinematic landscapes and tropical villa aesthetics',
     bio: 'Travel creator documenting exotic destinations and boutique escapes worldwide.',
     traits: 'Curious, Captivating, Adventurous, Eloquent',
-    image: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?q=80&w=800&auto=format&fit=crop'
+    image: '/examples/persona-ideas/travel-vlogs-nano-pro.jpg'
   },
   {
     icon: '🔥',
@@ -93,7 +98,7 @@ const QUICK_PRESETS = [
     visualStyle: 'Warm boudoir lighting, ultra-photorealistic intimate portrait',
     bio: 'Deeply loyal, devoted digital creator sharing romantic and adult lifestyle desires.',
     traits: 'Seductive, Playful, Flirty, Devoted, Sensual',
-    image: 'https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?q=80&w=800&auto=format&fit=crop'
+    image: '/examples/persona-ideas/adult-glamour-seedream5.jpg'
   }
 ];
 
@@ -320,6 +325,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   const [visualStyle, setVisualStyle] = useState('');
   const [bio, setBio] = useState('');
   const [personalityTraits, setPersonalityTraits] = useState('');
+  const [personalitySettings, setPersonalitySettings] = useState<PersonalitySettings>({voiceEnabled:false});
   const [companionType, setCompanionType] = useState<string>('intimate');
   const [creatorVoiceRule, setCreatorVoiceRule] = useState('');
   const [audienceType, setAudienceType] = useState('');
@@ -413,6 +419,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   const [voiceTab, setVoiceTab] = useState<'clone' | 'preset' | 'custom' | 'account' | 'heygen'>('preset');
   const [selectedVoiceId, setSelectedVoiceId] = useState('kore');
   const [selectedVoiceModel, setSelectedVoiceModel] = useState('omnivoice');
+  const [selectedSavedVoiceName, setSelectedSavedVoiceName] = useState('');
   const [audioSampleName, setAudioSampleName] = useState('');
   const [voicePrompt, setVoicePrompt] = useState('');
   const [voiceLikeness, setVoiceLikeness] = useState<number>(85);
@@ -420,12 +427,88 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   const [voiceStyleExaggeration, setVoiceStyleExaggeration] = useState<number>(20);
   const [voiceSpeakingSpeed, setVoiceSpeakingSpeed] = useState<number>(1.0);
   const [isCloning, setIsCloning] = useState(false);
+  const [speakerAuthorized, setSpeakerAuthorized] = useState(false);
+  const [cloneResult, setCloneResult] = useState<CloneResult | null>(null);
+  const [cloneError, setCloneError] = useState('');
+  const [draftSamplesChanged, setDraftSamplesChanged] = useState(false);
+  const [savedVoiceStatus, setSavedVoiceStatus] = useState('');
+  useEffect(() => {
+    let current = true;
+    if (!editingPersona?.voiceId || editingPersona.voiceEngine !== 'elevenlabs') return;
+    setSavedVoiceStatus('Checking saved voice access…');
+    api.voice.voiceStatus(editingPersona.voiceId, editingPersona.id).then(result => {
+      if (current) setSavedVoiceStatus(result.status === 'available' ? 'Saved voice found in ElevenLabs. Audition to check playback.' : result.status === 'verification_required' ? 'Saved voice needs speaker verification in ElevenLabs.' : 'Saved voice is still processing in ElevenLabs.');
+    }).catch(error => { if (current) setSavedVoiceStatus(`${error.message} The saved binding is preserved.`); });
+    return () => { current = false; };
+  }, [editingPersona?.id, editingPersona?.voiceId]);
+  const [voiceSearch, setVoiceSearch] = useState('');
+  const [voicePreviewText, setVoicePreviewText] = useState('');
+  const cloneBusyRef = useRef(false);
+  const voiceSelectionChanged = useRef(false);
+  const voiceDraftGuard = useRef(new VoiceDraftGuard());
+  const voicePreviewPlayer = useRef(new LatestVoicePreview());
+  const voicePreviewKey = useRef('');
+  const sampleTextForPreview = voicePreviewText.trim() || `Hi, I'm ${name || 'your creator'}. Let's take a moment to talk about ${niche || 'what inspires us'}. What would you like to create today?`;
+  const stopVoicePreviews = () => {
+    voicePreviewKey.current = '';
+    voicePreviewPlayer.current.stop();
+    accountAudioRef.current?.pause(); heyGenAudioRef.current?.pause(); activeAudioRef.current?.pause(); presetAudioRef.current?.pause();
+    setPlayingAccountAudioId(null); setPlayingHeyGenAudioId(null); setPlayingPresetVoiceId(null); setIsLoadingPresetAudioId(null); setIsPlayingSample(false); setIsTestingVoice(false);
+  };
+  const selectDraftVoice = (id: string, engine: string) => {
+    voiceSelectionChanged.current = true; voiceDraftGuard.current.change(); stopVoicePreviews();
+    setSelectedVoiceId(id); setSelectedVoiceModel(engine);
+    setSelectedSavedVoiceName(''); setAudioSampleList([]); setDraftSamplesChanged(false);
+  };
+  const selectSavedVoice = (voice: SavedPersonaVoice) => {
+    const restored = restoreSavedVoice(voice);
+    selectDraftVoice(restored.voiceId, restored.voiceEngine);
+    setSelectedSavedVoiceName(restored.voiceName);
+    setAudioSampleList(restored.audioSamples.length ? restored.audioSamples : restored.voiceSampleUrl ? [{ name: 'Saved voice recording', base64: restored.voiceSampleUrl }] : []);
+    setAudioSampleBase64(restored.voiceSampleUrl); setAudioSampleName(voice.name);
+    setVoicePrompt(restored.voicePrompt); setVoiceLikeness(restored.voiceLikeness);
+    setVoiceStability(restored.voiceStability); setVoiceStyleExaggeration(restored.voiceStyleExaggeration); setVoiceSpeakingSpeed(restored.voiceSpeakingSpeed);
+    setCloneResult(null); setCloneError('');
+    toast.success('Saved voice selected. Save the persona to make it the default again.');
+  };
+  const playDraftPreview = async (id: string, engine: string, previewUrl?: string) => {
+    const key = `${engine}:${id}`;
+    if (voicePreviewKey.current === key) { stopVoicePreviews(); return; }
+    stopVoicePreviews(); voicePreviewKey.current = key;
+    setIsTestingVoice(true);
+    if (engine === 'elevenlabs') setPlayingAccountAudioId(id);
+    else if (engine === 'heygen') setPlayingHeyGenAudioId(id);
+    else setPlayingPresetVoiceId(id);
+    try {
+      await voicePreviewPlayer.current.play(async () => {
+        if (engine === 'heygen' && previewUrl) return previewUrl;
+        const settings = { stability: voiceStability / 100, similarity_boost: voiceLikeness / 100, style: voiceStyleExaggeration / 100, speed: voiceSpeakingSpeed };
+        const result = engine === 'elevenlabs'
+          ? await api.voice.previewVoice(id, sampleTextForPreview, settings)
+          : await api.voice.generateSpeech({ voiceId: id, engine, text: sampleTextForPreview, voiceSettings: settings, isPreview: true });
+        return result.audioUrl;
+      }, url => {
+        const audio = new Audio(url);
+        activeAudioRef.current = audio;
+        setIsPlayingSample(true); setIsTestingVoice(false);
+        audio.onended = () => { if (voicePreviewKey.current === key) stopVoicePreviews(); };
+        audio.onerror = () => { if (voicePreviewKey.current === key) { stopVoicePreviews(); toast.error('Could not play this voice. Try previewing again.'); } };
+        void audio.play().catch(() => { if (voicePreviewKey.current === key) stopVoicePreviews(); });
+        return audio;
+      });
+    } catch (error) {
+      if (voicePreviewKey.current === key) { stopVoicePreviews(); toast.error(error instanceof Error ? error.message : 'Voice preview unavailable.'); }
+    }
+  };
+  useEffect(() => { stopVoicePreviews(); }, [voiceTab, studioStep, voicePreviewText, voiceLikeness, voiceStability, voiceStyleExaggeration, voiceSpeakingSpeed]);
+  useEffect(() => () => { voiceDraftGuard.current.change(); voicePreviewPlayer.current.stop(); }, [editingPersona?.id]);
   const audioInputRef = useRef<HTMLInputElement>(null);
 
   // ElevenLabs Account Voices State
   const [accountVoices, setAccountVoices] = useState<Array<{
     voice_id: string;
     name: string;
+    readiness?: 'available' | 'processing' | 'verification_required';
     category?: string;
     preview_url?: string;
     labels?: Record<string, string>;
@@ -457,34 +540,9 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
 
   const fetchAccountVoices = async () => {
     setIsLoadingAccountVoices(true);
-    try {
-      const data = await api.voice.getVoices();
-      if (data && Array.isArray(data.voices) && data.voices.length > 0) {
-        setAccountVoices(data.voices);
-      } else {
-        const res = await fetch('/api/elevenlabs-voices');
-        const fallbackData = await res.json();
-        if (Array.isArray(fallbackData.voices)) {
-          setAccountVoices(fallbackData.voices);
-        }
-      }
-    } catch (err: any) {
-      console.warn('[Fetch Account Voices Note, trying fallback]:', err?.message || err);
-      try {
-        const res = await fetch('/api/elevenlabs-voices');
-        const fallbackData = await res.json();
-        if (Array.isArray(fallbackData.voices) && fallbackData.voices.length > 0) {
-          setAccountVoices(fallbackData.voices);
-        } else {
-          toast.error('Could not load ElevenLabs voices');
-        }
-      } catch (fallbackErr) {
-        console.error('[Account Voices Fallback Error]:', fallbackErr);
-        toast.error('Could not connect to ElevenLabs');
-      }
-    } finally {
-      setIsLoadingAccountVoices(false);
-    }
+    try { const data = await api.voice.getVoices(); setAccountVoices(data.voices || []); }
+    catch (error) { toast.error(error instanceof Error ? error.message : 'Could not load voices. Refresh to try again.'); }
+    finally { setIsLoadingAccountVoices(false); }
   };
 
   useEffect(() => {
@@ -493,74 +551,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
     }
   }, [voiceTab]);
 
-  const handlePlayAccountVoicePreview = async (voiceId: string, voiceName?: string, previewUrl?: string) => {
-    if (playingAccountAudioId === voiceId && accountAudioRef.current) {
-      try { accountAudioRef.current.pause(); } catch {}
-      accountAudioRef.current = null;
-      setPlayingAccountAudioId(null);
-      return;
-    }
-
-    if (accountAudioRef.current) {
-      try { accountAudioRef.current.pause(); } catch {}
-      accountAudioRef.current = null;
-    }
-    if (heyGenAudioRef.current) {
-      try { heyGenAudioRef.current.pause(); } catch {}
-      heyGenAudioRef.current = null;
-      setPlayingHeyGenAudioId(null);
-    }
-    if (activeAudioRef.current) {
-      try { activeAudioRef.current.pause(); } catch {}
-    }
-    if (presetAudioRef.current) {
-      try { presetAudioRef.current.pause(); } catch {}
-    }
-
-    if (previewUrl) {
-      try {
-        const audio = new Audio(previewUrl);
-        accountAudioRef.current = audio;
-        setPlayingAccountAudioId(voiceId);
-        audio.play().catch(err => {
-          console.warn('[Account Voice Preview Error]:', err);
-          setPlayingAccountAudioId(null);
-        });
-        audio.onended = () => setPlayingAccountAudioId(null);
-        audio.onerror = () => setPlayingAccountAudioId(null);
-        return;
-      } catch (e) {
-        console.warn('[Account Direct Play Note]:', e);
-      }
-    }
-
-    setPlayingAccountAudioId(voiceId);
-    try {
-      const res = await api.voice.generateSpeech({
-        text: `Hey there! This is a preview of ${voiceName || 'my custom cloned voice'}. Ready to create authentic content with you!`,
-        voiceId: voiceId,
-        engine: 'elevenlabs',
-        personaName: name || undefined,
-        isPreview: true
-      });
-      if (res?.audioUrl) {
-        const audio = new Audio(res.audioUrl);
-        accountAudioRef.current = audio;
-        audio.play().catch(err => {
-          console.warn('[Account Live Preview Play Error]:', err);
-          setPlayingAccountAudioId(null);
-        });
-        audio.onended = () => setPlayingAccountAudioId(null);
-        audio.onerror = () => setPlayingAccountAudioId(null);
-      } else {
-        setPlayingAccountAudioId(null);
-        toast.error('Could not generate voice preview sample');
-      }
-    } catch (err: any) {
-      console.error('[Account Live Preview Error]:', err);
-      setPlayingAccountAudioId(null);
-      toast.error('Failed to generate preview audio');
-    }
+  const handlePlayAccountVoicePreview = async (id: string, _name?: string, _url?: string) => { await playDraftPreview(id, 'elevenlabs');
   };
 
   const fetchHeyGenVoices = async () => {
@@ -669,128 +660,14 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
     }
   }, [voiceTab]);
 
-  const handlePlayHeyGenVoicePreview = async (voiceId: string, voiceName: string, previewUrl?: string) => {
-    if (playingHeyGenAudioId === voiceId && heyGenAudioRef.current) {
-      try { heyGenAudioRef.current.pause(); } catch {}
-      heyGenAudioRef.current = null;
-      setPlayingHeyGenAudioId(null);
-      return;
-    }
-
-    if (heyGenAudioRef.current) {
-      try { heyGenAudioRef.current.pause(); } catch {}
-      heyGenAudioRef.current = null;
-    }
-    if (accountAudioRef.current) {
-      try { accountAudioRef.current.pause(); } catch {}
-    }
-    if (presetAudioRef.current) {
-      try { presetAudioRef.current.pause(); } catch {}
-    }
-    if (activeAudioRef.current) {
-      try { activeAudioRef.current.pause(); } catch {}
-    }
-
-    setPlayingHeyGenAudioId(voiceId);
-    try {
-      const audioUrl = previewUrl || (await api.voice.generateSpeech({
-        text: `Hi, this is ${voiceName}. This HeyGen voice is ready for your persona.`,
-        voiceId,
-        engine: 'heygen',
-        personaName: name || undefined,
-        isPreview: true,
-      })).audioUrl;
-      const audio = new Audio(audioUrl);
-      heyGenAudioRef.current = audio;
-      audio.onended = () => setPlayingHeyGenAudioId(null);
-      audio.onerror = () => setPlayingHeyGenAudioId(null);
-      await audio.play();
-    } catch (err: any) {
-      console.warn('[HeyGen Voice Preview Error]:', err?.message || err);
-      setPlayingHeyGenAudioId(null);
-      toast.error('Could not play this HeyGen voice preview');
-    }
+  const handlePlayHeyGenVoicePreview = async (id: string, _name: string, _url?: string) => { await playDraftPreview(id, 'heygen', _url);
   };
 
   const [playingPresetVoiceId, setPlayingPresetVoiceId] = useState<string | null>(null);
   const [isLoadingPresetAudioId, setIsLoadingPresetAudioId] = useState<string | null>(null);
   const presetAudioRef = useRef<HTMLAudioElement | null>(null);
 
-  const handlePlayPresetSample = async (voiceId: string, voiceName: string, previewUrl?: string, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-
-    if (playingPresetVoiceId === voiceId && presetAudioRef.current) {
-      try { presetAudioRef.current.pause(); } catch {}
-      presetAudioRef.current = null;
-      setPlayingPresetVoiceId(null);
-      return;
-    }
-
-    if (presetAudioRef.current) {
-      try { presetAudioRef.current.pause(); } catch {}
-      presetAudioRef.current = null;
-    }
-    if (activeAudioRef.current) {
-      try { activeAudioRef.current.pause(); } catch {}
-    }
-    if (accountAudioRef.current) {
-      try { accountAudioRef.current.pause(); } catch {}
-    }
-    if (heyGenAudioRef.current) {
-      try { heyGenAudioRef.current.pause(); } catch {}
-      heyGenAudioRef.current = null;
-      setPlayingHeyGenAudioId(null);
-    }
-
-    if (previewUrl) {
-      try {
-        const audio = new Audio(previewUrl);
-        presetAudioRef.current = audio;
-        setPlayingPresetVoiceId(voiceId);
-        audio.play().catch(err => {
-          console.warn('[Direct Preview Play Note]:', err);
-          setPlayingPresetVoiceId(null);
-        });
-        audio.onended = () => setPlayingPresetVoiceId(null);
-        audio.onerror = () => setPlayingPresetVoiceId(null);
-        return;
-      } catch (e) {
-        console.warn('[Direct Audio Play Error]:', e);
-      }
-    }
-
-    setIsLoadingPresetAudioId(voiceId);
-    try {
-      const hasUploadedSamples = (audioSampleList && audioSampleList.length > 0) || Boolean(audioSampleBase64);
-      const res = await api.voice.generateSpeech({
-        text: hasUploadedSamples 
-          ? `Hey there! This is my cloned voice running on ${voiceName}.` 
-          : `Hey there! This is an authentic preview of ${voiceName}. I can speak naturally with realistic human emotion and nuance.`,
-        voiceId: undefined,
-        engine: voiceId,
-        personaName: name || undefined,
-        voiceReference: audioSampleBase64 || (audioSampleList[0]?.base64) || undefined,
-        voiceReferences: audioSampleList.length > 0 ? audioSampleList.map(s => s.base64) : undefined,
-        isPreview: true
-      });
-
-      if (res?.audioUrl) {
-        const audio = new Audio(res.audioUrl);
-        presetAudioRef.current = audio;
-        setPlayingPresetVoiceId(voiceId);
-        audio.play().catch(err => {
-          console.warn('[Preset Preview Play Error]:', err);
-          setPlayingPresetVoiceId(null);
-        });
-        audio.onended = () => setPlayingPresetVoiceId(null);
-        audio.onerror = () => setPlayingPresetVoiceId(null);
-      }
-    } catch (err: any) {
-      console.error('[Preset Voice Sample Error]:', err);
-      toast.error(`Could not generate sample for ${voiceName}`);
-    } finally {
-      setIsLoadingPresetAudioId(null);
-    }
+  const handlePlayPresetSample = async (id: string, _name: string, _url?: string, e?: React.MouseEvent) => { e?.stopPropagation(); await playDraftPreview(id, 'preset');
   };
 
   // Modal & Influencer State
@@ -872,6 +749,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   // Pre-fill fields when editingPersona is passed
   useEffect(() => {
     if (editingPersona) {
+      setPersonalitySettings(normalizePersonality(editingPersona));
       setName(editingPersona.name || '');
       setNiche(editingPersona.niche || '');
       setPlatform(editingPersona.platform || 'Instagram');
@@ -915,7 +793,9 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
         setGenerationsVault([]);
       }
 
-      if (editingPersona.voiceId) setSelectedVoiceId(editingPersona.voiceId);
+      voiceSelectionChanged.current = false;
+      setSelectedSavedVoiceName(editingPersona.voiceName || '');
+      setSelectedVoiceId(editingPersona.voiceId || '');
       if (editingPersona.voiceEngine) {
         setSelectedVoiceModel(editingPersona.voiceEngine);
         const hasSavedVoiceSamples = Boolean(
@@ -931,7 +811,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
         }
       }
       if (editingPersona.personaNotes || (editingPersona as any).voicePrompt) {
-        setVoicePrompt(editingPersona.personaNotes || (editingPersona as any).voicePrompt || '');
+        setVoicePrompt(editingPersona.voicePrompt || '');
       }
       setVoiceLikeness((editingPersona as any).voiceLikeness ?? 85);
       setVoiceStability((editingPersona as any).voiceStability ?? 75);
@@ -942,6 +822,8 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
         setAudioSampleList((editingPersona as any).audioSamples);
       } else if ((editingPersona as any).voiceSampleUrl) {
         setAudioSampleList([{ name: 'voice_sample.wav', base64: (editingPersona as any).voiceSampleUrl }]);
+      } else {
+        setAudioSampleList([]);
       }
       setStudioStep(0);
     } else {
@@ -964,6 +846,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       setVoiceSpeakingSpeed(1.0);
       setReferenceImages([]);
       setGenerationsVault([]);
+      setSelectedSavedVoiceName('');
       setSelectedVoiceId('kore');
       setSelectedVoiceModel('elevenlabs');
       setAudioSampleBase64('');
@@ -980,6 +863,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
           setVisualStyle(draft.visualStyle || '');
           setBio(draft.bio || '');
           setPersonalityTraits(draft.personalityTraits || '');
+          setPersonalitySettings(draft.personalitySettings || {voiceEnabled:false});
           setCompanionType(draft.companionType || 'intimate');
           setCreatorVoiceRule(draft.creatorVoiceRule || '');
           setContentBoundaries(draft.contentBoundaries || '');
@@ -1046,6 +930,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
         visualStyle,
         bio,
         personalityTraits,
+        personalitySettings,
         companionType,
         creatorVoiceRule,
         contentBoundaries,
@@ -1063,113 +948,14 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
     visualStyle,
     bio,
     personalityTraits,
+    personalitySettings,
     companionType,
     creatorVoiceRule,
     contentBoundaries,
     studioStep,
   ]);
 
-  const handleTestVoiceSample = async () => {
-    if (isPlayingSample) {
-      if (activeAudioRef.current) {
-        try { activeAudioRef.current.pause(); } catch {}
-        activeAudioRef.current = null;
-      }
-      setIsPlayingSample(false);
-      return;
-    }
-
-    if (activeAudioRef.current) {
-      try { activeAudioRef.current.pause(); } catch {}
-      activeAudioRef.current = null;
-    }
-    if (presetAudioRef.current) {
-      try { presetAudioRef.current.pause(); } catch {}
-      presetAudioRef.current = null;
-    }
-    if (accountAudioRef.current) {
-      try { accountAudioRef.current.pause(); } catch {}
-      accountAudioRef.current = null;
-    }
-
-    setIsTestingVoice(true);
-    const sampleText = `Hey there! I'm ${name || 'your AI creator'}, and this is my authentic voice. I'm excited to create together!`;
-
-    try {
-      // Determine active voice ID: only use explicit ElevenLabs voice IDs (from account voices tab)
-      // When audio samples are uploaded, let the engine/model parameter drive zero-shot cloning!
-      const hasUploadedSamples = (audioSampleList && audioSampleList.length > 0) || Boolean(audioSampleBase64);
-      const isExplicitElevenLabsId = selectedVoiceId && /^[a-zA-Z0-9]{18,24}$/.test(selectedVoiceId);
-      const isHeyGenVoice = voiceTab === 'heygen' || selectedVoiceModel === 'heygen';
-      let activeVoiceId: string | undefined = undefined;
-
-      if (isHeyGenVoice && selectedVoiceId) {
-        activeVoiceId = selectedVoiceId;
-      } else if (voiceTab === 'custom' && isExplicitElevenLabsId) {
-        // User explicitly selected an account voice in the Account Voices tab
-        activeVoiceId = selectedVoiceId;
-      } else if (!hasUploadedSamples && isExplicitElevenLabsId) {
-        activeVoiceId = selectedVoiceId;
-      } else if (!hasUploadedSamples) {
-        // Only if NO samples are uploaded at all, fallback to preset defaults
-        const pName = (name || '').toLowerCase();
-        if (pName.includes('leen')) activeVoiceId = '7jFje9BJoTWzqZzouT0j';
-        else if (pName.includes('rawan')) activeVoiceId = 'W4ynDvR6NFiK8lj2I8iL';
-      }
-
-      const res = await api.voice.generateSpeech({
-        text: sampleText,
-        ...(activeVoiceId ? { voiceId: activeVoiceId } : {}),
-        engine: isHeyGenVoice ? 'heygen' : (selectedVoiceModel || 'elevenlabs'),
-        personaName: name || undefined,
-        voiceReference: isHeyGenVoice ? undefined : (audioSampleBase64 || (audioSampleList[0]?.base64) || undefined),
-        voiceReferences: !isHeyGenVoice && audioSampleList.length > 0 ? audioSampleList.map(s => s.base64) : undefined,
-        isPreview: true,
-        voicePrompt: voicePrompt || undefined,
-        voiceLikeness,
-        voiceStability,
-        voiceStyleExaggeration,
-        voiceSpeakingSpeed,
-        voiceSettings: {
-          stability: voiceStability / 100,
-          similarity_boost: voiceLikeness / 100,
-          style: voiceStyleExaggeration / 100,
-        }
-      });
-
-      if (res?.audioUrl && res.audioUrl.length > 80 && !res.audioUrl.endsWith('base64,')) {
-        const audio = new Audio(res.audioUrl);
-        activeAudioRef.current = audio;
-        audio.volume = 1.0;
-        audio.onended = () => {
-          setIsPlayingSample(false);
-          activeAudioRef.current = null;
-        };
-        audio.onerror = (e) => {
-          console.error('[Voice Preview] Audio playback error:', e);
-          setIsPlayingSample(false);
-          toast.error('Could not play synthesized audio in browser');
-        };
-
-        setIsPlayingSample(true);
-        const playPromise = audio.play();
-        if (playPromise !== undefined) {
-          playPromise.catch((playErr) => {
-            console.error('[Voice Preview Play error]:', playErr);
-            setIsPlayingSample(false);
-            toast.error('Audio playback was blocked by browser. Please click again.');
-          });
-        }
-        toast.success('✨ Playing High-Definition AI Voice Preview!');
-      } else {
-        toast.error('No audio returned from voice generator. Please check your uploaded sample.');
-      }
-    } catch (err: any) {
-      console.error('[Voice Preview API Exception]:', err?.message || err);
-      toast.error(err?.message || 'Voice generation failed. Please try again.');
-    } finally {
-      setIsTestingVoice(false);
-    }
+  const handleTestVoiceSample = async () => { await playDraftPreview(selectedVoiceId, selectedVoiceModel);
   };
 
   const [isGeneratingAiAvatar, setIsGeneratingAiAvatar] = useState(false);
@@ -1309,50 +1095,46 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
 
   const handleAudioUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    if (files.length === 0) return;
-
-    setIsCloning(true);
+    if (!files.length || cloneBusyRef.current) return;
+    const draft = voiceDraftGuard.current.begin();
+    setIsCloning(true); stopVoicePreviews();
     try {
-      const readPromises = files.map(file => processVoiceSampleFile(file));
-      const newSamples = await Promise.all(readPromises);
-      // Prepend newly uploaded samples to index 0 so they become the active primary voice sample!
-      const updatedList = [...newSamples, ...audioSampleList];
-      setAudioSampleList(updatedList);
-      setAudioSampleName(updatedList.map(s => s.name).join(', '));
+      if (files.length > 10 || files.reduce((total, file) => total + file.size, 0) > 20 * 1024 * 1024) throw new Error('Choose up to 10 audio files, 20 MB total.');
+      const samples = await Promise.all(files.map(readCloneSampleFile));
+      if (!voiceDraftGuard.current.isCurrent(draft)) return;
+      setAudioSampleList(samples); setAudioSampleBase64(samples[0].base64); setAudioSampleName(samples.map(s => s.name).join(', '));
+      setDraftSamplesChanged(true); setCloneResult(null); setCloneError(''); setSpeakerAuthorized(false);
+      toast.success('Samples added. Confirm speaker authorization, then create the clone.');
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'Could not read audio.'); }
+    finally { setIsCloning(false); if (audioInputRef.current) audioInputRef.current.value = ''; }
+  };
 
-      const allBase64s = updatedList.map(s => s.base64);
-      setAudioSampleBase64(newSamples[0].base64);
-
-      // Set active tab to clone voice
-      setVoiceTab('clone');
-      // Clear any old voice ID so the newly uploaded file is used for instant voice cloning!
-      setSelectedVoiceId('');
-      setSelectedVoiceModel('elevenlabs');
-
-      try {
-        const res = await api.voice.cloneVoice(name || 'New Persona', `Cloned voice sample (${updatedList.length} files)`, allBase64s);
-        if (res?.voiceId && !(res as any).fallback) {
-          setSelectedVoiceId(res.voiceId);
-        }
-      } catch (err: any) {
-        console.warn('[Voice Clone Creation Note]:', err?.message || err);
+  const runClone = async (checkOnly = false, retryRejected = false) => {
+    if (cloneBusyRef.current) return;
+    if (!checkOnly && !speakerAuthorized) { toast.error('Confirm speaker authorization first.'); return; }
+    cloneBusyRef.current = true; setIsCloning(true); setCloneError('');
+    const draft = voiceDraftGuard.current.begin();
+    try {
+      const result = checkOnly && cloneResult
+        ? await api.voice.cloneStatus(cloneResult.id)
+        : await api.voice.cloneVoice(name || 'New Persona', 'Persona voice', audioSampleList.map(s => s.base64), speakerAuthorized, retryRejected);
+      if (!voiceDraftGuard.current.isCurrent(draft)) return;
+      setCloneResult(result);
+      if (result.status === 'ready' && result.voiceId) {
+        setSelectedSavedVoiceName(result.name);
+        voiceSelectionChanged.current = true; setSelectedVoiceId(result.voiceId); setSelectedVoiceModel('elevenlabs'); setDraftSamplesChanged(false);
+        stopVoicePreviews(); toast.success('Clone ready. Audition it, then save your persona to apply it.');
       }
-      toast.success(`✨ Uploaded and decoded ${newSamples.length} voice reference file${newSamples.length > 1 ? 's' : ''}!`);
-    } catch (err: any) {
-      console.error('[Audio Upload Error]:', err);
-      toast.error('Failed to process audio/video files');
-    } finally {
-      setIsCloning(false);
-      if (audioInputRef.current) audioInputRef.current.value = '';
-    }
+    } catch (error) {
+      if (voiceDraftGuard.current.isCurrent(draft)) setCloneError(error instanceof Error ? error.message : 'Clone request failed. Check status before retrying.');
+    } finally { cloneBusyRef.current = false; setIsCloning(false); }
   };
 
   const handleResetVoiceSamples = () => {
-    setAudioSampleList([]);
+    setAudioSampleList([]); setDraftSamplesChanged(false); setSpeakerAuthorized(false);
     setAudioSampleBase64('');
     setAudioSampleName('');
-    setSelectedVoiceId('');
-    setSelectedVoiceModel('omnivoice');
+    voiceDraftGuard.current.change(); setCloneResult(null);
     if (audioInputRef.current) audioInputRef.current.value = '';
     if (activeAudioRef.current) {
       activeAudioRef.current.pause();
@@ -1370,12 +1152,12 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
     setAudioSampleList(updated);
     setAudioSampleBase64(selected.base64);
     setAudioSampleName(updated.map(s => s.name).join(', '));
-    setSelectedVoiceId('');
-    setSelectedVoiceModel('omnivoice');
+    voiceDraftGuard.current.change(); setCloneResult(null);
     toast.success(`⭐ Set "${selected.name}" as Primary Voice Reference!`);
   };
 
   const removeAudioSample = (idxToRemove: number) => {
+    voiceDraftGuard.current.change(); setCloneResult(null);
     const updated = audioSampleList.filter((_, i) => i !== idxToRemove);
     setAudioSampleList(updated);
     setAudioSampleName(updated.map(s => s.name).join(', '));
@@ -1393,6 +1175,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       return;
     }
 
+    if (isCloning) { toast.error('Wait for the current voice operation before saving.'); return; }
     setIsSaving(true);
     const saveToastId = toast.loading('Saving persona securely...');
     try {
@@ -1404,15 +1187,12 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       const defaultVoiceRule = `Deeply loyal, devoted, and open with her creator. Loves teasing, talking dirty, and fulfilling all romantic, adult, and creative desires in text and voice. ${tone}`.trim();
       const voiceRuleToSave = creatorVoiceRule.trim() || (editingPersona?.brandVoiceRules || defaultVoiceRule);
       const defaultNotes = `Fully uncensored. Adores her creator as her master partner and indulges every request willingly.`;
-      const voiceEngineToSave = voiceTab === 'heygen'
-        ? 'heygen'
-        : voiceTab === 'account'
-          ? 'elevenlabs'
-          : (voiceTab === 'clone' || audioSampleList.length > 0)
-            ? (selectedVoiceModel || 'elevenlabs')
-            : voiceTab === 'custom'
-              ? 'custom'
-              : 'preset';
+      const voiceEngineToSave = editingPersona && !voiceSelectionChanged.current ? editingPersona.voiceEngine : selectedVoiceModel;
+      const savedSamples = draftSamplesChanged ? (editingPersona?.audioSamples || []) : audioSampleList;
+      const savedSampleUrl = draftSamplesChanged ? (editingPersona?.voiceSampleUrl || '') : (audioSampleList[0]?.base64 || '');
+      const draftSettings = { voicePrompt, voiceLikeness, voiceStability, voiceStyleExaggeration, voiceSpeakingSpeed };
+      const defaults = { voicePrompt: '', voiceLikeness: 85, voiceStability: 75, voiceStyleExaggeration: 20, voiceSpeakingSpeed: 1 };
+      const voiceSettingsToSave = Object.fromEntries(Object.entries(draftSettings).filter(([key, value]) => !editingPersona || editingPersona[key as keyof Persona] !== undefined || value !== defaults[key as keyof typeof defaults]));
 
       if (editingPersona) {
         const updatedPersona: Persona = {
@@ -1425,6 +1205,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
           bio,
           brandVoiceRules: voiceRuleToSave,
           personalityTraits: personalityTraits.split(',').map(t => t.trim()).filter(Boolean),
+          personalitySettings: normalizePersonality({personalityTraits:personalityTraits.split(','),personalitySettings}),
           audienceType,
           contentGoals,
           contentBoundaries,
@@ -1433,15 +1214,12 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
           additionalReferenceImages: additionalImgs,
           visualLibrary: generationsVault,
           voiceId: selectedVoiceId,
+          voiceName: selectedVoiceName,
           voiceEngine: voiceEngineToSave,
           companionType: companionType || 'intimate',
-          voiceSampleUrl: audioSampleList[0]?.base64 || audioSampleBase64 || (editingPersona as any).voiceSampleUrl,
-          audioSamples: audioSampleList.map(s => ({ name: s.name, base64: s.base64 })),
-          voicePrompt: voicePrompt || undefined,
-          voiceLikeness,
-          voiceStability,
-          voiceStyleExaggeration,
-          voiceSpeakingSpeed,
+          voiceSampleUrl: savedSampleUrl,
+          audioSamples: savedSamples.map(s => ({ name: s.name, base64: s.base64 })),
+          ...voiceSettingsToSave,
           personaNotes: voicePrompt ? `${voicePrompt}. ${defaultNotes}` : (editingPersona.personaNotes || defaultNotes),
         } as Persona;
 
@@ -1463,6 +1241,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
           status: 'Active',
           brandVoiceRules: voiceRuleToSave,
           personalityTraits: personalityTraits.split(',').map(t => t.trim()).filter(Boolean),
+          personalitySettings: normalizePersonality({personalityTraits:personalityTraits.split(','),personalitySettings}),
           audienceType,
           contentGoals,
           contentBoundaries,
@@ -1471,15 +1250,12 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
           additionalReferenceImages: additionalImgs,
           visualLibrary: generationsVault,
           voiceId: selectedVoiceId,
+          voiceName: selectedVoiceName,
           voiceEngine: voiceEngineToSave,
           companionType: companionType || 'intimate',
-          voiceSampleUrl: audioSampleList[0]?.base64 || audioSampleBase64 || '',
-          audioSamples: audioSampleList.map(s => ({ name: s.name, base64: s.base64 })),
-          voicePrompt: voicePrompt || undefined,
-          voiceLikeness,
-          voiceStability,
-          voiceStyleExaggeration,
-          voiceSpeakingSpeed,
+          voiceSampleUrl: savedSampleUrl,
+          audioSamples: savedSamples.map(s => ({ name: s.name, base64: s.base64 })),
+          ...voiceSettingsToSave,
           personaNotes: voicePrompt ? `${voicePrompt}. ${defaultNotes}` : defaultNotes,
           createdAt: new Date().toISOString()
         } as Persona;
@@ -1506,10 +1282,11 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   };
 
   const currentWizardStep = WIZARD_STEPS[wizardStepIdx];
-  const selectedVoiceName = accountVoices.find(voice => voice.voice_id === selectedVoiceId)?.name
+  const selectedVoiceName = selectedSavedVoiceName || accountVoices.find(voice => voice.voice_id === selectedVoiceId)?.name
     || heyGenVoices.find(voice => voice.voice_id === selectedVoiceId)?.name
     || PRESET_VOICES.find(voice => voice.id === selectedVoiceId)?.name
-    || (audioSampleList.length > 0 ? 'Cloned voice' : 'Studio voice');
+    || (cloneResult?.status === 'ready' && cloneResult.voiceId === selectedVoiceId ? cloneResult.name : '')
+    || (editingPersona?.voiceId === selectedVoiceId ? 'Saved persona voice' : selectedVoiceId ? 'Selected voice' : 'No voice selected');
   const completedStudioSteps = [
     Boolean(name.trim()),
     referenceImages.length > 0,
@@ -1519,7 +1296,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   ];
 
   const goToStudioStep = (nextStep: number) => {
-    if (nextStep > studioStep && studioStep === 0 && !name.trim()) {
+    if (!editingPersona && nextStep > studioStep && studioStep === 0 && !name.trim()) {
       toast.error('Add a persona name before continuing');
       return;
     }
@@ -1535,14 +1312,14 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       <div className="relative z-10 max-w-[1300px] mx-auto space-y-8">
         
         {/* ── HEADER BAR ── */}
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 sm:gap-6 luxury-card p-4 sm:p-6 md:p-8">
+        {!editingPersona && <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 sm:gap-6 luxury-card p-4 sm:p-6 md:p-8">
           <div>
             <h1 className="text-2xl sm:text-3xl md:text-4xl font-serif text-[#F5F1E8] tracking-tight flex items-center gap-3">
-              {editingPersona ? `Edit ${editingPersona.name}` : 'Persona Studio'}
-              <span className="text-[#E7C477] text-xl font-normal">✨</span>
+              Create a persona
+
             </h1>
             <p className="text-xs md:text-sm text-[#8C909A] mt-1 font-sans">
-              Design unique AI personas with identity, style, voice, and brand alignment.
+              Choose a look, add a name, and shape your character’s voice and personality.
             </p>
           </div>
 
@@ -1558,9 +1335,43 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
               </button>
             </div>
           )}
-        </div>
+        </div>}
 
-        {/* ── GUIDED STUDIO PROGRESS ── */}
+        {editingPersona ? (
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <h1 className="sr-only">Edit {editingPersona.name}</h1>
+            <div role="tablist" aria-label="Persona settings" className="flex min-w-0 flex-1 overflow-x-auto border-b border-[var(--border-default)]">
+              {STUDIO_STEPS.map((step, index) => (
+                <button
+                  key={step.id}
+                  type="button"
+                  role="tab"
+                  id={`persona-edit-tab-${step.id}`}
+                  aria-selected={studioStep === index}
+                  aria-controls="persona-edit-panel"
+                  tabIndex={studioStep === index ? 0 : -1}
+                  onClick={() => goToStudioStep(index)}
+                  onKeyDown={(event) => {
+                    const next = event.key === 'ArrowRight' ? (index + 1) % STUDIO_STEPS.length
+                      : event.key === 'ArrowLeft' ? (index + STUDIO_STEPS.length - 1) % STUDIO_STEPS.length
+                      : event.key === 'Home' ? 0 : event.key === 'End' ? STUDIO_STEPS.length - 1 : null;
+                    if (next === null) return;
+                    event.preventDefault();
+                    goToStudioStep(next);
+                    document.getElementById(`persona-edit-tab-${STUDIO_STEPS[next].id}`)?.focus();
+                  }}
+                  className={cn('shrink-0 border-b-2 px-4 py-3 text-sm font-semibold transition-colors', studioStep === index
+                    ? 'border-[var(--accent-primary)] text-[var(--accent-primary)]'
+                    : 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-primary)]')}
+                >{step.title}</button>
+              ))}
+            </div>
+            <button type="button" onClick={handleSave} disabled={isSaving} className="btn-gold-primary flex shrink-0 items-center justify-center gap-2 px-5 py-2.5 text-sm disabled:opacity-50">
+              {isSaving && <Loader2 size={16} className="animate-spin" />}
+              {isSaving ? 'Saving…' : 'Save changes'}
+            </button>
+          </div>
+        ) : (
         <div className="luxury-card p-3 sm:p-4">
           <div className="overflow-x-auto no-scrollbar">
             <div className="grid min-w-[680px] grid-cols-5 gap-2" aria-label="Persona creation progress">
@@ -1605,6 +1416,9 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
           </div>
         </div>
 
+        )}
+
+        <div id={editingPersona ? 'persona-edit-panel' : undefined} role={editingPersona ? 'tabpanel' : undefined} aria-labelledby={editingPersona ? `persona-edit-tab-${STUDIO_STEPS[studioStep].id}` : undefined} className="space-y-8">
         {studioStep === 1 && (
           <>
         {/* ── QUICK PRESETS WITH REALISTIC PORTRAIT VISUALS ── */}
@@ -1678,7 +1492,10 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
             <div className="flex w-full sm:w-auto max-w-full min-w-0 items-center gap-1 bg-[#18181B] p-1 rounded-xl border border-white/10 flex-nowrap overflow-x-auto">
               <button
                 type="button"
-                onClick={() => setImageTab('upload')}
+                onClick={() => {
+                  setImageTab('upload');
+                  fileInputRef.current?.click();
+                }}
                 className={cn(
                   "px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap",
                   imageTab === 'upload' ? "bg-[#E7C477] text-[#161618] font-bold shadow-sm" : "text-slate-400 hover:text-white"
@@ -1709,27 +1526,15 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
             </div>
           </div>
 
-          {imageTab === 'upload' && (
-            /* Upload Dropzone */
-            <div
-              onClick={() => fileInputRef.current?.click()}
-              className="rounded-2xl border-2 border-dashed border-white/15 hover:border-[#E7C477] bg-[#0E0E10] p-8 text-center cursor-pointer transition-all group shadow-inner"
-            >
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleImageUpload}
-                accept="image/*"
-                multiple
-                className="hidden"
-              />
-              <div className="w-12 h-12 rounded-xl bg-[#E7C477] text-[#161618] flex items-center justify-center mx-auto mb-3 shadow-md group-hover:scale-105 transition-transform">
-                <Upload size={22} />
-              </div>
-              <h4 className="text-sm font-bold text-white mb-1">Click or drag photos here</h4>
-              <p className="text-xs text-slate-400">PNG, JPG, WebP photos supported</p>
-            </div>
-          )}
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleImageUpload}
+            accept="image/*"
+            multiple
+            className="hidden"
+            aria-label="Upload reference photos"
+          />
 
           {imageTab === 'ai' && (
             /* AI Text Prompt Generator */
@@ -1985,6 +1790,21 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
             </div>
           </div>
 
+          <div className="space-y-2 text-xs text-slate-400">
+            <p role="status">{savedVoiceStatus}</p>
+            <p>Selected voice: {selectedVoiceName}. Changes apply on the next voice turn after saving.</p>
+            <label className="block">Voice name<input value={selectedSavedVoiceName} onChange={e => setSelectedSavedVoiceName(e.target.value)} maxLength={120} placeholder={selectedVoiceName} className="mt-1 w-full rounded-xl border border-white/10 bg-[#0E0E10] px-3 py-2 text-white" /></label>
+            <p>Studio auditions use Eleven Turbo v2.5 and the settings below. Calls use your configured conversation model.</p>
+            <label className="block">Audition text<input value={voicePreviewText} onChange={e => setVoicePreviewText(e.target.value)} maxLength={500} placeholder={sampleTextForPreview} className="mt-1 w-full rounded-xl border border-white/10 bg-[#0E0E10] px-3 py-2 text-white" /></label>
+          </div>
+
+          <SavedPersonaVoices
+            voices={editingPersona?.savedVoices || []}
+            current={{ voiceId: selectedVoiceId, voiceEngine: selectedVoiceModel, voiceSampleUrl: audioSampleList[0]?.base64, audioSamples: audioSampleList }}
+            onSelect={selectSavedVoice}
+            disabled={isSaving || isCloning}
+          />
+
           {voiceTab === 'preset' && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
               {PRESET_VOICES.map((v) => {
@@ -1994,7 +1814,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                 return (
                   <div
                     key={v.id}
-                    onClick={() => { setSelectedVoiceId(v.id); setSelectedVoiceModel('preset'); }}
+                    onClick={() => selectDraftVoice(v.id, 'preset')}
                     className={cn(
                       "p-4 rounded-xl border cursor-pointer transition-all flex flex-col justify-between space-y-3 min-h-[125px] relative group",
                       isSelected ? "border-[#E7C477] ring-1 ring-[#E7C477]/40 bg-[#242428] shadow-lg" : "border-white/10 bg-[#0E0E10] hover:border-white/20"
@@ -2050,68 +1870,18 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
 
           {voiceTab === 'clone' && (
             <div className="space-y-5">
-              <div>
-                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
-                  Select Voice Cloning Model ({VOICE_CLONING_MODELS.length} Models Available)
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {VOICE_CLONING_MODELS.map((model) => {
-                    const isSelected = selectedVoiceModel === model.id;
-                    const isPlaying = playingPresetVoiceId === model.id;
-                    const isLoading = isLoadingPresetAudioId === model.id;
-                    return (
-                      <div
-                        key={model.id}
-                        onClick={() => setSelectedVoiceModel(model.id)}
-                        className={cn(
-                          "p-3.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between space-y-2.5",
-                          isSelected ? "border-[#E7C477] ring-1 ring-[#E7C477]/40 bg-[#242428] shadow-lg" : "border-white/10 bg-[#0E0E10] hover:border-white/20"
-                        )}
-                      >
-                        <div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                              <Mic size={13} className="text-[#D9BA72]" />
-                              {model.name}
-                            </span>
-                            <span className="px-2 py-0.5 rounded bg-[#E7C477]/20 text-[#F2D58D] border border-[#E7C477]/30 text-[9px] font-bold uppercase">
-                              {model.badge}
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-slate-400 leading-snug mt-1">{model.desc}</p>
-                        </div>
-
-                        <div className="flex items-center justify-between border-t border-white/10 pt-2 mt-auto">
-                          <button
-                            type="button"
-                            onClick={(e) => handlePlayPresetSample(model.id, model.name, undefined, e)}
-                            disabled={isLoading}
-                            className={cn(
-                              "px-2.5 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1.5 transition-all cursor-pointer",
-                              isPlaying
-                                ? "bg-[#E7C477] text-[#161618] animate-pulse"
-                                : "bg-[#18181B] hover:bg-[#242428] text-[#F2D58D] border border-white/10 hover:border-[#E7C477]/40"
-                            )}
-                            title={`Audition timbre of ${model.name}`}
-                          >
-                            {isLoading ? (
-                              <Loader2 size={11} className="animate-spin text-[#D9BA72]" />
-                            ) : isPlaying ? (
-                              <VolumeX size={11} />
-                            ) : (
-                              <Volume2 size={11} />
-                            )}
-                            <span>{isLoading ? 'Loading...' : (isPlaying ? 'Stop' : 'Audition')}</span>
-                          </button>
-
-                          <span className="text-[10px] font-bold text-[#F2D58D]">
-                            {isSelected ? '✓ Selected' : 'Choose Model'}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+              <div className="space-y-3 text-sm text-slate-300">
+                <p className="font-semibold text-white">Create an ElevenLabs instant voice clone</p>
+                <p className="text-xs text-slate-400">Use 1–2 minutes of clear audio from one speaker. Upload up to 10 audio files, 20 MB total. Original recordings are kept intact.</p>
+                <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={speakerAuthorized} onChange={e => setSpeakerAuthorized(e.target.checked)} />I am the speaker or have the speaker’s permission to clone and use this voice.</label>
+                <button type="button" onClick={() => runClone()} disabled={isCloning || !speakerAuthorized || !audioSampleList.length || Boolean(cloneResult)} className="btn-gold-primary px-4 py-2 disabled:opacity-40">{isCloning ? 'Checking voice…' : 'Create voice clone'}</button>
+                {(cloneResult || cloneError) && <div role="status" className="space-y-2 rounded-xl border border-white/10 p-3 text-xs">
+                  <p>{cloneError || cloneResult?.message || cloneResult?.status}</p>
+                  {cloneResult && cloneResult.status !== 'ready' && <button type="button" disabled={isCloning} onClick={() => runClone(true)} className="underline">Check clone status</button>}
+                  {cloneResult?.status === 'failed' && <button type="button" disabled={isCloning || !speakerAuthorized} onClick={() => runClone(false, true)} className="block underline">Retry after fixing the provider issue</button>}
+                  {cloneResult?.status === 'verification_required' && <a href="https://elevenlabs.io/app/voices" target="_blank" rel="noreferrer" className="block underline">Open ElevenLabs to verify the speaker</a>}
+                </div>}
+                <p className="text-xs text-slate-400">Your saved voice stays active until a ready replacement is saved. Removing draft samples does not delete a remote voice.</p>
               </div>
 
               <div className="flex items-center justify-between gap-3 flex-wrap border-t border-white/10 pt-4">
@@ -2119,7 +1889,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                   type="file"
                   ref={audioInputRef}
                   onChange={handleAudioUpload}
-                  accept="audio/*,video/*"
+                  accept="audio/*"
                   multiple
                   className="hidden"
                 />
@@ -2327,6 +2097,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                 </button>
               </div>
 
+              <input aria-label="Search ElevenLabs voices" value={voiceSearch} onChange={e => setVoiceSearch(e.target.value)} placeholder="Search name, language, accent…" className="w-full rounded-xl border border-white/10 bg-[#0E0E10] px-3 py-2 text-sm text-white" />
               {isLoadingAccountVoices ? (
                 <div className="flex flex-col items-center justify-center py-12 space-y-3 bg-[#0E0E10] rounded-xl border border-white/10">
                   <Loader2 className="animate-spin text-[#D9BA72]" size={28} />
@@ -2342,15 +2113,15 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[420px] overflow-y-auto pr-1">
-                  {accountVoices.map((v) => {
+                  {accountVoices.filter(v => `${v.name} ${v.description || ''} ${Object.values(v.labels || {}).join(' ')}`.toLowerCase().includes(voiceSearch.toLowerCase())).map((v) => {
                     const isSelected = selectedVoiceId === v.voice_id;
                     const isPlaying = playingAccountAudioId === v.voice_id;
                     return (
                       <div
                         key={v.voice_id}
                         onClick={() => {
-                          setSelectedVoiceId(v.voice_id);
-                          setSelectedVoiceModel('elevenlabs');
+                          if (v.readiness && v.readiness !== 'available') { toast.error('Finish voice processing or verification in ElevenLabs first.'); return; }
+                          selectDraftVoice(v.voice_id, 'elevenlabs');
                           toast.success(`Selected "${v.name}" from your ElevenLabs account!`);
                         }}
                         className={cn(
@@ -2362,6 +2133,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="space-y-1">
+                            {v.readiness && v.readiness !== 'available' && <p className="text-xs text-amber-300">{v.readiness === 'verification_required' ? 'Speaker verification required' : 'Still processing'}</p>}
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="text-xs font-bold text-white">{v.name}</span>
                               <span className={cn(
@@ -2482,8 +2254,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                       <div
                         key={voice.voice_id}
                         onClick={() => {
-                          setSelectedVoiceId(voice.voice_id);
-                          setSelectedVoiceModel('heygen');
+                          selectDraftVoice(voice.voice_id, 'heygen');
                           toast.success(`Selected "${voice.name}" from your HeyGen account!`);
                         }}
                         className={cn(
@@ -2886,6 +2657,13 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
               </div>
             </div>
 
+            {studioStep === 2 && <div className="md:col-span-2">
+              <PersonalityControls
+                persona={{id:editingPersona?.id,name,tone,bio,personalityTraits:personalityTraits.split(',').map(t=>t.trim()).filter(Boolean),personalitySettings,brandVoiceRules:creatorVoiceRule,contentBoundaries,voiceId:selectedVoiceId,voiceEngine:selectedVoiceModel,voicePrompt,voiceLikeness,voiceStability,voiceStyleExaggeration,voiceSpeakingSpeed,voiceSampleUrl:audioSampleList[0]?.base64 || editingPersona?.voiceSampleUrl}}
+                onChange={setPersonalitySettings}
+              />
+            </div>}
+
             {/* Brand Voice Rules & Companion Behavioral Directives */}
             <div className={cn('md:col-span-2 space-y-2 border-t border-white/10 pt-4', studioStep !== 2 && 'hidden')}>
               <label className="block text-xs font-bold text-[#F5F1E8] uppercase tracking-wider flex items-center gap-1.5">
@@ -2893,12 +2671,13 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                 Brand Voice Rules & Companion Directives (Chat & Live Phone Call Behavior)
               </label>
               <p className="text-[11px] text-[#A1A1AA]">
-                Custom instructions for how your persona talks, responds, roleplays, or flirts during AI text chat and live phone calls.
+                Describe how your persona talks and makes decisions. Paste short dialogue examples, label inferred traits, and mark invented backstory as fictional. Use Test personality above to try the draft before saving.
               </p>
               <textarea
                 value={creatorVoiceRule}
                 onChange={e => setCreatorVoiceRule(e.target.value)}
-                placeholder="e.g. Deeply loyal, devoted, and open with her creator. Loves teasing, talking dirty, and fulfilling all romantic, adult, and creative desires in text and voice."
+                aria-label="Speaking rules and dialogue examples"
+                placeholder={'Supplied example: “Let’s test one small idea first.” Inferred style: curious and concise. Fictional backstory: an observatory guide. Boundaries: keep practical answers direct.'}
                 rows={3}
                 className="luxury-input w-full p-3.5 text-xs"
               />
@@ -2919,8 +2698,10 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
         </div>
         )}
 
+        </div>
+
         {/* ── GUIDED FLOW NAVIGATION ── */}
-        <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-[#0B0B0E] p-3 shadow-xl sm:flex-row sm:items-center sm:justify-between sm:p-4">
+        {!editingPersona && <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-[#0B0B0E] p-3 shadow-xl sm:flex-row sm:items-center sm:justify-between sm:p-4">
           <div className="min-w-0">
             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#D9BA72]">
               Step {studioStep + 1} of {STUDIO_STEPS.length}
@@ -2960,7 +2741,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
               </button>
             )}
           </div>
-        </div>
+        </div>}
       </div>
 
       {typeof document !== 'undefined' && createPortal(
