@@ -1101,7 +1101,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
     const draft = voiceDraftGuard.current.begin();
     setIsCloning(true); stopVoicePreviews();
     try {
-      if (files.length > 10 || files.reduce((total, file) => total + file.size, 0) > 20 * 1024 * 1024) throw new Error('Choose up to 10 audio files, 20 MB total.');
+      if (files.length > 10) throw new Error('Choose up to 10 audio or video files.');
       const samples = await Promise.all(files.map(readCloneSampleFile));
       if (!voiceDraftGuard.current.isCurrent(draft)) return;
       setAudioSampleList(samples); setAudioSampleBase64(samples[0].base64); setAudioSampleName(samples.map(s => s.name).join(', '));
@@ -1894,7 +1894,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
               </fieldset>
               <div className="space-y-3 text-sm text-slate-300">
                 <p className="font-semibold text-white">{cloneChoice.name} · {cloneChoice.provider}</p>
-                <p className="text-xs text-slate-400">{cloneChoice.kind==='preset'?cloneChoice.description:cloneChoice.id==='elevenlabs'?'Use 1–2 minutes of clear audio from one speaker. Upload up to 10 files, 20 MB total.':cloneChoice.kind==='unavailable'?cloneChoice.description:'This model uses the primary recording. Additional recordings remain saved for other models. Upload up to 20 MB total.'}</p>
+                <p className="text-xs text-slate-400">{cloneChoice.kind==='preset'?cloneChoice.description:cloneChoice.id==='elevenlabs'?'Use 1–2 minutes of clear speech from one speaker. Audio and video uploads are accepted; long media is sampled automatically.':cloneChoice.kind==='unavailable'?cloneChoice.description:'This model uses the primary recording. Audio and video uploads are accepted; long media is sampled automatically.'}</p>
                 {cloneChoice.voices && <label className="block text-xs">Preset voice<select aria-label="Model preset voice" value={clonePreset||cloneChoice.voices[0]} onChange={e=>{setClonePreset(e.target.value);setCloneResult(null);}} disabled={isCloning} className="luxury-input block mt-1 p-2">{cloneChoice.voices.map(voice=><option key={voice} value={voice}>{voice}</option>)}</select></label>}
                 {cloneChoice.kind!=='preset' && cloneChoice.kind!=='unavailable' && <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={speakerAuthorized} disabled={isCloning} onChange={e => setSpeakerAuthorized(e.target.checked)} />I am the speaker or have the speaker’s permission to clone and use this voice.</label>}
                 {cloneChoice.kind==='reference' && <label className="block text-xs">Reference recording transcript {cloneChoice.transcriptRequired?'(required)':'(optional)'}<textarea aria-label="Reference recording transcript" value={voiceReferenceText} onChange={e=>{setVoiceReferenceText(e.target.value);setCloneResult(null);}} disabled={isCloning} maxLength={5000} rows={2} className="luxury-input block w-full mt-1 p-2" placeholder="The exact words spoken in your primary recording"/></label>}
@@ -1915,7 +1915,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                   type="file"
                   ref={audioInputRef}
                   onChange={handleAudioUpload}
-                  accept="audio/*"
+                  accept="audio/*,video/*,.aac,.flac,.m4a,.mp3,.ogg,.wav,.webm,.3gp,.avi,.m4v,.mkv,.mov,.mp4"
                   multiple
                   className="hidden"
                 />

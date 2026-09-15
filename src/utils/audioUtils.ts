@@ -1,14 +1,43 @@
-// Instant Voice Cloning keeps the original recording; never loop or crop it.
-export async function readCloneSampleFile(file: File): Promise<{ name: string; base64: string }> {
-  if (!file.type.startsWith('audio/') || file.size < 100 || file.size > 20 * 1024 * 1024) {
-    throw new Error('Choose an audio file up to 20 MB. Use 1–2 minutes of clean speech from one authorized speaker.');
-  }
+export const CLONE_MEDIA_MAX_ORIGINAL_BYTES = 20 * 1024 * 1024;
+const AUDIO_EXTENSIONS = /\.(aac|flac|m4a|mp3|oga|ogg|wav|webm)$/i;
+const VIDEO_EXTENSIONS = /\.(3gp|avi|m4v|mkv|mov|mp4|webm)$/i;
+
+export function isCloneVideoFile(file: Pick<File, 'type' | 'name'>): boolean {
+  const type = String(file.type || '').toLowerCase();
+  return type.startsWith('video/') || VIDEO_EXTENSIONS.test(file.name || '');
+}
+
+export function isCloneMediaFile(file: Pick<File, 'type' | 'name'>): boolean {
+  const type = String(file.type || '').toLowerCase();
+  return type.startsWith('audio/') || type.startsWith('video/') || AUDIO_EXTENSIONS.test(file.name || '') || VIDEO_EXTENSIONS.test(file.name || '');
+}
+
+export function shouldNormalizeCloneMedia(file: Pick<File, 'type' | 'name' | 'size'>): boolean {
+  return isCloneVideoFile(file) || file.size > CLONE_MEDIA_MAX_ORIGINAL_BYTES;
+}
+
+function readFileAsDataUrl(file: File, errorMessage: string): Promise<{ name: string; base64: string }> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve({ name: file.name, base64: String(reader.result) });
-    reader.onerror = () => reject(new Error('Could not read this audio file. Choose it again.'));
+    reader.onerror = () => reject(new Error(errorMessage));
     reader.readAsDataURL(file);
   });
+}
+
+// Small audio files stay lossless for ElevenLabs. Video and oversized media are
+// decoded in the browser into a compact WAV reference, so duration and source
+// container do not block cloning or reference-based speech.
+export async function readCloneSampleFile(file: File): Promise<{ name: string; base64: string }> {
+  if (file.size < 100 || !isCloneMediaFile(file)) {
+    throw new Error('Choose an audio or video file. Long media is sampled automatically for voice cloning.');
+  }
+  if (shouldNormalizeCloneMedia(file)) {
+    const normalized = await processVoiceSampleFile(file);
+    if (normalized.base64.startsWith('data:audio/')) return normalized;
+    throw new Error('Could not extract an audio track from this file. Choose a video with a supported audio track.');
+  }
+  return readFileAsDataUrl(file, 'Could not read this audio file. Choose it again.');
 }
 
 export async function processVoiceSampleFile(file: File): Promise<{ name: string; base64: string }> {
