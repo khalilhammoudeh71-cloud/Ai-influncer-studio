@@ -7,6 +7,7 @@ import { voiceCallDialogue } from '../shared/voiceCallDialogue';
 import { nativeHistory, nativeVoiceChoice } from '../shared/nativeVoice';
 import { ElevenLabsCallError, elevenLabsCallDependencies, authorizedElevenLabsPersona, prepareElevenLabsCall } from './elevenLabsCalls';
 import { VoiceLifecycleError } from './personaVoiceLifecycle';
+import { buildVoiceDelivery } from '../shared/voiceDelivery';
 
 export const STUDIO_VOICE_TOOL = { type: 'function' as const, name: 'ask_studio', description: 'Ask the studio Super Agent to research or prepare an actionable plan. Returned actions require review in the existing studio UI. Never claim that a plan was executed.', parameters: { type: 'object', properties: { request: { type: 'string', description: 'The user’s current request, with enough context to answer it.' } }, required: ['request'], additionalProperties: false } };
 export function nativeInstructions(persona: any, memories: unknown, preferences?: unknown) {
@@ -15,7 +16,7 @@ export function nativeInstructions(persona: any, memories: unknown, preferences?
 }
 export function openaiNativeSession(persona: any, voice: unknown, memories: unknown, preferences?: unknown) {
   return { type: 'realtime' as const, model: process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime-2.1', instructions: nativeInstructions(persona, memories, preferences), output_modalities: ['audio' as const], max_output_tokens: 700,
-    audio: { input: { noise_reduction: { type: 'near_field' as const }, transcription: { model: 'gpt-4o-mini-transcribe' }, turn_detection: { type: 'semantic_vad' as const, eagerness: 'low' as const, create_response: true, interrupt_response: true } }, output: { voice: nativeVoiceChoice(voice) as 'marin' } }, tools: [STUDIO_VOICE_TOOL], tool_choice: 'auto' as const };
+    audio: { input: { noise_reduction: { type: 'near_field' as const }, transcription: { model: 'gpt-4o-mini-transcribe' }, turn_detection: { type: 'semantic_vad' as const, eagerness: 'low' as const, create_response: true, interrupt_response: true } }, output: { voice: nativeVoiceChoice(voice) as 'marin', speed: buildVoiceDelivery('openai', 'realtime', '', persona, undefined, 'neutral').settings.speed } }, tools: [STUDIO_VOICE_TOOL], tool_choice: 'auto' as const };
 }
 export function createNativeVoiceRouter(deps: { readPersonas(userId: string): Promise<any[]>; assertVoiceAccess(req: AuthenticatedRequest, voiceId: string, personaId: string): Promise<void>; agentChat(req: AuthenticatedRequest,res: Response): Promise<any> }) {
   const router = Router();

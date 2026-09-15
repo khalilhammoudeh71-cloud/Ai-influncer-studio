@@ -19,6 +19,38 @@ test('private voice authorization precedes provider access even when the saved e
 });
 
 const persona = { id: 'owned', name: 'Leen', voiceId: 'privateclone123456789', voiceEngine: 'elevenlabs', voiceStability: 64, voiceLikeness: 91, voiceSpeakingSpeed: .93, bio: 'A creative friend.', personalityTraits: ['Playful'] };
+test('editing only Tone of Voice changes the hosted call configuration while retaining the saved clone',()=>{
+ const saved={...persona,personalityTraits:[],tone:'shy, hesitant',brandVoiceRules:'Older confident speaking style.'};
+ const first=buildElevenLabsCallConfig('owner',saved,{mode:'arabic'});
+ const edited=buildElevenLabsCallConfig('owner',{...saved,tone:'calm, deliberate'},{mode:'arabic'});
+ assert.match(first.conversationConfig.agent.prompt.prompt,/"tone":"shy, hesitant"/);
+ assert.match(edited.conversationConfig.agent.prompt.prompt,/"tone":"calm, deliberate"/);
+ assert.doesNotMatch(edited.conversationConfig.agent.prompt.prompt,/shy, hesitant/);
+ assert.notEqual(first.name,edited.name);
+ assert.equal(edited.conversationConfig.tts.voiceId,persona.voiceId);
+});
+test('live ElevenLabs calls apply the personality delivery switch to speed and stability',()=>{
+ const saved={...persona,personalityTraits:['Intimate'],personalitySettings:{voiceEnabled:true,intensities:{Intimate:'strong'}}};
+ const on=buildElevenLabsCallConfig('owner',saved,{});
+ const off=buildElevenLabsCallConfig('owner',{...saved,personalitySettings:{...saved.personalitySettings,voiceEnabled:false}},{});
+ assert.ok(Math.abs(on.conversationConfig.tts.speed!-.85)<1e-9);
+ assert.ok(Math.abs(on.conversationConfig.tts.stability!-.67)<1e-9);
+ assert.equal(off.conversationConfig.tts.speed,.93);
+ assert.equal(off.conversationConfig.tts.stability,.64);
+ assert.equal(on.conversationConfig.tts.similarityBoost,.91);
+ assert.equal(on.conversationConfig.tts.voiceId,off.conversationConfig.tts.voiceId);
+ assert.notEqual(on.name,off.name);
+});
+for (const sample of ['x', '"a"\n', 'a\nb\n', '\u0000{{🙂}}']) test(`long persona descriptions retain language and correction guidance: ${JSON.stringify(sample)}`,()=>{
+ const fill=(limit:number)=>sample.repeat(limit).slice(0,limit);
+ const saved={...persona,name:fill(120),tone:fill(800),bio:fill(1600),brandVoiceRules:fill(1600),contentBoundaries:fill(1200),personaNotes:fill(1600),voicePrompt:fill(800),personalityTraits:Array.from({length:30},(_,i)=>`Thoughtful trait ${i}`),personalitySettings:{voiceEnabled:true}};
+ const prompt=buildElevenLabsCallConfig('owner',saved,{mode:'arabic',allowLanguageSwitching:true}).conversationConfig.agent.prompt.prompt;
+ assert.match(prompt,/قصدي بكرا/);
+ assert.match(prompt,/Keep a serious topic restrained/);
+ assert.match(prompt,/Begin and primarily converse in Arabic/);
+ assert.match(prompt,/Use language_detection/);
+ assert.ok(prompt.length<24000);
+});
 test('reopening an existing conversation waits for the caller instead of greeting again',async()=>{
  let config:any;
  await prepareElevenLabsCall('owner',{personaId:'owned',history:[{role:'user',content:'Let us discuss tomorrow.'}]}, {

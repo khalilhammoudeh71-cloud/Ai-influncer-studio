@@ -4,6 +4,28 @@ import { openaiNativeSession, nativeInstructions } from './nativeVoice';
 import { nativeHistory, nativeVoiceChoice } from '../shared/nativeVoice';
 import { OpenAINativeCall } from '../src/utils/nativeVoiceCall';
 import { VoiceLifecycleError } from './personaVoiceLifecycle';
+import { humeSettings } from './humeNativeVoice';
+import { STUDIO_VOICE_TOOL } from './nativeVoice';
+test('OpenAI and Hume receive the saved tone even with no selected traits',()=>{
+ const persona={name:'Fixture',tone:'خجولة ومترددة',personalityTraits:[]};
+ const openai=openaiNativeSession(persona,'marin',[],{mode:'arabic'});
+ const hume=humeSettings(nativeInstructions(persona,[],{mode:'arabic'}),[],'hume-library',STUDIO_VOICE_TOOL);
+ assert.match(openai.instructions,/"tone":"خجولة ومترددة"/);
+ assert.match(hume.system_prompt,/"tone":"خجولة ومترددة"/);
+ assert.equal(hume.voice_id,'hume-library');
+});
+test('personality matching gives native providers delivery directions and supported OpenAI speed',()=>{
+ const saved={name:'Fixture',voiceSpeakingSpeed:.9,personalityTraits:['High-Energy'],personalitySettings:{voiceEnabled:true,intensities:{'High-Energy':'strong'}}};
+ const off={...saved,personalitySettings:{...saved.personalitySettings,voiceEnabled:false}};
+ const session=openaiNativeSession(saved,'marin',[],{mode:'arabic'});
+ assert.ok(Math.abs(session.audio.output.speed!-1.03)<1e-9);
+ assert.equal(openaiNativeSession(off,'marin',[]).audio.output.speed,.9);
+ assert.match(session.instructions,/lively and brisk/);
+ assert.match(humeSettings(nativeInstructions(saved,[]),[],'hume-library',STUDIO_VOICE_TOOL).system_prompt,/lively and brisk/);
+ assert.doesNotMatch(nativeInstructions(off,[]),/lively and brisk/);
+ assert.equal(session.audio.output.voice,'marin');
+ assert.doesNotMatch(session.instructions,/Preferred conversation language: English/);
+});
 test('ElevenLabs options and sessions authorize the saved private voice and preserve access errors', async () => {
  const {createNativeVoiceRouter}=await import('./nativeVoice');
  const requests:any[]=[];

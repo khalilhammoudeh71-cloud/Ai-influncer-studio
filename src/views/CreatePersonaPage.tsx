@@ -2590,14 +2590,17 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
             </div>
 
             <div className={cn(studioStep !== 2 && 'hidden')}>
-              <label className="block text-xs font-bold text-[#A1A1AA] uppercase tracking-wider mb-2">Tone of Voice</label>
+              <label htmlFor="persona-tone" className="block text-xs font-bold text-[#A1A1AA] uppercase tracking-wider mb-2">Tone of Voice</label>
               <input
+                id="persona-tone"
                 type="text"
                 value={tone}
+                maxLength={800}
                 onChange={e => setTone(e.target.value)}
                 placeholder="e.g. Seductive, Authentic, Confident"
                 className="luxury-input w-full px-4 py-2.5 text-xs"
               />
+              <p className="mt-2 text-xs text-[#A1A1AA]">Guides wording and delivery in conversations and calls. Save your changes and start a new call to apply them.</p>
             </div>
 
             <div className={cn('md:col-span-2', studioStep !== 0 && 'hidden')}>

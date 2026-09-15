@@ -51,22 +51,26 @@ export function buildPersonalityInstructions(p: Profile, { includeLanguage = tru
  const s=normalizePersonality(p), traits=traitsFor(p);
  const language=includeLanguage?languageInstructions(p):'';
  if(!traits.length)return language;
- return [language,'Personality performance directions:',`Primary trait: ${s.primary}. Let this lead when styles conflict; supporting traits are accents.`,
+ return [language,'Personality performance directions:',`Primary trait: ${s.primary}. Let this lead among trait choices; the selected tone and specific speaking rules take priority over trait labels.`,
  ...traits.map(t=>`${t} (${s.intensities[t]}): ${TRAIT_BEHAVIORS[t] || `Express ${t} naturally through wording and conversational choices.`}`),
  'Intensity: subtle = occasional light touches; balanced = a noticeable recurring style; strong = a distinctive style in most suitable replies. Do not name your traits or repeat catchphrases. Match the actual question, seriousness and user boundaries; accuracy comes first. These directions replace generic default personality adjectives, not factual or safety instructions.'].filter(Boolean).join('\n');
 }
 export function personalityDelivery(p: Profile): {speed?:number;style?:number;stability?:number} {
  const s=normalizePersonality(p); if(!s.voiceEnabled || !s.primary)return {};
- const values:Record<string,[number,number,number]>={
+ const values:Record<string,[number,number,number]>=Object.assign(Object.create(null),{
   'High-Energy':[.13,.22,-.12],Playful:[.06,.18,-.1],Witty:[.04,.13,-.05],Motivating:[.07,.15,-.05],
   Seductive:[-.09,.13,-.04],Sensual:[-.09,.12,-.04],Intimate:[-.08,.06,.03],Elegant:[-.04,-.04,.08],
   Analytical:[-.05,-.07,.12],Disciplined:[-.02,-.04,.1],Confident:[-.02,.08,.09],Bold:[.03,.13,.05],
- };
+ });
  let speed=0,style=0,stability=0,total=0;
  for(const t of traitsFor(p)){const weight=t===s.primary?3:1; const intensity={subtle:.35,balanced:.65,strong:1}[s.intensities[t] || 'balanced'];const v=values[t] || [0,.05,0]; speed+=v[0]*weight*intensity;style+=v[1]*weight*intensity;stability+=v[2]*weight*intensity;total+=weight;}
  return {speed:+(1+speed/total).toFixed(2),style:+(.3+style/total).toFixed(2),stability:+(.5+stability/total).toFixed(2)};
 }
-export function personalityVoiceDirection(p: Profile): string {
+export function personalityDeliveryDirection(p: Profile): string {
  const d=personalityDelivery(p); if(!d.speed)return '';
- return `Delivery: ${d.speed<.98?'relaxed and unhurried':d.speed>1.02?'lively and brisk':'steady conversational'} pacing, ${d.style!>.36?'expressive':'restrained'} intonation. Preserve the selected speaker identity and accent. ${buildPersonalityInstructions(p)}`;
+ return `Personality delivery: ${d.speed<.98?'relaxed and unhurried':d.speed>1.02?'lively and brisk':'steady conversational'} pacing, ${d.style!>.36?'expressive':'restrained'} intonation where compatible with the selected tone and explicit voice description. Preserve the selected speaker identity and accent.`;
+}
+export function personalityVoiceDirection(p: Profile): string {
+ const direction=personalityDeliveryDirection(p);
+ return direction ? `${direction} ${buildPersonalityInstructions(p)}` : '';
 }

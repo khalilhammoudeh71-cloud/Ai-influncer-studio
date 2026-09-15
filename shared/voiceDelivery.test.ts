@@ -1,5 +1,24 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import { buildVoiceDelivery } from './voiceDelivery';
+test('personality matching offsets saved voice controls only when enabled and keeps likeness unchanged',()=>{
+ const persona={voiceStability:70,voiceLikeness:94,voiceStyleExaggeration:0,voiceSpeakingSpeed:.85,personalityTraits:['High-Energy'],personalitySettings:{voiceEnabled:true,intensities:{'High-Energy':'strong' as const}}};
+ const before=JSON.stringify(persona);
+ const on=buildVoiceDelivery('elevenlabs','eleven_flash_v2_5','Hello.',persona,undefined,'neutral');
+ assert.ok(Math.abs(on.settings.speed!-.98)<1e-9);
+ assert.ok(Math.abs(on.settings.stability-.58)<1e-9);
+ assert.ok(Math.abs(on.settings.style-.22)<1e-9);
+ assert.equal(on.settings.similarity_boost,.94);
+ const off=buildVoiceDelivery('elevenlabs','eleven_flash_v2_5','Hello.',{...persona,personalitySettings:{...persona.personalitySettings,voiceEnabled:false}},undefined,'neutral');
+ assert.deepEqual(off.settings,{stability:.7,similarity_boost:.94,style:0,speed:.85,use_speaker_boost:true});
+ assert.equal(JSON.stringify(persona),before);
+});
+test('personality offsets respect preview baselines and remain within provider limits',()=>{
+ const persona={personalityTraits:['High-Energy'],personalitySettings:{voiceEnabled:true,intensities:{'High-Energy':'strong' as const}}};
+ const d=buildVoiceDelivery('elevenlabs','eleven_flash_v2_5','Hello.',persona,{speed:1.2,stability:0,style:1},'neutral');
+ assert.equal(d.settings.speed,1.2);assert.equal(d.settings.stability,0);assert.equal(d.settings.style,1);
+ const custom=buildVoiceDelivery('elevenlabs','eleven_flash_v2_5','Hello.',{personalityTraits:['constructor','__proto__'],personalitySettings:{voiceEnabled:true}},undefined,'neutral');
+ assert.ok(Object.values(custom.settings).every(value=>typeof value==='boolean'||Number.isFinite(value)));
+});
 test('neutral delivery preserves saved settings including zero',()=>{
  const d=buildVoiceDelivery('elevenlabs','eleven_turbo_v2_5','Hello.',{voiceStability:0,voiceLikeness:91,voiceStyleExaggeration:0,voiceSpeakingSpeed:.87},undefined,'neutral');
  assert.deepEqual(d.settings,{stability:0,similarity_boost:.91,style:0,speed:.87,use_speaker_boost:true});assert.equal(d.text,'Hello.');

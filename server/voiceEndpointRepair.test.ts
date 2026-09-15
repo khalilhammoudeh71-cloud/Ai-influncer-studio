@@ -21,5 +21,13 @@ test('real preview and playback routes preserve voice/settings; stream is audio 
   assert.deepEqual(requests[0].body.voice_settings,requests[1].body.voice_settings);assert.equal(requests[0].body.model_id,requests[1].body.model_id);
   const stream=await call('/generate-speech',{...input,stream:true});assert.equal(stream.headers['X-Voice-Id'],input.voiceId);assert.equal(stream.chunks.length,1);assert.equal(stream.data,undefined);assert.ok(requests.at(-1).url.endsWith('/stream'));
   const count=requests.length;const unsupported=await call('/agent/test-voice-clone',{model:'wiro-voice:fishaudio/s2-pro',sampleBase64:'fixture',text:'Hello.'});assert.equal(unsupported.statusCode,422);assert.equal(requests.length,count);
+  const matching={...input,emotion:'neutral',voiceSettings:{speed:.9,stability:.6,similarity_boost:.92,style:0},activePersona:{personalityTraits:['High-Energy'],personalitySettings:{voiceEnabled:true,intensities:{'High-Energy':'strong'}}}};
+  const matchedPreview=await call('/persona-voice-preview',matching),matchedPlayback=await call('/generate-speech',matching);
+  assert.equal(matchedPreview.statusCode,200);assert.equal(matchedPlayback.statusCode,200);
+  for(const request of requests.slice(-2)){
+   assert.ok(Math.abs(request.body.voice_settings.speed-1.03)<1e-9);
+   assert.ok(Math.abs(request.body.voice_settings.stability-.48)<1e-9);
+   assert.equal(request.body.voice_settings.similarity_boost,.92);
+  }
  }finally{globalThis.fetch=prior;if(priorKey===undefined)delete process.env.ELEVENLABS_API_KEY;else process.env.ELEVENLABS_API_KEY=priorKey;}
 });

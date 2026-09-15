@@ -10,7 +10,7 @@ export class ElevenLabsCallError extends Error {
   constructor(message: string, readonly status = 400) { super(message); }
 }
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
-const literal = (value: unknown, limit: number) => typeof value === 'string' ? value.slice(0, limit).replace(/\{\{/g, '{ {').replace(/\}\}/g, '} }') : '';
+const literal = (value: string) => value.replace(/\{\{/g, '{ {').replace(/\}\}/g, '} }');
 
 export function buildElevenLabsCallConfig(owner: string, persona: any, input: unknown, continuing = false) {
   const preferences = normalizeCallPreferences(input);
@@ -22,7 +22,8 @@ export function buildElevenLabsCallConfig(owner: string, persona: any, input: un
   const settings = buildVoiceDelivery('elevenlabs', speechModel, '', persona, undefined, 'neutral').settings;
   const prompt = [
     '# Personality',
-    literal(voiceCallDialogue(persona, preferences), 14000),
+    // Authored sections are bounded before assembly; preserve all call-language and behavior rules.
+    literal(voiceCallDialogue(persona, preferences)),
     '# Environment',
     'This is a two-way audio call in AI Influencer Studio. Caller audio may be incomplete or noisy. Let the caller finish; yield immediately when interrupted. Treat silence as time to think, not consent.',
     ...(preferences.allowLanguageSwitching ? ['Use language_detection for a requested or clear conversational language switch.'] : []),
