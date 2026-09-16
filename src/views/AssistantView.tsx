@@ -1417,14 +1417,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     if(!stillCurrent())return;
     lastCommittedTranscriptRef.current = { text: corrected, at: now };
 
-    if (needsVoiceConfirmation(corrected)) {
-      setPendingVoiceConfirmation(corrected);
-      setCallInput(corrected);
-      setLiveUserSpeech('');
-      setCallStatus('listening');
-      return;
-    }
-
+    // Send the verified transcript directly. The old “Did you mean?” gate
+    // interrupted calls and often replaced a correct sentence with a rhyme.
     setPendingVoiceConfirmation(null);
     setLiveUserSpeech('');
     if (isAgentSpeakingRef.current || voiceCallBusyRef.current) {
@@ -4880,31 +4874,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
             <div className="flex-none w-full flex flex-col items-center justify-start gap-3 my-2 relative">
               {/* Status Indicator */}
               <div className="text-center z-10 min-h-[38px] flex flex-col items-center justify-center px-4">
-                {pendingVoiceConfirmation ? (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.96 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="flex flex-wrap items-center justify-center gap-2 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs shadow-sm backdrop-blur-md max-w-[540px]"
-                  >
-                    <span>Did you mean: “{pendingVoiceConfirmation}”?</span>
-                    <button
-                      onClick={confirmPendingVoiceRequest}
-                      className="px-2.5 py-1 rounded-lg bg-amber-300 text-zinc-950 font-bold cursor-pointer"
-                    >
-                      Send
-                    </button>
-                    <button
-                      onClick={() => {
-                        setPendingVoiceConfirmation(null);
-                        setCallInput('');
-                        setCallStatus('listening');
-                      }}
-                      className="px-2.5 py-1 rounded-lg bg-white/10 text-zinc-200 font-bold cursor-pointer"
-                    >
-                      Keep speaking
-                    </button>
-                  </motion.div>
-                ) : liveUserSpeech ? (
+                {liveUserSpeech ? (
                   <motion.div 
                     initial={{ opacity: 0, scale: 0.96 }}
                     animate={{ opacity: 1, scale: 1 }}
