@@ -1496,7 +1496,7 @@ select optgroup {
 
 /* Keep the conversation full width; its canvas remains available as an in-page panel. */
 @media (max-width: 1023px) {
-  .agent-header { padding-inline: 16px; }
+  .agent-header { padding-left: 16px; padding-right: 58px; }
   .agent-header > :first-child { padding-right: 44px; flex-wrap: wrap; }
   .agent-canvas { position: absolute; right: 0; top: 0; z-index: 30; }
   .agent-canvas-collapsed { height: auto; width: 44px; }

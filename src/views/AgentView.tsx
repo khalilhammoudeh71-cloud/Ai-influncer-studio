@@ -3134,7 +3134,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
           </div>
 
           {/* Advanced controls stay available without competing with the brief. */}
-          <details className="group relative z-40">
+          <details className="group relative z-40 ml-auto">
             <summary className="flex cursor-pointer list-none items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-semibold text-zinc-300 transition-colors hover:border-[#E7C477]/30 hover:text-[#F2D58D]">
               <Sliders size={14} /> Controls
             </summary>
