@@ -489,7 +489,7 @@ export default function VoiceCloneStudioModal({
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-[100000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+      <div className="fixed inset-0 z-[2147483647] flex items-center justify-center p-2 bg-black/80 backdrop-blur-md sm:p-4">
         <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 15 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
