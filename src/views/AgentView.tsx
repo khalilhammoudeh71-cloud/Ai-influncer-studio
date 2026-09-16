@@ -3343,14 +3343,6 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                   onPlan={data=>setMessages(previous=>[...previous,{id:crypto.randomUUID(),role:'model',content:data.text||'Studio plan ready for review.',nativeVoicePlan:true,status:'clarifying',suggestedSteps:normalizeAgentSteps(data.suggestedSteps),execSteps:normalizeAgentSteps(data.suggestedSteps).map(step=>({...step,status:'pending' as const}))}])}/>
                 <SpeechEnginePilot personaId={effectiveSelectedPersonaId} disabled={isLiveVoiceCallActive} history={messages} model={voiceLlmModel}
                   onMessage={message=>setMessages(previous=>previous.some(item=>item.id===message.id)?previous.map(item=>item.id===message.id?{...item,content:message.content}:item):[...previous.slice(-35),message])}/>
-                <button
-                  type="button"
-                  onClick={isLiveVoiceCallActive ? stopLiveVoiceCall : startLiveVoiceCall}
-                  className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-2 font-semibold text-zinc-300 hover:border-[#E7C477]/30 hover:text-[#F2D58D]"
-                >
-                  {isLiveVoiceCallActive ? <PhoneOff size={14} /> : <PhoneCall size={14} />}
-                  {isLiveVoiceCallActive ? 'End call' : 'Voice call'}
-                </button>
               </div>
             </details>
 
@@ -3969,16 +3961,29 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
 
               </div>
 
-              {/* Right Side: Primary Send Button */}
-              <button
-                type="button"
-                onClick={() => sendMessage()}
-                disabled={isSending || (!inputText.trim() && attachments.length === 0)}
-                className="min-w-28 justify-center rounded-xl bg-[#E7C477] px-5 py-2.5 text-sm font-bold text-[#17130A] shadow-[0_8px_24px_rgba(231,196,119,0.16)] transition-colors hover:bg-[#F2D58D] disabled:pointer-events-none disabled:opacity-40 flex items-center gap-2 shrink-0 cursor-pointer"
-              >
-                <span>Send</span>
-                {isSending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-              </button>
+              {/* Primary actions */}
+              <div className="ml-auto flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={startLiveVoiceCall}
+                  disabled={isSending}
+                  aria-label="Start voice call with Super Agent"
+                  title="Start a live voice call"
+                  className="flex h-10 items-center justify-center gap-2 rounded-xl border border-[#E7C477]/35 bg-[#E7C477]/10 px-3 text-xs font-bold text-[#F2D58D] transition-colors hover:border-[#E7C477]/60 hover:bg-[#E7C477]/15 disabled:pointer-events-none disabled:opacity-40 sm:px-4 sm:text-sm"
+                >
+                  <PhoneCall size={16} />
+                  <span>Voice call</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => sendMessage()}
+                  disabled={isSending || (!inputText.trim() && attachments.length === 0)}
+                  className="min-w-24 justify-center rounded-xl bg-[#E7C477] px-4 py-2.5 text-sm font-bold text-[#17130A] shadow-[0_8px_24px_rgba(231,196,119,0.16)] transition-colors hover:bg-[#F2D58D] disabled:pointer-events-none disabled:opacity-40 flex items-center gap-2 shrink-0 cursor-pointer sm:min-w-28 sm:px-5"
+                >
+                  <span>Send</span>
+                  {isSending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                </button>
+              </div>
             </div>
             </div>
           </div>
