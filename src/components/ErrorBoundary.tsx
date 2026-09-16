@@ -26,6 +26,19 @@ export class ErrorBoundary extends Component<Props, State> {
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('[ErrorBoundary caught error]:', error, errorInfo);
     this.setState({ error, errorInfo });
+    // A deployment can leave an already-open tab with an old lazy chunk URL.
+    // Retry once with a cache-busting query so the new manifest is loaded.
+    if (/dynamically imported module|importing a module script failed|chunk load/i.test(error.message)) {
+      const retryKey = 'studio-dynamic-import-retry';
+      if (!sessionStorage.getItem(retryKey)) {
+        sessionStorage.setItem(retryKey, '1');
+        window.setTimeout(() => {
+          const url = new URL(window.location.href);
+          url.searchParams.set('studio-reload', String(Date.now()));
+          window.location.replace(url.toString());
+        }, 250);
+      }
+    }
   }
 
   private handleReset = () => {
