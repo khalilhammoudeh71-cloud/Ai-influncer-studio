@@ -1,3 +1,10 @@
+import { PersonaControls, ControlSelect, SpeechAccuracySetting } from '../components/PersonaControls';
+import { normalizeCallPreferences, withCallPreferences, type CallPreferences } from '../../shared/voiceCallPreferences';
+import { requestedCallLanguage } from '../../shared/callLanguageSwitch';
+import { VoiceRecheck, audioRecheckEnabled } from '../utils/voiceRecheck';
+import { VoiceAudioBuffer, wavDataUrl } from '../utils/voiceAudioCapture';
+import { PronunciationSettings, pronunciationApi } from '../components/PronunciationSettings';
+import { isPronunciationRequest } from '../../shared/pronunciation';
 import { NativeVoiceCall } from '../components/NativeVoiceCall';
 import { createStreamingSpeech } from '../utils/streamingSpeech';
 import { getSavedPersonaVoice } from '../utils/personaVoiceEngine';
@@ -387,7 +394,7 @@ function detectIntent(message: string): 'image' | 'video' | 'chat' {
 }
 
 export const VOICE_CALL_ENGINES = [
-  { id: AUTO_PERSONA_VOICE_ENGINE, name: 'Use persona’s saved voice', simpleLabel: 'Recommended for this persona', badge: 'Recommended', desc: 'Clones use Eleven v3 with Flash fallback; uncloned personas use Maya' },
+  { id: AUTO_PERSONA_VOICE_ENGINE, name: 'Use persona’s saved voice', simpleLabel: 'Recommended for this persona', badge: 'Recommended', desc: 'Uses the saved speaker and a model appropriate for the persona language' },
   { id: 'eleven_v3_conversational', name: 'ElevenLabs v3 Conversational', simpleLabel: 'Most expressive cloned voice', badge: 'Human (~280ms)', desc: 'Most expressive delivery using the saved cloned voice' },
   { id: 'eleven_flash_v2_5', name: 'ElevenLabs Flash 2.5', simpleLabel: 'Fastest cloned voice', badge: 'Ultra Fast (~75ms)', desc: 'Fastest delivery using the saved cloned voice' },
   { id: 'fal_maya_stream', name: 'Fal Maya Stream', simpleLabel: 'Emotional voice without a clone', badge: 'Variable latency', desc: 'Emotional prompt-designed voice for personas without a clone' },
@@ -433,6 +440,21 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   const [localPersonaOverrides, setLocalPersonaOverrides] = useState<Record<string, Persona>>({});
   const activePersona = localPersonaOverrides[selectedPersonaId] || personas.find(p => p.id === selectedPersonaId) || propActivePersona;
 
+  const [callPreferences,setCallPreferences]=useState<CallPreferences>(()=>{
+    try{return normalizeCallPreferences(JSON.parse(accountLocalStorage.getItem(`voice-call-preferences_${activePersona.id}`)||'null'));}catch{return normalizeCallPreferences();}
+  });
+  const callPreferencesRef=useRef(callPreferences);callPreferencesRef.current=callPreferences;
+  const callPersonaRef=useRef(activePersona);callPersonaRef.current=withCallPreferences(activePersona,callPreferences);
+  useEffect(()=>{
+    let next:CallPreferences;
+    try{next=normalizeCallPreferences(JSON.parse(accountLocalStorage.getItem(`voice-call-preferences_${activePersona.id}`)||'null'));}catch{next=normalizeCallPreferences();}
+    setCallPreferences(next);callPreferencesRef.current=next;callPersonaRef.current=withCallPreferences(activePersona,next);
+  },[activePersona.id]);
+  const updateCallPreferences=(next:CallPreferences,save=true)=>{
+    callPreferencesRef.current=next;callPersonaRef.current=withCallPreferences(activePersona,next);setCallPreferences(next);
+    if(save)accountLocalStorage.setItem(`voice-call-preferences_${activePersona.id}`,JSON.stringify(next));
+  };
+
   useEffect(() => {
     const handlePersonaUpdated = (e: any) => {
       const updated = e.detail as Persona;
@@ -473,11 +495,13 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     return savedEngine || AUTO_PERSONA_VOICE_ENGINE;
   });
 
+  const selectedVoiceEngineRef=useRef(selectedVoiceEngine);selectedVoiceEngineRef.current=selectedVoiceEngine;
+  const voiceLlmModelRef=useRef(voiceLlmModel);voiceLlmModelRef.current=voiceLlmModel;
   const [voicePlaybackNotice, setVoicePlaybackNotice] = useState('');
 
   const handleVoiceEngineChange = (engineId: string) => {
     setVoicePlaybackNotice('');
-    setSelectedVoiceEngine(engineId);
+    selectedVoiceEngineRef.current=engineId;setSelectedVoiceEngine(engineId);
     localStorage.setItem('agent_voice_engine', engineId);
     const found = VOICE_CALL_ENGINES.find(e => e.id === engineId);
     if (found) {
@@ -487,7 +511,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 
   const handleVoiceLlmChange = (modelId: string) => {
     const normalizedModel = normalizePersonaLlmId(modelId);
-    setVoiceLlmModel(normalizedModel);
+    voiceLlmModelRef.current=normalizedModel;setVoiceLlmModel(normalizedModel);
     localStorage.setItem('agent_voice_llm', normalizedModel);
     localStorage.setItem('agent_voice_llm_user_selected', '1');
     const selected = PERSONA_LLM_OPTIONS.find(model => model.id === normalizedModel);
@@ -505,10 +529,12 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     messagesRef.current = messages;
   }, [messages]);
 
-  const [activeSegment, setActiveSegment] = useState<'chat' | 'replies'>('chat');
+  const [activeSegment, setActiveSegment] = useState<'chat' | 'replies'>(()=>accountLocalStorage.getItem('persona_chat_mode')==='replies'?'replies':'chat');
   const [replyInput, setReplyInput] = useState('');
   const [generatedReplies, setGeneratedReplies] = useState<string[]>([]);
   const [showEngineSettings, setShowEngineSettings] = useState(false);
+  const [controlsTab,setControlsTab]=useState<'conversation'|'voice'|'memory'>('conversation');
+  const [nativeCallRequest,setNativeCallRequest]=useState(0);
   const engineDialogRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!showEngineSettings) return;
@@ -787,6 +813,25 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   const voiceUtteranceStartedAtRef = useRef<number | null>(null);
   const lastVoiceFeatureCaptureAtRef = useRef(0);
   const [showVoiceAccuracyPanel, setShowVoiceAccuracyPanel] = useState(false);
+  const [accurateTranscription,setAccurateTranscription]=useState(()=>audioRecheckEnabled(accountLocalStorage.getItem('voice_audio_verification')));
+  const accurateTranscriptionRef=useRef(accurateTranscription);
+  accurateTranscriptionRef.current=accurateTranscription;
+  const capturedVoiceRef=useRef<VoiceAudioBuffer|null>(null);
+  const captureNodeRef=useRef<AudioWorkletNode|null>(null);
+  const verificationRef=useRef<AbortController|null>(null);
+  const voiceRecheckRef = useRef(new VoiceRecheck());
+  const voiceSessionEpochRef = useRef(0);
+  const acousticSpeechStartRef = useRef<number|null>(null);
+  const activePersonaIdRef = useRef(activePersona.id);
+  activePersonaIdRef.current = activePersona.id;
+  const [verifyingSpeech,setVerifyingSpeech]=useState(false);
+  const [transcriptionNotice,setTranscriptionNotice]=useState('');
+  const [pronunciationRevision,setPronunciationRevision]=useState(0);
+  const [pronunciationCandidate,setPronunciationCandidate]=useState<{word:string;spokenAs:string}|null>(null);
+  const pronunciationCandidateRef=useRef(pronunciationCandidate);
+  pronunciationCandidateRef.current=pronunciationCandidate;
+  const lastCapturedTurnRef=useRef(0);
+
   const [editingVoiceTranscriptId, setEditingVoiceTranscriptId] = useState<string | null>(null);
   const [voiceCorrectionDraft, setVoiceCorrectionDraft] = useState('');
   const [manualHeardDraft, setManualHeardDraft] = useState('');
@@ -1110,8 +1155,12 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 
   // ── Adaptive Acoustic Echo-Cancelled VAD Interruption Monitor ───
   const startVadInterruptionMonitor = async (allowOutsideCall = false): Promise<boolean> => {
-    if (vadAudioCtxRef.current) return true;
+    if (vadAudioCtxRef.current) {
+      if (!isCallActiveRef.current || captureNodeRef.current) return true;
+      stopVadInterruptionMonitor();
+    }
     if (!isCallActiveRef.current && !allowOutsideCall) return false;
+    const sessionEpoch=voiceSessionEpochRef.current;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -1120,6 +1169,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           autoGainControl: true,
         }
       });
+      if (voiceSessionEpochRef.current!==sessionEpoch || (!isCallActiveRef.current && !voiceEnrollmentActiveRef.current)) { stream.getTracks().forEach(track=>track.stop()); return false; }
       vadStreamRef.current = stream;
 
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
@@ -1136,6 +1186,16 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       analyser.fftSize = 512;
       analyser.smoothingTimeConstant = 0.20;
       source.connect(analyser);
+      if (isCallActiveRef.current) {
+        try {
+          await ctx.audioWorklet.addModule('/voice-capture.worklet.js');
+          if (!isCallActiveRef.current || vadAudioCtxRef.current !== ctx) return false;
+          const capture=new AudioWorkletNode(ctx,'voice-capture');
+          const ring=new VoiceAudioBuffer(ctx.sampleRate);capturedVoiceRef.current=ring;captureNodeRef.current=capture;
+          capture.port.onmessage=event=>{if(isCallActiveRef.current&&!isMutedRef.current)ring.push(event.data);};
+          const silent=ctx.createGain();silent.gain.value=0;source.connect(capture);capture.connect(silent);silent.connect(ctx.destination);
+        } catch { setTranscriptionNotice('Audio recheck is unavailable in this browser. Review the transcript before sending.'); }
+      }
 
       const buffer = new Uint8Array(analyser.frequencyBinCount);
       let sustainedSpeechFrames = 0;
@@ -1159,13 +1219,14 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         const avgEnergy = binCount > 0 ? (sum / binCount) / 255 : 0;
 
         // Capture a compact spectral signature while someone is speaking.
-        // Only feature vectors are retained; microphone audio never leaves
-        // this analyser or gets stored in the speaker profile.
+        // Only feature vectors enter the speaker profile. A separate bounded PCM
+        // buffer supplies the optional audio transcription recheck.
         const now = Date.now();
         const featureThreshold = Math.max(
           voiceEnrollmentActiveRef.current ? 0.045 : 0.07,
           dynamicNoiseFloor + 0.015,
         );
+        if (avgEnergy > featureThreshold && !isAgentSpeakingRef.current && acousticSpeechStartRef.current === null) acousticSpeechStartRef.current = now;
         if (avgEnergy > featureThreshold && now - lastVoiceFeatureCaptureAtRef.current >= 45) {
           const vector = extractVoiceFeatureVector(buffer, ctx.sampleRate, analyser.fftSize);
           if (vector) {
@@ -1224,6 +1285,9 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   };
 
   const stopVadInterruptionMonitor = () => {
+    voiceRecheckRef.current.reset();verificationRef.current?.abort();verificationRef.current=null;setVerifyingSpeech(false);
+    voiceSessionEpochRef.current++;acousticSpeechStartRef.current=null;
+    captureNodeRef.current?.port.close();captureNodeRef.current?.disconnect();captureNodeRef.current=null;capturedVoiceRef.current?.clear();capturedVoiceRef.current=null;
     if (vadAnimFrameRef.current) {
       cancelAnimationFrame(vadAnimFrameRef.current);
       vadAnimFrameRef.current = null;
@@ -1240,8 +1304,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     }
   };
 
-  function commitRecognizedVoiceTranscript(rawTranscript: string) {
-    const corrected = applyVoiceCorrections(
+  async function commitRecognizedVoiceTranscript(rawTranscript: string) {
+    let corrected = applyVoiceCorrections(
       rawTranscript,
       voiceAccuracyProfileRef.current.corrections,
     );
@@ -1297,6 +1361,60 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       setLiveUserSpeech('');
       return;
     }
+    const pending=voiceRecheckRef.current.begin(rawTranscript,Math.max(lastCapturedTurnRef.current, (acousticSpeechStartRef.current ?? utteranceStartedAt)-400));
+    rawTranscript=pending.text;
+    corrected=applyVoiceCorrections(rawTranscript,voiceAccuracyProfileRef.current.corrections);
+    acousticSpeechStartRef.current=null;
+    const wav=capturedVoiceRef.current?.wavSince(pending.start);
+    const audio=wav?wavDataUrl(wav):undefined;
+    const verification=pending.controller;verificationRef.current=verification;
+    const acceptAudio=()=>{voiceRecheckRef.current.finish(verification);lastCapturedTurnRef.current=now;};
+    const verifiedPersonaId=activePersona.id;
+    const stillCurrent=()=>activePersonaIdRef.current===verifiedPersonaId&&!verification.signal.aborted&&isCallActiveRef.current&&!isMutedRef.current&&verificationRef.current===verification;
+    if(accurateTranscriptionRef.current) {
+      setVerifyingSpeech(true);setTranscriptionNotice('');
+      try {
+        if(now-pending.start>44000)throw new Error('That phrase was long. Check the transcript before sending.');
+        if(!audio)throw new Error('Audio was not captured. Check or edit the transcript before sending.');
+        const response=await authFetch('/api/voice-recognition/verify',{method:'POST',headers:{'Content-Type':'application/json'},signal:AbortSignal.any([verification.signal,AbortSignal.timeout(14000)]),body:JSON.stringify({personaId:activePersona.id,audio,draft:rawTranscript,preferences:callPreferencesRef.current,context:callTranscriptRef.current.slice(-3)})});
+        const result=await response.json();if(!response.ok)throw new Error(result.error||'Audio recheck failed.');
+        if(!stillCurrent())return;
+        // Keep the audio-grounded result verbatim; old text substitutions must not rewrite it.
+        corrected=String(result.text||rawTranscript).trim();
+        if(result.needsConfirmation) {
+          acceptAudio();
+          setPendingVoiceConfirmation(corrected);setCallInput(corrected);setLiveUserSpeech('');
+          setTranscriptionNotice('I’m not certain I heard this correctly. Edit or send the text below.');setCallStatus('listening');return;
+        }
+      } catch(error) {
+        if(!stillCurrent())return;
+        acceptAudio();setPendingVoiceConfirmation(corrected);setCallInput(corrected);setLiveUserSpeech('');setCallStatus('listening');
+        setTranscriptionNotice(error instanceof Error?error.message:'Check the transcript before sending.');return;
+      } finally {if(verificationRef.current===verification)setVerifyingSpeech(false);}
+    }
+    if(!stillCurrent())return;
+    acceptAudio();
+    const pendingPronunciation=pronunciationCandidateRef.current;
+    if(pendingPronunciation && /^(?:yes|correct|that[’']?s right|save it|نعم|صح|صحيح|ايوه|أيوه|اه|آه|تمام)[.!؟]*$/iu.test(corrected.trim())) {
+      await saveLearnedPronunciation(pendingPronunciation);return;
+    }
+    if(pendingPronunciation && /^(?:no|cancel|لا|غلط)[.!؟]*$/iu.test(corrected.trim())) {setPronunciationCandidate(null);return;}
+    if(isPronunciationRequest(corrected)) {
+      setVerifyingSpeech(true);
+      try {
+        const result=await pronunciationApi(activePersona.id,'/suggest',{method:'POST',body:JSON.stringify({text:corrected,audio}),signal:verification.signal});
+        if(!stillCurrent())return;
+
+        if(result.candidate) {
+          setPronunciationCandidate(result.candidate);setLiveUserSpeech('');setCallStatus('listening');
+          setTranscriptionNotice('Listen to the correction, then say “yes” to remember it, or edit it below.');
+          await playTTS(result.candidate.spokenAs);return;
+        }
+        setTranscriptionNotice('The two pronunciations have the same written form. Add a phonetic spelling in Remembered pronunciations.');setShowVoiceAccuracyPanel(true);
+      } catch {if(stillCurrent())setTranscriptionNotice('Could not learn that pronunciation. Add it in Remembered pronunciations.');}
+      finally {if(verificationRef.current===verification)setVerifyingSpeech(false);}
+    }
+    if(!stillCurrent())return;
     lastCommittedTranscriptRef.current = { text: corrected, at: now };
 
     if (needsVoiceConfirmation(corrected)) {
@@ -1318,6 +1436,19 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       transcriptCommittedAt,
     });
   }
+
+  const saveLearnedPronunciation = async (pair:{word:string;spokenAs:string}) => {
+    const personaId=activePersona.id, epoch=voiceSessionEpochRef.current;
+    const current=()=>activePersonaIdRef.current===personaId && voiceSessionEpochRef.current===epoch && isCallActiveRef.current;
+    try {
+      await pronunciationApi(personaId,'',{method:'PUT',body:JSON.stringify(pair)});
+      if(!current())return;
+      setPronunciationCandidate(null);setPronunciationRevision(n=>n+1);setLiveUserSpeech('');
+      setTranscriptionNotice(`Remembered: ${pair.word} → ${pair.spokenAs}`);
+      toast.success('Pronunciation remembered for this persona');
+      await playTTS(recognitionLanguage(activePersona).scribe==='ar'?'تمام، رح أتذكر هاللفظ.':'Got it. I’ll remember that pronunciation.');
+    } catch(error) {if(current())setTranscriptionNotice(error instanceof Error?error.message:'Could not save pronunciation.');}
+  };
 
   const clearPendingRealtimeTranscript = () => {
     if (realtimeCommitTimerRef.current) {
@@ -1389,14 +1520,12 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           token: tokenData.token,
           modelId: 'scribe_v2_realtime',
           commitStrategy: CommitStrategy.VAD,
-          // Commit sooner, then let the client-side transcript-aware grace
-          // window decide whether a complete thought should move immediately
-          // or an unfinished clause should keep listening.
+          // Leave room for pauses within a phrase before verifying the completed audio.
           vadSilenceThresholdSecs: 0.85,
           vadThreshold: 0.42,
           minSpeechDurationMs: 160,
           minSilenceDurationMs: 140,
-          languageCode: recognitionLanguage(activePersona).scribe,
+          ...(callPreferencesRef.current.allowLanguageSwitching ? {} : {languageCode: recognitionLanguage(callPersonaRef.current).scribe}),
           keyterms: buildVoiceKeyterms(voiceAccuracyProfileRef.current, [
             ...personas.map(persona => persona.name),
             activePersona?.name,
@@ -1469,6 +1598,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
             return;
           }
 
+          voiceRecheckRef.current.interrupt();verificationRef.current?.abort();setVerifyingSpeech(false);
           if (voiceSpeechStartedAtRef.current === null) {
             voiceSpeechStartedAtRef.current = performance.now();
             voiceUtteranceStartedAtRef.current = Date.now();
@@ -1645,7 +1775,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       const rec = new SpeechRecognition();
       rec.continuous = true;
       rec.interimResults = true;
-      rec.lang = recognitionLanguage(activePersona).browser;
+      rec.lang = recognitionLanguage(callPersonaRef.current).browser;
       rec.maxAlternatives = 1;
       recognitionStartIndexRef.current = 0;
 
@@ -1684,6 +1814,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           return;
         }
 
+        voiceRecheckRef.current.interrupt();verificationRef.current?.abort();setVerifyingSpeech(false);
         if (voiceSpeechStartedAtRef.current === null) {
           voiceSpeechStartedAtRef.current = performance.now();
           voiceUtteranceStartedAtRef.current = Date.now();
@@ -1799,6 +1930,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     if (isMuted) {
       clearPendingRealtimeTranscript();
       setLiveUserSpeech('');
+      voiceRecheckRef.current.reset();verificationRef.current?.abort();setVerifyingSpeech(false);capturedVoiceRef.current?.clear();acousticSpeechStartRef.current=null;
       try { scribeConnectionRef.current?.mute(); } catch {}
       stopSpeechRecognition();
     } else if (isCallActiveRef.current) {
@@ -1971,7 +2103,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   };
 
   const playTTS = async (text: string, onStart?: () => void, voiceRouting?: FrozenVoiceRouting) => {
-    const speechPersona = voiceRouting?.persona || activePersona;
+    const speechPersona = voiceRouting?.persona || callPersonaRef.current;
+    const selectedVoiceEngine=selectedVoiceEngineRef.current;
     currentPersonaSpeechRef.current = text.toLowerCase().trim();
     if (!speakerOn) {
       isAgentSpeakingRef.current = false;
@@ -2126,7 +2259,12 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     },
   ) => {
     const text = (overrideText || callInput).trim();
+    const requestedLanguage=requestedCallLanguage(text,callPreferencesRef.current);
+    if(requestedLanguage)updateCallPreferences(requestedLanguage,false);
+    const activePersona=callPersonaRef.current;
+    const selectedVoiceEngine=selectedVoiceEngineRef.current, voiceLlmModel=voiceLlmModelRef.current;
     if (!text || !isCallActiveRef.current) return;
+    voiceRecheckRef.current.reset();verificationRef.current?.abort();verificationRef.current=null;setVerifyingSpeech(false);setTranscriptionNotice('');
     if (voiceCallBusyRef.current || isAgentSpeakingRef.current) {
       console.log('[Call Voice] ⚡ New turn interrupted the active response');
       interruptPersona();
@@ -2620,7 +2758,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         setCallStatus('thinking');
         isAgentSpeakingRef.current = false;
         voiceCallBusyRef.current = true;
-        
+
         // Stop any currently playing audio instance to prevent overlapping voices
         const existingAudio = audioRef.current as HTMLAudioElement | null;
         if (existingAudio) {
@@ -2671,12 +2809,12 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           if (audioRef.current === audio) audioRef.current = null;
           onCallAudioEnded();
         };
-        
+
         setCallTranscript(prev => {
           if (prev.some(m => m.id === personaMsg.id)) return prev;
           return [...prev, personaMsg];
         });
-        
+
         if (isCallActiveRef.current) {
           try {
             await audio.play();
@@ -2987,7 +3125,9 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 
   // Start Hands-Free Live Call with Interruption support
   const handleStartCall = async () => {
+    try{updateCallPreferences(normalizeCallPreferences(JSON.parse(accountLocalStorage.getItem(`voice-call-preferences_${activePersona.id}`)||'null')),false);}catch{}
     setShowSpeakerLockSetup(false);
+    voiceSessionEpochRef.current++;voiceRecheckRef.current.reset();
     const greetingTurnId = ++callTurnIdRef.current;
     setIsCallActive(true);
     setActiveCallMedia(null);
@@ -3006,6 +3146,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     setLastSpeakerMatchScore(null);
     setVoicePlaybackNotice('');
     setCallStatus('connecting');
+    lastCapturedTurnRef.current=Date.now();setTranscriptionNotice('');setPronunciationCandidate(null);
     setCallDuration(0);
     isAgentSpeakingRef.current = false;
     voiceCallBusyRef.current = true;
@@ -3039,7 +3180,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     // the greeting, and the local analyser serially made every call opening pay
     // all three latencies even though none depends on the others.
     const realtimeStartPromise = startRealtimeTranscription();
-    const greetingPromise = fetchDynamicGreeting(activePersona, 'voice');
+    const greetingPromise = fetchDynamicGreeting(callPersonaRef.current, 'voice');
     void startVadInterruptionMonitor();
     const realtimeStarted = await realtimeStartPromise;
     if (!isCallActiveRef.current) return;
@@ -3160,6 +3301,9 @@ export default function AssistantView({ personas, persona: propActivePersona, on
     }
   }, [activePersona.id, rememberPersonaSpeech, stopStreamingAudio]);
 
+  // End the old audio session before moving to a different persona.
+  useEffect(()=>()=>{handleEndCall();},[activePersona.id]);
+
   // Cleanup on component unmount
   useEffect(() => {
     return () => {
@@ -3211,11 +3355,11 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       setEditModels(em);
       setVideoModels(vm);
       if (em.length > 0) {
-        const seedream5Pro = pickDefaultImageModel(em);
+        const seedream5Pro = em.find(m=>m.id===accountLocalStorage.getItem('persona_chat_image_model'))||pickDefaultImageModel(em);
         if (seedream5Pro) setSelectedEditModelId(seedream5Pro.id);
       }
       if (vm.length > 0) {
-        const wan3 = pickDefaultVideoModel(vm);
+        const wan3 = vm.find(m=>m.id===accountLocalStorage.getItem('persona_chat_video_model'))||pickDefaultVideoModel(vm);
         if (wan3) setSelectedVideoModelId(wan3.id);
       }
       setModelsLoaded(true);
@@ -3748,11 +3892,11 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
     <div className="flex h-full w-full flex-col items-center justify-center bg-[#121316] p-2 sm:p-3.5 md:p-4">
       {/* Framed Chatting Window Box with Visible Border */}
       <div className="w-full h-full max-w-[1320px] flex flex-col bg-[#16171b] border border-white/[0.14] rounded-2xl sm:rounded-3xl shadow-[0_16px_48px_rgba(0,0,0,0.85)] overflow-hidden ring-1 ring-white/[0.04]">
-        
+
         {/* Sleek Charcoal Minimal Header */}
         <header className="sticky top-0 z-20 bg-[#1c1d22]/95 backdrop-blur-xl border-b border-white/[0.09] px-4 sm:px-5 py-2.5">
           <div className="flex items-center justify-between gap-3 flex-wrap">
-            
+
             {/* Left: Active Persona Identity & Fast Switcher */}
             <div className="flex items-center gap-3 min-w-0">
               <div 
@@ -3798,78 +3942,16 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
             {/* Right: Mode Switcher + AI Settings + Quick Actions + Voice Call */}
             <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
 
-              {/* View Mode Toggle */}
-              <div className="flex bg-[#141518] border border-white/[0.08] rounded-xl p-1 text-xs">
-                <button
-                  onClick={() => setActiveSegment('chat')}
-                  className={cn(
-                    "px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer",
-                    activeSegment === 'chat' ? "bg-white/[0.14] text-white shadow-sm" : "text-zinc-400 hover:text-white"
-                  )}
-                >
-                  Chat
-                </button>
-                <button
-                  onClick={() => setActiveSegment('replies')}
-                  className={cn(
-                    "px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer",
-                    activeSegment === 'replies' ? "bg-white/[0.14] text-white shadow-sm" : "text-zinc-400 hover:text-white"
-                  )}
-                >
-                  Auto Replies
-                </button>
-              </div>
-
-              {/* AI Model & Voice Config Trigger */}
-              <button
-                onClick={() => setShowEngineSettings(true)}
-                title={isPro ? 'Configure AI Models & Voice Engines' : 'Choose conversation and voice priorities'}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#24252b] hover:bg-[#2b2c33] border border-white/[0.09] text-zinc-200 hover:text-white text-xs font-semibold transition-all cursor-pointer shadow-sm"
-              >
-                <SlidersHorizontal size={13} className="text-zinc-400" />
-                <span className="hidden sm:inline">{isPro ? 'Pro Models' : 'AI Settings'}</span>
-              </button>
-
-              <button
-                onClick={openMemoryCenter}
-                title={`Open ${activePersona.name}'s Memory Center`}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#24252b] hover:bg-[#2b2c33] border border-white/[0.09] text-zinc-200 hover:text-white text-xs font-semibold transition-all cursor-pointer shadow-sm"
-              >
-                <Brain size={13} className="text-[#E7C477]" />
-                <span className="hidden sm:inline">Memory</span>
-              </button>
-
-              {/* New Chat */}
-              <button
-                onClick={clearHistory}
-                title="Start a fresh conversation"
-                aria-label="Start a fresh conversation"
-                className="p-2 rounded-xl bg-[#24252b] hover:bg-[#2b2c33] border border-white/[0.09] text-zinc-300 hover:text-white transition-all cursor-pointer"
-              >
-                <Plus size={14} />
-              </button>
-
-              {/* Clear History */}
-              <button
-                onClick={clearHistory}
-                title="Clear message history"
-                aria-label="Clear message history"
-                className="p-2 rounded-xl bg-[#24252b] hover:bg-rose-500/10 border border-white/[0.09] hover:border-rose-500/20 text-zinc-400 hover:text-rose-400 transition-all cursor-pointer"
-              >
-                <Trash2 size={14} />
-              </button>
-
-              <NativeVoiceCall personaId={propActivePersona.id} disabled={isCallActive} memories={loadPersonaMemories(propActivePersona.id)} history={messages}
+              <button type="button" onClick={()=>{setControlsTab('conversation');setShowEngineSettings(true);}} className="flex min-h-11 items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-medium text-zinc-200 hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-[#E7C477]"><SlidersHorizontal size={16}/>Settings / Controls</button>
+              <NativeVoiceCall hideTrigger openRequest={nativeCallRequest} initialPreferences={callPreferences} initialModel={selectedVoiceEngine} personaId={activePersona.id} disabled={isCallActive} memories={loadPersonaMemories(activePersona.id)} history={messages}
                 onMessage={message=>setMessages(previous=>previous.some(item=>item.id===message.id)?previous.map(item=>item.id===message.id?{...item,content:message.content}:item):[...previous,{...message,role:message.role==='user'?'user':'persona',type:'text',timestamp:new Date(),source:'voice'}])}
                 onPlan={data=>setMessages(previous=>[...previous,{id:crypto.randomUUID(),role:'persona',content:(data.text||'Studio plan ready.')+'\n'+(data.suggestedSteps||[]).map((step:any,index:number)=>`${index+1}. ${String(step.description||step.type||'Proposed task').replace(/_/g,' ')}`).join('\n')+'\nProposed only. Open Super Agent to review and execute studio actions.',type:'text',timestamp:new Date(),source:'voice'}])}/>
-              <SpeechEnginePilot personaId={propActivePersona.id} disabled={isCallActive} model={voiceLlmModel} memories={loadPersonaMemories(propActivePersona.id)} history={messages.map(message=>({role:message.role==='user'?'user':'model',content:message.content}))}
-                onMessage={message=>setMessages(previous=>previous.some(item=>item.id===message.id)?previous.map(item=>item.id===message.id?{...item,content:message.content}:item):[...previous,{...message,role:message.role==='user'?'user':'persona',type:'text',timestamp:new Date(),source:'voice'}])}/>
               {/* Live Voice Call Button */}
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={requestStartCall}
-                className="flex items-center gap-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-400 px-3.5 py-1.5 rounded-xl font-semibold text-xs transition-all shadow-sm cursor-pointer"
+                className="flex items-center gap-1.5 min-h-11 bg-[#E7C477] hover:brightness-105 border border-[#E7C477]/30 text-[#19160f] px-4 py-2 rounded-xl font-semibold text-xs transition-all shadow-sm cursor-pointer"
               >
                 <Phone size={13} />
                 <span>Voice Call</span>
@@ -3993,7 +4075,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
               className="w-full premium-input bg-[var(--bg-surface)] p-4 text-sm min-h-[100px] outline-none text-[var(--text-primary)] placeholder-[var(--text-muted)] rounded-xl border border-[var(--border-default)] focus:border-violet-500/50 transition-colors"
             />
           </div>
-          
+
           <motion.button 
             whileHover={{ scale: 1.02, y: -1 }}
             whileTap={{ scale: 0.97 }}
@@ -4457,7 +4539,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                   <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">{activePersona.niche}</span>
                 </div>
               </div>
-              
+
               {/* Voice Status & Voice Engine Selector & Call Duration */}
               <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
                 <div 
@@ -4488,11 +4570,11 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                     onChange={e => handleVoiceEngineChange(e.target.value)}
                     className="w-full min-w-0 bg-[#1c1d22] hover:bg-[#222329] border border-white/[0.12] text-zinc-200 text-[11px] font-semibold rounded-lg px-2.5 py-1 outline-none cursor-pointer backdrop-blur-md transition-all"
                     title={isPro ? 'Select Voice Engine' : 'Choose what the voice should prioritize'}
-                    aria-label={isPro ? 'Voice engine' : 'Voice priority'}
+                    aria-label="Voice engine"
                   >
                     {VOICE_CALL_ENGINES.map(eng => (
                       <option key={eng.id} value={eng.id} disabled={eng.id === 'fal_maya_stream' && recognitionLanguage(activePersona).scribe === 'ar'} className="bg-[#1c1d22] text-white">
-                        {eng.id === 'fal_maya_stream' && recognitionLanguage(activePersona).scribe === 'ar' ? 'Maya — unavailable for Arabic' : isPro ? `${eng.name} (${eng.badge})` : eng.simpleLabel}
+                        {eng.id === 'fal_maya_stream' && recognitionLanguage(activePersona).scribe === 'ar' ? 'Maya — unavailable for Arabic' : `${eng.name} (${eng.badge})`}
                       </option>
                     ))}
                   </select>
@@ -4505,7 +4587,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                       ? "bg-[#E7C477]/15 border-[#E7C477]/45 text-[#F2D58D]"
                       : "bg-white/5 border-white/10 hover:bg-white/10",
                   )}
-                  title="Voice accuracy and personal vocabulary"
+                  title="Voice accuracy and pronunciation settings" aria-label="Voice accuracy and pronunciation settings"
                 >
                   <SlidersHorizontal size={14} />
                 </button>
@@ -4554,6 +4636,15 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
               </div>
             </div>
 
+            {(verifyingSpeech || transcriptionNotice) && <p role="status" className="mx-4 mt-2 rounded-lg bg-[#E7C477]/10 p-3 text-xs text-[#E7C477]">{verifyingSpeech?'Checking what you said…':transcriptionNotice}</p>}
+            {pronunciationCandidate && <div className="mx-4 mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-[#E7C477]/30 p-3">
+              <span className="text-xs text-zinc-300">Remember pronunciation</span>
+              <input aria-label="Correction word" dir="auto" value={pronunciationCandidate.word} onChange={e=>setPronunciationCandidate({...pronunciationCandidate,word:e.target.value})} className="min-w-0 flex-1 rounded-lg bg-black/30 p-2"/>
+              <input aria-label="Correct pronunciation" dir="auto" value={pronunciationCandidate.spokenAs} onChange={e=>setPronunciationCandidate({...pronunciationCandidate,spokenAs:e.target.value})} className="min-w-0 flex-1 rounded-lg bg-black/30 p-2"/>
+              <button type="button" onClick={()=>void playTTS(pronunciationCandidate.spokenAs)} className="p-2" aria-label="Listen to corrected pronunciation"><Play size={16}/></button>
+              <button type="button" onClick={()=>void saveLearnedPronunciation(pronunciationCandidate)} className="rounded-lg bg-[#E7C477] px-3 py-2 text-black">Remember</button>
+              <button type="button" onClick={()=>setPronunciationCandidate(null)} className="p-2">Cancel</button>
+            </div>}
             <AnimatePresence>
               {showVoiceAccuracyPanel && (
                 <motion.div
@@ -4562,6 +4653,8 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                   exit={{ opacity: 0, y: -8, scale: 0.98 }}
                   className="absolute top-16 right-4 sm:right-6 z-[70] w-[min(92vw,430px)] max-h-[72vh] overflow-y-auto custom-scrollbar rounded-2xl border border-white/[0.14] bg-[#17181d]/98 shadow-2xl backdrop-blur-2xl p-4 space-y-4"
                 >
+<SpeechAccuracySetting enabled={accurateTranscription} onChange={enabled=>{setAccurateTranscription(enabled);accountLocalStorage.setItem('voice_audio_verification',enabled?'on':'off');}}/>
+                  <PronunciationSettings personaId={activePersona.id} revision={pronunciationRevision} onPreview={isCallActive ? text=>void playTTS(text) : undefined}/>
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="flex items-center gap-2 text-white font-bold">
@@ -5283,11 +5376,11 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            ref={engineDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Models and voice"
+            ref={engineDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Settings / Controls"
             onKeyDown={event => {
               if (event.key === 'Escape') setShowEngineSettings(false);
               if (event.key === 'Tab') {
-                const nodes = Array.from(engineDialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), select:not(:disabled), input:not(:disabled)') || []);
+                const nodes = Array.from(engineDialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), select:not(:disabled), input:not(:disabled), summary') || []).filter(node=>node.getClientRects().length>0 && node.tabIndex>=0);
                 const first = nodes[0], last = nodes[nodes.length - 1];
                 if (event.shiftKey && (document.activeElement === first || document.activeElement === engineDialogRef.current)) { event.preventDefault(); last?.focus(); }
                 else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
@@ -5296,237 +5389,20 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
             className="fixed inset-0 z-[200] bg-black/85 backdrop-blur-xl flex items-center justify-center p-4 sm:p-6"
             onClick={() => setShowEngineSettings(false)}
           >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 15 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 15 }}
-              transition={{ duration: 0.2, ease: "easeOut" }}
-              onClick={e => e.stopPropagation()}
-              className="w-full max-w-xl bg-[#0b0e14]/98 border border-white/[0.12] rounded-3xl p-5 shadow-[0_30px_90px_rgba(0,0,0,0.6)] flex flex-col gap-4 max-h-[calc(100dvh-2rem)] overflow-hidden"
-            >
-              {/* Header */}
-              <div className="flex items-center justify-between border-b border-white/[0.08] pb-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-white/[0.06] border border-white/10 flex items-center justify-center shadow-inner">
-                    <SlidersHorizontal size={18} className="text-zinc-200" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-bold text-white tracking-tight">
-                      {isPro ? 'Models & voice' : 'Choose How Your Persona Responds'}
-                    </h3>
-                    <p className="text-xs text-zinc-400 mt-0.5">
-                      {isPro
-                        ? 'Choose your conversation, image, video, and voice settings.'
-                        : 'Pick the result you want; the studio chooses the technology behind it'}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setShowEngineSettings(false)}
-                  className="w-8 h-8 rounded-full bg-white/[0.04] hover:bg-white/10 border border-white/[0.08] flex items-center justify-center text-zinc-400 hover:text-white transition-colors cursor-pointer"
-                >
-                  <X size={15} />
-                </button>
-              </div>
-
-              <div className="space-y-4 text-xs overflow-y-auto overscroll-contain min-h-0 custom-scrollbar pr-1">
-                
-                {/* 1. Intelligence & Reasoning Card */}
-                <div className="p-4 rounded-2xl bg-white/[0.025] border border-white/[0.06] space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-300">
-                      {isPro ? 'Reasoning & Conversation Engine' : 'Conversation priority'}
-                    </span>
-                  </div>
-                  <div className="relative">
-                    <select
-                      value={voiceLlmModel}
-                      onChange={event => handleVoiceLlmChange(event.target.value)}
-                      className="w-full bg-[#1c1d22] border border-white/[0.1] hover:border-white/20 focus:border-white/30 rounded-xl px-3.5 py-3 text-sm text-white font-medium outline-none cursor-pointer appearance-none transition-all pr-9 shadow-inner"
-                      aria-label={isPro ? 'Conversation LLM' : 'Conversation priority'}
-                    >
-                      {PERSONA_LLM_OPTIONS.map((model, index) => (
-                        <option key={model.id} value={model.id} className="bg-[#1c1d22] text-white">
-                          {`${index + 1}. ${isPro ? `${model.name} (${model.badge})` : model.simpleLabel}`}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown size={14} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
-                  </div>
-                  <p className="text-[11px] text-zinc-500 leading-normal">
-                    {isPro
-                      ? 'Powers text dialogue, voice agent reasoning, roleplay fidelity, and multimodal context.'
-                      : 'Changes the balance between natural conversation, speed, creativity, reasoning, and roleplay.'}
-                  </p>
-                </div>
-
-                {/* 2. Acoustics & Voice Engine Card */}
-                <div className="p-4 rounded-2xl bg-white/[0.025] border border-white/[0.06] space-y-3.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-300">
-                      {isPro ? 'Voice Persona & Synthesis' : 'Voice priority'}
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {/* Voice Character Status */}
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-                        Voice Identity
-                      </label>
-                      <div className="w-full bg-[#1c1d22] border border-white/10 rounded-xl px-3 py-2.5 flex items-center justify-between shadow-inner">
-                        <div className="flex items-center gap-2 truncate">
-                          <span className="w-2 h-2 rounded-full bg-[#E7C477] flex-shrink-0" />
-                          <span className="text-xs text-white font-medium truncate">
-                            🎙️ {activePersona.name}
-                          </span>
-                        </div>
-                          </div>
-                    </div>
-
-                    {/* Synthesis Latency Engine */}
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-                        {isPro ? 'Voice engine' : 'What should the voice prioritize?'}
-                      </label>
-                      <div className="relative">
-                        <select
-                          value={selectedVoiceEngine}
-                          onChange={e => handleVoiceEngineChange(e.target.value)}
-                          className="w-full bg-[#1c1d22] border border-white/[0.1] hover:border-white/20 focus:border-white/30 rounded-xl px-3 py-2.5 text-xs text-white font-medium outline-none cursor-pointer appearance-none transition-all pr-8 shadow-inner truncate"
-                          aria-label={isPro ? 'Voice engine' : 'Voice priority'}
-                        >
-                          {VOICE_CALL_ENGINES.map(eng => (
-                            <option key={eng.id} value={eng.id} disabled={eng.id === 'fal_maya_stream' && recognitionLanguage(activePersona).scribe === 'ar'} className="bg-[#1c1d22] text-white">
-                              {eng.id === 'fal_maya_stream' && recognitionLanguage(activePersona).scribe === 'ar' ? 'Maya — unavailable for Arabic' : isPro ? `${eng.name} (${eng.badge})` : eng.simpleLabel}
-                            </option>
-                          ))}
-                        </select>
-                        <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <p className="text-xs text-zinc-400">Uses this persona’s voice clone when available. Otherwise, the studio uses its default voice engine.</p>
-
-                {/* 3. Generative Visuals Card (Image & Video) */}
-                <div className="p-4 rounded-2xl bg-white/[0.025] border border-white/[0.06] space-y-3.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-300">
-                      Image & video
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {/* Image Model */}
-                    <div className="space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-                          Image Generation Model
-                        </label>
-                      </div>
-                      <div className="relative">
-                        <select
-                          aria-label="Image model"
-                          value={selectedEditModelId}
-                          onChange={e => setSelectedEditModelId(e.target.value)}
-                          disabled={!modelsLoaded || editModels.length === 0}
-                          className="w-full bg-[#1c1d22] border border-white/[0.1] hover:border-white/20 focus:border-white/30 rounded-xl px-3 py-2.5 text-xs text-white font-medium outline-none cursor-pointer appearance-none transition-all pr-8 shadow-inner truncate"
-                        >
-                          {editModels.map(m => (
-                            <option key={m.id} value={m.id} className="bg-[#1c1d22] text-white">
-                              {isNsfw(m) ? '🔞 ' : ''}{m.name}
-                            </option>
-                          ))}
-                        </select>
-                        <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
-                      </div>
-                      <p className="text-[10px] text-zinc-500">
-                        Default: <strong className="text-zinc-300">{DEFAULT_IMAGE_MODEL_NAME}</strong>
-                      </p>
-                    </div>
-
-                    {/* Video Model */}
-                    <div className="space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-                          Video Generation Engine
-                        </label>
-                      </div>
-                      <div className="relative">
-                        <select
-                          aria-label="Video model"
-                          value={selectedVideoModelId}
-                          onChange={e => setSelectedVideoModelId(e.target.value)}
-                          disabled={!modelsLoaded || videoModels.length === 0}
-                          className="w-full bg-[#1c1d22] border border-white/[0.1] hover:border-white/20 focus:border-white/30 rounded-xl px-3 py-2.5 text-xs text-white font-medium outline-none cursor-pointer appearance-none transition-all pr-8 shadow-inner truncate"
-                        >
-                          {videoModels.map(m => (
-                            <option key={m.id} value={m.id} className="bg-[#1c1d22] text-white">
-                              {isNsfw(m) ? '🔞 ' : ''}{m.name}
-                            </option>
-                          ))}
-                        </select>
-                        <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
-                      </div>
-                      <p className="text-[10px] text-zinc-500">
-                        Default: <strong className="text-zinc-300">{DEFAULT_VIDEO_MODEL_NAME} (WaveSpeed)</strong>
-                      </p>
-                    </div>
-                  </div>
-                  <label className="flex cursor-pointer items-start justify-between gap-4 rounded-xl border border-white/[0.07] bg-black/20 px-3 py-2.5">
-                    <span>
-                      <span className="block text-[11px] font-semibold text-zinc-200">Strict prompt fidelity</span>
-                      <span className="mt-0.5 block text-[10px] leading-normal text-zinc-500">Checks pose, setting, gaze, wardrobe, lighting, framing, and text; retries one confident mismatch.</span>
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={strictMediaFidelity}
-                      onChange={event => {
-                        const enabled = event.target.checked;
-                        setStrictMediaFidelity(enabled);
-                        localStorage.setItem('persona_strict_media_fidelity', String(enabled));
-                      }}
-                      className="mt-0.5 h-4 w-4 shrink-0 accent-[#E7C477]"
-                    />
-                  </label>
-                </div>
-
-              </div>
-
-              {/* Footer Actions */}
-              <div className="shrink-0 pt-3 flex items-center justify-between border-t border-white/[0.08]">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const seedream5Pro = pickDefaultImageModel(editModels);
-                    if (seedream5Pro) setSelectedEditModelId(seedream5Pro.id);
-                    
-                    const wan3 = pickDefaultVideoModel(videoModels);
-                    if (wan3) setSelectedVideoModelId(wan3.id);
-                    
-                    setVoiceLlmModel(DEFAULT_PERSONA_LLM_ID);
-                    localStorage.setItem('agent_voice_llm', DEFAULT_PERSONA_LLM_ID);
-                    localStorage.removeItem('agent_voice_llm_user_selected');
-                    handleVoiceEngineChange(AUTO_PERSONA_VOICE_ENGINE);
-                    setStrictMediaFidelity(true);
-                    localStorage.setItem('persona_strict_media_fidelity', 'true');
-                    toast.success('Reset to optimal studio defaults!');
-                  }}
-                  className="text-xs font-semibold text-zinc-400 hover:text-white transition-colors cursor-pointer px-2 py-1"
-                >
-                  Reset Defaults
-                </button>
-
-                <button
-                  onClick={() => setShowEngineSettings(false)}
-                  className="px-6 py-2.5 rounded-xl bg-[#E7C477] hover:brightness-110 text-[#161108] font-bold text-xs transition-all cursor-pointer shadow-lg active:scale-95"
-                >
-                  Apply & Close
-                </button>
-              </div>
-            </motion.div>
+            <div className="flex w-full justify-center" onClick={event=>event.stopPropagation()}>
+              <PersonaControls personaName={activePersona.name} voiceName={activePersona.voiceName||activePersona.name} initialTab={controlsTab}
+                onClose={()=>setShowEngineSettings(false)} mode={activeSegment} onMode={value=>{setActiveSegment(value);accountLocalStorage.setItem('persona_chat_mode',value);}}
+                model={voiceLlmModel} onModel={handleVoiceLlmChange} models={PERSONA_LLM_OPTIONS.map(model=>({id:model.id,name:model.name}))}
+                engine={selectedVoiceEngine} onEngine={handleVoiceEngineChange} engines={VOICE_CALL_ENGINES.map(engine=>({id:engine.id,name:engine.name,disabled:engine.id==='fal_maya_stream'&&recognitionLanguage(callPersonaRef.current).scribe!=='en'}))}
+                preferences={callPreferences} onPreferences={updateCallPreferences}
+                accuracy={accurateTranscription} onAccuracy={enabled=>{setAccurateTranscription(enabled);accountLocalStorage.setItem('voice_audio_verification',enabled?'on':'off');}}
+                pronunciations={<PronunciationSettings key={activePersona.id} personaId={activePersona.id} revision={pronunciationRevision} onPreview={isCallActive?text=>void playTTS(text):undefined}/>}
+                alternatives={<button type="button" disabled={isCallActive} onClick={()=>{setShowEngineSettings(false);setNativeCallRequest(n=>n+1);}} className="min-h-11 rounded-xl border border-[#E7C477]/30 px-4 text-sm text-[#E7C477] disabled:opacity-40">Set up a provider call</button>}
+                media={<><div className="grid grid-cols-2 gap-3"><ControlSelect label="Image model" value={selectedEditModelId} onChange={value=>{setSelectedEditModelId(value);accountLocalStorage.setItem('persona_chat_image_model',value);}} choices={editModels} disabled={!modelsLoaded}/><ControlSelect label="Video model" value={selectedVideoModelId} onChange={value=>{setSelectedVideoModelId(value);accountLocalStorage.setItem('persona_chat_video_model',value);}} choices={videoModels} disabled={!modelsLoaded}/></div><label className="flex items-center justify-between gap-3 text-sm text-zinc-300">Check generated images against my prompt<input type="checkbox" checked={strictMediaFidelity} onChange={e=>{setStrictMediaFidelity(e.target.checked);localStorage.setItem('persona_strict_media_fidelity',String(e.target.checked));}} className="size-5 accent-[#E7C477]"/></label></>}
+                onMemory={()=>{setShowEngineSettings(false);openMemoryCenter();}}
+                onNewConversation={()=>{clearHistory();setShowEngineSettings(false);}}
+              />
+            </div>
           </motion.div>, document.body)
         )}
       </>

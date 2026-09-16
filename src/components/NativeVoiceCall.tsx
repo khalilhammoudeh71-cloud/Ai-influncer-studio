@@ -1,3 +1,5 @@
+import { ELEVENLABS_CALL_MODELS, elevenLabsCallModel } from '../../shared/elevenLabsCallModels';
+import { PronunciationSettings } from './PronunciationSettings';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Phone, Mic, MicOff, PhoneOff } from 'lucide-react';
@@ -11,10 +13,11 @@ import { getAuthHeaders } from '../services/apiService';
 import { accountLocalStorage } from '../utils/accountStorage';
 import { summarizeVoiceMetrics } from '../utils/voiceCallMetrics';
 
-type Props = { personaId?: string; history: { id?: string; role: string; content: string }[]; memories?: string[]; disabled?: boolean; onMessage(message: NativeMessage): void; onPlan?(plan: any): void };
+type Props = { openRequest?:number;hideTrigger?:boolean;initialPreferences?:CallPreferences;initialModel?:string;personaId?: string; history: { id?: string; role: string; content: string }[]; memories?: string[]; disabled?: boolean; onMessage(message: NativeMessage): void; onPlan?(plan: any): void };
 type VoiceOptions = { voice: string; voiceName: string; voiceAccent?: string; personaName?: string; eviVersion?: string };
-export function NativeVoiceCall({ personaId, history, memories = [], disabled, onMessage, onPlan }: Props) {
+export function NativeVoiceCall({ openRequest=0,hideTrigger=false,initialPreferences,initialModel,personaId, history, memories = [], disabled, onMessage, onPlan }: Props) {
   const [open, setOpen] = useState(false), [status, setStatus] = useState('idle'), [error, setError] = useState(''), [muted, setMuted] = useState(false);
+  const [speechModel,setSpeechModel]=useState('eleven_flash_v2_5');
   const [provider, setProvider] = useState<NativeProvider>('elevenlabs');
   const [options, setOptions] = useState<VoiceOptions | null>(null), [loading, setLoading] = useState(false);
   const [voice, setVoice] = useState('marin'), [label, setLabel] = useState(''), [liveText, setLiveText] = useState('');
@@ -31,11 +34,18 @@ export function NativeVoiceCall({ personaId, history, memories = [], disabled, o
     previous?.end(); call.current = null;
     setStatus('idle'); setMuted(false);
   }, []);
+  useEffect(()=>{
+    if(!openRequest)return;
+    if(initialPreferences)setPreferences(initialPreferences);
+    let saved=accountLocalStorage.getItem(`native-speech-model_${personaId||'super-agent'}`);
+    try{setSpeechModel(elevenLabsCallModel(saved||initialModel));}catch{setSpeechModel('eleven_flash_v2_5');}
+    setProvider('elevenlabs');setOptions(null);setOpen(true);
+  },[openRequest]);
   useEffect(() => {
     stop(false); setOpen(false); setError(''); setLabel(''); setLiveText(''); setOptions(null); setDraft(''); setAttempted(false);
     const saved = accountLocalStorage.getItem(`native-voice:openai:${personaId || 'super-agent'}`);
     setVoice((OPENAI_NATIVE_VOICES as readonly string[]).includes(saved || '') ? saved! : 'marin');
-    try { setPreferences(normalizeCallPreferences(JSON.parse(accountLocalStorage.getItem(`voice-call-preferences:${personaId || 'super-agent'}`) || 'null'))); }
+    try { setPreferences(normalizeCallPreferences(JSON.parse(accountLocalStorage.getItem(`voice-call-preferences_${personaId || 'super-agent'}`) || 'null'))); }
     catch { setPreferences(normalizeCallPreferences()); }
     return () => { const previous = call.current; call.current = null; previous?.end(); };
   }, [personaId, stop]);
@@ -80,7 +90,7 @@ export function NativeVoiceCall({ personaId, history, memories = [], disabled, o
   }, [open, provider, personaId]);
   function updatePreferences(next: CallPreferences) {
     setPreferences(next);
-    accountLocalStorage.setItem(`voice-call-preferences:${personaId || 'super-agent'}`, JSON.stringify(next));
+    accountLocalStorage.setItem(`voice-call-preferences_${personaId || 'super-agent'}`, JSON.stringify(next));
   }
   async function start() {
     if (status !== 'idle' || disabled || loading) return;
@@ -122,10 +132,10 @@ export function NativeVoiceCall({ personaId, history, memories = [], disabled, o
     await session.start(async signal => {
       const setupAt = performance.now();
       const response = await fetch(`/api/native-voice/${provider}/session`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...await getAuthHeaders() },
-        body: JSON.stringify({ personaId: context.personaId, history: context.history, memories: context.memories, voice: selectedVoice, preferences }), signal });
+        body: JSON.stringify({ personaId: context.personaId, history: context.history, memories: context.memories, voice: selectedVoice, preferences, speechModel }), signal });
       const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Call setup failed.');
       if (!signal.aborted && call.current === session) {
-        setLabel(`${data.personaName} · ${data.voiceName || data.voice}`);
+        setLabel(`${data.personaName} · ${data.voiceName || data.voice}${data.modelName?' · '+data.modelName:''}`);
         setMetrics(previous => [...previous, { event: 'session_preparation', source: 'client-control', at: performance.now(), ms: performance.now() - setupAt }]);
       }
       return data;
@@ -135,18 +145,19 @@ export function NativeVoiceCall({ personaId, history, memories = [], disabled, o
   const humeArabicUnavailable = provider === 'hume' && !!options && options.eviVersion !== '4-mini' && (preferences.mode !== 'english' || preferences.allowLanguageSwitching);
   const ready = !loading && !humeArabicUnavailable && (provider === 'openai' || !!options);
   const timingSummary = summarizeVoiceMetrics(metrics);
-  const fieldClass = 'mt-2 w-full rounded-xl border border-white/15 bg-zinc-800 px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-sky-400 disabled:opacity-50';
+  const fieldClass = 'mt-2 w-full rounded-xl border border-white/15 bg-zinc-800 px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#E7C477] disabled:opacity-50';
   return <>
-    <button type="button" disabled={disabled} onClick={() => { setProvider('elevenlabs'); setOptions(null); setOpen(true); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-sky-400/30 text-sky-300 text-xs disabled:opacity-40"><Phone size={13} />ElevenLabs call</button>
+    {!hideTrigger&&<button type="button" disabled={disabled} onClick={() => { setProvider('elevenlabs'); setOptions(null); setOpen(true); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#E7C477]/30 text-[#E7C477] text-xs disabled:opacity-40"><Phone size={13} />ElevenLabs call</button>}
     {open && createPortal(<div ref={dialog} role="dialog" aria-modal="true" aria-labelledby="voice-call-title" className="fixed inset-0 z-[110] bg-black/85 overflow-auto p-4 sm:p-8 text-white grid place-items-center">
       <section className="w-full max-w-lg rounded-2xl border border-white/10 bg-zinc-900 p-5 sm:p-7 space-y-5 shadow-2xl">
-        <div><p className="text-xs text-sky-300 uppercase tracking-widest mb-2">Live conversation</p><h2 id="voice-call-title" className="text-2xl font-semibold">{options?.personaName && provider === 'elevenlabs' ? `Call ${options.personaName}` : 'Voice call'}</h2>
+        <div><p className="text-xs text-[#E7C477] uppercase tracking-widest mb-2">Live conversation</p><h2 id="voice-call-title" className="text-2xl font-semibold">{options?.personaName && provider === 'elevenlabs' ? `Call ${options.personaName}` : 'Voice call'}</h2>
           <p className="text-sm text-zinc-400 mt-2">Microphone audio goes to your selected call provider. The transcript joins this chat.</p></div>
         {!active && <>
         <label className="block text-sm text-zinc-300">Call provider<select aria-label="Call provider" value={provider} disabled={active} onChange={event => { setProvider(event.target.value as NativeProvider); setOptions(null); setError(''); setLabel(''); }} className={fieldClass}>
           <option value="elevenlabs">ElevenLabs · persona voice</option><option value="openai">OpenAI Realtime · provider voice</option><option value="hume">Hume EVI · provider voice</option>
         </select></label>
         {provider === 'elevenlabs' ? <>
+          <label className="block text-sm text-zinc-300">Voice engine<select aria-label="Voice engine" value={speechModel} onChange={event=>{setSpeechModel(event.target.value);accountLocalStorage.setItem(`native-speech-model_${personaId||'super-agent'}`,event.target.value);}} className={fieldClass}>{ELEVENLABS_CALL_MODELS.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</select></label>
           <div className="rounded-xl border border-white/10 px-4 py-3 text-sm"><span className="text-zinc-400">Saved voice</span><p className="mt-1 font-medium">{loading ? 'Checking voice…' : options?.voiceName || 'Select an ElevenLabs voice in your persona’s Voice tab'}</p>{options?.voiceAccent && <p className="mt-1 text-xs text-zinc-400">{options.voiceAccent}</p>}</div>
         </> : provider === 'openai' ? <label className="block text-sm text-zinc-300">OpenAI voice<select aria-label="OpenAI voice" disabled={active} value={voice} onChange={event => setVoice(event.target.value)} className={fieldClass}>{OPENAI_NATIVE_VOICES.map(value => <option key={value}>{value}</option>)}</select></label>
           : <p className="text-sm text-zinc-300">Hume voice: {options?.voiceName || (loading ? 'Checking voice…' : 'Setup required')}</p>}
@@ -154,17 +165,18 @@ export function NativeVoiceCall({ personaId, history, memories = [], disabled, o
           <label className="block text-sm text-zinc-300">Call language<select aria-label="Call language" disabled={active} value={preferences.mode} onChange={event => updatePreferences({ ...preferences, mode: event.target.value as CallPreferences['mode'] })} className={fieldClass}>{CALL_MODES.map(mode => <option key={mode.id} value={mode.id}>{mode.label}</option>)}</select></label>
           <label className="block text-sm text-zinc-300">Arabic dialect<select aria-label="Arabic dialect" disabled={active || (preferences.mode === 'english' && !preferences.allowLanguageSwitching)} value={preferences.dialect} onChange={event => updatePreferences({ ...preferences, dialect: event.target.value as CallPreferences['dialect'] })} className={fieldClass}>{CALL_DIALECTS.map(dialect => <option key={dialect.id} value={dialect.id}>{dialect.label}</option>)}</select></label>
         </div>
-        <label className="flex items-start gap-3 text-sm text-zinc-300"><input type="checkbox" disabled={active} checked={preferences.allowLanguageSwitching} onChange={event => updatePreferences({ ...preferences, allowLanguageSwitching: event.target.checked })} className="mt-1 accent-sky-400" /><span>Allow Arabic / English switching<span className="block text-xs text-zinc-500 mt-1">Ask to switch languages at any point in the call.</span></span></label>
+        <label className="flex items-start gap-3 text-sm text-zinc-300"><input type="checkbox" disabled={active} checked={preferences.allowLanguageSwitching} onChange={event => updatePreferences({ ...preferences, allowLanguageSwitching: event.target.checked })} className="mt-1 accent-[#E7C477]" /><span>Switch language or accent by voice<span className="block text-xs text-zinc-500 mt-1">Ask for a different language or accent at any point in the call.</span></span></label>
         <p className="text-xs text-zinc-400">Language choices apply to all three call providers. Dialect guides the wording; the selected voice determines the sound of the accent.</p>
         {humeArabicUnavailable && <p role="alert" className="text-sm text-amber-300">Arabic requires Hume EVI 4-mini. Choose another provider, or use English with switching off.</p>}
         </>}
         {active && <p className="text-sm text-zinc-400">{provider === 'elevenlabs' ? 'ElevenLabs' : provider === 'openai' ? 'OpenAI' : 'Hume'} · {CALL_MODES.find(mode => mode.id === preferences.mode)?.label}{(preferences.mode !== 'english' || preferences.allowLanguageSwitching) && ` · ${CALL_DIALECTS.find(dialect => dialect.id === preferences.dialect)?.label}`}</p>}
         {label && <p className="text-sm text-zinc-300">{label}</p>}
-        <p aria-live="polite" className="text-sm text-sky-200">{status === 'connecting' ? 'Connecting… First-time voice setup may take a moment.' : status === 'thinking' ? (muted ? 'Preparing a reply… Microphone muted.' : 'Preparing a reply… You can still speak to interrupt.') : status === 'speaking' ? 'Speaking — you can interrupt' : status === 'listening' ? (muted ? 'Microphone muted' : 'Listening…') : ready ? 'Ready when you are' : ''}</p>
+        <p aria-live="polite" className="text-sm text-[#E7C477]">{status === 'connecting' ? 'Connecting… First-time voice setup may take a moment.' : status === 'thinking' ? (muted ? 'Preparing a reply… Microphone muted.' : 'Preparing a reply… You can still speak to interrupt.') : status === 'speaking' ? 'Speaking — you can interrupt' : status === 'listening' ? (muted ? 'Microphone muted' : 'Listening…') : ready ? 'Ready when you are' : ''}</p>
         {liveText && <p dir="auto" className="rounded-xl bg-white/5 p-4 text-sm leading-relaxed max-h-36 overflow-auto">{liveText}</p>}
+        {personaId&&<PronunciationSettings personaId={personaId} futureCallOnly={active}/>}
         {error && <p role="alert" className="text-sm text-amber-300">{error}</p>}
         <div className="flex flex-wrap gap-3">
-          {!active ? <button type="button" disabled={disabled || !ready} onClick={() => void start()} className="flex-1 rounded-xl bg-sky-600 hover:bg-sky-500 px-4 py-3 text-sm font-semibold disabled:opacity-40">{attempted ? 'Reconnect call' : 'Start call'}</button> : <>
+          {!active ? <button type="button" disabled={disabled || !ready} onClick={() => void start()} className="flex-1 rounded-xl bg-[#E7C477] text-[#19160f] hover:brightness-105 px-4 py-3 text-sm font-semibold disabled:opacity-40">{attempted ? 'Reconnect call' : 'Start call'}</button> : <>
             <button type="button" disabled={status === 'connecting'} onClick={() => { call.current?.mute(!muted); setMuted(!muted); }} className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-zinc-800 px-4 py-3 text-sm disabled:opacity-40">{muted ? <Mic size={16} /> : <MicOff size={16} />}{muted ? 'Unmute' : 'Mute'}</button>
             <button type="button" disabled={status !== 'speaking'} onClick={() => call.current?.interrupt()} className="flex-1 rounded-xl bg-zinc-800 px-4 py-3 text-sm disabled:opacity-40">{provider === 'elevenlabs' ? 'Mute reply' : 'Stop speaking'}</button>
           </>}
@@ -175,7 +187,7 @@ export function NativeVoiceCall({ personaId, history, memories = [], disabled, o
           catch { setError('The message could not be sent. Your draft is still here; reconnect to try again.'); }
         }} className="space-y-2">
           <label htmlFor="call-typed-message" className="text-sm text-zinc-300">Type in this call</label>
-          <div className="flex gap-2"><input id="call-typed-message" dir="auto" maxLength={4000} disabled={status === 'connecting'} value={draft} onChange={event => setDraft(event.target.value)} className={`${fieldClass} min-w-0 mt-0`} placeholder="Write a message…" /><button type="submit" disabled={status !== 'listening' || !draft.trim()} className="rounded-xl bg-sky-600 px-4 text-sm font-semibold disabled:opacity-40">Send</button></div>
+          <div className="flex gap-2"><input id="call-typed-message" dir="auto" maxLength={4000} disabled={status === 'connecting'} value={draft} onChange={event => setDraft(event.target.value)} className={`${fieldClass} min-w-0 mt-0`} placeholder="Write a message…" /><button type="submit" disabled={status !== 'listening' || !draft.trim()} className="rounded-xl bg-[#E7C477] text-[#19160f] px-4 text-sm font-semibold disabled:opacity-40">Send</button></div>
           <p className="text-xs text-zinc-400">Send when the call is listening. Typed messages stay in this conversation.</p>
         </form>}
         <button ref={endButton} type="button" onClick={() => { stop(); setOpen(false); }} className={`w-full flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold ${active ? 'bg-red-600 hover:bg-red-500' : 'border border-white/15 text-zinc-300 hover:bg-white/5'}`}>{active && <PhoneOff size={16} />}{active ? 'End call' : 'Close'}</button>

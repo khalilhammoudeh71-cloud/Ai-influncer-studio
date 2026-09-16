@@ -1,3 +1,6 @@
+import { createVoiceRecognitionRouter } from './voiceRecognition';
+import { pronunciationRules } from './pronunciationStore';
+import { applyPronunciations } from '../shared/pronunciation';
 import { selectAgentSkills } from './agentSkills';
 import { verifyResearchLinks } from './agentWriting';
 import { runAgentTasks } from './agentTasks';
@@ -1658,6 +1661,8 @@ const handleGenerateSpeech = async (req: AuthenticatedRequest, res: Response) =>
     const canonical=voiceCloningModel(originalBody.engine);
     const body = {...originalBody,...(canonical?{engine:canonical.id}:{}),...(originalBody.engine==='elevenlabs-v3'?{speechModel:'eleven_v3'}:{})};
     if (typeof body.text !== 'string' || !body.text.trim()) return res.status(400).json({ error: 'text is required' });
+    const spokenRules = body.activePersona?.id && body.activePersona.id !== 'empty' ? await pronunciationRules(req.user.id, body.activePersona.id) : [];
+    body.text = applyPronunciations(body.text, spokenRules);
     if (body.engine === 'gemini') return res.json({audioUrl:await geminiStockSpeech(body.text,String(body.voiceId||body.voice||''),cancelled.signal),engine:'gemini'});
     const speechModel = body.engine === 'openai' || body.engine === 'openai:tts' ? 'tts-1' : (!body.engine || body.engine === 'elevenlabs') ? (body.speechModel || DEFAULT_SPEECH_MODEL) : body.engine;
     const delivery = buildVoiceDelivery(body.engine || 'elevenlabs', speechModel, body.text, body.activePersona, body.voiceSettings, body.emotion);
@@ -4211,6 +4216,7 @@ Do not wrap your response in markdown code blocks or HTML tags. Return ONLY the 
   }
 }
 router.post('/agent/chat', handleAgentChat);
+router.use('/voice-recognition', createVoiceRecognitionRouter(readPersonasForUser));
 router.use('/native-voice', createNativeVoiceRouter({readPersonas: readPersonasForUser, assertVoiceAccess, agentChat: handleAgentChat}));
 
 router.post('/agent/persona-chat', async (req: AuthenticatedRequest, res: Response) => {

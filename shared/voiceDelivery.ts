@@ -4,7 +4,7 @@ import { personalityDelivery, type PersonalitySettings } from './personality';
 /** Provider-specific delivery. The stored speaker binding is never changed here. */
 export type VoiceEmotion = 'neutral' | 'comforting' | 'excited' | 'playful';
 export const DEFAULT_SPEECH_MODEL = 'eleven_turbo_v2_5';
-export type DeliveryPersona = {voiceStability?:number;voiceLikeness?:number;voiceStyleExaggeration?:number;voiceSpeakingSpeed?:number;personalityTraits?:unknown;personalitySettings?:PersonalitySettings};
+export type DeliveryPersona = {callPreferences?:import('./voiceCallPreferences').CallPreferences;voiceStability?:number;voiceLikeness?:number;voiceStyleExaggeration?:number;voiceSpeakingSpeed?:number;personalityTraits?:unknown;personalitySettings?:PersonalitySettings};
 const clamp=(n:number,lo:number,hi:number)=>Math.min(hi,Math.max(lo,n));
 const finite=(n:unknown,fallback:number)=>typeof n==='number'&&Number.isFinite(n)?n:fallback;
 export function inferVoiceEmotion(text:string):VoiceEmotion {
@@ -38,7 +38,7 @@ export function buildVoiceDelivery(provider:string,model:string,text:string,pers
   const language = normalizeLanguage(persona);
   const accents = {'jordanian-syrian':'Jordanian Syrian',jordanian:'Jordanian',syrian:'Syrian',lebanese:'Lebanese',palestinian:'Palestinian',egyptian:'Egyptian',gulf:'Saudi',msa:''};
   const accent = /[\u0600-\u06ff]/.test(text) && accents[language.dialect]
-    ? `[strong ${accents[language.dialect]} accent]` : '';
+    ? `[strong ${accents[language.dialect]} accent]` : persona.callPreferences?.englishAccent&&persona.callPreferences.englishAccent!=='natural'?`[strong ${persona.callPreferences.englishAccent} accent]`:'';
   text=[accent,tag,pacing,text].filter(Boolean).join(' ');
  }
  if(provider !== 'elevenlabs') {

@@ -31,10 +31,13 @@ const SYNCABLE_EXACT_KEYS = new Set([
   'superagent_cloned_voice_audio',
   'superagent_my_voices',
   'voice_accuracy_profile',
+  'voice_audio_verification',
   'voice_identity_profile',
 ]);
 
 const SYNCABLE_KEY_PREFIXES = [
+  'voice-call-preferences_',
+  'native-speech-model_',
   'chat_history_',
   'super_agent_project_brief_',
   'chat_archive_',

@@ -1,6 +1,6 @@
-import {normalizeLanguage, languageInstructions, type ArabicDialect} from './personaLanguage';
+import {normalizeLanguage, languageInstructions, type ArabicDialect, type SpokenLanguage} from './personaLanguage';
 export type TraitIntensity = 'subtle' | 'balanced' | 'strong';
-export type PersonalitySettings = { primary?: string; intensities?: Record<string, TraitIntensity>; voiceEnabled?: boolean; language?: 'en'|'ar'; dialect?: ArabicDialect };
+export type PersonalitySettings = { primary?: string; intensities?: Record<string, TraitIntensity>; voiceEnabled?: boolean; language?: SpokenLanguage; dialect?: ArabicDialect };
 type Profile = { personalityTraits?: unknown; personalitySettings?: PersonalitySettings | any };
 // Concrete directions are shared by the editor, text generation and speech routes.
 export const TRAIT_BEHAVIORS: Record<string, string> = Object.assign(Object.create(null), {

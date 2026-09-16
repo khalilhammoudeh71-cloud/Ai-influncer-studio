@@ -77,7 +77,7 @@ test('Arabic agent uses the exact saved voice, multilingual speech and patient t
 test('accented English starts in English and disables switching when requested', () => {
   const config = buildElevenLabsCallConfig('owner', persona, { mode: 'english-arabic-accent', dialect: 'levantine', allowLanguageSwitching: false });
   assert.equal(config.conversationConfig.agent.language, 'en');
-  assert.equal(config.conversationConfig.tts.modelId, 'eleven_flash_v2');
+  assert.equal(config.conversationConfig.tts.modelId, 'eleven_flash_v2_5');
   assert.doesNotMatch(config.conversationConfig.agent.firstMessage, /[\u0600-\u06ff]/);
   assert.equal(config.conversationConfig.agent.prompt.builtInTools.languageDetection, undefined);
   assert.deepEqual(config.conversationConfig.languagePresets, {});
@@ -116,4 +116,14 @@ test('unavailable saved voice does not silently fall back or create an agent', a
     ensureAgent: async () => { created = true; return 'agent'; }, token: async () => 'token',
   }), /unavailable/);
   assert.equal(created, false);
+});
+
+test('chosen call engines and pronunciation dictionaries are preserved exactly',async()=>{
+ for(const model of ['eleven_v3_conversational','eleven_flash_v2_5','eleven_turbo_v2_5']) {
+  let config:any;
+  const result=await prepareElevenLabsCall('owner',{personaId:'owned',speechModel:model,preferences:{mode:'fr'}},{readPersonas:async()=>[persona],authorizeVoice:async()=>{},verifyVoice:async()=>({}),ensureAgent:async c=>{config=c;return 'agent';},token:async()=> 'token',pronunciations:async()=>[{id:'a',word:'Paris',spokenAs:'Paree',source:'explicit',updatedAt:''}],dictionary:async()=>({pronunciationDictionaryId:'dict',versionId:'v1'})});
+  assert.equal(result.model,model);assert.equal(config.conversationConfig.tts.modelId,model);assert.equal(config.conversationConfig.agent.language,'fr');
+  assert.deepEqual(config.conversationConfig.tts.pronunciationDictionaryLocators,[{pronunciationDictionaryId:'dict',versionId:'v1'}]);
+  assert.ok(config.conversationConfig.languagePresets.ar);assert.match(config.conversationConfig.agent.prompt.prompt,/Paree/);
+ }
 });
