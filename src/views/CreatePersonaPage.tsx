@@ -2419,7 +2419,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                     <h4 className="text-sm font-bold text-white">Render voice</h4>
 
                   </div>
-                  <button type="button" onClick={() => runClone()} disabled={isCloning || isSaving || cloneChoice.kind==='unavailable' || (cloneChoice.kind!=='preset'&&(!speakerAuthorized||!audioSampleList.length)) || (cloneChoice.transcriptRequired&&!voiceReferenceText.trim()) || Boolean(cloneResult)} className="btn-gold-primary shrink-0 px-4 py-2.5 text-xs disabled:cursor-not-allowed disabled:opacity-40">{isCloning ? 'Rendering…' : 'Render voice'}</button>
+                  <button type="button" onClick={() => runClone()} disabled={isCloning || isSaving || cloneChoice.kind==='unavailable' || (cloneChoice.kind!=='preset'&&(!speakerAuthorized||!audioSampleList.length)) || (cloneChoice.transcriptRequired&&!voiceReferenceText.trim()) || Boolean(cloneResult)} className="btn-gold-primary shrink-0 px-4 py-2.5 text-xs disabled:cursor-not-allowed disabled:opacity-40">{isCloning ? 'Rendering… checking progress' : 'Render voice'}</button>
                 </div>
                 {(cloneResult || cloneError) && <div role="status" aria-live="polite" className="space-y-2 rounded-xl border border-white/10 bg-[#0E0E10] p-3 text-xs">
                   <p className="font-semibold text-slate-200">{cloneError || cloneResult?.message || cloneResult?.status}</p>

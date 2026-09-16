@@ -1,3 +1,4 @@
+import { voiceCloningModel } from '../../shared/voiceCloningModels';
 import type { CloneResult } from '../../shared/personaVoiceLifecycle';
 import type { Persona, GeneratedImage, RevenueEntry, PlannedPost } from '../types';
 import { supabase } from '../lib/supabase';
@@ -397,7 +398,20 @@ export const api = {
       voiceStyleExaggeration?: number;
       voiceSpeakingSpeed?: number;
     }) =>
-      requestWithBody<{ audioUrl: string; engine?: string }>('/generate-speech', await resolvePersonaMediaFromStorage(await preparePersonaMediaForStorage(params))),
+      (async () => {
+        const prepared = await resolvePersonaMediaFromStorage(await preparePersonaMediaForStorage(params));
+        const model = voiceCloningModel(params.engine);
+        if (model?.provider !== 'WaveSpeed' || !['reference','preset'].includes(model.kind)) return requestWithBody<{audioUrl:string;engine?:string}>('/generate-speech', prepared);
+        type PreviewJob = {id:string;status:string;engine:string;audioUrl?:string};
+        let job = await requestWithBody<PreviewJob>('/voice-preview-jobs', prepared);
+        const deadline = Date.now() + 10 * 60 * 1000;
+        while (!job.audioUrl) {
+          if (Date.now() > deadline) throw new Error('The provider is still rendering. Click Render voice again to check the same job without submitting another render.');
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          job = await request<PreviewJob>(`/voice-preview-jobs/${encodeURIComponent(job.id)}`);
+        }
+        return {audioUrl:job.audioUrl,engine:job.engine};
+      })(),
     translateText: (params: { text: string; targetLanguage: string }) =>
       requestWithBody<{ translatedText: string }>('/translate-text', params),
     testVoiceClone: (params: {

@@ -1,3 +1,4 @@
+import { VoicePreviewJobs } from './voicePreviewJobs';
 import { loadVoiceUploadReferences } from './voiceUploadReferences';
 import { createNativeVoiceRouter } from './nativeVoice';
 import { createReviewedSpeech } from '../shared/reviewedSpeech';
@@ -1712,6 +1713,15 @@ const handleGenerateSpeech = async (req: AuthenticatedRequest, res: Response) =>
 };
 
 router.post('/agent/generate-speech', (req, res, next) => req.body?.engine === 'heygen' ? next() : handleGenerateSpeech(req as AuthenticatedRequest, res));
+const voicePreviewJobs = new VoicePreviewJobs({get:readVoiceState,put:writeVoiceState,claim:claimVoiceState});
+router.post('/voice-preview-jobs', async (req:AuthenticatedRequest,res:Response) => {
+ try { res.setHeader('Cache-Control','no-store'); return res.json(await voicePreviewJobs.start(req.user.id,req.body)); }
+ catch(error) { return res.status(error instanceof SelectedSpeechError ? error.status : 502).json({error:error instanceof Error?error.message:'Could not start voice preview.'}); }
+});
+router.get('/voice-preview-jobs/:id', async (req:AuthenticatedRequest,res:Response) => {
+ try { res.setHeader('Cache-Control','no-store'); return res.json(await voicePreviewJobs.status(req.user.id,String(req.params.id))); }
+ catch(error) { return res.status(error instanceof SelectedSpeechError ? error.status : 502).json({error:error instanceof Error?error.message:'Could not check voice preview. Retry to resume the same job.'}); }
+});
 router.post('/generate-speech', (req, res, next) => req.body?.engine === 'heygen' ? next() : handleGenerateSpeech(req as AuthenticatedRequest, res));
 router.post('/text-to-speech', (req, res, next) => req.body?.engine === 'heygen' ? next() : handleGenerateSpeech(req as AuthenticatedRequest, res));
 
