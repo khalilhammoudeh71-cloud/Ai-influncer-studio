@@ -558,6 +558,32 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
   const [inputText, setInputText] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [messages, setMessages] = useState<Message[]>(() => restoreConversation(accountLocalStorage.getItem(keys.history)));
+  const latestUserMessageIndex = messages.map(message => message.role).lastIndexOf('user');
+  const currentExchangeMessages = latestUserMessageIndex >= 0 ? messages.slice(latestUserMessageIndex) : [];
+
+  const clearAllConversationHistory = async () => {
+    setHistorySaving(true);
+    setHistorySaveFailed(false);
+    try {
+      const remoteEntries = await api.workspaceState.list();
+      const historyKeys = new Set([
+        ...projects.map(project => projectKeys(project.id).history),
+        ...remoteEntries
+          .map(entry => entry.key)
+          .filter(key => key.startsWith('chat_history_super_agent')),
+      ]);
+
+      historyKeys.forEach(key => accountLocalStorage.removeItem(key));
+      await Promise.all([...historyKeys].map(key => api.workspaceState.delete(key)));
+      setMessages([]);
+      toast.success('All Super Agent conversation history was erased.');
+    } catch (error) {
+      setHistorySaveFailed(true);
+      toast.error(error instanceof Error ? error.message : 'Conversation history could not be erased.');
+    } finally {
+      setHistorySaving(false);
+    }
+  };
   
   useEffect(() => {
     let current = true;
@@ -3328,16 +3354,16 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
               </div>
             </details>
 
-            {/* Clear Chat Button */}
+            {/* Clear history */}
             <button
-              onClick={() => {
-                setMessages([]);
-                toast.success('Chat thread cleared!');
-              }}
-              className="p-2 rounded-xl bg-white/5 text-zinc-400 hover:text-white hover:bg-white/10 border border-white/10 flex items-center justify-center cursor-pointer transition-all"
-              title="Clear chat history"
+              type="button"
+              onClick={() => void clearAllConversationHistory()}
+              disabled={historySaving}
+              className="flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-zinc-400 transition-all hover:bg-white/10 hover:text-white disabled:cursor-wait disabled:opacity-50"
+              title="Erase every saved Super Agent conversation"
             >
-              <RotateCcw size={14} />
+              {historySaving ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
+              <span>Erase conversation history</span>
             </button>
               </div>
             </details>
@@ -3540,23 +3566,14 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
             </button>
           </div>
         ) : (
-        /* Draft Room: the brief comes first; the working history sits below it. */
+        /* Draft Room: the brief comes first; only the current exchange appears below it. */
         <div className="agent-console flex-1 min-h-0 flex flex-col p-3 sm:p-5 overflow-hidden">
           <div className="agent-draft-shell w-full max-w-5xl mx-auto flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
-            
-            {/* Scrollable Conversation Thread INSIDE the Card */}
-            <div className="agent-messages order-2 flex-1 min-h-[120px] overflow-y-auto rounded-2xl border border-white/[0.07] bg-[#161618]/85 p-4 sm:p-5 space-y-5 custom-scrollbar">
-              {messages.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-3 opacity-60">
-                  <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
-                    <Sparkles size={24} />
-                  </div>
-                  <div className="text-xs text-zinc-400 max-w-sm leading-relaxed">
-                    Describe what you want to accomplish. I’ll help you work through it.
-                  </div>
-                </div>
-              ) : (
-                messages.map((msg) => (
+
+            {/* Current exchange only. Older saved messages stay out of the workspace. */}
+            {currentExchangeMessages.length > 0 && (
+            <div className="agent-messages order-2 max-h-[44vh] overflow-y-auto rounded-2xl border border-white/[0.07] bg-[#161618]/85 p-4 sm:p-5 space-y-5 custom-scrollbar">
+                {currentExchangeMessages.map((msg) => (
                   <div
                     key={msg.id}
                     className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'} max-w-full`}
@@ -3732,10 +3749,10 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                       )}
                     </div>
                   </div>
-                ))
-              )}
+                ))}
               <div ref={messagesEndRef} />
             </div>
+            )}
 
             <div className="agent-draft-composer order-1 shrink-0 rounded-[24px] border border-[#E7C477]/30 bg-[#18181B] p-4 shadow-[0_18px_60px_rgba(0,0,0,0.35)] transition-colors focus-within:border-[#E7C477]/65 sm:p-5">
             <div className="mb-3 flex items-center justify-between gap-4">
