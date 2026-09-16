@@ -312,6 +312,11 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
 
           </h1>
           <p className="text-xs md:text-sm text-[#8C909A] mt-1 font-sans">Manage your account, connected services, and how your studio looks.</p>
+          <details className="mt-3 text-sm text-[var(--text-secondary)]">
+            <summary className="cursor-pointer">Use on your Home Screen</summary>
+            <p className="mt-2">In Safari, open Share, choose Add to Home Screen, then keep Open as Web App enabled if shown. You may need to sign in again when opening the Home Screen app.</p>
+            <p className="mt-2">Calls and AI tools need a connection. Updates apply after closing all studio windows and reopening; finish calls and save your work first.</p>
+          </details>
         </header>
 
         <nav aria-label="Settings sections" className="sticky top-0 z-30 -mx-2 overflow-x-auto border-b border-white/[0.06] bg-[var(--bg-base)]/95 px-2 py-2 backdrop-blur-xl">

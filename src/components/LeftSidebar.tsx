@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   BarChart3,
@@ -61,6 +61,25 @@ export default function LeftSidebar({
 }: LeftSidebarProps) {
   const hasActiveSecondaryItem = secondaryItems.some((item) => isItemActive(item, activeTab));
   const [moreOpen, setMoreOpen] = useState(true);
+  const [isMobile, setIsMobile] = useState(() => window.matchMedia('(max-width: 1023px)').matches);
+  const navigationRef = useRef<HTMLDialogElement | null>(null);
+  const NavigationContainer = isMobile ? 'dialog' : 'aside';
+
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 1023px)');
+    const update = () => setIsMobile(query.matches);
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
+
+  useEffect(() => {
+    const dialog = navigationRef.current;
+    if (!isMobile || !dialog) return;
+    if (mobileOpen && !dialog.open) dialog.showModal();
+    if (!mobileOpen && dialog.open) dialog.close();
+    return () => { if (dialog.open) dialog.close(); };
+  }, [isMobile, mobileOpen]);
+
 
   useEffect(() => {
     if (hasActiveSecondaryItem) setMoreOpen(true);
@@ -115,15 +134,11 @@ export default function LeftSidebar({
 
   return (
     <>
-      {mobileOpen && (
-        <button
-          type="button"
-          aria-label="Close navigation menu"
-          onClick={onMobileClose}
-          className="fixed inset-0 z-[10000] bg-black/70 backdrop-blur-sm lg:hidden"
-        />
-      )}
-      <aside
+      <NavigationContainer
+        ref={(node) => { navigationRef.current = node as HTMLDialogElement | null; }}
+        aria-label="Studio navigation"
+        onCancel={(event) => { event.preventDefault(); onMobileClose?.(); }}
+        onClick={(event) => { if (isMobile && event.target === event.currentTarget) onMobileClose?.(); }}
         className={cn(
           'app-sidebar fixed inset-y-0 left-0 z-[10001] flex h-full w-[292px] max-w-[88vw] shrink-0 select-none flex-col border-r border-[var(--border-subtle)] transition-transform duration-200 ease-out lg:static lg:z-50 lg:w-[272px] lg:max-w-none lg:translate-x-0',
           mobileOpen ? 'translate-x-0' : '-translate-x-full',
@@ -223,7 +238,7 @@ export default function LeftSidebar({
             </span>
           </button>
         </div>
-      </aside>
+      </NavigationContainer>
     </>
   );
 }

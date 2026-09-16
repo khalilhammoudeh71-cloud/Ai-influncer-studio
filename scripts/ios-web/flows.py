@@ -1,0 +1,35 @@
+"""Isolated WebKit navigation/chat/form checks; no real account or provider traffic."""
+import asyncio,json
+from baseline import fixture,ROOT
+from playwright.async_api import async_playwright,expect
+async def main():
+ async with async_playwright() as p:
+  browser=await p.webkit.launch(); context=await browser.new_context(viewport={'width':375,'height':667},is_mobile=True,has_touch=True)
+  await context.route('**/*',fixture)
+  await context.add_init_script("localStorage.setItem('ai_influencer_active_tab','agent');localStorage.removeItem('ai_influencer_nav_stack');")
+  page=await context.new_page()
+  await page.goto('http://127.0.0.1:5217/',wait_until='domcontentloaded')
+  editor=page.get_by_placeholder('Message Super Agent...')
+  await expect(editor).to_be_visible(timeout=30000)
+  await editor.fill('A fixture message; do not run any tools.')
+  await page.get_by_role('button',name='Send',exact=True).click()
+  await expect(page.get_by_text('Fixture response. No actions started.',exact=True)).to_be_visible(timeout=15000)
+  await page.get_by_role('button',name='Open agent canvas').click()
+  await expect(page.get_by_role('button',name='Close agent canvas')).to_be_visible()
+  await page.get_by_role('button',name='Close agent canvas').click()
+  opener=page.get_by_role('button',name='Open navigation menu',exact=True)
+  await opener.focus()
+  await page.keyboard.press('Enter')
+  await expect(page.get_by_role('dialog',name='Studio navigation')).to_be_visible()
+  await page.keyboard.press('Escape')
+  await expect(opener).to_be_focused()
+  await page.get_by_role('button',name='Open navigation menu',exact=True).click()
+  await page.get_by_role('button',name='Settings Account, connections, and appearance').click()
+  await expect(page.get_by_role('heading',name='Settings',exact=True)).to_be_visible()
+  await page.get_by_role('button',name='Open navigation menu',exact=True).click()
+  await page.get_by_role('button',name='New to the studio? Create your first AI influencer').click()
+  await expect(page.get_by_role('heading',name='Create a persona',exact=True)).to_be_visible()
+  await page.screenshot(path=str(ROOT/'work/ios-web/flow-create.png'))
+  print('PASS: native navigation dialog, Escape/focus restoration, canvas open/close; fixture chat response, mobile navigation, settings, persona creation entry')
+  await browser.close()
+asyncio.run(main())

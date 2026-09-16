@@ -1493,3 +1493,29 @@ select optgroup {
   background-color: var(--bg-elevated, #19191d);
   color: var(--text-primary, #f5f1e8);
 }
+
+/* Keep the conversation full width; its canvas remains available as an in-page panel. */
+@media (max-width: 1023px) {
+  .agent-header { padding-inline: 16px; }
+  .agent-header > :first-child { padding-right: 44px; flex-wrap: wrap; }
+  .agent-canvas { position: absolute; right: 0; top: 0; z-index: 30; }
+  .agent-canvas-collapsed { height: auto; width: 44px; }
+  .agent-canvas-collapsed > div { padding: 8px 0; background: var(--bg-base); }
+  .agent-canvas-expanded { width: 100%; background: var(--bg-base); }
+  .agent-canvas button { min-height: 44px; }
+  .agent-console { padding: 8px; }
+  .agent-console textarea { min-height: 44px; max-height: 120px; }
+  .agent-messages { min-height: 64px; }
+  .studio-page :where(select, input, textarea) { max-width: 100%; }
+}
+
+/* Native dialog owns focus containment, Escape and restoration for mobile navigation. */
+dialog.app-sidebar { margin: 0; max-height: none; color: var(--text-primary); }
+dialog.app-sidebar:not([open]) { display: none; }
+dialog.app-sidebar::backdrop { background: rgb(0 0 0 / 70%); }
+@media (pointer: coarse) {
+  .app-topbar button, .app-sidebar button, .agent-workspace button,
+  .studio-page input:not([type="checkbox"]):not([type="range"]):not([type="file"]),
+  .studio-page select { min-width: 44px; min-height: 44px; }
+  .studio-page summary { min-height: 44px; padding-block: 10px; }
+}

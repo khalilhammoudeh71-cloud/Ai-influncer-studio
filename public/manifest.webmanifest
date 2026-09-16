@@ -1,0 +1,12 @@
+{
+  "id": "/",
+  "name": "AI Influencer Studio",
+  "short_name": "AI Studio",
+  "description": "Your personas, conversations and creative studio.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#111111",
+  "theme_color": "#111111",
+  "icons": [{"src": "/logo.png", "sizes": "1024x1024", "type": "image/png", "purpose": "any"}]
+}

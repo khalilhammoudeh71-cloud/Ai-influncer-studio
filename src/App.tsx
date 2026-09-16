@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Toaster } from 'react-hot-toast';
 import { 
@@ -26,24 +26,25 @@ import { Persona, RevenueEntry, PlannedPost, Tab, NavEntry } from './types';
 import type { CreationBrief } from './types/creation';
 import BackButton from './components/BackButton';
 import { api } from './services/apiService';
-import PersonasView from './views/PersonasView';
-import PlannerView from './views/PlannerView';
-import CreateView from './views/CreateView';
-import AssistantView from './views/AssistantView';
-import SettingsView from './views/SettingsView';
-import GalleryView from './views/GalleryView';
+const PersonasView = lazy(() => import('./views/PersonasView'));
+const PlannerView = lazy(() => import('./views/PlannerView'));
+const CreateView = lazy(() => import('./views/CreateView'));
+const AssistantView = lazy(() => import('./views/AssistantView'));
+const SettingsView = lazy(() => import('./views/SettingsView'));
+const GalleryView = lazy(() => import('./views/GalleryView'));
 import LandingView from './views/LandingView';
-import PersonaBuilderView from './views/PersonaBuilderView';
-import CreatorHubView from './views/CreatorHubView';
-import RevenueView from './views/RevenueView';
-import AgentView from './views/AgentView';
+const PersonaBuilderView = lazy(() => import('./views/PersonaBuilderView'));
+const CreatorHubView = lazy(() => import('./views/CreatorHubView'));
+const RevenueView = lazy(() => import('./views/RevenueView'));
+const AgentView = lazy(() => import('./views/AgentView'));
 import OnboardingTour, { type LaunchTask } from './components/OnboardingTour';
 import MediaJobCenter from './components/MediaJobCenter';
 import CommandPalette from './components/CommandPalette';
 import LeftSidebar from './components/LeftSidebar';
 import MobileNavigation from './components/MobileNavigation';
-import TrendView from './views/TrendView';
-import CreatePersonaPage from './views/CreatePersonaPage';
+import ConnectionStatus from './components/ConnectionStatus';
+const TrendView = lazy(() => import('./views/TrendView'));
+const CreatePersonaPage = lazy(() => import('./views/CreatePersonaPage'));
 import PersonaAvatar from './components/PersonaAvatar';
 import PasswordRecoveryView from './views/PasswordRecoveryView';
 import { prepareWorkspaceValueForStorage, resolveWorkspaceValueFromStorage } from './services/workspaceMediaService';
@@ -1195,10 +1196,13 @@ function App() {
         );
       })()}
 
+      <ConnectionStatus />
       {/* ── Content ─────────────────────────────────────────────── */}
       <main id="studio-content" tabIndex={-1} className="relative z-10 min-h-0 flex-1 overflow-y-auto pb-[calc(72px+env(safe-area-inset-bottom))] lg:pb-0">
         <div className={`studio-page w-full h-full ${tabDirectionRef.current === 'right' ? 'tab-enter-right' : 'tab-enter-left'}`} key={activeTab}>
-          {renderContent()}
+          <Suspense fallback={<div role="status" className="p-6 text-sm text-[var(--text-secondary)]">Loading view…</div>}>
+            {renderContent()}
+          </Suspense>
         </div>
       </main>
     </div>

@@ -1,3 +1,7 @@
+import { selectAgentSkills } from './agentSkills';
+import { verifyResearchLinks } from './agentWriting';
+import { runAgentTasks } from './agentTasks';
+import { prepareAgentContext, AgentContextLimitError } from './agentContext';
 import { VoicePreviewJobs } from './voicePreviewJobs';
 import { loadVoiceUploadReferences } from './voiceUploadReferences';
 import { createNativeVoiceRouter } from './nativeVoice';
@@ -3526,12 +3530,33 @@ CRITICAL RULES FOR LIVE VOICE CALL:
 });
 
 async function handleAgentChat(req: AuthenticatedRequest, res: Response) {
-  const { messages } = req.body as { messages?: any[] };
+  const requestAbort = new AbortController();
+  req.once?.('aborted', () => requestAbort.abort());
+  res.once?.('close', () => { if (!res.writableFinished) requestAbort.abort(); });
+  const started = performance.now();
+  const stages: Record<string, number> = {};
+  let loadedSkills: Array<{id:string;version:string}> = [];
+  let researchRequested = false;
+  let retrievedSources: Array<{url:string}> = [];
+  let contextMetrics: Record<string, number> | undefined;
+  let stageStarted = started;
+  const markStage = (name: string) => { const now = performance.now(); stages[name] = Math.round(now - stageStarted); stageStarted = now; };
+  const sendJson = res.json.bind(res);
+  res.json = ((body: any) => {
+    if (researchRequested && typeof body.text==='string') {
+      body.researchVerification = verifyResearchLinks(body.text,retrievedSources);
+      if(body.researchVerification.unverifiedLinkCount) body.text += '\n\nSource check: some links in this draft were not returned by retrieval. Verify them before relying on these claims.';
+    }
+    return sendJson({ ...body, diagnostics: { measurement: 'server-wall-clock', skills: loadedSkills, context: contextMetrics, stagesMs: stages, totalMs: Math.round(performance.now() - started) } }); }) as typeof res.json;
+  let { messages } = req.body as { messages?: any[] };
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
     return res.status(400).json({ error: 'messages history array is required' });
   }
 
   try {
+    const prepared = prepareAgentContext(messages);
+    messages = prepared.messages;
+    contextMetrics = prepared.metrics;
     const {
       allowNsfw = false,
       researchMode = {},
@@ -3549,12 +3574,19 @@ async function handleAgentChat(req: AuthenticatedRequest, res: Response) {
     
     const lastUserMessage = [...messages].reverse().find(m => m.role === 'user');
     const userPrompt = lastUserMessage?.content || '';
+    const selectedSkills = selectAgentSkills(userPrompt);
+    loadedSkills = selectedSkills.map(({id,version})=>({id,version}));
     const exactReply = requestedExactReply(userPrompt);
     if (exactReply) return res.json({ text: exactReply, status: 'normal', suggestedSteps: [] });
     // All actions go through the planner. A keyword must never launch a paid job.
     let trendContext = 'For current trends, use retrieved evidence and clickable sources. If retrieval is unavailable, say so; never present example trends as live research.';
     let sources: Array<{title:string;url:string}> = [];
     const needsResearch = researchMode?.deepResearch || researchMode?.socialResearch || researchMode?.webpageResearch || /\b(?:research|look up|latest|current trends)\b/i.test(userPrompt);
+    researchRequested = Boolean(needsResearch);
+    const preflight = await runAgentTasks([
+      {id:'research',run:async()=>{
+        let trendContext = 'No current research requested.';
+        let sources: Array<{title:string;url:string}> = [];
     if (needsResearch) {
       try {
         const grounded = await getGeminiClientForRoutes().models.generateContent({
@@ -3570,8 +3602,10 @@ async function handleAgentChat(req: AuthenticatedRequest, res: Response) {
         trendContext = 'The research service could not retrieve evidence on this turn. Explain that limitation; do not invent sources or current trends.';
       }
     }
-
-
+        return {trendContext,sources};
+      }},
+      {id:'attachments',run:async()=>{
+        let trendContext = '';
     const attachedFiles = (lastUserMessage?.attachments || []).filter((a:any) => typeof a?.dataUrl === 'string' && /^data:(application\/pdf|text\/plain|image\/[^;]+);base64,/.test(a.dataUrl)).slice(0,3);
     if (attachedFiles.length) {
       try {
@@ -3586,14 +3620,26 @@ async function handleAgentChat(req: AuthenticatedRequest, res: Response) {
       } catch { trendContext += '\nAttachment analysis failed. Tell the user the files could not be inspected; do not invent their contents.'; }
     }
 
+
+        return trendContext;
+      }},
+    ], {signal:requestAbort.signal});
+    if (requestAbort.signal.aborted) return;
+    const researchResult = preflight[0];
+    if (researchResult.status==='succeeded' && needsResearch) {trendContext=researchResult.value.trendContext;sources=researchResult.value.sources;}
+    else if (needsResearch) trendContext='Research did not complete. Do not invent sources or current facts.';
+    trendContext += preflight[1].status==='succeeded' ? preflight[1].value : '\nAttachment analysis did not complete; do not invent file contents.';
+    retrievedSources = sources;
+    markStage('parallelPreflight');
+
     // Map client messages to Gemini content format with base64 attachments support
-    const contents = messages.map((msg, index) => {
+    const contents = messages.map((msg, index, messageList) => {
       const parts: any[] = [];
       if (msg.content) {
         parts.push({ text: msg.content });
       }
       // Only include base64 inlineData for the last 3 user messages to avoid blowing up context window
-      if (msg.attachments && Array.isArray(msg.attachments) && index >= messages.length - 3) {
+      if (msg.attachments && Array.isArray(msg.attachments) && index >= messageList.length - 3) {
         msg.attachments.forEach((att: any) => {
           const match = att.dataUrl?.match(/^data:([^;]+);base64,(.+)$/);
           if (match) {
@@ -3617,12 +3663,13 @@ async function handleAgentChat(req: AuthenticatedRequest, res: Response) {
       readPersonasForUser(req.user.id).catch(() => []),
     ]);
     const agentIdentity = resolvePersonaChatIdentity({activePersona,storedCreator:agentCreator,savedPersonas:agentPersonas,fallbackName:'Creator'});
+    markStage('identity');
     const systemInstruction = `You are Super Agent Co-Pilot, a warm, capable creator-operations partner who speaks like a real human collaborator.
 ${agentIdentityContext(agentIdentity,activePersona)}
 WORKSPACE EXECUTION CONTRACT:
 - Discuss and refine the user's complete brief across messages. Do not generate from an unfinished description, a quoted example, a text-only instruction, or a request to wait.
 - A complete request, or a request to prepare a plan for review, must include structured suggestedSteps (or the native plan tool), not just prose or a promise. "Do not execute yet" permits drafting a plan for review; it never authorizes execution.
-- For a campaign request, include campaign as a JSON-encoded object {title,platform,posts:[{date:"YYYY-MM-DD",title,format:"image"|"carousel"|"video"|"text",caption,assets:[{stepIndex:0,alt:"Full image description"}]}]}. Dates and post count must match the user brief. Link every generated asset to a post using zero-based suggestedSteps indexes. A carousel is 2–10 separate image steps in swipe order. Reuse an earlier index when reusing a photo. Use only generate_image, edit_image and generate_video steps for these campaigns; do not invoke the legacy seven-day generate_content_plan template. The app groups captions and assets and can export a ZIP once every result is ready. Publishing is manual. Do not invent overlay or packaging tools. For ordinary conversation use campaign:null. State any missing dates before preparing the campaign.
+- For a requested production campaign with dates (not brainstorming alone), include campaign as a JSON-encoded object {title,platform,posts:[{date:"YYYY-MM-DD",title,format:"image"|"carousel"|"video"|"text",caption,assets:[{stepIndex:0,alt:"Full image description"}]}]}. Dates and post count must match the user brief. Link every generated asset to a post using zero-based suggestedSteps indexes. A carousel is 2–10 separate image steps in swipe order. Reuse an earlier index when reusing a photo. Use only generate_image, edit_image and generate_video steps for these campaigns; do not invoke the legacy seven-day generate_content_plan template. The app groups captions and assets and can export a ZIP once every result is ready. Publishing is manual. Do not invent overlay or packaging tools. For ordinary conversation use campaign:null. State any missing dates before preparing the campaign.
 - Preserve requested video duration (numeric seconds), resolution and aspectRatio in generate_video params. For image-to-video, link sourceImageFromStepIndex to the exact earlier image requested, not merely the most recent image.
 - Propose a concrete plan with complete prompts. Do not claim any tool ran: the app will execute approved steps and report their actual results.
 - For generate_image set usePersona=false for objects, landscapes, products, diagrams, or requests with no people. Set usePersona=true only when the user wants the selected persona. Preserve requested aspectRatio.
@@ -3640,6 +3687,7 @@ CRITICAL RESPONSE AND PERSONALITY DIRECTIVES:
 
 Your job is to interact with the user via chat and voice, help them perform ANY and ALL tasks they desire (everyday conversation, technical questions, creative writing, persona creation, image generation, video generation, 3D asset generation, voice cloning, talking avatars, video stitching, image editing/face swap/try-on, content planning, and revenue logging).
 ${trendContext}
+${selectedSkills.map(skill=>skill.instructions).join('\n')}
 ${activePersona ? `ACTIVE PERSONA CONTEXT:\n${JSON.stringify({
   name: activePersona.name,
   niche: activePersona.niche,
@@ -4006,19 +4054,20 @@ Do not wrap your response in markdown code blocks or HTML tags. Return ONLY the 
                 continue;
               }
 
+              let validationError = 'Return ONE complete plan containing ALL requested steps.';
               let normalizedSteps:ReturnType<typeof normalizeSuperAgentPlanSteps> = [];
               try {
                 if (toolCalls.length === 1) {
                   normalizedSteps = validateSuperAgentPlanSteps(args.steps, userPrompt);
                   nativeCampaign=validateCampaign(args.campaign,normalizedSteps);
                 }
-              } catch { normalizedSteps=[]; nativeCampaign=undefined; }
+              } catch (error) { validationError = error instanceof Error ? error.message : 'Invalid plan.'; normalizedSteps=[]; nativeCampaign=undefined; }
               if (normalizedSteps.length === 0) {
                 conversation.push({
                   role: 'tool',
                   tool_call_id: toolCall.id,
                   name: toolName,
-                  content: JSON.stringify({ ok: false, error: 'Return ONE complete plan containing ALL requested steps. The plan is incomplete or the user asked for text only/wait. For an authorized image/video action, provide params.prompt with the full scene. Otherwise respond without a plan.' }),
+                  content: JSON.stringify({ ok: false, code: 'INVALID_PLAN', retryable: true, detail: validationError, error: 'Return ONE complete plan containing ALL requested steps. The plan is incomplete or the user asked for text only/wait. For an authorized image/video action, provide params.prompt with the full scene. Otherwise respond without a plan.' }),
                 });
                 continue;
               }
@@ -4131,6 +4180,7 @@ Do not wrap your response in markdown code blocks or HTML tags. Return ONLY the 
 
     return res.json({ ...decodeAgentReply(text,userPrompt), sources, agentMode:superAgentMode });
   } catch (err) {
+    if (err instanceof AgentContextLimitError) return res.status(413).json({error:'context_limit',text:err.message,status:'normal',suggestedSteps:[]});
     console.error('[API] /agent/chat failed:', err instanceof Error ? err.message : 'Unknown planner error');
     return res.status(502).json({
       error: 'planning_failed',

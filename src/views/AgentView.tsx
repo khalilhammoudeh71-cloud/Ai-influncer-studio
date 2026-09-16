@@ -1,3 +1,4 @@
+import { readProjectBrief, serializeProjectBrief, projectBriefContext } from '../utils/agentProjectMemory';
 import { NativeVoiceCall } from '../components/NativeVoiceCall';
 import { createStreamingSpeech } from '../utils/streamingSpeech';
 import { SpeechEnginePilot } from '../components/SpeechEnginePilot';
@@ -579,7 +580,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
   // Autopilot, Sub-Agent Delegation & Approval Queue States
   const runningPlans = useRef(new Set<string>());
   const stoppedPlans = useRef(new Set<string>());
-  const [workspaceBrief, setWorkspaceBrief] = useState(() => accountLocalStorage.getItem(keys.brief) || '');
+  const [workspaceBrief, setWorkspaceBrief] = useState(() => readProjectBrief(accountLocalStorage.getItem(keys.brief)).text);
   const [autoApprove, setAutoApprove] = useState(false);
   const [allowNsfw, setAllowNsfw] = useState(() => localStorage.getItem('agent_allow_nsfw') === 'true');
   const [planningModel,setPlanningModel]=useState(()=>accountLocalStorage.getItem("agent_planning_model")||"");
@@ -1348,7 +1349,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
         signal: turn.signal,
         headers: { 'Content-Type': 'application/json', ...authHeader },
         body: JSON.stringify({
-          messages: workspaceBrief.trim() ? [{role:'user',content:'Saved project brief (context, not a new execution request): '+workspaceBrief}, ...history] : history,
+          messages: workspaceBrief.trim() ? [{role:'user',content:projectBriefContext(workspaceBrief)}, ...history] : history,
           allowNsfw,
           voiceLlmModel,
           activePersona: activePersonaObj
@@ -1830,7 +1831,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
           ...authHeader
         },
         body: JSON.stringify({ 
-          messages: workspaceBrief.trim() ? [{role:'user',content:'Saved project brief (context, not a new execution request): '+workspaceBrief}, ...history] : history,
+          messages: workspaceBrief.trim() ? [{role:'user',content:projectBriefContext(workspaceBrief)}, ...history] : history,
           allowNsfw,
           voiceLlmModel: planningModel || voiceLlmModel,
           researchMode: {
@@ -3097,7 +3098,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
   const metrics = getAnalyticsIndices();
 
   return (
-    <div className="flex-1 flex h-full overflow-hidden bg-[var(--bg-base)]">
+    <div className="agent-workspace relative flex-1 flex h-full min-h-0 overflow-hidden bg-[var(--bg-base)]">
       {/* Hidden file input for face swapping */}
       <input
         type="file"
@@ -3110,7 +3111,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
       {/* LEFT COLUMN: Agent Conversational Console (Expanded) */}
       <div className="flex-1 flex flex-col h-full border-r border-white/5 relative min-w-0">
         {/* Header with Autopilot & Sub-Agent Controls (Unified Theme) */}
-        <div className="flex-none flex flex-col md:flex-row md:flex-wrap md:items-center justify-between border-b border-[#E7C477]/10 px-6 py-3 bg-[#050914] gap-2 select-none">
+        <div className="agent-header flex-none flex flex-col md:flex-row md:flex-wrap md:items-center justify-between border-b border-[#E7C477]/10 px-6 py-3 bg-[#050914] gap-2 select-none">
           <div className="flex items-center gap-3">
             <h1 className="text-xl md:text-2xl font-serif text-[#F5F1E8] tracking-tight flex items-center gap-2">
               Super Agent
@@ -3175,7 +3176,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
               </summary>
               <div className="absolute right-0 top-full mt-2 flex w-[min(92vw,430px)] flex-col gap-2 rounded-2xl border border-white/10 bg-[#11131a]/98 p-3 shadow-2xl backdrop-blur-xl">
             <label className="text-xs text-zinc-300">Project brief
-              <textarea aria-label="Project brief" value={workspaceBrief} onChange={e => {setWorkspaceBrief(e.target.value); accountLocalStorage.setItem(keys.brief,e.target.value);}} placeholder="Goals, audience, style and details to keep in mind…" className="mt-1 w-full rounded-lg border border-white/15 bg-black/30 p-2 text-sm" rows={3} />
+              <textarea aria-label="Project brief" value={workspaceBrief} onChange={e => {setWorkspaceBrief(e.target.value); accountLocalStorage.setItem(keys.brief,serializeProjectBrief(e.target.value));}} placeholder="Saved project facts, preferences and decisions. Edit to correct; clear to forget. Fictional scene details should be labeled." className="mt-1 w-full rounded-lg border border-white/15 bg-black/30 p-2 text-sm" rows={3} />
               <span className="text-[11px] text-zinc-400">Saved for future conversations. You can edit it anytime.</span>
             </label>
             <label className="block text-xs text-zinc-300">Text planning model
@@ -3511,11 +3512,11 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
           </div>
         ) : (
         /* UNIFIED EXPANDING COMMAND CONSOLE CARD BOX (Extends directly below upper tabs) */
-        <div className="flex-1 flex flex-col p-4 sm:p-6 overflow-hidden">
+        <div className="agent-console flex-1 min-h-0 flex flex-col p-4 sm:p-6 overflow-hidden">
           <div className="w-full max-w-4xl mx-auto flex-1 flex flex-col bg-[#0a0d18]/95 backdrop-blur-2xl border border-cyan-500/30 rounded-3xl shadow-[0_15px_60px_rgba(0,0,0,0.85),0_0_40px_rgba(6,182,212,0.1)] focus-within:border-cyan-400 focus-within:shadow-[0_0_60px_rgba(6,182,212,0.25)] transition-all overflow-hidden">
             
             {/* Scrollable Conversation Thread INSIDE the Card */}
-            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 custom-scrollbar">
+            <div className="agent-messages flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-6 custom-scrollbar">
               {messages.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-3 opacity-60">
                   <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
@@ -3760,6 +3761,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
             )}
             {/* Textarea for User Input */}
             <textarea
+              aria-label="Message Super Agent"
               ref={agentTextareaRef}
               rows={2}
               value={inputText}
@@ -3790,6 +3792,8 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                         ? 'bg-cyan-500/25 border-cyan-400 text-cyan-300 shadow-cyan-500/20'
                         : 'bg-white/5 border-white/10 text-zinc-300 hover:text-white hover:bg-white/10 hover:border-white/20'
                     }`}
+                    aria-label="Add attachments and research tools"
+                    aria-expanded={isPlusMenuOpen}
                     title="Add Attachments & AI Research Tools"
                   >
                     <Plus size={18} className={`transition-transform duration-200 ${isPlusMenuOpen ? 'rotate-45 text-cyan-300' : ''}`} />
@@ -4030,12 +4034,14 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
       </div>
 
       {/* RIGHT COLUMN: Interactive Agent Canvas Workspace (Compact & Collapsible) */}
-      <div className={cn("transition-all duration-300 flex flex-col h-full bg-[var(--bg-elevated)]/5 shrink-0 relative", isPanelCollapsed ? "w-12" : "w-full lg:w-[280px] xl:w-[300px]")}>
+      <div className={cn("agent-canvas transition-all duration-300 flex flex-col h-full bg-[var(--bg-elevated)]/5 shrink-0 relative", isPanelCollapsed ? "agent-canvas-collapsed" : "agent-canvas-expanded", isPanelCollapsed ? "w-12" : "w-full lg:w-[280px] xl:w-[300px]")}>
         {/* Navigation Tabs bar */}
         <div className="flex-none flex items-center justify-between border-b border-white/5 px-3 py-3 bg-black/30">
           <button
             onClick={() => setIsPanelCollapsed(!isPanelCollapsed)}
             className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition-all shrink-0"
+            aria-expanded={!isPanelCollapsed}
+            aria-label={isPanelCollapsed ? "Open agent canvas" : "Close agent canvas"}
             title={isPanelCollapsed ? "Expand Canvas Sidebar" : "Collapse Canvas Sidebar"}
           >
             {isPanelCollapsed ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}

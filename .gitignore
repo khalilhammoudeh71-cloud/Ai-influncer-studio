@@ -17,3 +17,6 @@ rewrite.py
 test_db.ts
 work/
 .DS_Store
+.playwright-cli/
+__pycache__/
+*.pyc

@@ -6,7 +6,7 @@ export function requestsPlanReview(request: string): boolean {
 
 export function blocksAgentPlan(request: string): boolean {
   const describing=request.replace(/\bwait for (?:my |our )?approval\b/gi,'');
-  if (/\b(?:text[- ]only|wait|still (?:describing|explaining))\b/i.test(describing)) return true;
+  if (/\b(?:text[- ]only|ideas? only|brainstorm only|wait|still (?:describing|explaining))\b/i.test(describing)) return true;
   const explicitlyHeld = /\b(?:do not|don't) (?:create|generate|execute|publish|run|start)\b|\bnot yet\b/i.test(request);
   return explicitlyHeld && !requestsPlanReview(request);
 }

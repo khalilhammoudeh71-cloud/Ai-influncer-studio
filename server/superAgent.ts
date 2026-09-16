@@ -375,7 +375,7 @@ export const SUPER_AGENT_PLAN_TOOL = {
   type: 'function',
   function: {
     name: 'create_studio_plan',
-    description: 'Create a validated execution plan using the AI Influencer Studio tools. Call this whenever the user asks the studio to perform an action.',
+    description: 'Prepare one complete studio plan for user review; this does not execute or approve actions. Use for a complete creation/edit brief or an explicit request to draft a plan. Do not call for text-only answers, quoted examples, unfinished briefs or requests to wait. Returns validated pending steps or an actionable validation error; replace the whole invalid plan rather than omitting failed steps.',
     parameters: {
       type: 'object',
       additionalProperties: false,

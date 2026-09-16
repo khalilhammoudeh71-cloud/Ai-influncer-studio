@@ -54,6 +54,9 @@ test('accepting a native plan does not require a second model call to summarize 
     assert.equal(data.suggestedSteps?.length,1);
     assert.equal(calls,1);
     assert.equal(data.text,'Review this blue cup.');
+    assert.equal(data.diagnostics.measurement,'server-wall-clock');
+    assert.ok(data.diagnostics.totalMs >= 0);
+    assert.ok(data.diagnostics.stagesMs.identity >= 0);
   }finally{globalThis.fetch=originalFetch;names.forEach((name,index)=>{if(values[index]===undefined)delete process.env[name];else process.env[name]=values[index];});}
 });
 
