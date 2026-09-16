@@ -222,48 +222,6 @@ export function setStoredUserName(name: string) {
   } catch {}
 }
 
-function correctSpeechPhonetics(transcript: string, activePersonaName?: string): string {
-  if (!transcript) return '';
-  let corrected = transcript.trim();
-
-  // 1. Remove stutter artifacts (e.g. "c-can", "w-what", "p-photo")
-  corrected = corrected.replace(/\b([a-zA-Z])-([a-zA-Z]{2,})\b/gi, '$2');
-
-  // 2. Remove duplicate consecutive words from speech recognition glitches (e.g. "I I want", "can can you", "the the")
-  // Run loop to handle multiple consecutive repetitions (e.g. "photo photo photo")
-  let prev = '';
-  while (prev !== corrected) {
-    prev = corrected;
-    corrected = corrected.replace(/\b([a-zA-Z0-9']{1,25})\s+\1\b/gi, '$1');
-  }
-
-  // 3. Remove duplicate 2-word phrase loops (e.g. "can you can you", "send a send a")
-  corrected = corrected.replace(/\b([a-zA-Z0-9']+\s+[a-zA-Z0-9']+)\s+\1\b/gi, '$1');
-
-  // 4. Creator & Persona Name homophones
-  corrected = corrected
-    .replace(/\b(?:doctor\s*(?:h|age|eight|ate|a|hate|ache)|dr\.?\s*(?:h|age|eight|ate|a|hate|ache))\b/gi, 'Dr. H')
-    .replace(/\b(?:doc\s*(?:h|age|eight))\b/gi, 'Dr. H')
-    .replace(/\b(?:row\s*one\s*hasan|raw\s*one\s*hasan|roan\s*hasan|rawan\s*hassan|rawan\s*hasen)\b/gi, 'Rawan Hasan')
-    .replace(/\b(?:lean|lien|liam|lynn|lane|lin)\s*hasan\b/gi, 'Leen Hasan')
-    .replace(/\b(?:lean\s*hassan|lean\s*hasen)\b/gi, 'Leen Hasan');
-
-  if (activePersonaName) {
-    const pFirst = activePersonaName.split(/\s+/)[0];
-    if (pFirst.toLowerCase() === 'leen') {
-      corrected = corrected.replace(/\b(?:lean|lien|lynn|lane)\b/gi, 'Leen');
-    } else if (pFirst.toLowerCase() === 'rawan') {
-      corrected = corrected.replace(/\b(?:roan|rowan|row\s*one)\b/gi, 'Rawan');
-    }
-  }
-
-  // Preserve the user's actual wording. Broad phonetic substitutions used to
-  // turn valid words into rhyming alternatives and could silently change a
-  // generation request.
-  corrected = corrected.replace(/\s+/g, ' ').trim();
-
-  return corrected;
-}
 
 function loadHistory(personaId: string): ChatMessage[] {
   return loadRecentConversation(personaId).map(record => {
@@ -1283,9 +1241,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
   };
 
   function commitRecognizedVoiceTranscript(rawTranscript: string) {
-    const phoneticCorrection = correctSpeechPhonetics(rawTranscript, activePersona?.name);
     const corrected = applyVoiceCorrections(
-      phoneticCorrection,
+      rawTranscript,
       voiceAccuracyProfileRef.current.corrections,
     );
     if (!corrected) return;
@@ -1435,27 +1392,18 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           // Commit sooner, then let the client-side transcript-aware grace
           // window decide whether a complete thought should move immediately
           // or an unfinished clause should keep listening.
-          vadSilenceThresholdSecs: 0.52,
+          vadSilenceThresholdSecs: 0.85,
           vadThreshold: 0.42,
-          minSpeechDurationMs: 80,
+          minSpeechDurationMs: 160,
           minSilenceDurationMs: 140,
           languageCode: recognitionLanguage(activePersona).scribe,
           keyterms: buildVoiceKeyterms(voiceAccuracyProfileRef.current, [
             ...personas.map(persona => persona.name),
             activePersona?.name,
             getStoredUserName(),
-            'send me',
-            'show me',
-            'generate',
-            'image',
-            'photo',
-            'selfie',
-            'video',
-            'Seedream 5.0 Pro',
-            'Seedance 2.5',
-            'Wavespeed',
-            'GPT Image 2',
-            'Qwen 3.0 Pro',
+            ...(recognitionLanguage(activePersona).scribe === 'ar'
+              ? []
+              : ['Seedream 5.0 Pro', 'Seedance 2.5', 'Wavespeed', 'GPT Image 2', 'Qwen 3.0 Pro']),
           ].filter((term): term is string => Boolean(term))),
           filterBackgroundAudio: true,
           noVerbatim: false,

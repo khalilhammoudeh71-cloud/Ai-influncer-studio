@@ -35,3 +35,14 @@ test('comfort is modestly slower, neutral scripts gain no fillers or text change
  const d=buildVoiceDelivery('elevenlabs','eleven_turbo_v2_5','I am here.',{},undefined,'comforting');
  assert.ok(d.settings.speed!>=.9&&d.settings.speed!<1);assert.equal(d.text,'I am here.');
 });
+
+
+test('Arabic v3 delivery carries selected dialect without rewriting words or leaking tags to v2', () => {
+ const persona={personalitySettings:{language:'ar' as const,dialect:'jordanian-syrian' as const}};
+ const words='كيفك؟ هلأ بدي أحكي معك.';
+ assert.equal(buildVoiceDelivery('elevenlabs','eleven_v3',words,persona,undefined,'neutral').text,'[strong Jordanian Syrian accent] '+words);
+ assert.equal(buildVoiceDelivery('elevenlabs','eleven_turbo_v2_5',words,persona,undefined,'neutral').text,words);
+ assert.equal(buildVoiceDelivery('openai','tts-1',words,persona,undefined,'neutral').text,words);
+ assert.equal(buildVoiceDelivery('elevenlabs','eleven_v3','Hello.',persona,undefined,'neutral').text,'Hello.');
+ assert.match(buildVoiceDelivery('elevenlabs','eleven_v3',words,{personalitySettings:{language:'ar',dialect:'gulf'}},undefined,'neutral').text,/Saudi accent/);
+});

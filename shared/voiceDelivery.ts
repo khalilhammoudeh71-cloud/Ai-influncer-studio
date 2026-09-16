@@ -1,3 +1,4 @@
+import { normalizeLanguage } from './personaLanguage';
 import { personalityDelivery, type PersonalitySettings } from './personality';
 
 /** Provider-specific delivery. The stored speaker binding is never changed here. */
@@ -34,7 +35,11 @@ export function buildVoiceDelivery(provider:string,model:string,text:string,pers
   const pace=Number(settings.speed);delete settings.speed;unsupported.push('numeric speed (v3 uses delivery tags)');
   const tag={neutral:'',comforting:'[reassuring]',excited:'[excited]',playful:'[mischievously]'}[mood];
   const pacing=pace<.97?'[slowly]':pace>1.03?'[quickly]':'';
-  text=[tag,pacing,text].filter(Boolean).join(' ');
+  const language = normalizeLanguage(persona);
+  const accents = {'jordanian-syrian':'Jordanian Syrian',jordanian:'Jordanian',syrian:'Syrian',lebanese:'Lebanese',palestinian:'Palestinian',egyptian:'Egyptian',gulf:'Saudi',msa:''};
+  const accent = /[\u0600-\u06ff]/.test(text) && accents[language.dialect]
+    ? `[strong ${accents[language.dialect]} accent]` : '';
+  text=[accent,tag,pacing,text].filter(Boolean).join(' ');
  }
  if(provider !== 'elevenlabs') {
   const supported = provider === 'chatterbox' ? ['style'] : ['openai','openai:tts','heygen','omnivoice','wavespeed:omnivoice'].includes(provider) ? ['speed'] : [];

@@ -18,7 +18,7 @@ export const EMPTY_VOICE_ACCURACY_PROFILE: VoiceAccuracyProfile = {
   customTerms: [],
 };
 
-const normalize = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const normalize = (value: string) => value.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -63,7 +63,7 @@ export function applyVoiceCorrections(transcript: string, corrections: VoiceCorr
       .split(/\s+/)
       .map(escapeRegExp)
       .join('\\s+');
-    result = result.replace(new RegExp(`\\b${heardPattern}\\b`, 'gi'), correction.intended);
+    result = result.replace(new RegExp(`(?<![\\p{L}\\p{N}])${heardPattern}(?![\\p{L}\\p{N}])`, 'giu'), correction.intended);
   }
   return result.replace(/\s+/g, ' ').trim();
 }
@@ -141,8 +141,8 @@ export function deriveCalibrationCorrections(heard: string, intended: string): A
   let heardChunk: string[] = [];
   let intendedChunk: string[] = [];
   const flush = () => {
-    const heardPhrase = heardChunk.join(' ').replace(/[^a-z0-9' .-]/gi, '').trim();
-    const intendedPhrase = intendedChunk.join(' ').replace(/[^a-z0-9' .-]/gi, '').trim();
+    const heardPhrase = heardChunk.join(' ').replace(/[^\p{L}\p{N}' .-]/gu, '').trim();
+    const intendedPhrase = intendedChunk.join(' ').replace(/[^\p{L}\p{N}' .-]/gu, '').trim();
     if (heardPhrase && intendedPhrase && normalize(heardPhrase) !== normalize(intendedPhrase)) {
       corrections.push({ heard: heardPhrase, intended: intendedPhrase });
     }

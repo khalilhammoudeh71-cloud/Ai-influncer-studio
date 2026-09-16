@@ -55,3 +55,14 @@ test('only asks for confirmation on incomplete media requests', () => {
   assert.equal(needsVoiceConfirmation('generate an image of Leen in a fancy dress'), false);
   assert.equal(needsVoiceConfirmation('how are you doing'), false);
 });
+
+
+test('Arabic vocabulary and corrections preserve distinct letters and word boundaries', () => {
+  let profile = addVoiceTerms(parseVoiceAccuracyProfile(null), ['روان', 'لين', 'كيفك']);
+  profile = saveVoiceCorrection(profile, 'هلأ', 'هلق');
+  assert.deepEqual(buildVoiceKeyterms(profile, []), ['روان', 'لين', 'كيفك', 'هلق', 'هلأ']);
+  assert.equal(applyVoiceCorrections('هلأ وهلأ هلأك', profile.corrections), 'هلق وهلأ هلأك');
+  assert.equal(applyVoiceCorrections('لا لا، قصدي بكرا مش اليوم', []), 'لا لا، قصدي بكرا مش اليوم');
+  assert.deepEqual(deriveCalibrationCorrections('بدي أروح اليوم', 'بدي أروح بكرا'), [{heard:'اليوم', intended:'بكرا'}]);
+  assert.equal(isDuplicateVoiceTranscript('كيفك اليوم', {text:'كيفك بكرا',at:1000},1100),false);
+});

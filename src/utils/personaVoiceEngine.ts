@@ -1,9 +1,10 @@
+import { normalizeLanguage, type LanguageProfile } from '../../shared/personaLanguage';
 export const AUTO_PERSONA_VOICE_ENGINE = 'persona_voice_auto';
 export const ELEVENLABS_CLONED_VOICE_MODEL = 'eleven_turbo_v2_5';
 export const ELEVENLABS_LOW_LATENCY_FALLBACK_MODEL = 'eleven_flash_v2_5';
 export const MAYA_UNCLONED_VOICE_MODEL = 'fal_maya_stream';
 
-type PersonaVoiceSource = {
+type PersonaVoiceSource = LanguageProfile & {
   name?: unknown;
   voiceEngine?: unknown;
   voiceId?: unknown;
@@ -36,9 +37,10 @@ export function resolvePersonaVoiceEngine(
 ): string {
   if (selectedEngine !== AUTO_PERSONA_VOICE_ENGINE) return selectedEngine;
   const provider = String(persona?.voiceEngine || '').trim();
-  if (provider) return provider === 'elevenlabs' ? ELEVENLABS_CLONED_VOICE_MODEL : provider;
+  const automaticElevenModel = normalizeLanguage(persona || {}).language === 'ar' ? 'eleven_v3' : ELEVENLABS_CLONED_VOICE_MODEL;
+  if (provider) return provider === 'elevenlabs' ? automaticElevenModel : provider;
   // Legacy ID-only records retain ElevenLabs, but names and recordings are not provider identities.
-  if (DIRECT_ELEVENLABS_VOICE_ID.test(String(persona?.voiceId || ''))) return ELEVENLABS_CLONED_VOICE_MODEL;
+  if (DIRECT_ELEVENLABS_VOICE_ID.test(String(persona?.voiceId || ''))) return automaticElevenModel;
   return 'voice_selection_required';
 }
 
