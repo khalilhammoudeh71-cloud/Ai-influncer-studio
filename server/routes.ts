@@ -3532,6 +3532,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
 });
 
 async function handleAgentChat(req: AuthenticatedRequest, res: Response) {
+  const interactionMode: 'plan' | 'build' = (req.body as any)?.interactionMode === 'plan' ? 'plan' : 'build';
   const requestAbort = new AbortController();
   req.once?.('aborted', () => requestAbort.abort());
   res.once?.('close', () => { if (!res.writableFinished) requestAbort.abort(); });
@@ -3545,6 +3546,14 @@ async function handleAgentChat(req: AuthenticatedRequest, res: Response) {
   const markStage = (name: string) => { const now = performance.now(); stages[name] = Math.round(now - stageStarted); stageStarted = now; };
   const sendJson = res.json.bind(res);
   res.json = ((body: any) => {
+    if (interactionMode === 'plan' && body && typeof body === 'object') {
+      body = { ...body, status: 'normal', suggestedSteps: [], interactionMode };
+      delete body.campaign;
+      delete body.critiqueLogs;
+      delete body.collaborationLogs;
+    } else if (body && typeof body === 'object') {
+      body = { ...body, interactionMode };
+    }
     if (researchRequested && typeof body.text==='string') {
       body.researchVerification = verifyResearchLinks(body.text,retrievedSources);
       if(body.researchVerification.unverifiedLinkCount) body.text += '\n\nSource check: some links in this draft were not returned by retrieval. Verify them before relying on these claims.';
@@ -3666,7 +3675,16 @@ async function handleAgentChat(req: AuthenticatedRequest, res: Response) {
     ]);
     const agentIdentity = resolvePersonaChatIdentity({activePersona,storedCreator:agentCreator,savedPersonas:agentPersonas,fallbackName:'Creator'});
     markStage('identity');
+    const modeInstruction = interactionMode === 'plan'
+      ? `PLAN MODE IS ACTIVE:
+- Act as a thoughtful language-model collaborator for brainstorming, strategy, critique, comparisons, research synthesis, and detailed planning.
+- Give useful ideas and clear plans in prose, lists, or tables as appropriate.
+- Never call creation tools, never create an executable studio plan, and always leave suggestedSteps empty.
+- Do not imply that media, campaigns, files, voices, personas, or other assets were created or queued. The user can switch to Build mode when they want execution.`
+      : `BUILD MODE IS ACTIVE:
+- Turn complete production requests into reviewable studio steps. Do not execute them until the app's approval flow authorizes execution.`;
     const systemInstruction = `You are Super Agent Co-Pilot, a warm, capable creator-operations partner who speaks like a real human collaborator.
+${modeInstruction}
 ${agentIdentityContext(agentIdentity,activePersona)}
 WORKSPACE EXECUTION CONTRACT:
 - Discuss and refine the user's complete brief across messages. Do not generate from an unfinished description, a quoted example, a text-only instruction, or a request to wait.
@@ -3962,7 +3980,7 @@ Do not wrap your response in markdown code blocks or HTML tags. Return ONLY the 
         for (const modelCandidate of route.modelCandidates) {
           const runtime = providerRuntimes[modelCandidate.provider];
           if (!runtime.apiKey) continue;
-          const supportsTools = modelSupportsNativeTools(modelCandidate, catalog);
+          const supportsTools = interactionMode === 'build' && modelSupportsNativeTools(modelCandidate, catalog);
           const catalogEntry = catalog.find(model => model.provider === modelCandidate.provider && model.id === modelCandidate.model);
           const conversation = [...baseMessages];
           let candidateFailed = false;
@@ -4124,7 +4142,7 @@ Do not wrap your response in markdown code blocks or HTML tags. Return ONLY the 
       const actionKeywords = ['generate', 'create', 'make', 'build', 'draw', 'edit', 'swap', 'photo', 'picture', 'image', 'video', 'avatar', 'clone', 'persona', 'storyboard', 'photoshoot', 'outfit', 'plan', 'content', 'script', 'schedule', 'campaign', '3d', 'mesh', 'lip sync', 'talking head'];
       const isActionRequest = actionKeywords.some(kw => lowerMsg.includes(kw)) || (lastMsg.length > 80);
 
-      if (isActionRequest) {
+      if (isActionRequest && interactionMode === 'build') {
         // Action request — use JSON mode for structured step output
         const result = await getGeminiClientForRoutes().models.generateContent({
           model: 'gemini-2.5-flash',

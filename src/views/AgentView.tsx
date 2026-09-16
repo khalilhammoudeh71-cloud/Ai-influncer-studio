@@ -610,6 +610,9 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
   const [autoApprove, setAutoApprove] = useState(false);
   const [allowNsfw, setAllowNsfw] = useState(() => localStorage.getItem('agent_allow_nsfw') === 'true');
   const [planningModel,setPlanningModel]=useState(()=>accountLocalStorage.getItem("agent_planning_model")||"");
+  const [interactionMode, setInteractionMode] = useState<'plan' | 'build'>(() =>
+    accountLocalStorage.getItem('super_agent_interaction_mode') === 'plan' ? 'plan' : 'build'
+  );
   const [voiceLlmModel, setVoiceLlmModel] = useState<string>(() => {
     const brainVersion = localStorage.getItem('super_agent_brain_version');
     const saved = localStorage.getItem('agent_voice_llm');
@@ -1859,6 +1862,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
         body: JSON.stringify({ 
           messages: workspaceBrief.trim() ? [{role:'user',content:projectBriefContext(workspaceBrief)}, ...history] : history,
           allowNsfw,
+          interactionMode,
           voiceLlmModel: planningModel || voiceLlmModel,
           researchMode: {
             deepResearch: deepResearchActive,
@@ -1871,7 +1875,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
       });
 
       const data = await readAgentChatResponse(res);
-      const normalizedSteps = normalizeAgentSteps(data.suggestedSteps);
+      const normalizedSteps = interactionMode === 'build' ? normalizeAgentSteps(data.suggestedSteps) : [];
       const finalSuggestedSteps = normalizedSteps.length > 0 ? normalizedSteps : undefined;
       const finalCritiqueLogs = Array.isArray(data.critiqueLogs)
         ? data.critiqueLogs.filter((entry: unknown): entry is string => typeof entry === 'string')
@@ -1904,7 +1908,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
 
       setMessages(prev => [...prev.slice(-99), newMsgObj]);
 
-      if (newMsgObj.execSteps?.length && canAutoRun(autoApprove, userMessage.content)) {
+      if (interactionMode === 'build' && newMsgObj.execSteps?.length && canAutoRun(autoApprove, userMessage.content)) {
         setTimeout(() => {
           runPipeline(newMsgId, newMsgObj);
         }, 50);
@@ -3748,12 +3752,47 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
             )}
 
             <div className="agent-draft-composer order-1 shrink-0 rounded-[24px] border border-[#E7C477]/30 bg-[#18181B] p-4 shadow-[0_18px_60px_rgba(0,0,0,0.35)] transition-colors focus-within:border-[#E7C477]/65 sm:p-5">
-            <div className="mb-3 flex items-center justify-between gap-4">
-              <div>
-                <p className="font-serif text-lg text-[#F5F1E8] sm:text-xl">What should we make?</p>
-                <p className="mt-1 text-xs text-zinc-500">Describe the outcome. Super Agent will plan the work and ask before costly steps.</p>
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <p className="font-serif text-lg text-[#F5F1E8] sm:text-xl">
+                  {interactionMode === 'plan' ? 'What should we explore?' : 'What should we make?'}
+                </p>
+                <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+                  {interactionMode === 'plan'
+                    ? 'Brainstorm, compare approaches, or develop a detailed plan. Nothing will be created or run.'
+                    : 'Describe the outcome. Super Agent will prepare the work and ask before costly steps.'}
+                </p>
               </div>
-              <span className="hidden rounded-full border border-white/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-500 sm:inline">Brief</span>
+              <div
+                role="group"
+                aria-label="Super Agent mode"
+                className="flex shrink-0 rounded-xl border border-white/10 bg-black/25 p-1"
+              >
+                <button
+                  type="button"
+                  aria-pressed={interactionMode === 'plan'}
+                  onClick={() => {
+                    setInteractionMode('plan');
+                    accountLocalStorage.setItem('super_agent_interaction_mode', 'plan');
+                  }}
+                  className={`flex min-w-24 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition-colors ${interactionMode === 'plan' ? 'bg-[#E7C477] text-[#17130A]' : 'text-zinc-400 hover:text-[#F2D58D]'}`}
+                  title="Ideas, strategy, critique and planning only"
+                >
+                  <FileText size={14} /> Plan
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={interactionMode === 'build'}
+                  onClick={() => {
+                    setInteractionMode('build');
+                    accountLocalStorage.setItem('super_agent_interaction_mode', 'build');
+                  }}
+                  className={`flex min-w-24 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition-colors ${interactionMode === 'build' ? 'bg-[#E7C477] text-[#17130A]' : 'text-zinc-400 hover:text-[#F2D58D]'}`}
+                  title="Prepare executable studio work for your review"
+                >
+                  <Zap size={14} /> Build
+                </button>
+              </div>
             </div>
 
             {/* Active Research Badges & Attachment Previews Row */}
@@ -3821,7 +3860,9 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                 }
               }}
               disabled={isSending}
-              placeholder="Describe a campaign, ask for research, or give Super Agent a task…"
+              placeholder={interactionMode === 'plan'
+                ? 'Ask for ideas, strategy, feedback, comparisons, or a step-by-step plan…'
+                : 'Describe a campaign, ask for research, or give Super Agent a task…'}
               className="w-full min-h-[150px] max-h-[300px] resize-none overflow-y-auto bg-transparent text-base font-medium leading-relaxed text-[#F5F1E8] outline-none placeholder:text-zinc-600 sm:min-h-[190px] sm:text-lg"
             />
 
@@ -3981,7 +4022,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                   disabled={isSending || (!inputText.trim() && attachments.length === 0)}
                   className="min-w-24 justify-center rounded-xl bg-[#E7C477] px-4 py-2.5 text-sm font-bold text-[#17130A] shadow-[0_8px_24px_rgba(231,196,119,0.16)] transition-colors hover:bg-[#F2D58D] disabled:pointer-events-none disabled:opacity-40 flex items-center gap-2 shrink-0 cursor-pointer sm:min-w-28 sm:px-5"
                 >
-                  <span>Send</span>
+                  <span>{interactionMode === 'plan' ? 'Ask' : 'Send'}</span>
                   {isSending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
                 </button>
               </div>

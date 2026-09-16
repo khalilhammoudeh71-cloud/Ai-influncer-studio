@@ -60,6 +60,32 @@ test('accepting a native plan does not require a second model call to summarize 
   }finally{globalThis.fetch=originalFetch;names.forEach((name,index)=>{if(values[index]===undefined)delete process.env[name];else process.env[name]=values[index];});}
 });
 
+test('plan mode behaves as an LLM and never returns executable studio steps', async () => {
+  const names=['GEMINI_API_KEY','RUNWARE_API_KEY','WIRO_API_KEY','ATLASCLOUD_API_KEY','WAVESPEED_API_KEY','VENICE_API_KEY'];
+  const values=names.map(name=>process.env[name]);names.forEach(name=>delete process.env[name]);
+  process.env.GEMINI_API_KEY='test';process.env.RUNWARE_API_KEY='test';
+  const originalFetch=globalThis.fetch;let chatCalls=0;
+  globalThis.fetch=async(url,init)=>{
+    if(String(url).includes('/models'))return new Response(JSON.stringify({data:[{id:'deepseek:v4@flash',capabilities:{function_tools:true}}]}));
+    chatCalls++;
+    const body=JSON.parse(init!.body as string);
+    assert.equal(body.tools,undefined,'Plan mode must not expose execution tools to the model');
+    assert.match(body.messages[0].content,/PLAN MODE IS ACTIVE/);
+    return new Response(JSON.stringify({choices:[{finish_reason:'stop',message:{role:'assistant',content:JSON.stringify({text:'Three campaign directions: education, transformation, and behind the scenes.',status:'clarifying',suggestedSteps:[{type:'generate_image',params:{prompt:'Should be discarded'}}]})}}]}));
+  };
+  try {
+    const {default:router}=await import('./routes');
+    const handler=(router as any).stack.find((layer:any)=>layer.route?.path==='/agent/chat').route.stack[0].handle;
+    let data:any;
+    await handler({body:{messages:[{role:'user',content:'Give me three campaign ideas and a plan.'}],voiceLlmModel:'adaptive-fast',interactionMode:'plan'},user:{id:'test-owner'}},{status(){return this;},json(value:any){data=value;return this;}});
+    assert.equal(chatCalls,1);
+    assert.equal(data.interactionMode,'plan');
+    assert.equal(data.status,'normal');
+    assert.deepEqual(data.suggestedSteps,[]);
+    assert.match(data.text,/Three campaign directions/);
+  }finally{globalThis.fetch=originalFetch;names.forEach((name,index)=>{if(values[index]===undefined)delete process.env[name];else process.env[name]=values[index];});}
+});
+
 test('a partial native plan is rejected and replaced as a whole before review', async () => {
   const names=['RUNWARE_API_KEY'];const values=names.map(name=>process.env[name]);process.env.RUNWARE_API_KEY='test';
   const originalFetch=globalThis.fetch;let calls=0;
