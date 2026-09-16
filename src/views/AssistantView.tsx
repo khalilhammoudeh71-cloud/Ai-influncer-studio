@@ -4511,16 +4511,16 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 z-50 bg-[#121316]/98 backdrop-blur-2xl flex flex-col justify-between p-4 sm:p-6 overflow-y-auto custom-scrollbar rounded-2xl sm:rounded-3xl border border-white/[0.12] shadow-2xl"
+            className="absolute inset-0 z-50 bg-[#121316]/98 backdrop-blur-2xl flex flex-col justify-between p-2.5 sm:p-4 overflow-y-auto custom-scrollbar rounded-2xl sm:rounded-3xl border border-white/[0.12] shadow-2xl"
           >
             {/* Header */}
-            <div className="flex flex-wrap items-center justify-between gap-3 flex-shrink-0 mb-3">
-              <div className="flex min-w-0 items-center gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 flex-shrink-0 mb-1">
+              <div className="flex min-w-0 items-center gap-2">
                 {activePersona?.avatar || activePersona?.referenceImage ? (
                   <img 
                     src={activePersona.avatar || activePersona.referenceImage} 
                     alt={activePersona.name} 
-                    className="w-10 h-10 shrink-0 rounded-full border border-white/20 object-cover shadow-sm"
+                    className="w-8 h-8 shrink-0 rounded-full border border-white/20 object-cover shadow-sm"
                     onError={(e) => {
                       const target = e.target as HTMLImageElement;
                       const fallback = activePersona?.referenceImage && target.src !== activePersona.referenceImage
@@ -4535,7 +4535,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                   </div>
                 )}
                 <div>
-                  <h3 className="font-extrabold text-white text-base leading-tight">{activePersona.name}</h3>
+                  <h3 className="font-extrabold text-white text-sm leading-tight">{activePersona.name}</h3>
                   <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">{activePersona.niche}</span>
                 </div>
               </div>
@@ -4543,7 +4543,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
               {/* Voice Status & Voice Engine Selector & Call Duration */}
               <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
                 <div 
-                  className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/25 text-emerald-300 text-[11px] font-semibold rounded-lg px-2.5 py-1 backdrop-blur-md transition-all shadow-sm max-w-[150px] truncate"
+                  className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/25 text-emerald-300 text-[10px] font-semibold rounded-lg px-2 py-0.5 backdrop-blur-md transition-all shadow-sm max-w-[150px] truncate"
                   title={selectedVoiceEngine === 'cartesia-sonic' ? 'Cartesia stock voice; not the saved persona clone' : selectedVoiceEngine === 'fal_maya_stream' ? 'Maya generated voice; not the saved persona clone' : `Using ${activePersona.name}'s saved voice`}
                 >
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
@@ -4553,7 +4553,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                   <select
                     value={voiceLlmModel}
                     onChange={event => handleVoiceLlmChange(event.target.value)}
-                    className="w-full min-w-0 bg-[#1c1d22] hover:bg-[#222329] border border-cyan-400/25 text-cyan-100 text-[11px] font-semibold rounded-lg px-2.5 py-1 outline-none cursor-pointer backdrop-blur-md transition-all"
+                    className="w-full min-w-0 bg-[#1c1d22] hover:bg-[#222329] border border-cyan-400/25 text-cyan-100 text-[10px] font-semibold rounded-lg px-2 py-0.5 outline-none cursor-pointer backdrop-blur-md transition-all"
                     title={isPro ? 'Select conversation LLM' : 'Choose what the conversation should prioritize'}
                     aria-label={isPro ? 'Conversation LLM' : 'Conversation priority'}
                   >
@@ -4568,7 +4568,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                   <select
                     value={selectedVoiceEngine}
                     onChange={e => handleVoiceEngineChange(e.target.value)}
-                    className="w-full min-w-0 bg-[#1c1d22] hover:bg-[#222329] border border-white/[0.12] text-zinc-200 text-[11px] font-semibold rounded-lg px-2.5 py-1 outline-none cursor-pointer backdrop-blur-md transition-all"
+                    className="w-full min-w-0 bg-[#1c1d22] hover:bg-[#222329] border border-white/[0.12] text-zinc-200 text-[10px] font-semibold rounded-lg px-2 py-0.5 outline-none cursor-pointer backdrop-blur-md transition-all"
                     title={isPro ? 'Select Voice Engine' : 'Choose what the voice should prioritize'}
                     aria-label="Voice engine"
                   >
@@ -4636,7 +4636,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
               </div>
             </div>
 
-            {(verifyingSpeech || transcriptionNotice) && <p role="status" className="mx-4 mt-2 rounded-lg bg-[#E7C477]/10 p-3 text-xs text-[#E7C477]">{verifyingSpeech?'Checking what you said…':transcriptionNotice}</p>}
+            {verifyingSpeech && <p role="status" className="mx-2 mt-1 rounded-lg bg-[#E7C477]/10 px-3 py-1.5 text-[11px] text-[#E7C477]">Checking what you said…</p>}
             {pronunciationCandidate && <div className="mx-4 mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-[#E7C477]/30 p-3">
               <span className="text-xs text-zinc-300">Remember pronunciation</span>
               <input aria-label="Correction word" dir="auto" value={pronunciationCandidate.word} onChange={e=>setPronunciationCandidate({...pronunciationCandidate,word:e.target.value})} className="min-w-0 flex-1 rounded-lg bg-black/30 p-2"/>
