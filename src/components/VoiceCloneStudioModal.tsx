@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   X, 
@@ -487,7 +488,7 @@ export default function VoiceCloneStudioModal({
 
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <AnimatePresence>
       <div className="fixed inset-0 z-[2147483647] flex items-center justify-center p-2 bg-black/80 backdrop-blur-md sm:p-4">
         <motion.div
@@ -1158,6 +1159,7 @@ export default function VoiceCloneStudioModal({
           </div>
         </motion.div>
       </div>
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }
