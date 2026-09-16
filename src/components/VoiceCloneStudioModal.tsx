@@ -17,7 +17,8 @@ import {
   BookmarkPlus, 
   FolderHeart,
   MessageSquareQuote,
-  AlertCircle
+  AlertCircle,
+  Search
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../services/apiService';
@@ -45,14 +46,28 @@ interface SampleItem {
   name: string;
 }
 
+interface ProviderVoice {
+  voice_id: string;
+  name: string;
+  category: string;
+  description: string;
+  preview_url: string;
+  labels: Record<string, string>;
+}
+
 export default function VoiceCloneStudioModal({
   isOpen,
   onClose,
   onVoiceCloned,
 }: VoiceCloneStudioModalProps) {
-  const [existingVoices, setExistingVoices] = useState<Array<{voice_id:string;name:string}>>([]);
+  const [existingVoices, setExistingVoices] = useState<ProviderVoice[]>([]);
   const [selectedExistingVoiceId, setSelectedExistingVoiceId] = useState('');
   const [isActivatingExistingVoice, setIsActivatingExistingVoice] = useState(false);
+  const [voiceSearch, setVoiceSearch] = useState('');
+  const [playingExistingVoiceId, setPlayingExistingVoiceId] = useState<string | null>(null);
+  const [loadingExistingVoiceId, setLoadingExistingVoiceId] = useState<string | null>(null);
+  const existingVoiceAudioRef = useRef<HTMLAudioElement | null>(null);
+  const generatedPreviewUrlsRef = useRef(new Map<string, string>());
   useEffect(() => {
     if (!isOpen) return;
     void api.voice.getElevenLabsVoices()
@@ -314,6 +329,56 @@ export default function VoiceCloneStudioModal({
     }
   };
 
+  const stopExistingVoicePreview = () => {
+    existingVoiceAudioRef.current?.pause();
+    existingVoiceAudioRef.current = null;
+    setPlayingExistingVoiceId(null);
+  };
+
+  const toggleExistingVoicePreview = async (voice: ProviderVoice) => {
+    if (playingExistingVoiceId === voice.voice_id) {
+      stopExistingVoicePreview();
+      return;
+    }
+
+    stopExistingVoicePreview();
+    setLoadingExistingVoiceId(voice.voice_id);
+    try {
+      let previewUrl = voice.preview_url || generatedPreviewUrlsRef.current.get(voice.voice_id) || '';
+      if (!previewUrl) {
+        const generated = await api.voice.previewVoice(
+          voice.voice_id,
+          `Hi, I'm ${voice.name}. This is a short sample of how I sound as your Super Agent.`,
+        );
+        previewUrl = generated.audioUrl;
+        generatedPreviewUrlsRef.current.set(voice.voice_id, previewUrl);
+      }
+
+      const audio = new Audio(previewUrl);
+      existingVoiceAudioRef.current = audio;
+      audio.onended = () => {
+        setPlayingExistingVoiceId(null);
+        existingVoiceAudioRef.current = null;
+      };
+      audio.onerror = () => {
+        setPlayingExistingVoiceId(null);
+        existingVoiceAudioRef.current = null;
+        toast.error(`The sample for ${voice.name} could not be played.`);
+      };
+      await audio.play();
+      setPlayingExistingVoiceId(voice.voice_id);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : `The sample for ${voice.name} could not be played.`);
+    } finally {
+      setLoadingExistingVoiceId(null);
+    }
+  };
+
+  useEffect(() => {
+    if (!isOpen || activeTab !== 'library') stopExistingVoicePreview();
+    return () => existingVoiceAudioRef.current?.pause();
+  }, [isOpen, activeTab]);
+
   // Delete Voice from Library (IndexedDB)
   const handleDeleteSavedVoice = async (id: string, name: string) => {
     const updated = await deleteVoiceItem(id);
@@ -486,6 +551,13 @@ export default function VoiceCloneStudioModal({
     }
   };
 
+  const normalizedVoiceSearch = voiceSearch.trim().toLowerCase();
+  const filteredExistingVoices = existingVoices.filter(voice => {
+    if (!normalizedVoiceSearch) return true;
+    return [voice.name, voice.category, voice.description, ...Object.values(voice.labels || {})]
+      .some(value => String(value || '').toLowerCase().includes(normalizedVoiceSearch));
+  });
+
   if (!isOpen) return null;
 
   return createPortal(
@@ -580,21 +652,74 @@ export default function VoiceCloneStudioModal({
                     <h4 className="text-sm font-bold text-[#F5F1E8]">ElevenLabs voices</h4>
                     <p className="mt-1 text-[11px] text-zinc-400">Choose a ready voice for calls and spoken agent responses.</p>
                   </div>
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                    <select
-                      aria-label="Available agent voice"
-                      value={selectedExistingVoiceId}
-                      onChange={event => setSelectedExistingVoiceId(event.target.value)}
-                      className="min-w-0 flex-1 rounded-xl border border-white/10 bg-zinc-900 px-3 py-2.5 text-sm text-zinc-100"
+                  <div className="space-y-3">
+                    <label className="relative block">
+                      <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+                      <input
+                        type="search"
+                        aria-label="Search available voices"
+                        value={voiceSearch}
+                        onChange={event => setVoiceSearch(event.target.value)}
+                        placeholder="Search by name, accent, tone, or category…"
+                        className="w-full rounded-xl border border-white/10 bg-zinc-950/70 py-2.5 pl-9 pr-3 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-[#E7C477]/55"
+                      />
+                    </label>
+                    <div
+                      role="list"
+                      aria-label="Available agent voices"
+                      className="max-h-72 space-y-1 overflow-y-auto rounded-xl border border-white/10 bg-zinc-950/55 p-1.5 custom-scrollbar"
                     >
-                      {existingVoices.length === 0 && <option value="">No provider voices found</option>}
-                      {existingVoices.map(voice => <option key={voice.voice_id} value={voice.voice_id}>{voice.name}</option>)}
-                    </select>
+                      {existingVoices.length === 0 && (
+                        <p className="px-3 py-6 text-center text-xs text-zinc-500">No provider voices found.</p>
+                      )}
+                      {existingVoices.length > 0 && filteredExistingVoices.length === 0 && (
+                        <p className="px-3 py-6 text-center text-xs text-zinc-500">No voices match that search.</p>
+                      )}
+                      {filteredExistingVoices.map(voice => {
+                        const isSelected = selectedExistingVoiceId === voice.voice_id;
+                        const isPlaying = playingExistingVoiceId === voice.voice_id;
+                        const isLoading = loadingExistingVoiceId === voice.voice_id;
+                        const details = [voice.labels?.gender, voice.labels?.accent, voice.labels?.descriptive, voice.category]
+                          .filter(Boolean)
+                          .slice(0, 3)
+                          .join(' · ');
+                        return (
+                          <div
+                            key={voice.voice_id}
+                            role="listitem"
+                            className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 transition-colors ${isSelected ? 'border-[#E7C477]/45 bg-[#E7C477]/10' : 'border-transparent hover:bg-white/[0.04]'}`}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => setSelectedExistingVoiceId(voice.voice_id)}
+                              aria-pressed={isSelected}
+                              className="min-w-0 flex-1 px-1 py-1 text-left"
+                            >
+                              <span className="flex items-center gap-2 text-sm font-semibold text-[#F5F1E8]">
+                                {voice.name}
+                                {isSelected && <Check size={13} className="shrink-0 text-[#E7C477]" />}
+                              </span>
+                              {details && <span className="mt-0.5 block truncate text-[10px] capitalize text-zinc-500">{details}</span>}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void toggleExistingVoicePreview(voice)}
+                              disabled={Boolean(loadingExistingVoiceId && !isLoading)}
+                              aria-label={`${isPlaying ? 'Pause' : 'Play'} sample of ${voice.name}`}
+                              title={`${isPlaying ? 'Pause' : 'Play'} ${voice.name} sample`}
+                              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition-colors disabled:opacity-40 ${isPlaying ? 'border-[#E7C477] bg-[#E7C477] text-[#17130A]' : 'border-[#E7C477]/35 bg-[#E7C477]/10 text-[#F2D58D] hover:bg-[#E7C477]/20'}`}
+                            >
+                              {isLoading ? <Loader2 size={15} className="animate-spin" /> : isPlaying ? <Pause size={15} /> : <Play size={15} className="ml-0.5" />}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
                     <button
                       type="button"
                       onClick={() => void handleActivateExistingVoice()}
                       disabled={!selectedExistingVoiceId || isActivatingExistingVoice}
-                      className="flex items-center justify-center gap-2 rounded-xl bg-[#E7C477] px-4 py-2.5 text-sm font-bold text-[#17130A] disabled:opacity-40"
+                      className="ml-auto flex w-full items-center justify-center gap-2 rounded-xl bg-[#E7C477] px-4 py-2.5 text-sm font-bold text-[#17130A] disabled:opacity-40 sm:w-auto"
                     >
                       {isActivatingExistingVoice ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
                       Use this voice
