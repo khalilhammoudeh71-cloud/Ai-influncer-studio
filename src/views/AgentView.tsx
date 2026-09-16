@@ -3197,16 +3197,16 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
               <span>{allowNsfw ? 'Adult mode' : 'Standard mode'}</span>
             </button>
 
-            <details className="group relative z-40 w-full">
+            <details open className="group relative z-40 w-full">
               <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-bold text-zinc-300 transition-colors hover:border-white/20 hover:bg-white/10">
-                <Sliders size={13} className="text-amber-400" /> Agent setup
+                <Mic size={13} className="text-amber-400" /> Voice & agent setup
               </summary>
-              <div className="mt-2 flex w-full flex-col gap-2 rounded-xl border border-white/10 bg-black/20 p-3">
-            <label className="text-xs text-zinc-300">Project brief
+              <div className="mt-2 flex w-full flex-col gap-3 rounded-xl border border-white/10 bg-black/20 p-3">
+            <label className="order-5 text-xs text-zinc-300">Project brief
               <textarea aria-label="Project brief" value={workspaceBrief} onChange={e => {setWorkspaceBrief(e.target.value); accountLocalStorage.setItem(keys.brief,serializeProjectBrief(e.target.value));}} placeholder="Saved project facts, preferences and decisions. Edit to correct; clear to forget. Fictional scene details should be labeled." className="mt-1 w-full rounded-lg border border-white/15 bg-black/30 p-2 text-sm" rows={3} />
               <span className="text-[11px] text-zinc-400">Saved for future conversations. You can edit it anytime.</span>
             </label>
-            <label className="block text-xs text-zinc-300">Text planning model
+            <label className="order-4 block text-xs text-zinc-300">Text planning model
               <select aria-label="Text planning model" value={planningModel} onChange={e=>{setPlanningModel(e.target.value);accountLocalStorage.setItem('agent_planning_model',e.target.value);}} className="ml-2 rounded-lg border border-white/15 bg-zinc-900 p-2 text-zinc-100">
                 <option value="">Use configured engine</option>
                 <option value="frontier-grok">Grok 4.6</option>
@@ -3216,9 +3216,10 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
               <p className="mt-1 text-zinc-400">Applies to text tasks. Voice keeps its configured engine. Selected frontier models do not silently fall back.</p>
             </label>
             {/* LLM Engine Selector */}
-            <div className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-amber-500/40 rounded-xl px-3 py-1.5 text-xs font-bold shadow-sm transition-all">
-              <span className="text-[10px] text-zinc-400 font-extrabold uppercase tracking-wider hidden sm:inline">Engine:</span>
+            <div className="order-3 rounded-xl border border-white/10 bg-white/[0.03] p-3">
+              <label className="mb-2 block text-[10px] font-extrabold uppercase tracking-[0.14em] text-zinc-400" htmlFor="agent-voice-conversation-model">Voice conversation model</label>
               <select
+                id="agent-voice-conversation-model"
                 value={voiceLlmModel}
                 onChange={(e) => {
                   const selected = e.target.value;
@@ -3250,7 +3251,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                   };
                   toast.success(labels[selected] || `Switched to ${selected}`);
                 }}
-                className="bg-transparent text-amber-300 text-xs font-extrabold outline-none cursor-pointer"
+                className="w-full rounded-lg border border-white/10 bg-zinc-900 px-3 py-2 text-xs font-bold text-[#F2D58D] outline-none cursor-pointer"
                 title="Select Conversational Intelligence LLM Engine for Super Agent & Voice Call"
               >
                 <optgroup label="ADAPTIVE AGENT">
@@ -3280,7 +3281,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
 
             {/* Agent's Voice Button */}
             {clonedVoiceRef ? (
-              <div className="flex items-center gap-2 bg-amber-500/20 border border-amber-500/40 text-amber-300 px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm">
+              <div className="order-1 flex items-center gap-2 rounded-xl border border-[#E7C477]/35 bg-[#E7C477]/10 px-3 py-2.5 text-xs font-bold text-[#F2D58D] shadow-sm">
                 <button
                   type="button"
                   onClick={handlePlayVoiceSample}
@@ -3304,7 +3305,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                   title="Configure Agent's Voice & Vocal Parameters"
                 >
                   <Mic size={13} className="text-amber-400" />
-                  <span>Agent Voice (Active)</span>
+                  <span>Choose or clone voice · Active</span>
                 </button>
                 <button
                   type="button"
@@ -3319,16 +3320,16 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
               <button
                 type="button"
                 onClick={() => setIsVoiceCloneModalOpen(true)}
-                className="px-3 py-1.5 rounded-xl text-xs font-bold bg-white/5 hover:bg-white/10 text-zinc-300 border border-white/10 hover:border-white/20 flex items-center gap-1.5 cursor-pointer transition-all shadow-sm"
+                className="order-1 flex w-full items-center justify-center gap-2 rounded-xl border border-[#E7C477]/35 bg-[#E7C477]/10 px-3 py-2.5 text-xs font-bold text-[#F2D58D] shadow-sm transition-all hover:bg-[#E7C477]/15"
                 title="Open Voice Studio: Upload audio sample, select AI model & fine-tune vocal sliders"
               >
                 <Mic size={13} className="text-amber-400" />
-                <span>Agent Voice</span>
+                <span>Choose or clone agent voice</span>
               </button>
             )}
 
-            <details className="w-full rounded-xl border border-white/10 bg-white/[0.02] p-2 text-xs text-zinc-300">
-              <summary className="cursor-pointer list-none font-semibold text-zinc-300">Voice features</summary>
+            <details className="order-2 w-full rounded-xl border border-white/10 bg-white/[0.02] p-2 text-xs text-zinc-300">
+              <summary className="cursor-pointer list-none font-semibold text-zinc-300">Call and microphone options</summary>
               <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-white/[0.07] pt-2">
                 <button
                   type="button"
@@ -3351,7 +3352,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
               type="button"
               onClick={() => void clearAllConversationHistory()}
               disabled={historySaving}
-              className="flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-zinc-400 transition-all hover:bg-white/10 hover:text-white disabled:cursor-wait disabled:opacity-50"
+              className="order-6 flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-zinc-400 transition-all hover:bg-white/10 hover:text-white disabled:cursor-wait disabled:opacity-50"
               title="Erase every saved Super Agent conversation"
             >
               {historySaving ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}

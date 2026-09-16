@@ -50,8 +50,18 @@ export default function VoiceCloneStudioModal({
   onVoiceCloned,
 }: VoiceCloneStudioModalProps) {
   const [existingVoices, setExistingVoices] = useState<Array<{voice_id:string;name:string}>>([]);
-  useEffect(() => { if(isOpen) void api.voice.getElevenLabsVoices().then(data => setExistingVoices(data.voices)).catch(() => setExistingVoices([])); }, [isOpen]);
-  const [activeTab, setActiveTab] = useState<'library' | 'clone'>('clone');
+  const [selectedExistingVoiceId, setSelectedExistingVoiceId] = useState('');
+  const [isActivatingExistingVoice, setIsActivatingExistingVoice] = useState(false);
+  useEffect(() => {
+    if (!isOpen) return;
+    void api.voice.getElevenLabsVoices()
+      .then(data => {
+        setExistingVoices(data.voices);
+        setSelectedExistingVoiceId(current => current || data.voices[0]?.voice_id || '');
+      })
+      .catch(() => setExistingVoices([]));
+  }, [isOpen]);
+  const [activeTab, setActiveTab] = useState<'library' | 'clone'>('library');
 
   // Form State
   const [speakerAuthorized, setSpeakerAuthorized] = useState(false);
@@ -278,6 +288,31 @@ export default function VoiceCloneStudioModal({
     }
   };
 
+  const handleActivateExistingVoice = async () => {
+    const voice = existingVoices.find(item => item.voice_id === selectedExistingVoiceId);
+    if (!voice) return;
+    setIsActivatingExistingVoice(true);
+    const toastId = toast.loading(`Setting ${voice.name} as the agent voice…`);
+    try {
+      const data = await api.voice.setDefaultVoice({
+        voiceId: voice.voice_id,
+        voiceName: voice.name,
+        model: 'elevenlabs-v3',
+        voiceSettings: { stability: 0.35, similarityBoost: 0.95, style: 0.15, speed: 1 },
+      });
+      if (!data.success || !data.voiceId) throw new Error('This voice is not ready to use.');
+      accountLocalStorage.setItem('superagent_cloned_voice_id', data.voiceId);
+      accountLocalStorage.setItem('superagent_cloned_voice', 'active');
+      onVoiceCloned({ voiceId: data.voiceId, name: voice.name, model: data.model || 'elevenlabs-v3' });
+      toast.success(`${voice.name} is now the Super Agent voice.`, { id: toastId });
+      onClose();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'The voice could not be activated.', { id: toastId });
+    } finally {
+      setIsActivatingExistingVoice(false);
+    }
+  };
+
   // Delete Voice from Library (IndexedDB)
   const handleDeleteSavedVoice = async (id: string, name: string) => {
     const updated = await deleteVoiceItem(id);
@@ -459,19 +494,19 @@ export default function VoiceCloneStudioModal({
           initial={{ opacity: 0, scale: 0.95, y: 15 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 15 }}
-          className="relative w-full max-w-2xl bg-[#0c101d] border border-white/15 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+          className="relative w-full max-w-2xl bg-[#18181B] border border-white/15 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
         >
           {/* Header Bar */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-black/40">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+              <div className="p-2.5 rounded-xl bg-amber-500/15 text-[#E7C477] border border-[#E7C477]/30">
                 <Mic size={20} />
               </div>
               <div>
                 <h3 className="text-base font-bold text-white flex items-center gap-2">
                   Agent's Voice Studio & Library
-                  <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                    Pro Studio
+                  <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-amber-500/15 text-[#E7C477] border border-[#E7C477]/30">
+                    Voice Studio
                   </span>
                 </h3>
                 <p className="text-xs text-zinc-400">
@@ -494,12 +529,12 @@ export default function VoiceCloneStudioModal({
               onClick={() => setActiveTab('clone')}
               className={`py-3 px-4 text-xs font-bold flex items-center gap-2 border-b-2 transition-all cursor-pointer ${
                 activeTab === 'clone'
-                  ? 'border-cyan-400 text-cyan-300 bg-cyan-500/10'
+                  ? 'border-[#E7C477] text-[#F2D58D] bg-amber-500/10'
                   : 'border-transparent text-zinc-400 hover:text-white hover:bg-white/5'
               }`}
             >
-              <Sparkles size={14} className="text-cyan-400" />
-              <span>🎙️ Clone / Create New Voice</span>
+              <Sparkles size={14} className="text-[#E7C477]" />
+              <span>Clone a voice</span>
             </button>
 
             <button
@@ -507,12 +542,12 @@ export default function VoiceCloneStudioModal({
               onClick={() => setActiveTab('library')}
               className={`py-3 px-4 text-xs font-bold flex items-center gap-2 border-b-2 transition-all cursor-pointer ${
                 activeTab === 'library'
-                  ? 'border-cyan-400 text-cyan-300 bg-cyan-500/10'
+                  ? 'border-[#E7C477] text-[#F2D58D] bg-amber-500/10'
                   : 'border-transparent text-zinc-400 hover:text-white hover:bg-white/5'
               }`}
             >
-              <FolderHeart size={14} className="text-cyan-400" />
-              <span>📁 My Voices ({savedVoices.length})</span>
+              <FolderHeart size={14} className="text-[#E7C477]" />
+              <span>Available voices</span>
             </button>
           </div>
 
@@ -539,14 +574,40 @@ export default function VoiceCloneStudioModal({
             {/* TAB 1: MY VOICES LIBRARY */}
             {activeTab === 'library' && (
               <div className="space-y-4">
+                <div className="rounded-2xl border border-[#E7C477]/25 bg-[#E7C477]/[0.06] p-4">
+                  <div className="mb-3">
+                    <h4 className="text-sm font-bold text-[#F5F1E8]">ElevenLabs voices</h4>
+                    <p className="mt-1 text-[11px] text-zinc-400">Choose a ready voice for calls and spoken agent responses.</p>
+                  </div>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <select
+                      aria-label="Available agent voice"
+                      value={selectedExistingVoiceId}
+                      onChange={event => setSelectedExistingVoiceId(event.target.value)}
+                      className="min-w-0 flex-1 rounded-xl border border-white/10 bg-zinc-900 px-3 py-2.5 text-sm text-zinc-100"
+                    >
+                      {existingVoices.length === 0 && <option value="">No provider voices found</option>}
+                      {existingVoices.map(voice => <option key={voice.voice_id} value={voice.voice_id}>{voice.name}</option>)}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => void handleActivateExistingVoice()}
+                      disabled={!selectedExistingVoiceId || isActivatingExistingVoice}
+                      className="flex items-center justify-center gap-2 rounded-xl bg-[#E7C477] px-4 py-2.5 text-sm font-bold text-[#17130A] disabled:opacity-40"
+                    >
+                      {isActivatingExistingVoice ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
+                      Use this voice
+                    </button>
+                  </div>
+                </div>
                 <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-black uppercase tracking-wider text-cyan-400 flex items-center gap-2">
-                    <FolderHeart size={15} /> Your Saved Voices Library ({savedVoices.length})
+                  <h4 className="text-xs font-black uppercase tracking-wider text-[#E7C477] flex items-center gap-2">
+                    <FolderHeart size={15} /> Your cloned voices ({savedVoices.length})
                   </h4>
                   <button
                     type="button"
                     onClick={() => setActiveTab('clone')}
-                    className="text-xs font-bold text-cyan-300 hover:underline flex items-center gap-1 cursor-pointer"
+                    className="text-xs font-bold text-[#F2D58D] hover:underline flex items-center gap-1 cursor-pointer"
                   >
                     + Clone Another Voice
                   </button>
@@ -554,7 +615,7 @@ export default function VoiceCloneStudioModal({
 
                 {savedVoices.length === 0 ? (
                   <div className="py-12 px-4 text-center border-2 border-dashed border-white/10 rounded-2xl bg-white/[0.02] space-y-3">
-                    <div className="w-12 h-12 rounded-full bg-cyan-500/10 text-cyan-400 flex items-center justify-center mx-auto">
+                    <div className="w-12 h-12 rounded-full bg-amber-500/10 text-[#E7C477] flex items-center justify-center mx-auto">
                       <FolderHeart size={24} />
                     </div>
                     <div>
@@ -566,7 +627,7 @@ export default function VoiceCloneStudioModal({
                     <button
                       type="button"
                       onClick={() => setActiveTab('clone')}
-                      className="px-4 py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-bold transition-all cursor-pointer"
+                      className="px-4 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/20 text-[#F2D58D] border border-[#E7C477]/35 text-xs font-bold transition-all cursor-pointer"
                     >
                       + Clone Your First Voice
                     </button>
@@ -576,14 +637,14 @@ export default function VoiceCloneStudioModal({
                     {savedVoices.map((v) => (
                       <div
                         key={v.id}
-                        className="p-4 rounded-xl bg-white/[0.04] border border-white/10 hover:border-cyan-500/40 transition-all flex flex-col justify-between space-y-3 group"
+                        className="p-4 rounded-xl bg-white/[0.04] border border-white/10 hover:border-[#E7C477]/40 transition-all flex flex-col justify-between space-y-3 group"
                       >
                         <div className="space-y-1.5">
                           <div className="flex items-center justify-between">
-                            <span className="text-sm font-bold text-white group-hover:text-cyan-300 transition-colors">
+                            <span className="text-sm font-bold text-white group-hover:text-[#F2D58D] transition-colors">
                               {v.name}
                             </span>
-                            <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                            <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase bg-amber-500/15 text-[#F2D58D] border border-[#E7C477]/30">
                               {v.dateCreated}
                             </span>
                           </div>
@@ -601,7 +662,7 @@ export default function VoiceCloneStudioModal({
 
                           {v.description && (
                             <div className="p-2 rounded-lg bg-black/40 border border-white/5 text-[11px] text-zinc-300 flex items-start gap-1.5 italic">
-                              <MessageSquareQuote size={13} className="text-cyan-400 shrink-0 mt-0.5" />
+                              <MessageSquareQuote size={13} className="text-[#E7C477] shrink-0 mt-0.5" />
                               <span className="line-clamp-2">"{v.description}"</span>
                             </div>
                           )}
@@ -621,7 +682,7 @@ export default function VoiceCloneStudioModal({
                           <button
                             type="button"
                             onClick={() => togglePlaySavedVoice(v)}
-                            className="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-cyan-500/20 text-cyan-300 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                            className="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-amber-500/15 text-[#F2D58D] text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
                             title="Audition AI voice sample"
                           >
                             {playingSavedId === v.id ? <Pause size={13} /> : <Play size={13} />}
@@ -641,7 +702,7 @@ export default function VoiceCloneStudioModal({
                             <button
                               type="button"
                               onClick={() => handleActivateSavedVoice(v)}
-                              className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-xs font-bold shadow-md shadow-cyan-500/20 flex items-center gap-1 transition-all cursor-pointer"
+                              className="px-3 py-1.5 rounded-lg bg-[#E7C477] hover:bg-[#F2D58D] text-[#17130A] text-xs font-bold shadow-md flex items-center gap-1 transition-all cursor-pointer"
                             >
                               <Check size={13} />
                               <span>Set for Agent</span>
@@ -668,7 +729,7 @@ export default function VoiceCloneStudioModal({
               <>
                 {/* Step 1: Upload Reference Samples */}
                 <div className="space-y-2">
-                  <label className="text-xs font-black uppercase tracking-wider text-cyan-400 flex items-center justify-between">
+                  <label className="text-xs font-black uppercase tracking-wider text-[#E7C477] flex items-center justify-between">
                     <span>1. Reference Audio / Video Samples (Up to 5 Clips)</span>
                     {samples.length > 0 && (
                       <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
@@ -691,9 +752,9 @@ export default function VoiceCloneStudioModal({
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      className="w-full py-6 border-2 border-dashed border-white/15 hover:border-cyan-500/50 rounded-xl bg-white/[0.02] hover:bg-cyan-500/[0.03] transition-all flex flex-col items-center justify-center gap-1.5 group cursor-pointer"
+                      className="w-full py-6 border-2 border-dashed border-white/15 hover:border-[#E7C477]/50 rounded-xl bg-white/[0.02] hover:bg-amber-500/[0.03] transition-all flex flex-col items-center justify-center gap-1.5 group cursor-pointer"
                     >
-                      <div className="p-2.5 rounded-full bg-cyan-500/10 text-cyan-400 group-hover:scale-110 transition-transform">
+                      <div className="p-2.5 rounded-full bg-amber-500/10 text-[#E7C477] group-hover:scale-110 transition-transform">
                         <Upload size={20} />
                       </div>
                       <span className="text-xs font-semibold text-white">
@@ -711,7 +772,7 @@ export default function VoiceCloneStudioModal({
                       {samples.map((s, idx) => (
                         <div key={s.id} className="p-3 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between gap-3">
                           <div className="flex items-center gap-3 overflow-hidden">
-                            <div className="w-6 h-6 rounded-full bg-cyan-500/20 text-cyan-400 flex items-center justify-center text-xs font-bold shrink-0">
+                            <div className="w-6 h-6 rounded-full bg-amber-500/15 text-[#E7C477] flex items-center justify-center text-xs font-bold shrink-0">
                               {idx + 1}
                             </div>
                             <div className="truncate">
@@ -739,7 +800,7 @@ export default function VoiceCloneStudioModal({
 
                 {/* Step 2: Model Selection */}
                 <div className="space-y-2">
-                  <label className="text-xs font-black uppercase tracking-wider text-cyan-400 flex items-center justify-between">
+                  <label className="text-xs font-black uppercase tracking-wider text-[#E7C477] flex items-center justify-between">
                     <span>2. AI Synthesis Model (All APIs)</span>
                     <span className="text-[10px] text-zinc-400 font-normal">10 Active Voice Cloning Models</span>
                   </label>
@@ -822,13 +883,13 @@ export default function VoiceCloneStudioModal({
                         onClick={() => setSelectedModel(m.id)}
                         className={`p-3 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
                           selectedModel === m.id
-                            ? 'bg-cyan-500/15 border-cyan-500 text-white shadow-lg shadow-cyan-500/10'
+                            ? 'bg-amber-500/15 border-[#E7C477] text-white shadow-lg shadow-amber-500/10'
                             : 'bg-white/5 border-white/10 text-zinc-400 hover:bg-white/10 hover:text-white'
                         }`}
                       >
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-xs font-bold text-white">{m.title}</span>
-                          <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-white/10 text-cyan-300">
+                          <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-white/10 text-[#F2D58D]">
                             {m.badge}
                           </span>
                         </div>
@@ -842,7 +903,7 @@ export default function VoiceCloneStudioModal({
                 {/* Step 3: Voice Name, Description Prompt & Fine-Tuning Sliders */}
                 <div className="space-y-4 pt-2 border-t border-white/10">
                   <div className="flex items-center justify-between">
-                    <label className="text-xs font-black uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
+                    <label className="text-xs font-black uppercase tracking-wider text-[#E7C477] flex items-center gap-1.5">
                       <Sliders size={14} /> 3. Voice Persona, Description & Vocal Tuning
                     </label>
                   </div>
@@ -855,13 +916,13 @@ export default function VoiceCloneStudioModal({
                       value={voiceName}
                       onChange={(e) => setVoiceName(e.target.value)}
                       placeholder="e.g. Dr. H Dentist Voice"
-                      className="w-full px-3 py-2 bg-black/50 border border-white/10 rounded-lg text-xs font-medium text-white placeholder:text-zinc-600 focus:outline-none focus:border-cyan-500/50"
+                      className="w-full px-3 py-2 bg-black/50 border border-white/10 rounded-lg text-xs font-medium text-white placeholder:text-zinc-600 focus:outline-none focus:border-[#E7C477]/50"
                     />
                   </div>
 
                   {/* Voice Description & Tone Prompt Box */}
                   <div>
-                    <label className="text-[10px] font-black uppercase text-cyan-300 flex items-center justify-between mb-1">
+                    <label className="text-[10px] font-black uppercase text-[#F2D58D] flex items-center justify-between mb-1">
                       <span>Voice & Tone Description Prompt</span>
                       <span className="text-[9px] text-zinc-400 font-normal">Describe accent, tone, pacing & emotion</span>
                     </label>
@@ -870,13 +931,13 @@ export default function VoiceCloneStudioModal({
                       onChange={(e) => setVoiceDescription(e.target.value)}
                       rows={2}
                       placeholder="Describe the voice, accent, and tone (e.g. Energetic female British accent with warm, confident tone and natural pauses for dental educational videos)..."
-                      className="w-full px-3 py-2 bg-black/50 border border-white/10 rounded-xl text-xs font-medium text-white placeholder:text-zinc-600 focus:outline-none focus:border-cyan-500/50 resize-none"
+                      className="w-full px-3 py-2 bg-black/50 border border-white/10 rounded-xl text-xs font-medium text-white placeholder:text-zinc-600 focus:outline-none focus:border-[#E7C477]/50 resize-none"
                     />
                   </div>
 
                   {/* Sample Speech Script for Testing */}
                   <div>
-                    <label className="text-[10px] font-black uppercase text-cyan-300 flex items-center justify-between mb-1">
+                    <label className="text-[10px] font-black uppercase text-[#F2D58D] flex items-center justify-between mb-1">
                       <span>Sample Speech Script for Testing</span>
                       <span className="text-[9px] text-zinc-400 font-normal">Editable test script with questions & emotional variation</span>
                     </label>
@@ -885,7 +946,7 @@ export default function VoiceCloneStudioModal({
                       onChange={(e) => setCustomTestText(e.target.value)}
                       rows={3}
                       placeholder="Type any test script to audition your cloned voice..."
-                      className="w-full px-3 py-2 bg-black/50 border border-white/10 rounded-xl text-xs font-medium text-white placeholder:text-zinc-600 focus:outline-none focus:border-cyan-500/50 resize-none font-mono leading-relaxed"
+                      className="w-full px-3 py-2 bg-black/50 border border-white/10 rounded-xl text-xs font-medium text-white placeholder:text-zinc-600 focus:outline-none focus:border-[#E7C477]/50 resize-none font-mono leading-relaxed"
                     />
                   </div>
 
@@ -895,7 +956,7 @@ export default function VoiceCloneStudioModal({
                     <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5 space-y-1.5">
                       <div className="flex justify-between text-xs">
                         <span className="font-semibold text-zinc-300">Stability</span>
-                        <span className="font-mono text-cyan-400 font-bold">{stability.toFixed(2)}</span>
+                        <span className="font-mono text-[#E7C477] font-bold">{stability.toFixed(2)}</span>
                       </div>
                       <input
                         type="range"
@@ -904,7 +965,7 @@ export default function VoiceCloneStudioModal({
                         step="0.05"
                         value={stability}
                         onChange={(e) => setStability(parseFloat(e.target.value))}
-                        className="w-full accent-cyan-400 cursor-pointer"
+                        className="w-full accent-[#E7C477] cursor-pointer"
                       />
                       <div className="flex justify-between text-[9px] text-zinc-500">
                         <span>Expressive</span>
@@ -916,7 +977,7 @@ export default function VoiceCloneStudioModal({
                     <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5 space-y-1.5">
                       <div className="flex justify-between text-xs">
                         <span className="font-semibold text-zinc-300">Similarity / Clarity</span>
-                        <span className="font-mono text-cyan-400 font-bold">{similarityBoost.toFixed(2)}</span>
+                        <span className="font-mono text-[#E7C477] font-bold">{similarityBoost.toFixed(2)}</span>
                       </div>
                       <input
                         type="range"
@@ -925,7 +986,7 @@ export default function VoiceCloneStudioModal({
                         step="0.05"
                         value={similarityBoost}
                         onChange={(e) => setSimilarityBoost(parseFloat(e.target.value))}
-                        className="w-full accent-cyan-400 cursor-pointer"
+                        className="w-full accent-[#E7C477] cursor-pointer"
                       />
                       <div className="flex justify-between text-[9px] text-zinc-500">
                         <span>Low Clarity</span>
@@ -937,7 +998,7 @@ export default function VoiceCloneStudioModal({
                     <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5 space-y-1.5">
                       <div className="flex justify-between text-xs">
                         <span className="font-semibold text-zinc-300">Style Exaggeration</span>
-                        <span className="font-mono text-cyan-400 font-bold">{styleExaggeration.toFixed(2)}</span>
+                        <span className="font-mono text-[#E7C477] font-bold">{styleExaggeration.toFixed(2)}</span>
                       </div>
                       <input
                         type="range"
@@ -946,7 +1007,7 @@ export default function VoiceCloneStudioModal({
                         step="0.05"
                         value={styleExaggeration}
                         onChange={(e) => setStyleExaggeration(parseFloat(e.target.value))}
-                        className="w-full accent-cyan-400 cursor-pointer"
+                        className="w-full accent-[#E7C477] cursor-pointer"
                       />
                       <div className="flex justify-between text-[9px] text-zinc-500">
                         <span>Natural</span>
@@ -958,7 +1019,7 @@ export default function VoiceCloneStudioModal({
                     <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5 space-y-1.5">
                       <div className="flex justify-between text-xs">
                         <span className="font-semibold text-zinc-300">Speech Speed</span>
-                        <span className="font-mono text-cyan-400 font-bold">{speechSpeed.toFixed(2)}x</span>
+                        <span className="font-mono text-[#E7C477] font-bold">{speechSpeed.toFixed(2)}x</span>
                       </div>
                       <input
                         type="range"
@@ -967,7 +1028,7 @@ export default function VoiceCloneStudioModal({
                         step="0.05"
                         value={speechSpeed}
                         onChange={(e) => setSpeechSpeed(parseFloat(e.target.value))}
-                        className="w-full accent-cyan-400 cursor-pointer"
+                        className="w-full accent-[#E7C477] cursor-pointer"
                       />
                       <div className="flex justify-between text-[9px] text-zinc-500">
                         <span>0.75x Slower</span>
@@ -983,12 +1044,12 @@ export default function VoiceCloneStudioModal({
 
           {/* Sticky Test Audio Preview Player (if test audio generated) */}
           {testAudioUrl && activeTab === 'clone' && (
-            <div className="px-6 py-3 bg-cyan-500/15 border-t border-cyan-500/30 flex items-center justify-between shadow-lg">
+            <div className="px-6 py-3 bg-amber-500/10 border-t border-[#E7C477]/30 flex items-center justify-between shadow-lg">
               <div className="flex items-center gap-3">
                 <button
                   type="button"
                   onClick={toggleTestPlay}
-                  className="w-10 h-10 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 text-white flex items-center justify-center shadow-lg shadow-cyan-500/30 hover:scale-105 transition-transform cursor-pointer"
+                  className="w-10 h-10 rounded-full bg-[#E7C477] text-[#17130A] flex items-center justify-center shadow-lg hover:scale-105 transition-transform cursor-pointer"
                 >
                   {isPlayingTest ? <Pause size={18} /> : <Play size={18} className="ml-0.5" />}
                 </button>
@@ -996,14 +1057,14 @@ export default function VoiceCloneStudioModal({
                   <p className="text-xs font-bold text-white flex items-center gap-2">
                     🔊 Listening to AI-Synthesized Voice Sample Preview
                     {isPlayingTest && (
-                      <span className="flex items-center gap-0.5 text-cyan-400">
-                        <span className="w-1 h-3 bg-cyan-500 animate-pulse rounded-full" />
-                        <span className="w-1 h-4 bg-cyan-400 animate-pulse rounded-full delay-75" />
-                        <span className="w-1 h-2 bg-sky-300 animate-pulse rounded-full delay-150" />
+                      <span className="flex items-center gap-0.5 text-[#E7C477]">
+                        <span className="w-1 h-3 bg-amber-500 animate-pulse rounded-full" />
+                        <span className="w-1 h-4 bg-amber-400 animate-pulse rounded-full delay-75" />
+                        <span className="w-1 h-2 bg-amber-300 animate-pulse rounded-full delay-150" />
                       </span>
                     )}
                   </p>
-                  <p className="text-[10px] text-cyan-300">Synthesized with {getModelLabel(selectedModel)}</p>
+                  <p className="text-[10px] text-[#F2D58D]">Synthesized with {getModelLabel(selectedModel)}</p>
                 </div>
               </div>
 
@@ -1035,9 +1096,9 @@ export default function VoiceCloneStudioModal({
                     type="button"
                     onClick={handleTestVoice}
                     disabled={isTesting || samples.length === 0}
-                    className="px-3.5 py-2.5 rounded-xl border border-cyan-500/40 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 text-xs font-bold flex items-center gap-1.5 transition-all disabled:opacity-40 cursor-pointer shadow-sm"
+                    className="px-3.5 py-2.5 rounded-xl border border-[#E7C477]/40 bg-amber-500/10 hover:bg-amber-500/15 text-[#F2D58D] text-xs font-bold flex items-center gap-1.5 transition-all disabled:opacity-40 cursor-pointer shadow-sm"
                   >
-                    {isTesting ? <Loader2 size={14} className="animate-spin text-cyan-400" /> : <Volume2 size={14} className="text-cyan-400" />}
+                    {isTesting ? <Loader2 size={14} className="animate-spin text-[#E7C477]" /> : <Volume2 size={14} className="text-[#E7C477]" />}
                     <span>{testAudioUrl ? 'Re-test Sample' : 'Test Sample'}</span>
                   </button>
 
@@ -1067,7 +1128,7 @@ export default function VoiceCloneStudioModal({
                     type="button"
                     onClick={handleSaveAndActivate}
                     disabled={isCloning || samples.length === 0}
-                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-xs font-bold shadow-lg shadow-cyan-500/25 flex items-center gap-2 transition-all disabled:opacity-50 cursor-pointer"
+                    className="px-5 py-2.5 rounded-xl bg-[#E7C477] hover:bg-[#F2D58D] text-[#17130A] text-xs font-bold shadow-lg flex items-center gap-2 transition-all disabled:opacity-50 cursor-pointer"
                   >
                     {isCloning ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
                     <span>Clone & Set as Agent's Voice</span>
@@ -1079,7 +1140,7 @@ export default function VoiceCloneStudioModal({
                 <button
                   type="button"
                   onClick={() => setActiveTab('clone')}
-                  className="px-4 py-2 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                  className="px-4 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/15 text-[#F2D58D] border border-[#E7C477]/30 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
                 >
                   <Mic size={14} />
                   <span>+ Clone / Add New Voice</span>
