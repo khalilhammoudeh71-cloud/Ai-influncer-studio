@@ -17,3 +17,16 @@ test('Arabic and phrase replacements preserve boundaries, punctuation and displa
  assert.equal(source,'قهوة، قهوتي. New York and York.');
  assert.equal(applyPronunciations('HELLO! shelloworld',[rule('hello','hullo')]),'hullo! shelloworld');
 });
+
+test('shared pronunciation applies to existing and new personas, with explicit local overrides',async()=>{
+ const {mergePronunciations}=await import('./pronunciation');
+ const shared:PronunciationRule={id:'shared',word:'جاهزة',spokenAs:'jah-zeh',source:'explicit-user-correction',updatedAt:'2026-09-16'};
+ const own={...shared,id:'local',spokenAs:'jah-zah'};
+ assert.deepEqual(mergePronunciations([shared],[]),[{...shared,scope:'all'}]);
+ assert.equal(applyPronunciations('أنا جاهزة',mergePronunciations([shared],[])),'أنا jah-zeh');
+ assert.deepEqual(mergePronunciations([shared],[own]),[{...own,scope:'persona'}]);
+ assert.equal(applyPronunciations('أنا جاهزة',mergePronunciations([shared],[own])),'أنا jah-zah');
+ assert.deepEqual(mergePronunciations([],[]),[]);
+ assert.deepEqual(mergePronunciations([],[own]),[{...own,scope:'persona'}]);
+ assert.equal(shared.scope,undefined);
+});

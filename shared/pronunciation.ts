@@ -1,4 +1,11 @@
-export type PronunciationRule = { id: string; word: string; spokenAs: string; source: string; updatedAt: string };
+export type PronunciationRule = { id: string; word: string; spokenAs: string; source: string; updatedAt: string; scope?: 'persona'|'all' };
+/** Explicit persona exceptions win over the account-wide default. */
+export function mergePronunciations(shared:PronunciationRule[],local:PronunciationRule[]):PronunciationRule[] {
+  const rules=new Map<string,PronunciationRule>();
+  for(const rule of shared)rules.set(rule.word.toLowerCase(),{...rule,scope:'all'});
+  for(const rule of local)rules.set(rule.word.toLowerCase(),{...rule,scope:'persona'});
+  return [...rules.values()];
+}
 const clean = (value: unknown) => typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : '';
 export function pronunciationPair(value: unknown): { word: string; spokenAs: string } | undefined {
   const item = value as any;
