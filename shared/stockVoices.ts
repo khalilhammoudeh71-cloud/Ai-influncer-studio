@@ -9,3 +9,9 @@ export function voiceTuning(engine:string) {
  const eleven=engine==='elevenlabs';
  return {prompt:engine==='wavespeed:seed-speech',similarity:eleven,stability:eleven,style:eleven||['chatterbox','wiro-voice:resemble-ai/chatterbox-multilingual'].includes(engine),speed:eleven||['openai:tts','wavespeed:seed-speech','wavespeed:omnivoice','wiro-voice:k2-fsa/omnivoice','minimax-clone'].includes(engine)};
 }
+
+/** Provider labels vary in casing and spacing; filters should not. */
+export function voiceFilterLabel(value: string): string {
+  const label = value.trim().replace(/\s+/g, " ").toLowerCase();
+  return label ? label[0].toUpperCase() + label.slice(1) : "Not specified";
+}
