@@ -1,3 +1,4 @@
+import { geminiStockSpeech } from './geminiStockSpeech';
 import { VoicePreviewJobs } from './voicePreviewJobs';
 import { loadVoiceUploadReferences } from './voiceUploadReferences';
 import { createNativeVoiceRouter } from './nativeVoice';
@@ -1653,6 +1654,7 @@ const handleGenerateSpeech = async (req: AuthenticatedRequest, res: Response) =>
     const canonical=voiceCloningModel(originalBody.engine);
     const body = {...originalBody,...(canonical?{engine:canonical.id}:{}),...(originalBody.engine==='elevenlabs-v3'?{speechModel:'eleven_v3'}:{})};
     if (typeof body.text !== 'string' || !body.text.trim()) return res.status(400).json({ error: 'text is required' });
+    if (body.engine === 'gemini') return res.json({audioUrl:await geminiStockSpeech(body.text,String(body.voiceId||body.voice||''),cancelled.signal),engine:'gemini'});
     const speechModel = body.engine === 'openai' || body.engine === 'openai:tts' ? 'tts-1' : (!body.engine || body.engine === 'elevenlabs') ? (body.speechModel || DEFAULT_SPEECH_MODEL) : body.engine;
     const delivery = buildVoiceDelivery(body.engine || 'elevenlabs', speechModel, body.text, body.activePersona, body.voiceSettings, body.emotion);
     const voiceSettings = delivery.settings;

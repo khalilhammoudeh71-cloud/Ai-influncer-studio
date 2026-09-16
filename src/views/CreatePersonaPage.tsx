@@ -1,3 +1,5 @@
+import AvailableVoices from '../components/AvailableVoices';
+import { voiceTuning } from '../../shared/stockVoices';
 import { videoThumbnail, type VoiceSample } from '../utils/voiceThumbnail';
 import { voiceSamplePolicy } from '../../shared/voiceCloningModels';
 import { ARABIC_DIALECTS, recognitionLanguage, type ArabicDialect } from '../../shared/personaLanguage';
@@ -600,7 +602,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   };
 
   useEffect(() => {
-    if (voiceTab === 'account' && accountVoices.length === 0) {
+    if ((voiceTab === 'account' || voiceTab === 'preset') && accountVoices.length === 0) {
       fetchAccountVoices();
     }
   }, [voiceTab]);
@@ -1876,7 +1878,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                 onClick={() => setVoiceTab('preset')}
                 className={cn("px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer", voiceTab === 'preset' ? "bg-[#E7C477] text-[#161618]" : "text-slate-400 hover:text-white")}
               >
-                Studio Voices
+                Available voices
               </button>
               <button type="button" onClick={() => setVoiceTab('saved')} className={cn("px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer", voiceTab === 'saved' ? "bg-[#E7C477] text-[#161618]" : "text-slate-400 hover:text-white")}>
                 Saved voices ({editingPersona?.savedVoices?.length || 0})
@@ -1933,68 +1935,11 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
             disabled={isSaving || isCloning}
           />}
 
-          {voiceTab === 'preset' && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-              {PRESET_VOICES.map((v) => {
-                const isSelected = selectedVoiceId === v.id;
-                const isPlaying = playingPresetVoiceId === v.id;
-                const isLoading = isLoadingPresetAudioId === v.id;
-                return (
-                  <div
-                    key={v.id}
-                    onClick={() => selectDraftVoice(v.id, 'preset')}
-                    className={cn(
-                      "p-4 rounded-xl border cursor-pointer transition-all flex flex-col justify-between space-y-3 min-h-[125px] relative group",
-                      isSelected ? "border-[#E7C477] ring-1 ring-[#E7C477]/40 bg-[#242428] shadow-lg" : "border-white/10 bg-[#0E0E10] hover:border-white/20"
-                    )}
-                  >
-                    <div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                          <Mic size={13} className="text-[#D9BA72]" />
-                          {v.name}
-                        </span>
-                        {isSelected && (
-                          <span className="p-1 bg-[#E7C477] text-[#161618] rounded-full shadow-md">
-                            <Check size={11} strokeWidth={3} />
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-slate-400 mt-1 leading-snug">{v.description}</p>
-                    </div>
-
-                    <div className="flex items-center justify-between border-t border-white/10 pt-2.5 mt-auto">
-                      <button
-                        type="button"
-                        onClick={(e) => handlePlayPresetSample(v.id, v.name, v.preview_url, e)}
-                        disabled={isLoading}
-                        className={cn(
-                          "px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm",
-                          isPlaying
-                            ? "bg-[#E7C477] text-[#161618] animate-pulse"
-                            : "bg-[#18181B] hover:bg-[#242428] text-[#F2D58D] border border-white/10 hover:border-[#E7C477]/40"
-                        )}
-                        title={`Listen to sample audio of ${v.name}`}
-                      >
-                        {isLoading ? (
-                          <Loader2 size={11} className="animate-spin text-[#D9BA72]" />
-                        ) : isPlaying ? (
-                          <VolumeX size={11} />
-                        ) : (
-                          <Volume2 size={11} />
-                        )}
-                        <span>{isLoading ? 'Loading...' : (isPlaying ? 'Stop' : 'Play Sample')}</span>
-                      </button>
-
-                      <span className="text-[10px] font-bold text-[#F2D58D]">
-                        {isSelected ? '✓ Active' : 'Select'}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          {voiceTab === 'preset' && <AvailableVoices
+            voices={accountVoices.filter(v=>v.category==='premade').map(v=>({id:v.voice_id,name:v.name,engine:'elevenlabs',provider:'ElevenLabs',gender:v.labels?.gender||'Not specified',accent:v.labels?.accent||'Not specified',tone:v.labels?.descriptive||v.labels?.description||'Not specified'}))}
+            selectedId={selectedVoiceId} selectedEngine={selectedVoiceModel} disabled={isCloning||isSaving}
+            onSelect={v=>{selectDraftVoice(v.id,v.engine);setSelectedSavedVoiceName(v.name);}}
+          />}
 
           {voiceTab === 'clone' && (
             <div className="space-y-5">
@@ -2005,7 +1950,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                       <h4 id="voice-files-heading" className="text-sm font-bold text-white">1. Add voice files</h4>
                       <p className="text-xs text-slate-400 mt-1">Upload one or more audio or video files. Long media is sampled automatically.</p>
                     </div>
-                    <span className="shrink-0 rounded-full bg-[#E7C477]/15 px-2.5 py-1 text-[11px] font-bold text-[#F2D58D]">{audioSampleList.length} ready</span>
+
                   </div>
                   <input
                     type="file"
@@ -2023,8 +1968,8 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                   >
                     {isCloning ? 'Reading files…' : 'Choose audio or video files'}
                   </button>
-                  {audioSampleList.length > 0 && <div aria-label="Uploaded voice files" className="grid grid-cols-2 min-[420px]:grid-cols-3 gap-2">
-                    {audioSampleList.map((sample, idx) => <article key={`${idx}:${sample.name}`} className={cn("relative min-w-0 rounded-xl border p-2", idx === 0 ? "border-[#E7C477]" : "border-white/10")}>
+                  {audioSampleList.length > 0 && <div aria-label="Uploaded voice files" className="flex flex-wrap justify-center items-start gap-2">
+                    {audioSampleList.map((sample, idx) => <article key={`${idx}:${sample.name}`} className={cn("relative min-w-0 w-[calc(50%-0.5rem)] min-[420px]:w-[calc(33.333%-0.5rem)] max-w-48 rounded-xl border p-2", idx === 0 ? "border-[#E7C477]" : "border-white/10")}>
                       <button type="button" aria-label={`Play recording: ${sample.name}`} disabled={isCloning || isSaving} onClick={() => {
                         const audio = samplePlayers.current.get(idx);
                         if (!audio) return;
@@ -2048,30 +1993,14 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                 <section className="rounded-2xl border border-white/10 bg-[#0E0E10] p-4 space-y-3" aria-labelledby="voice-model-heading">
                   <div>
                     <h4 id="voice-model-heading" className="text-sm font-bold text-white">2. Choose a model</h4>
-                    <p className="text-xs text-slate-400 mt-1">Pick the provider that should render your preview.</p>
+
                   </div>
-                  <label className="block text-xs font-semibold text-slate-300" htmlFor="persona-voice-model">
-                    Voice model
-                    <select
-                      id="persona-voice-model"
-                      value={cloneModel}
-                      onChange={e => {
-                        const next = voiceCloningModel(e.target.value);
-                        if (!next) return;
-                        voiceDraftGuard.current.change(); stopVoicePreviews();
-                        setCloneModel(next.id); setClonePreset(next.voices?.[0] || ''); setCloneResult(null); setCloneError('');
-                      }}
-                      disabled={isCloning || isSaving}
-                      className="luxury-input mt-1 block w-full p-2.5 text-sm"
-                    >
-                      {VOICE_MODEL_PROVIDER_ORDER.map(provider => {
-                        const models = VOICE_CLONING_MODELS.filter(model => model.provider === provider);
-                        return <optgroup key={provider} label={`${provider} (${models.length})`}>
-                          {models.map(model => <option key={model.id} value={model.id}>{model.name} — {voiceSamplePolicy(model).label}</option>)}
-                        </optgroup>;
-                      })}
-                    </select>
-                  </label>
+                  <details className="relative rounded-xl border border-white/10 bg-[#0E0E10]" onKeyDown={e=>{if(e.key==='Escape')e.currentTarget.open=false;}}>
+                    <summary aria-label="Choose voice model" className="cursor-pointer p-3 text-sm text-white"><span className="font-semibold">{cloneChoice.name}</span><span className="mt-1 block text-[11px] font-normal text-slate-400">{voiceSamplePolicy(cloneChoice).label}</span></summary>
+                    <div className="max-h-80 overflow-auto border-t border-white/10 p-2">{VOICE_MODEL_PROVIDER_ORDER.map(provider=><div key={provider}><p className="px-2 py-1 text-[10px] uppercase text-[#E7C477]">{provider}</p>{VOICE_CLONING_MODELS.filter(model=>model.provider===provider).map(model=><button key={model.id} type="button" disabled={isCloning||isSaving} aria-pressed={cloneChoice.id===model.id} onClick={e=>{
+                      voiceDraftGuard.current.change();stopVoicePreviews();setCloneModel(model.id);setClonePreset(model.voices?.[0]||'');setCloneResult(null);setCloneError('');e.currentTarget.closest('details')?.removeAttribute('open');
+                    }} className="block w-full rounded-lg p-2 text-left hover:bg-white/5"><span className="block text-sm font-semibold text-white">{model.name}</span><span className="block text-[11px] text-slate-400">{voiceSamplePolicy(model).label}</span></button>)}</div>)}</div>
+                  </details>
                   {voiceSamplePolicy(cloneChoice).files > 0 && <p className="text-xs text-slate-400">Auto-trim on render: up to {voiceSamplePolicy(cloneChoice).seconds} sec{cloneChoice.id === 'elevenlabs' ? ' total, shared across files' : ' from your selected reference'} (app sampling limit).</p>}
                 </section>
               </div>
@@ -2083,17 +2012,17 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
               </div>
 
               {/* Advanced Voice Fine-Tuning & Voice Description Panel */}
-              <div className="space-y-4 bg-[#0E0E10] p-5 rounded-2xl border border-white/10 mt-4">
+              {Object.values(voiceTuning(cloneChoice.id)).some(Boolean) && <div className="space-y-4 bg-[#0E0E10] p-5 rounded-2xl border border-white/10 mt-4">
                 <div className="flex items-center justify-between border-b border-white/10 pb-3">
                   <span className="text-xs font-bold text-[#F2D58D] uppercase tracking-wider flex items-center gap-1.5">
                     <Sliders size={14} className="text-[#D9BA72]" />
-                    Advanced Voice Tuning & Voice Description Prompt
+                    Voice controls
                   </span>
                   <span className="text-[10px] text-slate-400 font-medium">Available controls depend on the selected model</span>
                 </div>
 
                 {/* Voice Description Prompt */}
-                <div className="space-y-1.5">
+                {voiceTuning(cloneChoice.id).prompt && <div className="space-y-1.5">
                   <label className="block text-xs font-bold text-slate-300">
                     Voice Description & Tone Prompt (Guided Vocal Style):
                   </label>
@@ -2114,12 +2043,12 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                     rows={2}
                     className="luxury-input w-full p-3 text-xs font-medium"
                   />
-                </div>
+                </div>}
 
                 {/* Sliders Grid: Likeness / Similarity, Stability, Style Exaggeration, Speaking Speed */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 pt-1">
                   {/* 1. Voice Likeness / Similarity Boost */}
-                  <div className="space-y-1.5 bg-[#08080A] p-3 rounded-xl border border-white/10">
+                  {voiceTuning(cloneChoice.id).similarity && <div className="space-y-1.5 bg-[#08080A] p-3 rounded-xl border border-white/10">
                     <div className="flex items-center justify-between text-xs font-bold">
                       <span className="text-slate-300">Voice Likeness / Similarity</span>
                       <span className="text-[#D9BA72]">{voiceLikeness}%</span>
@@ -2133,10 +2062,10 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                       className="w-full accent-[#E7C477] cursor-pointer h-1.5 bg-[#1C1C20] rounded-lg"
                     />
                     <p className="text-[10px] text-slate-500">Closeness to uploaded audio sample</p>
-                  </div>
+                  </div>}
 
                   {/* 2. Voice Stability / Consistency */}
-                  <div className="space-y-1.5 bg-[#08080A] p-3 rounded-xl border border-white/10">
+                  {voiceTuning(cloneChoice.id).stability && <div className="space-y-1.5 bg-[#08080A] p-3 rounded-xl border border-white/10">
                     <div className="flex items-center justify-between text-xs font-bold">
                       <span className="text-slate-300">Stability & Monotone</span>
                       <span className="text-[#D9BA72]">{voiceStability}%</span>
@@ -2150,10 +2079,10 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                       className="w-full accent-[#E7C477] cursor-pointer h-1.5 bg-[#1C1C20] rounded-lg"
                     />
                     <p className="text-[10px] text-slate-500">Higher = steady; Lower = expressive</p>
-                  </div>
+                  </div>}
 
                   {/* 3. Style Exaggeration / Emotion */}
-                  <div className="space-y-1.5 bg-[#08080A] p-3 rounded-xl border border-white/10">
+                  {voiceTuning(cloneChoice.id).style && <div className="space-y-1.5 bg-[#08080A] p-3 rounded-xl border border-white/10">
                     <div className="flex items-center justify-between text-xs font-bold">
                       <span className="text-slate-300">Style & Emotion Level</span>
                       <span className="text-[#D9BA72]">{voiceStyleExaggeration}%</span>
@@ -2167,10 +2096,10 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                       className="w-full accent-[#E7C477] cursor-pointer h-1.5 bg-[#1C1C20] rounded-lg"
                     />
                     <p className="text-[10px] text-slate-500">Amplifies emotion & vocal energy</p>
-                  </div>
+                  </div>}
 
                   {/* 4. Speaking Speed / Pace */}
-                  <div className="space-y-1.5 bg-[#08080A] p-3 rounded-xl border border-white/10">
+                  {voiceTuning(cloneChoice.id).speed && <div className="space-y-1.5 bg-[#08080A] p-3 rounded-xl border border-white/10">
                     <div className="flex items-center justify-between text-xs font-bold">
                       <span className="text-slate-300">Speaking Speed</span>
                       <span className="text-[#D9BA72]">{voiceSpeakingSpeed.toFixed(2)}x</span>
@@ -2185,9 +2114,9 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                       className="w-full accent-[#E7C477] cursor-pointer h-1.5 bg-[#1C1C20] rounded-lg"
                     />
                     <p className="text-[10px] text-slate-500">Pace during TTS speech generation</p>
-                  </div>
+                  </div>}
                 </div>
-              </div>
+              </div>}
             </div>
           )}
 
@@ -2471,7 +2400,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                 <option value="en">English</option>
               </select>
             </label>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap justify-center gap-2">
             <button type="button" onClick={() => playDraftPreview(selectedVoiceId, selectedVoiceModel)} disabled={isCloning || isSaving || (!selectedVoiceId && !readySamples.current.samples.length)} className="btn-gold-primary px-4 py-2.5 text-xs disabled:opacity-40">
               {isTestingVoice ? 'Cancel preview' : isPlayingSample ? 'Stop preview' : 'Preview voice'}
             </button>
