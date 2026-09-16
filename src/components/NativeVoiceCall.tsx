@@ -82,9 +82,21 @@ export function NativeVoiceCall({ openRequest=0,hideTrigger=false,initialPrefere
       const query = new URLSearchParams({ personaId: personaId || '' });
       const response = await fetch(`/api/native-voice/${provider}/options${provider === 'elevenlabs' ? `?${query}` : ''}`, { headers: await getAuthHeaders(), signal: controller.signal });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Voice setup is unavailable.');
+      if (!response.ok) {
+        const failure = new Error(data.error || 'Voice setup is unavailable.') as Error & { status?: number };
+        failure.status = response.status;
+        throw failure;
+      }
       if (!controller.signal.aborted) setOptions(data);
-    })().catch(error => { if (!controller.signal.aborted) setError(error.message); })
+    })().catch(error => {
+      if (controller.signal.aborted) return;
+      // Keep the engine selector usable when the server key cannot verify voices.
+      // The call itself will still fail with the actionable provider error on Start.
+      if (provider === 'elevenlabs' && (error?.status === 401 || error?.status === 403 || /Voices and Agents permissions/i.test(error?.message || ''))) {
+        setOptions({ voice: '', voiceName: 'ElevenLabs voice verification unavailable', personaName: '' });
+        setError('Engine selection is available, but ElevenLabs calls need Voices and Agents permissions on the server key.');
+      } else setError(error.message);
+    })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [open, provider, personaId]);
