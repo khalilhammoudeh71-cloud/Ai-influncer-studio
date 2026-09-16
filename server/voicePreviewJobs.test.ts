@@ -12,10 +12,10 @@ function setup() {
 const body={engine:'wavespeed:zonos2',text:'Hello',voiceReference:'https://example.com/audio.wav?token=one'};
 test('queued render returns immediately, resumes across requests and submits once',async()=>{
  const fixture=setup();const first=await fixture.jobs.start('owner',body);
- assert.equal(first.status,'processing');assert.equal(first.audioUrl,undefined);
+ assert.equal(first.status,'processing');assert.equal('audioUrl' in first ? first.audioUrl : undefined,undefined);
  const resumed=await fixture.jobs.start('owner',{...body,voiceReference:'https://example.com/audio.wav?token=two'});
  assert.equal(resumed.id,first.id);assert.equal(fixture.submitted(),1);
- fixture.finish();assert.equal((await fixture.jobs.status('owner',first.id)).audioUrl,'https://example.com/voice.wav');
+ fixture.finish();const finished=await fixture.jobs.status('owner',first.id);assert.ok('audioUrl' in finished);assert.equal(finished.audioUrl,'https://example.com/voice.wav');
  assert.equal(fixture.submitted(),1);
 });
 test('job status is owner scoped and changed text starts a distinct render',async()=>{

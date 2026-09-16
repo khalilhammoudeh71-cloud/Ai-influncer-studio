@@ -485,6 +485,8 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   };
   useEffect(() => { stopDictation(); return stopDictation; }, [previewLanguage, auditionLanguage, previewDialect, studioStep, voiceTab, editingPersona?.id]);
   const cloneBusyRef = useRef(false);
+  const renderWaitController = useRef<AbortController | null>(null);
+  useEffect(() => () => renderWaitController.current?.abort(), []);
   const readySamples = useRef<{samples:Array<VoiceSample>;transcript:string}>({samples:[],transcript:''});
   const voiceSelectionChanged = useRef(false);
   const voiceDraftGuard = useRef(new VoiceDraftGuard());
@@ -1177,6 +1179,8 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
     stopDictation();
     if (cloneBusyRef.current) return;
     if (!checkOnly && cloneChoice.kind !== 'preset' && !speakerAuthorized) { toast.error('Confirm speaker authorization first.'); return; }
+    const controller = new AbortController();
+    renderWaitController.current = controller;
     cloneBusyRef.current = true; setIsCloning(true); setCloneError('');
     const draft = voiceDraftGuard.current.begin();
     try {
@@ -1206,7 +1210,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       else if(cloneChoice.id==='elevenlabs')result=await api.voice.cloneVoice(name || 'New Persona','Persona voice',preparedSamples.map(s=>s.base64),speakerAuthorized,retryRejected);
       else if(cloneChoice.kind==='enrollment'||cloneChoice.kind==='singing')result=await api.voice.cloneWithModel({engine:cloneChoice.id,name:selectedSavedVoiceName||name||'My voice',reference:preparedSamples[0]?.base64,text:sampleTextForPreview,speakerAuthorized,retryRejected});
       else {
-        const generated=await api.voice.generateSpeech({engine:cloneChoice.id,text:sampleTextForPreview,voiceId:cloneChoice.kind==='preset'?(clonePreset||cloneChoice.voices?.[0]):undefined,voiceReference:cloneChoice.kind==='reference'?preparedSamples[0]?.base64:undefined,voiceReferenceText,voicePrompt,isPreview:true,voiceSettings:{stability:voiceStability/100,similarity_boost:voiceLikeness/100,style:voiceStyleExaggeration/100,speed:voiceSpeakingSpeed}});
+        const generated=await api.voice.generateSpeech({engine:cloneChoice.id,text:sampleTextForPreview,voiceId:cloneChoice.kind==='preset'?(clonePreset||cloneChoice.voices?.[0]):undefined,voiceReference:cloneChoice.kind==='reference'?preparedSamples[0]?.base64:undefined,voiceReferenceText,voicePrompt,isPreview:true,voiceSettings:{stability:voiceStability/100,similarity_boost:voiceLikeness/100,style:voiceStyleExaggeration/100,speed:voiceSpeakingSpeed}}, {signal:controller.signal});
         if(!generated.audioUrl)throw new Error('The selected model did not return an audio preview.');
         result={id:`preview:${crypto.randomUUID()}`,status:'ready',engine:cloneChoice.id,name:selectedSavedVoiceName||name||cloneChoice.name,voiceId:cloneChoice.kind==='preset'?(clonePreset||cloneChoice.voices?.[0]):'',audioUrl:generated.audioUrl,message:'Voice preview generated. Save the persona to use this voice.'};
       }
@@ -1222,7 +1226,21 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       }
     } catch (error) {
       if (voiceDraftGuard.current.isCurrent(draft)) setCloneError(error instanceof Error ? error.message : 'Clone request failed. Check status before retrying.');
-    } finally { cloneBusyRef.current = false; setIsCloning(false); }
+    } finally {
+      if (renderWaitController.current === controller) {
+        renderWaitController.current = null;
+        cloneBusyRef.current = false; setIsCloning(false);
+      }
+    }
+  };
+
+  const stopRenderWait = () => {
+    renderWaitController.current?.abort();
+    renderWaitController.current = null;
+    voiceDraftGuard.current.change();
+    cloneBusyRef.current = false;
+    setIsCloning(false);
+    setCloneError('Stopped waiting. You can choose another model. The provider may still finish the previous job.');
   };
 
   const handleResetVoiceSamples = () => {
@@ -2420,6 +2438,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
 
                   </div>
                   <button type="button" onClick={() => runClone()} disabled={isCloning || isSaving || cloneChoice.kind==='unavailable' || (cloneChoice.kind!=='preset'&&(!speakerAuthorized||!audioSampleList.length)) || (cloneChoice.transcriptRequired&&!voiceReferenceText.trim()) || Boolean(cloneResult)} className="btn-gold-primary shrink-0 px-4 py-2.5 text-xs disabled:cursor-not-allowed disabled:opacity-40">{isCloning ? 'Rendering… checking progress' : 'Render voice'}</button>
+                  {isCloning && renderWaitController.current && <button type="button" onClick={stopRenderWait} className="rounded-xl border border-white/20 px-4 py-2.5 text-sm font-semibold text-white hover:bg-white/10">Stop waiting</button>}
                 </div>
                 {(cloneResult || cloneError) && <div role="status" aria-live="polite" className="space-y-2 rounded-xl border border-white/10 bg-[#0E0E10] p-3 text-xs">
                   <p className="font-semibold text-slate-200">{cloneError || cloneResult?.message || cloneResult?.status}</p>

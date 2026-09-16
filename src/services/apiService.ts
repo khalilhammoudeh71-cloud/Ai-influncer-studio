@@ -397,18 +397,22 @@ export const api = {
       voiceStability?: number;
       voiceStyleExaggeration?: number;
       voiceSpeakingSpeed?: number;
-    }) =>
+    }, options?: { signal?: AbortSignal }) =>
       (async () => {
+        options?.signal?.throwIfAborted();
         const prepared = await resolvePersonaMediaFromStorage(await preparePersonaMediaForStorage(params));
+        options?.signal?.throwIfAborted();
         const model = voiceCloningModel(params.engine);
         if (model?.provider !== 'WaveSpeed' || !['reference','preset'].includes(model.kind)) return requestWithBody<{audioUrl:string;engine?:string}>('/generate-speech', prepared);
         type PreviewJob = {id:string;status:string;engine:string;audioUrl?:string};
         let job = await requestWithBody<PreviewJob>('/voice-preview-jobs', prepared);
         const deadline = Date.now() + 10 * 60 * 1000;
+        options?.signal?.throwIfAborted();
         while (!job.audioUrl) {
           if (Date.now() > deadline) throw new Error('The provider is still rendering. Click Render voice again to check the same job without submitting another render.');
           await new Promise(resolve => setTimeout(resolve, 3000));
-          job = await request<PreviewJob>(`/voice-preview-jobs/${encodeURIComponent(job.id)}`);
+          options?.signal?.throwIfAborted();
+          job = await request<PreviewJob>(`/voice-preview-jobs/${encodeURIComponent(job.id)}`, { signal: options?.signal });
         }
         return {audioUrl:job.audioUrl,engine:job.engine};
       })(),
