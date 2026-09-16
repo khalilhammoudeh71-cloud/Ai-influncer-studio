@@ -5386,7 +5386,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                 else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
               }
             }}
-            className="fixed inset-0 z-[200] bg-black/85 backdrop-blur-xl flex items-center justify-center p-4 sm:p-6"
+            className="fixed inset-0 z-[10020] bg-black/85 backdrop-blur-xl flex items-center justify-center p-4 sm:p-6"
             onClick={() => setShowEngineSettings(false)}
           >
             <div className="flex w-full justify-center" onClick={event=>event.stopPropagation()}>

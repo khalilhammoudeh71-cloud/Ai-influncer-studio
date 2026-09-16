@@ -148,7 +148,7 @@ export function NativeVoiceCall({ openRequest=0,hideTrigger=false,initialPrefere
   const fieldClass = 'mt-2 w-full rounded-xl border border-white/15 bg-zinc-800 px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#E7C477] disabled:opacity-50';
   return <>
     {!hideTrigger&&<button type="button" disabled={disabled} onClick={() => { setProvider('elevenlabs'); setOptions(null); setOpen(true); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#E7C477]/30 text-[#E7C477] text-xs disabled:opacity-40"><Phone size={13} />ElevenLabs call</button>}
-    {open && createPortal(<div ref={dialog} role="dialog" aria-modal="true" aria-labelledby="voice-call-title" className="fixed inset-0 z-[110] bg-black/85 overflow-auto p-4 sm:p-8 text-white grid place-items-center">
+    {open && createPortal(<div ref={dialog} role="dialog" aria-modal="true" aria-labelledby="voice-call-title" className="fixed inset-0 z-[10020] bg-black/85 overflow-auto p-4 sm:p-8 text-white grid place-items-center">
       <section className="w-full max-w-lg rounded-2xl border border-white/10 bg-zinc-900 p-5 sm:p-7 space-y-5 shadow-2xl">
         <div><p className="text-xs text-[#E7C477] uppercase tracking-widest mb-2">Live conversation</p><h2 id="voice-call-title" className="text-2xl font-semibold">{options?.personaName && provider === 'elevenlabs' ? `Call ${options.personaName}` : 'Voice call'}</h2>
           <p className="text-sm text-zinc-400 mt-2">Microphone audio goes to your selected call provider. The transcript joins this chat.</p></div>
