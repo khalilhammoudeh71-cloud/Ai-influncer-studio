@@ -205,22 +205,22 @@ const GenerationProgressFrame: React.FC<{
         : 'Synthesizing Visual Asset';
 
   return (
-    <div className="mt-2.5 p-3.5 bg-black/80 border border-pink-500/40 rounded-xl space-y-3 relative overflow-hidden shadow-2xl">
+    <div className="mt-2.5 p-3.5 bg-black/80 border border-amber-500/40 rounded-xl space-y-3 relative overflow-hidden shadow-2xl">
       {/* Background Animated Shimmer Glow */}
       <div 
-        className="absolute inset-0 bg-gradient-to-r from-pink-500/10 via-purple-500/15 to-cyan-500/10 transition-all duration-300 pointer-events-none" 
+        className="absolute inset-0 bg-gradient-to-r from-amber-500/10 via-amber-500/15 to-amber-500/10 transition-all duration-300 pointer-events-none"
         style={{ width: `${percent}%` }}
       />
 
       <div className="relative z-10 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-8 h-8 rounded-lg bg-pink-500/20 border border-pink-500/40 flex items-center justify-center shrink-0">
-            {isVoice ? <Mic className="w-4 h-4 text-cyan-400 animate-pulse" /> : isVideo ? <Film className="w-4 h-4 text-pink-400 animate-spin" /> : <Sparkles className="w-4 h-4 text-pink-400 animate-spin" />}
+          <div className="w-8 h-8 rounded-lg bg-amber-500/20 border border-amber-500/40 flex items-center justify-center shrink-0">
+            {isVoice ? <Mic className="w-4 h-4 text-amber-400 animate-pulse" /> : isVideo ? <Film className="w-4 h-4 text-amber-400 animate-spin" /> : <Sparkles className="w-4 h-4 text-amber-400 animate-spin" />}
           </div>
           <div className="min-w-0">
             <div className="text-[11px] font-black text-white flex items-center gap-1.5">
               <span className="truncate">{stepTitle}</span>
-              <span className="text-[9px] font-bold text-pink-300 bg-pink-500/20 border border-pink-500/30 px-2 py-0.5 rounded-full shrink-0">
+              <span className="text-[9px] font-bold text-amber-300 bg-amber-500/20 border border-amber-500/30 px-2 py-0.5 rounded-full shrink-0">
                 {resolvedModelName}
               </span>
             </div>
@@ -235,8 +235,8 @@ const GenerationProgressFrame: React.FC<{
         {/* Live Percentage Badge */}
         <div className="text-right shrink-0">
           <div className="flex items-baseline gap-0.5 justify-end">
-            <span className="text-xl font-black text-pink-400 tracking-tight font-mono">{percent}</span>
-            <span className="text-xs font-bold text-pink-400 font-mono">%</span>
+            <span className="text-xl font-black text-amber-400 tracking-tight font-mono">{percent}</span>
+            <span className="text-xs font-bold text-amber-400 font-mono">%</span>
           </div>
           <span className="block text-[8px] font-extrabold uppercase tracking-wider text-zinc-400">
             {percent < 95 ? `${Math.ceil((100 - percent) * (isVideo ? 0.16 : 0.08))}s remaining` : 'Finalizing output...'}
@@ -245,16 +245,16 @@ const GenerationProgressFrame: React.FC<{
       </div>
 
       {/* Visual Frame Skeleton Box */}
-      <div className="relative z-10 w-full h-36 rounded-lg bg-zinc-950/90 border border-pink-500/30 flex flex-col items-center justify-center space-y-2.5 overflow-hidden shadow-inner">
+      <div className="relative z-10 w-full h-36 rounded-lg bg-zinc-950/90 border border-amber-500/30 flex flex-col items-center justify-center space-y-2.5 overflow-hidden shadow-inner">
         {/* Animated Progress Bar Fill */}
         <div className="w-56 bg-zinc-900 rounded-full h-2.5 overflow-hidden border border-white/10 p-0.5">
           <div 
-            className="h-full bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-400 transition-all duration-300 rounded-full shadow-lg"
+            className="h-full bg-gradient-to-r from-amber-500 via-amber-500 to-amber-400 transition-all duration-300 rounded-full shadow-lg"
             style={{ width: `${percent}%` }}
           />
         </div>
         <div className="flex items-center gap-1.5">
-          <Loader2 className="w-3.5 h-3.5 animate-spin text-pink-400" />
+          <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
           <span className="text-[10px] font-black text-zinc-300 uppercase tracking-widest">
             Generating Matrix ({percent}%)
           </span>
@@ -737,9 +737,9 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
   const [copyOptions, setCopyOptions] = useState<{ type: string; text: string; tags: string }[] | null>(null);
 
   const getAttachmentIcon = (mimeType: string) => {
-    if (mimeType.startsWith('image/')) return <ImageIcon className="w-5 h-5 text-pink-400" />;
-    if (mimeType.startsWith('audio/')) return <Volume2 className="w-5 h-5 text-cyan-400" />;
-    if (mimeType.startsWith('video/')) return <VideoIcon className="w-5 h-5 text-indigo-400" />;
+    if (mimeType.startsWith('image/')) return <ImageIcon className="w-5 h-5 text-amber-400" />;
+    if (mimeType.startsWith('audio/')) return <Volume2 className="w-5 h-5 text-amber-400" />;
+    if (mimeType.startsWith('video/')) return <VideoIcon className="w-5 h-5 text-amber-400" />;
     return <FileText className="w-5 h-5 text-amber-400" />;
   };
 
@@ -3110,25 +3110,22 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
 
       {/* LEFT COLUMN: Agent Conversational Console (Expanded) */}
       <div className="flex-1 flex flex-col h-full border-r border-white/5 relative min-w-0">
-        {/* Header with Autopilot & Sub-Agent Controls (Unified Theme) */}
-        <div className="agent-header flex-none flex flex-col md:flex-row md:flex-wrap md:items-center justify-between border-b border-[#E7C477]/10 px-6 py-3 bg-[#050914] gap-2 select-none">
-          <div className="flex items-center gap-3">
-            <h1 className="text-xl md:text-2xl font-serif text-[#F5F1E8] tracking-tight flex items-center gap-2">
+        {/* Draft Room header */}
+        <div className="agent-header flex-none flex flex-wrap items-center justify-between border-b border-[#E7C477]/10 bg-[#121214] px-4 py-3 sm:px-6 gap-3 select-none">
+          <div className="flex min-w-0 items-center gap-3">
+            <h1 className="text-xl md:text-2xl font-serif text-[#F5F1E8] tracking-tight">
               Super Agent
             </h1>
-            <span className="text-[10px] font-semibold px-2.5 py-0.5 rounded-full bg-[#E7C477]/10 text-[#F2D58D] border border-[#E7C477]/25">
-              Multi-step tasks
-            </span>
+            <span className="hidden text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500 sm:inline">Draft room</span>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <label className="text-xs text-zinc-400">Project
-              <select aria-label="Super Agent project" disabled={isSending || isLiveVoiceCallActive || isStudioLoading || isCloningVoice || messages.some(m=>(m.isExecuting && !m.backgroundRunId) || m.execSteps?.some(s=>s.isActionLoading)) || historySaving || historySaveFailed} value={projectId} onChange={e=>onProjectChange(e.target.value)} className="ml-2 max-w-48 rounded-lg border border-white/15 bg-zinc-900 p-2 text-sm text-zinc-100">
+            <label className="sr-only" htmlFor="super-agent-project">Project</label>
+              <select id="super-agent-project" aria-label="Super Agent project" disabled={isSending || isLiveVoiceCallActive || isStudioLoading || isCloningVoice || messages.some(m=>(m.isExecuting && !m.backgroundRunId) || m.execSteps?.some(s=>s.isActionLoading)) || historySaving || historySaveFailed} value={projectId} onChange={e=>onProjectChange(e.target.value)} className="max-w-44 rounded-xl border border-white/10 bg-[#1C1C20] px-3 py-2 text-xs font-semibold text-zinc-200 sm:max-w-56">
                 {projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
-            </label>
-            <details className="relative text-xs text-zinc-300"><summary className="cursor-pointer">New project</summary>
-              <form onSubmit={e=>{e.preventDefault();onCreateProject(projectName);}} className="absolute top-8 left-0 z-50 w-64 rounded-xl border border-white/15 bg-zinc-900 p-3 shadow-xl">
+            <details className="relative text-xs text-zinc-300"><summary className="flex cursor-pointer list-none items-center gap-1 rounded-xl border border-white/10 px-3 py-2 font-semibold hover:border-[#E7C477]/30 hover:text-[#F2D58D]"><Plus size={13} /> New</summary>
+              <form onSubmit={e=>{e.preventDefault();onCreateProject(projectName);}} className="absolute top-11 right-0 z-50 w-64 rounded-xl border border-white/15 bg-[#1C1C20] p-3 shadow-xl">
                 <input aria-label="New project name" value={projectName} onChange={e=>setProjectName(e.target.value)} maxLength={80} placeholder="Campaign name" className="w-full rounded-lg bg-black/30 p-2" />
                 <button disabled={!projectName.trim() || isSending || isLiveVoiceCallActive || isStudioLoading || isCloningVoice || messages.some(m=>(m.isExecuting && !m.backgroundRunId) || m.execSteps?.some(s=>s.isActionLoading)) || historySaving || historySaveFailed} className="mt-2 rounded-lg bg-[#E7C477] px-3 py-2 text-black disabled:opacity-40">Create project</button>
               </form>
@@ -3136,14 +3133,18 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
             <span role="status" className="text-xs text-zinc-400">{historySaveFailed ? 'History not saved' : historySaving ? 'Saving history…' : ''}</span>
           </div>
 
-          {/* Unified Controls Toolbar */}
-          <div className="flex flex-wrap items-center gap-2">
+          {/* Advanced controls stay available without competing with the brief. */}
+          <details className="group relative z-40">
+            <summary className="flex cursor-pointer list-none items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-semibold text-zinc-300 transition-colors hover:border-[#E7C477]/30 hover:text-[#F2D58D]">
+              <Sliders size={14} /> Controls
+            </summary>
+            <div className="absolute right-0 top-full mt-2 flex w-[min(92vw,470px)] flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-[#1C1C20]/98 p-3 shadow-2xl backdrop-blur-xl">
             {/* Approval Queue Toggle */}
             <button
               onClick={() => setAutoApprove(!autoApprove)}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold tracking-wide border transition-all flex items-center gap-1.5 cursor-pointer ${
                 autoApprove
-                  ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
                   : 'bg-white/5 text-zinc-300 border-white/10 hover:border-white/20 hover:bg-white/10'
               }`}
               title="Review plans before running, or run requested tasks automatically"
@@ -3161,20 +3162,20 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
               }}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold tracking-wide border transition-all flex items-center gap-1.5 cursor-pointer ${
                 allowNsfw
-                  ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50 shadow-md shadow-cyan-500/10'
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-md shadow-amber-500/10'
                   : 'bg-white/5 text-zinc-300 border-white/10 hover:border-white/20 hover:bg-white/10'
               }`}
               title="When ON, Adaptive Agent prefers available refusal-reduced text models and the studio's uncensored media routes"
             >
-              <Flame size={13} className={allowNsfw ? 'text-cyan-400' : 'text-zinc-400'} />
+              <Flame size={13} className={allowNsfw ? 'text-amber-400' : 'text-zinc-400'} />
               <span>{allowNsfw ? 'Adult mode' : 'Standard mode'}</span>
             </button>
 
-            <details className="group relative z-40">
+            <details className="group relative z-40 w-full">
               <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-bold text-zinc-300 transition-colors hover:border-white/20 hover:bg-white/10">
-                <Sliders size={13} className="text-cyan-400" /> Agent setup
+                <Sliders size={13} className="text-amber-400" /> Agent setup
               </summary>
-              <div className="absolute right-0 top-full mt-2 flex w-[min(92vw,430px)] flex-col gap-2 rounded-2xl border border-white/10 bg-[#11131a]/98 p-3 shadow-2xl backdrop-blur-xl">
+              <div className="mt-2 flex w-full flex-col gap-2 rounded-xl border border-white/10 bg-black/20 p-3">
             <label className="text-xs text-zinc-300">Project brief
               <textarea aria-label="Project brief" value={workspaceBrief} onChange={e => {setWorkspaceBrief(e.target.value); accountLocalStorage.setItem(keys.brief,serializeProjectBrief(e.target.value));}} placeholder="Saved project facts, preferences and decisions. Edit to correct; clear to forget. Fictional scene details should be labeled." className="mt-1 w-full rounded-lg border border-white/15 bg-black/30 p-2 text-sm" rows={3} />
               <span className="text-[11px] text-zinc-400">Saved for future conversations. You can edit it anytime.</span>
@@ -3189,7 +3190,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
               <p className="mt-1 text-zinc-400">Applies to text tasks. Voice keeps its configured engine. Selected frontier models do not silently fall back.</p>
             </label>
             {/* LLM Engine Selector */}
-            <div className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-cyan-500/40 rounded-xl px-3 py-1.5 text-xs font-bold shadow-sm transition-all">
+            <div className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-amber-500/40 rounded-xl px-3 py-1.5 text-xs font-bold shadow-sm transition-all">
               <span className="text-[10px] text-zinc-400 font-extrabold uppercase tracking-wider hidden sm:inline">Engine:</span>
               <select
                 value={voiceLlmModel}
@@ -3223,7 +3224,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                   };
                   toast.success(labels[selected] || `Switched to ${selected}`);
                 }}
-                className="bg-transparent text-cyan-300 text-xs font-extrabold outline-none cursor-pointer"
+                className="bg-transparent text-amber-300 text-xs font-extrabold outline-none cursor-pointer"
                 title="Select Conversational Intelligence LLM Engine for Super Agent & Voice Call"
               >
                 <optgroup label="ADAPTIVE AGENT">
@@ -3253,21 +3254,21 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
 
             {/* Agent's Voice Button */}
             {clonedVoiceRef ? (
-              <div className="flex items-center gap-2 bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm">
+              <div className="flex items-center gap-2 bg-amber-500/20 border border-amber-500/40 text-amber-300 px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm">
                 <button
                   type="button"
                   onClick={handlePlayVoiceSample}
                   className={`w-6 h-6 rounded-full flex items-center justify-center transition-all cursor-pointer shadow-md ${
                     isPlayingVoiceSample 
-                      ? 'bg-cyan-400 text-black animate-pulse ring-2 ring-cyan-300' 
-                      : 'bg-cyan-500/30 hover:bg-cyan-400/50 text-cyan-200 hover:text-white border border-cyan-400/40'
+                      ? 'bg-amber-400 text-black animate-pulse ring-2 ring-amber-300'
+                      : 'bg-amber-500/30 hover:bg-amber-400/50 text-amber-200 hover:text-white border border-amber-400/40'
                   }`}
                   title={isPlayingVoiceSample ? "Pause Voice Sample" : "Play Active Agent Voice Sample"}
                 >
                   {isPlayingVoiceSample ? (
                     <Pause size={12} className="fill-current text-black" />
                   ) : (
-                    <Play size={12} className="fill-current text-cyan-200 ml-0.5" />
+                    <Play size={12} className="fill-current text-amber-200 ml-0.5" />
                   )}
                 </button>
                 <button
@@ -3276,13 +3277,13 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                   className="hover:text-white flex items-center gap-1.5 cursor-pointer"
                   title="Configure Agent's Voice & Vocal Parameters"
                 >
-                  <Mic size={13} className="text-cyan-400" />
+                  <Mic size={13} className="text-amber-400" />
                   <span>Agent Voice (Active)</span>
                 </button>
                 <button
                   type="button"
                   onClick={clearClonedVoice}
-                  className="hover:text-white text-cyan-400 p-0.5 rounded transition-all ml-1 cursor-pointer"
+                  className="hover:text-white text-amber-400 p-0.5 rounded transition-all ml-1 cursor-pointer"
                   title="Remove cloned voice and return to default voice"
                 >
                   <X size={12} />
@@ -3295,10 +3296,37 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                 className="px-3 py-1.5 rounded-xl text-xs font-bold bg-white/5 hover:bg-white/10 text-zinc-300 border border-white/10 hover:border-white/20 flex items-center gap-1.5 cursor-pointer transition-all shadow-sm"
                 title="Open Voice Studio: Upload audio sample, select AI model & fine-tune vocal sliders"
               >
-                <Mic size={13} className="text-cyan-400" />
+                <Mic size={13} className="text-amber-400" />
                 <span>Agent Voice</span>
               </button>
             )}
+
+            <details className="w-full rounded-xl border border-white/10 bg-white/[0.02] p-2 text-xs text-zinc-300">
+              <summary className="cursor-pointer list-none font-semibold text-zinc-300">Voice features</summary>
+              <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-white/[0.07] pt-2">
+                <button
+                  type="button"
+                  onClick={toggleListening}
+                  disabled={isSending}
+                  className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 font-semibold ${isListening ? 'border-rose-500/50 bg-rose-500/15 text-rose-300' : 'border-white/10 bg-white/5 text-zinc-300'}`}
+                >
+                  <Mic size={14} /> {isListening ? 'Stop dictation' : 'Dictate'}
+                </button>
+                <NativeVoiceCall personaId={effectiveSelectedPersonaId} disabled={isLiveVoiceCallActive} history={messages}
+                  onMessage={message=>setMessages(previous=>previous.some(item=>item.id===message.id)?previous.map(item=>item.id===message.id?{...item,content:message.content}:item):[...previous,message])}
+                  onPlan={data=>setMessages(previous=>[...previous,{id:crypto.randomUUID(),role:'model',content:data.text||'Studio plan ready for review.',nativeVoicePlan:true,status:'clarifying',suggestedSteps:normalizeAgentSteps(data.suggestedSteps),execSteps:normalizeAgentSteps(data.suggestedSteps).map(step=>({...step,status:'pending' as const}))}])}/>
+                <SpeechEnginePilot personaId={effectiveSelectedPersonaId} disabled={isLiveVoiceCallActive} history={messages} model={voiceLlmModel}
+                  onMessage={message=>setMessages(previous=>previous.some(item=>item.id===message.id)?previous.map(item=>item.id===message.id?{...item,content:message.content}:item):[...previous.slice(-35),message])}/>
+                <button
+                  type="button"
+                  onClick={isLiveVoiceCallActive ? stopLiveVoiceCall : startLiveVoiceCall}
+                  className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-2 font-semibold text-zinc-300 hover:border-[#E7C477]/30 hover:text-[#F2D58D]"
+                >
+                  {isLiveVoiceCallActive ? <PhoneOff size={14} /> : <PhoneCall size={14} />}
+                  {isLiveVoiceCallActive ? 'End call' : 'Voice call'}
+                </button>
+              </div>
+            </details>
 
             {/* Clear Chat Button */}
             <button
@@ -3313,21 +3341,22 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
             </button>
               </div>
             </details>
-          </div>
+            </div>
+          </details>
         </div>
 
         {/* Sub-Agent Collaboration Terminal & Pending Approval Banner */}
-        <div className="bg-black/40 border-b border-white/5 px-6 py-2.5 space-y-2">
+        {(subAgentLogs.length > 0 || pendingApprovals.length > 0) && <div className="bg-black/25 border-b border-white/5 px-4 sm:px-6 py-2.5 space-y-2">
           {/* Sub-Agent Live Feed */}
           {subAgentLogs.length > 0 && (
             <div className="flex items-center gap-2 overflow-x-auto text-[10px] no-scrollbar py-1">
-              <span className="font-black text-[9px] uppercase tracking-wider text-pink-400 flex items-center gap-1 shrink-0">
-                <Bot className="w-3.5 h-3.5 animate-bounce" /> Sub-Agents:
+              <span className="font-black text-[9px] uppercase tracking-wider text-amber-400 flex items-center gap-1 shrink-0">
+                <Bot className="w-3.5 h-3.5" /> Sub-Agents:
               </span>
               <div className="flex items-center gap-2 shrink-0">
                 <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
-                  subAgentLogs[0].agent === 'visual' ? 'bg-pink-500/20 text-pink-300' :
-                  subAgentLogs[0].agent === 'copywriter' ? 'bg-violet-500/20 text-violet-300' : 'bg-emerald-500/20 text-emerald-300'
+                  subAgentLogs[0].agent === 'visual' ? 'bg-amber-500/20 text-amber-300' :
+                  subAgentLogs[0].agent === 'copywriter' ? 'bg-amber-500/20 text-amber-300' : 'bg-emerald-500/20 text-emerald-300'
                 }`}>
                   {subAgentLogs[0].agent === 'visual' ? '🎨 Visual Artist' : subAgentLogs[0].agent === 'copywriter' ? '✍️ Copywriter' : '💼 Business'}
                 </span>
@@ -3339,7 +3368,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
 
           {/* Pending Approval Drawer */}
           {pendingApprovals.length > 0 && (
-            <div className="p-3 bg-gradient-to-r from-amber-500/10 via-pink-500/10 to-violet-500/10 border border-amber-500/30 rounded-xl space-y-2">
+            <div className="p-3 bg-gradient-to-r from-amber-500/10 via-amber-500/10 to-amber-500/10 border border-amber-500/30 rounded-xl space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
                   <ShieldCheck className="w-4 h-4 text-amber-400 animate-pulse" /> Pending Approval Queue ({pendingApprovals.length})
@@ -3381,7 +3410,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
               </div>
             </div>
           )}
-        </div>
+        </div>}
 
         {/* Phone Call Overlay — shown during live voice calls */}
         {isLiveVoiceCallActive ? (
@@ -3391,7 +3420,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            background: 'radial-gradient(ellipse at center, #0f1629 0%, #060810 70%)',
+            background: 'radial-gradient(ellipse at center, #1C1C20 0%, #0D0D0F 70%)',
             position: 'relative',
             overflow: 'hidden',
             gap: '24px',
@@ -3511,15 +3540,15 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
             </button>
           </div>
         ) : (
-        /* UNIFIED EXPANDING COMMAND CONSOLE CARD BOX (Extends directly below upper tabs) */
-        <div className="agent-console flex-1 min-h-0 flex flex-col p-4 sm:p-6 overflow-hidden">
-          <div className="w-full max-w-4xl mx-auto flex-1 flex flex-col bg-[#0a0d18]/95 backdrop-blur-2xl border border-cyan-500/30 rounded-3xl shadow-[0_15px_60px_rgba(0,0,0,0.85),0_0_40px_rgba(6,182,212,0.1)] focus-within:border-cyan-400 focus-within:shadow-[0_0_60px_rgba(6,182,212,0.25)] transition-all overflow-hidden">
+        /* Draft Room: the brief comes first; the working history sits below it. */
+        <div className="agent-console flex-1 min-h-0 flex flex-col p-3 sm:p-5 overflow-hidden">
+          <div className="agent-draft-shell w-full max-w-5xl mx-auto flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
             
             {/* Scrollable Conversation Thread INSIDE the Card */}
-            <div className="agent-messages flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-6 custom-scrollbar">
+            <div className="agent-messages order-2 flex-1 min-h-[120px] overflow-y-auto rounded-2xl border border-white/[0.07] bg-[#161618]/85 p-4 sm:p-5 space-y-5 custom-scrollbar">
               {messages.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-3 opacity-60">
-                  <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
+                  <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
                     <Sparkles size={24} />
                   </div>
                   <div className="text-xs text-zinc-400 max-w-sm leading-relaxed">
@@ -3535,7 +3564,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                     <span className="text-[9px] font-black text-zinc-400 uppercase tracking-wider mb-1 px-1">
                       {msg.role === 'model' ? '🤖 Agent' : '👤 You'}
                       {msg.role === 'model' && msg.agentMode && (
-                        <span className="ml-2 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2 py-0.5 text-cyan-300">
+                        <span className="ml-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-300">
                           {msg.agentMode.provider} · {msg.agentMode.model} · {msg.agentMode.effort}
                           {msg.agentMode.research ? ' · research' : ''}
                           {typeof msg.agentMode.costUsd === 'number' ? ` · $${msg.agentMode.costUsd.toFixed(5)}` : ''}
@@ -3545,7 +3574,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
 
                     <div className={`p-4 rounded-2xl relative overflow-hidden shadow-lg border text-xs sm:text-sm leading-relaxed ${
                       msg.role === 'user' 
-                        ? 'bg-gradient-to-br from-cyan-500/20 to-blue-600/20 border-cyan-500/30 text-white rounded-tr-none'
+                        ? 'bg-gradient-to-br from-amber-500/20 to-amber-600/20 border-amber-500/30 text-white rounded-tr-none'
                         : 'bg-white/5 border-white/10 text-zinc-100 rounded-tl-none'
                     }`}>
                       <div className="whitespace-pre-wrap">{msg.content}</div>
@@ -3570,15 +3599,15 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                       {/* Simulated Multi-Agent Collaboration dialog inside Chat Bubble */}
                       {msg.role === 'model' && msg.collaborationLogs && msg.collaborationLogs.length > 0 && (
                         <div className="mt-4 p-4 bg-black/30 border border-white/5 rounded-xl space-y-3 shadow-inner">
-                          <div className="flex items-center gap-1 text-[9px] font-black text-pink-400 uppercase tracking-widest pb-1 border-b border-white/5">
-                            <Layers className="w-3.5 h-3.5 text-pink-400" /> Helper Agent Group Brainstorm
+                          <div className="flex items-center gap-1 text-[9px] font-black text-amber-400 uppercase tracking-widest pb-1 border-b border-white/5">
+                            <Layers className="w-3.5 h-3.5 text-amber-400" /> Helper Agent Group Brainstorm
                           </div>
                           <div className="space-y-2.5">
                             {msg.collaborationLogs.map((cLog, cIdx) => (
                               <div key={cIdx} className="space-y-0.5 text-[11px]">
                                 <span className={`font-black text-[9px] px-1.5 py-0.5 rounded uppercase tracking-wider ${
-                                  cLog.agent.includes('Creative') ? 'bg-pink-500/20 text-pink-300' :
-                                  cLog.agent.includes('Copywriter') ? 'bg-violet-500/20 text-violet-300' : 'bg-cyan-500/20 text-cyan-300'
+                                  cLog.agent.includes('Creative') ? 'bg-amber-500/20 text-amber-300' :
+                                  cLog.agent.includes('Copywriter') ? 'bg-amber-500/20 text-amber-300' : 'bg-amber-500/20 text-amber-300'
                                 }`}>
                                   {cLog.agent}
                                 </span>
@@ -3591,13 +3620,13 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
 
                       {/* Human-in-the-Loop plan card */}
                       {msg.role === 'model' && msg.planCard && (
-                        <div className="mt-4 p-4 bg-gradient-to-b from-cyan-950/40 to-slate-950/80 border border-cyan-500/30 rounded-2xl space-y-3 shadow-xl">
-                          <div className="flex items-center justify-between border-b border-cyan-500/20 pb-2">
+                        <div className="mt-4 p-4 bg-gradient-to-b from-amber-950/40 to-zinc-950/80 border border-amber-500/30 rounded-2xl space-y-3 shadow-xl">
+                          <div className="flex items-center justify-between border-b border-amber-500/20 pb-2">
                             <div className="flex items-center gap-2">
-                              <Sparkles className="w-4 h-4 text-cyan-400 animate-pulse" />
-                              <span className="font-extrabold text-xs text-cyan-300 uppercase tracking-wider">{msg.planCard.title}</span>
+                              <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
+                              <span className="font-extrabold text-xs text-amber-300 uppercase tracking-wider">{msg.planCard.title}</span>
                             </div>
-                            <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+                            <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40">
                               Approval Required
                             </span>
                           </div>
@@ -3606,7 +3635,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                             {msg.planCard.steps.map((st, idx) => (
                               <div key={idx} className="flex items-center justify-between p-2 rounded-xl bg-white/5 border border-white/5 text-xs">
                                 <span className="text-zinc-200 font-medium">{idx + 1}. {st.title}</span>
-                                <span className="text-[10px] font-bold text-cyan-400">{st.estimatedCost}</span>
+                                <span className="text-[10px] font-bold text-amber-400">{st.estimatedCost}</span>
                               </div>
                             ))}
                           </div>
@@ -3618,7 +3647,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                                 toast.success('Plan approved! Agent initiating execution sequence...');
                                 sendMessage('Approved! Please execute the plan now.');
                               }}
-                              className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-extrabold text-xs shadow-md shadow-cyan-500/20 transition-all flex items-center gap-1.5 cursor-pointer"
+                              className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-white font-extrabold text-xs shadow-md shadow-amber-500/20 transition-all flex items-center gap-1.5 cursor-pointer"
                             >
                               <CheckCircle2 className="w-3.5 h-3.5" />
                               <span>Approve & Execute Plan</span>
@@ -3630,15 +3659,15 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                       {/* Interactive Execution Pipeline Cards inside Chat Bubble */}
                       {msg.campaign && <AgentCampaignCard campaign={msg.campaign} steps={msg.execSteps || []} />}
                       {msg.role === 'model' && msg.execSteps && msg.execSteps.length > 0 && (
-                        <div className="mt-4 p-4 bg-[#0a0d18]/90 border border-cyan-500/30 rounded-2xl space-y-4 shadow-2xl">
+                        <div className="mt-4 p-4 bg-[#161618]/90 border border-amber-500/30 rounded-2xl space-y-4 shadow-2xl">
                           <div className="flex items-center justify-between border-b border-white/10 pb-2">
                             <div className="flex items-center gap-2">
-                              <Cpu className="w-4 h-4 text-cyan-400 animate-pulse" />
+                              <Cpu className="w-4 h-4 text-amber-400 animate-pulse" />
                               <span className="font-extrabold text-xs text-white uppercase tracking-wider">Task plan</span>
                             </div>
                             <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border ${
                               msg.status === 'done' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' :
-                              msg.status === 'executing' ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 animate-pulse' :
+                              msg.status === 'executing' ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse' :
                               'bg-amber-500/20 text-amber-300 border-amber-500/40'
                             }`}>
                               {msg.status === 'done' ? 'Completed' : msg.status === 'executing' ? 'Working' : msg.execSteps?.some(s => s.status === 'error') ? 'Needs attention' : 'Review plan'}
@@ -3653,7 +3682,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                                   <div className="flex items-center gap-2">
                                     <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
                                       step.status === 'done' || step.status === 'success' ? 'bg-emerald-500 text-white' :
-                                      step.status === 'executing' || step.status === 'running' ? 'bg-cyan-500 text-white animate-spin' :
+                                      step.status === 'executing' || step.status === 'running' ? 'bg-amber-500 text-white animate-spin' :
                                       'bg-white/10 text-zinc-400'
                                     }`}>
                                       {step.status === 'done' || step.status === 'success' ? <Check size={12} /> : sIdx + 1}
@@ -3694,7 +3723,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                             <button
                               type="button"
                               onClick={() => runPipeline(msg.id, msg)}
-                              className="flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-400/40 bg-cyan-500/15 px-4 py-2.5 text-xs font-extrabold text-cyan-200 transition-colors hover:bg-cyan-500/25"
+                              className="flex w-full items-center justify-center gap-2 rounded-xl border border-amber-400/40 bg-amber-500/15 px-4 py-2.5 text-xs font-extrabold text-amber-200 transition-colors hover:bg-amber-500/25"
                             >
                               <RefreshCw size={14} /> Approve & run plan
                             </button>
@@ -3708,29 +3737,38 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
               <div ref={messagesEndRef} />
             </div>
 
+            <div className="agent-draft-composer order-1 shrink-0 rounded-[24px] border border-[#E7C477]/30 bg-[#18181B] p-4 shadow-[0_18px_60px_rgba(0,0,0,0.35)] transition-colors focus-within:border-[#E7C477]/65 sm:p-5">
+            <div className="mb-3 flex items-center justify-between gap-4">
+              <div>
+                <p className="font-serif text-lg text-[#F5F1E8] sm:text-xl">What should we make?</p>
+                <p className="mt-1 text-xs text-zinc-500">Describe the outcome. Super Agent will plan the work and ask before costly steps.</p>
+              </div>
+              <span className="hidden rounded-full border border-white/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-500 sm:inline">Brief</span>
+            </div>
+
             {/* Active Research Badges & Attachment Previews Row */}
             {(attachments.length > 0 || deepResearchActive || socialResearchActive || webpageResearchActive) && (
-              <div className="px-4 sm:px-6 py-2 border-t border-white/10 bg-black/40 flex flex-wrap items-center gap-2">
+              <div className="mb-3 flex flex-wrap items-center gap-2 border-b border-white/[0.07] pb-3">
                 {/* Active Research Mode Badges */}
                 {deepResearchActive && (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm">
-                    <Globe size={13} className="text-cyan-400 animate-pulse" />
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm">
+                    <Globe size={13} className="text-amber-400 animate-pulse" />
                     <span>Deep Web Active</span>
                     <button type="button" onClick={() => setDeepResearchActive(false)} className="hover:text-white ml-0.5"><X size={12} /></button>
                   </span>
                 )}
 
                 {socialResearchActive && (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm">
-                    <TrendingUp size={13} className="text-cyan-400 animate-pulse" />
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm">
+                    <TrendingUp size={13} className="text-amber-400 animate-pulse" />
                     <span>Social Trends Active</span>
                     <button type="button" onClick={() => setSocialResearchActive(false)} className="hover:text-white ml-0.5"><X size={12} /></button>
                   </span>
                 )}
 
                 {webpageResearchActive && (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm max-w-[240px]">
-                    <Link size={13} className="text-cyan-400 shrink-0" />
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm max-w-[240px]">
+                    <Link size={13} className="text-amber-400 shrink-0" />
                     <span className="truncate">{webpageUrlInput || 'Webpage Research'}</span>
                     <button type="button" onClick={() => { setWebpageResearchActive(false); setWebpageUrlInput(''); }} className="hover:text-white ml-0.5 shrink-0"><X size={12} /></button>
                   </span>
@@ -3742,7 +3780,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                     {att.mimeType.startsWith('image/') ? (
                       <img src={att.dataUrl} alt={att.name} className="w-8 h-8 rounded-lg object-cover" />
                     ) : (
-                      <div className="w-8 h-8 rounded-lg bg-cyan-500/20 text-cyan-300 flex items-center justify-center font-bold text-[10px]">
+                      <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-300 flex items-center justify-center font-bold text-[10px]">
                         {att.name.split('.').pop()?.toUpperCase() || 'FILE'}
                       </div>
                     )}
@@ -3763,7 +3801,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
             <textarea
               aria-label="Message Super Agent"
               ref={agentTextareaRef}
-              rows={2}
+              rows={6}
               value={inputText}
               onChange={(e) => handleInputTextChange(e.target.value)}
               onKeyDown={(e) => {
@@ -3773,8 +3811,8 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                 }
               }}
               disabled={isSending}
-              placeholder={isListening ? "Listening... Speak clearly into microphone" : "Message Super Agent..."}
-              className="w-full bg-transparent text-sm sm:text-base font-medium text-white placeholder:text-zinc-500 placeholder:text-xs sm:placeholder:text-sm outline-none resize-none leading-relaxed min-h-[60px] max-h-[220px] overflow-y-auto"
+              placeholder="Describe a campaign, ask for research, or give Super Agent a task…"
+              className="w-full min-h-[150px] max-h-[300px] resize-none overflow-y-auto bg-transparent text-base font-medium leading-relaxed text-[#F5F1E8] outline-none placeholder:text-zinc-600 sm:min-h-[190px] sm:text-lg"
             />
 
             {/* Bottom Row Action Toolbar (Plus Menu on Left, Send on Right) */}
@@ -3782,21 +3820,37 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
               
               {/* Left Row Controls */}
               <div className="flex flex-wrap items-center gap-2">
-                {/* Plus (+) Menu Trigger */}
+                <label
+                  htmlFor="draft-room-file-input"
+                  className="flex h-10 cursor-pointer items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 text-xs font-semibold text-zinc-300 transition-colors hover:border-[#E7C477]/30 hover:text-[#F2D58D]"
+                >
+                  <Paperclip size={15} /> Attach
+                  <input
+                    id="draft-room-file-input"
+                    type="file"
+                    ref={fileInputRef}
+                    accept="image/*,video/*,audio/*,.pdf,.txt"
+                    multiple
+                    onChange={handleFileUpload}
+                    className="sr-only"
+                  />
+                </label>
+
+                {/* Research menu */}
                 <div className="relative">
                   <button
                     type="button"
                     onClick={() => setIsPlusMenuOpen(!isPlusMenuOpen)}
-                    className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all cursor-pointer shadow-md ${
+                    className={`h-10 rounded-xl border px-3 flex items-center gap-2 transition-all cursor-pointer ${
                       isPlusMenuOpen || deepResearchActive || socialResearchActive || webpageResearchActive
-                        ? 'bg-cyan-500/25 border-cyan-400 text-cyan-300 shadow-cyan-500/20'
+                        ? 'bg-amber-500/25 border-amber-400 text-amber-300 shadow-amber-500/20'
                         : 'bg-white/5 border-white/10 text-zinc-300 hover:text-white hover:bg-white/10 hover:border-white/20'
                     }`}
                     aria-label="Add attachments and research tools"
                     aria-expanded={isPlusMenuOpen}
-                    title="Add Attachments & AI Research Tools"
+                    title="Choose a research mode"
                   >
-                    <Plus size={18} className={`transition-transform duration-200 ${isPlusMenuOpen ? 'rotate-45 text-cyan-300' : ''}`} />
+                    <Globe size={15} /> <span className="text-xs font-semibold">Research</span>
                   </button>
 
                   {/* Plus Action Popup Menu */}
@@ -3807,35 +3861,11 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: 10, scale: 0.95 }}
                         transition={{ duration: 0.15 }}
-                        className="absolute bottom-12 left-0 w-72 bg-[#0d101d] border border-cyan-500/40 rounded-2xl p-2 shadow-2xl backdrop-blur-2xl z-50 space-y-1"
+                        className="absolute bottom-12 left-0 w-72 bg-[#1C1C20] border border-amber-500/40 rounded-2xl p-2 shadow-2xl backdrop-blur-2xl z-50 space-y-1"
                       >
                         <div className="px-3 py-1.5 text-[10px] font-black uppercase text-zinc-500 tracking-wider">
-                          Attachments & AI Research Tools
+                          Research modes
                         </div>
-
-                        {/* 1. Upload File */}
-                        <label
-                          htmlFor="plus-menu-file-input"
-                          onClick={() => setIsPlusMenuOpen(false)}
-                          className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-cyan-500/10 hover:text-cyan-300 text-zinc-200 text-xs font-bold cursor-pointer transition-all"
-                        >
-                          <div className="w-8 h-8 rounded-lg bg-cyan-500/15 flex items-center justify-center text-cyan-400">
-                            <Paperclip size={16} />
-                          </div>
-                          <div>
-                            <div>Upload File</div>
-                            <div className="text-[10px] font-normal text-zinc-400">Photos, videos, audio & documents</div>
-                          </div>
-                          <input
-                            id="plus-menu-file-input"
-                            type="file"
-                            ref={fileInputRef}
-                            accept="image/*,video/*,audio/*,.pdf,.txt"
-                            multiple
-                            onChange={handleFileUpload}
-                            className="sr-only"
-                          />
-                        </label>
 
                         {/* 2. Deep Web Research */}
                         <button
@@ -3848,12 +3878,12 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                           }}
                           className={`w-full flex items-center justify-between p-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                             deepResearchActive
-                              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
                               : 'hover:bg-white/5 text-zinc-200'
                           }`}
                         >
                           <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-lg bg-cyan-500/15 flex items-center justify-center text-cyan-400">
+                            <div className="w-8 h-8 rounded-lg bg-amber-500/15 flex items-center justify-center text-amber-400">
                               <Globe size={16} />
                             </div>
                             <div className="text-left">
@@ -3861,7 +3891,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                               <div className="text-[10px] font-normal text-zinc-400">Live multi-source web search</div>
                             </div>
                           </div>
-                          {deepResearchActive && <Check size={14} className="text-cyan-400" />}
+                          {deepResearchActive && <Check size={14} className="text-amber-400" />}
                         </button>
 
                         {/* 3. Social Media Research */}
@@ -3875,12 +3905,12 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                           }}
                           className={`w-full flex items-center justify-between p-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                             socialResearchActive
-                              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
                               : 'hover:bg-white/5 text-zinc-200'
                           }`}
                         >
                           <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-lg bg-cyan-500/15 flex items-center justify-center text-cyan-400">
+                            <div className="w-8 h-8 rounded-lg bg-amber-500/15 flex items-center justify-center text-amber-400">
                               <TrendingUp size={16} />
                             </div>
                             <div className="text-left">
@@ -3888,7 +3918,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                               <div className="text-[10px] font-normal text-zinc-400">Instagram, TikTok & X trend scraper</div>
                             </div>
                           </div>
-                          {socialResearchActive && <Check size={14} className="text-cyan-400" />}
+                          {socialResearchActive && <Check size={14} className="text-amber-400" />}
                         </button>
 
                         {/* 4. Webpage Research */}
@@ -3900,12 +3930,12 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                           }}
                           className={`w-full flex items-center justify-between p-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                             webpageResearchActive
-                              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
                               : 'hover:bg-white/5 text-zinc-200'
                           }`}
                         >
                           <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-lg bg-cyan-500/15 flex items-center justify-center text-cyan-400">
+                            <div className="w-8 h-8 rounded-lg bg-amber-500/15 flex items-center justify-center text-amber-400">
                               <Link size={16} />
                             </div>
                             <div className="text-left">
@@ -3913,47 +3943,13 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                               <div className="text-[10px] font-normal text-zinc-400">Extract content from URL</div>
                             </div>
                           </div>
-                          {webpageResearchActive && <Check size={14} className="text-cyan-400" />}
+                          {webpageResearchActive && <Check size={14} className="text-amber-400" />}
                         </button>
                       </motion.div>
                     )}
                   </AnimatePresence>
                 </div>
 
-                {/* Mic Input Trigger */}
-                <button
-                  type="button"
-                  onClick={toggleListening}
-                  disabled={isSending}
-                  title="Dictate message with microphone"
-                  className={`p-2 rounded-xl border flex items-center justify-center transition-all cursor-pointer ${
-                    isListening 
-                      ? 'bg-rose-500/20 border-rose-500 text-rose-400 animate-pulse'
-                      : 'bg-white/5 border-white/10 text-zinc-300 hover:text-white hover:bg-white/10'
-                  }`}
-                >
-                  <Mic size={15} />
-                </button>
-
-                {/* Hands-Free Live Voice Call Button */}
-                <NativeVoiceCall personaId={effectiveSelectedPersonaId} disabled={isLiveVoiceCallActive} history={messages}
-                  onMessage={message=>setMessages(previous=>previous.some(item=>item.id===message.id)?previous.map(item=>item.id===message.id?{...item,content:message.content}:item):[...previous,message])}
-                  onPlan={data=>setMessages(previous=>[...previous,{id:crypto.randomUUID(),role:'model',content:data.text||'Studio plan ready for review.',nativeVoicePlan:true,status:'clarifying',suggestedSteps:normalizeAgentSteps(data.suggestedSteps),execSteps:normalizeAgentSteps(data.suggestedSteps).map(step=>({...step,status:'pending' as const}))}])}/>
-                <SpeechEnginePilot personaId={effectiveSelectedPersonaId} disabled={isLiveVoiceCallActive} history={messages} model={voiceLlmModel}
-                    onMessage={message=>setMessages(previous=>previous.some(item=>item.id===message.id)?previous.map(item=>item.id===message.id?{...item,content:message.content}:item):[...previous.slice(-35),message])}/>
-                <button
-                  type="button"
-                  onClick={isLiveVoiceCallActive ? stopLiveVoiceCall : startLiveVoiceCall}
-                  title={isLiveVoiceCallActive ? "End Live Voice Call" : "Start Live Voice Call"}
-                  className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                    isLiveVoiceCallActive
-                      ? 'bg-emerald-500 text-white border-emerald-400 animate-pulse shadow-lg shadow-emerald-500/30'
-                      : 'bg-cyan-500/10 border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/20'
-                  }`}
-                >
-                  {isLiveVoiceCallActive ? <PhoneOff size={14} /> : <PhoneCall size={14} />}
-                  <span>{isLiveVoiceCallActive ? 'End Call' : 'Voice Call'}</span>
-                </button>
               </div>
 
               {/* Right Side: Primary Send Button */}
@@ -3961,11 +3957,12 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                 type="button"
                 onClick={() => sendMessage()}
                 disabled={isSending || (!inputText.trim() && attachments.length === 0)}
-                className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 disabled:opacity-40 disabled:pointer-events-none flex items-center gap-2 text-white font-extrabold text-sm shadow-lg shadow-cyan-500/25 transition-all shrink-0 cursor-pointer"
+                className="min-w-28 justify-center rounded-xl bg-[#E7C477] px-5 py-2.5 text-sm font-bold text-[#17130A] shadow-[0_8px_24px_rgba(231,196,119,0.16)] transition-colors hover:bg-[#F2D58D] disabled:pointer-events-none disabled:opacity-40 flex items-center gap-2 shrink-0 cursor-pointer"
               >
                 <span>Send</span>
                 {isSending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
               </button>
+            </div>
             </div>
           </div>
         </div>
@@ -3979,10 +3976,10 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.9 }}
-                className="w-full max-w-md bg-[#0d101d] border border-cyan-500/40 rounded-3xl p-6 shadow-2xl space-y-4"
+                className="w-full max-w-md bg-[#1C1C20] border border-amber-500/40 rounded-3xl p-6 shadow-2xl space-y-4"
               >
                 <div className="flex items-center justify-between border-b border-white/10 pb-3">
-                  <div className="flex items-center gap-2 text-cyan-400 font-extrabold text-base">
+                  <div className="flex items-center gap-2 text-amber-400 font-extrabold text-base">
                     <Link size={18} />
                     <span>Webpage Research</span>
                   </div>
@@ -4000,7 +3997,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                   value={webpageUrlInput}
                   onChange={(e) => setWebpageUrlInput(e.target.value)}
                   placeholder="https://example.com/article"
-                  className="w-full bg-black/50 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white outline-none focus:border-cyan-400 font-medium"
+                  className="w-full bg-black/50 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white outline-none focus:border-amber-400 font-medium"
                 />
 
                 <div className="flex items-center justify-end gap-2 pt-2">
@@ -4022,7 +4019,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                       setShowWebpageUrlModal(false);
                       toast.success(`📄 Webpage Research Enabled for ${webpageUrlInput}`);
                     }}
-                    className="px-5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white text-xs font-extrabold shadow-md shadow-cyan-500/20"
+                    className="px-5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-white text-xs font-extrabold shadow-md shadow-amber-500/20"
                   >
                     Enable Research
                   </button>
@@ -4052,7 +4049,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
               <button
                 onClick={() => setCanvasTab('studio')}
                 className={cn('px-2.5 py-1 rounded-lg text-[10px] font-black uppercase transition-all flex items-center gap-1',
-                  canvasTab === 'studio' ? 'bg-pink-500/20 text-pink-300 border border-pink-500/30' : 'text-white/40 hover:text-white'
+                  canvasTab === 'studio' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'text-white/40 hover:text-white'
                 )}
                 title="View Draft Persona, Photos & Content Plan"
               >
@@ -4062,7 +4059,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
               <button
                 onClick={() => setCanvasTab('chat')}
                 className={cn('px-2.5 py-1 rounded-lg text-[10px] font-black uppercase transition-all flex items-center gap-1',
-                  canvasTab === 'chat' ? 'bg-violet-500/20 text-violet-300 border border-violet-500/30' : 'text-white/40 hover:text-white'
+                  canvasTab === 'chat' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'text-white/40 hover:text-white'
                 )}
                 title="Test Chat Live in Character with AI Influencer"
               >
@@ -4072,7 +4069,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
               <button
                 onClick={() => setCanvasTab('marketing')}
                 className={cn('px-2.5 py-1 rounded-lg text-[10px] font-black uppercase transition-all flex items-center gap-1',
-                  canvasTab === 'marketing' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'text-white/40 hover:text-white'
+                  canvasTab === 'marketing' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'text-white/40 hover:text-white'
                 )}
                 title="Download Social Reels & View Analytics"
               >
@@ -4091,16 +4088,16 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                 <div className="space-y-6">
                   {/* PROFILE CARD */}
                   <div className="bg-[var(--bg-elevated)] border border-white/5 rounded-3xl p-6 shadow-xl relative overflow-hidden space-y-4">
-                    <div className="absolute top-0 right-0 w-24 h-24 bg-pink-500/10 rounded-full blur-3xl pointer-events-none" />
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
 
                     {/* Profile Mockup Card header */}
                     <div className="flex items-center gap-4 border-b border-white/5 pb-4">
-                      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-pink-500 to-violet-500 flex items-center justify-center font-black text-xl text-white border border-white/10 shrink-0 shadow-lg shadow-pink-500/10">
+                      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-amber-500 to-amber-500 flex items-center justify-center font-black text-xl text-white border border-white/10 shrink-0 shadow-lg shadow-amber-500/10">
                         {activeDraft.createStep.params.name ? activeDraft.createStep.params.name.charAt(0) : '?'}
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="font-extrabold text-lg text-white truncate">{activeDraft.createStep.params.name || 'Unnamed Persona'}</div>
-                        <div className="text-[10px] text-pink-400 font-black uppercase tracking-wider">{activeDraft.createStep.params.niche || 'Lifestyle Niche'}</div>
+                        <div className="text-[10px] text-amber-400 font-black uppercase tracking-wider">{activeDraft.createStep.params.niche || 'Lifestyle Niche'}</div>
                         <div className="text-[9px] text-zinc-500 font-bold uppercase mt-0.5">Platform: {activeDraft.createStep.params.platform || 'Instagram'}</div>
                       </div>
                     </div>
@@ -4127,7 +4124,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                         <span className="text-[9px] font-black uppercase text-zinc-500 tracking-wider">Personality Alignment</span>
                         <div className="flex flex-wrap gap-1.5">
                           {activeDraft.createStep.params.personalityTraits.map((t: string, tIdx: number) => (
-                            <span key={tIdx} className="px-2 py-0.5 rounded-full bg-violet-500/15 border border-violet-500/10 text-[9px] font-bold text-violet-300">
+                            <span key={tIdx} className="px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/10 text-[9px] font-bold text-amber-300">
                               🎭 {t}
                             </span>
                           ))}
@@ -4138,8 +4135,8 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
 
                   {/* VOICE & AVATAR STUDIO */}
                   <div className="bg-[var(--bg-elevated)] p-6 rounded-2xl border border-white/5 shadow-xl relative space-y-5">
-                    <span className="text-xs font-black text-violet-400 uppercase tracking-widest flex items-center gap-1">
-                      <Volume2 className="w-4 h-4 text-violet-400" /> Voice & Talking Avatar Studio
+                    <span className="text-xs font-black text-amber-400 uppercase tracking-widest flex items-center gap-1">
+                      <Volume2 className="w-4 h-4 text-amber-400" /> Voice & Talking Avatar Studio
                     </span>
                     <p className="text-[10px] text-zinc-400 font-bold leading-relaxed pb-3 border-b border-white/5">
                       Upload reference voice/video file, select avatar portrait, and create cloned talking photos.
@@ -4155,7 +4152,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                         <select
                           value={voiceEngine}
                           onChange={(e) => setVoiceEngine(e.target.value as any)}
-                          className="w-full bg-white/5 border border-white/5 rounded-xl px-3 py-2 text-xs text-white focus:border-cyan-500/30 outline-none"
+                          className="w-full bg-white/5 border border-white/5 rounded-xl px-3 py-2 text-xs text-white focus:border-amber-500/30 outline-none"
                         >
                           <option value="omnivoice">✨ Wavespeed OmniVoice Zonos2 (Instant, pitch/speed control)</option>
                           <option value="minimax-clone">⚡ MiniMax Voice Clone (Wavespeed GPU)</option>
@@ -4178,7 +4175,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                               type="text"
                               value={voiceNameInput}
                               onChange={(e) => setVoiceNameInput(e.target.value)}
-                              className="w-full bg-white/5 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-violet-500/30"
+                              className="w-full bg-white/5 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-amber-500/30"
                             />
                           </div>
                           <div>
@@ -4187,7 +4184,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                               type="text"
                               value={voiceDescInput}
                               onChange={(e) => setVoiceDescInput(e.target.value)}
-                              className="w-full bg-white/5 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-violet-500/30"
+                              className="w-full bg-white/5 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-amber-500/30"
                             />
                           </div>
                         </div>
@@ -4208,11 +4205,11 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                         />
                         <div 
                           onClick={() => studioVoiceRef.current?.click()}
-                          className="h-20 border border-dashed border-white/10 hover:border-violet-500/20 rounded-xl flex flex-col items-center justify-center bg-white/[0.01] hover:bg-white/[0.02] cursor-pointer transition-all p-3 text-center"
+                          className="h-20 border border-dashed border-white/10 hover:border-amber-500/20 rounded-xl flex flex-col items-center justify-center bg-white/[0.01] hover:bg-white/[0.02] cursor-pointer transition-all p-3 text-center"
                         >
                           {studioVoiceFile ? (
                             <div className="space-y-0.5">
-                              <div className="text-xs font-bold text-violet-300 truncate max-w-[280px]">🔊 {studioVoiceFile.name}</div>
+                              <div className="text-xs font-bold text-amber-300 truncate max-w-[280px]">🔊 {studioVoiceFile.name}</div>
                               <div className="text-[8px] font-black text-zinc-500 uppercase">{studioVoiceFile.mimeType}</div>
                             </div>
                           ) : (
@@ -4236,7 +4233,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                         />
                         <div 
                           onClick={() => studioAvatarRef.current?.click()}
-                          className="h-20 border border-dashed border-white/10 hover:border-violet-500/20 rounded-xl flex flex-col items-center justify-center bg-white/[0.01] hover:bg-white/[0.02] cursor-pointer transition-all p-3 text-center"
+                          className="h-20 border border-dashed border-white/10 hover:border-amber-500/20 rounded-xl flex flex-col items-center justify-center bg-white/[0.01] hover:bg-white/[0.02] cursor-pointer transition-all p-3 text-center"
                         >
                           {studioAvatarImage ? (
                             <div className="flex items-center gap-2">
@@ -4262,7 +4259,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                           value={studioScript}
                           onChange={(e) => setStudioScript(e.target.value)}
                           placeholder="Type script text here..."
-                          className="w-full h-24 bg-white/5 border border-white/5 rounded-xl p-3 text-xs text-white focus:border-violet-500/30 outline-none resize-none shadow-inner"
+                          className="w-full h-24 bg-white/5 border border-white/5 rounded-xl p-3 text-xs text-white focus:border-amber-500/30 outline-none resize-none shadow-inner"
                         />
                       </div>
 
@@ -4271,7 +4268,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                         <button
                           onClick={executeVoiceCloneOnly}
                           disabled={isStudioLoading || !studioScript.trim() || !studioVoiceFile}
-                          className="py-2.5 rounded-xl border border-white/5 bg-gradient-to-r from-violet-500/20 to-indigo-500/20 hover:from-violet-500/30 hover:to-indigo-500/30 font-black text-[10px] uppercase tracking-wider text-violet-300 flex items-center justify-center gap-1 transition-all disabled:opacity-40"
+                          className="py-2.5 rounded-xl border border-white/5 bg-gradient-to-r from-amber-500/20 to-amber-500/20 hover:from-amber-500/30 hover:to-amber-500/30 font-black text-[10px] uppercase tracking-wider text-amber-300 flex items-center justify-center gap-1 transition-all disabled:opacity-40"
                         >
                           {isStudioLoading && !studioResultVideoUrl ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Volume2 className="w-3.5 h-3.5" />}
                           Clone Voice
@@ -4279,7 +4276,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                         <button
                           onClick={executeTalkingAvatar}
                           disabled={isStudioLoading || !studioScript.trim() || !studioVoiceFile || !studioAvatarImage || voiceEngine === 'elevenlabs'}
-                          className="py-2.5 rounded-xl border border-pink-500/10 bg-gradient-to-r from-pink-500/20 to-violet-500/20 hover:from-pink-500/30 hover:to-violet-500/30 font-black text-[10px] uppercase tracking-wider text-pink-300 flex items-center justify-center gap-1 transition-all disabled:opacity-40"
+                          className="py-2.5 rounded-xl border border-amber-500/10 bg-gradient-to-r from-amber-500/20 to-amber-500/20 hover:from-amber-500/30 hover:to-amber-500/30 font-black text-[10px] uppercase tracking-wider text-amber-300 flex items-center justify-center gap-1 transition-all disabled:opacity-40"
                           title={voiceEngine === 'elevenlabs' ? 'Talking Avatars currently require OmniVoice engine' : ''}
                         >
                           {isStudioLoading && studioResultVideoUrl === null ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <VideoIcon className="w-3.5 h-3.5" />}
@@ -4291,7 +4288,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                     {/* Outputs panel */}
                     {isStudioLoading && (
                       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm rounded-2xl flex flex-col items-center justify-center space-y-2 text-center p-6 z-10">
-                        <Loader2 className="w-8 h-8 animate-spin text-pink-500" />
+                        <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
                         <div className="text-xs font-black uppercase text-white tracking-widest">Generating Studio Asset...</div>
                         <p className="text-[10px] text-zinc-400 max-w-[200px]">Wavespeed is cloning voice and generating talking photo. This takes a few seconds.</p>
                       </div>
@@ -4325,7 +4322,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                         <span className="text-[9px] font-black uppercase text-zinc-400 tracking-wider">
                           📅 7-Day theme: {activeDraft.planStep.params.theme || 'Default Niche'}
                         </span>
-                        <span className="text-[9px] font-black uppercase text-pink-400 bg-pink-500/15 px-2 py-0.5 rounded border border-pink-500/10 tracking-widest">
+                        <span className="text-[9px] font-black uppercase text-amber-400 bg-amber-500/15 px-2 py-0.5 rounded border border-amber-500/10 tracking-widest">
                           {activeDraft.planStep.params.platform || 'Instagram'}
                         </span>
                       </div>
@@ -4338,7 +4335,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                               <span className="text-xs font-black text-zinc-300">D{day}</span>
                             </div>
                             <div className="min-w-0 flex-1">
-                              <span className="text-[8px] font-black text-pink-400 uppercase tracking-widest block">Suggested Topic</span>
+                              <span className="text-[8px] font-black text-amber-400 uppercase tracking-widest block">Suggested Topic</span>
                               <div className="font-extrabold text-white mt-0.5 truncate">
                                 {activeDraft.planStep?.params?.days?.[day - 1]?.topic || `Day ${day} Viral Concept`}
                               </div>
@@ -4355,8 +4352,8 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
               ) : (
                 <div className="space-y-4">
                   {/* Clean Canvas Welcome Card */}
-                  <div className="p-6 bg-gradient-to-br from-indigo-900/20 via-purple-900/10 to-black border border-white/10 rounded-2xl text-center space-y-3">
-                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-pink-500 to-violet-600 flex items-center justify-center mx-auto shadow-lg shadow-pink-500/20">
+                  <div className="p-6 bg-gradient-to-br from-amber-900/20 via-amber-900/10 to-black border border-white/10 rounded-2xl text-center space-y-3">
+                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-600 flex items-center justify-center mx-auto shadow-lg shadow-amber-500/20">
                       <Cpu className="w-6 h-6 text-white" />
                     </div>
                     <div>
@@ -4375,9 +4372,9 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                     <div className="grid grid-cols-2 gap-2.5">
                       <button
                         onClick={() => setInputText(BASE_PRESETS[0].prompt)}
-                        className="p-3 text-left bg-white/[0.02] hover:bg-pink-500/10 border border-white/5 hover:border-pink-500/30 rounded-xl transition-all group"
+                        className="p-3 text-left bg-white/[0.02] hover:bg-amber-500/10 border border-white/5 hover:border-amber-500/30 rounded-xl transition-all group"
                       >
-                        <UserPlus className="w-5 h-5 text-pink-400 mb-2 group-hover:scale-110 transition-transform" />
+                        <UserPlus className="w-5 h-5 text-amber-400 mb-2 group-hover:scale-110 transition-transform" />
                         <span className="text-xs font-bold text-white block">Persona Architect</span>
                         <span className="text-[9px] text-white/40">Full profile & content plan</span>
                       </button>
@@ -4393,18 +4390,18 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
 
                       <button
                         onClick={() => setCanvasTab('studio')}
-                        className="p-3 text-left bg-white/[0.02] hover:bg-violet-500/10 border border-white/5 hover:border-violet-500/30 rounded-xl transition-all group"
+                        className="p-3 text-left bg-white/[0.02] hover:bg-amber-500/10 border border-white/5 hover:border-amber-500/30 rounded-xl transition-all group"
                       >
-                        <Volume2 className="w-5 h-5 text-violet-400 mb-2 group-hover:scale-110 transition-transform" />
+                        <Volume2 className="w-5 h-5 text-amber-400 mb-2 group-hover:scale-110 transition-transform" />
                         <span className="text-xs font-bold text-white block">Voice & Avatar</span>
                         <span className="text-[9px] text-white/40">Voice cloning & lip-sync</span>
                       </button>
 
                       <button
                         onClick={() => setCanvasTab('chat')}
-                        className="p-3 text-left bg-white/[0.02] hover:bg-cyan-500/10 border border-white/5 hover:border-cyan-500/30 rounded-xl transition-all group"
+                        className="p-3 text-left bg-white/[0.02] hover:bg-amber-500/10 border border-white/5 hover:border-amber-500/30 rounded-xl transition-all group"
                       >
-                        <MessageSquare className="w-5 h-5 text-cyan-400 mb-2 group-hover:scale-110 transition-transform" />
+                        <MessageSquare className="w-5 h-5 text-amber-400 mb-2 group-hover:scale-110 transition-transform" />
                         <span className="text-xs font-bold text-white block">Marketing Copy</span>
                         <span className="text-[9px] text-white/40">Brainstorm captions & ideas</span>
                       </button>
@@ -4420,8 +4417,8 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
           {canvasTab === 'chat' && (
             <div className="space-y-4 max-w-md mx-auto flex flex-col h-[500px] bg-[var(--bg-elevated)] border border-white/5 rounded-2xl p-4 shadow-xl overflow-hidden">
               <div className="flex-none flex items-center justify-between border-b border-white/5 pb-2">
-                <span className="text-xs font-black text-pink-400 uppercase tracking-widest flex items-center gap-1.5">
-                  <MessageSquare className="w-4 h-4 text-pink-400" /> Brand Chat Sandbox
+                <span className="text-xs font-black text-amber-400 uppercase tracking-widest flex items-center gap-1.5">
+                  <MessageSquare className="w-4 h-4 text-amber-400" /> Brand Chat Sandbox
                 </span>
                 <span className="text-[9px] font-bold text-zinc-400">
                   Talking to: {activeDraft?.createStep?.params.name || 'Sofia (Draft)'}
@@ -4431,7 +4428,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
               {/* Copywriting Generator Helper */}
               <div className="bg-black/30 border border-white/5 p-3 rounded-xl space-y-2 mb-1 flex-none">
                 <div className="flex justify-between items-center">
-                  <span className="text-[10px] font-black uppercase text-pink-400 tracking-wider flex items-center gap-1">
+                  <span className="text-[10px] font-black uppercase text-amber-400 tracking-wider flex items-center gap-1">
                     💡 Viral Hook & Caption Generator
                   </span>
                   {copyOptions && (
@@ -4453,7 +4450,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                           value={copywriterTopic}
                           onChange={(e) => setCopywriterTopic(e.target.value)}
                           placeholder="e.g. bikini walking, workout setup"
-                          className="w-full bg-white/5 border border-white/5 rounded px-2.5 py-1 text-white outline-none focus:border-pink-500/25"
+                          className="w-full bg-white/5 border border-white/5 rounded px-2.5 py-1 text-white outline-none focus:border-amber-500/25"
                         />
                       </div>
                       <div>
@@ -4461,7 +4458,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                         <select
                           value={copywriterPlatform}
                           onChange={(e) => setCopywriterPlatform(e.target.value as any)}
-                          className="w-full bg-white/5 border border-white/5 rounded px-2 py-1 text-white outline-none focus:border-pink-500/25 cursor-pointer"
+                          className="w-full bg-white/5 border border-white/5 rounded px-2 py-1 text-white outline-none focus:border-amber-500/25 cursor-pointer"
                         >
                           <option value="onlyfans">🌶️ OnlyFans Premium</option>
                           <option value="instagram">📸 Instagram Post</option>
@@ -4506,20 +4503,20 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                         setIsGeneratingCopy(false);
                       }}
                       disabled={!copywriterTopic.trim()}
-                      className="w-full py-1.5 rounded bg-gradient-to-r from-pink-500/20 to-violet-500/20 hover:from-pink-500/30 hover:to-violet-500/30 border border-pink-500/30 text-pink-300 text-[10px] font-black uppercase tracking-wider transition-all disabled:opacity-40"
+                      className="w-full py-1.5 rounded bg-gradient-to-r from-amber-500/20 to-amber-500/20 hover:from-amber-500/30 hover:to-amber-500/30 border border-amber-500/30 text-amber-300 text-[10px] font-black uppercase tracking-wider transition-all disabled:opacity-40"
                     >
                       🚀 Brainstorm Copywriting Teams
                     </button>
                   </div>
                 ) : isGeneratingCopy ? (
                   <div className="space-y-1.5 p-2 bg-black/40 rounded border border-white/5 font-mono text-[9px] text-zinc-400">
-                    <div className="flex items-center gap-1.5 text-pink-400 font-bold mb-1 animate-pulse">
+                    <div className="flex items-center gap-1.5 text-amber-400 font-bold mb-1 animate-pulse">
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
                       <span>AGENTS BRAINSTORMING ACTIVE</span>
                     </div>
                     {copyLogs.map((log, lIdx) => (
                       <div key={lIdx} className="leading-relaxed">
-                        <span className="text-violet-400 font-bold">[{log.agent}]:</span> {log.msg}
+                        <span className="text-amber-400 font-bold">[{log.agent}]:</span> {log.msg}
                       </div>
                     ))}
                   </div>
@@ -4527,7 +4524,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                   <div className="space-y-2 max-h-36 overflow-y-auto custom-scrollbar flex-none">
                     {copyOptions?.map((opt, oIdx) => (
                       <div key={oIdx} className="bg-white/5 border border-white/5 p-2 rounded-lg space-y-1 text-[9px] relative group">
-                        <span className="text-[8px] font-black text-pink-400 uppercase tracking-widest block">{opt.type}</span>
+                        <span className="text-[8px] font-black text-amber-400 uppercase tracking-widest block">{opt.type}</span>
                         <p className="text-zinc-200 font-semibold leading-normal">{opt.text}</p>
                         <p className="text-zinc-500 font-mono text-[8px]">{opt.tags}</p>
                         <button
@@ -4551,7 +4548,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                   <div key={pIdx} className={`flex flex-col ${pMsg.role === 'user' ? 'items-end' : 'items-start'}`}>
                     <div className={`p-3 rounded-xl max-w-[85%] leading-relaxed ${
                       pMsg.role === 'user'
-                        ? 'bg-violet-500/10 border border-violet-500/20 text-white rounded-tr-none'
+                        ? 'bg-amber-500/10 border border-amber-500/20 text-white rounded-tr-none'
                         : 'bg-white/5 border border-white/5 text-zinc-200 rounded-tl-none'
                     }`}>
                       <div>{pMsg.content}</div>
@@ -4567,7 +4564,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                               disabled={pMsg.isReading}
                               className="px-2.5 py-1 rounded bg-white/5 hover:bg-white/10 text-[9px] font-black uppercase text-zinc-300 flex items-center gap-1 transition-all disabled:opacity-40"
                             >
-                              {pMsg.isReading ? <Loader2 className="w-3 h-3 animate-spin text-pink-400" /> : <Volume2 className="w-3 h-3" />}
+                              {pMsg.isReading ? <Loader2 className="w-3 h-3 animate-spin text-amber-400" /> : <Volume2 className="w-3 h-3" />}
                               Speak cloned voice
                             </button>
                           )}
@@ -4578,7 +4575,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                 ))}
                 {isPersonaTyping && (
                   <div className="flex items-center gap-1.5 text-zinc-500 italic text-[10px] animate-pulse">
-                    <Loader2 className="w-3 h-3 animate-spin text-pink-500" />
+                    <Loader2 className="w-3 h-3 animate-spin text-amber-500" />
                     <span>{activeDraft?.createStep?.params.name || 'Influencer'} is typing...</span>
                   </div>
                 )}
@@ -4593,12 +4590,12 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                   onKeyDown={(e) => e.key === 'Enter' && sendPersonaChatMessage()}
                   disabled={isPersonaTyping || !activeDraft}
                   placeholder={activeDraft ? "Type chat message..." : "Draft a persona first to unlock chat"}
-                  className="flex-1 h-9 bg-black/40 border border-white/5 rounded-lg px-3 text-xs text-white focus:border-pink-500/30 outline-none"
+                  className="flex-1 h-9 bg-black/40 border border-white/5 rounded-lg px-3 text-xs text-white focus:border-amber-500/30 outline-none"
                 />
                 <button
                   onClick={sendPersonaChatMessage}
                   disabled={isPersonaTyping || !personaChatInput.trim()}
-                  className="w-9 h-9 rounded-lg bg-pink-500/20 hover:bg-pink-500/30 text-white flex items-center justify-center shadow transition-all"
+                  className="w-9 h-9 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-white flex items-center justify-center shadow transition-all"
                 >
                   <Send size={14} />
                 </button>
@@ -4610,8 +4607,8 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
             <div className="space-y-6 max-w-md mx-auto animate-fade-in">
               {/* SOCIAL MEDIA DOWNLOADER BOARD */}
               <div className="bg-[var(--bg-elevated)] p-6 rounded-2xl border border-white/5 shadow-xl relative">
-                <span className="text-xs font-black text-pink-400 uppercase tracking-widest flex items-center gap-1.5">
-                  <Globe className="w-4 h-4 text-pink-400 animate-spin" style={{ animationDuration: '6s' }} /> Instagram & TikTok Downloader
+                <span className="text-xs font-black text-amber-400 uppercase tracking-widest flex items-center gap-1.5">
+                  <Globe className="w-4 h-4 text-amber-400 animate-spin" style={{ animationDuration: '6s' }} /> Instagram & TikTok Downloader
                 </span>
                 <p className="text-[10px] text-zinc-400 font-bold leading-relaxed pb-3 border-b border-white/5">
                   Paste Instagram Reels link or TikTok URL to extract and download watermark-free MP4 media instantly.
@@ -4625,7 +4622,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                       value={downloaderUrl}
                       onChange={(e) => setDownloaderUrl(e.target.value)}
                       placeholder="https://instagram.com/reel/... or https://tiktok.com/..."
-                      className="w-full bg-white/5 border border-white/5 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-zinc-600 focus:border-pink-500/30 outline-none transition-all"
+                      className="w-full bg-white/5 border border-white/5 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-zinc-600 focus:border-amber-500/30 outline-none transition-all"
                     />
                   </div>
 
@@ -4652,7 +4649,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                       }
                     }}
                     disabled={downloaderLoading || !downloaderUrl.trim()}
-                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-pink-500 to-violet-500 hover:from-pink-600 hover:to-violet-600 font-black text-[10px] uppercase tracking-wider text-white shadow-lg flex items-center justify-center gap-1 transition-all disabled:opacity-40"
+                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-500 hover:from-amber-600 hover:to-amber-600 font-black text-[10px] uppercase tracking-wider text-white shadow-lg flex items-center justify-center gap-1 transition-all disabled:opacity-40"
                   >
                     {downloaderLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Globe className="w-3.5 h-3.5" />}
                     Extract Watermark-Free MP4
@@ -4662,7 +4659,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                 {downloaderResult && (
                   <div className="mt-4 pt-4 border-t border-white/5 space-y-4">
                     <div className="bg-black/30 border border-white/5 rounded-xl p-4 space-y-3 relative overflow-hidden">
-                      <span className="absolute top-2 right-2 text-[8px] font-black uppercase text-pink-400 bg-pink-500/10 border border-pink-500/20 px-2 py-0.5 rounded-full">
+                      <span className="absolute top-2 right-2 text-[8px] font-black uppercase text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
                         {downloaderResult.platform}
                       </span>
 
@@ -4795,8 +4792,8 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
 
               {activeDraft?.videoStep ? (
                 <div className="bg-[var(--bg-elevated)] border border-white/5 rounded-2xl p-5 shadow space-y-3.5">
-                  <span className="text-[9px] font-black text-cyan-400 uppercase tracking-widest flex items-center gap-1">
-                    <VideoIcon className="w-3.5 h-3.5 text-cyan-400" /> Video Generator Settings
+                  <span className="text-[9px] font-black text-amber-400 uppercase tracking-widest flex items-center gap-1">
+                    <VideoIcon className="w-3.5 h-3.5 text-amber-400" /> Video Generator Settings
                   </span>
                   <div className="space-y-1.5">
                     <span className="text-[8px] uppercase tracking-wider text-zinc-500 font-black">Motion Prompt</span>
@@ -4852,8 +4849,8 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
           {/* SOCIAL MEDIA DOWNLOADER BOARD */}
           {canvasTab === 'downloader' && (
             <div className="space-y-5 max-w-md mx-auto bg-[var(--bg-elevated)] p-6 rounded-2xl border border-white/5 shadow-xl relative animate-fade-in">
-              <span className="text-xs font-black text-pink-400 uppercase tracking-widest flex items-center gap-1.5">
-                <Globe className="w-4 h-4 text-pink-400 animate-spin" style={{ animationDuration: '6s' }} /> Instagram & TikTok Downloader
+              <span className="text-xs font-black text-amber-400 uppercase tracking-widest flex items-center gap-1.5">
+                <Globe className="w-4 h-4 text-amber-400 animate-spin" style={{ animationDuration: '6s' }} /> Instagram & TikTok Downloader
               </span>
               <p className="text-[10px] text-zinc-400 font-bold leading-relaxed pb-3 border-b border-white/5">
                 Paste Instagram Reels link or TikTok URL to extract and download watermark-free MP4 media instantly.
@@ -4867,7 +4864,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                     value={downloaderUrl}
                     onChange={(e) => setDownloaderUrl(e.target.value)}
                     placeholder="https://instagram.com/reel/... or https://tiktok.com/..."
-                    className="w-full bg-white/5 border border-white/5 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-zinc-600 focus:border-pink-500/30 outline-none transition-all"
+                    className="w-full bg-white/5 border border-white/5 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-zinc-600 focus:border-amber-500/30 outline-none transition-all"
                   />
                 </div>
 
@@ -4894,7 +4891,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                     }
                   }}
                   disabled={downloaderLoading || !downloaderUrl.trim()}
-                  className="w-full py-2.5 rounded-xl bg-gradient-to-r from-pink-500 to-violet-500 hover:from-pink-600 hover:to-violet-600 font-black text-[10px] uppercase tracking-wider text-white shadow-lg flex items-center justify-center gap-1 transition-all disabled:opacity-40"
+                  className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-500 hover:from-amber-600 hover:to-amber-600 font-black text-[10px] uppercase tracking-wider text-white shadow-lg flex items-center justify-center gap-1 transition-all disabled:opacity-40"
                 >
                   {downloaderLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Globe className="w-3.5 h-3.5" />}
                   Extract Watermark-Free MP4
@@ -4904,7 +4901,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
               {downloaderResult && (
                 <div className="mt-4 pt-4 border-t border-white/5 space-y-4">
                   <div className="bg-black/30 border border-white/5 rounded-xl p-4 space-y-3 relative overflow-hidden">
-                    <span className="absolute top-2 right-2 text-[8px] font-black uppercase text-pink-400 bg-pink-500/10 border border-pink-500/20 px-2 py-0.5 rounded-full">
+                    <span className="absolute top-2 right-2 text-[8px] font-black uppercase text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
                       {downloaderResult.platform}
                     </span>
 
@@ -4943,9 +4940,9 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
 
       {/* Onboarding Tour Overlay Card */}
       {tourStep !== null && (
-        <div className="fixed bottom-6 right-6 z-50 w-80 bg-[var(--bg-elevated)] border border-pink-500/30 p-5 rounded-2xl shadow-2xl space-y-4 backdrop-blur-md animate-fade-in">
+        <div className="fixed bottom-6 right-6 z-50 w-80 bg-[var(--bg-elevated)] border border-amber-500/30 p-5 rounded-2xl shadow-2xl space-y-4 backdrop-blur-md animate-fade-in">
           <div className="flex justify-between items-center pb-2 border-b border-white/5">
-            <span className="text-[10px] font-black uppercase text-pink-400 tracking-wider">
+            <span className="text-[10px] font-black uppercase text-amber-400 tracking-wider">
               {onboardingSteps[tourStep].title}
             </span>
             <button 
@@ -4974,7 +4971,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
               {tourStep < onboardingSteps.length - 1 ? (
                 <button
                   onClick={() => setTourStep(tourStep + 1)}
-                  className="px-2 py-1 bg-gradient-to-r from-pink-500/25 to-violet-500/25 border border-pink-500/20 hover:from-pink-500/35 rounded font-black uppercase text-white transition-all"
+                  className="px-2 py-1 bg-gradient-to-r from-amber-500/25 to-amber-500/25 border border-amber-500/20 hover:from-amber-500/35 rounded font-black uppercase text-white transition-all"
                 >
                   Next
                 </button>
@@ -5005,21 +5002,21 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
             <div className="flex bg-white/10 p-1 rounded-xl border border-white/10 gap-1">
               <button
                 onClick={() => setAgentZoomMode('fill')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase transition-all cursor-pointer ${agentZoomMode === 'fill' ? 'bg-pink-600 text-white shadow' : 'text-slate-300 hover:text-white'}`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase transition-all cursor-pointer ${agentZoomMode === 'fill' ? 'bg-amber-600 text-white shadow' : 'text-zinc-300 hover:text-white'}`}
                 title="Fill Entire Screen"
               >
                 🖼️ Fill Screen
               </button>
               <button
                 onClick={() => setAgentZoomMode('fit')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase transition-all cursor-pointer ${agentZoomMode === 'fit' ? 'bg-pink-600 text-white shadow' : 'text-slate-300 hover:text-white'}`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase transition-all cursor-pointer ${agentZoomMode === 'fit' ? 'bg-amber-600 text-white shadow' : 'text-zinc-300 hover:text-white'}`}
                 title="Fit Aspect Ratio"
               >
                 📐 Fit Aspect
               </button>
               <button
                 onClick={() => setAgentZoomMode('zoom')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase transition-all cursor-pointer ${agentZoomMode === 'zoom' ? 'bg-pink-600 text-white shadow' : 'text-slate-300 hover:text-white'}`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase transition-all cursor-pointer ${agentZoomMode === 'zoom' ? 'bg-amber-600 text-white shadow' : 'text-zinc-300 hover:text-white'}`}
                 title="150% Super Zoom"
               >
                 🔍 150% Zoom
@@ -5040,14 +5037,14 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                 handleUseAsPromptReference(expandedImageUrl);
                 setExpandedImageUrl(null);
               }}
-              className="px-3.5 py-2 rounded-xl bg-purple-500/30 hover:bg-purple-500/50 border border-purple-400/40 text-purple-200 font-extrabold text-xs uppercase flex items-center gap-1.5 transition-all shadow-lg cursor-pointer"
+              className="px-3.5 py-2 rounded-xl bg-amber-500/30 hover:bg-amber-500/50 border border-amber-400/40 text-amber-200 font-extrabold text-xs uppercase flex items-center gap-1.5 transition-all shadow-lg cursor-pointer"
             >
               <Copy className="w-4 h-4" /> Use as Prompt
             </button>
             <a
               href={expandedImageUrl}
               download="seedream_5_pro_output.png"
-              className="px-4 py-2 rounded-xl bg-pink-600 hover:bg-pink-500 text-white font-extrabold text-xs uppercase flex items-center gap-2 transition-all shadow-lg cursor-pointer"
+              className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-extrabold text-xs uppercase flex items-center gap-2 transition-all shadow-lg cursor-pointer"
               target="_blank"
               rel="noopener noreferrer"
             >
@@ -5066,7 +5063,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
           <div 
             className="absolute top-4 left-4 sm:left-6 flex items-center gap-2 z-[1000000] bg-zinc-950/90 backdrop-blur-xl border border-white/20 px-4 py-2 rounded-2xl shadow-2xl pointer-events-none"
           >
-            <Sparkles className="w-4 h-4 text-pink-400" />
+            <Sparkles className="w-4 h-4 text-amber-400" />
             <span className="text-xs font-black text-white uppercase tracking-wider">Super Agent SeeDream 5.0 Pro HD</span>
           </div>
 
@@ -5086,7 +5083,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
           </div>
 
           {/* Bottom Center Floating Hint Pill */}
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-5 py-2 rounded-full bg-zinc-950/90 backdrop-blur-xl border border-white/20 text-xs text-zinc-300 font-semibold shadow-2xl z-[1000000] pointer-events-none">
+          <div className="absolute bottom-4 left-1/2 -tranzinc-x-1/2 px-5 py-2 rounded-full bg-zinc-950/90 backdrop-blur-xl border border-white/20 text-xs text-zinc-300 font-semibold shadow-2xl z-[1000000] pointer-events-none">
             Mode: <strong className="text-white uppercase">{agentZoomMode}</strong> • Click anywhere or press <kbd className="px-2 py-0.5 rounded bg-white/20 text-white font-mono text-xs ml-1">ESC</kbd> to exit full screen
           </div>
         </div>

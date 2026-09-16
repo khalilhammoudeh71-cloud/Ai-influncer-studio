@@ -1505,6 +1505,8 @@ select optgroup {
   .agent-canvas button { min-height: 44px; }
   .agent-console { padding: 8px; }
   .agent-console textarea { min-height: 44px; max-height: 120px; }
+  .agent-draft-composer textarea { min-height: 140px; max-height: 220px; }
+  .agent-draft-composer { border-radius: 20px; }
   .agent-messages { min-height: 64px; }
   .studio-page :where(select, input, textarea) { max-width: 100%; }
 }
