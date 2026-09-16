@@ -489,7 +489,7 @@ export default function VoiceCloneStudioModal({
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+      <div className="fixed inset-0 z-[100000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
         <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 15 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -555,7 +555,7 @@ export default function VoiceCloneStudioModal({
           <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
 
             {/* Persistent Error Banner */}
-            <label className="flex items-center gap-2 text-xs p-3"><input type="checkbox" checked={speakerAuthorized} onChange={e => setSpeakerAuthorized(e.target.checked)} />I have permission to clone this speaker. Existing provider voices can be restored without re-enrollment.</label>
+            {activeTab === 'clone' && <label className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-3 text-xs text-zinc-300"><input type="checkbox" checked={speakerAuthorized} onChange={e => setSpeakerAuthorized(e.target.checked)} />I am the speaker or have permission to clone and use this voice.</label>}
           {modalError && (
               <div className="p-3.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-200 text-xs flex items-start justify-between gap-3 shadow-md">
                 <div className="flex items-start gap-2.5">
