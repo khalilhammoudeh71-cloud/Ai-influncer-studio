@@ -5,6 +5,22 @@ import { buildVoiceConversationHistory } from './voiceConversationContext';
 
 const user = (content: string) => ({ role: 'user', content });
 const assistant = (content: string) => ({ role: 'model', content });
+test('Arabic image requests ask for a scene instead of falling through to conversation', () => {
+  assert.equal(resolveVoiceMediaDraft('لا بدي صورة أنا', []).status, 'waiting');
+});
+test('Arabic scene and explicit send instruction authorize image generation', () => {
+  const result = resolveVoiceMediaDraft('بدي صورة إلك على الشاطئ ابعتيها هلأ', []);
+  assert.equal(result.status, 'ready');
+  assert.equal(result.type, 'image');
+});
+test('Arabic send follow-up uses only the user scene', () => {
+  const result = resolveVoiceMediaDraft('ابعتي الصورة', [user('بدي صورة إلك على الشاطئ'), assistant('ممكن نضيف طيارة')]);
+  assert.equal(result.status, 'ready');
+  assert.doesNotMatch(result.prompt || '', /طيارة/);
+});
+test('Arabic cancellation prevents generation', () => {
+  assert.equal(resolveVoiceMediaDraft('ما بدي صورة', [user('بدي صورة على الشاطئ')]).status, 'none');
+});
 test('a description waits for permission rather than generating during a pause', () => {
   assert.equal(resolveVoiceMediaDraft('Generate a photo of you and me at a cafe.', []).status, 'waiting');
 });

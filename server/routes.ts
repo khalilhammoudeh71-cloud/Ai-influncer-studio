@@ -3103,7 +3103,11 @@ CRITICAL RULES FOR LIVE VOICE CALL:
   };
 
   if (voiceMediaDraft.status === 'waiting') {
-    streamedText = voiceMediaDraft.prompt
+    streamedText = /[\u0600-\u06ff]/.test(exactUserPrompt)
+      ? voiceMediaDraft.prompt
+        ? 'بدك تضيف شي للصورة، ولا أعملها هلأ؟'
+        : 'أكيد. شو بدك يكون بالصورة؟ وصفلي المشهد وبعدين قولي ابعتي الصورة.'
+      : voiceMediaDraft.prompt
       ? `Anything else you want in the ${voiceMediaDraft.type === 'video' ? 'video' : 'picture'}, or shall I make it?`
       : 'What would you like in the picture? I’ll wait until you’re ready to send it.';
     writeVoiceText(streamedText);
