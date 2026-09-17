@@ -426,6 +426,12 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   const [voiceStability, setVoiceStability] = useState<number>(75);
   const [voiceStyleExaggeration, setVoiceStyleExaggeration] = useState<number>(20);
   const [voiceSpeakingSpeed, setVoiceSpeakingSpeed] = useState<number>(1.0);
+  const [elevenLabsSpeechModel, setElevenLabsSpeechModel] = useState(editingPersona?.elevenLabsSpeechModel || 'eleven_flash_v2_5');
+  const [elevenLabsLanguageOverride, setElevenLabsLanguageOverride] = useState<'ar' | 'en' | ''>(editingPersona?.elevenLabsLanguageOverride || '');
+  useEffect(() => {
+    setElevenLabsSpeechModel(editingPersona?.elevenLabsSpeechModel || 'eleven_flash_v2_5');
+    setElevenLabsLanguageOverride(editingPersona?.elevenLabsLanguageOverride || '');
+  }, [editingPersona?.id]);
   const [isCloning, setIsCloning] = useState(false);
   const [speakerAuthorized, setSpeakerAuthorized] = useState(false);
   const [cloneResult, setCloneResult] = useState<CloneResult | null>(null);
@@ -534,6 +540,8 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
     setCloneModel(voiceCloningModel(restored.voiceEngine)?.id || 'elevenlabs');
     setVoicePrompt(restored.voicePrompt); setVoiceLikeness(restored.voiceLikeness);
     setVoiceStability(restored.voiceStability); setVoiceStyleExaggeration(restored.voiceStyleExaggeration); setVoiceSpeakingSpeed(restored.voiceSpeakingSpeed);
+    setElevenLabsSpeechModel(restored.elevenLabsSpeechModel || 'eleven_flash_v2_5');
+    setElevenLabsLanguageOverride(restored.elevenLabsLanguageOverride || '');
     setCloneResult(null); setCloneError('');
     toast.success('Saved voice selected. Save the persona to make it the default again.');
   };
@@ -552,7 +560,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
         if (previewUrl) return previewUrl;
         const settings = { stability: voiceStability / 100, similarity_boost: voiceLikeness / 100, style: voiceStyleExaggeration / 100, speed: voiceSpeakingSpeed };
         const result = engine === 'elevenlabs'
-          ? await api.voice.previewVoice(id, sampleTextForPreview, settings)
+          ? await api.voice.previewVoice(id, sampleTextForPreview, settings, undefined, elevenLabsSpeechModel, elevenLabsLanguageOverride || undefined)
           : await api.voice.generateSpeech({ voiceId: id, engine, text: sampleTextForPreview, voiceSettings: settings, isPreview: true, voiceReference: readySamples.current.samples[0]?.base64 || audioSampleList[0]?.base64, voiceReferenceText: readySamples.current.samples.length ? readySamples.current.transcript : voiceReferenceText, voicePrompt });
         return result.audioUrl;
       }, url => {
@@ -570,7 +578,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       if (voicePreviewKey.current === key) { stopVoicePreviews(); const message = error instanceof Error ? error.message : 'Voice preview unavailable.'; setVoicePreviewState({key,status:'error',message}); toast.error(message); }
     }
   };
-  useEffect(() => { stopVoicePreviews(); }, [voiceTab, studioStep, voicePreviewText, voicePrompt, auditionLanguage, previewDialect, voiceLikeness, voiceStability, voiceStyleExaggeration, voiceSpeakingSpeed]);
+  useEffect(() => { stopVoicePreviews(); }, [voiceTab, studioStep, voicePreviewText, voicePrompt, auditionLanguage, previewDialect, voiceLikeness, voiceStability, voiceStyleExaggeration, voiceSpeakingSpeed, elevenLabsSpeechModel, elevenLabsLanguageOverride]);
   useEffect(() => () => { voiceDraftGuard.current.change(); voicePreviewPlayer.current.stop(); }, [editingPersona?.id]);
   const audioInputRef = useRef<HTMLInputElement>(null);
 
@@ -1340,7 +1348,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       const voiceEngineToSave = editingPersona && !voiceSelectionChanged.current ? editingPersona.voiceEngine : selectedVoiceModel;
       const savedSamples = draftSamplesChanged ? readySamples.current.samples : audioSampleList;
       const savedSampleUrl = savedSamples[0]?.base64 || '';
-      const draftSettings = { voicePrompt, voiceReferenceText:draftSamplesChanged?readySamples.current.transcript:voiceReferenceText, voiceLikeness, voiceStability, voiceStyleExaggeration, voiceSpeakingSpeed };
+      const draftSettings = { voicePrompt, voiceReferenceText:draftSamplesChanged?readySamples.current.transcript:voiceReferenceText, voiceLikeness, voiceStability, voiceStyleExaggeration, voiceSpeakingSpeed, ...(voiceEngineToSave === 'elevenlabs' ? {elevenLabsSpeechModel, elevenLabsLanguageOverride} : {}) };
       const defaults = { voicePrompt: '', voiceLikeness: 85, voiceStability: 75, voiceStyleExaggeration: 20, voiceSpeakingSpeed: 1 };
       const voiceSettingsToSave = Object.fromEntries(Object.entries(draftSettings).filter(([key, value]) => !editingPersona || editingPersona[key as keyof Persona] !== undefined || value !== defaults[key as keyof typeof defaults]));
 
@@ -2424,6 +2432,19 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
 
           <section aria-label="Voice preview" className="space-y-3 rounded-2xl border border-[#E7C477]/25 bg-[#0E0E10] p-5">
             <h4 className="text-sm font-bold text-white">Preview your voice</h4>
+            {selectedVoiceModel === 'elevenlabs' && <div className="flex flex-wrap gap-3">
+              <label className="text-xs text-slate-300">Speech model
+                <select aria-label="ElevenLabs speech model" value={elevenLabsSpeechModel} disabled={isCloning || isSaving} onChange={e=>setElevenLabsSpeechModel(e.target.value)} className="luxury-input mt-1 block rounded-xl px-3 py-2.5">
+                  <option value="eleven_flash_v2_5">Flash 2.5</option><option value="eleven_turbo_v2_5">Turbo 2.5</option><option value="eleven_multilingual_v2">Multilingual v2</option><option value="eleven_v3">Eleven v3</option>
+                </select>
+              </label>
+              <label className="text-xs text-slate-300">Language override
+                <select aria-label="ElevenLabs language override" value={elevenLabsLanguageOverride} disabled={isCloning || isSaving} onChange={e=>setElevenLabsLanguageOverride(e.target.value as 'ar' | 'en' | '')} className="luxury-input mt-1 block rounded-xl px-3 py-2.5">
+                  <option value="">Automatic</option><option value="ar">Arabic</option><option value="en">English</option>
+                </select>
+              </label>
+              <p className="w-full text-xs text-slate-400">These settings control previews and saved persona speech. They keep the same cloned voice. For calls, choose Use persona’s saved voice.</p>
+            </div>}
             <p className="text-xs leading-relaxed text-slate-400">Audition the selected voice with this text. Generating a new audition may use provider credits.</p>
 
             <div>

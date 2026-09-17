@@ -95,13 +95,13 @@ export class VoiceLifecycle {
     if (voice.voice_id !== id) throw new VoiceLifecycleError('The provider did not confirm the requested voice.');
     return voice;
   }
-  async preview(apiKey: string, id: string, text: string, settings?: Record<string, number>) {
+  async preview(apiKey: string, id: string, text: string, settings?: Record<string, number>, model = VOICE_MODEL, languageCode?: string) {
     const voice = await this.get(apiKey, id);
-    const status = voiceReadiness(voice);
+    const status = voiceReadiness(voice, model);
     if (status !== 'available') throw new VoiceLifecycleError(status === 'verification_required' ? 'Complete speaker verification in ElevenLabs, then check again.' : 'This voice is still processing in ElevenLabs. Check again later.');
     const response = await this.request(apiKey, `/v1/text-to-speech/${encodeURIComponent(id)}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: text.slice(0, 500), model_id: VOICE_MODEL, ...(settings ? { voice_settings: settings } : {}) }),
+      body: JSON.stringify({ text: text.slice(0, 500), model_id: model, ...(languageCode ? { language_code: languageCode } : {}), ...(settings ? { voice_settings: settings } : {}) }),
     });
     if (!response.ok || !response.headers.get('content-type')?.startsWith('audio/')) throw new VoiceLifecycleError('ElevenLabs could not synthesize this voice. Check verification, quota and model access, then retry.');
     const audio = Buffer.from(await response.arrayBuffer());

@@ -249,6 +249,7 @@ async function requestElevenLabsSpeech(
       body: JSON.stringify({
         text: buildVoiceDelivery('elevenlabs', modelId, text, persona).text,
         model_id: modelId,
+        ...(['ar', 'en'].includes(persona?.elevenLabsLanguageOverride) ? {language_code:persona.elevenLabsLanguageOverride} : {}),
         voice_settings: buildVoiceDelivery('elevenlabs', modelId, text, persona).settings,
       }),
     },
@@ -1632,10 +1633,14 @@ router.post('/persona-voice-preview', async (req: AuthenticatedRequest, res: Res
     const id = String(req.body.voiceId || '');
     if (!id || typeof req.body.text !== 'string' || !req.body.text.trim()) throw new VoiceLifecycleError('Choose a voice and enter preview text.', 400);
     await assertVoiceAccess(req, id);
-    const delivery = buildVoiceDelivery('elevenlabs', VOICE_MODEL, req.body.text, req.body.activePersona, req.body.voiceSettings, req.body.emotion);
-    const audioUrl = await personaVoices.preview(elevenKey(), id, delivery.text, delivery.settings as any);
+    const model = req.body.speechModel || VOICE_MODEL;
+    if (!['eleven_flash_v2_5', 'eleven_turbo_v2_5', 'eleven_multilingual_v2', 'eleven_v3'].includes(model)) throw new VoiceLifecycleError('Choose a supported ElevenLabs speech model.', 400);
+    const languageCode = req.body.languageCode;
+    if (languageCode && !['ar', 'en'].includes(languageCode)) throw new VoiceLifecycleError('Choose Arabic, English, or automatic language.', 400);
+    const delivery = buildVoiceDelivery('elevenlabs', model, req.body.text, req.body.activePersona, req.body.voiceSettings, req.body.emotion);
+    const audioUrl = await personaVoices.preview(elevenKey(), id, delivery.text, delivery.settings as any, model, languageCode);
     res.setHeader('Cache-Control', 'no-store');
-    return res.json({ audioUrl, voiceId: id, model: VOICE_MODEL, delivery });
+    return res.json({ audioUrl, voiceId: id, model, delivery });
   } catch (error) { return voiceError(res, error); }
 });
 
@@ -1674,7 +1679,7 @@ const handleGenerateSpeech = async (req: AuthenticatedRequest, res: Response) =>
     const spokenRules = body.activePersona?.id && body.activePersona.id !== 'empty' ? await pronunciationRules(req.user.id, body.activePersona.id, body.preferences || body.activePersona) : [];
     body.text = applyPronunciations(body.text, spokenRules);
     if (body.engine === 'gemini') return res.json({audioUrl:await geminiStockSpeech(body.text,String(body.voiceId||body.voice||''),cancelled.signal),engine:'gemini'});
-    const speechModel = body.engine === 'openai' || body.engine === 'openai:tts' ? 'tts-1' : (!body.engine || body.engine === 'elevenlabs') ? (body.speechModel || DEFAULT_SPEECH_MODEL) : body.engine;
+    const speechModel = body.engine === 'openai' || body.engine === 'openai:tts' ? 'tts-1' : (!body.engine || body.engine === 'elevenlabs') ? (body.speechModel || body.activePersona?.elevenLabsSpeechModel || DEFAULT_SPEECH_MODEL) : body.engine;
     const delivery = buildVoiceDelivery(body.engine || 'elevenlabs', speechModel, body.text, body.activePersona, body.voiceSettings, body.emotion);
     const voiceSettings = delivery.settings;
     const audioData = async (response: globalThis.Response) => {
@@ -1700,7 +1705,7 @@ const handleGenerateSpeech = async (req: AuthenticatedRequest, res: Response) =>
         return audioData(await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}${body.stream === true ? '/stream' : ''}`, {
           method: 'POST', headers: { 'xi-api-key': key, 'Content-Type': 'application/json' },
           signal: AbortSignal.any([cancelled.signal, AbortSignal.timeout(15000)]),
-          body: JSON.stringify({ text: delivery.text, model_id: speechModel, voice_settings: voiceSettings }),
+          body: JSON.stringify({ text: delivery.text, model_id: speechModel, voice_settings: voiceSettings, ...(['ar', 'en'].includes(body.activePersona?.elevenLabsLanguageOverride) ? {language_code:body.activePersona.elevenLabsLanguageOverride} : {}) }),
         }));
       },
       openai: async voiceId => {

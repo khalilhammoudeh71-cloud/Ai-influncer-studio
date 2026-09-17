@@ -7,6 +7,7 @@ export const MAYA_UNCLONED_VOICE_MODEL = 'fal_maya_stream';
 type PersonaVoiceSource = LanguageProfile & {
   name?: unknown;
   voiceEngine?: unknown;
+  elevenLabsSpeechModel?: unknown;
   voiceId?: unknown;
   voiceSampleUrl?: unknown;
   voiceFile?: unknown;
@@ -37,7 +38,8 @@ export function resolvePersonaVoiceEngine(
 ): string {
   if (selectedEngine !== AUTO_PERSONA_VOICE_ENGINE) return selectedEngine;
   const provider = String(persona?.voiceEngine || '').trim();
-  const automaticElevenModel = normalizeLanguage(persona || {}).language === 'ar' ? 'eleven_v3' : ELEVENLABS_CLONED_VOICE_MODEL;
+  const savedModel = String(persona?.elevenLabsSpeechModel || '');
+  const automaticElevenModel = ['eleven_flash_v2_5', 'eleven_turbo_v2_5', 'eleven_multilingual_v2', 'eleven_v3'].includes(savedModel) ? savedModel : normalizeLanguage(persona || {}).language === 'ar' ? 'eleven_v3' : ELEVENLABS_CLONED_VOICE_MODEL;
   if (provider) return provider === 'elevenlabs' ? automaticElevenModel : provider;
   // Legacy ID-only records retain ElevenLabs, but names and recordings are not provider identities.
   if (DIRECT_ELEVENLABS_VOICE_ID.test(String(persona?.voiceId || ''))) return automaticElevenModel;

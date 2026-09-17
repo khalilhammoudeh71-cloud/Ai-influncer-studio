@@ -380,7 +380,7 @@ export const api = {
     cloneStatus: (id: string) => request<CloneResult>(`/voice-clones/${encodeURIComponent(id)}`),
     cloneWithModel: async (input:{engine:string;name:string;reference:string;text:string;speakerAuthorized:boolean;retryRejected?:boolean})=>requestWithBody<CloneResult>('/voice-model-clones',{...input,reference:(await persistMediaStringsForPlayback([input.reference]))[0]}),
     modelCloneStatus:(id:string)=>request<CloneResult>(`/voice-model-clones/${encodeURIComponent(id)}`),
-    previewVoice: (voiceId: string, text: string, voiceSettings?: Record<string, number>, emotion?: string) => requestWithBody<{ audioUrl: string; voiceId: string }>('/persona-voice-preview', { voiceId, text, voiceSettings, emotion }),
+    previewVoice: (voiceId: string, text: string, voiceSettings?: Record<string, number>, emotion?: string, speechModel?: string, languageCode?: 'ar' | 'en') => requestWithBody<{ audioUrl: string; voiceId: string }>('/persona-voice-preview', { voiceId, text, voiceSettings, emotion, speechModel, languageCode }),
     generateScript: (params: { topic: string; persona: Persona; mode?: string; existingScript?: string; length?: string }) =>
       requestWithBody<{ script: string }>('/generate-voice-script', params),
     generateSpeech: async (params: {

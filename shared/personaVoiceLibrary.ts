@@ -13,6 +13,8 @@ export interface SavedPersonaVoice {
   voiceStability?: number;
   voiceStyleExaggeration?: number;
   voiceSpeakingSpeed?: number;
+  elevenLabsSpeechModel?: string;
+  elevenLabsLanguageOverride?: 'ar' | 'en' | '';
   provider?: string;
   account?: string;
 }
@@ -30,6 +32,8 @@ export function restoreSavedVoice(voice: SavedPersonaVoice) {
     voiceStability: voice.voiceStability ?? 75,
     voiceStyleExaggeration: voice.voiceStyleExaggeration ?? 20,
     voiceSpeakingSpeed: voice.voiceSpeakingSpeed ?? 1,
+    elevenLabsSpeechModel: voice.elevenLabsSpeechModel,
+    elevenLabsLanguageOverride: voice.elevenLabsLanguageOverride,
   };
 }
 
