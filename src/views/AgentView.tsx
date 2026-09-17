@@ -3607,7 +3607,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
 
                     <div className={`p-4 rounded-2xl relative overflow-hidden shadow-lg border text-xs sm:text-sm leading-relaxed ${
                       msg.role === 'user' 
-                        ? 'bg-gradient-to-br from-amber-500/20 to-amber-600/20 border-amber-500/30 text-white rounded-tr-none'
+                        ? 'bg-[#252527] border-white/10 text-zinc-100 rounded-tr-none'
                         : 'bg-white/5 border-white/10 text-zinc-100 rounded-tl-none'
                     }`}>
                       <div className="whitespace-pre-wrap">{msg.content}</div>
