@@ -490,3 +490,5 @@ test('Arabic repetition practice allows the requested phrase instead of replacin
 test('asking to talk about a topic is not pronunciation practice',()=>{assert.doesNotMatch(buildVoiceTurnContract('احكي عن يومك'),/Repeat only/);});
 
 test('Arabic repetition cannot be replaced with invented narration',()=>{assert.equal(reviewVoiceCandidate({userTurn:'احكي أنا هون معك',response:'همست قرب أذنك. هلأ حسيت بحرارة صوتي؟'}),'instruction-miss');});
+
+test('unfinished thoughts are rejected before speech',()=>{assert.equal(reviewVoiceCandidate({userTurn:'شو عم تعملي؟',response:'كنت عم...'}),'instruction-miss');});

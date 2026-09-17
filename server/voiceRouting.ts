@@ -301,6 +301,7 @@ export function reviewVoiceCandidate(input: {
   const response = String(input.response || '').trim();
   const userTurn = String(input.userTurn || '').trim();
   if (!response) return 'empty';
+  if (/(?:\.{2,}|…)\s*["'”’]?$/u.test(response)) return 'instruction-miss';
   const requestedRecall = requestsVoiceRepetition(userTurn);
   const requested = requestedArabicPracticePhrase(userTurn);
   if (requested) {
@@ -568,7 +569,7 @@ export function shapeNaturalSpokenReply(
   return complete.join(' ');
 }
 
-function findSafeSpeechBoundary(value: string): number {
+function findSafeSpeechBoundary(value: string, final = false): number {
   let squareDepth = 0;
   let parenDepth = 0;
   let inAsterisks = false;
@@ -604,8 +605,12 @@ function findSafeSpeechBoundary(value: string): number {
 
     if (squareDepth > 0 || parenDepth > 0) continue;
     if (character === '\n') return index + 1;
-    if (/[.!?]/.test(character)) {
+    if (/[.!?؟]/.test(character)) {
+      // Ellipses mark a hesitation inside a thought, not its completion.
+      if (character === '.' && (value[index-1] === '.' || value[index+1] === '.')) continue;
       const next = value[index + 1];
+      // A trailing dot may be the first byte of an ellipsis in the next delta.
+      if (character === '.' && !next && !final) continue;
       if (!next || /\s/.test(next)) return index + 1;
     }
   }
@@ -639,13 +644,13 @@ export function createSpokenDialogueStream(
     onChunk(streamedPart);
   };
 
-  const drain = () => {
-    let boundary = findSafeSpeechBoundary(pending);
+  const drain = (final = false) => {
+    let boundary = findSafeSpeechBoundary(pending, final);
     while (boundary >= 0) {
       const rawPart = pending.slice(0, boundary);
       pending = pending.slice(boundary);
       emit(rawPart);
-      boundary = findSafeSpeechBoundary(pending);
+      boundary = findSafeSpeechBoundary(pending, final);
     }
   };
 
@@ -656,7 +661,7 @@ export function createSpokenDialogueStream(
       drain();
     },
     flush() {
-      drain();
+      drain(true);
       if (pending.trim()) emit(pending);
       pending = '';
       if (options.deferUntilFlush) {

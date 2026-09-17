@@ -5,7 +5,7 @@ export function createReviewedSpeech(emit:(text:string)=>void,accept:(text:strin
   push(raw:string){
    const text=raw.trim().replace(/^(?:(?:um|uh|hmm|mm|mmm|heh|haha)[,\s.…-]+)+/i,'').replace(/^[a-z]/,s=>s.toUpperCase());
    const length=text.split(/\s+/).length;
-   if(!/[.!?]["'”’]?$/.test(text)||count>=maxSentences||words+length>maxWords||!accept(text))return;
+   if(/(?:\.{2,}|…)\s*["'”’]?$/u.test(text)||!/[.!?؟]["'”’]?$/.test(text)||count>=maxSentences||words+length>maxWords||!accept(text))return;
    count++;words+=length;spoken+=(spoken?' ':'')+text;emit(text+' ');
   },
   get text(){return spoken;},
