@@ -1,3 +1,4 @@
+import { reviewCampaignDraft } from './agentDraftReview';
 import { createDialectTeachingRouter, dialectContext } from './dialectTeaching';
 import { createVoiceRecognitionRouter } from './voiceRecognition';
 import { createVoiceRemixRouter, VoiceRemixes } from './voiceRemixes';
@@ -3603,6 +3604,15 @@ async function handleAgentChat(req: AuthenticatedRequest, res: Response) {
     
     const lastUserMessage = [...messages].reverse().find(m => m.role === 'user');
     const userPrompt = lastUserMessage?.content || '';
+    const finishDraft = async (draft:any) => {
+      if(interactionMode==='plan')return res.json(draft);
+      const checked=await reviewCampaignDraft(draft,{request:userPrompt,history:(messages||[]).slice(-12),today:new Date().toISOString().slice(0,10),previousDraft:(req.body as any).previousDraft},async reviewText=>{
+        const result=await getGeminiClientForRoutes().models.generateContent({model:'gemini-2.5-flash',contents:reviewText,config:{responseMimeType:'application/json',responseJsonSchema:SUPER_AGENT_RESPONSE_SCHEMA,httpOptions:{timeout:60000},temperature:0.2}});
+        assertCompleteModelOutput(result.candidates?.[0]?.finishReason,'gemini-2.5-flash');
+        return JSON.parse(result.text||'{}');
+      });
+      return res.json(checked);
+    };
     const selectedSkills = selectAgentSkills(userPrompt);
     loadedSkills = selectedSkills.map(({id,version})=>({id,version}));
     const exactReply = requestedExactReply(userPrompt);
@@ -3703,6 +3713,7 @@ async function handleAgentChat(req: AuthenticatedRequest, res: Response) {
 - Turn complete production requests into reviewable studio steps. Do not execute them until the app's approval flow authorizes execution.`;
     const systemInstruction = `You are Super Agent Co-Pilot, a warm, capable creator-operations partner who speaks like a real human collaborator.
 ${modeInstruction}
+Trusted current UTC date: ${new Date().toISOString().slice(0,10)}. Use future dates for unspecified campaign schedules and explain assumptions; preserve explicit historical dates. Do not invent business facts, locations, product claims, or dollar prices. Server pricing is shown during cost review.
 ${agentIdentityContext(agentIdentity,activePersona)}
 WORKSPACE EXECUTION CONTRACT:
 - Discuss and refine the user's complete brief across messages. Do not generate from an unfinished description, a quoted example, a text-only instruction, or a request to wait.
@@ -4196,12 +4207,12 @@ Do not wrap your response in markdown code blocks or HTML tags. Return ONLY the 
         assertCompleteModelOutput(result.candidates?.[0]?.finishReason,'gemini-2.5-flash');
         let plainText = result.text?.trim() || '';
         if (!plainText) throw new Error('The model returned an empty response. Please retry.');
-        return res.json({ ...decodeAgentReply(plainText,userPrompt), sources, agentMode:{provider:'google',model:'gemini-2.5-flash',effort:'fast',research:Boolean(sources.length),toolRounds:0} });
+        return await finishDraft({ ...decodeAgentReply(plainText,userPrompt), sources, agentMode:{provider:'google',model:'gemini-2.5-flash',effort:'fast',research:Boolean(sources.length),toolRounds:0} });
       }
     }
 
     if (nativePlan && nativePlan.length > 0) {
-      return res.json({
+      return await finishDraft({
         text: text || nativePlanSummary || 'Your plan is ready to review. No actions have run yet.',
         status: 'clarifying',
         suggestedSteps: normalizeSuperAgentPlanSteps(nativePlan, userPrompt),
@@ -4216,7 +4227,7 @@ Do not wrap your response in markdown code blocks or HTML tags. Return ONLY the 
       });
     }
 
-    return res.json({ ...decodeAgentReply(text,userPrompt), sources, agentMode:superAgentMode });
+    return await finishDraft({ ...decodeAgentReply(text,userPrompt), sources, agentMode:superAgentMode });
   } catch (err) {
     if (err instanceof AgentContextLimitError) return res.status(413).json({error:'context_limit',text:err.message,status:'normal',suggestedSteps:[]});
     console.error('[API] /agent/chat failed:', err instanceof Error ? err.message : 'Unknown planner error');

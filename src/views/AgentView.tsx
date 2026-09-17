@@ -1,3 +1,4 @@
+import { visibleAgentExchange, reuseCampaignAssets } from '../utils/agentExchange';
 import { readProjectBrief, serializeProjectBrief, projectBriefContext } from '../utils/agentProjectMemory';
 import { NativeVoiceCall } from '../components/NativeVoiceCall';
 import { createStreamingSpeech } from '../utils/streamingSpeech';
@@ -111,6 +112,7 @@ interface CollaborationMsg {
 }
 
 interface Message {
+  planningFailed?: boolean;
   nativeVoicePlan?: boolean;
   campaign?: AgentCampaign;
   backgroundRunId?: string;
@@ -556,10 +558,10 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
   const [historySaveFailed,setHistorySaveFailed] = useState(false);
   const effectiveSelectedPersonaId = propSelectedPersonaId;
   const [inputText, setInputText] = useState('');
+  const [composerExpanded,setComposerExpanded] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [messages, setMessages] = useState<Message[]>(() => restoreConversation(accountLocalStorage.getItem(keys.history)));
-  const latestUserMessageIndex = messages.map(message => message.role).lastIndexOf('user');
-  const currentExchangeMessages = latestUserMessageIndex >= 0 ? messages.slice(latestUserMessageIndex) : [];
+  const currentExchangeMessages = visibleAgentExchange(messages);
 
   const clearAllConversationHistory = async () => {
     setHistorySaving(true);
@@ -1861,6 +1863,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
         },
         body: JSON.stringify({ 
           messages: workspaceBrief.trim() ? [{role:'user',content:projectBriefContext(workspaceBrief)}, ...history] : history,
+          previousDraft: [...messages].reverse().find(m=>m.campaign)?.campaign ? (()=>{const previous=[...messages].reverse().find(m=>m.campaign)!;return {campaign:previous.campaign,suggestedSteps:previous.execSteps||previous.suggestedSteps};})() : undefined,
           allowNsfw,
           interactionMode,
           voiceLlmModel: planningModel || voiceLlmModel,
@@ -1888,25 +1891,28 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
           ))
         : undefined;
 
+      const previousCampaign=[...messages].reverse().find(m=>m.campaign&&m.execSteps?.length&&m.execSteps.every(step=>step.status==='success'));
+      const retainedAssets=data.campaign && /\b(revise|revision|update|correct|keep)\b/i.test(userMessage.content) ? reuseCampaignAssets(normalizedSteps,previousCampaign?.execSteps,userMessage.content) : undefined;
       const newMsgId = Math.random().toString();
       const newMsgObj: Message = {
         id: newMsgId,
         role: 'model',
         content: String(data.text || '').replace(/<\/?think[^>]*>/gi, ''),
         sources: Array.isArray(data.sources) ? data.sources.filter((s:any) => typeof s?.url === 'string' && /^https?:\/\//.test(s.url)) : undefined,
-        status: finalSuggestedSteps ? 'clarifying' : 'normal',
+        status: retainedAssets ? 'done' : finalSuggestedSteps ? 'clarifying' : 'normal',
         suggestedSteps: finalSuggestedSteps,
         campaign: validateCampaign(data.campaign, finalSuggestedSteps || []),
         critiqueLogs: finalCritiqueLogs,
         collaborationLogs: finalCollaborationLogs,
         agentMode: data.agentMode && typeof data.agentMode === 'object' ? data.agentMode : undefined,
-        execSteps: finalSuggestedSteps 
+        execSteps: retainedAssets || (finalSuggestedSteps
           ? finalSuggestedSteps.map((s: any) => ({ ...s, status: 'pending', resultUrl: undefined, isActionLoading: null }))
-          : undefined,
+          : undefined),
         execLogs: finalSuggestedSteps ? [] : undefined
       };
 
       setMessages(prev => [...prev.slice(-99), newMsgObj]);
+      setComposerExpanded(false);
 
       if (interactionMode === 'build' && newMsgObj.execSteps?.length && canAutoRun(autoApprove, userMessage.content)) {
         setTimeout(() => {
@@ -1921,9 +1927,11 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
         id: fallbackMsgId,
         role: 'model',
         content: textReply,
+        planningFailed: true,
         status: 'normal'
       };
       setMessages(prev => [...prev.slice(-99), chatMsgObj]);
+      toast.error('Request failed. Your previous campaign and results are still saved.');
     } finally {
       setIsSending(false);
     }
@@ -3580,7 +3588,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
 
             {/* Current exchange only. Older saved messages stay out of the workspace. */}
             {currentExchangeMessages.length > 0 && (
-            <div className="agent-messages order-2 flex-1 min-h-16 max-h-[44dvh] overflow-y-auto rounded-2xl border border-white/[0.07] bg-[#161618]/85 p-4 sm:p-5 space-y-5 custom-scrollbar">
+            <div className="agent-messages order-1 flex-1 min-h-32 overflow-y-auto rounded-2xl border border-white/[0.07] bg-[#161618]/85 p-4 sm:p-5 space-y-5 custom-scrollbar">
                 {currentExchangeMessages.map((msg) => (
                   <div
                     key={msg.id}
@@ -3762,13 +3770,13 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
             </div>
             )}
 
-            <div className="agent-draft-composer order-1 flex min-h-0 shrink flex-col rounded-[24px] border border-[#E7C477]/30 bg-[#18181B] p-4 shadow-[0_18px_60px_rgba(0,0,0,0.35)] transition-colors focus-within:border-[#E7C477]/65 sm:p-5">
-            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className={`agent-draft-composer order-2 flex min-h-0 shrink-0 flex-col rounded-[24px] border border-[#E7C477]/30 bg-[#18181B] p-3 shadow-[0_18px_60px_rgba(0,0,0,0.35)] transition-colors focus-within:border-[#E7C477]/65 ${currentExchangeMessages.length && !composerExpanded ? "agent-composer-compact" : "sm:p-5"}`}>
+            <div className="mb-2 flex flex-row items-center justify-between gap-2">
               <div className="min-w-0">
                 <p className="font-serif text-lg text-[#F5F1E8] sm:text-xl">
                   {interactionMode === 'plan' ? 'What should we explore?' : 'What should we make?'}
                 </p>
-                <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+                <p className={currentExchangeMessages.length ? "hidden" : "mt-1 text-xs leading-relaxed text-zinc-500"}>
                   {interactionMode === 'plan'
                     ? 'Brainstorm, compare approaches, or develop a detailed plan. Nothing will be created or run.'
                     : 'Describe the outcome. Super Agent will prepare the work and ask before costly steps.'}
@@ -3860,7 +3868,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
             {/* Textarea for User Input */}
             <textarea
               aria-label="Message Super Agent"
-              style={{ minHeight: 60, height: 'clamp(60px,18dvh,190px)' }}
+              style={{ minHeight: currentExchangeMessages.length && !composerExpanded ? 44 : 60, height: currentExchangeMessages.length && !composerExpanded ? 'clamp(44px,7dvh,80px)' : 'clamp(60px,18dvh,190px)' }}
               ref={agentTextareaRef}
               rows={6}
               value={inputText}
@@ -3883,6 +3891,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
               
               {/* Left Row Controls */}
               <div className="flex flex-wrap items-center gap-2">
+                {currentExchangeMessages.length>0&&<button type="button" onClick={()=>setComposerExpanded(value=>!value)} aria-label={composerExpanded?'Compact prompt':'Expand prompt'} title="Expand prompt to change Plan / Build mode or write a longer brief" className="flex min-h-10 items-center rounded-xl border border-white/10 px-3 text-xs text-[#E7C477]">{composerExpanded?'Compact':'Expand'}</button>}
                 <label
                   htmlFor="draft-room-file-input"
                   className="flex h-10 cursor-pointer items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 text-xs font-semibold text-zinc-300 transition-colors hover:border-[#E7C477]/30 hover:text-[#F2D58D]"

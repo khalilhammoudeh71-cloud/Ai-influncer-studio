@@ -16,3 +16,8 @@ test('creator entitlement is preserved and low balances are reported',async()=>{
  assert.equal((await quotePlan(steps,price,0,false)).insufficientCredits,true);
  const q=await quotePlan(steps,price,0,true);assert.equal(q.estimatedCredits,0);assert.equal(q.insufficientCredits,false);assert.equal(q.providerChargesApply,true);
 });
+test('server quote exposes provider dollar estimates separately from credit allowance',async()=>{
+ const q=await quotePlan(steps,price,10,false);
+ assert.equal(q.estimatedProviderCostUsd,.1);assert.equal(q.steps[0].providerCostUsd,.05);
+ assert.equal(q.providerCostIsEstimate,true);
+});

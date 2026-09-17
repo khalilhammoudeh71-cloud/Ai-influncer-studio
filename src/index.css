@@ -1521,3 +1521,14 @@ dialog.app-sidebar::backdrop { background: rgb(0 0 0 / 70%); }
   .studio-page select { min-width: 44px; min-height: 44px; }
   .studio-page summary { min-height: 44px; padding-block: 10px; }
 }
+
+/* Follow-up composer yields space to the active campaign, especially in short windows. */
+.agent-composer-compact textarea { min-height: 44px !important; max-height: 80px; font-size: 14px; }
+.agent-composer-compact { padding: 8px; }
+.agent-composer-compact > :first-child { display: none; }
+.agent-composer-compact > :last-child { padding-top: 4px; gap: 8px; }
+@media (max-height: 720px) {
+  .agent-composer-compact > :first-child p { display: none; }
+  .agent-composer-compact > :first-child { margin-bottom: 4px; }
+  .agent-composer-compact textarea { height: 44px !important; }
+}

@@ -23,7 +23,8 @@ export function AgentPlanApproval({steps,onApprove}:{steps:any[];onApprove:(appr
   {current&&<>
    <p className="font-medium text-zinc-100">Review this plan</p>
    <p>{current.providerChargesApply?'Creator account: no account credits charged. Provider charges still apply.':`Estimated ${current.estimatedCredits} credits · Balance ${current.balance}`}</p>
-   <details className="text-xs"><summary className="cursor-pointer py-2">Cost by step</summary>{current.steps.map((s:any)=><p key={s.index}>Step {s.index+1}: {s.usageCredits} credits, including {s.reviewCredits} for visual review (estimate)</p>)}</details>
+   <p>Estimated provider generation cost: {Number.isFinite(current.estimatedProviderCostUsd)?`$${current.estimatedProviderCostUsd.toFixed(3)} USD`:"unavailable"}. Review, chat and retries are additional; final billing may differ.</p>
+   <details className="text-xs"><summary className="cursor-pointer py-2">Cost by step</summary>{current.steps.map((s:any)=><p key={s.index}>Step {s.index+1}: {Number.isFinite(s.providerCostUsd)?`$${s.providerCostUsd.toFixed(3)} estimated generation · `:""}{s.usageCredits} credits, including {s.reviewCredits} for visual review (estimate)</p>)}</details>
    <label className="block">Task allowance (credits)
     <input aria-label="Task allowance in credits" type="number" min={1} max={100000} step={1} value={limit} onChange={e=>setLimit(e.target.value)} className="mt-1 block min-h-11 w-full rounded-lg border border-white/15 bg-zinc-900 px-3 text-zinc-100 sm:max-w-48" />
    </label>
