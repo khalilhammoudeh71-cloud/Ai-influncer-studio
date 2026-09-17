@@ -89,3 +89,18 @@ test('unrelated Arabic conversation clears a pending image scene',()=>{
 test('an assistant image question alone cannot create a request',()=>{
  assert.equal(resolveVoiceMediaDraft('تمام',[assistant('المشهد جاهز. قولي اعملي الصورة لما يخلص الوصف.')]).status,'none');
 });
+
+test('a detailed Arabic scene ending in an explicit send command is retained without keyword requirements',()=>{
+ const text='بدي تكوني مبتسمة وبجانبك كتاب أحمر ووردة بيضاء. ابعتي الصورة.';
+ const result=resolveVoiceMediaDraft(text,[]);
+ assert.equal(result.status,'ready');assert.match(result.prompt||'',/كتاب أحمر/);
+});
+test('send-only instructions still ask for details when no scene was supplied',()=>{
+ assert.equal(resolveVoiceMediaDraft('ابعتي الصورة.',[]).status,'waiting');
+});
+
+test('Arabic scene replies remain attached to the current explicit image request',()=>{
+ const history=[user('بدي صورة'),assistant('شو بدك يكون بالصورة؟'),user('بدي تكوني مبتسمة وبجانبك كتاب أحمر ووردة بيضاء')];
+ const result=resolveVoiceMediaDraft('ابعتي الصورة.',history);
+ assert.equal(result.status,'ready');assert.match(result.prompt||'',/كتاب أحمر/);
+});

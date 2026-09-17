@@ -23,6 +23,14 @@ export function resolveVoiceMediaDraft(current: string, history: MediaDraftMessa
     || /^(?:a|an)\s+(?:image|photo|picture|portrait|selfie|video|clip)\b/i.test(value)
     || /(?:بدي|بدّي|عايز|عايزة|أريد|اريد|اعملي|اعمل|ولدي|ابعتي|ابعت|ورجيني|فرجيني)\s+(?:(?:لي|إلي|الي|كمان|واحدة|وحدة)\s+)?(?:ال)?(?:صورة|صوره|صور|سيلفي|فيديو|مقطع)/u.test(value)
   );
+  const sceneInstruction = (value: string) => /^(?:(?:بدي|بدّي)\s+(?:تكوني|تكون|ياكي|إياكي)|تكوني|خلي(?:ها|ك|كي)?)[\s،]/u.test(value) && value.trim().split(/\s+/).length >= 5;
+  const detailedSend = (value: string) => {
+    const command = value.match(finish) || value.match(arabicFinish);
+    if (!command || !media.test(command[0])) return false;
+    const suppliedScene = value.slice(0, command.index).trim();
+    return suppliedScene.split(/\s+/).length >= 5
+      && /^(?:بدي|بدّي|تكوني|خلي|إنتي|انتي|أنت|انت|I want|I'd like|You|Make|Show|A scene)\b|^(?:بدي|بدّي|تكوني|خلي|إنتي|انتي|أنت|انت)\s/iu.test(suppliedScene);
+  };
   // Only fragments of an active request refine a scene. Ordinary sentences
   // containing location or clothing words are conversation, not media intent.
   const fragment = (value: string) => /^(?:and|with|while|also|both|in|at|wearing|actually|instead)\b/i.test(value)
@@ -37,13 +45,16 @@ export function resolveVoiceMediaDraft(current: string, history: MediaDraftMessa
     }
     if (message.role !== 'user') continue;
     if (cancel(content)) { parts = []; continue; }
-    if (startsRequest(content)) {
+    if (detailedSend(content)) {
+      parts = [content];
+      type = videoKind(content) ? 'video' : 'image';
+    } else if (startsRequest(content)) {
       // A send-only follow-up keeps the scene the caller already described.
       if (!finished(content) || description.test(content)) {
         parts = [content];
         type = videoKind(content) ? 'video' : 'image';
       }
-    } else if (parts.length && fragment(content)) {
+    } else if (parts.length && (fragment(content) || sceneInstruction(content))) {
       parts.push(content);
     } else if (!finished(content) && !(content === text && confirmsQuestion)) {
       // Any unrelated user turn ends the pending scene. History cannot reopen it.
@@ -51,12 +62,12 @@ export function resolveVoiceMediaDraft(current: string, history: MediaDraftMessa
     }
   }
   const ready = finished(text) || confirmsQuestion;
-  const hasScene = parts.some(part => description.test(part) || /\b(?:of|featuring|showing)\s+\S+\s+\S+/i.test(part));
+  const hasScene = parts.some(part => detailedSend(part) || sceneInstruction(part) || description.test(part) || /\b(?:of|featuring|showing)\s+\S+\s+\S+/i.test(part));
   if (ready) {
     if (!parts.length && !startsRequest(text)) return { status: 'none' };
     return hasScene ? { status: 'ready', type, prompt: parts.join('\n') } : { status: 'waiting', type };
   }
-  if (startsRequest(text) || (parts.length && fragment(text))) {
+  if (startsRequest(text) || (parts.length && (fragment(text) || sceneInstruction(text)))) {
     return { status: 'waiting', type, prompt: hasScene ? parts.join('\n') : undefined };
   }
   return { status: 'none' };
