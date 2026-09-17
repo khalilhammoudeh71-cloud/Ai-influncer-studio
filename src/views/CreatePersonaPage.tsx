@@ -1,3 +1,4 @@
+import { VoiceModelPicker } from '../components/VoiceModelPicker';
 import AvailableVoices, { type VoicePreviewState } from '../components/AvailableVoices';
 import VoiceRemix from '../components/VoiceRemix';
 import { cloneRequirements, voiceActionRequirements, type VoiceRequirement } from '../utils/voiceSetupReadiness';
@@ -5,7 +6,7 @@ import { voiceTuning } from '../../shared/stockVoices';
 import { videoThumbnail, type VoiceSample } from '../utils/voiceThumbnail';
 import { voiceSamplePolicy } from '../../shared/voiceCloningModels';
 import { ARABIC_DIALECTS, recognitionLanguage, type ArabicDialect } from '../../shared/personaLanguage';
-import { VOICE_CLONING_MODELS, voiceCloningModel } from '../../shared/voiceCloningModels';
+import { voiceCloningModel } from '../../shared/voiceCloningModels';
 import { LatestVoicePreview, VoiceDraftGuard, type CloneResult } from '../../shared/personaVoiceLifecycle';
 import { restoreSavedVoice, type SavedPersonaVoice } from '../../shared/personaVoiceLibrary';
 import SavedPersonaVoices from '../components/SavedPersonaVoices';
@@ -159,7 +160,6 @@ export const POPULAR_PERSONALITY_TRAITS = [
 
 export { VOICE_CLONING_MODELS } from '../../shared/voiceCloningModels';
 
-const VOICE_MODEL_PROVIDER_ORDER = Array.from(new Set(VOICE_CLONING_MODELS.map(model => model.provider)));
 
 const WIZARD_STEPS = [
   {
@@ -2035,12 +2035,9 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                     <h4 id="voice-model-heading" className="text-sm font-bold text-white">2. Choose a model</h4>
 
                   </div>
-                  <details className="relative rounded-xl border border-white/10 bg-[#0E0E10]" onKeyDown={e=>{if(e.key==='Escape')e.currentTarget.open=false;}}>
-                    <summary id="voice-model" aria-label="Choose voice model" className="cursor-pointer p-3 text-sm text-white"><span className="font-semibold">{cloneChoice.name}</span><span className="mt-1 block text-xs font-normal text-slate-400">{voiceSamplePolicy(cloneChoice).label}</span></summary>
-                    <div className="max-h-80 overflow-auto border-t border-white/10 p-2">{VOICE_MODEL_PROVIDER_ORDER.map(provider=><div key={provider}><p className="px-2 py-1 text-[10px] uppercase text-[#E7C477]">{provider}</p>{VOICE_CLONING_MODELS.filter(model=>model.provider===provider).map(model=><button key={model.id} type="button" disabled={isCloning||isSaving} aria-pressed={cloneChoice.id===model.id} onClick={e=>{
-                      voiceDraftGuard.current.change();stopVoicePreviews();setCloneModel(model.id);setClonePreset(model.voices?.[0]||'');setCloneResult(null);setCloneError('');e.currentTarget.closest('details')?.removeAttribute('open');
-                    }} className="block w-full rounded-lg p-2 text-left hover:bg-white/5"><span className="block text-sm font-semibold text-white">{model.name}</span><span className="block text-xs text-slate-400">{voiceSamplePolicy(model).label}</span>{model.kind==='unavailable'&&<span className="block text-xs text-amber-200">{model.description}</span>}</button>)}</div>)}</div>
-                  </details>
+                  <VoiceModelPicker selected={cloneChoice} disabled={isCloning || isSaving} onSelect={model => {
+                    voiceDraftGuard.current.change(); stopVoicePreviews(); setCloneModel(model.id); setClonePreset(model.voices?.[0] || ''); setCloneResult(null); setCloneError('');
+                  }} />
                   <p className="text-xs leading-relaxed text-slate-400">{cloneChoice.description}</p>
                   {voiceSamplePolicy(cloneChoice).files > 0 && <p className="text-xs text-slate-400">Auto-trim on render: up to {voiceSamplePolicy(cloneChoice).seconds} sec{cloneChoice.id === 'elevenlabs' ? ' total, shared across files' : ' from your selected reference'} (app sampling limit).</p>}
                 </section>
