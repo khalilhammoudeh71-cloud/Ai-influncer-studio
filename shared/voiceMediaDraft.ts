@@ -1,3 +1,4 @@
+import { requestedArabicPracticePhrase } from './voiceSpeechPractice';
 import { isConversationalMediaCreationRemark } from './personaMediaIntent';
 export interface MediaDraftMessage { role?: string; type?: string; content?: string }
 export interface VoiceMediaDraft { status: 'none' | 'waiting' | 'ready'; type?: 'image' | 'video'; prompt?: string }
@@ -10,7 +11,7 @@ export function resolveVoiceMediaDraft(current: string, history: MediaDraftMessa
   const videoKind = (value: string) => /video|clip|فيديو|مقطع/i.test(value);
   const description = /\b(?:wearing|standing|sitting|hugging|walking|holding|jacket|dress|beach|cafe|window|sunset|lighting|background|close-up|waist-up)\b|(?:لابسة|لابسه|واقف|قاعد|جالس|ماشي|شاطئ|الشاطي|بحر|مقهى|حديقة|جاكيت|فستان|خلفية|إضاءة|اضاءة)/i;
   const cancel = (value: string) => /(?:ما بدي|مش بدي|لا أريد|لا اريد|بلاش|الغ[يِ]|إلغاء|انسى|بطلي)/u.test(value) || isConversationalMediaCreationRemark(value) || /\b(?:cancel|forget|never mind|not yet|don'?t generate|do not generate)\b/i.test(value);
-  if (!text || cancel(text)) return { status: 'none' };
+  if (!text || requestedArabicPracticePhrase(text) || cancel(text)) return { status: 'none' };
   const prior = history.slice(-20);
   if (prior.at(-1)?.role === 'user' && prior.at(-1)?.content?.trim() === text) prior.pop();
   if (prior.some(m=>m.type==='image'||m.type==='video'||/^(?:Done —|خلص،|\[Persona generated and sent)/.test(m.content||''))&&/(?:^|[،,.!?؟]\s*)(?:غيري|غيّري|عدلي|عدّلي|بدلي|بدّلي)\s/u.test(text)) return {status:'none'};

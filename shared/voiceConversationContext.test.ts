@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   buildVoiceConversationHistory,
+  buildVoiceModelHistory,
   getGroundedShortVoiceReply,
   isContextUnsafeVoiceTurn,
   selectRelevantVoiceMemories,
@@ -195,3 +196,19 @@ test('Arabic greeting and acknowledgement keep short-turn boundaries', () => {
  assert.deepEqual(buildVoiceConversationHistory(messages,'مرحبا').map(m=>m.content),['مرحبا']);
  assert.deepEqual(buildVoiceConversationHistory(messages,'تمام').map(m=>m.content),['أهلا','تمام']);
 });
+
+test('stale image questionnaires are not model context after a topic change',()=>{
+ const history=[{role:'user',content:'بدي صورة عند البحر'},{role:'model',content:'المشهد جاهز. قولي اعملي الصورة لما يخلص الوصف.'},{role:'user',content:'أنا دكتور أسنان على كل حال.'}];
+ const filtered=buildVoiceModelHistory(history,'أنا دكتور أسنان على كل حال.');
+ assert.equal(filtered.some(m=>m.content?.includes('المشهد جاهز')),false);
+ assert.equal(filtered.some(m=>m.content?.includes('بدي صورة')),false);
+ assert.equal(filtered.at(-1)?.content,'أنا دكتور أسنان على كل حال.');
+});
+test('active image confirmation remains grounded in the user scene',()=>{
+ const history=[{role:'user',content:'بدي صورة عند البحر'},{role:'model',content:'المشهد جاهز. قولي اعملي الصورة لما يخلص الوصف.'}];
+ assert.equal(buildVoiceModelHistory(history,'ابعتي الصورة').length,2);
+});
+
+test('short Arabic speech practice returns only the requested phrase',()=>{assert.equal(getGroundedShortVoiceReply([],'احكي أنا هون معك'),'أنا هون معك');assert.equal(getGroundedShortVoiceReply([],'احكي عن يومك'),undefined);});
+
+test('image feedback keeps the requested scene while dropping the failed questionnaire',()=>{const h=[{role:'user',content:'I want an image at a cafe.'},{role:'model',content:'المشهد جاهز. قولي اعملي الصورة لما يخلص الوصف.'}];const filtered=buildVoiceModelHistory(h,'This image is wrong.');assert.equal(filtered[0]?.content,h[0].content);assert.equal(filtered.length,1);});

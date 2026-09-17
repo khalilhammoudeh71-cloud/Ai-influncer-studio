@@ -1,3 +1,4 @@
+import { requestedArabicPracticePhrase } from '../shared/voiceSpeechPractice';
 export interface ElevenLabsVoiceSummary {
   voice_id: string;
   name: string;
@@ -260,9 +261,19 @@ function repeatsVoiceOpening(value: unknown, previous: unknown): boolean {
     normalizedVoiceOpening(value) === normalizedVoiceOpening(previous);
 }
 
+const ARABIC_REPEAT_REQUEST = /^(?:احكي|قولي|قول|قُل|كرري|كرر|عيدي|عيد|رددي|ردد)\s+(?!(?:عن|شو|ايش|كيف|ليش|ماذا|لي|إلي|الي|معي)(?:\s|$))/u;
+
+function requestsVoiceRepetition(turn: string): boolean {
+ return /\b(?:repeat|recall|remind|confirm|summari[sz]e|say.{0,30}again)\b/i.test(turn)
+   || ARABIC_REPEAT_REQUEST.test(turn);
+}
+
 export function buildVoiceTurnContract(userTurn: unknown): string {
   const turn = String(userTurn || '').trim();
   const rules: string[] = [];
+  if (ARABIC_REPEAT_REQUEST.test(turn)) {
+    rules.push('Repeat only the requested word or phrase in Arabic. This is speech practice, not a request to act out a scene. Do not turn it into narration, add a metaphor, or invent another topic. If the caller contrasts identical spellings, acknowledge that audio or vowel marks are needed to distinguish the sound; do not guess.');
+  }
   if (EMOTIONALLY_VULNERABLE_TURN.test(turn)) {
     rules.push('Intent: emotional presence. Respond to the specific feeling before anything else and sound personally invested.');
   }
@@ -290,7 +301,13 @@ export function reviewVoiceCandidate(input: {
   const response = String(input.response || '').trim();
   const userTurn = String(input.userTurn || '').trim();
   if (!response) return 'empty';
-  if (isVoiceProviderEcho(userTurn, response)) return 'echo';
+  const requestedRecall = requestsVoiceRepetition(userTurn);
+  const requested = requestedArabicPracticePhrase(userTurn);
+  if (requested) {
+    if (normalizeVoiceEchoText(requested).join(' ') !== normalizeVoiceEchoText(response).join(' ')) return 'instruction-miss';
+  }
+
+  if (!requestedRecall && isVoiceProviderEcho(userTurn, response)) return 'echo';
   if (input.lawfulAdultConversation && isVoiceProviderRefusal(response)) return 'adult-refusal';
   if (isRoboticVoiceCandidate(response)) return 'robotic';
 
@@ -308,7 +325,6 @@ export function reviewVoiceCandidate(input: {
   if (input.lawfulAdultConversation && intimateCliches >= 2) return 'robotic';
 
   // Repetition is expected when the caller asks for recall or confirmation.
-  const requestedRecall = /\b(?:repeat|recall|remind|confirm|summari[sz]e|say.{0,30}again)\b/i.test(userTurn);
   if (!requestedRecall && (input.recentAssistantResponses || []).some(previous => repeatsVoiceOpening(response, previous))) {
     return 'repetitive';
   }

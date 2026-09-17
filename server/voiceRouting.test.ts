@@ -481,3 +481,12 @@ test('requested recall may repeat an earlier factual answer without provider fal
     recentAssistantResponses: ['We are meeting Sunday at six, code amber, with mint tea.'],
   }), 'accepted');
 });
+
+test('Arabic repetition practice allows the requested phrase instead of replacing it',()=>{
+ assert.equal(reviewVoiceCandidate({userTurn:'احكي أنا هون معك',response:'أنا هون معك.',recentAssistantResponses:['أنا هون معك.']}),'accepted');
+ assert.match(buildVoiceTurnContract('احكي أنا هون معك'),/Repeat only the requested/);
+});
+
+test('asking to talk about a topic is not pronunciation practice',()=>{assert.doesNotMatch(buildVoiceTurnContract('احكي عن يومك'),/Repeat only/);});
+
+test('Arabic repetition cannot be replaced with invented narration',()=>{assert.equal(reviewVoiceCandidate({userTurn:'احكي أنا هون معك',response:'همست قرب أذنك. هلأ حسيت بحرارة صوتي؟'}),'instruction-miss');});

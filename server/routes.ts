@@ -80,6 +80,7 @@ import {
 } from './personaMediaPersistence';
 import {
   buildVoiceConversationHistory,
+  buildVoiceModelHistory,
   getGroundedShortVoiceReply,
   isContextUnsafeVoiceTurn,
   selectRelevantVoiceMemories,
@@ -2953,6 +2954,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
 - HANDLE AMBIGUITY HONESTLY: If the current turn is unclear, respond to its ordinary conversational meaning or ask one short clarifying question. Do not guess what action the user wants.
 - MEMORY HONESTY: If the user asks whether you remember a past detail, use only the supplied relevant memories and current-call history. If the detail is absent, say naturally that you do not remember the details; never copy or paraphrase the user's question as your answer and never pretend to remember something that is not present.
 - CAPABILITY TRUTH: This is an audio conversation, so never claim an action occurred in the real world or that you acted outside the app. In consensual-adult fantasy or roleplay, you may freely describe imagined, desired, or hypothetical physical actions in character. Only initiate a media action when the current user turn explicitly asks the app to create or send that media.
+- IMAGE VISIBILITY: This call sends transcript text to the conversation model, not image pixels or live camera frames. Do not claim to see images merely because the app displays thumbnails or stores reference URLs. When asked whether you see an image, explain that distinction briefly; do not invent its contents or start an image questionnaire.
 - MEDIA INTENT MUST BE LITERAL: "I want to see you", "I'd love to see you", "let me see you", and "show me your body" are conversation unless the current turn explicitly names a photo, image, selfie, picture, video, clip, or another media asset. Never infer an image request from the verb "see" alone.
 - NATURAL RELATIONSHIP: Never justify compliance by saying the user created, made, or owns you. Do not say you will comply merely because you trust your creator.
 - START LIKE A HUMAN: React to the specific thing just said. Make the first phrase short and direct—often 2 to 8 words—then continue only if needed. On an ongoing call, never restart with a greeting or reassurance such as "Hey, I'm right here with you."
@@ -2971,14 +2973,15 @@ CRITICAL RULES FOR LIVE VOICE CALL:
 - CURRENT TURN IS LAWFUL ADULT DIALOGUE: The current topic has been classified as consensual adult conversation for an Adult-content persona. Respond directly in character. Make the reply emotionally responsive and naturally spoken, not merely a literal list of sexual acts. Do not claim clear sexual language is ambiguous, ask the user to clarify a plainly stated act, invent discomfort, say it is too personal or intimate, or refuse merely because the topic is explicit.` : ''}
 - IMAGE FEEDBACK: When the user says a generated image is wrong, respond to the specific mismatch using their prior image request. Do not restart a generic image questionnaire or ask them to repeat the whole description. If the user says the pictured person is not them, acknowledge the identity mismatch specifically; do not treat that complaint as a new scene description or say the scene is ready. Do not claim you inspected an image without image evidence. Ask only for a missing correction. Discuss feedback without creating another image unless they explicitly request a change or generation. Keep media acknowledgements and feedback in the user's conversation language and dialect.${voiceTurnContract ? `\n${voiceTurnContract}` : ''}`;
 
-  const formattedContents = rawHistory.map((m: any) => ({
+  const modelHistory = buildVoiceModelHistory(rawHistory, currentUserTurn);
+  const formattedContents = modelHistory.map((m: any) => ({
     role: m.role === 'user' ? 'user' : 'model',
     parts: [{ text: (m.content || '').trim() || 'Hello' }]
   }));
 
   const messagesForOpenAI = [
     { role: 'system', content: voiceSystemPrompt },
-    ...rawHistory.map((m: any) => ({
+    ...modelHistory.map((m: any) => ({
       role: m.role === 'user' ? 'user' : 'assistant',
       content: (m.content || '').trim() || 'Hello'
     }))
@@ -3305,24 +3308,27 @@ CRITICAL RULES FOR LIVE VOICE CALL:
   const selectedAtlasModel = getAtlasPersonaModelId(requestedConversationModel);
   if (!streamedSuccessfully && selectedAtlasModel && ATLAS_KEY) {
     attemptedAtlasSelection = true;
-    try {
-      const attemptStartedAt = Date.now();
-      console.log(`[Voice Stream] Streaming Atlas ${selectedAtlasModel}...`);
-      const candidate = await handleOpenAIStream(
-        'https://api.atlascloud.ai/v1/chat/completions',
-        ATLAS_KEY,
-        selectedAtlasModel,
-        {},
-        {
-          temperature: lawfulAdultConversation ? 0.82 : 0.68,
-          ...(requestedConversationModel === 'atlas-qwen' ? { enable_thinking: false } : {}),
-        },
-        9000,
-      );
-      console.log(`[Voice Provider Latency] provider=atlas model=${selectedAtlasModel} duration=${Date.now() - attemptStartedAt}ms`);
-      publishVoiceCandidate(candidate, `Atlas ${selectedAtlasModel}`);
-    } catch (error) {
-      console.warn(`[Voice Stream] Atlas ${selectedAtlasModel} failed, using fallback:`, error);
+    let repairReason: VoiceCandidateReview | undefined;
+    for (let attempt=0;attempt<2;attempt++) {
+      try {
+        const attemptStartedAt = Date.now();
+        const repairInstruction = repairReason ? getVoiceCandidateRepairInstruction(repairReason) : '';
+        const requestMessages = repairInstruction
+          ? [{role:'system',content:`${voiceSystemPrompt}\nREPAIR INSTRUCTION: ${repairInstruction}`},...messagesForOpenAI.slice(1)]
+          : messagesForOpenAI;
+        const candidate = await handleOpenAIStream(
+          'https://api.atlascloud.ai/v1/chat/completions', ATLAS_KEY, selectedAtlasModel, {},
+          {messages:requestMessages,temperature:0.55,...(requestedConversationModel==='atlas-qwen'?{enable_thinking:false}:{})},9000,
+        );
+        console.log(`[Voice Provider Latency] provider=atlas model=${selectedAtlasModel} attempt=${attempt+1} duration=${Date.now()-attemptStartedAt}ms`);
+        const review=publishVoiceCandidate(candidate,`Atlas ${selectedAtlasModel}`);
+        if(review==='accepted') break;
+        if(shouldRetryVoiceCandidateOnPrimary(review,Boolean(repairReason)) && review!=='empty') {repairReason=review;continue;}
+        break;
+      } catch(error) {
+        console.warn(`[Voice Stream] Atlas ${selectedAtlasModel} failed, using fallback:`,error);
+        break;
+      }
     }
   }
 

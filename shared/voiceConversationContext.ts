@@ -1,3 +1,5 @@
+import { isConversationalMediaCreationRemark } from './personaMediaIntent';
+import { requestedArabicPracticePhrase } from './voiceSpeechPractice';
 import { resolveVoiceMediaDraft } from './voiceMediaDraft';
 
 export interface VoiceConversationMessage {
@@ -85,6 +87,8 @@ export function getGroundedShortVoiceReply(
   messages: VoiceConversationMessage[] | undefined,
   currentUserMessage: string,
 ): string | undefined {
+  const practicePhrase = requestedArabicPracticePhrase(currentUserMessage);
+  if (practicePhrase) return practicePhrase;
   const normalizedCurrent = normalizeTurn(currentUserMessage);
   const clean = (Array.isArray(messages) ? messages : [])
     .filter(isDialogueMessage)
@@ -225,4 +229,17 @@ export function buildVoiceConversationHistory(
   }
 
   return [...beforeCurrent, current].slice(-maxMessages);
+}
+
+/** Keep faulty media CTAs from teaching the model to repeat a past routing error.
+ * The full call history is still used by the media resolver itself. */
+export function buildVoiceModelHistory(history: VoiceConversationMessage[], current: string): VoiceConversationMessage[] {
+ if (resolveVoiceMediaDraft(current, history).status !== 'none') return history;
+ const staleMediaPrompt = /^(?:المشهد جاهز[.، ]|شو بدك يكون بالصورة|بدك تضيف شي للصورة|The scene is ready|Tell me to make the (?:image|video)|What would you like in the (?:image|video)|Anything else (?:you want )?in the picture)/iu;
+ if (isConversationalMediaCreationRemark(current)) return history.filter(message=>isUserRole(message.role) || !staleMediaPrompt.test(String(message.content||'').trim()));
+ let boundary = -1;
+ for (let i=0;i<history.length;i++) {
+  if (!isUserRole(history[i].role) && staleMediaPrompt.test(String(history[i].content||'').trim())) boundary=i;
+ }
+ return boundary < 0 ? history : history.slice(boundary+1);
 }
