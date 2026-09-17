@@ -46,3 +46,7 @@ test('Arabic v3 delivery carries selected dialect without rewriting words or lea
  assert.equal(buildVoiceDelivery('elevenlabs','eleven_v3','Hello.',persona,undefined,'neutral').text,'Hello.');
  assert.match(buildVoiceDelivery('elevenlabs','eleven_v3',words,{personalitySettings:{language:'ar',dialect:'gulf'}},undefined,'neutral').text,/Saudi accent/);
 });
+test('direct ElevenLabs model selections keep provider controls and v3 stability constraints',()=>{
+ const delivery=buildVoiceDelivery('eleven_v3','eleven_v3','مرحبا',{voiceStability:72},undefined,'neutral');
+ assert.equal(delivery.settings.stability,.5);assert.equal(delivery.settings.similarity_boost,.88);
+});

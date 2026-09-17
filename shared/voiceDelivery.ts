@@ -14,6 +14,7 @@ export function inferVoiceEmotion(text:string):VoiceEmotion {
  return 'neutral';
 }
 export function buildVoiceDelivery(provider:string,model:string,text:string,persona:DeliveryPersona={},overrides?:Record<string,number|undefined>,emotion?:VoiceEmotion) {
+ if(['eleven_v3','eleven_flash_v2_5','eleven_turbo_v2_5','eleven_multilingual_v2'].includes(provider))provider='elevenlabs';
  const mood=emotion&&['neutral','comforting','excited','playful'].includes(emotion)?emotion:inferVoiceEmotion(text);
  const offsets={neutral:[0,0,0],comforting:[-.04,.02,0],excited:[.04,-.05,.04],playful:[.02,-.04,.03]}[mood];
  // The opt-in personality adjustments are relative to the caller's saved or

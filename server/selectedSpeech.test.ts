@@ -34,3 +34,9 @@ test('a failed saved voice never falls back', async()=>{
 test('single-reference providers never silently discard extra recordings', async()=>{
  const p=providers();await assert.rejects(()=>dispatchSelectedSpeech({engine:'omnivoice',voiceReferences:['first','second']},p),/one reference/i);assert.deepEqual(p.calls,[]);
 });
+test('selected ElevenLabs v3, Flash and Turbo models preview the saved voice directly',async()=>{
+ for(const engine of ['eleven_v3','eleven_flash_v2_5','eleven_turbo_v2_5','eleven_multilingual_v2']){
+ const p=providers();const result=await dispatchSelectedSpeech({engine,voiceId:'saved-id'},p);
+ assert.deepEqual(p.calls,['el:saved-id']);assert.equal(result.engine,engine);assert.equal(result.voiceId,'saved-id');
+ }
+});

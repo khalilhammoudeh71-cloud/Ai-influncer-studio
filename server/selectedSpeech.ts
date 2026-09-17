@@ -16,7 +16,7 @@ export async function dispatchSelectedSpeech(body: SpeechSelection, providers: S
   const engine = body.engine?.trim() || (body.voiceId ? 'elevenlabs' : '');
   const model = voiceCloningModel(engine);
   const voiceId = body.voiceId?.trim() || body.voice?.trim();
-  if (engine === 'elevenlabs' || model?.id === 'elevenlabs') {
+  if (engine === 'elevenlabs' || model?.id === 'elevenlabs' || ['eleven_v3','eleven_flash_v2_5','eleven_turbo_v2_5','eleven_multilingual_v2'].includes(engine)) {
     if (!voiceId) throw new SelectedSpeechError('Select an ElevenLabs voice before speaking.');
     return { audioUrl: await providers.elevenlabs(voiceId), engine, voiceId };
   }
