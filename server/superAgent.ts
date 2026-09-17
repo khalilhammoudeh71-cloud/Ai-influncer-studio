@@ -453,7 +453,7 @@ export const SUPER_AGENT_RESPONSE_SCHEMA = {
   },
 } as const;
 
-export function decodeAgentReply(reply: string, request: string) {
+export function decodeAgentReply(reply: string, request: string, deferCampaignReview=false) {
   const blocks = [...reply.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)].map(match=>match[1]);
   for (const block of [reply,...blocks]) {
     let parsed:any;
@@ -470,7 +470,7 @@ export function decodeAgentReply(reply: string, request: string) {
       if(suggestedSteps.length)text='Review the plan below before running it.';
     }
     if (!text.trim() && !suggestedSteps.length) throw new Error('The planner returned no usable response.');
-    const campaign=blocksAgentPlan(request)?undefined:validateCampaign(parsed.campaign,suggestedSteps);
+    const campaign=blocksAgentPlan(request)?undefined:deferCampaignReview?parsed.campaign:validateCampaign(parsed.campaign,suggestedSteps);
     return {text:text.trim() || 'Review the plan below before running it.',status:suggestedSteps.length?'clarifying':'normal',suggestedSteps,...(campaign?{campaign}:{})};
   }
   if (!reply.trim() || /^\s*(?:```json\b|\{|\[)/.test(reply)) throw new Error('The planner returned an incomplete response.');

@@ -4207,7 +4207,7 @@ Do not wrap your response in markdown code blocks or HTML tags. Return ONLY the 
         assertCompleteModelOutput(result.candidates?.[0]?.finishReason,'gemini-2.5-flash');
         let plainText = result.text?.trim() || '';
         if (!plainText) throw new Error('The model returned an empty response. Please retry.');
-        return await finishDraft({ ...decodeAgentReply(plainText,userPrompt), sources, agentMode:{provider:'google',model:'gemini-2.5-flash',effort:'fast',research:Boolean(sources.length),toolRounds:0} });
+        return await finishDraft({ ...decodeAgentReply(plainText,userPrompt,interactionMode!=='plan'), sources, agentMode:{provider:'google',model:'gemini-2.5-flash',effort:'fast',research:Boolean(sources.length),toolRounds:0} });
       }
     }
 
@@ -4227,7 +4227,7 @@ Do not wrap your response in markdown code blocks or HTML tags. Return ONLY the 
       });
     }
 
-    return await finishDraft({ ...decodeAgentReply(text,userPrompt), sources, agentMode:superAgentMode });
+    return await finishDraft({ ...decodeAgentReply(text,userPrompt,interactionMode!=='plan'), sources, agentMode:superAgentMode });
   } catch (err) {
     if (err instanceof AgentContextLimitError) return res.status(413).json({error:'context_limit',text:err.message,status:'normal',suggestedSteps:[]});
     console.error('[API] /agent/chat failed:', err instanceof Error ? err.message : 'Unknown planner error');

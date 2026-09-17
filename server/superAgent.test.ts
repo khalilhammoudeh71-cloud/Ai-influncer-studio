@@ -252,3 +252,9 @@ test('campaign replies carry validated copy alongside actionable media steps',()
  assert.deepEqual(reply.campaign,campaign);
  assert.throws(()=>decodeAgentReply(JSON.stringify({text:'Review.',campaign:{...campaign,posts:[]},suggestedSteps:reply.suggestedSteps}),'Create campaign'),/Campaign/);
 });
+
+test('campaign parsing can defer asset validation exclusively for the review stage',()=>{
+ const raw={text:'Review campaign',suggestedSteps:[{type:'generate_image',params:{prompt:'A cup'}}],campaign:{title:'Coffee',platform:'Instagram',posts:[{date:'2026-09-18',title:'Cup',caption:'Concept',format:'image',assets:[{stepIndex:2,alt:'Cup'}]}]}};
+ assert.throws(()=>decodeAgentReply(JSON.stringify(raw),'Create campaign'),/asset reference/);
+ assert.deepEqual(decodeAgentReply(JSON.stringify(raw),'Create campaign',true).campaign,raw.campaign);
+});

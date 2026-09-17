@@ -13,10 +13,12 @@ The live campaign test exposed stale dates, unsupported business claims, incompl
 
 ## Verification
 
-Full regression: 556 tests, 550 passed, six skipped, no failures. TypeScript passed. Production builds include successful API bundle import checks.
+Full regression: 557 tests, 551 passed, six skipped, no failures. TypeScript passed. Production builds include successful API bundle import checks.
 
 Live revision returned a complete three-post bilingual campaign with September 18/20/22, 2026 dates, fictional branding labels, and no invented dollar prices. No new media jobs were executed during this check. A 685 × 618 window provided a 199.5px results panel, increased from the earlier 138px panel, with a compact expandable prompt.
 
 ## Limits
 
 Semantic claim review uses another model and cannot guarantee that every unsupported assertion will be caught. Dollar amounts are estimates rather than invoices. Actual saved ZIP delivery and final media-retention browser checks are recorded below after verification.
+
+The final live check exposed an invalid planner asset index. Campaign parsing now defers campaign validation to the mandatory review stage, allowing repair before approval; default parsing still rejects invalid references. The additional regression test passed. A rejected revision preserved the previous actionable package in the browser.
