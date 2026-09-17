@@ -6,11 +6,15 @@ export function resolveVoiceMediaDraft(current: string, history: MediaDraftMessa
   const text = current.trim();
   const finish = /\b(?:send|show)\s+(?:me\s+)?(?:that|it|the (?:image|photo|picture|video))\b|\b(?:now\s+(?:generate|create|make|render)|(?:generate|create|make|render)\s+(?:it|that|the (?:image|photo|picture|video))\s+now|go ahead and (?:make|generate|create|send)(?: it| that)?|let'?s see it)\b/i;
   const media = /\b(image|photo|picture|portrait|selfie|video|clip)\b|(صورة|صوره|صور|سيلفي|فيديو|مقطع)/i;
-  const arabicFinish = /(?:ابعتي|ابعت|أرسلي|ارسل|ارسلي|ورجيني|فرجيني|ولدي|ولّد|انشئي)\s*(?:لي\s*)?(?:الصورة|الصوره|الفيديو|المقطع|إياها|اياها|ها)|(?:اعملي|اعمل|سوي)\s+(?:الصورة|الصوره|الفيديو|المقطع)/u;
+  const arabicFinish = /(?:ابعثي|ابعث|إبعثي|ابعت(?:ي)?|أرسلي|ارسل|ارسلي|ورجيني|فرجيني|ولدي|ولّد|انشئي)\s*(?:لي\s*)?(?:الصورة|الصوره|الفيديو|المقطع|إياها|اياها|ها)|(?:اعملي|اعمل|سوي)\s+(?:الصورة|الصوره|الفيديو|المقطع)/u;
   const finished = (value: string) => finish.test(value) || arabicFinish.test(value);
   const videoKind = (value: string) => /video|clip|فيديو|مقطع/i.test(value);
   const description = /\b(?:wearing|standing|sitting|hugging|walking|holding|jacket|dress|beach|cafe|window|sunset|lighting|background|close-up|waist-up)\b|(?:لابسة|لابسه|واقف|قاعد|جالس|ماشي|شاطئ|الشاطي|بحر|مقهى|حديقة|جاكيت|فستان|خلفية|إضاءة|اضاءة)/i;
-  const cancel = (value: string) => /(?:ما بدي|مش بدي|لا أريد|لا اريد|بلاش|الغ[يِ]|إلغاء|انسى|بطلي)/u.test(value) || isConversationalMediaCreationRemark(value) || /\b(?:cancel|forget|never mind|not yet|don'?t generate|do not generate)\b/i.test(value);
+  const cancel = (value: string) => {
+    // Declining more details is not cancellation of the requested image.
+    const intent = value.replace(/(?:ما بدي|مش بدي|لا أريد|لا اريد)\s+(?:أضيف|اضيف|ازيد|أزيد)(?:\s+(?:شي|شيء|إشي|اشي|أي شي|اي شي|كمان))?/gu, '');
+    return /(?:ما بدي|مش بدي|لا أريد|لا اريد|بلاش|الغ[يِ]|إلغاء|انسى|بطلي)/u.test(intent) || isConversationalMediaCreationRemark(intent) || /\b(?:cancel|forget|never mind|not yet|don'?t generate|do not generate)\b/i.test(intent);
+  };
   if (!text || requestedArabicPracticePhrase(text) || cancel(text)) return { status: 'none' };
   const prior = history.slice(-20);
   if (prior.at(-1)?.role === 'user' && prior.at(-1)?.content?.trim() === text) prior.pop();
@@ -24,6 +28,7 @@ export function resolveVoiceMediaDraft(current: string, history: MediaDraftMessa
     || /^(?:a|an)\s+(?:image|photo|picture|portrait|selfie|video|clip)\b/i.test(value)
     || /(?:بدي|بدّي|عايز|عايزة|أريد|اريد|اعملي|اعمل|ولدي|ابعتي|ابعت|ورجيني|فرجيني)\s+(?:(?:لي|إلي|الي|كمان|واحدة|وحدة)\s+)?(?:ال)?(?:صورة|صوره|صور|سيلفي|فيديو|مقطع)/u.test(value)
   );
+  const contextualScene = (value: string) => /^(?:أول شي|اول شي|المشهد|بالصورة|في الصورة|الصورة تكون|خلينا نخلي)/u.test(value) && value.trim().split(/\s+/).length >= 5;
   const sceneInstruction = (value: string) => /^(?:(?:بدي|بدّي)\s+(?:تكوني|تكون|ياكي|إياكي)|تكوني|خلي(?:ها|ك|كي)?)[\s،]/u.test(value) && value.trim().split(/\s+/).length >= 5;
   const detailedSend = (value: string) => {
     const command = value.match(finish) || value.match(arabicFinish);
@@ -55,7 +60,7 @@ export function resolveVoiceMediaDraft(current: string, history: MediaDraftMessa
         parts = [content];
         type = videoKind(content) ? 'video' : 'image';
       }
-    } else if (parts.length && (fragment(content) || sceneInstruction(content))) {
+    } else if (parts.length && (fragment(content) || sceneInstruction(content) || contextualScene(content))) {
       parts.push(content);
     } else if (!finished(content) && !(content === text && confirmsQuestion)) {
       // Any unrelated user turn ends the pending scene. History cannot reopen it.
@@ -63,12 +68,12 @@ export function resolveVoiceMediaDraft(current: string, history: MediaDraftMessa
     }
   }
   const ready = finished(text) || confirmsQuestion;
-  const hasScene = parts.some(part => detailedSend(part) || sceneInstruction(part) || description.test(part) || /\b(?:of|featuring|showing)\s+\S+\s+\S+/i.test(part));
+  const hasScene = parts.some(part => detailedSend(part) || sceneInstruction(part) || contextualScene(part) || description.test(part) || /\b(?:of|featuring|showing)\s+\S+\s+\S+/i.test(part));
   if (ready) {
     if (!parts.length && !startsRequest(text)) return { status: 'none' };
     return hasScene ? { status: 'ready', type, prompt: parts.join('\n') } : { status: 'waiting', type };
   }
-  if (startsRequest(text) || (parts.length && (fragment(text) || sceneInstruction(text)))) {
+  if (startsRequest(text) || (parts.length && (fragment(text) || sceneInstruction(text) || contextualScene(text)))) {
     return { status: 'waiting', type, prompt: hasScene ? parts.join('\n') : undefined };
   }
   return { status: 'none' };

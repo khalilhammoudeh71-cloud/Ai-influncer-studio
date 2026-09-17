@@ -492,3 +492,5 @@ test('asking to talk about a topic is not pronunciation practice',()=>{assert.do
 test('Arabic repetition cannot be replaced with invented narration',()=>{assert.equal(reviewVoiceCandidate({userTurn:'احكي أنا هون معك',response:'همست قرب أذنك. هلأ حسيت بحرارة صوتي؟'}),'instruction-miss');});
 
 test('unfinished thoughts are rejected before speech',()=>{assert.equal(reviewVoiceCandidate({userTurn:'شو عم تعملي؟',response:'كنت عم...'}),'instruction-miss');});
+
+test('Arabic parenthetical delivery directions never reach speech',()=>{assert.equal(sanitizeSpokenDialogue('بقدر أوصفلك المشهد. (بصوت خجول وهادئ)'),'بقدر أوصفلك المشهد.');assert.equal(sanitizeSpokenDialogue('أنا ساكنة هون (عمان).'),'أنا ساكنة هون (عمان).');});

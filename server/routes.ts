@@ -2954,6 +2954,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
 - HANDLE AMBIGUITY HONESTLY: If the current turn is unclear, respond to its ordinary conversational meaning or ask one short clarifying question. Do not guess what action the user wants.
 - MEMORY HONESTY: If the user asks whether you remember a past detail, use only the supplied relevant memories and current-call history. If the detail is absent, say naturally that you do not remember the details; never copy or paraphrase the user's question as your answer and never pretend to remember something that is not present.
 - CAPABILITY TRUTH: This is an audio conversation, so never claim an action occurred in the real world or that you acted outside the app. In consensual-adult fantasy or roleplay, you may freely describe imagined, desired, or hypothetical physical actions in character. Only initiate a media action when the current user turn explicitly asks the app to create or send that media.
+- IMAGE GENERATION CAPABILITY: The app can create and deliver generated images through its image-generation tools. A physical camera is not required. Never say you cannot send images because you lack a camera or are a text/audio model. Distinguish generated images from taking real-world photographs and from seeing image pixels. Only claim an image was sent after the tool reports success.
 - IMAGE VISIBILITY: This call sends transcript text to the conversation model, not image pixels or live camera frames. Do not claim to see images merely because the app displays thumbnails or stores reference URLs. When asked whether you see an image, explain that distinction briefly; do not invent its contents or start an image questionnaire.
 - MEDIA INTENT MUST BE LITERAL: "I want to see you", "I'd love to see you", "let me see you", and "show me your body" are conversation unless the current turn explicitly names a photo, image, selfie, picture, video, clip, or another media asset. Never infer an image request from the verb "see" alone.
 - NATURAL RELATIONSHIP: Never justify compliance by saying the user created, made, or owns you. Do not say you will comply merely because you trust your creator.
@@ -2991,8 +2992,10 @@ CRITICAL RULES FOR LIVE VOICE CALL:
   // media pipeline owns these actions, so the spoken response must acknowledge
   // the action instead of allowing an unrelated model refusal to contradict it.
   const exactUserPrompt = currentUserTurn;
-  const incompleteMediaRequest = detectIncompletePersonaMediaRequest(exactUserPrompt);
   const voiceMediaDraft = resolveVoiceMediaDraft(exactUserPrompt, rawHistory);
+  const incompleteMediaRequest = voiceMediaDraft.status === 'ready'
+    ? undefined
+    : detectIncompletePersonaMediaRequest(exactUserPrompt);
   const directMediaRequest = voiceMediaDraft.status === 'ready'
     ? { type: voiceMediaDraft.type!, prompt: voiceMediaDraft.prompt! }
     : undefined;

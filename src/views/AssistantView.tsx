@@ -2610,8 +2610,10 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       // whether the client may spend money and create media.
       const voiceMediaConversationOnly = isConversationalMediaMention(text);
       const voiceImageRevisionCandidate = resolveImageRevisionContext(text, updatedHistory, callRevisionSource);
-      const incompleteVoiceMediaRequest = detectIncompleteMediaCreationRequest(text);
       const voiceMediaDraft = resolveVoiceMediaDraft(text, updatedHistory);
+      const incompleteVoiceMediaRequest = voiceMediaDraft.status === 'ready'
+        ? undefined
+        : detectIncompleteMediaCreationRequest(text);
       const executableVoiceMediaIntent = !voiceMediaConversationOnly && voiceMediaDraft.status === 'ready'
         ? voiceMediaDraft.type
         : !voiceMediaConversationOnly && voiceMediaDraft.status === 'none' && voiceImageRevisionCandidate.isRevision

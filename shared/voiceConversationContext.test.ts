@@ -212,3 +212,5 @@ test('active image confirmation remains grounded in the user scene',()=>{
 test('short Arabic speech practice returns only the requested phrase',()=>{assert.equal(getGroundedShortVoiceReply([],'احكي أنا هون معك'),'أنا هون معك');assert.equal(getGroundedShortVoiceReply([],'احكي عن يومك'),undefined);});
 
 test('image feedback keeps the requested scene while dropping the failed questionnaire',()=>{const h=[{role:'user',content:'I want an image at a cafe.'},{role:'model',content:'المشهد جاهز. قولي اعملي الصورة لما يخلص الوصف.'}];const filtered=buildVoiceModelHistory(h,'This image is wrong.');assert.equal(filtered[0]?.content,h[0].content);assert.equal(filtered.length,1);});
+
+test('image capability questions explain the app generator without requiring a camera',()=>{for(const text of ['ليش ما بتقدر تبعتلي صور؟','ليش ما بتقدري تبعتيلي صور؟'])assert.match(getGroundedShortVoiceReply([],text)||'',/مولّد الصور/);assert.match(getGroundedShortVoiceReply([],"Why can't you send me images?")||'',/image generator/);assert.equal(getGroundedShortVoiceReply([],'Can you see my images?'),undefined);});

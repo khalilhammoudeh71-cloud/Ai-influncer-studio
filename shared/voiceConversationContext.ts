@@ -87,6 +87,13 @@ export function getGroundedShortVoiceReply(
   messages: VoiceConversationMessage[] | undefined,
   currentUserMessage: string,
 ): string | undefined {
+  const capabilityQuestion = currentUserMessage.trim();
+  if (/^(?:ليش|لماذا).{0,35}(?:ما|لا).{0,30}(?:بتقدر|بتقدري|تقدر|تقدري|يمكنك).{0,30}(?:تبعت|تبعث|تبعتي|ترسل|ترسلي|إرسال|ارسال).{0,25}(?:صور|صورة|صوره)/u.test(capabilityQuestion)) {
+    return 'بقدر أعمل وأبعت صور من خلال مولّد الصور بالتطبيق، والكاميرا مش مطلوبة.';
+  }
+  if (/^why\s+(?:can(?:not|'t)|are\s+you\s+unable\s+to).{0,25}(?:send|create|generate|make).{0,25}(?:images?|photos?|pictures?)/i.test(capabilityQuestion)) {
+    return "I can create and send images through the app's image generator; a physical camera isn't needed.";
+  }
   const practicePhrase = requestedArabicPracticePhrase(currentUserMessage);
   if (practicePhrase) return practicePhrase;
   const normalizedCurrent = normalizeTurn(currentUserMessage);

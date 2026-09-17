@@ -454,6 +454,7 @@ export function sanitizeSpokenDialogue(value: unknown): string {
     .replace(/\*{1,3}[^*\n]*(?:\*{1,3}|$)/g, ' ')
     .replace(/\[[^\]\n]*(?:\]|$)/g, ' ')
     .replace(/\((?=[^)]*(?:giggl|laugh|chuckl|smil|sigh|pause|whisper|murmur|breath|tone|voice|delivery|cadence|pitch|emotion|shy|playful|seductive|softly|quietly))[^)\n]*(?:\)|$)/gi, ' ')
+    .replace(/\((?=[^)]*(?:بصوت|بنبرة|بهمس|بهدوء|بخجل|نبرة\s|صوت\s|تضحك|يضحك|تبتسم|يبتسم|تتنهد|يتنهد|تهمس|يهمس|وقفة|ضحكة|ابتسامة))[^)\n]*(?:\)|$)/gu, ' ')
     // Model-authored prose about how the line should sound.
     .replace(/^\s*(?:(?:speaking|responding|replying|saying)\s+(?:in|with)|(?:in|with))\s+(?:an?\s+)?[^:,.!?\n]{0,90}(?:voice|tone|delivery|cadence)\s*[:,.-]?\s*/i, '')
     // Novel-style physical narration that occasionally escapes role-play
@@ -481,7 +482,7 @@ export function sanitizeSpokenDialogue(value: unknown): string {
   if (!cleaned) return '';
   cleaned = cleaned.replace(/\bDr\.\s*H\b/gi, 'Dr. H');
   cleaned = cleaned.replace(/^([a-z])/, (_, firstLetter: string) => firstLetter.toUpperCase());
-  if (!/[.!?]$/.test(cleaned)) cleaned += '.';
+  if (!/[.!?؟]$/.test(cleaned)) cleaned += '.';
   return cleaned;
 }
 

@@ -104,3 +104,19 @@ test('Arabic scene replies remain attached to the current explicit image request
  const result=resolveVoiceMediaDraft('ابعتي الصورة.',history);
  assert.equal(result.status,'ready');assert.match(result.prompt||'',/كتاب أحمر/);
 });
+
+
+test('natural scene replies and Levantine send variants retain the supplied scene',()=>{
+ const history=[user('بدي صورة'),assistant('وصفيلي المشهد'),user('أول شي ابتسامة خفيفة وبجانبك كتاب أحمر ووردة بيضاء')];
+ for(const command of ['ابعثيلي الصورة','ابعتلي الصورة','ابعتيلي الصورة']) {
+  const result=resolveVoiceMediaDraft(command,history);
+  assert.equal(result.status,'ready',command);assert.match(result.prompt||'',/كتاب أحمر/);
+ }
+ assert.equal(resolveVoiceMediaDraft('أول شي ابتسامة خفيفة وبجانبك كتاب أحمر',[]).status,'none');
+});
+test('declining further additions does not cancel an explicit send',()=>{
+ const result=resolveVoiceMediaDraft('ما بدي أضيف شي، ابعتيلي الصورة',[user('بدي صورة إلك على الشاطئ')]);
+ assert.equal(result.status,'ready');assert.match(result.prompt||'',/الشاطئ/);
+});
+
+test('declining additions cannot hide a subsequent cancellation',()=>{assert.equal(resolveVoiceMediaDraft('ما بدي أضيف شي وبلاش الصورة',[user('بدي صورة إلك على الشاطئ')]).status,'none');});
