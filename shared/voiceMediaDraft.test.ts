@@ -74,3 +74,18 @@ test('identity mismatch feedback does not become a new scene', () => {
  const history=[user('بدي صورة إلي بالقهوة ابعتيها'),{role:'persona',type:'image',content:'asset'}];
  for(const text of ['بس الصورة اللي انتي بعتيلي إياها بس هذا الواحد مش أنا','هذا مش أنا','الشخص بالصورة ما بيشبهني','The person in this image is not me.','That does not look like me.']) assert.equal(resolveVoiceMediaDraft(text,history).status,'none',text);
 });
+
+test('ordinary descriptive speech cannot start a media draft',()=>{
+ for(const text of ['أنا قاعدة عند أختي وبحكي معها','كنت على البحر اليوم','I am sitting at a cafe wearing a jacket.','عندي صورة قديمة من أيام الجامعة']) assert.equal(resolveVoiceMediaDraft(text,[]).status,'none',text);
+});
+test('changing topic clears an unfinished media request',()=>{
+ const history=[user('I want an image of you and me at a cafe.'),assistant('Anything else in the picture?'),user('My sister called today.'),assistant('How is she?')];
+ for(const text of ['With blue jackets.','Send that.','I am sitting at a cafe.']) assert.equal(resolveVoiceMediaDraft(text,history).status,'none',text);
+});
+test('unrelated Arabic conversation clears a pending image scene',()=>{
+ assert.equal(resolveVoiceMediaDraft('أنا قاعدة عند أختي هلأ',[user('بدي صورة إلك على الشاطئ'),assistant('شو بدك كمان بالصورة؟')]).status,'none');
+});
+
+test('an assistant image question alone cannot create a request',()=>{
+ assert.equal(resolveVoiceMediaDraft('تمام',[assistant('المشهد جاهز. قولي اعملي الصورة لما يخلص الوصف.')]).status,'none');
+});
