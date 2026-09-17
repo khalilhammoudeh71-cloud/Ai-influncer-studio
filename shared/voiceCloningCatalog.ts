@@ -16,6 +16,7 @@ export const VOICE_CLONING_CATALOG: VoiceCatalogEntry[] = [
   fal('fal-ai/minimax/voice-clone', 'MiniMax Voice Clone', 'Creates a reusable MiniMax clone. Speech engines include 02 HD/Turbo, 2.5 preview HD/Turbo, 2.6 HD/Turbo and 2.8 HD/Turbo; they share the cloning flow.'),
   fal('fal-ai/qwen-3-tts/clone-voice/1.7b', 'Qwen3-TTS Clone Voice 1.7B', 'Creates a voice reference for Qwen3-TTS 1.7B. Arabic is not a listed output language.'),
   fal('fal-ai/qwen-3-tts/clone-voice/0.6b', 'Qwen3-TTS Clone Voice 0.6B', 'Smaller Qwen3-TTS cloning variant. Arabic is not a listed output language.'),
+  pending('Fal', 'fal-ai/f5-tts:E2-TTS', 'E2-TTS', 'Reference cloning through the F5/E2 endpoint using its E2-TTS model variant.', 'https://fal.ai/models/fal-ai/f5-tts/api'),
   fal('fal-ai/zonos', 'Zonos'),
   fal('fal-ai/zonos2', 'Zonos2'),
   fal('fal-ai/chatterbox/text-to-speech', 'Chatterbox'),
