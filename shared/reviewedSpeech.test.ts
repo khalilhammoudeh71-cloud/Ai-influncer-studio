@@ -33,3 +33,5 @@ test('an ellipsis split across network chunks still stays inside its sentence',(
  stream.push('.. أقرأ كتاب.');stream.flush();
  assert.equal(chunks.join(''),'طيب... كنت عم... أقرأ كتاب. ');
 });
+
+test('repeated Arabic sentences are spoken once without consuming the next thought',()=>{const chunks:string[]=[];const stream=createReviewedSpeech(x=>chunks.push(x),()=>true,3);stream.push('شو في؟');stream.push('شو في؟');stream.push('شو فِي!');stream.push('سامعتك تمام.');assert.equal(chunks.join(''),'شو في؟ سامعتك تمام. ');});
