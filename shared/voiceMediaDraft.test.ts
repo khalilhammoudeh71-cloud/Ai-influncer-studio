@@ -69,3 +69,8 @@ test('a continuation remains pending without claiming generation', () => {
 
 test('feedback on an existing image stays conversation instead of restarting the media questionnaire',()=>{const history=[user('بدي صورة على الشاطئ ابعتيها'),{role:'persona',type:'image',content:'asset'},assistant('Done — I made that image for you.')];for(const text of ['بس لأ مش هاي الصورة اللي طلبتها أنا','ليش بتبعتيلي صور غلط؟','الصورة لسه ما وصلتني','This image is wrong, it is not what I asked for.','Why do you keep sending the wrong image?'])assert.equal(resolveVoiceMediaDraft(text,history).status,'none',text);});
 test('an explicit Arabic edit to a completed image bypasses the new scene questionnaire',()=>{assert.equal(resolveVoiceMediaDraft('غيري الخلفية للون الأحمر',[{role:'persona',type:'image',content:'asset'}]).status,'none');});
+
+test('identity mismatch feedback does not become a new scene', () => {
+ const history=[user('بدي صورة إلي بالقهوة ابعتيها'),{role:'persona',type:'image',content:'asset'}];
+ for(const text of ['بس الصورة اللي انتي بعتيلي إياها بس هذا الواحد مش أنا','هذا مش أنا','الشخص بالصورة ما بيشبهني','The person in this image is not me.','That does not look like me.']) assert.equal(resolveVoiceMediaDraft(text,history).status,'none',text);
+});

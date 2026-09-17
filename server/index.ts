@@ -1,3 +1,5 @@
+import { languageInstructions } from '../shared/personaLanguage';
+import { greetingFallback, enforceGreetingLanguage } from '../shared/personaGreeting';
 import { buildVoiceDelivery } from '../shared/voiceDelivery';
 import { buildCreatorPhotoContext } from '../shared/creatorPhotoContext';
 import { buildPersonaAuthoredDirections } from '../shared/personaDialogueProfile';
@@ -3330,6 +3332,8 @@ app.post('/api/persona-greeting', async (req, res) => {
     const isImmediateContinuation = typeof timeSinceLastInteractionSeconds === 'number' && timeSinceLastInteractionSeconds < 600;
 
     const prompt = `You are ${personaName} (Niche: ${personaNiche}, Tone: ${personaTone}). You are starting a ${mode === 'voice' ? 'voice call' : 'chat'} with your partner ${effectiveUserName}.
+LANGUAGE (mandatory for the very first sentence): ${languageInstructions(persona || {})}
+Use the selected language for the greeting. Examples below describe the mood only; translate their intent rather than copying English.
 Dynamic: ${creatorDynamic || 'Intimate partner, playful banter, deep connection'}.
 ${recentContext ? `Recent conversation context between you two:\n${recentContext}\n` : ''}
 ${memories ? `Known memories: ${Array.isArray(memories) ? memories.slice(-3).join('; ') : memories}\n` : ''}
@@ -3573,7 +3577,7 @@ RULES:
 
     greetingText = normalizeNaturalVoiceGreeting(
       sanitizePersonaSelfAddress(greetingText, personaName, effectiveUserName),
-      isImmediateContinuation ? 'Hey—where were we?' : `Hey, ${effectiveUserName}. What's up?`,
+      greetingFallback(persona || {}, isImmediateContinuation),
       {
         sharedHistoryContext: [
           recentContext,
@@ -3582,6 +3586,7 @@ RULES:
       },
     );
 
+    greetingText = enforceGreetingLanguage(greetingText, persona || {}, isImmediateContinuation);
     return res.json({ greeting: greetingText });
   } catch (err: any) {
     return res.status(500).json({ error: err?.message || 'Failed to generate greeting' });

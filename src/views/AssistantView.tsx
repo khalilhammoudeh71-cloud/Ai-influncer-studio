@@ -1,3 +1,4 @@
+import { enforceGreetingLanguage } from '../../shared/personaGreeting';
 import { PersonaControls, ControlSelect, SpeechAccuracySetting } from '../components/PersonaControls';
 import { DialectTeaching } from '../components/DialectTeaching';
 import VoiceRemix from '../components/VoiceRemix';
@@ -3108,7 +3109,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
       if (res.ok) {
         const d = await res.json() as { greeting?: string };
         if (d?.greeting && d.greeting.length > 5) {
-          return d.greeting;
+          return enforceGreetingLanguage(d.greeting, persona, isRecentContinuation);
         }
       }
     } catch (e) {
