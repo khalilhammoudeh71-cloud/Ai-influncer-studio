@@ -118,3 +118,5 @@ test('uses a specifically pasted generated image instead of the newest image', (
   assert.equal(context.rootPrompt, originalImage.prompt);
   assert.doesNotMatch(context.prompt, /Rawan alone at the gym/);
 });
+
+test('Arabic image corrections use the current image while complaints alone do not edit it',()=>{assert.equal(isImageRevisionRequest('غيري الخلفية للون الأحمر',true),true);assert.equal(isImageRevisionRequest('هاي الصورة غلط، غيري الخلفية للون الأحمر',true),true);assert.equal(isImageRevisionRequest('هاي مش الصورة اللي طلبتها',true),false);});

@@ -13,15 +13,16 @@ export function resolveVoiceMediaDraft(current: string, history: MediaDraftMessa
   if (!text || cancel(text)) return { status: 'none' };
   const prior = history.slice(-20);
   if (prior.at(-1)?.role === 'user' && prior.at(-1)?.content?.trim() === text) prior.pop();
+  if (prior.some(m=>m.type==='image'||m.type==='video'||/^(?:Done —|خلص،|\[Persona generated and sent)/.test(m.content||''))&&/(?:^|[،,.!?؟]\s*)(?:غيري|غيّري|عدلي|عدّلي|بدلي|بدّلي)\s/u.test(text)) return {status:'none'};
   const previous = prior.at(-1);
   const confirmsQuestion = /^(?:yes|yeah|yep|sure|go ahead|please do|اه|آه|ايوه|أيوه|نعم|تمام|يلا|اعمليها)[.!؟ ]*$/i.test(text)
     && previous?.role !== 'user'
-    && /\bshall I (?:make|generate|send) it\?|(?:أعملها|اعملها|أبعثها|ابعثها)/i.test(previous?.content || '');
+    && /\bshall I (?:make|generate|send) it\?|Tell me to make the (?:image|video)|(?:أعملها|اعملها|أبعثها|ابعثها|قولي اعملي)/i.test(previous?.content || '');
   let parts: string[] = [];
   let type: 'image' | 'video' = 'image';
   for (const message of [...prior, { role: 'user', content: text }]) {
     const content = message.content?.trim() || '';
-    if (message.type === 'image' || message.type === 'video' || /^(?:Done —|\[Persona generated and sent)/.test(content)) {
+    if (message.type === 'image' || message.type === 'video' || /^(?:Done —|خلص،|\[Persona generated and sent)/.test(content)) {
       parts = [];
       continue;
     }

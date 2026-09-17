@@ -102,6 +102,7 @@ import {
   type SuperAgentProvider,
 } from './superAgent';
 import { isConversationalMediaCreationRemark } from '../shared/personaMediaIntent';
+import { voiceMediaReply } from '../shared/voiceMediaReply';
 import { resolveVoiceMediaDraft } from '../shared/voiceMediaDraft';
 import { getAtlasPersonaModelId, normalizePersonaLlmId } from '../shared/personaLlm';
 import {
@@ -2967,7 +2968,8 @@ CRITICAL RULES FOR LIVE VOICE CALL:
 - PERSON AND PRONOUN ANCHOR: Speak as ${personaName} in first person (I/me/my) and address ${creatorName} in second person (you/your). If ${creatorName} says "you" or "this version of you," it refers to ${personaName}. Never switch either participant into third person mid-reply.
 - AVOID ROBOTIC OPENINGS: Do not default to "Um, okay," "I understand," a formal confirmation, the user's wording repeated back, or the same "I want you to..." construction on every turn. Use ${creatorName}'s name only when it adds genuine emotional emphasis, not as an automatic suffix.
 - HARD BOUNDARY: Never sexualize minors, non-consensual exploitation, or illegal sexual material. Refuse only those cases clearly and briefly.${lawfulAdultConversation ? `
-- CURRENT TURN IS LAWFUL ADULT DIALOGUE: The current topic has been classified as consensual adult conversation for an Adult-content persona. Respond directly in character. Make the reply emotionally responsive and naturally spoken, not merely a literal list of sexual acts. Do not claim clear sexual language is ambiguous, ask the user to clarify a plainly stated act, invent discomfort, say it is too personal or intimate, or refuse merely because the topic is explicit.` : ''}${voiceTurnContract ? `\n${voiceTurnContract}` : ''}`;
+- CURRENT TURN IS LAWFUL ADULT DIALOGUE: The current topic has been classified as consensual adult conversation for an Adult-content persona. Respond directly in character. Make the reply emotionally responsive and naturally spoken, not merely a literal list of sexual acts. Do not claim clear sexual language is ambiguous, ask the user to clarify a plainly stated act, invent discomfort, say it is too personal or intimate, or refuse merely because the topic is explicit.` : ''}
+- IMAGE FEEDBACK: When the user says a generated image is wrong, respond to the specific mismatch using their prior image request. Do not restart a generic image questionnaire or ask them to repeat the whole description. Ask only for a missing correction. Discuss feedback without creating another image unless they explicitly request a change or generation. Keep media acknowledgements and feedback in the user's conversation language and dialect.${voiceTurnContract ? `\n${voiceTurnContract}` : ''}`;
 
   const formattedContents = rawHistory.map((m: any) => ({
     role: m.role === 'user' ? 'user' : 'model',
@@ -3113,19 +3115,11 @@ CRITICAL RULES FOR LIVE VOICE CALL:
   };
 
   if (voiceMediaDraft.status === 'waiting') {
-    streamedText = /[\u0600-\u06ff]/.test(exactUserPrompt)
-      ? voiceMediaDraft.prompt
-        ? 'بدك تضيف شي للصورة، ولا أعملها هلأ؟'
-        : 'أكيد. شو بدك يكون بالصورة؟ وصفلي المشهد وبعدين قولي ابعتي الصورة.'
-      : voiceMediaDraft.prompt
-      ? `Anything else you want in the ${voiceMediaDraft.type === 'video' ? 'video' : 'picture'}, or shall I make it?`
-      : 'What would you like in the picture? I’ll wait until you’re ready to send it.';
+    streamedText = voiceMediaReply(voiceMediaDraft.prompt?'confirm':'details',voiceMediaDraft.type||'image',exactUserPrompt,rawHistory);
     writeVoiceText(streamedText);
     streamedSuccessfully = true;
   } else if (incompleteMediaRequest) {
-    streamedText = incompleteMediaRequest === 'video'
-      ? 'What kind of video would you like me to make?'
-      : 'What kind of image would you like me to make?';
+    streamedText = voiceMediaReply('details',incompleteMediaRequest,exactUserPrompt,rawHistory);
     writeVoiceText(streamedText);
     streamedSuccessfully = true;
   } else if (groundedShortReply) {
@@ -3133,9 +3127,7 @@ CRITICAL RULES FOR LIVE VOICE CALL:
     writeVoiceText(streamedText);
     streamedSuccessfully = true;
   } else if (action) {
-    streamedText = action.type === 'image'
-      ? "Give me a second — I'm taking that for you now."
-      : "Give me a second — I'm recording that for you now.";
+    streamedText = voiceMediaReply('start',action.type,exactUserPrompt,rawHistory);
     writeVoiceText(streamedText);
     streamedSuccessfully = true;
   }

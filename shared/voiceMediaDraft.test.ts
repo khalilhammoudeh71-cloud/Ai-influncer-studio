@@ -66,3 +66,6 @@ test('a continuation remains pending without claiming generation', () => {
   assert.equal(result.status, 'waiting');
   assert.match(result.prompt || '', /blue jackets/);
 });
+
+test('feedback on an existing image stays conversation instead of restarting the media questionnaire',()=>{const history=[user('بدي صورة على الشاطئ ابعتيها'),{role:'persona',type:'image',content:'asset'},assistant('Done — I made that image for you.')];for(const text of ['بس لأ مش هاي الصورة اللي طلبتها أنا','ليش بتبعتيلي صور غلط؟','الصورة لسه ما وصلتني','This image is wrong, it is not what I asked for.','Why do you keep sending the wrong image?'])assert.equal(resolveVoiceMediaDraft(text,history).status,'none',text);});
+test('an explicit Arabic edit to a completed image bypasses the new scene questionnaire',()=>{assert.equal(resolveVoiceMediaDraft('غيري الخلفية للون الأحمر',[{role:'persona',type:'image',content:'asset'}]).status,'none');});

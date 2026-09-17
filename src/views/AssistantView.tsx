@@ -105,6 +105,7 @@ import {
   type VoiceLatencySnapshot,
   type VoiceTurnTiming,
 } from '../utils/voiceStability';
+import { voiceMediaReply } from '../../shared/voiceMediaReply';
 import { resolveVoiceMediaDraft } from '../../shared/voiceMediaDraft';
 import { buildVoiceConversationHistory } from '../../shared/voiceConversationContext';
 import {
@@ -2620,7 +2621,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 
       let reply = data.text || data.reply || "Mm—what's up?";
       if ((isVoiceImageIntent || isVoiceVideoIntent) && (/^(?:generating|creating|rendering|loading|producing|processing|taking)\s+(?:image|photo|video|picture|visual|content|look|selfie)/i.test(reply) || /^take a look at this (?:image|photo|picture)/i.test(reply))) {
-        reply = `Let me take that for you right now, babe...`;
+        reply = voiceMediaReply('start',isVoiceVideoIntent?'video':'image',text,updatedHistory);
       }
       const personaMsg = { id: uid(), role: 'persona' as const, type: 'text' as const, content: reply };
       
@@ -2649,9 +2650,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         const mediaType = isVoiceImageIntent ? 'image' as const : 'video' as const;
         setActiveCallMedia(null);
         const loadingMsgId = uid();
-        const callGenerationLabel = mediaType === 'image'
-          ? 'Generating your image...'
-          : 'Rendering your video...';
+        const callGenerationLabel = voiceMediaReply('loading',mediaType,text,updatedHistory);
         setCallTranscript(prev => [...prev, personaMsg, {
           id: loadingMsgId,
           role: 'persona',
@@ -2699,9 +2698,10 @@ export default function AssistantView({ personas, persona: propActivePersona, on
             });
 
         void mediaRequest.then(result => {
+          const localizedResult = /^Done — I made that (?:image|video)/.test(result.message||'')?voiceMediaReply('complete',mediaType,text,updatedHistory):result.message;
           const resultText = modelSelection.explicit && modelSelection.matched
-            ? `${result.message} Used ${result.model || modelSelection.modelName}.`
-            : result.message;
+            ? `${localizedResult} ${/[\u0600-\u06ff]/.test(localizedResult||'')?'الموديل:':'Used'} ${result.model || modelSelection.modelName}.`
+            : localizedResult;
           const mediaMessage = {
             id: uid(),
             role: 'persona' as const,
@@ -3764,9 +3764,10 @@ export default function AssistantView({ personas, persona: propActivePersona, on
             allowNsfw: true,
             strictFidelity: strictMediaFidelity,
           });
+          const localizedResult = /^Done — I made that (?:image|video)/.test(result.message||'')?voiceMediaReply('complete',mediaType,effectiveText,messagesRef.current):result.message;
           const resultText = modelSelection.explicit && modelSelection.matched
-            ? `${result.message} Used ${result.model || modelSelection.modelName}.`
-            : result.message;
+            ? `${localizedResult} ${/[\u0600-\u06ff]/.test(localizedResult||'')?'الموديل:':'Used'} ${result.model || modelSelection.modelName}.`
+            : localizedResult;
           replaceMessage(loadingId, { type: 'text', content: resultText });
           addMessage({
             role: 'persona',

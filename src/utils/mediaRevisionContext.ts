@@ -22,6 +22,7 @@ export interface ImageRevisionContext {
 const POLITE_EDIT_PREFIX = String.raw`(?:please\s+|can\s+you\s+|could\s+you\s+|would\s+you\s+|will\s+you\s+|i\s+want\s+you\s+to\s+|let(?:'s|\s+us)\s+)?`;
 
 const IMAGE_REVISION_LANGUAGE = [
+  /(?:^|[،,.!?؟]\s*)(?:غيري|غيّري|عدلي|عدّلي|بدلي|بدّلي)\s/u,
   /\b(?:another|again|redo|retry|regenerate|recreate)\s+(?:image|photo|pic|picture|shot|one)\b/i,
   /\b(?:same|previous|last|original)\s+(?:image|photo|pic|picture|shot|scene|people|faces?)\b/i,
   /\b(?:this|that|the)\s+(?:image|photo|pic|picture|shot)\b/i,

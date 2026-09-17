@@ -8,6 +8,7 @@ const MEDIA_KIND = 'image|photo|picture|pic|portrait|selfie|headshot|avatar|vide
 export function isConversationalMediaCreationRemark(value: unknown): boolean {
   const prompt = typeof value === 'string' ? value.trim() : '';
   if (!prompt) return false;
+  if (/(?:مش|مو|ليس|مش هي|مش هاي).{0,25}(?:الصورة|الصوره|الفيديو).{0,45}(?:طلب|بدي|بدّي)|(?:الصورة|الصوره|الفيديو).{0,25}(?:غلط|مش صح|مو صح|ما وصلت|ما وصل|لسه ما)|ليش.{0,45}(?:صور|صورة|صوره|فيديو).{0,20}(?:غلط|مش صح)|(?:image|photo|picture|video).{0,25}(?:is wrong|isn't what|is not what|not what I (?:asked|requested)|hasn't arrived|has not arrived)|(?:still waiting|didn't receive|haven't received).{0,30}(?:image|photo|picture|video)/iu.test(prompt)&&!/(?:^|[،,.!?؟]\s*)(?:please\s+)?(?:change|edit|redo|regenerate|remake|make it|غيري|غيّري|عدلي|عدّلي|بدلي|بدّلي|اعملي|اعمل|ولدي)\s/iu.test(prompt)) return true;
   return /(?:why did you send|why are you sending|why do you keep sending|stop sending|do not send|don't send|not asking for|didn't ask for|do not want(?:\s+(?:an?|another|any|more))?\s+(?:image|photo|picture|pic|selfie|video|clip)|don't want(?:\s+(?:an?|another|any|more))?\s+(?:image|photo|picture|pic|selfie|video|clip)|what is that (?:photo|image|picture|video)|about (?:that|this|the) (?:photo|image|picture|video)|talk about (?:that|this|the)?\s*(?:photo|image|picture|video)|let'?s (?:just )?(?:talk|chat)|keep talking|continue talking|never mind|nevermind|forget it|cancel that)/i.test(prompt);
 }
 
