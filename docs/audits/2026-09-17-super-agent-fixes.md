@@ -22,3 +22,7 @@ Live revision returned a complete three-post bilingual campaign with September 1
 Semantic claim review uses another model and cannot guarantee that every unsupported assertion will be caught. Dollar amounts are estimates rather than invoices. Actual saved ZIP delivery and final media-retention browser checks are recorded below after verification.
 
 The final live check exposed an invalid planner asset index. Campaign parsing now defers campaign validation to the mandatory review stage, allowing repair before approval; default parsing still rejects invalid references. The additional regression test passed. A rejected revision preserved the previous actionable package in the browser.
+
+Final production retry succeeded: the full revised three-post package returned, both completed and reviewed image assets were retained, and the campaign download button unlocked without executing new media jobs. ZIP preparation succeeded and the Save ZIP fallback was available. The browser did not report a download event; no matching ZIP was found in the local Downloads folder. The explicit fallback was invoked, but saved delivery remains unverified. Browser security policy blocked inspection of chrome://downloads; no workaround was attempted.
+
+Both release commits were pushed to codex/guided-create-command-bar. The final production alias completed successfully at https://ai-influencerstudio.com/.
