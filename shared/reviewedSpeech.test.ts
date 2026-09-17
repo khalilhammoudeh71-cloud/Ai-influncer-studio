@@ -35,3 +35,7 @@ test('an ellipsis split across network chunks still stays inside its sentence',(
 });
 
 test('repeated Arabic sentences are spoken once without consuming the next thought',()=>{const chunks:string[]=[];const stream=createReviewedSpeech(x=>chunks.push(x),()=>true,3);stream.push('شو في؟');stream.push('شو في؟');stream.push('شو فِي!');stream.push('سامعتك تمام.');assert.equal(chunks.join(''),'شو في؟ سامعتك تمام. ');});
+
+test('short question echoes of the preceding ending never reach speech',()=>{const chunks:string[]=[];const s=createReviewedSpeech(x=>chunks.push(x),()=>true,5);s.push('شو رأيك نعمل شي هادي أول؟');s.push('أول؟');s.push('هادي أول؟');s.push('شو بتحب؟');assert.equal(chunks.join(''),'شو رأيك نعمل شي هادي أول؟ شو بتحب؟ ');});
+
+test('network streamed Arabic suffix echoes are omitted from the published transcript',()=>{const chunks:string[]=[];const r=createReviewedSpeech(x=>chunks.push(x),()=>true,5);const s=createSpokenDialogueStream(x=>r.push(x));s.push('شو رأيك نعمل شي هادي أول؟ أول');s.push('؟ أول؟');s.flush();assert.equal(r.text,'شو رأيك نعمل شي هادي أول؟');});

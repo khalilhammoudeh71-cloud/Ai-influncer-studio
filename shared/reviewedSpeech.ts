@@ -7,7 +7,10 @@ export function createReviewedSpeech(emit:(text:string)=>void,accept:(text:strin
    const text=raw.trim().replace(/^(?:(?:um|uh|hmm|mm|mmm|heh|haha)[,\s.…-]+)+/i,'').replace(/^[a-z]/,s=>s.toUpperCase());
    const length=text.split(/\s+/).length;
    const fingerprint=text.normalize('NFKD').replace(/\p{M}|ـ/gu, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
-   if (delivered.has(fingerprint)) return;
+   const previousEnding=spoken.normalize('NFKD').replace(/\p{M}|ـ/gu, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+   const shortQuestionEcho=/[?؟][\"'”’]?$/.test(text) && fingerprint.split(/\s+/).length <= 2
+     && (previousEnding === fingerprint || previousEnding.endsWith(' '+fingerprint));
+   if (delivered.has(fingerprint) || shortQuestionEcho) return;
    if(/(?:\.{2,}|…)\s*["'”’]?$/u.test(text)||!/[.!?؟]["'”’]?$/.test(text)||count>=maxSentences||words+length>maxWords||!accept(text))return;
    delivered.add(fingerprint);
    count++;words+=length;spoken+=(spoken?' ':'')+text;emit(text+' ');
