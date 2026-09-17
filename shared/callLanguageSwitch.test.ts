@@ -12,7 +12,7 @@ test('spoken switches alter call delivery while leaving the speaker and defaults
  assert.equal(persona.voiceId,'saved-voice');assert.equal(recognitionLanguage(persona).browser,'fr-FR');
  assert.match(languageInstructions(persona),/primarily converse in French/);
  assert.equal(requestedCallLanguage('احكي باللهجة المصرية',prefs)?.dialect,'egyptian');
- assert.equal(requestedCallLanguage('switch to a Syrian accent',prefs)?.dialect,'levantine');
+ assert.equal(requestedCallLanguage('switch to a Syrian accent',prefs)?.dialect,'syrian');
  assert.equal(requestedCallLanguage('I met someone who can speak French',prefs),undefined);
  assert.equal(requestedCallLanguage('Speak French', {...prefs,allowLanguageSwitching:false}),undefined);
  assert.match(callLanguageInstructions(next),/Switch language or accent/);

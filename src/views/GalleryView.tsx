@@ -11,7 +11,7 @@ import { api } from '../services/apiService';
 import toast from 'react-hot-toast';
 import { upscaleImage } from '../services/imageService';
 import { cn } from '../utils/cn';
-import { accountLocalStorage } from '../utils/accountStorage';
+import { accountLocalStorage, accountSessionStorage } from '../utils/accountStorage';
 
 interface GalleryViewProps {
   personas: Persona[];
@@ -284,7 +284,7 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
   ];
 
   return (
-    <div className="h-full overflow-y-auto pr-2 custom-scrollbar pb-20 p-6 max-w-[1400px] mx-auto w-full">
+    <div className="min-h-full pr-2 pb-8 p-6 max-w-[1400px] mx-auto w-full">
       <header className="premium-header mb-8 pt-4 pb-2 relative z-10">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
@@ -334,20 +334,20 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
               }}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all shadow-lg hover:scale-105 ${
                 isBatchMode
-                  ? 'bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 border border-pink-500/20 text-white'
+                  ? 'bg-[#E7C477]/15 hover:bg-[#E7C477]/20 border-[#E7C477]/40 text-[#E7C477]'
                   : 'bg-gradient-to-r from-[#E7C477] to-[#B99655] hover:brightness-110 text-[#161108]'
               }`}
             >
               <Sparkles size={14} className={isBatchMode ? 'animate-pulse' : ''} />
-              {isBatchMode ? 'Done selecting' : 'Select to upscale'}
+              {isBatchMode ? 'Done selecting' : 'Select images'}
             </button>
 
-            {/* Download All */}
-            {isBatchMode && filteredMedia.length > 0 && (
+            {/* Download only the selected images, including selections outside the current filter. */}
+            {isBatchMode && selectedIds.size > 0 && (
               <button
                 onClick={async () => {
                   setIsExporting(true);
-                  const images = filteredMedia.filter(item => !item.mediaType || item.mediaType === 'image');
+                  const images = allMedia.filter(item => selectedIds.has(item.id) && (!item.mediaType || item.mediaType === 'image'));
                   for (const item of images) {
                     try {
                       const a = document.createElement('a');
@@ -360,10 +360,10 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
                   setIsExporting(false);
                 }}
                 disabled={isExporting}
-                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 rounded-xl text-sm font-bold text-white transition-all shadow-lg hover:scale-105 disabled:opacity-50"
+                className="flex items-center gap-2 px-4 py-2 bg-[#E7C477] hover:brightness-105 rounded-xl text-sm font-bold text-[#19160f] transition-all shadow-lg hover:scale-105 disabled:opacity-50"
               >
                 {isExporting ? <Loader2 size={14} className="animate-spin" /> : <FolderDown size={14} />}
-                {isExporting ? 'Exporting...' : `Download All (${filteredMedia.filter(i => !i.mediaType || i.mediaType === 'image').length})`}
+                {isExporting ? 'Exporting...' : `Download selected (${allMedia.filter(i => selectedIds.has(i.id) && (!i.mediaType || i.mediaType === 'image')).length})`}
               </button>
             )}
             {/* #13 Layout toggle */}
@@ -392,7 +392,7 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
 
         {/* Persona Vault Tabs */}
         <div className={allMedia.length ? "flex gap-2 mt-4 flex-wrap items-center pt-2 border-t border-white/5" : "hidden"}>
-          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1 flex items-center gap-1.5">
+          <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider mr-1 flex items-center gap-1.5">
             <FolderHeart size={13} className="text-[#D9BA72]" />
             Personas:
           </span>
@@ -402,7 +402,7 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
               "px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border flex items-center gap-1.5 cursor-pointer",
               filterPersonaId === 'all'
                 ? "bg-[#E7C477] border-[#E7C477] text-[#161618] shadow-md"
-                : "bg-[#18181B] border-white/10 text-slate-300 hover:border-white/30"
+                : "bg-[#18181B] border-white/10 text-zinc-300 hover:border-white/30"
             )}
           >
             <span>All Personas</span>
@@ -422,7 +422,7 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
                   "px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border flex items-center gap-2 cursor-pointer",
                   isSelected
                     ? "bg-[#E7C477] border-[#E7C477] text-[#161618] shadow-md"
-                    : "bg-[#18181B] border-white/10 text-slate-300 hover:border-white/30"
+                    : "bg-[#18181B] border-white/10 text-zinc-300 hover:border-white/30"
                 )}
               >
                 {p.avatar && (
@@ -485,7 +485,7 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
             <motion.button
               whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}
               onClick={() => nav.replace({ view: 'create' })}
-              className="premium-button btn-ripple px-8 py-3 text-sm font-black text-[#0B0F17] rounded-2xl"
+              className="premium-button btn-ripple px-8 py-3 text-sm font-black text-[#161618] rounded-2xl"
             >
               ✦ Start Creating
             </motion.button>
@@ -535,7 +535,7 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
                   onClick={() => {
                     if (isBatchMode) {
                       if (isVideo) {
-                        toast.error("Upscaling is only supported for images!");
+                        toast.error("This selection mode supports images. Download videos from their preview.");
                         return;
                       }
                       setSelectedIds(prev => {
@@ -754,19 +754,23 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
                 <div className="mt-auto pt-4 border-t border-[var(--border-subtle)] space-y-2">
                   <button
                     onClick={() => downloadFile(selectedItem.url, selectedItem.mediaType === 'video' ? 'video' : 'image', selectedItem.personaName)}
-                    className="w-full py-2.5 rounded-xl font-bold text-sm bg-[var(--accent-primary)] hover:bg-emerald-500 text-white transition-colors flex items-center justify-center gap-2"
+                    className="w-full py-2.5 rounded-xl font-bold text-sm bg-[var(--accent-primary)] hover:brightness-105 text-[#19160f] transition-colors flex items-center justify-center gap-2"
                   >
                     <Download className="w-4 h-4" /> Download
                   </button>
-                  {selectedItem.mediaType !== 'video' && (
+                  {(!selectedItem.mediaType || selectedItem.mediaType === 'image') && (
                     <button
                       onClick={() => {
-                        nav.push({ view: 'create', subView: 'image' });
-                        toast.success('Loaded image into AI Studio Editor!');
+                        accountSessionStorage.setItem('ai_toolbox_source_image', selectedItem.url);
+                        accountLocalStorage.setItem('ai_toolbox_source_image', selectedItem.url);
+                        accountSessionStorage.removeItem('ai_toolbox_result_image');
+                        accountLocalStorage.removeItem('ai_toolbox_result_image');
+                        setSelectedItem(null);
+                        nav.push({ view: 'intelligence', params: { initialTool: 'inpaint' } });
                       }}
-                      className="w-full py-2.5 rounded-xl font-bold text-sm bg-blue-600 hover:bg-blue-500 text-white transition-colors flex items-center justify-center gap-2"
+                      className="w-full py-2.5 rounded-xl font-bold text-sm bg-[var(--accent-primary)] hover:brightness-105 text-[var(--text-on-accent)] transition-colors flex items-center justify-center gap-2"
                     >
-                      <Pencil className="w-4 h-4" /> Edit Image in Studio
+                      <Pencil className="w-4 h-4" /> Edit selected image
                     </button>
                   )}
                   <button
@@ -956,7 +960,7 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
                 </div>
                 <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
                   <div
-                    className="bg-gradient-to-r from-emerald-500 to-teal-500 h-2 rounded-full transition-all duration-300"
+                    className="bg-gradient-to-r from-emerald-500 to-amber-500 h-2 rounded-full transition-all duration-300"
                     style={{ width: `${(upscaleProgress.current / upscaleProgress.total) * 100}%` }}
                   />
                 </div>
@@ -977,7 +981,7 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
                 <button
                   type="button"
                   onClick={runBatchUpscale}
-                  className="px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 rounded-2xl text-xs font-extrabold text-white shadow-lg hover:scale-102 transition-all flex items-center gap-1.5"
+                  className="px-6 py-2.5 bg-[#E7C477] hover:brightness-105 rounded-2xl text-xs font-extrabold text-[#19160f] shadow-lg hover:scale-102 transition-all flex items-center gap-1.5"
                 >
                   🚀 Run Batch Upscale ({selectedIds.size + uploadedFiles.length})
                 </button>

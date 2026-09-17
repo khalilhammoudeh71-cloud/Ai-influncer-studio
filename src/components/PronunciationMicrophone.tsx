@@ -4,8 +4,8 @@ import { getAuthHeaders } from '../services/apiService';
 import { VoiceAudioBuffer, wavDataUrl } from '../utils/voiceAudioCapture';
 
 /** Short, editable dictation. Never saves a pronunciation or sends a chat turn. */
-export function PronunciationMicrophone({ personaId, disabled, onText, onBusy }: {
-  personaId: string; disabled?: boolean; onText(text: string): void; onBusy(busy:boolean):void;
+export function PronunciationMicrophone({ personaId, disabled, onText, onBusy, maxLength = 160, fieldLabel = 'word or phrase' }: {
+  personaId?: string; maxLength?: number; fieldLabel?: string; disabled?: boolean; onText(text: string): void; onBusy(busy:boolean):void;
 }) {
   const [phase, setPhase] = useState<'idle'|'starting'|'recording'|'transcribing'>('idle');
   const [message, setMessage] = useState('');
@@ -31,15 +31,15 @@ export function PronunciationMicrophone({ personaId, disabled, onText, onBusy }:
       const response = await fetch('/api/voice-recognition/verify', {
         method:'POST', headers:{'Content-Type':'application/json',...await getAuthHeaders()},
         signal:AbortSignal.any([controller.signal,AbortSignal.timeout(15000)]),
-        body:JSON.stringify({personaId,audio:wavDataUrl(wav),context:[],draft:'',preferences:{mode:'arabic',dialect:'levantine',allowLanguageSwitching:true}}),
+        body:JSON.stringify({personaId,dictation:!personaId,audio:wavDataUrl(wav),context:[],draft:'',preferences:{mode:'arabic',dialect:'levantine',allowLanguageSwitching:true}}),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error||'Could not transcribe. Please try again.');
       if (current.current!==controller || controller.signal.aborted) return;
       const text = typeof data.text==='string'?data.text.trim():'';
       if (!text) throw new Error('No words detected. Please try again.');
-      receive.current(text.replace(/[.،,!?؟]+$/u,'').slice(0,160));
-      setMessage('Word filled in. Check it before saving.');
+      receive.current(text.replace(/[.،,!?؟]+$/u,'').slice(0,maxLength));
+      setMessage('Text filled in. Check it before saving.');
     } catch (error) {
       if (!controller.signal.aborted && current.current===controller) setMessage(error instanceof Error?error.message:'Could not transcribe. Please try again.');
     } finally {
@@ -65,7 +65,7 @@ export function PronunciationMicrophone({ personaId, disabled, onText, onBusy }:
       value.node.port.onmessage=event=>{if(current.current===controller)value.buffer.push(new Float32Array(event.data));};
       value.source=context.createMediaStreamSource(stream);
       value.source.connect(value.node); value.node.connect(context.destination);
-      setPhase('recording');setMessage('Speak the Arabic word or phrase, then tap Stop.');
+      setPhase('recording');setMessage('Speak naturally in Arabic, then tap Stop.');
       value.timer=setTimeout(()=>void finish(controller),15000);
     } catch(error) {
       if(current.current!==controller)return;
@@ -74,7 +74,7 @@ export function PronunciationMicrophone({ personaId, disabled, onText, onBusy }:
     }
   }
   return <>
-    <button type="button" disabled={disabled||phase==='starting'||phase==='transcribing'} aria-label={phase==='recording'?'Stop word dictation':'Dictate word or phrase in Arabic'} aria-pressed={phase==='recording'} title="Dictate word or phrase in Arabic" onClick={()=>{if(phase==='recording'&&current.current)void finish(current.current);else void start();}} className="flex size-11 shrink-0 items-center justify-center rounded-lg border border-[#E7C477]/30 text-[#E7C477] hover:bg-[#E7C477]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E7C477] disabled:opacity-40">
+    <button type="button" disabled={(disabled&&phase==='idle')||phase==='starting'||phase==='transcribing'} aria-label={phase==='recording'?`Stop ${fieldLabel} dictation`:`Dictate ${fieldLabel} in Arabic`} aria-pressed={phase==='recording'} title={`Dictate ${fieldLabel} in Arabic`} onClick={()=>{if(phase==='recording'&&current.current)void finish(current.current);else void start();}} className="flex size-11 shrink-0 items-center justify-center rounded-lg border border-[#E7C477]/30 text-[#E7C477] hover:bg-[#E7C477]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E7C477] disabled:opacity-40">
       {phase==='recording'?<Square size={16}/>:phase==='starting'||phase==='transcribing'?<Loader2 size={18} className="animate-spin"/>:<Mic size={18}/>}
     </button>
     <span role="status" className="col-span-2 text-xs text-zinc-400">{phase==='transcribing'?'Transcribing…':message}</span>

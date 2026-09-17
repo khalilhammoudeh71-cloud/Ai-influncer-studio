@@ -38,6 +38,8 @@ export default function LandingView({ onGetStarted }: LandingViewProps) {
   const [authMode, setAuthMode] = useState<AuthMode>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [authError, setAuthError] = useState('');
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [confirmationEmail, setConfirmationEmail] = useState('');
@@ -47,6 +49,7 @@ export default function LandingView({ onGetStarted }: LandingViewProps) {
 
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setAuthError('');
     setLoading(true);
     try {
       const normalizedEmail = email.trim().toLowerCase();
@@ -82,7 +85,7 @@ export default function LandingView({ onGetStarted }: LandingViewProps) {
         }
       }
     } catch (error: unknown) {
-      toast.error(getErrorMessage(error, 'Authentication failed'));
+      setAuthError(getErrorMessage(error, 'Authentication failed'));
     } finally {
       setLoading(false);
     }
@@ -135,6 +138,8 @@ export default function LandingView({ onGetStarted }: LandingViewProps) {
 
   const switchAuthMode = (mode: AuthMode) => {
     setAuthMode(mode);
+    setAuthError('');
+    setShowPassword(false);
     setPassword('');
     setConfirmationEmail('');
     setRecoveryEmail('');
@@ -296,7 +301,7 @@ export default function LandingView({ onGetStarted }: LandingViewProps) {
                         type="button"
                         onClick={handleGoogleAuth}
                         disabled={googleLoading || loading}
-                        className="relative z-10 w-full py-3.5 rounded-full border border-white/15 bg-white text-[#111827] font-bold text-sm hover:bg-white/90 active:scale-[0.98] transition-all flex items-center justify-center gap-3 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="relative z-10 w-full py-3.5 rounded-full border border-white/15 bg-white text-[var(--bg-input)] font-bold text-sm hover:bg-white/90 active:scale-[0.98] transition-all flex items-center justify-center gap-3 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
                           <path fill="#4285F4" d="M17.64 9.205c0-.638-.057-1.252-.164-1.841H9v3.482h4.844a4.14 4.14 0 0 1-1.797 2.715v2.258h2.909c1.703-1.568 2.684-3.878 2.684-6.614Z" />
@@ -327,6 +332,7 @@ export default function LandingView({ onGetStarted }: LandingViewProps) {
                   )}
 
                   <form onSubmit={handleAuthSubmit} className="space-y-4 relative z-10">
+                    {authError && <p role="alert" className="rounded-xl border border-amber-400/25 p-3 text-sm text-amber-200">{authError}</p>}
                     <div>
                       <label htmlFor="auth-email" className="text-[10px] font-bold text-[var(--accent-primary)] uppercase tracking-wider block mb-1.5">Email Address</label>
                       <input
@@ -357,7 +363,7 @@ export default function LandingView({ onGetStarted }: LandingViewProps) {
                         </div>
                         <input
                           id="auth-password"
-                          type="password"
+                          type={showPassword ? "text" : "password"}
                           autoComplete={authMode === 'signin' ? 'current-password' : 'new-password'}
                           required
                           minLength={authMode === 'signup' ? 8 : undefined}
@@ -366,6 +372,7 @@ export default function LandingView({ onGetStarted }: LandingViewProps) {
                           onChange={event => setPassword(event.target.value)}
                           className="luxury-input w-full px-4 py-3.5 text-sm"
                         />
+                        <button type="button" onClick={() => setShowPassword(value => !value)} aria-pressed={showPassword} className="mt-2 min-h-11 text-xs text-[#E7C477]">{showPassword ? 'Hide password' : 'Show password'}</button>
                         {authMode === 'signup' && <p className="text-[10px] text-white/35 mt-1.5">Use at least 8 characters.</p>}
                       </div>
                     )}

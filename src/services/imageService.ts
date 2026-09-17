@@ -1,3 +1,4 @@
+import { withDeadline } from '../utils/requestDeadline';
 import { Persona } from '../types';
 import { supabase } from '../lib/supabase';
 import { compressForUpload } from '../utils/imageProcessing';
@@ -16,12 +17,12 @@ export async function authFetch(url: string, options: RequestInit = {}) {
     // timeout: slower preview deployments were sending protected media
     // requests without Authorization while session restoration was still in
     // progress.
-    const { data, error } = await supabase.auth.getSession();
+    const { data, error } = await withDeadline(supabase.auth.getSession(), 'Sign-in connection timed out. Retry your request.');
     if (error) console.warn('[Auth] Could not restore the current session:', error.message);
 
     let token = data?.session?.access_token;
     if (!token) {
-      const refreshed = await supabase.auth.refreshSession();
+      const refreshed = await withDeadline(supabase.auth.refreshSession(), 'Session refresh timed out. Retry your request.');
       if (refreshed.error) {
         console.warn('[Auth] Could not refresh the current session:', refreshed.error.message);
       }
@@ -31,9 +32,12 @@ export async function authFetch(url: string, options: RequestInit = {}) {
     if (token) headers.Authorization = `Bearer ${token}`;
   } catch (error) {
     console.warn('[Auth] Could not prepare authenticated request:', error);
+    throw error;
   }
 
-  let response = await fetch(url, { ...options, headers });
+  const readSignal = String(options.method || 'GET').toUpperCase() === 'GET' ? AbortSignal.timeout(20000) : undefined;
+  const signal = options.signal && readSignal ? AbortSignal.any([options.signal, readSignal]) : options.signal || readSignal;
+  let response = await fetch(url, { ...options, headers, signal });
 
   // A token can expire between being read and reaching the API. Refresh once
   // and replay the request so an active signed-in user is not forced to sign
@@ -41,11 +45,11 @@ export async function authFetch(url: string, options: RequestInit = {}) {
   // refreshed JWT on every protected request.
   if (response.status === 401 && headers.Authorization) {
     try {
-      const { data, error } = await supabase.auth.refreshSession();
+      const { data, error } = await withDeadline(supabase.auth.refreshSession(), 'Session refresh timed out. Retry your request.');
       const refreshedToken = data?.session?.access_token;
       if (!error && refreshedToken) {
         headers.Authorization = `Bearer ${refreshedToken}`;
-        response = await fetch(url, { ...options, headers });
+        response = await fetch(url, { ...options, headers, signal });
       }
     } catch (error) {
       console.warn('[Auth] Could not retry request with a refreshed session:', error);

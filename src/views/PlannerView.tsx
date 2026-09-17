@@ -1,20 +1,20 @@
 import { authFetch } from '../services/imageService';
 import { useState, useEffect, useRef } from 'react';
-import { 
-  Sparkles, 
-  ChevronDown, 
-  CheckCircle2, 
-  Calendar, 
-  Target, 
-  Zap, 
-  Clock, 
-  BarChart3, 
-  Layers, 
-  Send, 
-  FileText, 
-  RotateCcw, 
-  Download, 
-  Plus, 
+import {
+  Sparkles,
+  ChevronDown,
+  CheckCircle2,
+  Calendar,
+  Target,
+  Zap,
+  Clock,
+  BarChart3,
+  Layers,
+  Send,
+  FileText,
+  RotateCcw,
+  Download,
+  Plus,
   MoreHorizontal,
   ChevronRight,
   TrendingUp,
@@ -119,6 +119,7 @@ export default function PlannerView({ persona, personas, onSelectPersona, nav }:
   const [activeStrategyTweaks, setActiveStrategyTweaks] = useState<string[]>([]);
   const [batchContent, setBatchContent] = useState<Record<string, { caption: string; imagePrompt: string; videoScript: string }>>({});
   const [batchLoading, setBatchLoading] = useState(false);
+  const [draftPostIds, setDraftPostIds] = useState<Set<string>>(new Set());
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
 
   // ── Viral Predictor Modal State ──
@@ -239,7 +240,7 @@ export default function PlannerView({ persona, personas, onSelectPersona, nav }:
   const [scheduleDate, setScheduleDate] = useState('');
   const [scheduleTime, setScheduleTime] = useState('');
   const [scheduleCaption, setScheduleCaption] = useState('');
-  
+
   useEffect(() => {
     setPlatform(persona.platform);
   }, [persona.id]);
@@ -259,8 +260,8 @@ export default function PlannerView({ persona, personas, onSelectPersona, nav }:
   }, [persona.id, platform]);
 
   const handleGenerate = async (tweaks: string[] = activeStrategyTweaks) => {
+    if (plan.length > 0 && !window.confirm("Replace this plan with new ideas? Your current edits and generated captions will be replaced only after the new plan is saved. Choose Cancel to keep them.")) return;
     setIsLoading(true);
-    setBatchContent({});
     try {
       const tweakNote = tweaks.length > 0 ? ` Strategy tweaks to apply: ${tweaks.join(', ')}.` : '';
       const prompt = `You are a social media strategist. Create a 7-day content plan for an AI influencer persona.
@@ -301,44 +302,51 @@ Make hooks punchy, specific to the persona's voice and niche. Vary content types
       const parsed: PlannedPost[] = JSON.parse(match[0]);
 
       const generated = parsed.slice(0, 7).map((p, i) => ({ ...p, day: i + 1, id: `plan-${i}-${Date.now()}` }));
-      setPlan(generated);
       await api.plannedPosts.save(persona.id, platform, generated.map(({ day, type, hook, angle, cta }) => ({ day, type, hook, angle, cta })));
-      toast.success('✨ AI 7-Day Strategy Generated!');
+      setPlan(generated);
+      setBatchContent({});
+      toast.success('New weekly plan saved');
     } catch (err: any) {
       console.error('[Planner] Generate error:', err);
-      toast.error('Generation failed — check your connection');
+      toast.error('Could not save a new plan. Your existing plan is unchanged.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleReset = () => {
-    setPlan([]);
-    setBatchContent({});
-    setActiveStrategyTweaks([]);
-    api.plannedPosts.save(persona.id, platform, [])
-      .then(() => toast.success('Plan reset'))
-      .catch(err => console.error('[Planner] Reset error:', err));
+  const handleReset = async () => {
+    if (!window.confirm('Clear this weekly plan and its generated captions? Choose Cancel to keep your work.')) return;
+    setIsLoading(true);
+    try {
+      await api.plannedPosts.save(persona.id, platform, []);
+      setPlan([]);
+      setBatchContent({});
+      setActiveStrategyTweaks([]);
+      toast.success('Plan cleared');
+    } catch {
+      toast.error('Could not clear the plan. Your work is unchanged.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleStrategyTweak = (label: string) => {
     setActiveStrategyTweaks(prev => {
       const next = prev.includes(label) ? prev.filter(t => t !== label) : [...prev, label];
-      // Auto-regenerate if we already have a plan
-      if (plan.length > 0) {
-        setTimeout(() => handleGenerate(next), 50);
-      }
+      // Apply changed strategy only when the user requests regeneration.
       return next;
     });
   };
 
   const handleBatchGenerate = async () => {
-    if (plan.length === 0) return;
+    const targets = plan.filter(post => draftPostIds.has(post.id));
+    if (!targets.length || batchLoading) return;
+    if (!window.confirm(`Draft captions and prompts for ${targets.length} selected posts? This uses the configured text API; images and videos are not rendered.`)) return;
     setBatchLoading(true);
     try {
       const content: Record<string, { caption: string; imagePrompt: string; videoScript: string }> = {};
 
-      await Promise.all(plan.map(async (post) => {
+      await Promise.all(targets.map(async (post) => {
         const prompt = `You are writing content for an AI influencer persona named ${persona.name} (${persona.niche}, tone: ${persona.tone}).
 
 Create content for this ${platform} post:
@@ -378,8 +386,8 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
         }
       }));
 
-      setBatchContent(content);
-      toast.success(`🎯 Generated real AI content for all ${plan.length} days!`);
+      setBatchContent(previous => ({...previous,...content}));
+      toast.success(`Drafted captions and prompts for ${targets.length} selected posts.`);
     } catch (err: any) {
       toast.error('Batch generation failed');
     } finally {
@@ -464,7 +472,7 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
   };
 
   return (
-    <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar pb-20 p-6 max-w-[1600px] mx-auto w-full select-none">
+    <div className="min-h-full pr-2 pb-8 p-6 max-w-[1600px] mx-auto w-full select-none">
       {/* ── HEADER ── */}
       <header className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#E7C477]/10 pb-4">
         <div>
@@ -481,29 +489,26 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
           <div className="flex items-center gap-3 px-3">
             <div className="relative">
               {persona.avatar ? (
-                <img 
-                  src={persona.avatar} 
-                  className="w-10 h-10 rounded-xl object-cover ring-2 ring-cyan-500/20" 
-                  alt="Persona" 
+                <img
+                  src={persona.avatar}
+                  className="w-10 h-10 rounded-xl object-cover ring-2 ring-amber-500/20"
+                  alt="Persona"
                 />
               ) : (
-                <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-[var(--text-muted)] ring-2 ring-cyan-500/20">
+                <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-[var(--text-muted)] ring-2 ring-amber-500/20">
                   <UserRound className="w-5 h-5" />
                 </div>
               )}
-              <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-cyan-500 rounded-full border-2 border-[#0B0F17] flex items-center justify-center">
+              <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-amber-500 rounded-full border-2 border-[#161618] flex items-center justify-center">
                 <CheckCircle2 className="w-2.5 h-2.5 text-white" />
               </div>
             </div>
             <div>
-              <p className="text-[10px] font-black text-cyan-500 uppercase tracking-widest leading-none mb-1">Active Persona</p>
+              <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest leading-none mb-1">Active Persona</p>
               <h3 className="text-sm font-bold text-white leading-none">{persona.name}</h3>
             </div>
           </div>
-          <div className="h-8 w-px bg-[var(--border-subtle)]" />
-          <button className="p-2 rounded-xl text-[var(--text-tertiary)] hover:text-white hover:bg-white/5 transition-colors">
-            <RotateCcw size={18} />
-          </button>
+
         </div>
       </header>
 
@@ -632,7 +637,7 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
         <div className="premium-card p-4 rounded-2xl relative group">
           <label className="text-[9px] uppercase font-black text-[var(--text-muted)] mb-2 block tracking-widest flex items-center gap-1.5">
-            <Target size={10} className="text-cyan-500" /> Goal
+            <Target size={10} className="text-amber-500" /> Goal
           </label>
           <div className="relative">
             <select
@@ -641,16 +646,16 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
               className="w-full bg-transparent text-sm font-bold text-white outline-none appearance-none pr-8 cursor-pointer relative z-10"
             >
               {GOALS.map(g => (
-                <option key={g} value={g} className="bg-[#0B0F17]">{g}</option>
+                <option key={g} value={g} className="bg-[#161618]">{g}</option>
               ))}
             </select>
-            <ChevronDown size={14} className="absolute right-0 top-1/2 -translate-y-1/2 text-[var(--text-muted)] group-hover:text-cyan-400 transition-colors pointer-events-none" />
+            <ChevronDown size={14} className="absolute right-0 top-1/2 -translate-y-1/2 text-[var(--text-muted)] group-hover:text-amber-400 transition-colors pointer-events-none" />
           </div>
         </div>
 
         <div className="premium-card p-4 rounded-2xl relative group">
           <label className="text-[9px] uppercase font-black text-[var(--text-muted)] mb-2 block tracking-widest flex items-center gap-1.5">
-            <Clock size={10} className="text-violet-500" /> Frequency
+            <Clock size={10} className="text-amber-500" /> Frequency
           </label>
           <div className="relative">
             <select
@@ -659,10 +664,10 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
               className="w-full bg-transparent text-sm font-bold text-white outline-none appearance-none pr-8 cursor-pointer relative z-10"
             >
               {FREQUENCIES.map(f => (
-                <option key={f} value={f} className="bg-[#0B0F17]">{f}</option>
+                <option key={f} value={f} className="bg-[#161618]">{f}</option>
               ))}
             </select>
-            <ChevronDown size={14} className="absolute right-0 top-1/2 -translate-y-1/2 text-[var(--text-muted)] group-hover:text-violet-400 transition-colors pointer-events-none" />
+            <ChevronDown size={14} className="absolute right-0 top-1/2 -translate-y-1/2 text-[var(--text-muted)] group-hover:text-amber-400 transition-colors pointer-events-none" />
           </div>
         </div>
 
@@ -677,7 +682,7 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
               className="w-full bg-transparent text-sm font-bold text-white outline-none appearance-none pr-8 cursor-pointer relative z-10"
             >
               {['Instagram', 'TikTok', 'YouTube', 'Twitter/X', 'Threads', 'OnlyFans'].map(p => (
-                <option key={p} value={p} className="bg-[#0B0F17]">{p}</option>
+                <option key={p} value={p} className="bg-[#161618]">{p}</option>
               ))}
             </select>
             <ChevronDown size={14} className="absolute right-0 top-1/2 -translate-y-1/2 text-[var(--text-muted)] group-hover:text-amber-400 transition-colors pointer-events-none" />
@@ -704,7 +709,7 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
         <div className="space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-cyan-500/10 flex items-center justify-center text-cyan-400 border border-cyan-500/20">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-400 border border-amber-500/20">
                 <Calendar size={20} />
               </div>
               <div>
@@ -712,7 +717,7 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
                 <p className="text-[10px] font-black text-[var(--text-tertiary)] uppercase tracking-widest">7 Days · {frequency}</p>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-3 flex-wrap sm:flex-nowrap">
               {/* Tab Toggles */}
               <div className="flex bg-[var(--bg-surface)] p-1 rounded-xl border border-[var(--border-subtle)] relative">
@@ -721,7 +726,7 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
                     key={tabKey}
                     onClick={() => setActiveTab(tabKey)}
                     className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all relative z-10 cursor-pointer ${
-                      activeTab === tabKey ? 'text-white bg-gradient-to-r from-cyan-600 to-violet-600 shadow-md shadow-cyan-600/25' : 'text-[var(--text-muted)] hover:text-white'
+                      activeTab === tabKey ? 'text-[#19160f] bg-[#E7C477]' : 'text-[var(--text-muted)] hover:text-white'
                     }`}
                   >
                     {tabKey === 'roadmap' ? 'Roadmap View' : 'Feed Preview'}
@@ -731,7 +736,7 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
 
               {plan.length > 0 && (
                 <div className="flex gap-2">
-                  <button onClick={handleReset} className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer">
+                  <button disabled={isLoading || batchLoading} onClick={handleReset} className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer">
                     Reset
                   </button>
                   <button onClick={handleExportPlan} className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest bg-[var(--bg-elevated)] text-white hover:bg-[var(--bg-overlay)] border border-white/5 transition-colors flex items-center gap-1.5 cursor-pointer">
@@ -758,11 +763,11 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
                 // PLACEHOLDERS
                 DAYS.map((day, i) => (
                   <div key={day} className="premium-card rounded-3xl p-5 min-h-[240px] flex flex-col border-dashed border-[var(--border-default)] group relative overflow-hidden">
-                    <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                    
+                    <div className="absolute inset-0 bg-gradient-to-br from-amber-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+
                     <div className="flex justify-between items-start mb-4 relative z-10">
                       <div>
-                        <span className="text-[9px] font-black text-cyan-500/50 uppercase tracking-[0.2em]">{day}</span>
+                        <span className="text-[9px] font-black text-amber-500/50 uppercase tracking-[0.2em]">{day}</span>
                         <div className="h-4 w-16 bg-white/5 rounded mt-1" />
                       </div>
                       <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-white/10">
@@ -798,14 +803,14 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: i * 0.05 }}
-                      className="premium-card rounded-3xl p-5 min-h-[240px] flex flex-col group hover:border-cyan-500/50 hover:shadow-2xl hover:shadow-cyan-500/5 transition-all relative overflow-hidden cursor-pointer"
+                      className="premium-card rounded-3xl p-5 min-h-[240px] flex flex-col group hover:border-amber-500/50 hover:shadow-2xl hover:shadow-zinc-500/5 transition-all relative overflow-hidden cursor-pointer"
                     >
                       {/* Thumbnail / Gradient Background */}
-                      <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-cyan-500/10 to-transparent opacity-40 group-hover:opacity-70 transition-opacity pointer-events-none" />
-                      
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-amber-500/10 to-transparent opacity-40 group-hover:opacity-70 transition-opacity pointer-events-none" />
+
                       <div className="flex justify-between items-start mb-4 relative z-10">
                         <div>
-                          <span className="text-[9px] font-black text-cyan-500 uppercase tracking-[0.2em]">{DAYS[i]}</span>
+                          <span className="text-[9px] font-black text-amber-500 uppercase tracking-[0.2em]">{DAYS[i]}</span>
                           <div className="flex items-center gap-2 mt-1">
                             <div className="px-2 py-0.5 rounded-md bg-white/10 border border-white/10 flex items-center gap-1">
                               {getContentTypeIcon(post.type)}
@@ -819,11 +824,11 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
                       </div>
 
                       <div className="flex-1 relative z-10">
-                        <h4 className="text-sm font-bold text-white leading-snug group-hover:text-cyan-100 transition-colors">
+                        <h4 className="text-sm font-bold text-white leading-snug group-hover:text-amber-100 transition-colors">
                           “{post.hook}”
                         </h4>
                         <p className="text-[10px] text-[var(--text-tertiary)] mt-3 leading-relaxed line-clamp-2">
-                          <span className="text-cyan-500/80 font-bold uppercase tracking-widest text-[8px] mr-1">Theme:</span>
+                          <span className="text-amber-500/80 font-bold uppercase tracking-widest text-[8px] mr-1">Theme:</span>
                           {post.angle}
                         </p>
                       </div>
@@ -847,8 +852,8 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
                             </>
                           ) : (
                             <>
-                              <div className={`w-2 h-2 rounded-full ${batchContent[post.id] ? 'bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.5)]' : 'bg-white/20'}`} />
-                              <span className={`text-[9px] font-bold uppercase tracking-widest ${batchContent[post.id] ? 'text-cyan-400' : 'text-[var(--text-muted)]'}`}>
+                              <div className={`w-2 h-2 rounded-full ${batchContent[post.id] ? 'bg-amber-500 shadow-[0_0_8px_rgba(231,196,119,0.5)]' : 'bg-white/20'}`} />
+                              <span className={`text-[9px] font-bold uppercase tracking-widest ${batchContent[post.id] ? 'text-amber-400' : 'text-[var(--text-muted)]'}`}>
                                 {batchContent[post.id] ? 'Content Ready' : 'Pending'}
                               </span>
                             </>
@@ -866,7 +871,7 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
                           </button>
                           <button
                             onClick={() => setExpandedCard(expandedCard === post.id ? null : post.id)}
-                            className="flex items-center gap-1 text-[var(--text-muted)] group-hover:text-cyan-400 transition-colors"
+                            className="flex items-center gap-1 text-[var(--text-muted)] group-hover:text-amber-400 transition-colors"
                           >
                             <span className="text-[10px] font-bold">{expandedCard === post.id ? 'Collapse' : 'View'}</span>
                             {expandedCard === post.id ? <ChevronUp size={12} /> : <ChevronRight size={12} />}
@@ -878,14 +883,14 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
                         <div className="mt-3 pt-3 border-t border-white/5 space-y-3 relative z-10">
                           <div>
                             <div className="flex items-center justify-between mb-1">
-                              <span className="text-[8px] font-black text-cyan-500 uppercase tracking-widest">Caption</span>
+                              <span className="text-[8px] font-black text-amber-500 uppercase tracking-widest">Caption</span>
                               <button onClick={() => { navigator.clipboard.writeText(batchContent[post.id].caption); toast.success('Caption copied!'); }} className="p-1 rounded hover:bg-white/5 text-[var(--text-muted)] hover:text-white transition-colors"><Copy size={10} /></button>
                             </div>
                             <p className="text-[10px] text-[var(--text-secondary)] leading-relaxed">{batchContent[post.id].caption}</p>
                           </div>
                           <div>
                             <div className="flex items-center justify-between mb-1">
-                              <span className="text-[8px] font-black text-violet-500 uppercase tracking-widest">Image Prompt</span>
+                              <span className="text-[8px] font-black text-amber-500 uppercase tracking-widest">Image Prompt</span>
                               <button onClick={() => { navigator.clipboard.writeText(batchContent[post.id].imagePrompt); toast.success('Prompt copied!'); }} className="p-1 rounded hover:bg-white/5 text-[var(--text-muted)] hover:text-white transition-colors"><Copy size={10} /></button>
                             </div>
                             <p className="text-[10px] text-[var(--text-secondary)] leading-relaxed">{batchContent[post.id].imagePrompt}</p>
@@ -944,12 +949,12 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
             <div className="w-full">
               {isLoading ? (
                 <div className="flex items-center justify-center py-20">
-                  <Loader2 className="animate-spin text-cyan-500 w-8 h-8" />
+                  <Loader2 className="animate-spin text-amber-500 w-8 h-8" />
                 </div>
               ) : plan.length === 0 ? (
                 <div className="premium-card rounded-3xl p-8 text-center space-y-4 max-w-md mx-auto relative overflow-hidden">
-                  <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse at bottom left, rgba(6,182,212,0.06) 0%, transparent 60%)' }} />
-                  <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 flex items-center justify-center text-cyan-400 mx-auto border border-cyan-500/20 relative z-10">
+                  <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse at bottom left, rgba(231,196,119,0.06) 0%, transparent 60%)' }} />
+                  <div className="w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center text-amber-400 mx-auto border border-amber-500/20 relative z-10">
                     <EyeOff size={20} />
                   </div>
                   <div className="relative z-10">
@@ -977,7 +982,7 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
                             <span className="text-[9px] text-[var(--text-muted)] block leading-none">AI Influencer</span>
                           </div>
                         </div>
-                        <span className="text-[10px] font-black text-cyan-500 bg-cyan-500/10 border border-cyan-500/20 px-2.5 py-0.5 rounded-full uppercase tracking-wider">Feed Preview</span>
+                        <span className="text-[10px] font-black text-amber-500 bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 rounded-full uppercase tracking-wider">Feed Preview</span>
                       </div>
 
                       {/* 3-Column Image Grid */}
@@ -987,19 +992,19 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
                           const sched = schedules[scheduleKey];
                           const hasContent = !!batchContent[post.id];
                           const imageUrl = PREVIEW_IMAGES[index % PREVIEW_IMAGES.length] + '?auto=format&fit=crop&w=400&h=400&q=80';
-                          
+
                           return (
                             <div key={post.id} className="aspect-square relative group overflow-hidden bg-white/5 border border-white/5">
                               <img src={imageUrl} alt="" className={`w-full h-full object-cover transition-transform duration-300 group-hover:scale-105 ${hasContent ? 'opacity-100' : 'opacity-20 blur-[2px]'}`} />
-                              
+
                               {/* Hover Overlay */}
-                              <div className="absolute inset-0 bg-[#0B0F17]/85 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-between p-2 text-left">
+                              <div className="absolute inset-0 bg-[#161618]/85 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-between p-2 text-left">
                                 <div className="text-[8px] font-bold text-white/50 uppercase leading-none">Day {post.day} · {post.type}</div>
-                                
+
                                 <div className="my-1.5">
                                   <p className="text-[9px] text-white font-medium line-clamp-3 leading-snug">“{post.hook}”</p>
                                 </div>
-                                
+
                                 <div className="space-y-1.5">
                                   {sched?.status === 'Published' ? (
                                     <span className="text-[8px] font-black uppercase text-emerald-400 block">Published</span>
@@ -1033,7 +1038,7 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
                             <span className="text-xs font-bold text-white">@{persona.name.replace(/\s+/g, '_').toLowerCase()}</span>
                           </div>
                         </div>
-                        <span className="text-[10px] font-black text-violet-400 bg-violet-500/10 border border-violet-500/20 px-2.5 py-0.5 rounded-full uppercase tracking-wider">Shorts Grid</span>
+                        <span className="text-[10px] font-black text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 rounded-full uppercase tracking-wider">Shorts Grid</span>
                       </div>
 
                       {/* 2-Column Vertical Aspect Grid (9:16) */}
@@ -1043,23 +1048,23 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
                           const sched = schedules[scheduleKey];
                           const hasContent = !!batchContent[post.id];
                           const imageUrl = PREVIEW_IMAGES[(index + 3) % PREVIEW_IMAGES.length] + '?auto=format&fit=crop&w=400&h=711&q=80';
-                          
+
                           return (
                             <div key={post.id} className="aspect-[9/16] relative group overflow-hidden bg-white/5 border border-white/5 rounded-2xl">
                               <img src={imageUrl} alt="" className={`w-full h-full object-cover transition-transform duration-300 group-hover:scale-105 ${hasContent ? 'opacity-100' : 'opacity-20 blur-[2px]'}`} />
-                              
+
                               {/* Bottom visual overlay */}
                               <div className="absolute bottom-2 left-2 px-1.5 py-0.5 rounded bg-black/60 text-[9px] font-bold text-white flex items-center gap-1 pointer-events-none group-hover:opacity-0 transition-opacity">
                                 Preview only
                               </div>
 
                               {/* Hover Details overlay */}
-                              <div className="absolute inset-0 bg-[#0B0F17]/85 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-between p-3 text-left">
+                              <div className="absolute inset-0 bg-[#161618]/85 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-between p-3 text-left">
                                 <div>
-                                  <span className="text-[8px] font-black text-violet-400 bg-violet-500/10 border border-violet-500/20 px-1.5 py-0.5 rounded uppercase tracking-wider">Day {post.day}</span>
+                                  <span className="text-[8px] font-black text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded uppercase tracking-wider">Day {post.day}</span>
                                   <p className="text-[10px] text-white font-bold mt-2 line-clamp-4 leading-normal">“{post.hook}”</p>
                                 </div>
-                                
+
                                 <div className="space-y-2">
                                   {sched?.status === 'Published' ? (
                                     <span className="text-[9px] font-black uppercase text-emerald-400 block">Published</span>
@@ -1084,7 +1089,7 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
                       {/* Text feed preview header */}
                       <div className="flex items-center justify-between pb-3 border-b border-white/5">
                         <span className="text-xs font-bold text-white">Latest Thread Posts</span>
-                        <span className="text-[10px] font-black text-cyan-500 bg-cyan-500/10 border border-cyan-500/20 px-2.5 py-0.5 rounded-full uppercase tracking-wider">Twitter Mix</span>
+                        <span className="text-[10px] font-black text-amber-500 bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 rounded-full uppercase tracking-wider">Twitter Mix</span>
                       </div>
 
                       <div className="space-y-3">
@@ -1093,7 +1098,7 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
                           const sched = schedules[scheduleKey];
                           const hasContent = !!batchContent[post.id];
                           const imageUrl = PREVIEW_IMAGES[(index + 5) % PREVIEW_IMAGES.length] + '?auto=format&fit=crop&w=800&h=450&q=80';
-                          
+
                           return (
                             <div key={post.id} className="p-4 rounded-2xl bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] transition-colors relative group">
                               {/* Schedule indicator badge */}
@@ -1122,11 +1127,11 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
                                     <span className="text-[10px] text-[var(--text-muted)]">@{persona.name.replace(/\s+/g, '').toLowerCase()}</span>
                                     <span className="text-[10px] text-[var(--text-muted)]">· Day {post.day}</span>
                                   </div>
-                                  
+
                                   <p className="text-xs text-[var(--text-secondary)] mt-2 leading-relaxed whitespace-pre-wrap">
                                     {hasContent ? batchContent[post.id].caption : `“${post.hook}”\n\n${post.angle}`}
                                   </p>
-                                  
+
                                   {/* Image attachment if it's an image/carousel type */}
                                   {hasContent && (post.type.toLowerCase().includes('image') || post.type.toLowerCase().includes('post') || post.type.toLowerCase().includes('carousel')) && (
                                     <div className="mt-3 rounded-xl overflow-hidden border border-white/5 aspect-video">
@@ -1151,39 +1156,37 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
           )}
 
           {/* ── CTA AREA ── */}
-          <div className="bg-gradient-to-r from-cyan-600/10 to-violet-600/10 rounded-3xl p-8 border border-white/5 text-center space-y-6">
+          <div className="bg-gradient-to-r from-amber-600/10 to-amber-600/10 rounded-3xl p-8 border border-white/5 text-center space-y-6">
             <div className="max-w-md mx-auto space-y-2">
-              <h3 className="text-xl font-bold text-white">Generate Your Weekly Command</h3>
+              <h3 className="text-xl font-bold text-white">Plan your next week</h3>
               <p className="text-sm text-[var(--text-tertiary)]">
                 Generate 7 days of post ideas, hooks, captions, and content angles tailored to your persona's voice and growth goals.
               </p>
             </div>
-            
+
+            {plan.length > 0 && <fieldset className="mb-4 flex flex-wrap justify-center gap-3"><legend className="mb-2 w-full text-center text-sm text-zinc-400">Select posts to draft captions, image prompts and video scripts</legend>{plan.map(post => <label key={post.id} className="flex min-h-11 items-center gap-2 rounded-xl border border-white/10 px-3 text-sm"><input type="checkbox" checked={draftPostIds.has(post.id)} disabled={batchLoading} onChange={event => setDraftPostIds(previous => {const next = new Set(previous); if(event.target.checked) next.add(post.id); else next.delete(post.id); return next;})} className="accent-[#E7C477]"/>Day {post.day}</label>)}</fieldset>}
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <button
                 onClick={() => handleGenerate()}
-                disabled={isLoading}
-                className="w-full sm:w-auto px-10 py-4 rounded-2xl bg-gradient-to-r from-cyan-500 to-violet-500 hover:from-cyan-400 hover:to-violet-400 text-white font-black text-sm uppercase tracking-[0.1em] shadow-xl shadow-cyan-500/20 active:scale-95 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+                disabled={isLoading || batchLoading}
+                className="w-full sm:w-auto px-10 py-4 rounded-2xl bg-[#E7C477] hover:brightness-105 text-[#19160f] font-black text-sm uppercase tracking-[0.1em] shadow-xl shadow-zinc-500/20 active:scale-95 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
               >
                 {isLoading ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
-                Generate Weekly Plan
+                {plan.length ? 'Regenerate weekly plan' : 'Generate weekly plan'}
               </button>
-              
+
               {plan.length > 0 && (
                 <button
                   onClick={handleBatchGenerate}
-                  disabled={batchLoading}
-                  className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white font-black text-sm uppercase tracking-[0.1em] shadow-xl shadow-amber-500/20 active:scale-95 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+                  disabled={batchLoading || !plan.some(post => draftPostIds.has(post.id))}
+                  className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-[#E7C477] hover:brightness-105 text-[#19160f] font-black text-sm uppercase tracking-[0.1em] shadow-xl shadow-amber-500/20 active:scale-95 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
                 >
                   {batchLoading ? <Loader2 size={18} className="animate-spin" /> : <Layers size={18} />}
-                  {batchLoading ? 'Generating...' : 'Generate All Content'}
+                  {batchLoading ? 'Drafting...' : `Draft selected posts (${plan.filter(post => draftPostIds.has(post.id)).length})`}
                 </button>
               )}
-              
-              <button onClick={() => handleGenerate()} className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-white/5 border border-white/5 hover:bg-white/10 text-white font-bold text-sm transition-all flex items-center justify-center gap-2">
-                <RotateCcw size={16} />
-                Regenerate Ideas
-              </button>
+
+
             </div>
           </div>
         </div>
@@ -1191,10 +1194,10 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
         {/* ── STRATEGY SIDEBAR ── */}
         <aside className="space-y-6">
           <div className="premium-card rounded-3xl overflow-hidden p-6 relative">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/10 blur-3xl rounded-full -mr-16 -mt-16" />
-            
+            <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 blur-3xl rounded-full -mr-16 -mt-16" />
+
             <div className="flex items-center gap-3 mb-6">
-              <div className="w-8 h-8 rounded-lg bg-violet-500/10 flex items-center justify-center text-violet-400">
+              <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-400">
                 <BarChart3 size={16} />
               </div>
               <h3 className="text-lg font-bold text-white">Plan Strategy</h3>
@@ -1206,7 +1209,7 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-bold text-white">{platform}</span>
                   <div className="flex-1 h-1.5 rounded-full bg-white/5 overflow-hidden">
-                    <div className="h-full bg-cyan-500" style={{ width: '100%' }} />
+                    <div className="h-full bg-amber-500" style={{ width: '100%' }} />
                   </div>
                 </div>
               </div>
@@ -1227,7 +1230,7 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
 
               <div className="space-y-1.5">
                 <label className="text-[9px] font-black text-[var(--text-tertiary)] uppercase tracking-widest">Best Posting Window</label>
-                <div className="flex items-center gap-2 text-cyan-400">
+                <div className="flex items-center gap-2 text-amber-400">
                   <Clock size={14} />
                   <span className="text-sm font-bold">{POSTING_WINDOWS[platform] || '7:00 PM — 9:00 PM'}</span>
                 </div>
@@ -1265,13 +1268,13 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
                       onClick={() => handleStrategyTweak(chip.label)}
                       className={`px-2.5 py-1 rounded-lg text-[9px] font-bold transition-all flex items-center gap-1.5 border ${
                         active
-                          ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-300'
-                          : 'bg-white/5 border-white/5 text-[var(--text-tertiary)] hover:text-white hover:border-cyan-500/30'
+                          ? 'bg-amber-500/20 border-amber-500/50 text-amber-300'
+                          : 'bg-white/5 border-white/5 text-[var(--text-tertiary)] hover:text-white hover:border-amber-500/30'
                       }`}
                     >
                       {chip.icon}
                       {chip.label}
-                      {active && <span className="text-cyan-400">✓</span>}
+                      {active && <span className="text-amber-400">✓</span>}
                     </button>
                   );
                 })}
@@ -1279,9 +1282,9 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
             </div>
           </div>
 
-          <div className="premium-card p-6 rounded-3xl bg-gradient-to-br from-violet-600/20 to-transparent border-violet-500/20">
-            <h4 className="text-xs font-black text-violet-400 uppercase tracking-widest mb-2">Pro Tip</h4>
-            <p className="text-[11px] text-violet-100/70 leading-relaxed font-medium">
+          <div className="premium-card p-6 rounded-3xl bg-gradient-to-br from-amber-600/20 to-transparent border-amber-500/20">
+            <h4 className="text-xs font-black text-amber-400 uppercase tracking-widest mb-2">Pro Tip</h4>
+            <p className="text-[11px] text-amber-100/70 leading-relaxed font-medium">
               Shorter scripts with a clear hook in the first 5 seconds generate 40% more engagement. Try the "Controversial" strategy tweak to boost reach.
             </p>
           </div>
@@ -1307,10 +1310,10 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               transition={{ type: 'spring', duration: 0.4 }}
-              className="relative w-full max-w-xl bg-[#0b0f17]/95 border border-[#334155] rounded-[28px] overflow-hidden shadow-2xl p-6 md:p-8 z-10"
+              className="relative w-full max-w-xl bg-[#161618]/95 border border-[#3f3f46] rounded-[28px] overflow-hidden shadow-2xl p-6 md:p-8 z-10"
             >
               {/* Top ambient glow */}
-              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-24 bg-cyan-500/10 blur-2xl rounded-full" />
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-24 bg-amber-500/10 blur-2xl rounded-full" />
 
               {/* Close Button */}
               <button
@@ -1322,7 +1325,7 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
 
               {/* Header */}
               <div className="flex items-center gap-3.5 mb-6">
-                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-cyan-500/15 to-violet-500/15 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-500/15 to-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400">
                   <CalendarDays size={20} />
                 </div>
                 <div>
@@ -1361,7 +1364,7 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
                     onChange={(e) => setScheduleCaption(e.target.value)}
                     rows={4}
                     placeholder="Enter the post caption..."
-                    className="w-full bg-[#06080d]/80 border border-[#334155] rounded-2xl p-4 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all resize-none disabled:opacity-50 leading-relaxed"
+                    className="w-full bg-[#06080d]/80 border border-[#3f3f46] rounded-2xl p-4 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all resize-none disabled:opacity-50 leading-relaxed"
                   />
                 </div>
 
@@ -1375,7 +1378,7 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
                       type="date"
                       value={scheduleDate}
                       onChange={(e) => setScheduleDate(e.target.value)}
-                      className="w-full bg-[#06080d]/80 border border-[#334155] rounded-2xl px-4 py-3 text-xs text-white focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all disabled:opacity-50"
+                      className="w-full bg-[#06080d]/80 border border-[#3f3f46] rounded-2xl px-4 py-3 text-xs text-white focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all disabled:opacity-50"
                     />
                   </div>
                   <div className="space-y-1.5">
@@ -1386,7 +1389,7 @@ Return ONLY valid JSON (no markdown) with exactly these keys:
                       type="time"
                       value={scheduleTime}
                       onChange={(e) => setScheduleTime(e.target.value)}
-                      className="w-full bg-[#06080d]/80 border border-[#334155] rounded-2xl px-4 py-3 text-xs text-white focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all disabled:opacity-50"
+                      className="w-full bg-[#06080d]/80 border border-[#3f3f46] rounded-2xl px-4 py-3 text-xs text-white focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all disabled:opacity-50"
                     />
                   </div>
                 </div>

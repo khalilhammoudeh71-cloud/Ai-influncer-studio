@@ -41,7 +41,7 @@ function savePrefs(prefs: Record<string, any>) {
   localStorage.setItem(PREF_KEY, JSON.stringify(prefs));
 }
 
-type ApiStatus = { openai: boolean; gemini: boolean; wavespeed: boolean; elevenlabs: boolean; database: boolean; databaseConnected: boolean; heygen: boolean };
+type ApiStatus = { openai: boolean; gemini: boolean; wavespeed: boolean; elevenlabs: boolean; database: boolean; databaseConnected: boolean | null; heygen: boolean };
 
 export default function SettingsView({ nav, personas, user, billingInfo, onBillingUpdate, activeTheme, setActiveTheme }: Props) {
   const [theme, setTheme] = useState<'dark' | 'light'>(() => (localStorage.getItem('ai_studio_theme') as 'dark' | 'light') || 'dark');
@@ -303,7 +303,7 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
     || JSON.stringify(creatorPhotos) !== JSON.stringify(creatorProfile.photos || []);
 
   return (
-    <div className="h-full overflow-y-auto custom-scrollbar pb-20 select-none">
+    <div className="pb-20 select-none">
       <div className="p-6 max-w-3xl mx-auto space-y-8">
         {/* ── Header ── */}
         <header className="border-b border-[#E7C477]/10 pb-4">
@@ -635,7 +635,7 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
           transition={{ delay: 0.08 }}
           className={`${activeSettingsTab === 'billing' ? 'block' : 'hidden'} premium-card rounded-2xl p-6 relative overflow-hidden`}
         >
-          <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse at bottom right, rgba(0,212,255,0.06) 0%, transparent 70%)' }} />
+          <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse at bottom right, rgba(231,196,119,0.06) 0%, transparent 70%)' }} />
           
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-[var(--border-subtle)] pb-5 mb-5">
             <div>
@@ -661,7 +661,7 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
               {/* Left Column: Credits Status */}
               <div className="space-y-4">
-                <div className="bg-[#111827]/40 border border-white/5 rounded-2xl p-4 flex items-center justify-between">
+                <div className="bg-[var(--bg-input)]/40 border border-white/5 rounded-2xl p-4 flex items-center justify-between">
                   <div>
                     <p className="text-[10px] font-bold text-[var(--accent-primary)] uppercase tracking-widest leading-none mb-1">
                       {billingInfo.isCreator ? "Available Balance (USD)" : "Available Balance"}
@@ -702,7 +702,7 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
 
               {/* Right Column: Plan Management */}
               <div className="space-y-4">
-                <div className="bg-[#111827]/40 border border-white/5 rounded-2xl p-4 space-y-3">
+                <div className="bg-[var(--bg-input)]/40 border border-white/5 rounded-2xl p-4 space-y-3">
                   {billingInfo.subscriptionStatus === 'active' || billingInfo.subscriptionStatus === 'trialing' ? (
                     <>
                       <p className="text-xs text-[var(--text-primary)] font-semibold">Your Pro subscription is active.</p>
@@ -710,7 +710,7 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
                       <button
                         disabled={!!stripeLoading}
                         onClick={handlePortal}
-                        className="w-full py-2.5 bg-[#00D4FF]/10 hover:bg-[#00D4FF]/20 border border-[#00D4FF]/20 text-[#00D4FF] rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1"
+                        className="w-full py-2.5 bg-[var(--accent-primary)]/10 hover:bg-[var(--accent-primary)]/20 border border-[var(--accent-primary)]/20 text-[var(--accent-primary)] rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1"
                       >
                         {stripeLoading === 'portal' ? 'Redirecting...' : 'Manage via Stripe Portal'}
                       </button>
@@ -741,7 +741,7 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
             {[
               { icon: User, label: 'Personas', value: personas.length, color: 'text-[var(--accent-primary)]', bg: 'from-amber-500/10' },
               { icon: ImageIcon, label: 'Images', value: totalImages, color: 'text-emerald-400', bg: 'from-emerald-500/10' },
-              { icon: Video, label: 'Videos', value: totalVideos, color: 'text-cyan-400', bg: 'from-cyan-500/10' },
+              { icon: Video, label: 'Videos', value: totalVideos, color: 'text-[var(--accent-primary)]', bg: 'from-[var(--accent-primary)]/10' },
               { icon: BarChart3, label: 'Total Assets', value: totalAssets, color: 'text-amber-400', bg: 'from-amber-500/10' },
             ].map(stat => (
               <div key={stat.label} className={`premium-card rounded-2xl p-4 bg-gradient-to-br ${stat.bg} to-transparent`}>
@@ -756,7 +756,7 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
         {/* ── Theme & Visual Aesthetics ── */}
         <motion.section className={activeSettingsTab === 'appearance' ? 'block' : 'hidden'} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
           <h3 className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-[0.15em] ml-4 mb-3 flex items-center gap-1.5">
-            <Sparkles size={12} className="text-cyan-400" /> Studio Color Theme & Aesthetics
+            <Sparkles size={12} className="text-[var(--accent-primary)]" /> Studio Color Theme & Aesthetics
           </h3>
           <div className="premium-card rounded-2xl p-5 space-y-4">
             <p className="text-xs text-[var(--text-tertiary)]">
@@ -767,7 +767,7 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {[
                 { id: 'mint', name: 'Matrix Mint', desc: 'Dark Teal & Matrix Green', dot: 'bg-teal-400', border: 'border-teal-500' },
-                { id: 'cyber', name: 'Electric Cyber', desc: 'Neon Cyan & Electric Blue', dot: 'bg-cyan-400', border: 'border-cyan-500' },
+                { id: 'cyber', name: 'Electric Cyber', desc: 'Neon Cyan & Electric Blue', dot: 'bg-[var(--accent-primary)]', border: 'border-[var(--accent-primary)]' },
                 { id: 'graphite', name: 'Graphite Slate', desc: 'Smooth Executive Gray', dot: 'bg-slate-400', border: 'border-slate-400' },
                 { id: 'emerald', name: 'Slate Emerald', desc: 'Deep Emerald & Mint', dot: 'bg-emerald-400', border: 'border-emerald-500' },
                 { id: 'gold', name: 'Midnight Gold', desc: 'Obsidian & Gold Accents', dot: 'bg-amber-400', border: 'border-amber-500' },
@@ -787,7 +787,7 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
                     }}
                     className={`p-3.5 rounded-xl border cursor-pointer transition-all flex items-start gap-3 ${
                       isActive
-                        ? `bg-white/[0.07] ${t.border} text-white shadow-lg shadow-cyan-500/10`
+                        ? `bg-white/[0.07] ${t.border} text-white shadow-lg shadow-[var(--accent-primary)]/10`
                         : 'bg-white/[0.02] border-white/10 text-zinc-400 hover:bg-white/[0.05] hover:text-white'
                     }`}
                   >
@@ -815,6 +815,13 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
           <h3 className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-[0.15em] ml-4 mb-3">Default AI Models</h3>
           <div className="premium-card rounded-2xl p-5 space-y-4">
             <p className="text-xs text-[var(--text-tertiary)]">These models are used as defaults in Create Studio and the AI Assistant when no specific model is selected.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="rounded-xl border border-[var(--border-default)] p-3"><p className="text-xs text-[var(--text-muted)]">Image default</p><p className="mt-1 text-sm font-semibold">{editModels.find(model => model.id === defaultImageModel)?.name || 'Not selected'}</p></div>
+              <div className="rounded-xl border border-[var(--border-default)] p-3"><p className="text-xs text-[var(--text-muted)]">Video default</p><p className="mt-1 text-sm font-semibold">{videoModels.find(model => model.id === defaultVideoModel)?.name || 'Not selected'}</p></div>
+            </div>
+            <details className="rounded-xl border border-[var(--border-default)] p-3">
+              <summary className="cursor-pointer text-sm font-semibold text-[var(--accent-primary)]">Choose from the full model catalog</summary>
+              <p className="my-3 text-xs text-[var(--text-muted)]">Advanced defaults. Availability depends on your configured providers.</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="text-[10px] font-bold text-[var(--accent-primary)] uppercase tracking-wider block mb-1.5 flex items-center gap-1.5">
@@ -833,7 +840,7 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
                 </select>
               </div>
               <div>
-                <label className="text-[10px] font-bold text-cyan-400 uppercase tracking-wider block mb-1.5 flex items-center gap-1.5">
+                <label className="text-[10px] font-bold text-[var(--accent-primary)] uppercase tracking-wider block mb-1.5 flex items-center gap-1.5">
                   <Video size={10} /> Default Video Model
                 </label>
                 <select
@@ -843,12 +850,13 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
                     setDefaultVideoModel(e.target.value);
                     saveModelPrefs(defaultImageModel, e.target.value);
                   }}
-                  className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-500/50 transition-colors disabled:opacity-50"
+                  className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-[var(--accent-primary)]/50 transition-colors disabled:opacity-50"
                 >
                   {videoModels.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                 </select>
               </div>
             </div>
+            </details>
             {!modelsLoaded && (
               <div className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
                 <Loader2 size={12} className="animate-spin" /> Loading models from server…
@@ -915,7 +923,7 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
               { key: 'wavespeed', label: 'WaveSpeed AI', desc: 'Image & video generation' },
               { key: 'elevenlabs', label: 'ElevenLabs', desc: 'Voice synthesis' },
               { key: 'heygen', label: 'HeyGen AI', desc: 'Talking avatar generation' },
-              { key: 'databaseConnected', label: 'Database', desc: 'Personas, images, plans' },
+              { key: 'database', label: 'Database', desc: 'Personas, images, plans' },
             ].map((svc, idx, arr) => (
               <div
                 key={svc.key}

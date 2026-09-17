@@ -1,3 +1,4 @@
+import { dialectContext } from './dialectTeaching';
 import { pronunciationRules } from './pronunciationStore';
 import { pronunciationContext } from '../shared/pronunciation';
 import { humeConfig, humeToken, humeSettings, validateHumeCallPreferences } from './humeNativeVoice';
@@ -60,7 +61,8 @@ export function createNativeVoiceRouter(deps: { readPersonas(userId: string): Pr
     try {
       const persona=await owned(req);
       const session=openaiNativeSession(persona,req.body.voice,req.body.memories,req.body.preferences);
-      if(persona)session.instructions+=pronunciationContext(await pronunciationRules(req.user.id,persona.id));
+      session.instructions+=await dialectContext(req.user.id);
+      if(persona)session.instructions+=pronunciationContext(await pronunciationRules(req.user.id,persona.id,req.body.preferences));
       const key=process.env.OPENAI_API_KEY || process.env.Openai_api_key;
       if(!key) return res.status(503).json({error:'OpenAI Realtime needs a server-side API key.'});
       const client=new OpenAI({apiKey:key,timeout:20000,maxRetries:0});
@@ -79,7 +81,7 @@ export function createNativeVoiceRouter(deps: { readPersonas(userId: string): Pr
       validateHumeCallPreferences(config.eviVersion,req.body.preferences);
       if(req.body.voice!==config.voice)throw new Error('Hume voice choice no longer matches the verified config. Reload Hume settings.');
       const token=await humeToken();
-      res.json({...token,provider:'hume',configId:config.id,configVersion:config.version,model:`EVI ${config.eviVersion} + ${config.model}`,voice:config.voice,voiceName:config.voiceName,personaName:persona?.name || 'Super Agent',settings:humeSettings(nativeInstructions(persona,req.body.memories,req.body.preferences)+(persona?pronunciationContext(await pronunciationRules(req.user.id,persona.id)):''),req.body.history,config.voice,STUDIO_VOICE_TOOL)});
+      res.json({...token,provider:'hume',configId:config.id,configVersion:config.version,model:`EVI ${config.eviVersion} + ${config.model}`,voice:config.voice,voiceName:config.voiceName,personaName:persona?.name || 'Super Agent',settings:humeSettings(nativeInstructions(persona,req.body.memories,req.body.preferences)+await dialectContext(req.user.id)+(persona?pronunciationContext(await pronunciationRules(req.user.id,persona.id,req.body.preferences)):''),req.body.history,config.voice,STUDIO_VOICE_TOOL)});
     }catch(error:any){res.status(503).json({error:error.message || 'Hume setup unavailable.'});}
   });
   router.post('/agent',async(req: AuthenticatedRequest,res)=>{

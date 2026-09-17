@@ -1,15 +1,19 @@
+import { dialectFor, dialectPronunciations } from '../shared/dialectTeaching';
+import { readDialect } from './dialectTeaching';
 import { randomUUID } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from './db';
 import { personas } from '../shared/schema';
 import { readVoiceState, writeVoiceState } from './personaVoiceStore';
 import { mergePronunciations, pronunciationPair, type PronunciationRule } from '../shared/pronunciation';
-export async function pronunciationRules(owner: string, personaId: unknown): Promise<PronunciationRule[]> {
+export async function pronunciationRules(owner: string, personaId: unknown, dialectSettings?:any): Promise<PronunciationRule[]> {
   if (typeof personaId !== 'string' || !personaId) return [];
   const [row] = await db.select({id:personas.id}).from(personas).where(and(eq(personas.clientId,personaId),eq(personas.userId,owner)));
   if (!row) throw new Error('This persona is not available in your account.');
   const [shared,local]=await Promise.all([readVoiceState(owner,'pronunciation-shared'),readVoiceState(owner,`pronunciation:${personaId}`)]);
-  return mergePronunciations(shared||[],local||[]);
+  const dialect=dialectFor(dialectSettings,dialectSettings?.dialect?dialectSettings:undefined);
+  const profile=dialect?await readDialect(owner,dialect):undefined;
+  return mergePronunciations(mergePronunciations(profile?dialectPronunciations(profile):[],shared||[]),local||[]);
 }
 export async function updatePronunciation(owner:string,personaId:string,input:unknown,removeId?:string) {
   return db.transaction(async (tx: any)=>{

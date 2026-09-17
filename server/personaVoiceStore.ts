@@ -71,7 +71,7 @@ export async function accessiblePrivateVoiceIds(owner: string, account: string):
   const rows = await db.select().from(workspaceStates).where(eq(workspaceStates.userId, voiceStateOwner(owner)));
   const ids = new Set<string>();
   for (const row of rows) {
-    if (!row.stateKey.startsWith('clone:') && !row.stateKey.startsWith('legacy:')) continue;
+    if (!row.stateKey.startsWith('clone:') && !row.stateKey.startsWith('legacy:') && !row.stateKey.startsWith('remix-voice:')) continue;
     let item = JSON.parse(row.value);
     if (row.stateKey.startsWith('legacy:') && !item.account && item.voiceId) {
       try {
@@ -80,7 +80,7 @@ export async function accessiblePrivateVoiceIds(owner: string, account: string):
         item = updated[0] ? { ...item, account } : await readVoiceState(owner, row.stateKey);
       } catch { continue; }
     }
-    if (item?.account === account && item.voiceId) ids.add(item.voiceId);
+    if (item?.account === account && item.voiceId && (!row.stateKey.startsWith('remix-voice:') || (item.owner === owner && item.status === 'ready'))) ids.add(item.voiceId);
   }
   return ids;
 }

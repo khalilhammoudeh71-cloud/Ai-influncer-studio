@@ -1,3 +1,4 @@
+import { withDeadline } from './utils/requestDeadline';
 import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Toaster } from 'react-hot-toast';
@@ -52,6 +53,7 @@ import {
   accountStorageKey,
   configureAccountStorageSync,
   hydrateAccountLocalStorage,
+  retryAccountWorkspaceSync,
   migrateLegacyAccountKey,
   setActiveStorageUserId,
   type WorkspaceSyncStatus,
@@ -239,7 +241,7 @@ function App() {
     let cancelled = false;
     let receivedAuthEvent = false;
 
-    supabase.auth.getSession().then(({ data, error }) => {
+    withDeadline(supabase.auth.getSession(), 'Session restoration timed out. Please sign in again.').then(({ data, error }) => {
       if (cancelled || receivedAuthEvent) return;
       if (error) console.error('[Auth] Could not restore session:', error.message);
       const sessionUser = data?.session?.user ?? null;
@@ -932,6 +934,7 @@ function App() {
       <a href="#studio-content" className="studio-skip-link">Skip to page content</a>
       {/* Left Sidebar Navigation */}
       <LeftSidebar 
+        hasPersonas={personas.some(persona => persona.status !== 'Deleted')}
         activeTab={activeTab} 
         onNavigate={handleShellNavigate}
         newAssetsCount={newAssetsCount}
@@ -1198,7 +1201,7 @@ function App() {
 
       <ConnectionStatus />
       {/* ── Content ─────────────────────────────────────────────── */}
-      <main id="studio-content" tabIndex={-1} className="relative z-10 min-h-0 flex-1 overflow-y-auto pb-[calc(72px+env(safe-area-inset-bottom))] lg:pb-0">
+      <main id="studio-content" tabIndex={-1} className={cn('relative z-10 min-h-0 flex-1', activeTab === 'assistant' || activeTab === 'agent' ? 'overflow-hidden' : 'overflow-y-auto', 'pb-[calc(72px+env(safe-area-inset-bottom))] lg:pb-0')}>
         <div className={`studio-page w-full h-full ${tabDirectionRef.current === 'right' ? 'tab-enter-right' : 'tab-enter-left'}`} key={activeTab}>
           <Suspense fallback={<div role="status" className="p-6 text-sm text-[var(--text-secondary)]">Loading view…</div>}>
             {renderContent()}
@@ -1221,6 +1224,7 @@ function App() {
           ? <Loader2 size={13} className="animate-spin text-amber-300" />
           : <CloudOff size={13} className="text-amber-300" />}
         {workspaceSyncStatus === 'syncing' ? 'Syncing workspace…' : 'Saved locally — sync pending'}
+        {workspaceSyncStatus === 'pending' && userId && <button type="button" onClick={() => { retryAccountWorkspaceSync(userId); void hydrateAccountLocalStorage(userId).catch(() => setWorkspaceSyncStatus("pending")); }} className="underline underline-offset-2">Retry sync</button>}
       </div>
     )}
     <Toaster position="top-right" containerStyle={{ zIndex: 999999 }} toastOptions={{ duration: 4000, style: { background: '#1c1d22', color: '#fff', border: '1px solid rgba(255, 255, 255, 0.12)' } }} />

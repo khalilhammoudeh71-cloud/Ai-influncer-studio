@@ -32,7 +32,7 @@ interface RevenueViewProps {
 export default function RevenueView({ persona }: RevenueViewProps) {
   const [entries, setEntries] = useState<RevenueEntry[]>([]);
   const [activeTab, setActiveTab] = useState<'financials' | 'performance'>('financials');
-  const [timeframe, setTimeframe] = useState<'7d' | '30d' | '90d'>('30d');
+  const [isSaving, setIsSaving] = useState(false);
   
   const [showAddForm, setShowAddForm] = useState(false);
   const [newEntry, setNewEntry] = useState({
@@ -50,7 +50,7 @@ export default function RevenueView({ persona }: RevenueViewProps) {
   const loadEntries = () => {
     api.revenue.listByPersona(persona.id)
       .then(data => setEntries(data))
-      .catch(() => setEntries([]));
+      .catch(() => { setEntries([]); toast.error('Could not load recorded income. Please try again.'); });
   };
 
   useEffect(() => {
@@ -120,38 +120,11 @@ export default function RevenueView({ persona }: RevenueViewProps) {
     return { strokePath: stroke, fillPath: fill };
   }, [chartCoords]);
 
-  // Timeframe simulated metric multipliers
-  const timeframeScale = timeframe === '7d' ? 0.45 : timeframe === '90d' ? 2.8 : 1.0;
-
-  // Performance Tab Metrics (Simulated based on persona traits)
-  const performanceMetrics = useMemo(() => {
-    const baseFollowers = 158400;
-    const baseViews = 124500;
-    
-    return {
-      followers: Math.floor(baseFollowers * (0.8 + (timeframeScale * 0.2))),
-      followerGrowth: timeframe === '7d' ? '+2.4%' : timeframe === '90d' ? '+38.5%' : '+14.2%',
-      engagementRate: timeframe === '7d' ? '7.2%' : timeframe === '90d' ? '6.5%' : '6.8%',
-      engagementDirection: timeframe === '7d' ? 'up' : timeframe === '90d' ? 'up' : 'down',
-      engagementDiff: timeframe === '7d' ? '+0.4%' : timeframe === '90d' ? '+1.1%' : '-0.2%',
-      avgViews: Math.floor(baseViews * (0.95 + (timeframeScale * 0.05))),
-      viewsGrowth: timeframe === '7d' ? '+5.8%' : timeframe === '90d' ? '+21.4%' : '+12.1%',
-      sponsorshipCtr: timeframe === '7d' ? '3.5%' : timeframe === '90d' ? '2.9%' : '3.2%',
-      ctrGrowth: timeframe === '7d' ? '+0.2%' : timeframe === '90d' ? '-0.1%' : '+0.5%'
-    };
-  }, [timeframe, timeframeScale]);
-
-  // circular ROI progress stroke length calculations
-  const roiPercentage = timeframe === '7d' ? 145 : timeframe === '90d' ? 385 : 240;
-  const radius = 42;
-  const circumference = 2 * Math.PI * radius; // ~263.89
-  const roiProgress = Math.min((roiPercentage / 400) * circumference, circumference);
-  const strokeDashoffset = circumference - roiProgress;
-
   // Form submit handler
   const handleAddEntry = async () => {
-    const amount = parseFloat(newEntry.amount);
-    if (isNaN(amount) || amount <= 0) return;
+    if (isSaving) return;
+    const amount = Number(newEntry.amount);
+    if (!Number.isFinite(amount) || amount <= 0) { toast.error('Enter an amount greater than zero.'); return; }
 
     const entry: RevenueEntry = {
       id: `rev-${Date.now()}`,
@@ -163,18 +136,18 @@ export default function RevenueView({ persona }: RevenueViewProps) {
       notes: newEntry.notes
     };
 
-    setEntries(prev => [entry, ...prev].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-    setNewEntry({ amount: '', source: 'Brand Deal', platform: persona.platform || 'Instagram', notes: '' });
-    setShowAddForm(false);
 
+    setIsSaving(true);
     try {
       await api.revenue.create(entry);
+      setNewEntry({ amount: '', source: 'Brand Deal', platform: persona.platform || 'Instagram', notes: '' });
+      setShowAddForm(false);
       toast.success('💰 Revenue transaction added successfully!');
       loadEntries(); // Refresh
     } catch (err) {
       console.error('[Revenue] Save error:', err);
       toast.error('Failed to save transaction');
-    }
+    } finally { setIsSaving(false); }
   };
 
   return (
@@ -190,7 +163,7 @@ export default function RevenueView({ persona }: RevenueViewProps) {
             <span className="gradient-text">Revenue</span>
           </h1>
           <p className="text-[var(--text-tertiary)] text-xs mt-1.5 font-medium">
-            Track income and performance for <span className="text-violet-400 font-bold">{persona.name}</span>
+            Track recorded income for <span className="text-[var(--accent-primary)] font-bold">{persona.name}</span>
           </p>
         </div>
 
@@ -201,7 +174,7 @@ export default function RevenueView({ persona }: RevenueViewProps) {
               onClick={() => setActiveTab('financials')}
               className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                 activeTab === 'financials'
-                  ? 'bg-[#00D4FF]/10 text-[#00D4FF] border border-[#00D4FF]/20'
+                  ? 'bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] border border-[var(--accent-primary)]/20'
                   : 'text-[var(--text-muted)] hover:text-white'
               }`}
             >
@@ -211,7 +184,7 @@ export default function RevenueView({ persona }: RevenueViewProps) {
               onClick={() => setActiveTab('performance')}
               className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                 activeTab === 'performance'
-                  ? 'bg-[#00D4FF]/10 text-[#00D4FF] border border-[#00D4FF]/20'
+                  ? 'bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] border border-[var(--accent-primary)]/20'
                   : 'text-[var(--text-muted)] hover:text-white'
               }`}
             >
@@ -223,7 +196,7 @@ export default function RevenueView({ persona }: RevenueViewProps) {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={() => setShowAddForm(true)}
-            className="bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:brightness-110 p-2.5 rounded-xl shadow-lg shadow-violet-500/20 transition-all cursor-pointer text-white flex items-center gap-1.5 text-xs font-bold"
+            className="bg-gradient-to-r from-[var(--accent-primary)] to-[var(--accent-primary)] hover:brightness-110 p-2.5 rounded-xl shadow-lg shadow-[var(--accent-primary)]/20 transition-all cursor-pointer text-[#141416] flex items-center gap-1.5 text-xs font-bold"
           >
             <Plus size={16} /> Add Earnings
           </motion.button>
@@ -235,7 +208,7 @@ export default function RevenueView({ persona }: RevenueViewProps) {
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
-        className="bg-gradient-to-br from-violet-600/90 to-fuchsia-600/90 rounded-3xl p-6 mb-8 relative overflow-hidden shadow-2xl"
+        className="bg-[var(--bg-elevated)] border border-[var(--accent-primary)]/20 rounded-3xl p-6 mb-8 relative overflow-hidden shadow-2xl"
       >
         <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
           <TrendingUp size={140} />
@@ -246,51 +219,20 @@ export default function RevenueView({ persona }: RevenueViewProps) {
 
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
-            <span className="text-violet-200 text-[10px] font-black uppercase tracking-[0.2em]">Total Cumulative Earnings</span>
-            <h2 className="text-4xl font-black mt-2 mb-1.5 tracking-tight text-white">${totalPersonaRevenue.toLocaleString()}.00</h2>
-            <p className="text-xs text-white/70">Across all connected sponsorship accounts</p>
+            <span className="text-[var(--accent-primary)] text-[10px] font-black uppercase tracking-[0.2em]">Total Cumulative Earnings</span>
+            <h2 className="text-4xl font-black mt-2 mb-1.5 tracking-tight text-white">${totalPersonaRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h2>
+            <p className="text-xs text-white/70">Based on income entries recorded in this studio</p>
           </div>
           
-          <div className="grid grid-cols-2 gap-3 shrink-0">
+          <div className="grid grid-cols-1 gap-3 shrink-0">
              <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10 min-w-[130px]">
-                <span className="text-[9px] text-violet-100 block opacity-70 uppercase font-black tracking-wider">Projected Q2</span>
-                <span className="font-extrabold text-lg text-white block mt-0.5">${(totalPersonaRevenue * 1.45).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
-                <span className="text-[9px] text-emerald-300 font-bold block mt-1">↑ Strong growth</span>
-             </div>
-             <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10 min-w-[130px]">
-                <span className="text-[9px] text-violet-100 block opacity-70 uppercase font-black tracking-wider">Avg Deal Value</span>
+                <span className="text-[9px] text-[var(--accent-primary)] block opacity-70 uppercase font-black tracking-wider">Avg Deal Value</span>
                 <span className="font-extrabold text-lg text-white block mt-0.5">${entries.length > 0 ? (totalPersonaRevenue / entries.length).toLocaleString(undefined, { maximumFractionDigits: 0 }) : '0'}</span>
-                <span className="text-[9px] text-cyan-300 font-bold block mt-1">Per transaction</span>
+                <span className="text-[9px] text-[var(--accent-primary)] font-bold block mt-1">Per transaction</span>
              </div>
           </div>
         </div>
       </motion.div>
-
-      {/* ── TIME FRAME SELECTOR (Only Performance Tab) ── */}
-      <AnimatePresence>
-        {activeTab === 'performance' && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="flex justify-end mb-4"
-          >
-            <div className="bg-white/5 border border-white/5 rounded-xl p-1 flex gap-1">
-              {(['7d', '30d', '90d'] as const).map(t => (
-                <button
-                  key={t}
-                  onClick={() => setTimeframe(t)}
-                  className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-colors cursor-pointer ${
-                    timeframe === t ? 'bg-[#00D4FF]/25 text-[#00D4FF]' : 'text-[#64748B] hover:text-white'
-                  }`}
-                >
-                  {t === '7d' ? '7 Days' : t === '90d' ? '90 Days' : '30 Days'}
-                </button>
-              ))}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* ── MAIN TAB SWITCH CONTENT ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -312,7 +254,7 @@ export default function RevenueView({ persona }: RevenueViewProps) {
                     <h3 className="text-sm font-extrabold text-white">Earnings Trend Curve</h3>
                     <p className="text-[10px] text-[var(--text-muted)] mt-0.5">Timeline of cumulative growth</p>
                   </div>
-                  <BarChart3 className="text-violet-500/50" size={18} />
+                  <BarChart3 className="text-[var(--accent-primary)]/50" size={18} />
                 </div>
 
                 {chartData.length > 0 ? (
@@ -327,14 +269,14 @@ export default function RevenueView({ persona }: RevenueViewProps) {
                       <defs>
                         {/* Stroke Gradient */}
                         <linearGradient id="chart-stroke" x1="0%" y1="0%" x2="100%" y2="0%">
-                          <stop offset="0%" stopColor="#00F5C2" />
-                          <stop offset="50%" stopColor="#00D4FF" />
+                          <stop offset="0%" stopColor="var(--accent-primary)" />
+                          <stop offset="50%" stopColor="var(--accent-primary)" />
                           <stop offset="100%" stopColor="#D9B667" />
                         </linearGradient>
                         {/* Fill Area Gradient */}
                         <linearGradient id="chart-fill" x1="0%" y1="0%" x2="0%" y2="100%">
-                          <stop offset="0%" stopColor="#00D4FF" stopOpacity={0.16} />
-                          <stop offset="100%" stopColor="#00D4FF" stopOpacity={0.0} />
+                          <stop offset="0%" stopColor="var(--accent-primary)" stopOpacity={0.16} />
+                          <stop offset="100%" stopColor="var(--accent-primary)" stopOpacity={0.0} />
                         </linearGradient>
                       </defs>
 
@@ -352,7 +294,7 @@ export default function RevenueView({ persona }: RevenueViewProps) {
                             y1={paddingY}
                             x2={hoveredPoint.x}
                             y2={svgHeight - paddingY}
-                            className="stroke-cyan-400/30"
+                            className="stroke-[var(--accent-primary)]/30"
                             strokeWidth={1}
                             strokeDasharray="2 2"
                           />
@@ -360,7 +302,7 @@ export default function RevenueView({ persona }: RevenueViewProps) {
                             cx={hoveredPoint.x}
                             cy={hoveredPoint.y + 12} // adjust slightly down to match hovered stroke Y
                             r={6}
-                            className="fill-cyan-400 stroke-cyan-200/50 stroke-4"
+                            className="fill-[var(--accent-primary)] stroke-[var(--accent-primary)]/50 stroke-4"
                           />
                         </>
                       )}
@@ -372,7 +314,7 @@ export default function RevenueView({ persona }: RevenueViewProps) {
                           cx={coord.x}
                           cy={coord.y}
                           r={3.5}
-                          className="fill-cyan-400 stroke-[#0F172A] stroke-2 pointer-events-none"
+                          className="fill-[var(--accent-primary)] stroke-[#0F172A] stroke-2 pointer-events-none"
                         />
                       ))}
 
@@ -401,7 +343,7 @@ export default function RevenueView({ persona }: RevenueViewProps) {
                     {/* SVG Floating Tooltip Overlay */}
                     {hoveredPoint && (
                       <div 
-                        className="absolute bg-slate-950/90 border border-cyan-500/30 px-3 py-2 rounded-xl text-left pointer-events-none shadow-2xl z-20 backdrop-blur-md"
+                        className="absolute bg-slate-950/90 border border-[var(--accent-primary)]/30 px-3 py-2 rounded-xl text-left pointer-events-none shadow-2xl z-20 backdrop-blur-md"
                         style={{ 
                           left: `${(hoveredPoint.x / svgWidth) * 100}%`, 
                           top: `${((hoveredPoint.y + 12) / svgHeight) * 100}%`,
@@ -410,81 +352,21 @@ export default function RevenueView({ persona }: RevenueViewProps) {
                       >
                         <p className="text-[8px] text-[#64748B] font-bold uppercase tracking-wider">{hoveredPoint.date}</p>
                         <p className="text-xs font-black text-white mt-0.5">${hoveredPoint.amount.toLocaleString()}</p>
-                        <p className="text-[8px] text-cyan-400 font-bold">Cumulative</p>
+                        <p className="text-[8px] text-[var(--accent-primary)] font-bold">Cumulative</p>
                       </div>
                     )}
                   </div>
                 ) : (
                   <div className="h-48 border border-dashed border-white/10 rounded-2xl flex flex-col items-center justify-center p-6 text-center">
                      <p className="text-xs text-[var(--text-tertiary)] italic">No financial data to render curve.</p>
-                     <button onClick={() => setShowAddForm(true)} className="mt-3 text-[10px] font-bold uppercase tracking-wider text-violet-400 hover:text-violet-300">Add first transaction</button>
+                     <button onClick={() => setShowAddForm(true)} className="mt-3 text-[10px] font-bold uppercase tracking-wider text-[var(--accent-primary)] hover:text-[var(--accent-primary)]">Add first transaction</button>
                   </div>
                 )}
               </motion.div>
             ) : (
-              <motion.div
-                key="performance-tab"
-                initial={{ opacity: 0, x: 12 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -12 }}
-                className="grid grid-cols-1 sm:grid-cols-2 gap-4"
-              >
-                {/* Followers Card */}
-                <div className="premium-card p-5 rounded-2xl flex items-center justify-between">
-                  <div className="space-y-1">
-                    <span className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-wider">Follower Base</span>
-                    <p className="text-2xl font-black text-white leading-none">{(performanceMetrics.followers).toLocaleString()}</p>
-                    <p className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
-                      <ArrowUpRight size={10} /> {performanceMetrics.followerGrowth} growth
-                    </p>
-                  </div>
-                  <div className="w-10 h-10 rounded-xl bg-violet-500/10 flex items-center justify-center text-violet-400">
-                    <Users size={18} />
-                  </div>
-                </div>
-
-                {/* Engagement Rate Card */}
-                <div className="premium-card p-5 rounded-2xl flex items-center justify-between">
-                  <div className="space-y-1">
-                    <span className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-wider">Engagement Rate</span>
-                    <p className="text-2xl font-black text-white leading-none">{performanceMetrics.engagementRate}</p>
-                    <p className={`text-[10px] font-bold flex items-center gap-1 ${performanceMetrics.engagementDirection === 'up' ? 'text-emerald-400' : 'text-rose-400'}`}>
-                      {performanceMetrics.engagementDirection === 'up' ? <ArrowUpRight size={10} /> : <TrendingDown size={10} />}
-                      {performanceMetrics.engagementDiff} index
-                    </p>
-                  </div>
-                  <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-400">
-                    <Activity size={18} />
-                  </div>
-                </div>
-
-                {/* Video Views Card */}
-                <div className="premium-card p-5 rounded-2xl flex items-center justify-between">
-                  <div className="space-y-1">
-                    <span className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-wider">Avg Video Views</span>
-                    <p className="text-2xl font-black text-white leading-none">{(performanceMetrics.avgViews).toLocaleString()}</p>
-                    <p className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
-                      <ArrowUpRight size={10} /> {performanceMetrics.viewsGrowth} reach
-                    </p>
-                  </div>
-                  <div className="w-10 h-10 rounded-xl bg-cyan-500/10 flex items-center justify-center text-cyan-400">
-                    <Eye size={18} />
-                  </div>
-                </div>
-
-                {/* Click-Through Rate Card */}
-                <div className="premium-card p-5 rounded-2xl flex items-center justify-between">
-                  <div className="space-y-1">
-                    <span className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-wider">Sponsorship CTR</span>
-                    <p className="text-2xl font-black text-white leading-none">{performanceMetrics.sponsorshipCtr}</p>
-                    <p className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
-                      <ArrowUpRight size={10} /> {performanceMetrics.ctrGrowth} links
-                    </p>
-                  </div>
-                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-400">
-                    <Percent size={18} />
-                  </div>
-                </div>
+              <motion.div key="performance-tab" className="premium-card rounded-2xl p-6">
+                <h3 className="font-semibold">Performance analytics are not connected</h3>
+                <p className="mt-2 text-sm text-[var(--text-muted)]">Followers, engagement, views, and campaign returns need verified account analytics. This page currently shows only income entries you record.</p>
               </motion.div>
             )}
           </AnimatePresence>
@@ -499,11 +381,11 @@ export default function RevenueView({ persona }: RevenueViewProps) {
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: idx * 0.04 }}
-                  className="premium-card rounded-2xl p-4 flex items-center justify-between bg-[#111827]"
+                  className="premium-card rounded-2xl p-4 flex items-center justify-between bg-[var(--bg-input)]"
                 >
                   <div className="flex items-center gap-3.5">
-                    <div className="bg-gradient-to-br from-violet-500/10 to-fuchsia-500/5 p-2.5 rounded-xl border border-white/5">
-                      {entry.source === 'Brand Deal' ? <CreditCard size={18} className="text-violet-400" /> : <DollarSign size={18} className="text-emerald-400" />}
+                    <div className="bg-gradient-to-br from-[var(--accent-primary)]/10 to-[var(--accent-primary)]/5 p-2.5 rounded-xl border border-white/5">
+                      {entry.source === 'Brand Deal' ? <CreditCard size={18} className="text-[var(--accent-primary)]" /> : <DollarSign size={18} className="text-emerald-400" />}
                     </div>
                     <div>
                       <h4 className="font-extrabold text-xs text-white">{entry.source}</h4>
@@ -529,56 +411,10 @@ export default function RevenueView({ persona }: RevenueViewProps) {
         {/* Right Column: Breakdown & ROI Circle widgets */}
         <div className="space-y-6">
           
-          {/* ROI Progress Circle (Doughnut chart) */}
-          <div className="premium-card p-6 rounded-3xl flex flex-col items-center justify-center text-center relative overflow-hidden">
-             <div className="absolute top-0 right-0 w-24 h-24 bg-cyan-500/5 blur-2xl rounded-full" />
-             <div className="flex items-center gap-2 mb-4">
-                <Target className="text-cyan-400" size={14} />
-                <h4 className="text-[10px] font-black text-white uppercase tracking-widest">Sponsorship ROI</h4>
-             </div>
-
-             <div className="relative w-28 h-28 flex items-center justify-center mb-4">
-                {/* SVG Circle Progress */}
-                <svg className="w-full h-full transform -rotate-90">
-                   {/* Background Circle */}
-                   <circle
-                      cx="56"
-                      cy="56"
-                      r={radius}
-                      className="stroke-white/5"
-                      strokeWidth={8}
-                      fill="transparent"
-                   />
-                   {/* Progress Circle */}
-                   <circle
-                      cx="56"
-                      cy="56"
-                      r={radius}
-                      className="stroke-cyan-400 drop-shadow-[0_0_8px_#22d3ee]"
-                      strokeWidth={8}
-                      fill="transparent"
-                      strokeDasharray={circumference}
-                      strokeDashoffset={strokeDashoffset}
-                      strokeLinecap="round"
-                      style={{ transition: 'stroke-dashoffset 0.6s ease' }}
-                   />
-                </svg>
-                {/* Percentage text */}
-                <div className="absolute flex flex-col items-center justify-center">
-                   <span className="text-xl font-black text-white tracking-tighter">{roiPercentage}%</span>
-                   <span className="text-[8px] font-bold text-cyan-400 uppercase tracking-widest">Return</span>
-                </div>
-             </div>
-
-             <p className="text-[10px] text-[var(--text-tertiary)] max-w-[200px] leading-relaxed">
-                Returns based on average brand payouts against campaign reach thresholds.
-             </p>
-          </div>
-
           {/* Platform Breakdown horizontal bar chart */}
           <div className="premium-card p-6 rounded-3xl space-y-4">
              <div className="flex items-center gap-2 border-b border-white/5 pb-3">
-                <PieChart className="text-violet-400" size={14} />
+                <PieChart className="text-[var(--accent-primary)]" size={14} />
                 <h4 className="text-[10px] font-black text-white uppercase tracking-widest">Platform Distribution</h4>
              </div>
 
@@ -587,8 +423,8 @@ export default function RevenueView({ persona }: RevenueViewProps) {
                  {platformBreakdown.map((platform, idx) => {
                    const pct = totalPersonaRevenue > 0 ? (platform.value / totalPersonaRevenue) * 100 : 0;
                    const barGradients = [
-                     'from-violet-500 to-fuchsia-500',
-                     'from-cyan-500 to-blue-500',
+                     'from-[var(--accent-primary)] to-[var(--accent-primary)]',
+                     'from-[var(--accent-primary)] to-[var(--accent-primary)]',
                      'from-emerald-500 to-teal-500',
                      'from-amber-500 to-orange-500',
                    ];
@@ -640,15 +476,15 @@ export default function RevenueView({ persona }: RevenueViewProps) {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               transition={{ type: 'spring', duration: 0.4 }}
-              className="relative w-full max-w-sm bg-[#0b0f17]/95 border border-[#334155] rounded-[28px] overflow-hidden shadow-2xl p-6 md:p-8 z-10"
+              className="relative w-full max-w-sm bg-[var(--bg-input)]/95 border border-[#334155] rounded-[28px] overflow-hidden shadow-2xl p-6 md:p-8 z-10"
             >
               {/* Glow top border line */}
-              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-16 bg-violet-500/10 blur-2xl rounded-full" />
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-16 bg-[var(--accent-primary)]/10 blur-2xl rounded-full" />
 
               {/* Header */}
               <div className="flex justify-between items-center mb-6">
                 <div className="flex items-center gap-2">
-                  <Sparkles size={16} className="text-violet-400" />
+                  <Sparkles size={16} className="text-[var(--accent-primary)]" />
                   <h3 className="text-lg font-bold text-white">Record Payout</h3>
                 </div>
                 <button 
@@ -673,7 +509,7 @@ export default function RevenueView({ persona }: RevenueViewProps) {
                       value={newEntry.amount}
                       onChange={e => setNewEntry({...newEntry, amount: e.target.value})}
                       placeholder="0.00"
-                      className="w-full bg-[#06080d]/80 border border-[#334155] rounded-2xl py-3 pl-8 pr-4 focus:ring-1 focus:ring-violet-500 focus:border-violet-500 outline-none transition-all text-sm text-white"
+                      className="w-full bg-[var(--bg-input)]/80 border border-[#334155] rounded-2xl py-3 pl-8 pr-4 focus:ring-1 focus:ring-[var(--accent-primary)] focus:border-[var(--accent-primary)] outline-none transition-all text-sm text-white"
                     />
                   </div>
                 </div>
@@ -686,7 +522,7 @@ export default function RevenueView({ persona }: RevenueViewProps) {
                   <select 
                     value={newEntry.source}
                     onChange={e => setNewEntry({...newEntry, source: e.target.value})}
-                    className="w-full bg-[#06080d]/80 border border-[#334155] rounded-2xl py-3 px-4 focus:ring-1 focus:ring-violet-500 focus:border-violet-500 outline-none transition-all text-xs text-white"
+                    className="w-full bg-[var(--bg-input)]/80 border border-[#334155] rounded-2xl py-3 px-4 focus:ring-1 focus:ring-[var(--accent-primary)] focus:border-[var(--accent-primary)] outline-none transition-all text-xs text-white"
                   >
                     <option value="Brand Deal">Brand Deal</option>
                     <option value="Subscription">Subscription</option>
@@ -704,7 +540,7 @@ export default function RevenueView({ persona }: RevenueViewProps) {
                   <input 
                     value={newEntry.platform}
                     onChange={e => setNewEntry({...newEntry, platform: e.target.value})}
-                    className="w-full bg-[#06080d]/80 border border-[#334155] rounded-2xl py-3 px-4 focus:ring-1 focus:ring-violet-500 focus:border-violet-500 outline-none transition-all text-xs text-white"
+                    className="w-full bg-[var(--bg-input)]/80 border border-[#334155] rounded-2xl py-3 px-4 focus:ring-1 focus:ring-[var(--accent-primary)] focus:border-[var(--accent-primary)] outline-none transition-all text-xs text-white"
                     placeholder="e.g. Instagram"
                   />
                 </div>
@@ -719,7 +555,7 @@ export default function RevenueView({ persona }: RevenueViewProps) {
                       type="date"
                       value={newEntryDate}
                       onChange={e => setNewEntryDate(e.target.value)}
-                      className="w-full bg-[#06080d]/80 border border-[#334155] rounded-2xl py-3 px-4 focus:ring-1 focus:ring-violet-500 focus:border-violet-500 outline-none transition-all text-xs text-white"
+                      className="w-full bg-[var(--bg-input)]/80 border border-[#334155] rounded-2xl py-3 px-4 focus:ring-1 focus:ring-[var(--accent-primary)] focus:border-[var(--accent-primary)] outline-none transition-all text-xs text-white"
                     />
                   </div>
                 </div>
@@ -732,7 +568,7 @@ export default function RevenueView({ persona }: RevenueViewProps) {
                   <input 
                     value={newEntry.notes}
                     onChange={e => setNewEntry({...newEntry, notes: e.target.value})}
-                    className="w-full bg-[#06080d]/80 border border-[#334155] rounded-2xl py-3 px-4 focus:ring-1 focus:ring-violet-500 focus:border-violet-500 outline-none transition-all text-xs text-white"
+                    className="w-full bg-[var(--bg-input)]/80 border border-[#334155] rounded-2xl py-3 px-4 focus:ring-1 focus:ring-[var(--accent-primary)] focus:border-[var(--accent-primary)] outline-none transition-all text-xs text-white"
                     placeholder="e.g. Sponsored post #4"
                   />
                 </div>
@@ -741,9 +577,10 @@ export default function RevenueView({ persona }: RevenueViewProps) {
                 <motion.button 
                   whileTap={{ scale: 0.97 }}
                   onClick={handleAddEntry}
-                  className="w-full bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:brightness-110 py-3 rounded-2xl font-bold shadow-lg shadow-violet-500/20 transition-all mt-4 text-xs text-white cursor-pointer"
+                  disabled={isSaving}
+                  className="w-full bg-gradient-to-r from-[var(--accent-primary)] to-[var(--accent-primary)] hover:brightness-110 py-3 rounded-2xl font-bold shadow-lg shadow-[var(--accent-primary)]/20 transition-all mt-4 text-xs text-[#141416] cursor-pointer disabled:opacity-50"
                 >
-                  Confirm Entry
+                  {isSaving ? 'Saving…' : 'Confirm Entry'}
                 </motion.button>
               </div>
             </motion.div>

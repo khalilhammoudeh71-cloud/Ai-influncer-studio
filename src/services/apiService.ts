@@ -1,5 +1,7 @@
+import { withDeadline } from '../utils/requestDeadline';
 import { voiceCloningModel } from '../../shared/voiceCloningModels';
 import type { CloneResult } from '../../shared/personaVoiceLifecycle';
+import type { VoiceRemixInput, VoiceRemixResult, SaveRemixedVoiceInput, SavedRemixedVoiceResult } from '../../shared/voiceRemix';
 import type { Persona, GeneratedImage, RevenueEntry, PlannedPost } from '../types';
 import { supabase } from '../lib/supabase';
 import { preparePersonaMediaForStorage, resolvePersonaMediaFromStorage, persistMediaStringsForPlayback } from './workspaceMediaService';
@@ -83,12 +85,12 @@ export interface SocialChannelAnalysisResponse {
 
 export async function getAuthHeaders(): Promise<HeadersInit> {
   try {
-    const sessionRes = await supabase.auth.getSession();
+    const sessionRes = await withDeadline(supabase.auth.getSession(), 'Sign-in connection timed out. Retry your request.');
     const token = sessionRes?.data?.session?.access_token;
     return token ? { 'Authorization': `Bearer ${token}` } : {};
   } catch (e) {
     console.error('Error fetching Supabase auth session:', e);
-    return {};
+    throw e;
   }
 }
 
@@ -97,7 +99,7 @@ let authRefreshPromise: Promise<void> | null = null;
 async function refreshAuthSessionOnce(): Promise<void> {
   if (authRefreshPromise) return authRefreshPromise;
   authRefreshPromise = (async () => {
-    const result = await supabase.auth.refreshSession();
+    const result = await withDeadline(supabase.auth.refreshSession(), 'Session refresh timed out. Retry your request.');
     if (result.error) throw result.error;
   })().finally(() => {
     authRefreshPromise = null;
@@ -134,7 +136,7 @@ async function requestWithBody<T>(url: string, body: unknown): Promise<T> {
   });
   if (!res.ok) {
     const errMsg = await extractErrorMessage(res);
-    throw new Error(errMsg);
+    throw Object.assign(new Error(errMsg), { status: res.status });
   }
   return res.json();
 }
@@ -174,6 +176,7 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
     try {
       res = await fetch(`${API_BASE}${url}`, {
         ...options,
+        signal: method === 'GET' || url.startsWith('/workspace') ? (options?.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(20000)]) : AbortSignal.timeout(20000)) : options?.signal,
         headers: {
           'Content-Type': 'application/json',
           ...authHeaders,
@@ -197,7 +200,7 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
       continue;
     }
     const errMsg = await extractErrorMessage(res);
-    throw new Error(errMsg);
+    throw Object.assign(new Error(errMsg), { status: res.status });
   }
   throw lastNetworkError instanceof Error ? lastNetworkError : new Error('The service is temporarily unavailable. Please try again.');
 }
@@ -291,7 +294,7 @@ export const api = {
         heygen: boolean;
         scrapeCreators: boolean;
         database: boolean;
-        databaseConnected: boolean;
+        databaseConnected: boolean | null;
       }>('/config-status');
     } catch {
       return { openai: false, gemini: false, wavespeed: false, elevenlabs: false, heygen: false, scrapeCreators: false, database: false, databaseConnected: false };
@@ -331,6 +334,10 @@ export const api = {
   },
 
   voice: {
+    remixVoice: (input: VoiceRemixInput) => request<VoiceRemixResult>('/voice-remixes', {method:'POST',body:JSON.stringify(input),signal:AbortSignal.timeout(65_000)}),
+    remixVoiceStatus: (operationId: string) => request<VoiceRemixResult>(`/voice-remixes/${encodeURIComponent(operationId)}`),
+    saveRemixedVoice: (input: SaveRemixedVoiceInput) => request<SavedRemixedVoiceResult>(`/voice-remixes/${encodeURIComponent(input.operationId)}/save`, {method:'POST',body:JSON.stringify(input),signal:AbortSignal.timeout(65_000)}),
+    remixedVoiceSaveStatus: (operationId: string, generatedVoiceId: string) => request<SavedRemixedVoiceResult>(`/voice-remixes/${encodeURIComponent(operationId)}/saves/${encodeURIComponent(generatedVoiceId)}`),
     getVoices: () =>
       request<{ voices: Array<{
         voice_id: string;

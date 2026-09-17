@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../services/apiService';
+import VoiceRemix from './VoiceRemix';
 import { 
   getAllSavedVoices, 
   saveVoiceItem, 
@@ -647,6 +648,15 @@ export default function VoiceCloneStudioModal({
             {/* TAB 1: MY VOICES LIBRARY */}
             {activeTab === 'library' && (
               <div className="space-y-4">
+                <VoiceRemix voiceId={selectedExistingVoiceId} voiceName={existingVoices.find(v=>v.voice_id===selectedExistingVoiceId)?.name || 'Agent voice'} disabled={isActivatingExistingVoice} onApply={async voice=>{
+                  stopExistingVoicePreview();
+                  const data=await api.voice.setDefaultVoice({voiceId:voice.voiceId,voiceName:voice.name,model:'elevenlabs-v3',voiceSettings:{stability:0.35,similarityBoost:0.95,style:0.15,speed:1}});
+                  if(!data.success || !data.voiceId)throw new Error('The remixed voice could not be activated. Your current agent voice is unchanged.');
+                  accountLocalStorage.setItem('superagent_cloned_voice_id',data.voiceId);
+                  accountLocalStorage.setItem('superagent_cloned_voice','active');
+                  onVoiceCloned({voiceId:data.voiceId,name:voice.name,model:data.model || 'elevenlabs-v3'});
+                  toast.success('Remixed voice applied to Super Agent.');onClose();
+                }}/>
                 <div className="rounded-2xl border border-[#E7C477]/25 bg-[#E7C477]/[0.06] p-4">
                   <div className="mb-3">
                     <h4 className="text-sm font-bold text-[#F5F1E8]">ElevenLabs voices</h4>

@@ -1,4 +1,6 @@
-import AvailableVoices from '../components/AvailableVoices';
+import AvailableVoices, { type VoicePreviewState } from '../components/AvailableVoices';
+import VoiceRemix from '../components/VoiceRemix';
+import { cloneRequirements, voiceActionRequirements, type VoiceRequirement } from '../utils/voiceSetupReadiness';
 import { voiceTuning } from '../../shared/stockVoices';
 import { videoThumbnail, type VoiceSample } from '../utils/voiceThumbnail';
 import { voiceSamplePolicy } from '../../shared/voiceCloningModels';
@@ -39,6 +41,13 @@ interface CreatePersonaPageProps {
   onSelectPersona: (id: string) => void;
   nav: NavActions;
   editingPersona?: Persona | null;
+}
+
+function VoiceReadiness({ id, requirements, onResolve }: { id: string; requirements: VoiceRequirement[]; onResolve(requirement: VoiceRequirement): void }) {
+  if (!requirements.length) return null;
+  return <ul id={id} aria-live="polite" className="space-y-1 text-xs leading-relaxed text-amber-200">{requirements.map(requirement => <li key={requirement.message}>{requirement.target
+    ? <button type="button" onClick={() => onResolve(requirement)} className="min-h-11 text-left underline decoration-amber-200/40 underline-offset-4">{requirement.message}</button>
+    : requirement.message}</li>)}</ul>;
 }
 
 const PRESET_VOICES = [
@@ -494,9 +503,11 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   const voiceDraftGuard = useRef(new VoiceDraftGuard());
   const voicePreviewPlayer = useRef(new LatestVoicePreview());
   const voicePreviewKey = useRef('');
+  const [voicePreviewState, setVoicePreviewState] = useState<VoicePreviewState | null>(null);
   const sampleTextForPreview = voicePreviewText.trim() || (auditionLanguage === 'ar' ? (arabicPreviewSamples[previewDialect] || arabicPreviewSamples['jordanian-syrian']) : `Hi, I'm ${name || 'your creator'}. Let's take a moment to talk about ${niche || 'what inspires us'}. What would you like to create today?`);
   const stopVoicePreviews = () => {
     voicePreviewKey.current = '';
+    setVoicePreviewState(null);
     voicePreviewPlayer.current.stop();
     accountAudioRef.current?.pause(); heyGenAudioRef.current?.pause(); activeAudioRef.current?.pause(); presetAudioRef.current?.pause();
     setPlayingAccountAudioId(null); setPlayingHeyGenAudioId(null); setPlayingPresetVoiceId(null); setIsLoadingPresetAudioId(null); setIsPlayingSample(false); setIsTestingVoice(false);
@@ -531,13 +542,14 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
     const key = `${engine}:${id}`;
     if (voicePreviewKey.current === key) { stopVoicePreviews(); return; }
     stopVoicePreviews(); voicePreviewKey.current = key;
+    setVoicePreviewState({key, status:'loading'});
     setIsTestingVoice(true);
     if (engine === 'elevenlabs') setPlayingAccountAudioId(id);
     else if (engine === 'heygen') setPlayingHeyGenAudioId(id);
     else setPlayingPresetVoiceId(id);
     try {
       await voicePreviewPlayer.current.play(async () => {
-        if (engine === 'heygen' && previewUrl) return previewUrl;
+        if (previewUrl) return previewUrl;
         const settings = { stability: voiceStability / 100, similarity_boost: voiceLikeness / 100, style: voiceStyleExaggeration / 100, speed: voiceSpeakingSpeed };
         const result = engine === 'elevenlabs'
           ? await api.voice.previewVoice(id, sampleTextForPreview, settings)
@@ -547,13 +559,15 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
         const audio = new Audio(url);
         activeAudioRef.current = audio;
         setIsPlayingSample(true); setIsTestingVoice(false);
+        setVoicePreviewState({key, status:'playing'});
         audio.onended = () => { if (voicePreviewKey.current === key) stopVoicePreviews(); };
-        audio.onerror = () => { if (voicePreviewKey.current === key) { stopVoicePreviews(); toast.error('Could not play this voice. Try previewing again.'); } };
-        void audio.play().catch(() => { if (voicePreviewKey.current === key) stopVoicePreviews(); });
+        const playbackFailed = () => { if (voicePreviewKey.current === key) { stopVoicePreviews(); setVoicePreviewState({key,status:'error',message:'Could not play this sample. Press Retry to listen again.'}); } };
+        audio.onerror = playbackFailed;
+        void audio.play().catch(playbackFailed);
         return audio;
       });
     } catch (error) {
-      if (voicePreviewKey.current === key) { stopVoicePreviews(); toast.error(error instanceof Error ? error.message : 'Voice preview unavailable.'); }
+      if (voicePreviewKey.current === key) { stopVoicePreviews(); const message = error instanceof Error ? error.message : 'Voice preview unavailable.'; setVoicePreviewState({key,status:'error',message}); toast.error(message); }
     }
   };
   useEffect(() => { stopVoicePreviews(); }, [voiceTab, studioStep, voicePreviewText, voicePrompt, auditionLanguage, previewDialect, voiceLikeness, voiceStability, voiceStyleExaggeration, voiceSpeakingSpeed]);
@@ -607,7 +621,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
     }
   }, [voiceTab]);
 
-  const handlePlayAccountVoicePreview = async (id: string, _name?: string, _url?: string) => { await playDraftPreview(id, 'elevenlabs');
+  const handlePlayAccountVoicePreview = async (id: string, _name?: string, _url?: string) => { await playDraftPreview(id, 'elevenlabs', _url);
   };
 
   const fetchHeyGenVoices = async () => {
@@ -1177,10 +1191,28 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
 
   const originalVoiceSamples = useRef(new Map<string, { name: string; base64: string }>());
   const voiceSampleCaps = useRef(new Map<string, number>());
+  const cloneReadinessInput = { model:cloneChoice, sampleCount:audioSampleList.length, authorized:speakerAuthorized, transcript:voiceReferenceText, saving:isSaving, rendering:isCloning, result:cloneResult };
+  const renderRequirements = cloneRequirements(cloneReadinessInput);
+  const voiceRequirements = voiceActionRequirements({ saving:isSaving, rendering:isCloning, hasVoice:Boolean(selectedVoiceId || readySamples.current.samples.length), draftChanged:draftSamplesChanged, name });
+  const focusVoiceRequirement = (requirement: VoiceRequirement) => {
+    if (requirement.target === 'identity') { setStudioStep(0); requestAnimationFrame(() => document.getElementById('persona-name')?.focus()); }
+    else if (requirement.target === 'recording') audioInputRef.current?.click();
+    else if (requirement.target) document.getElementById(`voice-${requirement.target}`)?.focus();
+  };
+  const previewSelectedVoice = () => {
+    if (voiceRequirements.preview.length) { toast.error(voiceRequirements.preview[0].message); return; }
+    void playDraftPreview(selectedVoiceId, selectedVoiceModel);
+  };
+  const saveDefaultVoice = () => {
+    if (voiceRequirements.save.length) { toast.error(voiceRequirements.save[0].message); return; }
+    void handleSave();
+  };
   const runClone = async (checkOnly = false, retryRejected = false) => {
     stopDictation();
     if (cloneBusyRef.current) return;
-    if (!checkOnly && cloneChoice.kind !== 'preset' && !speakerAuthorized) { toast.error('Confirm speaker authorization first.'); return; }
+    const unmet = checkOnly ? (isSaving ? [{message:'Wait for the persona to finish saving.'}] : []) : cloneRequirements({...cloneReadinessInput, retryRejected});
+    if (unmet.length) { toast.error(unmet[0].message); return; }
+    if (checkOnly && !cloneResult) return;
     const controller = new AbortController();
     renderWaitController.current = controller;
     cloneBusyRef.current = true; setIsCloning(true); setCloneError('');
@@ -1246,7 +1278,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   };
 
   const handleResetVoiceSamples = () => {
-    setAudioSampleList([]); setDraftSamplesChanged(false); setSpeakerAuthorized(false);
+    setAudioSampleList([]); setDraftSamplesChanged(true); setSpeakerAuthorized(false);
     setAudioSampleBase64('');
     setAudioSampleName('');
     voiceDraftGuard.current.change(); setCloneResult(null);
@@ -1265,6 +1297,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
     const rest = audioSampleList.filter((_, i) => i !== idxToMakePrimary);
     const updated = [selected, ...rest];
     setAudioSampleList(updated);
+    setDraftSamplesChanged(true);
     setAudioSampleBase64(selected.base64);
     setAudioSampleName(updated.map(s => s.name).join(', '));
     voiceDraftGuard.current.change(); setCloneResult(null);
@@ -1273,6 +1306,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
 
   const removeAudioSample = (idxToRemove: number) => {
     voiceDraftGuard.current.change(); setCloneResult(null);
+    setDraftSamplesChanged(true);
     const updated = audioSampleList.filter((_, i) => i !== idxToRemove);
     setAudioSampleList(updated);
     setAudioSampleName(updated.map(s => s.name).join(', '));
@@ -1424,7 +1458,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   };
 
   return (
-    <div ref={studioTopRef} className="relative min-h-screen bg-[#050914] text-[#F5F1E8] p-4 sm:p-6 lg:p-10 pb-20 overflow-y-auto select-none">
+    <div ref={studioTopRef} className="relative min-w-0 text-[#F5F1E8] p-4 sm:p-6 lg:p-10 pb-20">
       <div className="relative z-10 max-w-[1300px] mx-auto space-y-8">
 
         {/* ── HEADER BAR ── */}
@@ -1489,8 +1523,11 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
           </div>
         ) : (
         <div className="luxury-card p-3 sm:p-4">
-          <div className="overflow-x-auto no-scrollbar">
-            <div className="grid min-w-[680px] grid-cols-5 gap-2" aria-label="Persona creation progress">
+          <label className="block text-sm text-slate-300 md:hidden">Step {studioStep + 1} of {STUDIO_STEPS.length}
+            <select aria-label="Persona creation step" value={studioStep} onChange={event => goToStudioStep(Number(event.target.value))} className="luxury-input mt-2 min-h-11 w-full min-w-0 px-3 text-sm">{STUDIO_STEPS.map((step,index) => <option key={step.id} value={index}>{index + 1}. {step.title}</option>)}</select>
+          </label>
+          <div className="hidden md:block">
+            <div className="grid grid-cols-5 gap-2" aria-label="Persona creation progress">
               {STUDIO_STEPS.map((step, index) => {
                 const isActive = studioStep === index;
                 const isComplete = completedStudioSteps[index] || studioStep > index;
@@ -1917,6 +1954,8 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
 
           </div>
 
+          {/^(elevenlabs|eleven_)/.test(selectedVoiceModel) && <VoiceRemix voiceId={selectedVoiceId} voiceName={selectedVoiceName} disabled={isSaving || isCloning} onApply={async voice=>{selectDraftVoice(voice.voiceId,'elevenlabs');setSelectedSavedVoiceName(voice.name);toast.success('Remixed voice selected. Save the persona to apply it.');}}/>}
+
           {voiceTab === 'saved' && <SavedPersonaVoices
             voices={editingPersona?.savedVoices || []}
             current={{ voiceId: selectedVoiceId, voiceEngine: selectedVoiceModel, voiceSampleUrl: audioSampleList[0]?.base64, audioSamples: audioSampleList }}
@@ -1936,9 +1975,10 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
           />}
 
           {voiceTab === 'preset' && <AvailableVoices
-            voices={accountVoices.filter(v=>v.category==='premade').map(v=>({id:v.voice_id,name:v.name,engine:'elevenlabs',provider:'ElevenLabs',gender:v.labels?.gender||'Not specified',accent:v.labels?.accent||'Not specified',tone:v.labels?.descriptive||v.labels?.description||'Not specified'}))}
+            voices={accountVoices.filter(v=>v.category==='premade').map(v=>({id:v.voice_id,name:v.name,engine:'elevenlabs',provider:'ElevenLabs',sampleUrl:v.preview_url,gender:v.labels?.gender||'Not specified',accent:v.labels?.accent||'Not specified',tone:v.labels?.descriptive||v.labels?.description||'Not specified'}))}
             selectedId={selectedVoiceId} selectedEngine={selectedVoiceModel} disabled={isCloning||isSaving}
             onSelect={v=>{selectDraftVoice(v.id,v.engine);setSelectedSavedVoiceName(v.name);}}
+            onListen={v=>void playDraftPreview(v.id,v.engine,v.sampleUrl)} preview={voicePreviewState}
           />}
 
           {voiceTab === 'clone' && (
@@ -1996,19 +2036,20 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
 
                   </div>
                   <details className="relative rounded-xl border border-white/10 bg-[#0E0E10]" onKeyDown={e=>{if(e.key==='Escape')e.currentTarget.open=false;}}>
-                    <summary aria-label="Choose voice model" className="cursor-pointer p-3 text-sm text-white"><span className="font-semibold">{cloneChoice.name}</span><span className="mt-1 block text-[11px] font-normal text-slate-400">{voiceSamplePolicy(cloneChoice).label}</span></summary>
+                    <summary id="voice-model" aria-label="Choose voice model" className="cursor-pointer p-3 text-sm text-white"><span className="font-semibold">{cloneChoice.name}</span><span className="mt-1 block text-xs font-normal text-slate-400">{voiceSamplePolicy(cloneChoice).label}</span></summary>
                     <div className="max-h-80 overflow-auto border-t border-white/10 p-2">{VOICE_MODEL_PROVIDER_ORDER.map(provider=><div key={provider}><p className="px-2 py-1 text-[10px] uppercase text-[#E7C477]">{provider}</p>{VOICE_CLONING_MODELS.filter(model=>model.provider===provider).map(model=><button key={model.id} type="button" disabled={isCloning||isSaving} aria-pressed={cloneChoice.id===model.id} onClick={e=>{
                       voiceDraftGuard.current.change();stopVoicePreviews();setCloneModel(model.id);setClonePreset(model.voices?.[0]||'');setCloneResult(null);setCloneError('');e.currentTarget.closest('details')?.removeAttribute('open');
-                    }} className="block w-full rounded-lg p-2 text-left hover:bg-white/5"><span className="block text-sm font-semibold text-white">{model.name}</span><span className="block text-[11px] text-slate-400">{voiceSamplePolicy(model).label}</span></button>)}</div>)}</div>
+                    }} className="block w-full rounded-lg p-2 text-left hover:bg-white/5"><span className="block text-sm font-semibold text-white">{model.name}</span><span className="block text-xs text-slate-400">{voiceSamplePolicy(model).label}</span>{model.kind==='unavailable'&&<span className="block text-xs text-amber-200">{model.description}</span>}</button>)}</div>)}</div>
                   </details>
+                  <p className="text-xs leading-relaxed text-slate-400">{cloneChoice.description}</p>
                   {voiceSamplePolicy(cloneChoice).files > 0 && <p className="text-xs text-slate-400">Auto-trim on render: up to {voiceSamplePolicy(cloneChoice).seconds} sec{cloneChoice.id === 'elevenlabs' ? ' total, shared across files' : ' from your selected reference'} (app sampling limit).</p>}
                 </section>
               </div>
 
               <div className="space-y-3 rounded-2xl border border-white/10 bg-[#0E0E10] p-4 text-sm text-slate-300">
                 {cloneChoice.voices && <label className="block text-xs">Preset voice<select aria-label="Model preset voice" value={clonePreset||cloneChoice.voices[0]} onChange={e=>{setClonePreset(e.target.value);setCloneResult(null);}} disabled={isCloning || isSaving} className="luxury-input block mt-1 p-2.5 text-sm">{cloneChoice.voices.map(voice=><option key={voice} value={voice}>{voice}</option>)}</select></label>}
-                {cloneChoice.kind!=='preset' && cloneChoice.kind!=='unavailable' && <label className="flex items-start gap-2 text-xs leading-relaxed"><input type="checkbox" checked={speakerAuthorized} disabled={isCloning || isSaving} onChange={e => setSpeakerAuthorized(e.target.checked)} className="mt-0.5 accent-[#E7C477]" />I am the speaker or have the speaker’s permission to clone and use this voice.</label>}
-                {cloneChoice.kind==='reference' && <label className="block text-xs">Reference recording transcript {cloneChoice.transcriptRequired?'(required)':'(optional)'}<textarea aria-label="Reference recording transcript" value={voiceReferenceText} onChange={e=>{setVoiceReferenceText(e.target.value);setCloneResult(null);}} disabled={isCloning || isSaving} maxLength={5000} rows={2} className="luxury-input block w-full mt-1 p-2.5 text-sm" placeholder="The exact words spoken in your primary recording"/></label>}
+                {cloneChoice.kind!=='preset' && cloneChoice.kind!=='unavailable' && <label className="flex min-h-11 items-start gap-2 text-xs leading-relaxed"><input id="voice-permission" type="checkbox" checked={speakerAuthorized} disabled={isCloning || isSaving} onChange={e => setSpeakerAuthorized(e.target.checked)} className="mt-0.5 size-5 shrink-0 accent-[#E7C477]" />I am the speaker or have the speaker’s permission to clone and use this voice.</label>}
+                {cloneChoice.kind==='reference' && <label className="block text-xs">Reference recording transcript {cloneChoice.transcriptRequired?'(required)':'(optional)'}<textarea id="voice-transcript" aria-label="Reference recording transcript" value={voiceReferenceText} onChange={e=>{setVoiceReferenceText(e.target.value);setDraftSamplesChanged(true);setCloneResult(null);}} disabled={isCloning || isSaving} maxLength={5000} rows={2} className="luxury-input block w-full mt-1 p-2.5 text-sm" placeholder="The exact words spoken in your primary recording"/></label>}
               </div>
 
               {/* Advanced Voice Fine-Tuning & Voice Description Panel */}
@@ -2360,21 +2401,23 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
           )}
 
           {voiceTab === 'clone' && (
-<div className="rounded-2xl border border-[#E7C477]/25 bg-[#E7C477]/[0.04] p-4 space-y-3">
+              <div className="rounded-2xl border border-[#E7C477]/25 bg-[#E7C477]/[0.04] p-4 space-y-3">
+                <VoiceReadiness id="voice-render-requirements" requirements={renderRequirements} onResolve={focusVoiceRequirement}/>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <h4 className="text-sm font-bold text-white">Render voice</h4>
+                    <h4 className="text-sm font-bold text-white">{cloneResult?.status === 'ready' ? 'Voice ready' : 'Render voice'}</h4>
 
                   </div>
-                  <button type="button" onClick={() => runClone()} disabled={isCloning || isSaving || cloneChoice.kind==='unavailable' || (cloneChoice.kind!=='preset'&&(!speakerAuthorized||!audioSampleList.length)) || (cloneChoice.transcriptRequired&&!voiceReferenceText.trim()) || Boolean(cloneResult)} className="btn-gold-primary shrink-0 px-4 py-2.5 text-xs disabled:cursor-not-allowed disabled:opacity-40">{isCloning ? 'Rendering… checking progress' : 'Render voice'}</button>
+                  {cloneResult?.status === 'ready' ? <button type="button" disabled={isSaving} onClick={() => { if(cloneChoice.kind==='preset')document.getElementById('voice-model')?.focus();else audioInputRef.current?.click(); }} className="min-h-11 rounded-xl border border-white/20 px-4 py-2.5 text-sm text-white disabled:opacity-40">Create another · choose {cloneChoice.kind==='preset'?'model':'recording'}</button> : <button type="button" aria-describedby="voice-render-requirements" onClick={() => runClone()} disabled={renderRequirements.length > 0} className="btn-gold-primary min-h-11 shrink-0 px-4 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-40">{isCloning ? 'Rendering… checking progress' : 'Render voice'}</button>}
                   {isCloning && renderWaitController.current && <button type="button" onClick={stopRenderWait} className="rounded-xl border border-white/20 px-4 py-2.5 text-sm font-semibold text-white hover:bg-white/10">Stop waiting</button>}
                 </div>
+                {isCloning && <p className="text-xs leading-relaxed text-slate-400">Stop waiting closes this wait only. Provider work may still finish and use credits.</p>}
                 {(cloneResult || cloneError) && <div role="status" aria-live="polite" className="space-y-2 rounded-xl border border-white/10 bg-[#0E0E10] p-3 text-xs">
                   <p className="font-semibold text-slate-200">{cloneError || cloneResult?.message || cloneResult?.status}</p>
                   {cloneResult && cloneResult.status !== 'ready' && <button type="button" disabled={isCloning} onClick={() => runClone(true)} className="underline">Check clone status</button>}
-                  {cloneResult?.status === 'failed' && !cloneResult.engine && <button type="button" disabled={isCloning || !speakerAuthorized} onClick={() => runClone(false, true)} className="block underline">Retry after fixing the provider issue</button>}
+                  {cloneResult?.status === 'failed' && <button type="button" disabled={cloneRequirements({...cloneReadinessInput,retryRejected:true}).length > 0} onClick={() => runClone(false, true)} className="block min-h-11 underline">Retry after fixing the provider issue</button>}
                   {cloneResult?.status === 'verification_required' && <a href="https://elevenlabs.io/app/voices" target="_blank" rel="noreferrer" className="block underline">Open ElevenLabs to verify the speaker</a>}
-                  {cloneResult?.audioUrl && <audio controls src={cloneResult.audioUrl} className="w-full" aria-label="Prepared voice preview"/>}
+                  {cloneResult?.audioUrl && <audio controls src={cloneResult.audioUrl} onPlay={event=>{if(activeAudioRef.current!==event.currentTarget)stopVoicePreviews();activeAudioRef.current=event.currentTarget;}} className="w-full" aria-label="Prepared voice preview"/>}
                   {cloneResult?.assetKind==='singing' && cloneResult.voiceId && <p>Mureka vocal ID: <code className="select-all">{cloneResult.voiceId}</code>. Saved to this account; your speaking voice remains selected.</p>}
                 </div>}
 
@@ -2384,6 +2427,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
 
           <section aria-label="Voice preview" className="space-y-3 rounded-2xl border border-[#E7C477]/25 bg-[#0E0E10] p-5">
             <h4 className="text-sm font-bold text-white">Preview your voice</h4>
+            <p className="text-xs leading-relaxed text-slate-400">Audition the selected voice with this text. Generating a new audition may use provider credits.</p>
 
             <div>
               <label htmlFor="voice-audition-text" className="block text-sm text-slate-300">Audition text</label>
@@ -2400,11 +2444,22 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                 <option value="en">English</option>
               </select>
             </label>
+            <VoiceReadiness id="voice-preview-requirements" requirements={voiceRequirements.preview} onResolve={focusVoiceRequirement}/>
+            <VoiceReadiness id="voice-save-requirements" requirements={voiceRequirements.save.filter(requirement=>!voiceRequirements.preview.includes(requirement))} onResolve={focusVoiceRequirement}/>
+            {voicePreviewState?.status==='error' && <p role="alert" className="text-xs text-amber-200">{voicePreviewState.message} Use Preview voice to try again.</p>}
+            {draftSamplesChanged && voiceRequirements.preview.length===0 && <p className="text-xs text-slate-400">Preview plays your previously selected voice until the new recording is rendered.</p>}
+            {draftSamplesChanged && !isCloning && !isSaving && <button type="button" onClick={() => {
+              stopVoicePreviews(); voiceDraftGuard.current.change();
+              const previous = readySamples.current;
+              setAudioSampleList([...previous.samples]); setVoiceReferenceText(previous.transcript);
+              setAudioSampleBase64(previous.samples[0]?.base64 || ''); setAudioSampleName(previous.samples.map(sample=>sample.name).join(', '));
+              setDraftSamplesChanged(false); setCloneResult(null); setCloneError('');
+            }} className="min-h-11 text-xs text-[#E7C477] underline">Keep selected voice · discard changed recording</button>}
             <div className="flex flex-wrap justify-center gap-2">
-            <button type="button" onClick={() => playDraftPreview(selectedVoiceId, selectedVoiceModel)} disabled={isCloning || isSaving || (!selectedVoiceId && !readySamples.current.samples.length)} className="btn-gold-primary px-4 py-2.5 text-xs disabled:opacity-40">
+            <button type="button" aria-describedby="voice-preview-requirements" onClick={previewSelectedVoice} disabled={voiceRequirements.preview.length > 0} className="btn-gold-primary min-h-11 px-4 py-2.5 text-sm disabled:opacity-40">
               {isTestingVoice ? 'Cancel preview' : isPlayingSample ? 'Stop preview' : 'Preview voice'}
             </button>
-            <button type="button" onClick={handleSave} disabled={isCloning || isSaving || draftSamplesChanged || (!selectedVoiceId && !readySamples.current.samples.length)} className="btn-gold-primary px-4 py-2.5 text-xs disabled:opacity-40">{isSaving ? 'Saving…' : 'Save as default'}</button>
+            <button type="button" aria-describedby="voice-preview-requirements voice-save-requirements" onClick={saveDefaultVoice} disabled={voiceRequirements.save.length > 0} className="btn-gold-primary min-h-11 px-4 py-2.5 text-sm disabled:opacity-40">{isSaving ? 'Saving…' : cloneResult?.status==='ready'&&cloneResult.assetKind!=='singing' ? 'Use this voice · save persona' : 'Save as default'}</button>
             </div>
 
           </section>
@@ -2651,6 +2706,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
             <div className={cn(studioStep !== 0 && 'hidden')}>
               <label className="block text-xs font-bold text-[#A1A1AA] uppercase tracking-wider mb-2">Name *</label>
               <input
+                id="persona-name"
                 type="text"
                 value={name}
                 onChange={e => setName(e.target.value)}

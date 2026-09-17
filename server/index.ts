@@ -175,7 +175,7 @@ const XAI_API_KEY = process.env.XAI_API_KEY || process.env.xai_api_key || proces
 const XAI_VOICE_MODEL = process.env.XAI_VOICE_MODEL || 'grok-4.20-0309-non-reasoning';
 const XAI_BASE = 'https://api.x.ai/v1';
 
-const OPENAI_DIRECT_KEY = process.env.Openai_api_key || process.env.openai_api_key || process.env.OPENAI_API_KEY || '';
+const OPENAI_DIRECT_KEY = process.env.OPENAI_API_KEY || process.env.Openai_api_key || process.env.openai_api_key || '';
 
 
 interface ModelInfo extends DiscoveredModelInfo {}
@@ -6603,7 +6603,7 @@ app.get('/api/config-status', (_req, res) => {
     wavespeed: !!WAVESPEED_API_KEY,
     elevenlabs: !!(process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key),
     database: !!process.env.DATABASE_URL,
-    databaseConnected: !!process.env.DATABASE_URL,
+    databaseConnected: null, // Connectivity is not tested by this configuration-only endpoint.
     heygen: !!HEYGEN_API_KEY,
     scrapeCreators: isSocialIntelligenceConfigured(),
   });
@@ -9166,7 +9166,10 @@ async function pushSchema() {
       });
       pool.on('error', (err) => console.warn('[DB Pool Warning]:', err.message));
     }
-    await pool.query(`
+    // Both PostgreSQL drivers accept this plain SQL string. Call through their
+    // common signature rather than the incompatible union of generic overloads.
+    const querySchema = pool.query.bind(pool) as (sql: string) => Promise<unknown>;
+    await querySchema(`
       CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
         email TEXT NOT NULL UNIQUE,

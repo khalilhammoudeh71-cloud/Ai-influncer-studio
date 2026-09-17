@@ -137,6 +137,7 @@ type VoiceEngine = 'elevenlabs' | 'openai' | 'gemini' | 'omnivoice' | 'minimax-c
 
 export default function VoiceView({ persona, personas, onSelectPersona, nav, billingInfo }: VoiceViewProps) {
   const [isPro, togglePro] = useProMode();
+  const [studioStage, setStudioStage] = useState<'write' | 'voice' | 'listen'>('write');
   const [topic, setTopic] = useState('');
   const [script, setScript] = useState('');
   const [isGeneratingScript, setIsGeneratingScript] = useState(false);
@@ -180,7 +181,6 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
   const [omnivoiceRefBase64, setOmnivoiceRefBase64] = useState<string | null>(null);
   const [omnivoiceRefUrl, setOmnivoiceRefUrl] = useState<string | null>(null);
   const [omnivoiceRefName, setOmnivoiceRefName] = useState<string | null>(null);
-  const [hasStartedStudio, setHasStartedStudio] = useState(false);
 
   const activeVoices = useMemo(() => {
     if (voiceEngine === 'gemini') return GEMINI_VOICES;
@@ -597,6 +597,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
 
       const res = await api.voice.generateSpeech(speechParams);
       setAudioUrl(res.audioUrl);
+      setStudioStage('listen');
       const newProd: VoiceProduction = {
         id: Date.now().toString(),
         type: 'audio',
@@ -780,7 +781,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
           }
           setVoiceEngine(val);
         }}
-        className="w-full max-w-full min-w-0 bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-xs font-bold text-[var(--text-primary)] hover:border-violet-500/30 focus:border-violet-500/50 outline-none transition-all cursor-pointer appearance-none pr-8 sm:w-auto sm:min-w-[160px]"
+        className="w-full max-w-full min-w-0 bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-xs font-bold text-[var(--text-primary)] hover:border-[var(--accent-primary)]/30 focus:border-[var(--accent-primary)]/50 outline-none transition-all cursor-pointer appearance-none pr-8 sm:w-auto sm:min-w-[160px]"
       >
         {!['elevenlabs','omnivoice','minimax-clone','qwen3-clone','seed-speech','chatterbox','mureka-vocal','qwen-tts','openai','gemini'].includes(voiceEngine) && <option value={voiceEngine}>{voiceEngine} (saved provider)</option>}
         <option value="elevenlabs" disabled={!hasElevenLabsKey} className="bg-[#0f0f12] text-white">
@@ -840,7 +841,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
             className={cn(
               "w-7 h-7 rounded-full flex items-center justify-center transition-all flex-shrink-0",
               isPreviewing
-                ? "bg-[#E7C477] scale-110 text-white shadow-lg shadow-purple-500/30"
+                ? "bg-[#E7C477] scale-110 text-white shadow-lg shadow-[var(--accent-primary)]/30"
                 : "bg-[var(--bg-overlay)] hover:bg-[var(--bg-hover)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
             )}
           >
@@ -859,7 +860,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
             </span>
           )}
           {accent && (
-            <span className="text-[8px] px-1.5 py-0.5 rounded-md bg-[var(--accent-sky)]/10 text-[var(--accent-sky)] font-bold uppercase tracking-wider">
+            <span className="text-[8px] px-1.5 py-0.5 rounded-md bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] font-bold uppercase tracking-wider">
               {accent}
             </span>
           )}
@@ -962,7 +963,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
   );
 
   return (
-    <div className="h-full w-full min-w-0 overflow-y-auto custom-scrollbar pb-20 max-w-7xl mx-auto p-3 sm:p-4 md:p-8 space-y-8 select-none">
+    <div className="w-full min-w-0 pb-20 max-w-7xl mx-auto p-3 sm:p-4 md:p-8 space-y-8 select-none">
       {/* Clean Header Bar */}
       <header className="mb-6 pb-2 border-b border-[#E7C477]/10">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -985,7 +986,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                   className="w-8 h-8 rounded-lg object-cover border border-[#E7C477]/30"
                 />
               ) : (
-                <div className="w-8 h-8 rounded-lg bg-[#0A101C] border border-[#E7C477]/20 flex items-center justify-center text-[#8C909A]">
+                <div className="w-8 h-8 rounded-lg bg-[var(--bg-input)] border border-[#E7C477]/20 flex items-center justify-center text-[#8C909A]">
                   <Users size={14} />
                 </div>
               )}
@@ -996,51 +997,19 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
           </div>
         </div>
       </header>
+      <nav aria-label="Voice studio steps" className="flex flex-wrap gap-2">
+        {(['write', 'voice', 'listen'] as const).map(stage => <button key={stage} type="button" aria-pressed={studioStage === stage} onClick={() => setStudioStage(stage)} className={cn('rounded-xl px-4 py-2 text-sm font-semibold', studioStage === stage ? 'bg-[var(--accent-primary)]/15 text-[var(--accent-primary)]' : 'text-[var(--text-muted)] hover:text-white')}>{stage === 'write' ? '1. Write' : stage === 'voice' ? '2. Choose a voice' : '3. Listen & export'}</button>)}
+      </nav>
 
-      {!hasStartedStudio && history.length === 0 && !script ? (
-        <div className="flex flex-col items-center justify-center py-10 md:py-16 text-center relative overflow-hidden">
-          {/* Rotating Hero Gallery */}
-          <div className="relative flex justify-center items-center w-full max-w-full mx-auto -mt-6 mb-6">
-            <RotatingHeroImages images={[
-              "/demo/voice_hero_1.png",
-              "/demo/voice_hero_2.png",
-              "/demo/voice_hero_3.png",
-              "/demo/voice_hero_4.png",
-              "/demo/voice_hero_5.png",
-              "/demo/voice_hero_6.png"
-            ]} />
-          </div>
-
-          <motion.h2 
-            initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}
-            className="text-3xl md:text-4xl font-serif text-[#F5F1E8] tracking-tight mb-3"
-          >
-            BRING IDENTITIES TO LIFE
-          </motion.h2>
-          <motion.p 
-            initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}
-            className="text-[#C3BFB8] text-xs md:text-sm max-w-md mx-auto mb-6 leading-relaxed font-sans"
-          >
-            Generate custom voice scripts and high-fidelity speech audio to match your AI's personality perfectly.
-          </motion.p>
-          <motion.button
-            initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.7, type: "spring" }}
-            onClick={() => setHasStartedStudio(true)}
-            className="btn-gold-primary px-8 py-3.5 text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer shadow-lg mx-auto"
-          >
-            Start Voice Studio <Sparkles size={16} />
-          </motion.button>
-        </div>
-      ) : (
-        <>
+      <>
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* Left Column: Script Workspace (7/12) */}
-        <div className="lg:col-span-7 space-y-6">
+        <div hidden={studioStage !== 'write'} className="lg:col-span-12 space-y-6">
           <div className="glass-card rounded-2xl p-6 space-y-4 h-full flex flex-col">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
                 <Type className="w-5 h-5 text-[var(--accent-primary)]" />
-                1. Script Workspace
+                Write your script
               </h3>
               <div className="flex items-center gap-3">
                 <button 
@@ -1086,7 +1055,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
               className="flex-1 w-full min-h-[160px] bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-2xl p-4 text-[var(--text-primary)] text-sm focus:outline-none focus:border-[var(--border-accent)] resize-none font-sans leading-relaxed"
             />
             
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 border-t border-[var(--border-subtle)]">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-4 border-t border-[var(--border-subtle)]">
               <button
                 onClick={() => handleGenerateScript('generate')}
                 disabled={isGeneratingScript || !topic}
@@ -1099,20 +1068,13 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
               <button
                 onClick={() => handleGenerateScript('enhance')}
                 disabled={isGeneratingScript || !script}
-                className="py-3 bg-[var(--accent-sky)]/10 hover:bg-[var(--accent-sky)]/20 text-[var(--accent-sky)] text-[10px] font-bold rounded-xl border border-[var(--accent-sky)]/25 transition-all flex flex-col items-center justify-center gap-1 disabled:opacity-40"
+                className="py-3 bg-[var(--accent-primary)]/10 hover:bg-[var(--accent-primary)]/20 text-[var(--accent-primary)] text-[10px] font-bold rounded-xl border border-[var(--accent-primary)]/25 transition-all flex flex-col items-center justify-center gap-1 disabled:opacity-40"
               >
                 {isGeneratingScript ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mic className="w-4 h-4" />}
                 <span>Enhance Script</span>
               </button>
 
-              <button
-                onClick={() => handleGenerateScript('generate')}
-                disabled={isGeneratingScript || !topic}
-                className="py-3 bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-tertiary)] text-[10px] font-bold rounded-xl border border-[var(--border-default)] transition-all flex flex-col items-center justify-center gap-1 disabled:opacity-40"
-              >
-                {isGeneratingScript ? <Loader2 className="w-4 h-4 animate-spin" /> : <History className="w-4 h-4" />}
-                <span>Regenerate</span>
-              </button>
+
 
               <button
                 onClick={() => handleGenerateScript('surprise')}
@@ -1126,12 +1088,13 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
           </div>
         </div>
 
+        {studioStage === 'write' && <div className="lg:col-span-12"><button type="button" onClick={() => setStudioStage('voice')} className="btn-gold-primary px-5 py-2.5 text-sm">Choose a voice</button></div>}
         {/* Right Column: Control Panel (5/12) */}
-        <div className="lg:col-span-5 space-y-6">
+        <div hidden={studioStage !== 'voice'} className="lg:col-span-12 space-y-6">
           <div className="glass-card rounded-2xl p-6 space-y-6 h-full">
             <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
               <Settings2 className="w-5 h-5 text-[var(--accent-primary)]" />
-              2. Voice & Tone
+              Choose voice and delivery
             </h3>
 
             {persona && persona.id !== 'empty' && <SavedPersonaVoices voices={persona.savedVoices || []} current={persona} onSelect={handleRestoreSavedVoice} disabled={isSavingDefaultVoice || isCloning} actionLabel="Use as default" />}
@@ -1149,18 +1112,20 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
 
               {voiceEngine === 'elevenlabs' ? (
                 <>
-                  {/* Voice Cloning Studio Toggle & Save Default */}
+                  {/* Clone a voice Toggle & Save Default */}
                   <div className="flex flex-wrap items-center gap-2 mb-2">
                     <button
                       onClick={() => setShowClonePanel(!showClonePanel)}
+                      aria-expanded={showClonePanel}
+                      aria-controls="voice-cloning-form"
                       className="flex-1 py-2 px-3 bg-[#E7C477]/10 hover:bg-[#E7C477]/20 text-[#E7C477] border border-[#E7C477]/30 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                     >
                       <Crown size={12} />
-                      {showClonePanel ? 'Close Cloning Panel' : 'Voice Cloning Studio'}
+                      {showClonePanel ? 'Close cloning' : 'Clone a voice'}
                     </button>
                     <button
                       onClick={() => cloningAudioFilesInputRef.current?.click()}
-                      className="py-2 px-3 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/40 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                      className="py-2 px-3 bg-[var(--accent-primary)]/20 hover:bg-[var(--accent-primary)]/30 text-[var(--accent-primary)] border border-[var(--accent-primary)]/40 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
                       title="Upload MP3, MP4, MOV, WAV, M4A voice or video file"
                     >
                       <Upload size={12} />
@@ -1178,9 +1143,9 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                     )}
                   </div>
 
-                  {/* Voice Cloning Studio Panel */}
+                  {/* Clone a voice Panel */}
                   {showClonePanel && (
-                    <div className="p-4 rounded-2xl bg-gradient-to-b from-[#E7C477]/5 to-black/20 border border-[#E7C477]/20 space-y-4 shadow-xl mb-4">
+                    <section id="voice-cloning-form" aria-label="Clone a voice" className="p-4 rounded-2xl bg-gradient-to-b from-[#E7C477]/5 to-black/20 border border-[#E7C477]/20 space-y-4 shadow-xl mb-4">
                       <div className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
                         <Mic size={14} className="text-[#E7C477]" /> Clone Custom Voice
                       </div>
@@ -1239,7 +1204,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                                     toast.error('Playback failed. Please ensure file is valid.');
                                   });
                                 }}
-                                className="text-[9px] font-bold text-cyan-400 hover:text-cyan-300 transition-colors uppercase tracking-wider"
+                                className="text-[9px] font-bold text-[var(--accent-primary)] hover:text-[var(--accent-primary)] transition-colors uppercase tracking-wider"
                               >
                                 Play Sample
                               </button>
@@ -1278,7 +1243,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                               {cloningAudioUploadMenuOpen && (
                                 <>
                                   <div className="fixed inset-0 z-20" onClick={() => setCloningAudioUploadMenuOpen(false)} />
-                                  <div className="absolute right-0 top-full mt-1.5 w-48 rounded-xl border border-white/10 bg-[#0B0F17] p-1.5 shadow-2xl z-30 space-y-1 select-none text-left">
+                                  <div className="absolute right-0 top-full mt-1.5 w-48 rounded-xl border border-white/10 bg-[var(--bg-input)] p-1.5 shadow-2xl z-30 space-y-1 select-none text-left">
                                     <button
                                       type="button"
                                       onClick={() => {
@@ -1298,7 +1263,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                                       }}
                                       className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs text-slate-200 hover:bg-white/5 hover:text-white flex items-center gap-2 font-bold transition-all"
                                     >
-                                      <FolderOpen size={13} className="text-violet-400" />
+                                      <FolderOpen size={13} className="text-[var(--accent-primary)]" />
                                       Browse Files (MP3, MP4, etc.)
                                     </button>
                                   </div>
@@ -1372,6 +1337,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                       <p className="text-xs text-slate-400">Use 1–2 minutes of clear speech from one speaker. Your current voice stays saved until a ready replacement is applied.</p>
                       <label className="flex items-start gap-2 text-xs text-slate-300"><input type="checkbox" checked={speakerAuthorized} onChange={e => setSpeakerAuthorized(e.target.checked)} />I am the speaker or have permission to clone and use this voice.</label>
                       {cloneResult && <div role="status" className="space-y-2 text-xs text-slate-300"><p>{cloneResult.message || cloneResult.status}</p>{cloneResult.status !== 'ready' && <button type="button" disabled={isCloning} onClick={() => handleCloneVoiceSubmit(true)} className="underline">Check clone status</button>}{cloneResult.status === 'failed' && <button type="button" disabled={isCloning || !speakerAuthorized} onClick={() => handleCloneVoiceSubmit(false, true)} className="block underline">Retry after fixing the provider issue</button>}{cloneResult.status === 'verification_required' && <a href="https://elevenlabs.io/app/voices" target="_blank" rel="noreferrer" className="block underline">Verify speaker in ElevenLabs</a>}</div>}
+                      {!cloneResult && <p className="text-xs text-[var(--text-muted)]">{!cloneName.trim() ? 'Name your new voice.' : !cloningAudioBase64 ? 'Upload or record a clear voice sample.' : !speakerAuthorized ? 'Confirm speaker permission to start cloning.' : 'Ready to clone your voice.'}</p>}
                       <button
                         onClick={() => handleCloneVoiceSubmit()}
                         disabled={isCloning || !cloneName || !cloningAudioBase64 || !speakerAuthorized || Boolean(cloneResult)}
@@ -1380,11 +1346,11 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                         {isCloning ? <Loader2 size={12} className="animate-spin" /> : <Crown size={12} />}
                         {isCloning ? 'Cloning Voice...' : 'Start Voice Cloning'}
                       </button>
-                    </div>
+                    </section>
                   )}
 
                   {/* Preset Voices Dropdown */}
-                  <div className="space-y-2">
+                  <div hidden={showClonePanel} className="space-y-2">
                     {isLoadingVoices ? (
                       <div className="flex items-center justify-center py-4 gap-2">
                         <Loader2 className="w-4 h-4 animate-spin text-[#E7C477]" />
@@ -1398,7 +1364,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                           <select
                             value={selectedELVoiceId}
                             onChange={(e) => setSelectedELVoiceId(e.target.value)}
-                            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs font-bold text-[var(--text-primary)] hover:border-violet-500/30 focus:border-violet-500/50 outline-none transition-all cursor-pointer appearance-none pr-8"
+                            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs font-bold text-[var(--text-primary)] hover:border-[var(--accent-primary)]/30 focus:border-[var(--accent-primary)]/50 outline-none transition-all cursor-pointer appearance-none pr-8"
                           >
                             <option value="" disabled className="bg-[#0f0f12] text-white">Select a voice actor...</option>
                             {filteredVoices.map(v => (
@@ -1439,7 +1405,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                       <select
                         value={selectedVoice}
                         onChange={(e) => setSelectedVoice(e.target.value)}
-                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs font-bold text-[var(--text-primary)] hover:border-violet-500/30 focus:border-violet-500/50 outline-none transition-all cursor-pointer appearance-none pr-8"
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs font-bold text-[var(--text-primary)] hover:border-[var(--accent-primary)]/30 focus:border-[var(--accent-primary)]/50 outline-none transition-all cursor-pointer appearance-none pr-8"
                       >
                         {activeVoices.map(v => (
                           <option key={v.id} value={v.id} className="bg-[#0f0f12] text-white">
@@ -1460,17 +1426,17 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: 'auto' }}
                       exit={{ opacity: 0, height: 0 }}
-                      className="p-4 rounded-2xl bg-gradient-to-b from-cyan-500/5 to-black/20 border border-cyan-500/20 space-y-3 shadow-xl"
+                      className="p-4 rounded-2xl bg-gradient-to-b from-[var(--accent-primary)]/5 to-black/20 border border-[var(--accent-primary)]/20 space-y-3 shadow-xl"
                     >
                       <div className="flex justify-between items-center">
-                        <span className="text-[10px] font-black uppercase tracking-wider text-cyan-400">OmniVoice Reference Sample</span>
+                        <span className="text-[10px] font-black uppercase tracking-wider text-[var(--accent-primary)]">OmniVoice Reference Sample</span>
                         {omnivoiceRefUrl && (
                           <button
                             onClick={() => {
                               const audio = new Audio(omnivoiceRefUrl);
                               audio.play().catch(() => {});
                             }}
-                            className="text-[9px] font-bold text-cyan-300 hover:text-cyan-200 transition-colors uppercase tracking-widest"
+                            className="text-[9px] font-bold text-[var(--accent-primary)] hover:text-[var(--accent-primary)] transition-colors uppercase tracking-widest"
                           >
                             Play Sample
                           </button>
@@ -1481,7 +1447,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                         <button
                           type="button"
                           onClick={() => setOmnivoiceRefUploadMenuOpen(!omnivoiceRefUploadMenuOpen)}
-                          className="w-full py-2.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/20 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer text-center transition-all select-none"
+                          className="w-full py-2.5 rounded-xl bg-[var(--accent-primary)]/10 hover:bg-[var(--accent-primary)]/20 text-[var(--accent-primary)] border border-[var(--accent-primary)]/20 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer text-center transition-all select-none"
                         >
                           <Download size={12} className="rotate-180" />
                           <span>{omnivoiceRefName ? `Uploaded: ${omnivoiceRefName.substring(0, 24)}...` : 'Upload Audio or Video'}</span>
@@ -1490,7 +1456,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                         {omnivoiceRefUploadMenuOpen && (
                           <>
                             <div className="fixed inset-0 z-20" onClick={() => setOmnivoiceRefUploadMenuOpen(false)} />
-                            <div className="absolute left-0 right-0 top-full mt-1.5 rounded-xl border border-white/10 bg-[#0B0F17] p-1.5 shadow-2xl z-30 space-y-1 select-none text-left">
+                            <div className="absolute left-0 right-0 top-full mt-1.5 rounded-xl border border-white/10 bg-[var(--bg-input)] p-1.5 shadow-2xl z-30 space-y-1 select-none text-left">
                               <button
                                 type="button"
                                 onClick={() => {
@@ -1510,7 +1476,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                                 }}
                                 className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs text-slate-200 hover:bg-white/5 hover:text-white flex items-center gap-2 font-bold transition-all"
                               >
-                                <FolderOpen size={13} className="text-violet-400" />
+                                <FolderOpen size={13} className="text-[var(--accent-primary)]" />
                                 Browse Files (MP3, WAV, etc.)
                               </button>
                             </div>
@@ -1568,6 +1534,8 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
 
             <p className="text-xs text-[var(--text-muted)]">Delivery uses controls supported by the selected provider. Emotion adjusts your saved settings gently; no fillers are added to your script.</p>
 
+            {!script.trim() && <p className="text-xs text-[var(--text-muted)]">Add a script before rendering audio.</p>}
+            {voiceEngine === 'elevenlabs' && !selectedELVoiceId && <p className="text-xs text-[var(--text-muted)]">Choose a voice to render audio.</p>}
             <button
               onClick={handleGenerateVoice}
               disabled={isGeneratingVoice || !script || (voiceEngine === 'elevenlabs' && !selectedELVoiceId)}
@@ -1585,7 +1553,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
 
       {/* Full Width Bottom Area for Audio Playback & Video Gen */}
       <AnimatePresence>
-        {audioUrl && (
+        {studioStage === 'listen' && audioUrl && (
           <motion.div 
             initial={{ opacity: 0, y: 100 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1598,7 +1566,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                     <button 
                       onClick={togglePlayback}
                       className="w-20 h-20 rounded-full flex items-center justify-center text-white shadow-xl transition-all flex-shrink-0 active:scale-95"
-                      style={{ background: 'var(--gradient-button)', boxShadow: '0 0 30px rgba(124,91,240,0.3)' }}
+                      style={{ background: 'var(--gradient-button)', boxShadow: '0 0 30px rgba(231,196,119,0.3)' }}
                     >
                       {isPlaying ? <Pause className="w-8 h-8 fill-current" /> : <Play className="w-8 h-8 fill-current ml-1" />}
                     </button>
@@ -1698,7 +1666,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                           <span className={cn(
                             "text-[9px] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider",
                             isGoogle
-                              ? "bg-blue-500/10 text-blue-400"
+                              ? "bg-[var(--accent-primary)]/10 text-[var(--accent-primary)]"
                               : "bg-amber-500/10 text-amber-400"
                           )}>
                             {isGoogle ? 'Gemini' : 'Wavespeed'}
@@ -1798,7 +1766,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                     onClick={handleGenerateVideo}
                     disabled={isGeneratingVideo || !audioUrl || !selectedImage}
                     className="w-full py-6 premium-button disabled:opacity-40 font-black text-xl uppercase tracking-[0.3em] flex items-center justify-center gap-5 group transition-all"
-                    style={{ boxShadow: '0 10px 40px rgba(124,91,240,0.25)' }}
+                    style={{ boxShadow: '0 10px 40px rgba(231,196,119,0.25)' }}
                   >
                     {isGeneratingVideo ? <Loader2 className="w-8 h-8 animate-spin" /> : <Video className="w-8 h-8 group-hover:scale-110 transition-transform" />}
                     {isGeneratingVideo ? 'Rendering...' : (generatedVideoUrl ? 'Regenerate Video' : 'Generate Talking Video')}
@@ -1816,8 +1784,9 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
       </AnimatePresence>
 
 
+      {studioStage === 'listen' && !audioUrl && <div className="premium-card rounded-2xl p-6"><h3 className="font-semibold">Your audio preview will appear here</h3><p className="mt-2 text-sm text-[var(--text-muted)]">Write a script, choose a voice, then render audio.</p><button type="button" onClick={() => setStudioStage('voice')} className="mt-4 btn-gold-primary px-4 py-2">Choose a voice</button></div>}
       {/* History */}
-      <div className="glass-card rounded-2xl p-6 space-y-6">
+      <div hidden={studioStage !== 'listen'} className="glass-card rounded-2xl p-6 space-y-6">
         <h3 className="font-black text-xs uppercase tracking-widest text-[var(--text-muted)] flex items-center gap-2">
           <History className="w-3 h-3" />
           Production History
@@ -1859,7 +1828,6 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
         </div>
       </div>
         </>
-      )}
 
       {persona && (
         <WebcamAvatarCreator

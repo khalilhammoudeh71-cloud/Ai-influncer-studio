@@ -59,14 +59,16 @@ function formatWhen(value: string) {
 export default function MediaJobCenter({ isOpen, onClose, onOpenResult, onJobCompleted }: Props) {
   const [jobs, setJobs] = useState<MediaJob[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState('');
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
 
   const refresh = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
     try {
       setJobs(await listMediaJobs());
+      setLoadError('');
     } catch (error) {
-      if (!quiet) toast.error(error instanceof Error ? error.message : 'Could not load media jobs');
+      setLoadError(error instanceof Error ? error.message : 'Could not load media jobs');
     } finally {
       if (!quiet) setLoading(false);
     }
@@ -186,12 +188,13 @@ export default function MediaJobCenter({ isOpen, onClose, onOpenResult, onJobCom
             </header>
 
             <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-3">
+              {loadError && <div role="alert" className="rounded-xl border border-amber-400/25 bg-amber-400/5 p-3 text-sm text-amber-200">Could not load your jobs. Your saved work is unchanged. <button type="button" onClick={() => void refresh()} className="ml-2 underline">Retry</button></div>}
               {loading && jobs.length === 0 ? (
                 <div className="h-full min-h-64 flex flex-col items-center justify-center text-zinc-400 gap-3">
                   <Loader2 size={26} className="animate-spin text-[#E7C477]" />
                   Loading your jobs…
                 </div>
-              ) : jobs.length === 0 ? (
+              ) : jobs.length === 0 && !loadError ? (
                 <div className="h-full min-h-64 flex flex-col items-center justify-center text-center px-8">
                   <div className="w-14 h-14 rounded-2xl bg-[#E7C477]/10 border border-[#E7C477]/20 flex items-center justify-center text-[#E7C477]">
                     <Sparkles size={24} />
@@ -274,6 +277,8 @@ export default function MediaJobCenter({ isOpen, onClose, onOpenResult, onJobCom
                       </div>
                     )}
 
+                    {failed && <p className="mt-3 text-xs text-zinc-400">Retry starts a new provider request and may incur a new charge.</p>}
+                    {working && <p className="mt-3 text-xs text-zinc-400">Cancel requests a stop; provider work may already have started.</p>}
                     <div className="flex items-center justify-end gap-2 mt-3">
                       {complete && job.result?.url && (
                         <button

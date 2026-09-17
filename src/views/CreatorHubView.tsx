@@ -11,6 +11,7 @@ import { Persona, NavActions } from '../types';
 import toast from 'react-hot-toast';
 import { cn } from '../utils/cn';
 import AIToolsView from './AIToolsView';
+import { accountLocalStorage } from '../utils/accountStorage';
 
 interface CreatorHubViewProps {
   persona: Persona;
@@ -26,84 +27,87 @@ const TOOLS_CONFIG = [
     title: 'Brand Deal Analyzer',
     desc: 'Evaluate brand deal fit, rates, contract flags, and draft custom counter-offers.',
     icon: Briefcase,
-    color: 'from-amber-500 to-orange-600',
-    glow: 'rgba(245, 158, 11, 0.15)',
+    color: 'from-[var(--accent-primary)] to-[var(--accent-secondary)]',
+    glow: 'rgba(231,196,119,0.15)',
   },
   {
     id: 'media-kit',
     title: 'Media Kit Generator',
     desc: 'Instantly generate an aesthetic media kit and rate card tailored to your persona.',
     icon: Award,
-    color: 'from-teal-400 to-emerald-600',
-    glow: 'rgba(20, 184, 166, 0.15)',
+    color: 'from-[var(--accent-primary)] to-[var(--accent-secondary)]',
+    glow: 'rgba(231,196,119,0.15)',
   },
   {
     id: 'viral-hooks',
     title: 'Viral Hook Generator',
     desc: 'Generate high-virality short-form hooks categorized by psychological triggers.',
     icon: Zap,
-    color: 'from-violet-500 to-indigo-600',
-    glow: 'rgba(217,182,103, 0.15)',
+    color: 'from-[var(--accent-primary)] to-[var(--accent-secondary)]',
+    glow: 'rgba(231,196,119,0.15)',
   },
   {
     id: 'ab-tester',
     title: 'A/B Caption Tester',
     desc: 'Simulate engagement of two captions and generate an optimized hybrid version.',
     icon: Columns,
-    color: 'from-blue-500 to-cyan-600',
-    glow: 'rgba(59, 130, 246, 0.15)',
+    color: 'from-[var(--accent-primary)] to-[var(--accent-secondary)]',
+    glow: 'rgba(231,196,119,0.15)',
   },
   {
     id: 'platform-adapter',
     title: 'Cross-Platform Adapter',
     desc: 'Reframe any post idea perfectly across Instagram, TikTok, YouTube, X, and LinkedIn.',
     icon: Share2,
-    color: 'from-pink-500 to-rose-600',
-    glow: 'rgba(236, 72, 153, 0.15)',
+    color: 'from-[var(--accent-primary)] to-[var(--accent-secondary)]',
+    glow: 'rgba(231,196,119,0.15)',
   },
   {
     id: 'collab-engine',
     title: 'Persona Collab Engine',
     desc: 'Merge aesthetics and voices of two system personas into collaborative content.',
     icon: Users,
-    color: 'from-sky-400 to-blue-600',
-    glow: 'rgba(56, 189, 248, 0.15)',
+    color: 'from-[var(--accent-primary)] to-[var(--accent-secondary)]',
+    glow: 'rgba(231,196,119,0.15)',
   },
   {
     id: 'avatar-profiler',
     title: 'Audience Avatar Profiler',
     desc: 'Generate humanized demographic profiles of your ideal audience segments.',
     icon: Target,
-    color: 'from-fuchsia-500 to-purple-600',
-    glow: 'rgba(217,182,103, 0.15)',
+    color: 'from-[var(--accent-primary)] to-[var(--accent-secondary)]',
+    glow: 'rgba(231,196,119,0.15)',
   },
   {
     id: 'repurpose-studio',
     title: 'Content Repurpose Studio',
     desc: 'Turn any long-form text or transcript into sliding carousels, threads, and short scripts.',
     icon: Cpu,
-    color: 'from-emerald-400 to-green-600',
-    glow: 'rgba(52, 211, 153, 0.15)',
+    color: 'from-[var(--accent-primary)] to-[var(--accent-secondary)]',
+    glow: 'rgba(231,196,119,0.15)',
   },
   {
     id: 'dream-collab',
     title: 'Dream Collab Picker',
     desc: 'Identify celebrity and top creator alignment details and draft direct pitches.',
     icon: Crown,
-    color: 'from-rose-500 to-red-600',
-    glow: 'rgba(244, 63, 94, 0.15)',
+    color: 'from-[var(--accent-primary)] to-[var(--accent-secondary)]',
+    glow: 'rgba(231,196,119,0.15)',
   },
   {
     id: 'comment-intelligence',
     title: 'Comment Intelligence',
     desc: 'Scan comment sections, extract sentiment ratios, and craft customized context replies.',
     icon: MessageSquare,
-    color: 'from-indigo-500 to-purple-600',
-    glow: 'rgba(185,150,85, 0.15)',
+    color: 'from-[var(--accent-primary)] to-[var(--accent-secondary)]',
+    glow: 'rgba(231,196,119,0.15)',
   }
 ];
 
 export default function CreatorHubView({ persona: activePersona, personas, nav, initialTool, billingInfo }: CreatorHubViewProps) {
+  const [recentMarketingTools, setRecentMarketingTools] = useState<string[]>(() => {
+    try { const stored = JSON.parse(accountLocalStorage.getItem('marketing_recent_tools') || '[]'); return Array.isArray(stored) ? stored.filter(id => TOOLS_CONFIG.some(tool => tool.id === id)).slice(0, 4) : []; } catch { return []; }
+  });
   const [creativeToolOpen, setCreativeToolOpen] = useState(!!initialTool);
   const [toolboxSection, setToolboxSection] = useState<'all' | 'creative' | 'marketing'>('all');
 
@@ -271,6 +275,11 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
   };
 
   const handleOpenTool = (toolId: string) => {
+    setRecentMarketingTools(previous => {
+      const next = [toolId, ...previous.filter(id => id !== toolId)].slice(0, 4);
+      accountLocalStorage.setItem('marketing_recent_tools', JSON.stringify(next));
+      return next;
+    });
     setActiveTool(toolId);
     // If it's a generator-style tool with no user inputs required, automatically execute it on open if no result yet
     if (toolId === 'media-kit' && !mediaKitResult) {
@@ -308,7 +317,8 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
               toolboxSection === 'all' ? 'text-[#141416]' : 'text-[#8C909A] hover:text-[#F5F1E8]'
             }`}
           >
-            {toolboxSection === 'all' && (
+            {!creativeToolOpen && !activeTool && toolboxSection !== 'creative' && recentMarketingTools.length > 0 && <section aria-label="Recent content tasks" className="mb-5"><p className="mb-2 text-xs text-[var(--text-muted)]">Recent content tasks</p><div className="flex flex-wrap gap-2">{recentMarketingTools.map(id => { const tool = TOOLS_CONFIG.find(item => item.id === id); return tool ? <button key={id} type="button" onClick={() => handleOpenTool(id)} className="rounded-lg border border-[var(--border-default)] px-3 py-2 text-xs text-[var(--text-secondary)] hover:border-[var(--accent-primary)]">{tool.title}</button> : null; })}</div></section>}
+      {toolboxSection === 'all' && (
               <motion.div
                 layoutId="toolboxTabBg"
                 className="absolute inset-0 bg-gradient-to-r from-[#F2D58D] to-[#B99655] rounded-xl -z-10 shadow-md shadow-amber-950/40"
@@ -316,7 +326,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
               />
             )}
             <span className="flex items-center gap-2">
-              <Sparkles size={14} /> All Tools
+              <Sparkles size={14} /> All tasks
             </span>
           </button>
           <button
@@ -333,7 +343,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
               />
             )}
             <span className="flex items-center gap-2">
-              <Sparkles size={14} /> Creative & Editing
+              <Sparkles size={14} /> Edit photos & videos
             </span>
           </button>
           <button
@@ -350,7 +360,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
               />
             )}
             <span className="flex items-center gap-2">
-              <Wrench size={14} /> Marketing & Strategy
+              <Wrench size={14} /> Plan content & partnerships
             </span>
           </button>
         </div>
@@ -363,13 +373,6 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
         <div className="space-y-12">
               {/* Creative Section */}
               <div className="space-y-4">
-                {!creativeToolOpen && <div className="flex items-center gap-2.5 pb-2 border-b border-[#E7C477]/10">
-                  <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#F2D58D] to-[#B99655] flex items-center justify-center text-[#141416] shadow-sm">
-                    <Sparkles size={14} />
-                  </div>
-                  <h2 className="text-sm font-bold text-[#F5F1E8] uppercase tracking-wider">Photo and video tools</h2>
-                </div>
-                }
                 <AIToolsView
                   persona={activePersona}
                   personas={personas}
@@ -394,11 +397,12 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                   {TOOLS_CONFIG.map((tool) => {
                     const Icon = tool.icon;
                     return (
-                      <motion.div
+                      <motion.button
+                        type="button"
                         key={tool.id}
                         whileHover={{ y: -3, scale: 1.01 }}
                         onClick={() => handleOpenTool(tool.id)}
-                        className="p-6 rounded-2xl bg-[#18181B] border border-white/10 hover:border-[#E7C477]/40 flex flex-col justify-between cursor-pointer group relative overflow-hidden h-[190px] shadow-lg transition-all duration-300"
+                        className="p-6 rounded-2xl bg-[#18181B] border border-white/10 hover:border-[#E7C477]/40 flex flex-col justify-between cursor-pointer group relative overflow-hidden h-[190px] text-left shadow-lg transition-all duration-300"
                       >
                         <div
                           className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"
@@ -416,7 +420,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                         <div className="flex items-center gap-1.5 text-xs font-bold text-[#D9BA72] mt-3 uppercase tracking-wider opacity-0 group-hover:opacity-100 transform translate-x-[-10px] group-hover:translate-x-0 transition-all duration-300">
                           Launch Tool <ChevronRight size={13} className="mt-0.5 animate-pulse text-[#E7C477]" />
                         </div>
-                      </motion.div>
+                      </motion.button>
                     );
                   })}
                 </div>
@@ -441,11 +445,12 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
           {TOOLS_CONFIG.map((tool) => {
             const Icon = tool.icon;
             return (
-              <motion.div
+              <motion.button
+                type="button"
                 key={tool.id}
                 whileHover={{ y: -3, scale: 1.01 }}
                 onClick={() => handleOpenTool(tool.id)}
-                className="premium-card p-6 flex flex-col justify-between cursor-pointer group relative overflow-hidden h-[180px]"
+                className="premium-card p-6 flex flex-col justify-between cursor-pointer group relative overflow-hidden h-[180px] text-left"
                 style={{
                   boxShadow: `0 8px 30px rgba(0, 0, 0, 0.2), inset 0 0 0 1px rgba(255,255,255,0.02)`
                 }}
@@ -461,14 +466,14 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                   <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${tool.color} p-3 text-white flex items-center justify-center mb-4`}>
                     <Icon size={24} />
                   </div>
-                  <h3 className="text-lg font-bold text-white group-hover:text-[#00F5C2] transition-colors">{tool.title}</h3>
+                  <h3 className="text-lg font-bold text-white group-hover:text-[var(--accent-primary)] transition-colors">{tool.title}</h3>
                   <p className="text-xs text-[var(--text-tertiary)] mt-1.5 line-clamp-2">{tool.desc}</p>
                 </div>
 
-                <div className="flex items-center gap-1 text-[11px] font-black text-[#00D4FF] mt-3 uppercase tracking-wider opacity-0 group-hover:opacity-100 transform translate-x-[-10px] group-hover:translate-x-0 transition-all duration-300">
+                <div className="flex items-center gap-1 text-[11px] font-black text-[var(--accent-primary)] mt-3 uppercase tracking-wider opacity-0 group-hover:opacity-100 transform translate-x-[-10px] group-hover:translate-x-0 transition-all duration-300">
                   Launch Tool <ChevronRight size={12} className="mt-0.5 animate-pulse" />
                 </div>
-              </motion.div>
+              </motion.button>
             );
           })}
         </div>
@@ -495,10 +500,10 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                 exit={{ scale: 0.95, y: 30 }}
                 transition={{ type: 'spring', damping: 25, stiffness: 350 }}
                 onClick={(e) => e.stopPropagation()}
-                className="bg-[#0B0F17] border border-white/10 w-full max-w-4xl h-[85vh] rounded-3xl flex flex-col overflow-hidden shadow-2xl relative"
+                className="bg-[var(--bg-input)] border border-white/10 w-full max-w-4xl h-[85vh] rounded-3xl flex flex-col overflow-hidden shadow-2xl relative"
               >
                 {/* Header */}
-                <div className="flex-none flex justify-between items-center px-6 py-4 border-b border-white/5 bg-[#111827]/30 backdrop-blur-xl">
+                <div className="flex-none flex justify-between items-center px-6 py-4 border-b border-white/5 bg-[var(--bg-input)]/30 backdrop-blur-xl">
                   <div className="flex items-center gap-3">
                     <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${config.color} p-2.5 text-white flex items-center justify-center`}>
                       <Icon size={20} />
@@ -529,7 +534,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                           value={dealText}
                           onChange={(e) => setDealText(e.target.value)}
                           placeholder="Example: Hey Isabella! We love your lifestyle content and want to sponsor a post on your feed. We can offer $500 for a permanent post and require 3 weeks of category exclusivity..."
-                          className="w-full bg-[var(--bg-input)] border border-[var(--border-default)] rounded-2xl py-3 px-4 focus:ring-2 focus:ring-[#00D4FF]/30 focus:border-[#00D4FF]/50 outline-none transition-all text-[var(--text-primary)] text-sm"
+                          className="w-full bg-[var(--bg-input)] border border-[var(--border-default)] rounded-2xl py-3 px-4 focus:ring-2 focus:ring-[var(--accent-primary)]/30 focus:border-[var(--accent-primary)]/50 outline-none transition-all text-[var(--text-primary)] text-sm"
                         />
                         <button
                           disabled={loading}
@@ -553,7 +558,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                                   <circle cx="48" cy="48" r="40" stroke="rgba(255,255,255,0.05)" strokeWidth="6" fill="transparent" />
                                   <circle 
                                     cx="48" cy="48" r="40" 
-                                    stroke={brandDealResult.fitScore > 75 ? '#00F5C2' : brandDealResult.fitScore > 40 ? '#00D4FF' : '#EF4444'} 
+                                    stroke={brandDealResult.fitScore > 75 ? 'var(--accent-primary)' : brandDealResult.fitScore > 40 ? 'var(--accent-primary)' : '#EF4444'}
                                     strokeWidth="6" fill="transparent" 
                                     strokeDasharray={`${2 * Math.PI * 40}`} 
                                     strokeDashoffset={`${2 * Math.PI * 40 * (1 - brandDealResult.fitScore / 100)}`} 
@@ -569,7 +574,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                                 <span className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-wider block">Verdict & fit analysis</span>
                                 <p className="text-2xl font-black text-white mt-1.5">
                                   {brandDealResult.verdict === 'Accept' && <span className="text-emerald-400">Accept Deal ✦</span>}
-                                  {brandDealResult.verdict === 'Negotiate' && <span className="text-[#00D4FF]">Negotiate Terms ⚡︎</span>}
+                                  {brandDealResult.verdict === 'Negotiate' && <span className="text-[var(--accent-primary)]">Negotiate Terms ⚡︎</span>}
                                   {brandDealResult.verdict === 'Pass' && <span className="text-red-400">Pass on Offer 🛑</span>}
                                 </p>
                                 <p className="text-sm text-[var(--text-secondary)] mt-2">{brandDealResult.fitReason}</p>
@@ -625,7 +630,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                               {brandDealResult.negotiationTips?.map((tip: string, i: number) => (
                                 <div key={i} className="bg-white/5 border border-white/5 rounded-xl p-3.5 flex gap-2">
-                                  <div className="w-5 h-5 rounded-full bg-[#00D4FF]/10 text-[#00D4FF] flex items-center justify-center font-bold text-xs shrink-0">{i+1}</div>
+                                  <div className="w-5 h-5 rounded-full bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] flex items-center justify-center font-bold text-xs shrink-0">{i+1}</div>
                                   <p className="text-xs text-[var(--text-secondary)] leading-relaxed">{tip}</p>
                                 </div>
                               ))}
@@ -638,7 +643,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                               <span className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-wider">Draft Response Email</span>
                               <button
                                 onClick={() => copyToClipboard(brandDealResult.counterOfferEmail)}
-                                className="flex items-center gap-1.5 text-xs text-[#00D4FF] hover:text-[#00F5C2] transition-colors"
+                                className="flex items-center gap-1.5 text-xs text-[var(--accent-primary)] hover:text-[var(--accent-primary)] transition-colors"
                               >
                                 <Copy size={13} /> Copy Pitch
                               </button>
@@ -660,7 +665,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                     <div className="space-y-6">
                       {loading && (
                         <div className="flex flex-col items-center justify-center py-20 gap-3">
-                          <Loader2 className="animate-spin text-[#00F5C2]" size={36} />
+                          <Loader2 className="animate-spin text-[var(--accent-primary)]" size={36} />
                           <p className="text-sm text-[var(--text-tertiary)] font-medium">Extracting persona details and structuring media kit...</p>
                         </div>
                       )}
@@ -668,12 +673,12 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                       {!loading && mediaKitResult && (
                         <div className="space-y-8">
                           {/* Top Info Strip */}
-                          <div className="bg-gradient-to-r from-teal-500/10 to-[#00D4FF]/10 border border-teal-500/20 rounded-3xl p-6 relative overflow-hidden">
+                          <div className="bg-gradient-to-r from-teal-500/10 to-[var(--accent-primary)]/10 border border-teal-500/20 rounded-3xl p-6 relative overflow-hidden">
                             <div className="absolute top-0 right-0 p-8 opacity-[0.03] text-teal-400">
                               <Award size={180} />
                             </div>
                             <div className="relative z-10 flex flex-col md:flex-row items-center gap-5">
-                              <div className="w-20 h-20 rounded-2xl overflow-hidden border-2 border-[#00F5C2] shadow-lg shrink-0">
+                              <div className="w-20 h-20 rounded-2xl overflow-hidden border-2 border-[var(--accent-primary)] shadow-lg shrink-0">
                                 {activePersona.avatar ? (
                                   <img
                                     src={activePersona.avatar}
@@ -699,10 +704,10 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                             <h4 className="text-xs uppercase tracking-widest font-black text-[var(--text-muted)] mb-4">Audience Demographics & Engagement</h4>
                             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                               {[
-                                { label: 'Primary Age', value: mediaKitResult.audienceStats?.ageRange, color: 'text-violet-400' },
-                                { label: 'Top Gender', value: mediaKitResult.audienceStats?.topGenders, color: 'text-pink-400' },
-                                { label: 'Top Locations', value: mediaKitResult.audienceStats?.topLocations?.join(', '), color: 'text-[#00D4FF]' },
-                                { label: 'Engagement Rate', value: mediaKitResult.audienceStats?.avgEngagementRate || '4.5%', color: 'text-[#00F5C2]' }
+                                { label: 'Primary Age', value: mediaKitResult.audienceStats?.ageRange, color: 'from-[var(--accent-primary)] to-[var(--accent-secondary)]' },
+                                { label: 'Top Gender', value: mediaKitResult.audienceStats?.topGenders, color: 'from-[var(--accent-primary)] to-[var(--accent-secondary)]' },
+                                { label: 'Top Locations', value: mediaKitResult.audienceStats?.topLocations?.join(', '), color: 'from-[var(--accent-primary)] to-[var(--accent-secondary)]' },
+                                { label: 'Engagement Rate', value: mediaKitResult.audienceStats?.avgEngagementRate || '4.5%', color: 'from-[var(--accent-primary)] to-[var(--accent-secondary)]' }
                               ].map((stat, i) => (
                                 <div key={i} className="premium-card p-4 text-center">
                                   <span className="text-[9px] text-[var(--text-muted)] block uppercase font-bold tracking-wider">{stat.label}</span>
@@ -787,7 +792,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                             value={topic}
                             onChange={(e) => setTopic(e.target.value)}
                             placeholder="e.g. 5 toxic skincare habits you must stop"
-                            className="w-full bg-[var(--bg-input)] border border-[var(--border-default)] rounded-xl py-3 px-4 focus:ring-2 focus:ring-[#00D4FF]/30 focus:border-[#00D4FF]/50 outline-none transition-all text-[var(--text-primary)] text-sm"
+                            className="w-full bg-[var(--bg-input)] border border-[var(--border-default)] rounded-xl py-3 px-4 focus:ring-2 focus:ring-[var(--accent-primary)]/30 focus:border-[var(--accent-primary)]/50 outline-none transition-all text-[var(--text-primary)] text-sm"
                           />
                         </div>
                         <div className="space-y-1.5">
@@ -799,7 +804,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                               max={15}
                               value={hooksCount}
                               onChange={(e) => setHooksCount(parseInt(e.target.value))}
-                              className="flex-1 accent-[#00F5C2]"
+                              className="flex-1 accent-[var(--accent-primary)]"
                             />
                             <button
                               disabled={loading}
@@ -819,8 +824,8 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                             <div key={i} className="premium-card p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                               <div className="space-y-1">
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="text-[10px] font-black text-[#00D4FF] bg-[#00D4FF]/10 px-2 py-0.5 rounded uppercase tracking-wider">{hk.type}</span>
-                                  <span className="text-[10px] font-bold text-violet-400 bg-violet-400/10 px-2 py-0.5 rounded">{hk.platform}</span>
+                                  <span className="text-[10px] font-black text-[var(--accent-primary)] bg-[var(--accent-primary)]/10 px-2 py-0.5 rounded uppercase tracking-wider">{hk.type}</span>
+                                  <span className="text-[10px] font-bold text-[var(--accent-primary)] bg-[var(--accent-primary)]/10 px-2 py-0.5 rounded">{hk.platform}</span>
                                   <span className="text-[10px] font-black text-emerald-400 ml-1">Score: {hk.viralityScore}/10</span>
                                 </div>
                                 <p className="text-sm font-bold text-white mt-1.5">"{hk.hook}"</p>
@@ -854,13 +859,13 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                           />
                         </div>
                         <div className="space-y-2">
-                          <label className="text-xs uppercase tracking-wider font-bold text-violet-400">Caption Option B</label>
+                          <label className="text-xs uppercase tracking-wider font-bold text-[var(--accent-primary)]">Caption Option B</label>
                           <textarea
                             rows={5}
                             value={captionB}
                             onChange={(e) => setCaptionB(e.target.value)}
                             placeholder="Write caption B here..."
-                            className="w-full bg-[var(--bg-input)] border border-[var(--border-default)] rounded-2xl py-3 px-4 focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/50 outline-none transition-all text-[var(--text-primary)] text-sm"
+                            className="w-full bg-[var(--bg-input)] border border-[var(--border-default)] rounded-2xl py-3 px-4 focus:ring-2 focus:ring-[var(--accent-primary)]/30 focus:border-[var(--accent-primary)]/50 outline-none transition-all text-[var(--text-primary)] text-sm"
                           />
                         </div>
                       </div>
@@ -876,13 +881,13 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                       {abTestResult && (
                         <div className="space-y-6 pt-4 border-t border-white/5">
                           {/* Engagement Winner */}
-                          <div className="premium-card p-5 bg-gradient-to-r from-violet-600/10 to-[#00D4FF]/10 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                          <div className="premium-card p-5 bg-gradient-to-r from-[var(--accent-primary)]/10 to-[var(--accent-primary)]/10 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                             <div>
                               <span className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-wider">Predictive engagement winner</span>
                               <h3 className="text-2xl font-black text-white mt-1 flex items-center gap-2">
                                 {abTestResult.winner === 'A' && <span className="text-amber-400">Option A Wins 🏆</span>}
-                                {abTestResult.winner === 'B' && <span className="text-violet-400">Option B Wins 🏆</span>}
-                                {abTestResult.winner === 'Tie' && <span className="text-[#00D4FF]">It's a Tie! 🤝</span>}
+                                {abTestResult.winner === 'B' && <span className="text-[var(--accent-primary)]">Option B Wins 🏆</span>}
+                                {abTestResult.winner === 'Tie' && <span className="text-[var(--accent-primary)]">It's a Tie! 🤝</span>}
                                 <span className="text-xs font-bold text-[var(--text-secondary)] bg-white/5 px-2.5 py-0.5 rounded-full border border-white/10">{abTestResult.confidence}% confidence</span>
                               </h3>
                               <p className="text-xs text-[var(--text-secondary)] mt-2 leading-relaxed">{abTestResult.winnerReason}</p>
@@ -919,8 +924,8 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                             </div>
 
                             {/* Score Card B */}
-                            <div className="premium-card p-5 border-violet-500/20">
-                              <h4 className="font-extrabold text-sm text-violet-400 mb-4 flex justify-between items-center">
+                            <div className="premium-card p-5 border-[var(--accent-primary)]/20">
+                              <h4 className="font-extrabold text-sm text-[var(--accent-primary)] mb-4 flex justify-between items-center">
                                 Option B Metrics
                                 <span className="text-base font-black text-white bg-white/5 border border-white/10 px-2 py-0.5 rounded-md">{abTestResult.scoreB?.overall}/10</span>
                               </h4>
@@ -937,7 +942,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                                       <span>{m.val}/10</span>
                                     </div>
                                     <div className="w-full bg-white/5 h-1.5 rounded-full overflow-hidden">
-                                      <div className="bg-violet-500 h-full rounded-full" style={{ width: `${m.val * 10}%` }} />
+                                      <div className="bg-[var(--accent-primary)] h-full rounded-full" style={{ width: `${m.val * 10}%` }} />
                                     </div>
                                   </div>
                                 ))}
@@ -950,11 +955,11 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                           <div className="premium-card p-5 relative">
                             <div className="flex justify-between items-center mb-3">
                               <span className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-wider flex items-center gap-1.5">
-                                <Sparkles size={13} className="text-[#00F5C2]" /> Recommended Hybrid Caption
+                                <Sparkles size={13} className="text-[var(--accent-primary)]" /> Recommended Hybrid Caption
                               </span>
                               <button
                                 onClick={() => copyToClipboard(abTestResult.hybridCaption, 'Hybrid caption copied!')}
-                                className="flex items-center gap-1.5 text-xs text-[#00D4FF] hover:text-[#00F5C2] transition-colors"
+                                className="flex items-center gap-1.5 text-xs text-[var(--accent-primary)] hover:text-[var(--accent-primary)] transition-colors"
                               >
                                 <Copy size={13} /> Copy Caption
                               </button>
@@ -982,7 +987,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                           value={originalContent}
                           onChange={(e) => setOriginalContent(e.target.value)}
                           placeholder="Example: Here is an idea: why eating sugar is ruining your focus, and 3 simple snacks to swap. This is for my lifestyle account Isabella."
-                          className="w-full bg-[var(--bg-input)] border border-[var(--border-default)] rounded-2xl py-3 px-4 focus:ring-2 focus:ring-[#00D4FF]/30 focus:border-[#00D4FF]/50 outline-none transition-all text-[var(--text-primary)] text-sm"
+                          className="w-full bg-[var(--bg-input)] border border-[var(--border-default)] rounded-2xl py-3 px-4 focus:ring-2 focus:ring-[var(--accent-primary)]/30 focus:border-[var(--accent-primary)]/50 outline-none transition-all text-[var(--text-primary)] text-sm"
                         />
                         <button
                           disabled={loading}
@@ -1004,7 +1009,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                                 onClick={() => setSelectedPlatformTab(plat)}
                                 className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-colors ${
                                   selectedPlatformTab === plat 
-                                    ? 'bg-[#00D4FF]/10 text-[#00D4FF] border border-[#00D4FF]/20'
+                                    ? 'bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] border border-[var(--accent-primary)]/20'
                                     : 'text-[var(--text-muted)] hover:text-white'
                                 }`}
                               >
@@ -1021,7 +1026,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                                   <span className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-wider">Instagram Adaption</span>
                                   <button
                                     onClick={() => copyToClipboard(adaptedResult.instagram?.caption)}
-                                    className="flex items-center gap-1.5 text-xs text-[#00D4FF] hover:text-[#00F5C2] transition-colors"
+                                    className="flex items-center gap-1.5 text-xs text-[var(--accent-primary)] hover:text-[var(--accent-primary)] transition-colors"
                                   >
                                     <Copy size={13} /> Copy Caption
                                   </button>
@@ -1046,7 +1051,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                                   <span className="text-[10px] text-[var(--text-muted)] block uppercase font-bold">Hashtags</span>
                                   <div className="flex flex-wrap gap-1.5">
                                     {adaptedResult.instagram?.hashtags?.map((tag: string, i: number) => (
-                                      <span key={i} className="text-[10px] text-violet-400 bg-violet-400/5 px-2 py-0.5 rounded border border-violet-500/10">{tag}</span>
+                                      <span key={i} className="text-[10px] text-[var(--accent-primary)] bg-[var(--accent-primary)]/5 px-2 py-0.5 rounded border border-[var(--accent-primary)]/10">{tag}</span>
                                     ))}
                                   </div>
                                 </div>
@@ -1063,7 +1068,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                                   <span className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-wider">Video Script Outline</span>
                                   <button
                                     onClick={() => copyToClipboard(adaptedResult.tiktok?.script)}
-                                    className="flex items-center gap-1.5 text-xs text-[#00D4FF] hover:text-[#00F5C2] transition-colors"
+                                    className="flex items-center gap-1.5 text-xs text-[var(--accent-primary)] hover:text-[var(--accent-primary)] transition-colors"
                                   >
                                     <Copy size={13} /> Copy Script
                                   </button>
@@ -1092,7 +1097,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                   <div>
                                     <span className="text-[10px] text-[var(--text-muted)] block uppercase font-bold">Optimized SEO Title</span>
-                                    <span className="text-sm font-bold text-[#00D4FF] block mt-1">{adaptedResult.youtube?.title}</span>
+                                    <span className="text-sm font-bold text-[var(--accent-primary)] block mt-1">{adaptedResult.youtube?.title}</span>
                                   </div>
                                   <div>
                                     <span className="text-[10px] text-[var(--text-muted)] block uppercase font-bold">Thumbnail Concept</span>
@@ -1104,7 +1109,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                                   <ul className="space-y-1.5 mt-1.5 text-xs text-[var(--text-secondary)]">
                                     {adaptedResult.youtube?.outline?.map((sect: string, idx: number) => (
                                       <li key={idx} className="flex gap-2">
-                                        <span className="text-[#00F5C2] font-black">{idx + 1}.</span>
+                                        <span className="text-[var(--accent-primary)] font-black">{idx + 1}.</span>
                                         <span>{sect}</span>
                                       </li>
                                     ))}
@@ -1123,7 +1128,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                                   <span className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-wider">Twitter/X Thread</span>
                                   <button
                                     onClick={() => copyToClipboard(adaptedResult.twitter?.thread?.join('\n\n'))}
-                                    className="flex items-center gap-1.5 text-xs text-[#00D4FF] hover:text-[#00F5C2] transition-colors"
+                                    className="flex items-center gap-1.5 text-xs text-[var(--accent-primary)] hover:text-[var(--accent-primary)] transition-colors"
                                   >
                                     <Copy size={13} /> Copy Thread
                                   </button>
@@ -1131,7 +1136,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                                 <div className="space-y-3">
                                   {adaptedResult.twitter?.thread?.map((tweet: string, i: number) => (
                                     <div key={i} className="bg-white/5 border border-white/5 rounded-xl p-3 flex gap-2.5">
-                                      <span className="text-[#00F5C2] font-extrabold text-xs">{i+1}/</span>
+                                      <span className="text-[var(--accent-primary)] font-extrabold text-xs">{i+1}/</span>
                                       <p className="text-xs text-white leading-relaxed">{tweet}</p>
                                     </div>
                                   ))}
@@ -1149,7 +1154,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                                   <span className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-wider">LinkedIn Professional Reframe</span>
                                   <button
                                     onClick={() => copyToClipboard(adaptedResult.linkedin?.post)}
-                                    className="flex items-center gap-1.5 text-xs text-[#00D4FF] hover:text-[#00F5C2] transition-colors"
+                                    className="flex items-center gap-1.5 text-xs text-[var(--accent-primary)] hover:text-[var(--accent-primary)] transition-colors"
                                   >
                                     <Copy size={13} /> Copy Post
                                   </button>
@@ -1162,7 +1167,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                                 />
                                 <div>
                                   <span className="text-[10px] text-[var(--text-muted)] block uppercase font-bold">Professional Angle Approach</span>
-                                  <span className="text-xs font-bold text-[#00D4FF] block mt-0.5">{adaptedResult.linkedin?.angle}</span>
+                                  <span className="text-xs font-bold text-[var(--accent-primary)] block mt-0.5">{adaptedResult.linkedin?.angle}</span>
                                 </div>
                               </div>
                             )}
@@ -1206,9 +1211,9 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                       {collabResult && (
                         <div className="space-y-6 pt-4 border-t border-white/5">
                           {/* Chemistry Score banner */}
-                          <div className="premium-card p-5 bg-gradient-to-r from-teal-500/10 to-[#00D4FF]/10 flex flex-col md:flex-row items-center justify-between gap-4">
+                          <div className="premium-card p-5 bg-gradient-to-r from-teal-500/10 to-[var(--accent-primary)]/10 flex flex-col md:flex-row items-center justify-between gap-4">
                             <div className="flex items-center gap-4">
-                              <div className="w-16 h-16 rounded-full bg-[#00F5C2]/10 border border-[#00F5C2]/20 flex items-center justify-center text-2xl font-black text-[#00F5C2]">
+                              <div className="w-16 h-16 rounded-full bg-[var(--accent-primary)]/10 border border-[var(--accent-primary)]/20 flex items-center justify-center text-2xl font-black text-[var(--accent-primary)]">
                                 {collabResult.chemistryScore}%
                               </div>
                               <div>
@@ -1221,7 +1226,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
 
                           {/* Concept Breakdown */}
                           <div className="premium-card p-5">
-                            <span className="text-[10px] font-black text-[#00D4FF] uppercase tracking-wider block">Joint content concept</span>
+                            <span className="text-[10px] font-black text-[var(--accent-primary)] uppercase tracking-wider block">Joint content concept</span>
                             <h3 className="text-xl font-bold text-white mt-1">"{collabResult.collabConcept}"</h3>
                             <p className="text-xs text-[var(--text-secondary)] mt-2 leading-relaxed">{collabResult.conceptDescription}</p>
 
@@ -1244,14 +1249,14 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                                   const isPersonaA = diag.speaker === activePersona.name;
                                   return (
                                     <div key={idx} className={cn("flex flex-col gap-1.5", isPersonaA ? "items-start" : "items-end")}>
-                                      <span className={cn("text-[9px] font-black uppercase tracking-wider", isPersonaA ? "text-violet-400" : "text-[#00D4FF]")}>
+                                      <span className={cn("text-[9px] font-black uppercase tracking-wider", isPersonaA ? "text-[var(--accent-primary)]" : "text-[var(--accent-primary)]")}>
                                         {diag.speaker}
                                       </span>
                                       <div className={cn(
                                         "px-3 py-2 rounded-xl text-xs max-w-[85%] leading-relaxed",
                                         isPersonaA 
-                                          ? "bg-violet-500/10 text-violet-100 rounded-tl-none border border-violet-500/10" 
-                                          : "bg-[#00D4FF]/10 text-[#00D4FF] rounded-tr-none border border-[#00D4FF]/10"
+                                          ? "bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] rounded-tl-none border border-[var(--accent-primary)]/10"
+                                          : "bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] rounded-tr-none border border-[var(--accent-primary)]/10"
                                       )}>
                                         {diag.line}
                                       </div>
@@ -1268,7 +1273,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                               <span className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-wider">Merged Voice Post Caption</span>
                               <button
                                 onClick={() => copyToClipboard(collabResult.jointCaption, 'Joint caption copied!')}
-                                className="flex items-center gap-1.5 text-xs text-[#00D4FF] hover:text-[#00F5C2] transition-colors"
+                                className="flex items-center gap-1.5 text-xs text-[var(--accent-primary)] hover:text-[var(--accent-primary)] transition-colors"
                               >
                                 <Copy size={13} /> Copy Caption
                               </button>
@@ -1281,7 +1286,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                             />
                             <div className="flex flex-wrap gap-1 mt-2">
                               {collabResult.hashtags?.map((tag: string, idx: number) => (
-                                <span key={idx} className="text-[10px] text-[#00D4FF] font-semibold">{tag}</span>
+                                <span key={idx} className="text-[10px] text-[var(--accent-primary)] font-semibold">{tag}</span>
                               ))}
                             </div>
                           </div>
@@ -1290,11 +1295,11 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                           <div className="premium-card p-5">
                             <div className="flex justify-between items-center mb-2">
                               <span className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-wider flex items-center gap-1.5">
-                                <Sparkles size={13} className="text-[#00F5C2]" /> Image Generation prompt
+                                <Sparkles size={13} className="text-[var(--accent-primary)]" /> Image Generation prompt
                               </span>
                               <button
                                 onClick={() => copyToClipboard(collabResult.visualPrompt, 'Visual prompt copied!')}
-                                className="text-xs text-[#00D4FF] hover:text-[#00F5C2] transition-colors flex items-center gap-1.5"
+                                className="text-xs text-[var(--accent-primary)] hover:text-[var(--accent-primary)] transition-colors flex items-center gap-1.5"
                               >
                                 <Copy size={13} /> Copy Prompt
                               </button>
@@ -1313,7 +1318,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                     <div className="space-y-6">
                       {loading && (
                         <div className="flex flex-col items-center justify-center py-20 gap-3">
-                          <Loader2 className="animate-spin text-[#00F5C2]" size={36} />
+                          <Loader2 className="animate-spin text-[var(--accent-primary)]" size={36} />
                           <p className="text-sm text-[var(--text-tertiary)] font-medium">Profiling demographic markers and consumer behavior...</p>
                         </div>
                       )}
@@ -1321,8 +1326,8 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                       {!loading && avatarResult && (
                         <div className="space-y-6">
                           {/* Overview Block */}
-                          <div className="premium-card p-5 bg-gradient-to-r from-fuchsia-600/10 to-purple-600/10 border-fuchsia-500/10">
-                            <span className="text-[10px] font-black text-fuchsia-400 uppercase tracking-wider">Psychographic Alignment Profile</span>
+                          <div className="premium-card p-5 bg-gradient-to-r from-[var(--accent-primary)]/10 to-[var(--accent-primary)]/10 border-[var(--accent-primary)]/10">
+                            <span className="text-[10px] font-black text-[var(--accent-primary)] uppercase tracking-wider">Psychographic Alignment Profile</span>
                             <p className="text-sm text-white mt-1.5 font-bold">{avatarResult.overview?.psychographic}</p>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 pt-4 border-t border-white/5">
                               <div>
@@ -1335,7 +1340,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                               </div>
                               <div className="col-span-2">
                                 <span className="text-[9px] text-[var(--text-muted)] block uppercase font-bold">Primary Audience Desire</span>
-                                <span className="text-xs font-bold text-fuchsia-400 block mt-0.5">{avatarResult.overview?.primaryDesire}</span>
+                                <span className="text-xs font-bold text-[var(--accent-primary)] block mt-0.5">{avatarResult.overview?.primaryDesire}</span>
                               </div>
                             </div>
                           </div>
@@ -1350,7 +1355,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                                   onClick={() => setSelectedAvatarIdx(idx)}
                                   className={`px-4 py-2 rounded-xl text-xs font-bold transition-colors shrink-0 ${
                                     selectedAvatarIdx === idx 
-                                      ? 'bg-fuchsia-500/10 text-fuchsia-400 border border-fuchsia-500/20'
+                                      ? 'bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] border border-[var(--accent-primary)]/20'
                                       : 'bg-white/5 text-[var(--text-muted)] border border-transparent hover:text-white'
                                   }`}
                                 >
@@ -1395,7 +1400,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                                   </div>
                                   <div>
                                     <span className="text-[9px] text-[var(--text-muted)] block uppercase font-bold">Dream content piece</span>
-                                    <p className="text-xs text-fuchsia-400 font-bold mt-1 leading-relaxed">"{av.dreamContent}"</p>
+                                    <p className="text-xs text-[var(--accent-primary)] font-bold mt-1 leading-relaxed">"{av.dreamContent}"</p>
                                   </div>
                                 </div>
                               </div>
@@ -1420,7 +1425,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                               <ul className="space-y-1.5 text-xs text-[var(--text-secondary)]">
                                 {avatarResult.contentInsights?.topContentAngles?.map((ang: string, idx: number) => (
                                   <li key={idx} className="flex gap-2">
-                                    <span className="text-fuchsia-400">✦</span>
+                                    <span className="text-[var(--accent-primary)]">✦</span>
                                     <span>{ang}</span>
                                   </li>
                                 ))}
@@ -1442,7 +1447,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                           value={longContent}
                           onChange={(e) => setLongContent(e.target.value)}
                           placeholder="Paste your long text content here (up to 3,000 characters)..."
-                          className="w-full bg-[var(--bg-input)] border border-[var(--border-default)] rounded-2xl py-3 px-4 focus:ring-2 focus:ring-[#00D4FF]/30 focus:border-[#00D4FF]/50 outline-none transition-all text-[var(--text-primary)] text-sm"
+                          className="w-full bg-[var(--bg-input)] border border-[var(--border-default)] rounded-2xl py-3 px-4 focus:ring-2 focus:ring-[var(--accent-primary)]/30 focus:border-[var(--accent-primary)]/50 outline-none transition-all text-[var(--text-primary)] text-sm"
                         />
                         <button
                           disabled={loading}
@@ -1471,7 +1476,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                                 onClick={() => setRepurposeTab(tab.id as any)}
                                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shrink-0 ${
                                   repurposeTab === tab.id
-                                    ? 'bg-[#00F5C2]/15 text-[#00F5C2] border border-[#00F5C2]/30'
+                                    ? 'bg-[var(--accent-primary)]/15 text-[var(--accent-primary)] border border-[var(--accent-primary)]/30'
                                     : 'text-[var(--text-muted)] hover:text-white'
                                 }`}
                               >
@@ -1506,7 +1511,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                                       <p className="text-xs font-bold text-white">"{hk}"</p>
                                       <button
                                         onClick={() => copyToClipboard(hk, 'Hook copied')}
-                                        className="text-[#00D4FF] hover:text-[#00F5C2] p-1 rounded hover:bg-white/5 transition-colors cursor-pointer"
+                                        className="text-[var(--accent-primary)] hover:text-[var(--accent-primary)] p-1 rounded hover:bg-white/5 transition-colors cursor-pointer"
                                       >
                                         <Copy size={13} />
                                       </button>
@@ -1522,7 +1527,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                                   <span className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-wider">X/Twitter Thread Outline</span>
                                   <button
                                     onClick={() => copyToClipboard(repurposeResult.tweetIdeas?.join('\n\n'))}
-                                    className="flex items-center gap-1.5 text-xs text-[#00D4FF] hover:text-[#00F5C2] transition-colors"
+                                    className="flex items-center gap-1.5 text-xs text-[var(--accent-primary)] hover:text-[var(--accent-primary)] transition-colors"
                                   >
                                     <Copy size={13} /> Copy Thread
                                   </button>
@@ -1546,7 +1551,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                                   </div>
                                   <button
                                     onClick={() => copyToClipboard(repurposeResult.youtubeshort?.script)}
-                                    className="flex items-center gap-1.5 text-xs text-[#00D4FF] hover:text-[#00F5C2] transition-colors"
+                                    className="flex items-center gap-1.5 text-xs text-[var(--accent-primary)] hover:text-[var(--accent-primary)] transition-colors"
                                   >
                                     <Copy size={13} /> Copy Script
                                   </button>
@@ -1566,7 +1571,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                                   <span className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-wider">Email Newsletter Draft</span>
                                   <button
                                     onClick={() => copyToClipboard(repurposeResult.emailSnippet?.body)}
-                                    className="flex items-center gap-1.5 text-xs text-[#00D4FF] hover:text-[#00F5C2] transition-colors"
+                                    className="flex items-center gap-1.5 text-xs text-[var(--accent-primary)] hover:text-[var(--accent-primary)] transition-colors"
                                   >
                                     <Copy size={13} /> Copy Email
                                   </button>
@@ -1595,11 +1600,11 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                                 <div className="flex justify-between items-center">
                                   <div>
                                     <span className="text-[10px] text-[var(--text-muted)] block uppercase font-bold">Instagram Reel Hook</span>
-                                    <p className="text-xs font-bold text-[#00F5C2] mt-0.5">"{repurposeResult.instagramReel?.hook}"</p>
+                                    <p className="text-xs font-bold text-[var(--accent-primary)] mt-0.5">"{repurposeResult.instagramReel?.hook}"</p>
                                   </div>
                                   <button
                                     onClick={() => copyToClipboard(repurposeResult.instagramReel?.script)}
-                                    className="flex items-center gap-1.5 text-xs text-[#00D4FF] hover:text-[#00F5C2] transition-colors"
+                                    className="flex items-center gap-1.5 text-xs text-[var(--accent-primary)] hover:text-[var(--accent-primary)] transition-colors"
                                   >
                                     <Copy size={13} /> Copy Script
                                   </button>
@@ -1623,7 +1628,7 @@ export default function CreatorHubView({ persona: activePersona, personas, nav, 
                     <div className="space-y-6">
                       {loading && (
                         <div className="flex flex-col items-center justify-center py-20 gap-3">
-                          <Loader2 className="animate-spin text-[#00F5C2]" size={36} />
+                          <Loader2 className="animate-spin text-[var(--accent-primary)]" size={36} />
                           <p className="text-sm text-[var(--text-tertiary)] font-medium">Scanning alignment indicators with celebrities and top creators...</p>
                         </div>
                       )}
@@ -1685,7 +1690,7 @@ You look incredible Isabella! Where did you get that dress?
 This lifestyle feels so fake.
 How often do you travel?
 Love the aesthetics in this post."
-                          className="w-full bg-[var(--bg-input)] border border-[var(--border-default)] rounded-2xl py-3 px-4 focus:ring-2 focus:ring-[#00D4FF]/30 focus:border-[#00D4FF]/50 outline-none transition-all text-[var(--text-primary)] text-sm"
+                          className="w-full bg-[var(--bg-input)] border border-[var(--border-default)] rounded-2xl py-3 px-4 focus:ring-2 focus:ring-[var(--accent-primary)]/30 focus:border-[var(--accent-primary)]/50 outline-none transition-all text-[var(--text-primary)] text-sm"
                         />
                         <button
                           disabled={loading}
@@ -1704,7 +1709,7 @@ Love the aesthetics in this post."
                             <div className="premium-card p-5 flex flex-col items-center justify-center text-center">
                               <span className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-wider">Overall Sentiment</span>
                               <div className="text-4xl font-black text-white mt-4">{commentsResult.overallSentimentScore}%</div>
-                              <span className="text-xs text-[#00F5C2] mt-1 font-bold">Positive/Hype Index</span>
+                              <span className="text-xs text-[var(--accent-primary)] mt-1 font-bold">Positive/Hype Index</span>
                               <span className="text-[10px] text-[var(--text-muted)] mt-2">Analyzed {commentsResult.totalAnalyzed} comments</span>
                             </div>
 
@@ -1712,12 +1717,12 @@ Love the aesthetics in this post."
                               <span className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-wider block">Sentiment Distribution Ratio</span>
                               <div className="space-y-2">
                                 {[
-                                  { label: 'Love & Appreciation', pct: commentsResult.sentiment?.love, color: 'bg-pink-400' },
-                                  { label: 'Hype / Engagement', pct: commentsResult.sentiment?.hype, color: 'bg-emerald-400' },
-                                  { label: 'Inquiries & Questions', pct: commentsResult.sentiment?.question, color: 'bg-[#00D4FF]' },
-                                  { label: 'Criticisms & Skepticism', pct: commentsResult.sentiment?.criticism, color: 'bg-amber-400' },
-                                  { label: 'Trolls & Negative', pct: commentsResult.sentiment?.troll, color: 'bg-red-400' },
-                                  { label: 'Spam & Links', pct: commentsResult.sentiment?.spam, color: 'bg-slate-500' }
+                                  { label: 'Love & Appreciation', pct: commentsResult.sentiment?.love, color: 'from-[var(--accent-primary)] to-[var(--accent-secondary)]' },
+                                  { label: 'Hype / Engagement', pct: commentsResult.sentiment?.hype, color: 'from-[var(--accent-primary)] to-[var(--accent-secondary)]' },
+                                  { label: 'Inquiries & Questions', pct: commentsResult.sentiment?.question, color: 'from-[var(--accent-primary)] to-[var(--accent-secondary)]' },
+                                  { label: 'Criticisms & Skepticism', pct: commentsResult.sentiment?.criticism, color: 'from-[var(--accent-primary)] to-[var(--accent-secondary)]' },
+                                  { label: 'Trolls & Negative', pct: commentsResult.sentiment?.troll, color: 'from-[var(--accent-primary)] to-[var(--accent-secondary)]' },
+                                  { label: 'Spam & Links', pct: commentsResult.sentiment?.spam, color: 'from-[var(--accent-primary)] to-[var(--accent-secondary)]' }
                                 ].map((item, idx) => (
                                   <div key={idx} className="space-y-0.5">
                                     <div className="flex justify-between text-[10px] font-semibold text-[var(--text-secondary)]">
@@ -1741,12 +1746,12 @@ Love the aesthetics in this post."
                                 <div key={idx} className="premium-card p-4 space-y-3">
                                   <div className="flex justify-between items-start">
                                     <div>
-                                      <span className="text-[10px] font-bold text-violet-400 bg-violet-400/5 border border-violet-500/10 px-2 py-0.5 rounded">{tc.category}</span>
+                                      <span className="text-[10px] font-bold text-[var(--accent-primary)] bg-[var(--accent-primary)]/5 border border-[var(--accent-primary)]/10 px-2 py-0.5 rounded">{tc.category}</span>
                                       <p className="text-xs font-bold text-white mt-1.5">"{tc.comment}"</p>
                                     </div>
                                     <button
                                       onClick={() => copyToClipboard(tc.reply, 'Reply copied')}
-                                      className="text-xs text-[#00D4FF] hover:text-[#00F5C2] flex items-center gap-1 transition-colors cursor-pointer"
+                                      className="text-xs text-[var(--accent-primary)] hover:text-[var(--accent-primary)] flex items-center gap-1 transition-colors cursor-pointer"
                                     >
                                       <Copy size={12} /> Copy Reply
                                     </button>
@@ -1767,7 +1772,7 @@ Love the aesthetics in this post."
                               <ul className="space-y-2 text-xs text-[var(--text-secondary)]">
                                 {commentsResult.contentIdeas?.map((idea: string, idx: number) => (
                                   <li key={idx} className="flex gap-2">
-                                    <span className="text-[#00F5C2]">✦</span>
+                                    <span className="text-[var(--accent-primary)]">✦</span>
                                     <span>{idea}</span>
                                   </li>
                                 ))}
@@ -1779,7 +1784,7 @@ Love the aesthetics in this post."
                               <ul className="space-y-2 text-xs text-[var(--text-secondary)]">
                                 {commentsResult.insights?.map((ins: string, idx: number) => (
                                   <li key={idx} className="flex gap-2">
-                                    <span className="text-violet-400">⚡︎</span>
+                                    <span className="text-[var(--accent-primary)]">⚡︎</span>
                                     <span>{ins}</span>
                                   </li>
                                 ))}

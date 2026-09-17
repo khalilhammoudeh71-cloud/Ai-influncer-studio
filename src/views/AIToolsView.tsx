@@ -78,130 +78,130 @@ interface AIToolsViewProps {
 type ToolType = 'carousel-creator' | 'beautify' | 'morph' | 'muscle' | 'ink' | 'teleport' | 'canvas' | 'face-swap' | 'bg-remover' | 'virtual-tryon' | 'video-edit' | 'skin-enhancer' | 'upscaler' | 'camera-angles' | 'inpaint' | '3d-studio' | 'batch-face-swap' | 'batch-edit' | 'group-photoshoot' | null;
 
 const TOOLS = [
-  {id:'carousel-creator',title:'Carousel Creator',icon:Layers,desc:'Design swipeable Instagram and TikTok posts with editable slides, persona photos, and JPG exports.',color:'from-amber-400 to-orange-500',demoBefore:'/demo/carousel-creator.svg',demoAfter:'/demo/carousel-creator.svg'},
+  {id:'carousel-creator',title:'Carousel Creator',icon:Layers,desc:'Design swipeable Instagram and TikTok posts with editable slides, persona photos, and JPG exports.',color:'from-[var(--accent-primary)] to-[var(--accent-secondary)]',demoBefore:'/demo/carousel-creator.svg',demoAfter:'/demo/carousel-creator.svg'},
   { 
     id: 'beautify', title: 'Beautify Core', icon: Droplets, 
     desc: 'Refine nose contours, smooth undereyes and skin perfectly.', 
-    color: 'from-pink-500 to-rose-500',
+    color: 'from-[var(--accent-primary)] to-[var(--accent-secondary)]',
     demoBefore: '/demo/beautify_before.png',
     demoAfter: '/demo/beautify_after.png',
   },
   { 
     id: 'skin-enhancer', title: 'Skin Enhancer', icon: Sparkles, 
     desc: 'Blemish removal, skin smoothing, and texture enhancement in batch.', 
-    color: 'from-amber-400 to-orange-500',
+    color: 'from-[var(--accent-primary)] to-[var(--accent-secondary)]',
     demoBefore: '/demo/skin_enhancer_before.jpg',
     demoAfter: '/demo/skin_enhancer_after.jpg',
   },
   { 
     id: 'face-swap', title: 'Face Swap', icon: ArrowLeftRight, 
     desc: 'Swap faces between any two images with one click.', 
-    color: 'from-pink-500 to-violet-500',
+    color: 'from-[var(--accent-primary)] to-[var(--accent-secondary)]',
     demoBefore: '/demo/faceswap_before.png',
     demoAfter: '/demo/faceswap_after.png',
   },
   { 
     id: 'virtual-tryon', title: 'Virtual Try-On', icon: Shirt, 
     desc: 'See any outfit on your persona — upload clothing photos.', 
-    color: 'from-emerald-500 via-teal-500 to-cyan-500',
+    color: 'from-[var(--accent-primary)] to-[var(--accent-secondary)]',
     demoBefore: '/demo/tryon_before.png',
     demoAfter: '/demo/tryon_after.png',
   },
   { 
     id: 'group-photoshoot', title: 'Group Crossover Shoot', icon: Users, 
     desc: 'Combine 2-3 created AI Influencers in the same shot with dual face-locking.', 
-    color: 'from-emerald-500 via-teal-500 to-cyan-500',
+    color: 'from-[var(--accent-primary)] to-[var(--accent-secondary)]',
     demoBefore: '/demo/faceswap_before.png',
     demoAfter: '/demo/teleport_after.png',
   },
   { 
     id: 'morph', title: 'Body Morph', icon: Weight, 
     desc: 'Adjust perceived body weight seamlessly.', 
-    color: 'from-blue-500 to-cyan-500',
+    color: 'from-[var(--accent-primary)] to-[var(--accent-secondary)]',
     demoBefore: '/demo/bodymorph_before.png',
     demoAfter: '/demo/bodymorph_after.png',
   },
   { 
     id: 'muscle', title: 'Muscle Sculpt', icon: Dumbbell, 
     desc: 'Add muscular definition, vascularity, or bulk.', 
-    color: 'from-orange-500 to-amber-500',
+    color: 'from-[var(--accent-primary)] to-[var(--accent-secondary)]',
     demoBefore: '/demo/muscle_before.png',
     demoAfter: '/demo/muscle_after.png',
   },
   { 
     id: 'ink', title: 'Ink Studio', icon: PenTool, 
     desc: 'Apply photorealistic tattoos to designated regions.', 
-    color: 'from-slate-500 to-slate-700',
+    color: 'from-[var(--accent-primary)] to-[var(--accent-secondary)]',
     demoBefore: '/demo/ink_before.png',
     demoAfter: '/demo/ink_after.png',
   },
   { 
     id: 'teleport', title: 'Teleport', icon: Plane, 
     desc: 'Relocate subject to global destinations cleanly.', 
-    color: 'from-emerald-500 to-teal-500',
+    color: 'from-[var(--accent-primary)] to-[var(--accent-secondary)]',
     demoBefore: '/demo/teleport_before.png',
     demoAfter: '/demo/teleport_after.png',
   },
   { 
     id: 'canvas', title: 'Outpaint (extend)', icon: Expand, 
     desc: 'Intelligently widen or extend the frame bounds without changing the subject.', 
-    color: 'from-purple-500 to-indigo-500',
+    color: 'from-[var(--accent-primary)] to-[var(--accent-secondary)]',
     demoBefore: '/demo/canvas_before.png?v=2',
     demoAfter: '/demo/canvas_after.png?v=2',
   },
   { 
     id: 'bg-remover', title: 'BG Remover', icon: Eraser, 
     desc: 'Remove backgrounds instantly — clean transparent PNGs.', 
-    color: 'from-lime-500 to-green-500',
+    color: 'from-[var(--accent-primary)] to-[var(--accent-secondary)]',
     demoBefore: '/demo/bgremover_before.png',
     demoAfter: '/demo/bgremover_after.png',
   },
   { 
     id: 'camera-angles', title: 'Camera Angles', icon: Camera, 
     desc: 'Generate 9-angle identity sheets or adjust camera perspective.', 
-    color: 'from-cyan-500 to-sky-500',
+    color: 'from-[var(--accent-primary)] to-[var(--accent-secondary)]',
     demoBefore: '/demo/camera-angle-front.jpg',
     demoAfter: '/demo/camera-angle-side.jpg',
   },
   { 
     id: 'upscaler', title: 'Image Upscaler', icon: ArrowUpCircle, 
     desc: 'Upscale low-resolution images to 2K/4K ultra HD in batch.', 
-    color: 'from-blue-500 to-indigo-600',
+    color: 'from-[var(--accent-primary)] to-[var(--accent-secondary)]',
     demoBefore: '/demo/upscale_before.jpg',
     demoAfter: '/demo/upscale_after.jpg',
   },
   { 
     id: 'video-edit', title: 'AI Video Editor', icon: Video, 
     desc: 'Stylize, edit, or transform existing videos using AI.', 
-    color: 'from-violet-500 to-fuchsia-500',
+    color: 'from-[var(--accent-primary)] to-[var(--accent-secondary)]',
     demoBefore: '/demo-assets/video-preview.mp4',
     demoAfter: '/demo-assets/generated-talking.mp4',
   },
   { 
     id: 'batch-face-swap', title: 'Batch Adult Face-Swap Studio', icon: ArrowLeftRight, 
     desc: 'Upload 10-20 target photosets/poses at once to swap your persona\'s face in bulk.', 
-    color: 'from-pink-500 to-rose-600',
+    color: 'from-[var(--accent-primary)] to-[var(--accent-secondary)]',
     demoBefore: '/demo/faceswap_before.png',
     demoAfter: '/demo/faceswap_after.png',
   },
   { 
     id: 'inpaint', title: 'AI Inpaint Brush Studio', icon: Wand2, 
     desc: 'Paint over any region with the brush and describe what to replace, add, or edit.', 
-    color: 'from-pink-500 to-rose-600',
+    color: 'from-[var(--accent-primary)] to-[var(--accent-secondary)]',
     demoBefore: '/demo/inpaint_before.jpg',
     demoAfter: '/demo/inpaint_after.jpg',
   },
   { 
     id: 'batch-edit', title: 'Batch Isolator & Enhancer', icon: Box, 
     desc: 'Upload 8-12 photos at once to extract, isolate, and enhance subjects in parallel.', 
-    color: 'from-pink-500 to-violet-600',
+    color: 'from-[var(--accent-primary)] to-[var(--accent-secondary)]',
     demoBefore: '/demo/batch_before.jpg',
     demoAfter: '/demo/batch_after.jpg',
   },
   { 
     id: '3d-studio', title: '3D Asset Studio', icon: Box, 
     desc: 'Generate textured 3D GLB meshes and game assets from text or photo.', 
-    color: 'from-cyan-500 to-violet-600',
+    color: 'from-[var(--accent-primary)] to-[var(--accent-secondary)]',
     demoBefore: '/demo/threed_before.jpg',
     demoAfter: '/demo/threed_after.jpg',
   },
@@ -531,7 +531,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
 
     ctx.beginPath();
     ctx.arc(coords.x, coords.y, brushSize / 2, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(6, 182, 212, 0.6)';
+    ctx.fillStyle = 'rgba(231,196,119, 0.6)';
     ctx.globalCompositeOperation = 'source-over';
     ctx.fill();
   };
@@ -551,7 +551,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
     ctx.lineWidth = brushSize;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.strokeStyle = 'rgba(6, 182, 212, 0.6)';
+    ctx.strokeStyle = 'rgba(231,196,119, 0.6)';
     ctx.globalCompositeOperation = 'source-over';
     ctx.stroke();
 
@@ -1127,7 +1127,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
               <ChevronLeft size={20} />
             </button>
             <div className="flex items-center gap-3">
-               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500 to-sky-500 flex items-center justify-center text-white">
+               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[var(--accent-primary)] to-[var(--accent-primary)] flex items-center justify-center text-white">
                   <Camera size={16} />
                </div>
                <div>
@@ -1230,7 +1230,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                           setAngleSourceType('custom');
                         }, 'Select Source Image for Camera Angles');
                       }}
-                      className="w-full py-2.5 px-3 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-sm"
+                      className="w-full py-2.5 px-3 rounded-xl bg-[var(--accent-primary)]/10 hover:bg-[var(--accent-primary)]/20 text-[var(--accent-primary)] border border-[var(--accent-primary)]/30 text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-sm"
                     >
                       <FolderHeart size={14} /> Choose from Asset Library
                     </button>
@@ -1272,7 +1272,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                               onClick={() => setAngleHorizontal(cell.id)}
                               className={`h-12 rounded-xl text-[10px] font-bold transition-all ${
                                 isActive
-                                  ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/30'
+                                  ? 'bg-[var(--accent-primary)] text-white shadow-lg shadow-[var(--accent-primary)]/30'
                                   : 'bg-[var(--bg-overlay)]/60 text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)] hover:text-white'
                               }`}
                             >
@@ -1293,7 +1293,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                           onClick={() => setAngleVertical(p.id)}
                           className={`flex-1 py-2 rounded-xl text-[10px] font-bold transition-all ${
                             angleVertical === p.id
-                              ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/30'
+                              ? 'bg-[var(--accent-primary)] text-white shadow-lg shadow-[var(--accent-primary)]/30'
                               : 'bg-[var(--bg-overlay)]/60 text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)] hover:text-white'
                           }`}
                         >
@@ -1312,7 +1312,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                           onClick={() => setAngleDistance(p.id)}
                           className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
                             angleDistance === p.id
-                              ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/30'
+                              ? 'bg-[var(--accent-primary)] text-white shadow-lg shadow-[var(--accent-primary)]/30'
                               : 'bg-[var(--bg-overlay)]/60 text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)] hover:text-white'
                           }`}
                         >
@@ -1332,7 +1332,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                   <select
                     value={angleModel}
                     onChange={e => setAngleModel(e.target.value)}
-                    className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white focus:ring-2 focus:ring-cyan-500 outline-none appearance-none pr-10"
+                    className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white focus:ring-2 focus:ring-[var(--accent-primary)] outline-none appearance-none pr-10"
                   >
                     {angleModelOptions.map(m => {
                       const displayCost = billingInfo?.isCreator
@@ -1357,7 +1357,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
               <button
                 onClick={handleAngleGenerate}
                 disabled={angleGenerating || !angleSourceImg}
-                className="w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-cyan-600 to-sky-500 hover:from-cyan-500 hover:to-sky-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                className="w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-[var(--accent-primary)] to-[var(--accent-primary)] hover:from-[var(--accent-primary)] hover:to-[var(--accent-primary)] disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
               >
                 {angleGenerating
                   ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</>
@@ -1374,7 +1374,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
               <div className="aspect-square rounded-2xl bg-[var(--bg-base)] border border-[var(--border-subtle)] overflow-hidden relative group">
                 {angleGenerating ? (
                   <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-                    <Loader2 className="w-10 h-10 animate-spin text-cyan-500" />
+                    <Loader2 className="w-10 h-10 animate-spin text-[var(--accent-primary)]" />
                     <p className="text-xs text-[var(--text-tertiary)] animate-pulse">Repositioning camera...</p>
                   </div>
                 ) : angleResult?.imageUrl ? (
@@ -1404,7 +1404,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
               </div>
 
               {angleResult && !angleGenerating && (
-                <button onClick={handleSaveAngleImage} disabled={angleSaved} className="w-full py-2.5 rounded-xl text-sm font-bold bg-cyan-600 hover:bg-cyan-500 text-white flex items-center justify-center gap-2 disabled:opacity-50 transition-all">
+                <button onClick={handleSaveAngleImage} disabled={angleSaved} className="w-full py-2.5 rounded-xl text-sm font-bold bg-[var(--accent-primary)] hover:bg-[var(--accent-primary)] text-white flex items-center justify-center gap-2 disabled:opacity-50 transition-all">
                   {angleSaved ? <><Check className="w-4 h-4" /> Saved!</> : <><CheckCircle2 className="w-4 h-4" /> Save to Library</>}
                 </button>
               )}
@@ -1525,7 +1525,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                   role="button"
                   tabIndex={0}
                   onClick={() => openTool(tool.id as ToolType)}
-                  onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') openTool(tool.id as ToolType); }}
+                  onKeyDown={event => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); openTool(tool.id as ToolType); } }}
                   className="group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#18181B] text-left shadow-lg transition-all hover:-translate-y-1 hover:border-[#E7C477]/40 hover:shadow-2xl hover:shadow-black/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E7C477]"
                 >
                   <button
@@ -1657,11 +1657,11 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
               </div>
               <div className="p-5 flex-1 flex flex-col justify-center">
                 <div className="flex items-center gap-3 mb-2">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-white shadow-lg">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[var(--accent-primary)] to-[var(--accent-primary)] flex items-center justify-center text-white shadow-lg">
                     <Camera size={18} />
                   </div>
                   <h3 className="text-base font-bold text-[#F5F1E8] group-hover:text-[#F2D58D] tracking-tight transition-colors">Pro Headshot</h3>
-                  <span className="text-[8px] font-bold px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 uppercase tracking-widest">HD</span>
+                  <span className="text-[8px] font-bold px-2 py-0.5 rounded bg-[var(--accent-primary)]/20 text-[var(--accent-primary)] border border-[var(--accent-primary)]/30 uppercase tracking-widest">HD</span>
                 </div>
                 <p className="text-xs text-[#8C909A] font-normal leading-relaxed">Professional studio headshots for business & social media.</p>
               </div>
@@ -1677,11 +1677,11 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
               </div>
               <div className="p-5 flex-1 flex flex-col justify-center">
                 <div className="flex items-center gap-3 mb-2">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-violet-500 flex items-center justify-center text-white shadow-lg">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[var(--accent-primary)] to-[var(--accent-primary)] flex items-center justify-center text-white shadow-lg">
                     <Settings2 size={18} />
                   </div>
                   <h3 className="text-base font-bold text-[#F5F1E8] group-hover:text-[#F2D58D] tracking-tight transition-colors">Time Machine</h3>
-                  <span className="text-[8px] font-bold px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 uppercase tracking-widest">Creative</span>
+                  <span className="text-[8px] font-bold px-2 py-0.5 rounded bg-[var(--accent-primary)]/20 text-[var(--accent-primary)] border border-[var(--accent-primary)]/30 uppercase tracking-widest">Creative</span>
                 </div>
                 <p className="text-xs text-[#8C909A] font-normal leading-relaxed">Travel through 14 eras — 1920s to Cyberpunk 2077.</p>
               </div>
@@ -1717,11 +1717,11 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
               </div>
               <div className="p-5 flex-1 flex flex-col justify-center">
                 <div className="flex items-center gap-3 mb-2">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-600 to-fuchsia-600 flex items-center justify-center text-white shadow-lg">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[var(--accent-primary)] to-[var(--accent-primary)] flex items-center justify-center text-white shadow-lg">
                     <Video size={18} />
                   </div>
                   <h3 className="text-base font-bold text-[#F5F1E8] group-hover:text-[#F2D58D] tracking-tight transition-colors">Motion Control</h3>
-                  <span className="text-[8px] font-bold px-2 py-0.5 rounded bg-violet-500/20 text-violet-300 border border-violet-500/30 uppercase tracking-widest">AI Video</span>
+                  <span className="text-[8px] font-bold px-2 py-0.5 rounded bg-[var(--accent-primary)]/20 text-[var(--accent-primary)] border border-[var(--accent-primary)]/30 uppercase tracking-widest">AI Video</span>
                 </div>
                 <p className="text-xs text-[#8C909A] font-normal leading-relaxed">Replicate any movement or dance from video templates.</p>
               </div>
@@ -1795,7 +1795,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
               <ChevronLeft size={20} />
             </button>
             <div className="flex items-center gap-3">
-               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-500 flex items-center justify-center text-white">
+               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 via-teal-500 to-[var(--accent-primary)] flex items-center justify-center text-white">
                   <Users size={16} />
                </div>
                <div>
@@ -1953,6 +1953,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
 
               {/* FOOTER ACTIONS */}
               <div className="shrink-0 p-5 border-t border-[var(--border-subtle)] bg-[var(--bg-surface)] flex flex-col gap-2">
+                {batchItems.length === 0 && <p className="text-xs text-[var(--text-muted)]">Add images to the queue before processing a batch.</p>}
                 <button
                   onClick={handleBatchExecute}
                   disabled={batchItems.length === 0 || isBatchProcessing}
@@ -2022,7 +2023,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                           ]);
                         }, 'Select Asset for Batch Processing');
                       }}
-                      className="px-5 py-2.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 text-xs font-bold flex items-center gap-2 transition-all shadow-lg"
+                      className="px-5 py-2.5 rounded-xl bg-[var(--accent-primary)]/20 hover:bg-[var(--accent-primary)]/30 text-[var(--accent-primary)] border border-[var(--accent-primary)]/40 text-xs font-bold flex items-center gap-2 transition-all shadow-lg"
                     >
                       <FolderHeart size={16} /> Choose from Asset Library
                     </button>
@@ -2039,7 +2040,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                         <div 
                           key={item.id} 
                           className={`group relative rounded-2xl overflow-hidden border bg-[var(--bg-elevated)] flex flex-col transition-all duration-300 ${
-                            item.status === 'processing' ? 'border-violet-500/50 shadow-lg shadow-violet-500/5' :
+                            item.status === 'processing' ? 'border-[var(--accent-primary)]/50 shadow-lg shadow-[var(--accent-primary)]/5' :
                             item.status === 'done' ? 'border-emerald-500/50' :
                             item.status === 'failed' ? 'border-rose-500/50' : 'border-white/5'
                           }`}
@@ -2053,8 +2054,8 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                             
                             {item.status === 'processing' && (
                               <div className="absolute inset-0 bg-black/75 backdrop-blur-[2px] flex flex-col items-center justify-center gap-2">
-                                <Loader2 size={24} className="animate-spin text-violet-400" />
-                                <span className="text-[9px] font-black text-violet-400 uppercase tracking-widest">Processing</span>
+                                <Loader2 size={24} className="animate-spin text-[var(--accent-primary)]" />
+                                <span className="text-[9px] font-black text-[var(--accent-primary)] uppercase tracking-widest">Processing</span>
                               </div>
                             )}
                             
@@ -2150,12 +2151,12 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                     onDrop={handleDrop}
                     className={`w-full rounded-2xl border-2 border-dashed p-4 transition-all ${
                       isDragging
-                        ? 'border-cyan-400 bg-cyan-500/10 text-cyan-400 scale-[1.02] shadow-[0_0_30px_rgba(0,212,255,0.15)]'
-                        : 'border-[var(--border-strong)] bg-[var(--bg-elevated)]/40 hover:border-cyan-500/40'
+                        ? 'border-[var(--accent-primary)] bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] scale-[1.02] shadow-[0_0_30px_rgba(231,196,119,0.15)]'
+                        : 'border-[var(--border-strong)] bg-[var(--bg-elevated)]/40 hover:border-[var(--accent-primary)]/40'
                     }`}
                   >
                     <div className="text-center space-y-1 mb-3">
-                      <div className="w-10 h-10 rounded-full bg-cyan-500/10 text-cyan-400 mx-auto flex items-center justify-center border border-cyan-500/20">
+                      <div className="w-10 h-10 rounded-full bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] mx-auto flex items-center justify-center border border-[var(--accent-primary)]/20">
                         <Upload size={20} className={isDragging ? 'animate-bounce' : ''} />
                       </div>
                       <div className="text-xs font-bold text-white">
@@ -2168,9 +2169,9 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                       <button
                         type="button"
                         onClick={() => openAssetPicker((url) => setSourceImage(url), 'Select Target Image')}
-                        className="p-2.5 rounded-xl bg-white/5 hover:bg-cyan-500/10 border border-white/10 hover:border-cyan-500/40 text-left transition-all group flex flex-col gap-1"
+                        className="p-2.5 rounded-xl bg-white/5 hover:bg-[var(--accent-primary)]/10 border border-white/10 hover:border-[var(--accent-primary)]/40 text-left transition-all group flex flex-col gap-1"
                       >
-                        <div className="flex items-center gap-1.5 text-xs font-bold text-cyan-400 group-hover:text-cyan-300">
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-[var(--accent-primary)] group-hover:text-[var(--accent-primary)]">
                           <FolderHeart size={14} /> Choose from Assets
                         </div>
                         <div className="text-[9px] text-[var(--text-muted)] leading-tight">Pick persona or library photo</div>
@@ -2198,7 +2199,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
               <div className="p-4 rounded-2xl bg-[var(--bg-elevated)] border border-[var(--border-default)] space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
-                    <span className="text-xs font-bold text-white flex items-center gap-1.5"><PenTool size={14} className="text-cyan-400" /> Paint Mask</span>
+                    <span className="text-xs font-bold text-white flex items-center gap-1.5"><PenTool size={14} className="text-[var(--accent-primary)]" /> Paint Mask</span>
                     <span className="text-[10px] text-[var(--text-muted)] block">Edit only selected areas</span>
                   </div>
                   <button
@@ -2208,7 +2209,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                         setResultImage(null);
                       }
                     }}
-                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${paintMaskEnabled ? 'bg-cyan-500' : 'bg-white/10'}`}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${paintMaskEnabled ? 'bg-[var(--accent-primary)]' : 'bg-white/10'}`}
                   >
                     <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${paintMaskEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
                   </button>
@@ -2226,7 +2227,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                         max="100" 
                         value={brushSize} 
                         onChange={(e) => setBrushSize(parseInt(e.target.value))} 
-                        className="w-full accent-cyan-400" 
+                        className="w-full accent-[var(--accent-primary)]"
                       />
                     </div>
                     <div className="flex gap-2">
@@ -2258,7 +2259,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                   onClick={() => setShowTemplates(!showTemplates)}
                   className="w-full flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)] hover:text-white transition-colors"
                 >
-                  <span className="flex items-center gap-1.5"><FileText size={12} className="text-violet-400" /> Prompt Templates</span>
+                  <span className="flex items-center gap-1.5"><FileText size={12} className="text-[var(--accent-primary)]" /> Prompt Templates</span>
                   <span className="text-[8px]">{showTemplates ? '▲' : '▼'}</span>
                 </button>
                 {showTemplates && (
@@ -2273,7 +2274,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                       <button
                         key={i}
                         onClick={() => setCustomPromptOverride(tmpl.prompt)}
-                        className="w-full text-left p-2.5 rounded-xl bg-[var(--bg-elevated)] hover:bg-violet-500/10 border border-transparent hover:border-violet-500/20 transition-all"
+                        className="w-full text-left p-2.5 rounded-xl bg-[var(--bg-elevated)] hover:bg-[var(--accent-primary)]/10 border border-transparent hover:border-[var(--accent-primary)]/20 transition-all"
                       >
                         <span className="text-xs font-bold text-white block">{tmpl.label}</span>
                         <span className="text-[10px] text-[var(--text-muted)] line-clamp-1 mt-0.5">{tmpl.prompt}</span>
@@ -2286,7 +2287,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                           <div key={i} className="flex items-center gap-1">
                             <button
                               onClick={() => setCustomPromptOverride(sp.prompt)}
-                              className="flex-1 text-left p-2.5 rounded-xl bg-[var(--bg-elevated)] hover:bg-cyan-500/10 border border-transparent hover:border-cyan-500/20 transition-all"
+                              className="flex-1 text-left p-2.5 rounded-xl bg-[var(--bg-elevated)] hover:bg-[var(--accent-primary)]/10 border border-transparent hover:border-[var(--accent-primary)]/20 transition-all"
                             >
                               <span className="text-xs font-bold text-white block">💾 {sp.label}</span>
                               <span className="text-[10px] text-[var(--text-muted)] line-clamp-1 mt-0.5">{sp.prompt}</span>
@@ -2314,7 +2315,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                         accountLocalStorage.setItem('ai_tools_saved_prompts', JSON.stringify(next));
                         toast.success('Prompt saved!');
                       }}
-                      className="w-full p-2 rounded-xl border border-dashed border-violet-500/30 text-[10px] font-bold text-violet-400 hover:bg-violet-500/10 transition-colors"
+                      className="w-full p-2 rounded-xl border border-dashed border-[var(--accent-primary)]/30 text-[10px] font-bold text-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/10 transition-colors"
                     >
                       + Save Current Prompt
                     </button>
@@ -2346,7 +2347,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                     step="5"
                     value={editStrength * 100}
                     onChange={(e) => setEditStrength(parseInt(e.target.value) / 100)}
-                    className="w-full accent-violet-500"
+                    className="w-full accent-[var(--accent-primary)]"
                   />
                   <p className="text-[9px] text-[var(--text-muted)] leading-relaxed">
                     Lower strength keeps the original video structure; higher strength transforms the video more aggressively.
@@ -2358,8 +2359,8 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
             {activeTool === 'morph' && (
               <div className="space-y-4">
                 <div className="flex justify-between items-center text-xs font-bold text-[var(--text-secondary)]"><span>Slimmer</span><span>Thicker</span></div>
-                <input type="range" min="-100" max="100" value={morphValue} onChange={(e) => setMorphValue(parseInt(e.target.value))} className="w-full accent-cyan-500" />
-                <div className="text-center text-2xl font-black text-cyan-400">{morphValue > 0 ? '+' : ''}{morphValue}%</div>
+                <input type="range" min="-100" max="100" value={morphValue} onChange={(e) => setMorphValue(parseInt(e.target.value))} className="w-full accent-[var(--accent-primary)]" />
+                <div className="text-center text-2xl font-black text-[var(--accent-primary)]">{morphValue > 0 ? '+' : ''}{morphValue}%</div>
               </div>
             )}
 
@@ -2390,7 +2391,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                     <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)]">Design Description</label>
                     <button 
                       onClick={() => setShowInkSuggestions(!showInkSuggestions)}
-                      className="flex items-center gap-1 text-[10px] font-bold text-violet-400 hover:text-violet-300 transition-colors bg-violet-500/10 hover:bg-violet-500/20 px-2 py-0.5 rounded-full border border-violet-500/20"
+                      className="flex items-center gap-1 text-[10px] font-bold text-[var(--accent-primary)] hover:text-[var(--accent-primary)] transition-colors bg-[var(--accent-primary)]/10 hover:bg-[var(--accent-primary)]/20 px-2 py-0.5 rounded-full border border-[var(--accent-primary)]/20"
                     >
                       <Sparkles size={11} /> 
                       {showInkSuggestions ? 'Hide Ideas' : 'View Ideas'}
@@ -2424,10 +2425,10 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                               setInkDesc(`${item.title}: ${item.desc}`);
                               setShowInkSuggestions(false);
                             }}
-                            className="flex flex-col text-left bg-[var(--bg-elevated)] hover:bg-violet-500/10 border border-[var(--border-default)] hover:border-violet-500/40 rounded-lg p-2.5 transition-all gap-1 h-full select-none"
+                            className="flex flex-col text-left bg-[var(--bg-elevated)] hover:bg-[var(--accent-primary)]/10 border border-[var(--border-default)] hover:border-[var(--accent-primary)]/40 rounded-lg p-2.5 transition-all gap-1 h-full select-none"
                           >
                             <div className="flex items-center gap-1.5">
-                              <span className="text-sm bg-violet-500/20 w-6 h-6 rounded flex items-center justify-center">{item.icon}</span>
+                              <span className="text-sm bg-[var(--accent-primary)]/20 w-6 h-6 rounded flex items-center justify-center">{item.icon}</span>
                               <span className="text-xs font-bold text-white leading-tight">{item.title}</span>
                             </div>
                             <span className="text-[10px] text-[var(--text-muted)] leading-relaxed line-clamp-2 mt-0.5">{item.desc}</span>
@@ -2614,9 +2615,9 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                       </div>
                     </div>
                   ) : (
-                    <div className="w-full rounded-2xl border-2 border-dashed border-cyan-500/30 p-4 bg-[var(--bg-elevated)]/40 hover:border-cyan-500/60 transition-all">
+                    <div className="w-full rounded-2xl border-2 border-dashed border-[var(--accent-primary)]/30 p-4 bg-[var(--bg-elevated)]/40 hover:border-[var(--accent-primary)]/60 transition-all">
                       <div className="text-center space-y-1 mb-3">
-                        <div className="w-10 h-10 rounded-full bg-cyan-500/10 text-cyan-400 mx-auto flex items-center justify-center border border-cyan-500/20">
+                        <div className="w-10 h-10 rounded-full bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] mx-auto flex items-center justify-center border border-[var(--accent-primary)]/20">
                           <Upload size={20} />
                         </div>
                         <div className="text-xs font-bold text-white">
@@ -2629,9 +2630,9 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                         <button
                           type="button"
                           onClick={() => openAssetPicker((url) => setFaceSwapFaceImage(url), 'Select Source Face')}
-                          className="p-2.5 rounded-xl bg-white/5 hover:bg-cyan-500/10 border border-white/10 hover:border-cyan-500/40 text-left transition-all group flex flex-col gap-1"
+                          className="p-2.5 rounded-xl bg-white/5 hover:bg-[var(--accent-primary)]/10 border border-white/10 hover:border-[var(--accent-primary)]/40 text-left transition-all group flex flex-col gap-1"
                         >
-                          <div className="flex items-center gap-1.5 text-xs font-bold text-cyan-400 group-hover:text-cyan-300">
+                          <div className="flex items-center gap-1.5 text-xs font-bold text-[var(--accent-primary)] group-hover:text-[var(--accent-primary)]">
                             <FolderHeart size={14} /> Choose from Assets
                           </div>
                           <div className="text-[9px] text-[var(--text-muted)] leading-tight">Pick saved face</div>
@@ -2882,6 +2883,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
           </div>
           
           <div className="p-4 border-t border-[var(--border-subtle)] bg-[var(--bg-elevated)]">
+            {!isProcessing && <p className="mb-2 text-xs text-[var(--text-muted)]">{(activeTool === 'video-edit' ? !sourceVideo : !sourceImage) ? (activeTool === 'video-edit' ? 'Upload a video to get started.' : 'Add a source image to get started.') : activeTool === 'face-swap' && !faceSwapFaceImage ? 'Add the replacement face image.' : activeTool === 'virtual-tryon' && (tryOnMode === 'multiple' ? garmentImages.length === 0 : !garmentImage) ? 'Add a garment image to try on.' : 'Ready to process your media.'}</p>}
             <button 
               onClick={
                 activeTool === 'face-swap' ? handleFaceSwapExecute :
@@ -2939,7 +2941,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
              {isProcessing && (activeTool === 'video-edit' ? sourceVideo : sourceImage) && !resultImage && (
                <div className="absolute inset-0 flex items-center justify-center bg-black/60 z-50">
                  <div className="flex flex-col items-center text-white drop-shadow-xl">
-                   <Loader2 size={40} className="animate-spin text-violet-400 mb-4" />
+                   <Loader2 size={40} className="animate-spin text-[var(--accent-primary)] mb-4" />
                    <div className="px-4 py-2 bg-black/60 backdrop-blur-md rounded-full text-xs font-bold tracking-wide">
                       {activeTool === 'video-edit' ? 'Applying AI Video Effects...' :
                        activeTool === 'virtual-tryon' ? 'Fusing Garment & Stylizing Outfit...' :
@@ -3003,7 +3005,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                         
                         {showBrushCursor && (
                           <div
-                            className="absolute border border-cyan-400 rounded-full pointer-events-none mix-blend-difference bg-cyan-400/20 z-50 animate-pulse"
+                            className="absolute border border-[var(--accent-primary)] rounded-full pointer-events-none mix-blend-difference bg-[var(--accent-primary)]/20 z-50 animate-pulse"
                             style={{
                               width: brushSize,
                               height: brushSize,
@@ -3017,7 +3019,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                   </div>
                   
                   {paintMaskEnabled && (
-                    <p className="text-[10px] text-cyan-400 font-bold uppercase tracking-wider bg-cyan-500/10 border border-cyan-500/20 px-3 py-1.5 rounded-full flex items-center gap-1.5">
+                    <p className="text-[10px] text-[var(--accent-primary)] font-bold uppercase tracking-wider bg-[var(--accent-primary)]/10 border border-[var(--accent-primary)]/20 px-3 py-1.5 rounded-full flex items-center gap-1.5">
                       <PenTool size={12} /> Paint mode active. Drag to paint regions to modify.
                     </p>
                   )}
@@ -3042,7 +3044,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                         nav.push({ view: 'create', subView: 'image' });
                         toast.success('Loaded image into AI Studio Editor!');
                       }} 
-                      className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold backdrop-blur-xl border border-white/20 shadow-lg hover:scale-105 transition-transform flex items-center gap-2"
+                      className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[var(--accent-primary)] to-[var(--accent-primary)] hover:from-[var(--accent-primary)] hover:to-[var(--accent-primary)] text-white font-bold backdrop-blur-xl border border-white/20 shadow-lg hover:scale-105 transition-transform flex items-center gap-2"
                     >
                       <Pencil size={16} /> Edit Image
                     </button>
@@ -3092,7 +3094,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                           nav.push({ view: 'create', subView: 'image' });
                           toast.success('Loaded image into AI Studio Editor!');
                         }} 
-                        className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold backdrop-blur-xl border border-white/20 shadow-lg hover:scale-105 transition-transform flex items-center gap-2"
+                        className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[var(--accent-primary)] to-[var(--accent-primary)] hover:from-[var(--accent-primary)] hover:to-[var(--accent-primary)] text-white font-bold backdrop-blur-xl border border-white/20 shadow-lg hover:scale-105 transition-transform flex items-center gap-2"
                       >
                         <Pencil size={16} /> Edit Image
                       </button>
@@ -3146,8 +3148,8 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
             <div className="shrink-0 border-t border-white/10 bg-[#0d1117]/95 backdrop-blur-xl px-4 py-3">
               <div className="flex items-center justify-between mb-1.5">
                 <div className="flex items-center gap-2">
-                  <FileText size={12} className="text-violet-400" />
-                  <span className="text-[10px] font-black uppercase tracking-widest text-violet-400">Auto-Caption</span>
+                  <FileText size={12} className="text-[var(--accent-primary)]" />
+                  <span className="text-[10px] font-black uppercase tracking-widest text-[var(--accent-primary)]">Auto-Caption</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
@@ -3157,7 +3159,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                       setTimeout(() => setCaptionCopied(false), 2000);
                       toast.success('Caption copied!');
                     }}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 text-[10px] font-bold transition-colors border border-violet-500/20"
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[var(--accent-primary)]/20 hover:bg-[var(--accent-primary)]/30 text-[var(--accent-primary)] text-[10px] font-bold transition-colors border border-[var(--accent-primary)]/20"
                   >
                     {captionCopied ? <CheckCircle2 size={11} /> : <Copy size={11} />}
                     {captionCopied ? 'Copied!' : 'Copy'}
@@ -3193,7 +3195,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                     onClick={() => setResultImage(entry.imageUrl)}
                     className={`shrink-0 w-16 h-16 rounded-xl overflow-hidden border-2 transition-all duration-200 hover:scale-105 ${
                       resultImage === entry.imageUrl
-                        ? 'border-[#00D4FF] shadow-[0_0_12px_rgba(0,212,255,0.4)]'
+                        ? 'border-[var(--accent-primary)] shadow-[0_0_12px_rgba(231,196,119,0.4)]'
                         : 'border-white/10 hover:border-white/30'
                     }`}
                   >

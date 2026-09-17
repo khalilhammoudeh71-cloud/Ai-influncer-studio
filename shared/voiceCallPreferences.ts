@@ -8,7 +8,9 @@ export const CALL_MODES = [
   { id: 'hi', label: 'Hindi' }, { id: 'ja', label: 'Japanese' }, { id: 'ko', label: 'Korean' },
 ] as const;
 export const CALL_DIALECTS = [
-  { id: 'levantine', label: 'Jordanian / Syrian', direction: 'Use urban Jordanian Arabic with light Syrian influence. Prefer everyday Levantine phrasing such as شو، كيفك، هلأ، بدك. In familiar colloquial words use the urban glottal-stop pronunciation of ق where appropriate; keep formal words and names accurate.' },
+  { id: 'levantine', label: 'Jordanian / Syrian', direction: 'Use urban Jordanian Arabic with light Syrian influence. Prefer everyday Levantine phrasing such as شو، كيفك، هلأ، بدك. Avoid Egyptian and Saudi/Gulf wording unless the caller explicitly requests that dialect or you are quoting it. Avoid وش، الحين، أبغى; prefer شو، هلأ، بدي. Keep ك as k and ج as j. In familiar colloquial words use the urban glottal-stop pronunciation of ق where appropriate; keep formal words and names accurate.' },
+  { id: 'jordanian', label: 'Jordanian', direction: 'Use natural urban Jordanian Arabic, everyday Jordanian vocabulary and intonation. Avoid Egyptian and Gulf expressions unless requested or quoted.' },
+  { id: 'syrian', label: 'Syrian', direction: 'Use natural Syrian Arabic with everyday Syrian vocabulary and intonation. Avoid Egyptian and Gulf expressions unless requested or quoted.' },
   { id: 'lebanese', label: 'Lebanese', direction: 'Use natural Lebanese Arabic with everyday Lebanese vocabulary and rhythm. Avoid mixing in Egyptian or Gulf expressions.' },
   { id: 'egyptian', label: 'Egyptian', direction: 'Use everyday Egyptian Arabic and its vocabulary and rhythm, such as إزيك، دلوقتي، عايز. Avoid mixing in Levantine or Gulf expressions.' },
   { id: 'gulf', label: 'Saudi / Gulf', direction: 'Use conversational Saudi/Gulf Arabic with natural local vocabulary. Avoid mixing in Egyptian or Levantine expressions.' },

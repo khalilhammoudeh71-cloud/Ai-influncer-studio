@@ -21,7 +21,7 @@ export function createVoiceRecognitionRouter(readPersonas:(owner:string)=>Promis
   try {
    const {audio,personaId,context,draft,preferences}=req.body||{};
    if(typeof audio!=='string'||audio.length>2800000||!/^data:audio\/wav;base64,[A-Za-z0-9+/]+=*$/.test(audio))return res.status(400).json({error:'A short microphone recording is required.'});
-   const persona=(await readPersonas(req.user.id)).find(p=>p.id===personaId);
+   const persona=req.body?.dictation===true&&!personaId?{personalitySettings:{language:'ar',dialect:'jordanian-syrian'}}:(await readPersonas(req.user.id)).find(p=>p.id===personaId);
    if(!persona)return res.status(404).json({error:'Persona unavailable.'});
    const key=process.env.OPENAI_API_KEY||process.env.Openai_api_key||process.env.openai_api_key||process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
    if(!key)return res.status(503).json({error:'Audio verification is unavailable. Check the transcript before sending.'});

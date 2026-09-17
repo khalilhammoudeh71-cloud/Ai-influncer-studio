@@ -1,0 +1,6 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {dialectFor,dialectRule,applyDialectSpeech,dialectWordingContext} from './dialectTeaching';
+test('dialect profiles follow active call dialect and remain distinct',()=>{assert.equal(dialectFor({personalitySettings:{dialect:'syrian'}},{dialect:'levantine'}),'jordanian-syrian');assert.equal(dialectFor({}, {dialect:'gulf'}),undefined);assert.equal(dialectFor({personalitySettings:{dialect:'jordanian'}}),'jordanian');});
+test('only distinct bounded correction pairs are accepted',()=>{assert.equal(dialectRule({kind:'pronunciation',word:'جاهزة',replacement:'جاهزة'}),undefined);assert.equal(dialectRule({kind:'wording',word:'a',replacement:'<bad>'}),undefined);assert.equal(dialectRule({kind:'unknown',word:'a',replacement:'b'}),undefined);});
+test('pronunciation changes speech without rewriting vocabulary',()=>{const p={id:'jordanian-syrian' as const,revision:1,rules:[{id:'1',kind:'pronunciation' as const,word:'جاهزة',replacement:'جَاهْزِة',example:'',recordingId:''},{id:'2',kind:'wording' as const,word:'الحين',replacement:'هلأ',example:'',recordingId:''}]};assert.equal(applyDialectSpeech('جاهزة الحين',p),'جَاهْزِة الحين');assert.match(dialectWordingContext([p]),/الحين/);assert.doesNotMatch(dialectWordingContext([p]),/جَاهْزِة/);});

@@ -1,4 +1,6 @@
 import { PersonaControls, ControlSelect, SpeechAccuracySetting } from '../components/PersonaControls';
+import { DialectTeaching } from '../components/DialectTeaching';
+import VoiceRemix from '../components/VoiceRemix';
 import { normalizeCallPreferences, withCallPreferences, type CallPreferences } from '../../shared/voiceCallPreferences';
 import { requestedCallLanguage } from '../../shared/callLanguageSwitch';
 import { VoiceRecheck, audioRecheckEnabled } from '../utils/voiceRecheck';
@@ -1382,14 +1384,12 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         // Keep the audio-grounded result verbatim; old text substitutions must not rewrite it.
         corrected=String(result.text||rawTranscript).trim();
         if(result.needsConfirmation) {
-          acceptAudio();
-          setPendingVoiceConfirmation(corrected);setCallInput(corrected);setLiveUserSpeech('');
-          setTranscriptionNotice('I’m not certain I heard this correctly. Edit or send the text below.');setCallStatus('listening');return;
+          setTranscriptionNotice('Sent the best available transcript. You can correct it in the conversation.');
         }
       } catch(error) {
         if(!stillCurrent())return;
-        acceptAudio();setPendingVoiceConfirmation(corrected);setCallInput(corrected);setLiveUserSpeech('');setCallStatus('listening');
-        setTranscriptionNotice(error instanceof Error?error.message:'Check the transcript before sending.');return;
+        // Continue with the captured transcript when the optional recheck is unavailable.
+        setTranscriptionNotice('Speech recheck unavailable. Sent the captured transcript.');
       } finally {if(verificationRef.current===verification)setVerifyingSpeech(false);}
     }
     if(!stillCurrent())return;
@@ -3335,7 +3335,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 
   useEffect(() => {
     if (isCallActive) {
-      callTranscriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      const panel = callTranscriptEndRef.current?.parentElement;
+      if (panel) panel.scrollTo({ top: panel.scrollHeight, behavior: 'smooth' });
     }
   }, [callTranscript, isCallActive]);
 
@@ -3883,9 +3884,9 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
   }
 
   return (
-    <div className="flex h-full w-full flex-col items-center justify-center bg-[#121316] p-2 sm:p-3.5 md:p-4">
+    <div className="relative flex h-full min-h-0 w-full flex-col items-center justify-center bg-[#121316] p-2 sm:p-3.5 md:p-4">
       {/* Framed Chatting Window Box with Visible Border */}
-      <div className="w-full h-full max-w-[1320px] flex flex-col bg-[#16171b] border border-white/[0.14] rounded-2xl sm:rounded-3xl shadow-[0_16px_48px_rgba(0,0,0,0.85)] overflow-hidden ring-1 ring-white/[0.04]">
+      <div className="w-full h-full min-h-0 max-w-[1320px] flex flex-col bg-[#16171b] border border-white/[0.14] rounded-2xl sm:rounded-3xl shadow-[0_16px_48px_rgba(0,0,0,0.85)] overflow-hidden ring-1 ring-white/[0.04]">
 
         {/* Sleek Charcoal Minimal Header */}
         <header className="sticky top-0 z-20 bg-[#1c1d22]/95 backdrop-blur-xl border-b border-white/[0.09] px-4 sm:px-5 py-2.5">
@@ -3926,7 +3927,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                   >
                     {activePersona.name}
                   </span>
-                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-white/[0.06] text-zinc-300 border border-white/[0.08]">
+                  <span className="text-xs uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-white/[0.06] text-zinc-300 border border-white/[0.08]">
                     {activePersona.niche || 'Creator'}
                   </span>
                 </div>
@@ -3997,7 +3998,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                     )}
                     <div className="truncate">
                       <p className="text-xs font-semibold text-zinc-200 truncate">{chatAttachment.name}</p>
-                      <p className="text-[10px] text-zinc-400 font-medium">Attachment ready for analysis</p>
+                      <p className="text-xs text-zinc-400 font-medium">Attachment ready for analysis</p>
                     </div>
                   </div>
                   <button
@@ -4066,7 +4067,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
               value={replyInput}
               onChange={(e) => setReplyInput(e.target.value)}
               placeholder="Ex: 'You are so pretty! Where did you get that jacket?'"
-              className="w-full premium-input bg-[var(--bg-surface)] p-4 text-sm min-h-[100px] outline-none text-[var(--text-primary)] placeholder-[var(--text-muted)] rounded-xl border border-[var(--border-default)] focus:border-violet-500/50 transition-colors"
+              className="w-full premium-input bg-[var(--bg-surface)] p-4 text-sm min-h-[100px] outline-none text-[var(--text-primary)] placeholder-[var(--text-muted)] rounded-xl border border-[var(--border-default)] focus:border-amber-500/50 transition-colors"
             />
           </div>
 
@@ -4129,7 +4130,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
               aria-modal="true"
               aria-labelledby="memory-center-title"
             >
-              <div className="border-b border-white/[0.09] bg-gradient-to-br from-[#E7C477]/[0.12] via-transparent to-cyan-500/[0.05] px-5 py-5 sm:px-7">
+              <div className="border-b border-white/[0.09] bg-gradient-to-br from-[#E7C477]/[0.12] via-transparent to-amber-500/[0.05] px-5 py-5 sm:px-7">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex min-w-0 items-center gap-3.5">
                     <div className="relative h-12 w-12 flex-shrink-0 overflow-hidden rounded-2xl border border-[#E7C477]/30 bg-[#E7C477]/10">
@@ -4144,7 +4145,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                       )}
                     </div>
                     <div className="min-w-0">
-                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#E7C477]">Persona intelligence</p>
+                      <p className="text-xs font-black uppercase tracking-[0.2em] text-[#E7C477]">Persona intelligence</p>
                       <h2 id="memory-center-title" className="truncate text-xl font-extrabold text-white sm:text-2xl">
                         {activePersona.name}&apos;s Memory Center
                       </h2>
@@ -4169,7 +4170,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                   ].map(([value, label]) => (
                     <div key={label} className="rounded-xl border border-white/[0.08] bg-black/20 px-3 py-2">
                       <p className="text-sm font-black text-white">{value}</p>
-                      <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-500">{label}</p>
+                      <p className="text-xs font-bold uppercase tracking-wider text-zinc-500">{label}</p>
                     </div>
                   ))}
                 </div>
@@ -4207,7 +4208,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                         </h3>
                         <p className="mt-1 text-[11px] text-zinc-500">Pinned facts are prioritized in future conversations.</p>
                       </div>
-                      <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-[10px] font-bold text-zinc-400">
+                      <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-xs font-bold text-zinc-400">
                         {visibleMemoryNotes.length}
                       </span>
                     </div>
@@ -4253,8 +4254,8 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                                 className="w-full resize-none rounded-lg border border-[#E7C477]/35 bg-black/30 px-3 py-2 text-xs leading-relaxed text-white outline-none"
                               />
                               <div className="flex justify-end gap-1.5">
-                                <button type="button" onClick={() => setEditingMemoryId(null)} className="rounded-lg px-2.5 py-1.5 text-[10px] font-bold text-zinc-400 hover:text-white">Cancel</button>
-                                <button type="button" onClick={handleSaveMemoryEdit} className="flex items-center gap-1 rounded-lg bg-[#E7C477] px-2.5 py-1.5 text-[10px] font-black text-zinc-950"><Check size={11} /> Save</button>
+                                <button type="button" onClick={() => setEditingMemoryId(null)} className="rounded-lg px-2.5 py-1.5 text-xs font-bold text-zinc-400 hover:text-white">Cancel</button>
+                                <button type="button" onClick={handleSaveMemoryEdit} className="flex items-center gap-1 rounded-lg bg-[#E7C477] px-2.5 py-1.5 text-xs font-black text-zinc-950"><Check size={11} /> Save</button>
                               </div>
                             </div>
                           ) : (
@@ -4274,7 +4275,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                               </button>
                               <div className="min-w-0 flex-1">
                                 <p className="text-xs leading-relaxed text-zinc-200">{note.text}</p>
-                                <p className="mt-1 text-[9px] font-bold uppercase tracking-wider text-zinc-600">
+                                <p className="mt-1 text-xs font-bold uppercase tracking-wider text-zinc-600">
                                   {note.source === 'manual' ? 'Added by you' : note.source === 'default' ? 'Core memory' : 'Learned from chat'}
                                 </p>
                               </div>
@@ -4310,11 +4311,11 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <h3 className="flex items-center gap-2 text-sm font-extrabold text-white">
-                          <BookOpen size={16} className="text-cyan-300" /> Conversation memory
+                          <BookOpen size={16} className="text-amber-300" /> Conversation memory
                         </h3>
                         <p className="mt-1 text-[11px] text-zinc-500">Recent text and voice turns in one continuous timeline.</p>
                       </div>
-                      <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-[10px] font-bold text-zinc-400">
+                      <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-xs font-bold text-zinc-400">
                         {visibleMemoryActivity.length}
                       </span>
                     </div>
@@ -4329,19 +4330,19 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                           <div className="flex items-center justify-between gap-3">
                             <div className="flex items-center gap-2">
                               <span className={cn(
-                                'rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wider',
+                                'rounded-full px-2 py-0.5 text-xs font-black uppercase tracking-wider',
                                 record.source === 'voice'
                                   ? 'bg-emerald-400/10 text-emerald-300'
-                                  : 'bg-cyan-400/10 text-cyan-300',
+                                  : 'bg-amber-400/10 text-amber-300',
                               )}>
                                 {record.source === 'voice' ? 'Voice' : 'Text'}
                               </span>
-                              <span className="text-[10px] font-bold text-zinc-500">
+                              <span className="text-xs font-bold text-zinc-500">
                                 {record.role === 'user' ? 'You' : activePersona.name}
                               </span>
                             </div>
                             <div className="flex items-center gap-2">
-                              <time className="text-[9px] text-zinc-600">
+                              <time className="text-xs text-zinc-600">
                                 {new Date(record.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                               </time>
                               <button
@@ -4458,7 +4459,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                     ].map(([title, description]) => (
                       <div key={title} className="rounded-xl border border-white/[0.09] bg-black/20 p-3">
                         <p className="text-xs font-bold text-zinc-100">{title}</p>
-                        <p className="mt-1 text-[10px] leading-relaxed text-zinc-500">{description}</p>
+                        <p className="mt-1 text-xs leading-relaxed text-zinc-500">{description}</p>
                       </div>
                     ))}
                   </div>
@@ -4505,7 +4506,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 z-50 bg-[#121316]/98 backdrop-blur-2xl flex flex-col justify-between p-2.5 sm:p-4 overflow-y-auto custom-scrollbar rounded-2xl sm:rounded-3xl border border-white/[0.12] shadow-2xl"
+            className="fixed inset-2 z-[80] bg-[#121316]/98 backdrop-blur-2xl flex flex-col p-2.5 sm:p-3 overflow-hidden rounded-2xl sm:rounded-3xl border border-white/[0.12] shadow-2xl"
           >
             {/* Header */}
             <div className="flex flex-wrap items-center justify-between gap-2 flex-shrink-0 mb-1">
@@ -4530,14 +4531,14 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                 )}
                 <div>
                   <h3 className="font-extrabold text-white text-sm leading-tight">{activePersona.name}</h3>
-                  <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">{activePersona.niche}</span>
+                  <span className="text-xs text-zinc-400 font-bold uppercase tracking-wider">{activePersona.niche}</span>
                 </div>
               </div>
 
               {/* Voice Status & Voice Engine Selector & Call Duration */}
               <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
                 <div 
-                  className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/25 text-emerald-300 text-[10px] font-semibold rounded-lg px-2 py-0.5 backdrop-blur-md transition-all shadow-sm max-w-[150px] truncate"
+                  className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/25 text-emerald-300 text-xs font-semibold rounded-lg px-2 py-0.5 backdrop-blur-md transition-all shadow-sm max-w-[150px] truncate"
                   title={selectedVoiceEngine === 'cartesia-sonic' ? 'Cartesia stock voice; not the saved persona clone' : selectedVoiceEngine === 'fal_maya_stream' ? 'Maya generated voice; not the saved persona clone' : `Using ${activePersona.name}'s saved voice`}
                 >
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
@@ -4547,7 +4548,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                   <select
                     value={voiceLlmModel}
                     onChange={event => handleVoiceLlmChange(event.target.value)}
-                    className="w-full min-w-0 bg-[#1c1d22] hover:bg-[#222329] border border-cyan-400/25 text-cyan-100 text-[10px] font-semibold rounded-lg px-2 py-0.5 outline-none cursor-pointer backdrop-blur-md transition-all"
+                    className="w-full min-w-0 bg-[#1c1d22] hover:bg-[#222329] border border-amber-400/25 text-amber-100 text-xs font-semibold rounded-lg px-2 py-0.5 outline-none cursor-pointer backdrop-blur-md transition-all"
                     title={isPro ? 'Select conversation LLM' : 'Choose what the conversation should prioritize'}
                     aria-label={isPro ? 'Conversation LLM' : 'Conversation priority'}
                   >
@@ -4562,7 +4563,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                   <select
                     value={selectedVoiceEngine}
                     onChange={e => handleVoiceEngineChange(e.target.value)}
-                    className="w-full min-w-0 bg-[#1c1d22] hover:bg-[#222329] border border-white/[0.12] text-zinc-200 text-[10px] font-semibold rounded-lg px-2 py-0.5 outline-none cursor-pointer backdrop-blur-md transition-all"
+                    className="w-full min-w-0 bg-[#1c1d22] hover:bg-[#222329] border border-white/[0.12] text-zinc-200 text-xs font-semibold rounded-lg px-2 py-0.5 outline-none cursor-pointer backdrop-blur-md transition-all"
                     title={isPro ? 'Select Voice Engine' : 'Choose what the voice should prioritize'}
                     aria-label="Voice engine"
                   >
@@ -4590,7 +4591,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                     type="button"
                     onClick={() => setShowVoiceAccuracyPanel(true)}
                     className={cn(
-                      'hidden sm:flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold transition-colors',
+                      'hidden sm:flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold transition-colors',
                       ignoredSpeakerCount > 0
                         ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-200'
                         : 'border-white/10 bg-white/[0.04] text-zinc-400 hover:bg-white/[0.08]',
@@ -4603,10 +4604,10 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                 )}
                 {lastVoiceLatency?.responseMs !== undefined && (
                   <div
-                    className="hidden md:flex items-center gap-1.5 bg-cyan-500/[0.08] border border-cyan-500/20 rounded-full px-2.5 py-1 text-[10px] font-semibold text-cyan-200"
+                    className="hidden md:flex items-center gap-1.5 bg-amber-500/[0.08] border border-amber-500/20 rounded-full px-2.5 py-1 text-xs font-semibold text-amber-200"
                     title={`Client playback estimate, not acoustic latency. Speech start to transcript: ${formatLatency(lastVoiceLatency.recognitionMs)}; request to text: ${formatLatency(lastVoiceLatency.modelMs)}; text to playback: ${formatLatency(lastVoiceLatency.speechMs)}` }
                   >
-                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
                     Reply estimate {formatLatency(lastVoiceLatency.responseMs)}
                   </div>
                 )}
@@ -4615,7 +4616,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                 )}
                 {lastVoiceRoute && (
                   <div
-                    className="flex max-w-full items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/[0.08] px-2.5 py-1 text-[10px] font-semibold text-emerald-200"
+                    className="flex max-w-full items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/[0.08] px-2.5 py-1 text-xs font-semibold text-emerald-200"
                     title={`Requested ${lastVoiceRoute.requestedModel}; answered by ${lastVoiceRoute.provider}`}
                   >
                     <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" />
@@ -4667,13 +4668,13 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                     </button>
                   </div>
 
-                  <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/[0.05] p-3 space-y-2.5">
+                  <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.05] p-3 space-y-2.5">
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <p className="text-xs font-bold text-cyan-100">Live call health</p>
-                        <p className="text-[10px] text-zinc-400 mt-0.5">Adaptive turn-taking on · interruption ready · connection recovery on</p>
+                        <p className="text-xs font-bold text-amber-100">Live call health</p>
+                        <p className="text-xs text-zinc-400 mt-0.5">Adaptive turn-taking on · interruption ready · connection recovery on</p>
                       </div>
-                      <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-300">
+                      <span className="flex items-center gap-1 text-xs font-bold text-emerald-300">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Active
                       </span>
                     </div>
@@ -4685,14 +4686,14 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                         ['Reply', lastVoiceLatency?.responseMs],
                       ].map(([label, value]) => (
                         <div key={String(label)} className="rounded-lg bg-black/25 border border-white/[0.07] px-2 py-2 text-center">
-                          <p className="text-[9px] uppercase tracking-wide text-zinc-500">{label}</p>
+                          <p className="text-xs uppercase tracking-wide text-zinc-500">{label}</p>
                           <p className="text-[11px] font-bold text-zinc-200 mt-0.5">{formatLatency(value as number | undefined)}</p>
                         </div>
                       ))}
                     </div>
-                    <p className="text-[9px] text-zinc-500">Reply measures the final transcript to the first audible persona response.</p>
+                    <p className="text-xs text-zinc-500">Reply measures the final transcript to the first audible persona response.</p>
                     {lastVoiceRoute && (
-                      <p className="text-[9px] text-zinc-500">
+                      <p className="text-xs text-zinc-500">
                         Requested {lastVoiceRoute.requestedModel}; answered by <span className="text-zinc-300">{lastVoiceRoute.provider}</span>.
                       </p>
                     )}
@@ -4705,7 +4706,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                           <p className="text-xs font-bold text-emerald-100">Speaker Lock</p>
                           {voiceIdentityProfile && (
                             <span className={cn(
-                              'rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide border',
+                              'rounded-full px-2 py-0.5 text-xs font-bold uppercase tracking-wide border',
                               voiceIdentityProfile.enabled
                                 ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300'
                                 : 'border-zinc-500/30 bg-zinc-500/10 text-zinc-400',
@@ -4714,7 +4715,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                             </span>
                           )}
                         </div>
-                        <p className="text-[10px] text-zinc-400 mt-0.5">
+                        <p className="text-xs text-zinc-400 mt-0.5">
                           Enroll Dr. H's voice so longer turns from other people can be ignored.
                         </p>
                       </div>
@@ -4734,10 +4735,10 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                           <p className="text-xs font-bold text-emerald-200 animate-pulse">Speak naturally now…</p>
                           <span className="font-mono text-sm font-bold text-white">{voiceEnrollmentSeconds}s</span>
                         </div>
-                        <p className="text-[10px] leading-relaxed text-zinc-400 mt-1.5">
+                        <p className="text-xs leading-relaxed text-zinc-400 mt-1.5">
                           Read a few normal sentences in your usual voice. Audio is not saved; only a compact voice signature is stored.
                         </p>
-                        <button onClick={() => cancelVoiceEnrollment()} className="mt-2 text-[10px] text-zinc-500 hover:text-zinc-300 cursor-pointer">Cancel</button>
+                        <button onClick={() => cancelVoiceEnrollment()} className="mt-2 text-xs text-zinc-500 hover:text-zinc-300 cursor-pointer">Cancel</button>
                       </div>
                     )}
 
@@ -4745,17 +4746,17 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                       <div className="flex flex-wrap items-center gap-2">
                         <button
                           onClick={toggleVoiceIdentityLock}
-                          className="px-2.5 py-1.5 rounded-lg border border-white/10 bg-black/20 text-[10px] font-bold text-zinc-200 hover:bg-white/[0.07] cursor-pointer"
+                          className="px-2.5 py-1.5 rounded-lg border border-white/10 bg-black/20 text-xs font-bold text-zinc-200 hover:bg-white/[0.07] cursor-pointer"
                         >
                           {voiceIdentityProfile.enabled ? 'Pause lock' : 'Enable lock'}
                         </button>
                         <button
                           onClick={removeVoiceIdentityProfile}
-                          className="px-2.5 py-1.5 rounded-lg border border-rose-500/20 bg-rose-500/[0.06] text-[10px] font-bold text-rose-300 hover:bg-rose-500/10 cursor-pointer"
+                          className="px-2.5 py-1.5 rounded-lg border border-rose-500/20 bg-rose-500/[0.06] text-xs font-bold text-rose-300 hover:bg-rose-500/10 cursor-pointer"
                         >
                           Remove profile
                         </button>
-                        <span className="ml-auto text-[9px] text-zinc-500">
+                        <span className="ml-auto text-xs text-zinc-500">
                           {ignoredSpeakerCount} ignored this call
                           {lastSpeakerMatchScore !== null ? ` · last match ${Math.round(lastSpeakerMatchScore * 100)}%` : ''}
                         </span>
@@ -4763,16 +4764,16 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                     )}
 
                     {voiceEnrollmentStatus === 'error' && (
-                      <p className="text-[10px] text-amber-300">Not enough clear speech was captured. Try again closer to the microphone.</p>
+                      <p className="text-xs text-amber-300">Not enough clear speech was captured. Try again closer to the microphone.</p>
                     )}
-                    <p className="text-[9px] text-zinc-500">Speaker Lock is a conversational filter, not identity authentication. Very short phrases are allowed when there is not enough audio to compare safely.</p>
+                    <p className="text-xs text-zinc-500">Speaker Lock is a conversational filter, not identity authentication. Very short phrases are allowed when there is not enough audio to compare safely.</p>
                   </div>
 
                   <div className="rounded-xl border border-[#E7C477]/20 bg-[#E7C477]/[0.06] p-3 space-y-2.5">
                     <div className="flex items-center justify-between gap-2">
                       <div>
                         <p className="text-xs font-bold text-[#F2D58D]">Optional voice calibration</p>
-                        <p className="text-[10px] text-zinc-400 mt-0.5">Read three short sentences so names and model terms are recognized correctly.</p>
+                        <p className="text-xs text-zinc-400 mt-0.5">Read three short sentences so names and model terms are recognized correctly.</p>
                       </div>
                       {calibrationStep === null && (
                         <button
@@ -4786,7 +4787,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
 
                     {calibrationStep !== null && (
                       <div className="space-y-2.5">
-                        <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                        <div className="text-xs font-bold uppercase tracking-wider text-zinc-500">
                           Sentence {calibrationStep + 1} of {VOICE_CALIBRATION_SENTENCES.length}
                         </div>
                         <p className="text-sm leading-relaxed text-white rounded-lg bg-black/25 border border-white/10 p-2.5">
@@ -4795,7 +4796,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                         {calibrationCapture ? (
                           <div className="space-y-2">
                             <p className="text-[11px] text-zinc-300"><span className="text-zinc-500">Heard:</span> “{calibrationCapture.heard}”</p>
-                            <p className="text-[10px] text-emerald-300">
+                            <p className="text-xs text-emerald-300">
                               {calibrationCapture.corrections.length > 0
                                 ? `${calibrationCapture.corrections.length} pronunciation correction${calibrationCapture.corrections.length === 1 ? '' : 's'} found.`
                                 : 'Perfect match — no correction needed.'}
@@ -4811,7 +4812,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                         ) : (
                           <p className="text-[11px] text-emerald-300 animate-pulse">Listening — read the sentence naturally…</p>
                         )}
-                        <button onClick={cancelVoiceCalibration} className="text-[10px] text-zinc-500 hover:text-zinc-300 cursor-pointer">Cancel calibration</button>
+                        <button onClick={cancelVoiceCalibration} className="text-xs text-zinc-500 hover:text-zinc-300 cursor-pointer">Cancel calibration</button>
                       </div>
                     )}
                   </div>
@@ -4871,7 +4872,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
             </AnimatePresence>
 
             {/* Visualizer Area */}
-            <div className="flex-none w-full flex flex-col items-center justify-start gap-3 my-2 relative">
+            <div className="flex-1 min-h-0 w-full flex flex-col items-center justify-start gap-2 my-1 relative">
               {/* Status Indicator */}
               <div className="text-center z-10 min-h-[38px] flex flex-col items-center justify-center px-4">
                 {liveUserSpeech ? (
@@ -4884,7 +4885,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                   </motion.div>
                 ) : (
                   <>
-                    <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest block mb-1">
+                    <span className="text-xs text-zinc-400 font-bold uppercase tracking-widest block mb-1">
                       {callStatus === 'connecting' ? 'Calling...' : 
                        callStatus === 'thinking' ? `${activePersona?.name || 'Persona'} Thinking` :
                        callStatus === 'speaking' ? `${activePersona?.name || 'Persona'} Speaking` :
@@ -4900,8 +4901,10 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                 )}
               </div>
 
+
+              {transcriptionNotice && <div role="status" className="w-full max-w-2xl shrink-0 rounded-xl border border-amber-400/25 bg-amber-400/5 px-3 py-2 text-xs text-amber-200">{transcriptionNotice} {pendingVoiceConfirmation && <button type="button" onClick={() => handleSendCallMessage()} className="ml-2 underline">Send text below</button>}</div>}
               {/* Pulsing Glowing Avatar */}
-              <div className={cn("relative flex flex-col items-center justify-center transition-all duration-300", activeCallMedia ? "w-24 h-24" : "w-36 h-36")}>
+              <div className={cn("relative flex flex-col items-center justify-center transition-all duration-300", activeCallMedia ? "w-12 h-12" : "w-16 h-16")}>
                 {/* Outer Glow Pulse Rings */}
                 <motion.div
                   animate={{
@@ -4932,7 +4935,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                 <div 
                   className={cn(
                     "rounded-full overflow-hidden border-2 border-white/20 shadow-2xl relative z-10 transition-all",
-                    activeCallMedia ? "w-20 h-20" : "w-32 h-32"
+                    activeCallMedia ? "w-10 h-10" : "w-14 h-14"
                   )}
                 >
                   {activePersona?.referenceImage || activePersona?.avatar ? (
@@ -4957,7 +4960,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
               </div>
 
               {/* Waveform Visualizer */}
-              <div className="h-8 flex items-end justify-center gap-1 w-full max-w-[220px] px-4 z-10">
+              <div className="h-4 shrink-0 flex items-end justify-center gap-1 w-full max-w-[220px] px-4 z-10">
                 {[...Array(16)].map((_, i) => (
                   <motion.div
                     key={i}
@@ -5002,7 +5005,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                     title="Click to view full screen, upscale & edit"
                   >
                     {activeCallMedia.type === 'image' ? (
-                      <div className="relative w-full h-60 sm:h-64 bg-zinc-950 overflow-hidden flex-shrink-0">
+                      <div className="relative w-full h-24 sm:h-32 bg-zinc-950 overflow-hidden flex-shrink-0">
                         <img
                           src={activeCallMedia.url}
                           alt="Shared Photo"
@@ -5032,7 +5035,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                             setFullScreenModalMedia({ type: activeCallMedia.type, url: activeCallMedia.url, prompt: activeCallMedia.prompt });
                           }
                         }}
-                        className="p-1.5 rounded-full bg-black/80 hover:bg-violet-600 text-white text-xs backdrop-blur-md transition-colors"
+                        className="p-1.5 rounded-full bg-black/80 hover:bg-amber-600 text-white text-xs backdrop-blur-md transition-colors"
                         title="Enlarge Full Screen"
                       >
                         <Maximize2 size={12} />
@@ -5075,10 +5078,10 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                       </button>
                     </div>
                     <div className="p-2.5 bg-black/95 border-t border-white/10 flex items-center justify-between px-3">
-                      <p className="text-[11px] text-violet-300 font-semibold truncate flex items-center gap-1.5">
+                      <p className="text-[11px] text-amber-300 font-semibold truncate flex items-center gap-1.5">
                         <span>📸</span> Photo by {activePersona?.name || 'Creator'}
                       </p>
-                      <span className="text-[10px] text-[#F2D58D] font-bold hover:underline flex items-center gap-1">
+                      <span className="text-xs text-[#F2D58D] font-bold hover:underline flex items-center gap-1">
                         <Maximize2 size={10} /> Upscale / Edit
                       </span>
                     </div>
@@ -5087,7 +5090,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
               </AnimatePresence>
 
               {/* Dynamic Live Captions & Spoken Dialogue Card */}
-              <div className="w-full max-w-xl sm:max-w-2xl min-h-[90px] max-h-56 bg-[#16171b]/95 border border-white/[0.12] rounded-2xl p-3.5 sm:p-4 shadow-2xl backdrop-blur-xl overflow-y-auto text-sm space-y-2.5 custom-scrollbar flex flex-col z-20">
+              <div className="w-full max-w-xl sm:max-w-2xl flex-1 min-h-0 bg-[#16171b]/95 border border-white/[0.12] rounded-2xl p-3.5 sm:p-4 shadow-2xl backdrop-blur-xl overflow-y-auto text-sm space-y-2.5 custom-scrollbar flex flex-col z-20">
                 {!callTranscript || callTranscript.length === 0 ? (
                   <div className="flex-1 flex flex-col items-center justify-center text-center py-3">
                     <p className="text-xs text-zinc-500 font-medium italic">
@@ -5111,13 +5114,13 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                       >
                         <div className="flex items-center justify-between gap-2">
                           <span className={cn(
-                            "text-[10px] font-bold uppercase tracking-wider",
+                            "text-xs font-bold uppercase tracking-wider",
                             isPersona ? "text-[#E7C477]" : "text-zinc-400"
                           )}>
                             {isPersona ? (activePersona?.name || 'Creator') : getStoredUserName()}
                           </span>
                           {isPersona && isLatest && callStatus === 'speaking' && (
-                            <span className="flex items-center gap-1 text-[10px] text-emerald-400 font-medium animate-pulse">
+                            <span className="flex items-center gap-1 text-xs text-emerald-400 font-medium animate-pulse">
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
                               Speaking
                             </span>
@@ -5128,7 +5131,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                                 setEditingVoiceTranscriptId(item.id);
                                 setVoiceCorrectionDraft(item.content);
                               }}
-                              className="flex items-center gap-1 text-[10px] text-zinc-500 hover:text-[#F2D58D] cursor-pointer"
+                              className="flex items-center gap-1 text-xs text-zinc-500 hover:text-[#F2D58D] cursor-pointer"
                               title="Correct what the app heard"
                             >
                               <Pencil size={10} /> Correct
@@ -5138,7 +5141,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
 
                         {editingVoiceTranscriptId === item.id ? (
                           <div className="space-y-2">
-                            <p className="text-[10px] text-zinc-500">Heard: “{item.rawContent || item.content}”</p>
+                            <p className="text-xs text-zinc-500">Heard: “{item.rawContent || item.content}”</p>
                             <input
                               autoFocus
                               value={voiceCorrectionDraft}
@@ -5152,13 +5155,13 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                             <div className="flex justify-end gap-1.5">
                               <button
                                 onClick={() => setEditingVoiceTranscriptId(null)}
-                                className="px-2 py-1 rounded-md text-[10px] text-zinc-400 hover:bg-white/10 cursor-pointer"
+                                className="px-2 py-1 rounded-md text-xs text-zinc-400 hover:bg-white/10 cursor-pointer"
                               >
                                 Cancel
                               </button>
                               <button
                                 onClick={() => saveInlineVoiceCorrection(item)}
-                                className="px-2 py-1 rounded-md text-[10px] font-bold bg-[#E7C477] text-zinc-950 cursor-pointer"
+                                className="px-2 py-1 rounded-md text-xs font-bold bg-[#E7C477] text-zinc-950 cursor-pointer"
                               >
                                 Learn correction
                               </button>
@@ -5195,7 +5198,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                             <video
                               src={item.content}
                               controls
-                              className="w-48 rounded-xl border border-violet-500/40 shadow-lg"
+                              className="w-48 rounded-xl border border-amber-500/40 shadow-lg"
                             />
                           </div>
                         ) : item.type === 'error' ? (
@@ -5216,10 +5219,12 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
               </div>
 
               {/* Call Controls Bar */}
-              <div className="w-full max-w-xl sm:max-w-2xl bg-[#16171b]/95 border border-white/[0.12] rounded-2xl p-2.5 sm:p-3 shadow-2xl backdrop-blur-xl flex items-center justify-between gap-2 z-20">
+              <div className="shrink-0 w-full max-w-xl sm:max-w-2xl bg-[#16171b]/95 border border-white/[0.12] rounded-2xl p-2.5 sm:p-3 shadow-2xl backdrop-blur-xl flex items-center justify-between gap-2 z-20">
                 {/* Mute Button */}
                 <button
                   onClick={() => setIsMuted(!isMuted)}
+                  aria-label={isMuted ? "Unmute microphone" : "Mute microphone"}
+                  aria-pressed={isMuted}
                   className={cn(
                     "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer",
                     isMuted
@@ -5235,6 +5240,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                 <div className="flex-1 flex items-center gap-1.5 bg-[#101114] border border-white/10 rounded-xl px-2.5 py-1">
                   <input
                     type="text"
+                    aria-label="Message during call"
                     value={callInput}
                     onChange={(e) => setCallInput(e.target.value)}
                     onKeyDown={(e) => {
@@ -5246,6 +5252,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                   <button
                     onClick={() => handleSendCallMessage()}
                     disabled={!callInput.trim()}
+                    aria-label="Send call message"
                     className="p-1 rounded-lg bg-[#E7C477] text-zinc-950 disabled:opacity-40 font-bold transition-opacity cursor-pointer"
                   >
                     <Send size={12} />
@@ -5255,6 +5262,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                 {/* End Call Button */}
                 <button
                   onClick={handleEndCall}
+                  aria-label="End call"
                   className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-all shadow-lg active:scale-95 cursor-pointer"
                 >
                   <PhoneOff size={14} />
@@ -5365,6 +5373,12 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                 model={voiceLlmModel} onModel={handleVoiceLlmChange} models={PERSONA_LLM_OPTIONS.map(model=>({id:model.id,name:model.name}))}
                 engine={selectedVoiceEngine} onEngine={handleVoiceEngineChange} engines={VOICE_CALL_ENGINES.map(engine=>({id:engine.id,name:engine.name,disabled:engine.id==='fal_maya_stream'&&recognitionLanguage(callPersonaRef.current).scribe!=='en'}))}
                 preferences={callPreferences} onPreferences={updateCallPreferences}
+                remix={<VoiceRemix expanded key={activePersona.id} voiceId={/^eleven/.test(resolvePersonaVoiceEngine(activePersona, AUTO_PERSONA_VOICE_ENGINE)) ? activePersona.voiceId : undefined} voiceName={activePersona.voiceName || activePersona.name} disabled={isCallActive} onApply={async voice=>{
+                  const updated = await api.personas.update({...activePersona,voiceId:voice.voiceId,voiceEngine:'elevenlabs',voiceName:voice.name,voiceBinding:undefined,voiceSampleUrl:'',audioSamples:[]});
+                  window.dispatchEvent(new CustomEvent('persona-updated',{detail:updated}));
+                  window.dispatchEvent(new CustomEvent('personas-refresh'));
+                }}/>}
+                dialectTeaching={<DialectTeaching key={activePersona.id} onUseDialect={id=>updateCallPreferences({...callPreferences,mode:'arabic',dialect:id==='jordanian-syrian'?'levantine':id})} disabled={isCallActive} onPreview={async text=>{const result=await api.voice.generateSpeech({text,activePersona,engine:resolvePersonaVoiceEngine(activePersona,selectedVoiceEngine),voiceId:activePersona.voiceId,voiceReference:typeof getSavedPersonaVoice(activePersona).voiceReference==='string'?getSavedPersonaVoice(activePersona).voiceReference as string:undefined,speechModel:resolvePersonaVoiceEngine(activePersona,selectedVoiceEngine)});return result.audioUrl;}}/>}
                 accuracy={accurateTranscription} onAccuracy={enabled=>{setAccurateTranscription(enabled);accountLocalStorage.setItem('voice_audio_verification',enabled?'on':'off');}}
                 pronunciations={<PronunciationSettings key={activePersona.id} personaId={activePersona.id} revision={pronunciationRevision} onPreview={isCallActive?text=>void playTTS(text):undefined}/>}
                 alternatives={<button type="button" disabled={isCallActive} onClick={()=>{setShowEngineSettings(false);setNativeCallRequest(n=>n+1);}} className="min-h-11 rounded-xl border border-[#E7C477]/30 px-4 text-sm text-[#E7C477] disabled:opacity-40">Set up a provider call</button>}
@@ -5470,11 +5484,11 @@ function GeneratingProgressBubble({
             <p className={cn('font-bold text-zinc-100 truncate', compact ? 'text-xs' : 'text-sm')}>
               {title}
             </p>
-            <span className="text-[10px] font-mono font-semibold text-[#F2D58D]/80 tabular-nums flex-shrink-0">
+            <span className="text-xs font-mono font-semibold text-[#F2D58D]/80 tabular-nums flex-shrink-0">
               {elapsedSeconds}s
             </span>
           </div>
-          <p className={cn('text-zinc-400 truncate mt-0.5', compact ? 'text-[10px]' : 'text-[11px]')}>
+          <p className={cn('text-zinc-400 truncate mt-0.5', compact ? 'text-xs' : 'text-[11px]')}>
             {cleanLabel}
           </p>
           <div className="mt-2 h-1.5 bg-white/[0.08] rounded-full overflow-hidden">
@@ -5700,7 +5714,7 @@ function MessageBubble({ msg, persona, isLatest, onSaveToVault, isSaving, isSave
                 <button
                   type="button"
                   onClick={() => onSetAsPrimaryReference(msg.content)}
-                  className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer shadow-sm active:scale-95 ${
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-sm active:scale-95 ${
                     persona.referenceImage === msg.content || persona.avatar === msg.content
                       ? 'bg-[#E7C477]/25 border border-[#E7C477]/70 text-[#F2D58D]'
                       : 'bg-[#E7C477]/10 hover:bg-[#E7C477]/25 text-[#F2D58D] border border-[#E7C477]/30 hover:border-[#E7C477]/60'
@@ -5726,7 +5740,7 @@ function MessageBubble({ msg, persona, isLatest, onSaveToVault, isSaving, isSave
               <button
                 type="button"
                 onClick={() => onImageClick?.(msg.content, msg.prompt, 'edit')}
-                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/20 hover:border-violet-500/40 text-violet-200 text-[10px] font-semibold transition-all cursor-pointer active:scale-95"
+                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 hover:border-amber-500/40 text-amber-200 text-xs font-semibold transition-all cursor-pointer active:scale-95"
                 title="Modify this image in Media Studio"
               >
                 <Wand2 size={10} />
@@ -5736,7 +5750,7 @@ function MessageBubble({ msg, persona, isLatest, onSaveToVault, isSaving, isSave
               <button
                 type="button"
                 onClick={() => onImageClick?.(msg.content, msg.prompt, 'upscale')}
-                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 hover:border-amber-500/40 text-amber-200 text-[10px] font-semibold transition-all cursor-pointer active:scale-95"
+                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 hover:border-amber-500/40 text-amber-200 text-xs font-semibold transition-all cursor-pointer active:scale-95"
                 title="Create a separate HD-upscaled version"
               >
                 <ArrowUpCircle size={10} />
@@ -5746,7 +5760,7 @@ function MessageBubble({ msg, persona, isLatest, onSaveToVault, isSaving, isSave
               <button
                 type="button"
                 onClick={() => onImageClick?.(msg.content, msg.prompt, 'animate')}
-                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 hover:border-cyan-500/40 text-cyan-200 text-[10px] font-semibold transition-all cursor-pointer active:scale-95"
+                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 hover:border-amber-500/40 text-amber-200 text-xs font-semibold transition-all cursor-pointer active:scale-95"
                 title="Animate this image with the selected video model"
               >
                 <Film size={10} />
@@ -5756,7 +5770,7 @@ function MessageBubble({ msg, persona, isLatest, onSaveToVault, isSaving, isSave
               <button
                 type="button"
                 onClick={() => onCopyImage?.(msg)}
-                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 hover:border-cyan-500/40 text-cyan-200 text-[10px] font-semibold transition-all cursor-pointer active:scale-95"
+                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 hover:border-amber-500/40 text-amber-200 text-xs font-semibold transition-all cursor-pointer active:scale-95"
                 title="Copy this image, then paste it into the prompt to modify it"
                 aria-label="Copy generated image"
               >
@@ -5766,17 +5780,17 @@ function MessageBubble({ msg, persona, isLatest, onSaveToVault, isSaving, isSave
 
               <button
                 onClick={() => onGenerateTalkingVideo?.(msg)}
-                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-violet-500/15 hover:bg-violet-500/25 border border-violet-500/30 text-violet-300 text-[10px] font-semibold transition-all cursor-pointer shadow-sm active:scale-95"
+                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-xs font-semibold transition-all cursor-pointer shadow-sm active:scale-95"
                 title="Create a talking avatar using this photo and the persona's selected voice"
               >
-                <Mic size={10} className="text-violet-400" />
+                <Mic size={10} className="text-amber-400" />
                 <span>Talking Avatar</span>
               </button>
 
               <button
                 onClick={() => onSaveToVault(msg)}
                 disabled={isSaving || isSaved}
-                className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold transition-all cursor-pointer ${
+                className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                   isSaved ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
                   'bg-white/[0.06] hover:bg-white/[0.12] text-zinc-300 border border-white/[0.08]'
                 }`}
@@ -5788,7 +5802,7 @@ function MessageBubble({ msg, persona, isLatest, onSaveToVault, isSaving, isSave
               <button
                 type="button"
                 onClick={() => onDeleteImage?.(msg)}
-                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 hover:border-rose-500/40 text-rose-300 text-[10px] font-semibold transition-all cursor-pointer active:scale-95"
+                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 hover:border-rose-500/40 text-rose-300 text-xs font-semibold transition-all cursor-pointer active:scale-95"
                 title="Delete this image from the conversation"
                 aria-label="Delete generated image"
               >
@@ -5810,7 +5824,7 @@ function MessageBubble({ msg, persona, isLatest, onSaveToVault, isSaving, isSave
               <button
                 onClick={() => onSaveToVault(msg)}
                 disabled={isSaving || isSaved}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-all ${
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
                   isSaved ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
                   'bg-white/[0.06] hover:bg-white/[0.12] text-zinc-300 border border-white/[0.08]'
                 }`}

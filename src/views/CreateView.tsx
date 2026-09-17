@@ -263,7 +263,7 @@ const QUICK_STYLES = [
   { id: 'power-look',  label: 'Power Look',     emoji: '💼', env: 'Modern Apartment',   outfit: 'Business Professional',framing: 'Half Body',   mood: 'Confident',    gradient: 'from-slate-500/20 to-zinc-500/10', border: 'border-slate-400/20', glow: 'hover:shadow-slate-400/10' },
   { id: 'gym-session', label: 'Gym Session',    emoji: '💪', env: 'Private Gym',        outfit: 'Fitness Wear',         framing: 'Full Body',   mood: 'Confident',    gradient: 'from-red-500/20 to-rose-500/10', border: 'border-red-500/20', glow: 'hover:shadow-red-500/10' },
   { id: 'luxury-vibes',label: 'Luxury Vibes',   emoji: '✨', env: 'Penthouse',           outfit: 'Glamorous Gown',       framing: 'Full Body',   mood: 'Professional', gradient: 'from-yellow-500/20 to-amber-500/10', border: 'border-yellow-500/20', glow: 'hover:shadow-yellow-500/10' },
-  { id: 'street-style',label: 'Street Style',   emoji: '🛹', env: 'City Street',         outfit: 'Edgy Streetwear',      framing: 'Candid',      mood: 'Playful',      gradient: 'from-cyan-500/20 to-teal-500/10', border: 'border-cyan-500/20', glow: 'hover:shadow-cyan-500/10' },
+  { id: 'street-style',label: 'Street Style',   emoji: '🛹', env: 'City Street',         outfit: 'Edgy Streetwear',      framing: 'Candid',      mood: 'Playful',      gradient: 'from-amber-500/20 to-teal-500/10', border: 'border-amber-500/20', glow: 'hover:shadow-amber-500/10' },
 ];
 
 type PostGenAction = null | 'edit' | 'upscale';
@@ -554,7 +554,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     return models.filter(m => {
       const q = modelSearchQuery.toLowerCase();
       const matchesSearch = !q || m.name.toLowerCase().includes(q) || (m.provider && m.provider.toLowerCase().includes(q)) || (m.description && m.description.toLowerCase().includes(q));
-      
+
       if (!matchesSearch) return false;
       if (modelCategoryFilter === 'all') return true;
       if (modelCategoryFilter === 'new') return Boolean(m.isNew || m.isUpgrade);
@@ -718,7 +718,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
   const handleVoicePreview = async (e: React.MouseEvent, voice: TTSVoice) => {
     e.stopPropagation();
-    
+
     // Stop existing
     if (audioPreviewRef.current) {
       audioPreviewRef.current.pause();
@@ -781,7 +781,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
   const handleGenerateTalkingAvatar = async () => {
     if (isGenerating) return;
-    
+
     const activeModelConfig = LIPSYNC_MODELS.find(m => m.id === selectedLipSyncModel);
     const isVideoInput = activeModelConfig?.inputType === 'video';
 
@@ -808,7 +808,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
     setIsGenerating(true);
     setGlobalError(null);
-    
+
     const t = toast.loading('Initializing Talking Avatar pipeline...');
     try {
       let audioUrl = '';
@@ -879,7 +879,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     if (uploadedAvatarImage) images.push(uploadedAvatarImage);
     if (activePersona.avatar) images.push(activePersona.avatar);
     if (activePersona.referenceImage) images.push(activePersona.referenceImage);
-    
+
     if (activePersona.visualLibrary && Array.isArray(activePersona.visualLibrary)) {
       activePersona.visualLibrary.forEach(img => {
         if (img && typeof img === 'string' && !images.includes(img)) {
@@ -887,7 +887,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         }
       });
     }
-    
+
     return Array.from(new Set(images)).filter(Boolean);
   }, [uploadedAvatarImage, activePersona.avatar, activePersona.referenceImage, activePersona.visualLibrary]);
 
@@ -984,7 +984,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     if (!selectedVideoInfo) return;
 
     const isGoogle = selectedVideoInfo.provider?.toLowerCase().includes('google') || false;
-    
+
     if (isGoogle) {
       if (!['16:9', '9:16', '1:1'].includes(selectedVideoAspectRatio)) {
         setSelectedVideoAspectRatio('16:9');
@@ -1323,14 +1323,14 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       const effectiveRef = videoSourceVideo || videoSourceImage || (videoSourcePersonaId !== 'none' ? personas.find(p => p.id === videoSourcePersonaId)?.referenceImage : null);
       const sourceImg = effectiveVideoSourceImage || videoSourceImage || effectiveRef || undefined;
       const sourceVid = videoSourceVideo || (effectiveRef?.startsWith('blob:') || effectiveRef?.startsWith('data:video') ? effectiveRef : undefined) || sourceImg;
-      
+
       if (isI2V && !sourceImg && !effectiveRef) {
         throw new Error('Image-to-video models require a source image. Select a persona or upload an image.');
       }
       if (isV2V && !sourceVid && !sourceImg && !effectiveRef) {
         throw new Error('Video-to-video/editing models require an uploaded source reference.');
       }
-      
+
       const supportsAspectRatio = selectedVideoInfo?.supportedProperties?.some(p => ['aspect_ratio', 'aspectRatio', 'ratio'].includes(p)) ?? false;
       const supportsDuration = selectedVideoInfo?.supportedProperties?.some(p => ['duration', 'length', 'seconds'].includes(p)) ?? false;
       const supportsResolution = selectedVideoInfo?.supportedProperties?.some(p => ['resolution', 'quality', 'size'].includes(p)) ?? false;
@@ -1717,14 +1717,14 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           </div>
         )}
         {selectedInfo?.nsfw && (
-          <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">
+          <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">
             🔞 Uncensored — NSFW content enabled
           </span>
         )}
       </div>
     );
   };
- 
+
   const renderVideoModelSelect = () => {
     const { t2v, i2v, v2v } = groupedVideoModels;
     const selectedVideoInfo = videoModels.find(m => m.id === selectedVideoModel);
@@ -1784,7 +1784,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           </div>
         )}
         {selectedVideoInfo?.nsfw && (
-          <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">
+          <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">
             🔞 Uncensored — NSFW content enabled
           </span>
         )}
@@ -1803,7 +1803,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     <div className="space-y-1.5">
       <div className="flex items-center gap-1.5">
         <Icon className="w-3 h-3 text-[var(--text-tertiary)]" />
-        <span className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-wide">{label}</span>
+        <span className="text-xs font-bold text-[var(--text-tertiary)] uppercase tracking-wide">{label}</span>
       </div>
       <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
         {options.map(o => {
@@ -1838,7 +1838,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         "https://images.unsplash.com/photo-1501196354995-cbb51c65aaea?auto=format&fit=crop&w=250&h=350&q=80"
       ],
       badge: "Face-Consistent",
-      badgeColor: "bg-cyan-500/10 text-cyan-400 border-cyan-500/20"
+      badgeColor: "bg-amber-500/10 text-amber-400 border-amber-500/20"
     },
     {
       title: "Flux 1.1 Pro",
@@ -1880,7 +1880,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         "/demo-assets/showcase-4.mp4"
       ],
       badge: "Text-to-Video",
-      badgeColor: "bg-cyan-500/10 text-cyan-400 border-cyan-500/20"
+      badgeColor: "bg-amber-500/10 text-amber-400 border-amber-500/20"
     },
     {
       title: "Luma Dream Machine",
@@ -1938,7 +1938,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       <div className="flex flex-col gap-4 w-full max-w-5xl mx-auto pb-10">
         {/* ── TOP SECTION: Thin Visual Showcase Banner (when idle) OR Generating State OR Canvas Results ── */}
         {activeVersion || isGenerating || isProcessing ? (
-          <div className="w-full relative min-h-[460px] md:min-h-[560px] max-h-[660px] bg-[#08080A] border border-white/10 rounded-[24px] overflow-hidden shadow-2xl flex flex-col justify-center items-center p-3 font-sans transition-all duration-500">
+          <div className="w-full relative min-h-[220px] h-[min(42dvh,420px)] max-h-[420px] bg-[#08080A] border border-white/10 rounded-[24px] overflow-hidden shadow-2xl flex flex-col justify-center items-center p-3 font-sans transition-all duration-500">
             {isGenerating || isProcessing ? (
               <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#08080A]/90 backdrop-blur-sm z-30 gap-2 select-none">
                 <Loader2 className="w-8 h-8 animate-spin text-[#E7C477]" />
@@ -1948,24 +1948,24 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                       ? (postAction === 'upscale' ? 'Upscaling image to 4K...' : 'Editing visual canvas...')
                       : `Creating with ${selectedModelInfo?.name || 'AI'}`}
                   </p>
-                  <p className="text-[9px] text-slate-400 mt-0.5">Generating {imageCount > 1 ? `${imageCount} variations` : 'image'} - please wait</p>
+                  <p className="text-xs text-slate-400 mt-0.5">Generating {imageCount > 1 ? `${imageCount} variations` : 'image'} - please wait</p>
                 </div>
               </div>
             ) : (
-              <div className="relative w-full h-full min-h-[440px] md:min-h-[540px] flex items-center justify-center select-none p-3 bg-[#0E0E10] rounded-2xl group overflow-hidden">
-                <img 
-                  src={activeVersion.imageUrl} 
-                  alt="Active preview" 
+              <div className="relative w-full h-full min-h-0 flex items-center justify-center select-none p-3 bg-[#0E0E10] rounded-2xl group overflow-hidden">
+                <img
+                  src={activeVersion.imageUrl}
+                  alt="Active preview"
                   onClick={() => setLightboxImageUrl(activeVersion.imageUrl)}
-                  className="max-w-full max-h-[520px] md:max-h-[600px] object-contain rounded-2xl shadow-2xl transition-all duration-300 hover:scale-[1.015] cursor-pointer hover:ring-2 hover:ring-[#E7C477]/50 border border-white/10" 
+                  className="max-w-full max-h-[38dvh] object-contain rounded-2xl shadow-2xl transition-all duration-300 hover:scale-[1.015] cursor-pointer hover:ring-2 hover:ring-[#E7C477]/50 border border-white/10"
                   title="Click to enlarge full screen"
                 />
-                
+
                 {/* Quick Image Download & View Action Badges */}
                 <div className="absolute bottom-2 right-2 flex items-center gap-1.5 z-20">
                   <button
                     onClick={e => { e.stopPropagation(); setLightboxImageUrl(activeVersion.imageUrl); }}
-                    className="btn-gold-primary px-3 py-1.5 rounded-lg text-[10px] font-bold shadow-lg flex items-center gap-1 cursor-pointer"
+                    className="btn-gold-primary px-3 py-1.5 rounded-lg text-xs font-bold shadow-lg flex items-center gap-1 cursor-pointer"
                     title="Enlarge Full Screen"
                   >
                     <Maximize2 className="w-3.5 h-3.5" /> Fullscreen
@@ -1985,7 +1985,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                     <RefreshCw className="w-3.5 h-3.5" />
                   </button>
                 </div>
-                <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/80 backdrop-blur-sm border border-white/15 rounded-md text-[8px] font-bold text-[#F2D58D]">
+                <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/80 backdrop-blur-sm border border-white/15 rounded-md text-xs font-bold text-[#F2D58D]">
                   {activeVersion.model}
                 </div>
               </div>
@@ -2048,7 +2048,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         {/* ── INTERMEDIATE SECTION: Variation History Stream Thumbnails ── */}
         {activeVersion && generatedFeed.length > 0 && (
           <div className="space-y-2 bg-[#0E0E10] border border-white/10 p-3.5 rounded-2xl">
-            <span className="text-[10px] font-bold text-[#F2D58D] uppercase tracking-wider block">Recent creations</span>
+            <span className="text-xs font-bold text-[#F2D58D] uppercase tracking-wider block">Recent creations</span>
             <div className="flex gap-2.5 overflow-x-auto pb-1 scrollbar-hide select-none">
               {generatedFeed.map(entry => {
                 const isFocused = focusedEntryId === entry.id;
@@ -2070,7 +2070,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                   >
                     <img src={entry.imageUrl} alt={entry.label} className="w-full h-full object-cover" />
                     <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/thumb:opacity-100 transition-opacity flex items-center justify-center">
-                      <span className="text-[8px] font-bold text-[#161618] bg-[#E7C477] px-1 py-0.5 rounded shadow">🔍 Enlarge</span>
+                      <span className="text-xs font-bold text-[#161618] bg-[#E7C477] px-1 py-0.5 rounded shadow">🔍 Enlarge</span>
                     </div>
                     <div className="absolute bottom-1 left-1 px-1 py-0.5 bg-black/80 rounded text-[7px] font-bold text-white max-w-[calc(100%-8px)] truncate">
                       {entry.label}
@@ -2084,10 +2084,10 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
         {/* ── BOTTOM SECTION: Deep Inset Charcoal Prompt Box ── */}
         <div className="relative bg-[#08080A] border border-white/10 rounded-[24px] p-4.5 space-y-3.5 focus-within:border-[#E7C477]/50 focus-within:shadow-[0_0_30px_rgba(231,196,119,0.05)] transition-all duration-300">
-          
+
           {/* Top Row: Dropzone popover, Upload previews, prompt input, Wand icon */}
           <div className="flex items-start gap-4">
-            
+
             {/* Upload Button (+) & Dropdown */}
             <div className="relative shrink-0">
               <button
@@ -2098,7 +2098,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               >
                 <Plus size={18} />
               </button>
-              
+
               {uploadMenuOpen && (
                 <>
                   <div className="fixed inset-0 z-29" onClick={() => setUploadMenuOpen(false)} />
@@ -2112,7 +2112,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                       }}
                       className="w-full text-left px-3 py-2 rounded-lg text-xs text-slate-200 hover:bg-white/5 hover:text-white flex items-center gap-2 font-bold transition-all"
                     >
-                      <ImageIcon size={14} className="text-cyan-400" />
+                      <ImageIcon size={14} className="text-amber-400" />
                       Photo Library
                     </button>
                     <button
@@ -2215,7 +2215,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           {/* Bottom Row: Selection Dropdowns & CTA Generate */}
           <div className="flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t border-white/10 w-full">
             <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0 max-w-full">
-              
+
               {/* 1. Custom Interactive AI Model Selector Trigger Button */}
               {isPro && <button
                 type="button"
@@ -2277,11 +2277,11 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                                 <span>{active ? '✅' : '➕'}</span>
                                 <span className="truncate max-w-[170px]">{l.name}</span>
                               </button>
-                              <span className="text-[9px] px-1.5 py-0.5 rounded bg-black/40 text-slate-400 font-mono">{l.tag}</span>
+                              <span className="text-xs px-1.5 py-0.5 rounded bg-black/40 text-slate-400 font-mono">{l.tag}</span>
                             </div>
                             {active && (
                               <div className="mt-1.5 pt-1 border-t border-white/5 flex items-center gap-2">
-                                <span className="text-[9px] text-slate-400">Weight:</span>
+                                <span className="text-xs text-slate-400">Weight:</span>
                                 <input
                                   type="range"
                                   min="0.1"
@@ -2294,7 +2294,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                                   }}
                                   className="w-full h-1 accent-[#E7C477] bg-white/10 rounded cursor-pointer"
                                 />
-                                <span className="text-[10px] font-mono text-[#E7C477] w-7 text-right">{active.weight.toFixed(2)}</span>
+                                <span className="text-xs font-mono text-[#E7C477] w-7 text-right">{active.weight.toFixed(2)}</span>
                               </div>
                             )}
                           </div>
@@ -2311,7 +2311,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                           placeholder="curn:civitai:..."
                           value={customLoraInput}
                           onChange={e => setCustomLoraInput(e.target.value)}
-                          className="flex-1 bg-[#101012] border border-white/10 rounded-lg px-2 py-1 text-[10px] text-slate-200 outline-none placeholder:text-slate-600"
+                          className="flex-1 bg-[#101012] border border-white/10 rounded-lg px-2 py-1 text-xs text-slate-200 outline-none placeholder:text-slate-600"
                         />
                         <button
                           type="button"
@@ -2323,7 +2323,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                             }
                             setCustomLoraInput('');
                           }}
-                          className="bg-[#E7C477] text-black font-bold text-[10px] px-2 py-1 rounded-lg hover:bg-[#F2D58D] cursor-pointer"
+                          className="bg-[#E7C477] text-black font-bold text-xs px-2 py-1 rounded-lg hover:bg-[#F2D58D] cursor-pointer"
                         >
                           Add
                         </button>
@@ -2414,8 +2414,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
             {/* Cost and timing remain visible at the point of commitment. */}
             <div className="ml-auto hidden shrink-0 text-right md:block">
-              <p className="text-[10px] font-semibold text-slate-300">{estimatedImageCostLabel}</p>
-              <p className="text-[9px] text-slate-500">Usually under 1 minute</p>
+              <p className="text-xs font-semibold text-slate-300">{estimatedImageCostLabel}</p>
+              <p className="text-xs text-slate-500">Usually under 1 minute</p>
             </div>
             <button
               onClick={handleImageGenerate}
@@ -2430,13 +2430,13 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           {/* Style presets panel */}
           {styleOptionsOpen && (
             <div className="border-t border-white/5 pt-4 space-y-4 transition-all duration-350">
-              
+
               {/* Preset Templates */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <p className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase tracking-wide">Preset Templates</p>
+                  <p className="text-xs font-extrabold text-[var(--text-tertiary)] uppercase tracking-wide">Preset Templates</p>
                   {activeQuickStyle && (
-                    <button onClick={clearQuickStyle} className="text-[10px] text-[var(--accent-primary)] hover:text-[var(--accent-secondary)] transition-colors">Clear</button>
+                    <button onClick={clearQuickStyle} className="text-xs text-[var(--accent-primary)] hover:text-[var(--accent-secondary)] transition-colors">Clear</button>
                   )}
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-6 gap-1.5">
@@ -2445,7 +2445,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                       key={qs.id}
                       type="button"
                       onClick={() => applyQuickStyle(qs)}
-                      className={`relative flex flex-col items-center gap-1.5 p-2 rounded-xl text-[9px] font-bold transition-all border overflow-hidden ${
+                      className={`relative flex flex-col items-center gap-1.5 p-2 rounded-xl text-xs font-bold transition-all border overflow-hidden ${
                         activeQuickStyle === qs.id
                           ? 'bg-[var(--accent-muted)] text-[var(--text-primary)] border-[var(--border-strong)] shadow-[var(--shadow-glow)]'
                           : `bg-gradient-to-br ${qs.gradient} ${qs.border} text-[var(--text-secondary)] hover:text-white ${qs.glow}`
@@ -2461,21 +2461,21 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               {/* Chips Preset Builder */}
               <div className="space-y-2 pt-2 border-t border-white/5">
                 <div className="flex items-center justify-between">
-                  <p className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase tracking-wide">Style Preset Builder</p>
+                  <p className="text-xs font-extrabold text-[var(--text-tertiary)] uppercase tracking-wide">Style Preset Builder</p>
                   {activePresetChips.length > 0 && (
-                    <button 
-                      onClick={() => setActivePresetChips([])} 
-                      className="text-[10px] text-[var(--accent-primary)] hover:text-[var(--accent-secondary)] transition-colors"
+                    <button
+                      onClick={() => setActivePresetChips([])}
+                      className="text-xs text-[var(--accent-primary)] hover:text-[var(--accent-secondary)] transition-colors"
                     >
                       Reset Chips
                     </button>
                   )}
                 </div>
-                
+
                 <div className="space-y-3 max-h-[140px] overflow-y-auto pr-1 custom-scrollbar">
                   {PRESET_CATEGORIES.map(category => (
                     <div key={category.name} className="space-y-1">
-                      <label className="text-[8px] font-black text-[var(--text-muted)] uppercase tracking-wider block">{category.name}</label>
+                      <label className="text-xs font-black text-[var(--text-muted)] uppercase tracking-wider block">{category.name}</label>
                       <div className="flex flex-wrap gap-1">
                         {category.presets.map(preset => {
                           const isActive = activePresetChips.includes(preset);
@@ -2484,12 +2484,12 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                               key={preset}
                               type="button"
                               onClick={() => {
-                                setActivePresetChips(prev => 
+                                setActivePresetChips(prev =>
                                   prev.includes(preset) ? prev.filter(x => x !== preset) : [...prev, preset]
                                 );
                               }}
-                              className={`px-2 py-0.5 rounded-lg text-[8px] font-bold transition-all border ${
-                                isActive 
+                              className={`px-2 py-0.5 rounded-lg text-xs font-bold transition-all border ${
+                                isActive
                                   ? 'bg-[var(--accent-muted)] border-[var(--border-strong)] text-[var(--text-primary)] shadow-sm'
                                   : 'bg-white/5 border-white/5 text-[var(--text-tertiary)] hover:border-white/15 hover:text-white'
                               }`}
@@ -2506,7 +2506,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
               {/* Style Director selectors */}
               <div className="space-y-2 pt-2 border-t border-white/5">
-                <p className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase tracking-wide">Style Director</p>
+                <p className="text-xs font-extrabold text-[var(--text-tertiary)] uppercase tracking-wide">Style Director</p>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {[
                     { label: 'Environment', value: selectedEnv, onChange: (v: string) => { clearQuickStyle(); setSelectedEnv(v); }, options: ENVIRONMENTS },
@@ -2515,12 +2515,12 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                     { label: 'Mood', value: selectedMood, onChange: (v: string) => { clearQuickStyle(); setSelectedMood(v); }, options: MOODS },
                   ].map(({ label, value, onChange, options }) => (
                     <div key={label} className="space-y-1">
-                      <label className="text-[9px] font-black text-[var(--text-tertiary)] uppercase tracking-wide block">{label}</label>
+                      <label className="text-xs font-black text-[var(--text-tertiary)] uppercase tracking-wide block">{label}</label>
                       <div className="relative">
                         <select
                           value={value}
                           onChange={e => onChange(e.target.value)}
-                          className="w-full bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-xl px-2.5 py-1.5 text-[10px] text-white outline-none appearance-none pr-6 font-medium"
+                          className="w-full bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-xl px-2.5 py-1.5 text-xs text-white outline-none appearance-none pr-6 font-medium"
                         >
                           {options.map(o => <option key={o} value={o}>{o}</option>)}
                         </select>
@@ -2564,7 +2564,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
     return (
       <div className="flex flex-col gap-4 w-full max-w-5xl mx-auto pb-10">
-        
+
         {extendError && (
           <div role="alert" className="rounded-xl border border-red-400/40 bg-red-950/30 p-3 text-sm text-red-100">
             <p className="font-semibold">Video extension failed. Your previous video is unchanged.</p>
@@ -2572,7 +2572,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           </div>
         )}
         {/* ── TOP SECTION: Alternating Hero Slideshow / Video Output Canvas ── */}
-        <div className={`relative w-full ${videoResult?.videoUrl || isGenerating || isExtending ? 'min-h-[460px] md:min-h-[560px] max-h-[680px]' : 'h-44 md:h-52 max-h-[220px]'} rounded-[24px] border border-white/10 bg-[#08080A] overflow-hidden shadow-2xl transition-all duration-500`}>
+        <div className={`relative w-full ${videoResult?.videoUrl || isGenerating || isExtending ? 'min-h-[220px] h-[min(42dvh,420px)] max-h-[420px]' : 'h-44 md:h-52 max-h-[220px]'} rounded-[24px] border border-white/10 bg-[#08080A] overflow-hidden shadow-2xl transition-all duration-500`}>
           {isGenerating || isExtending ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[#08080A]/90 z-10 select-none">
               <Loader2 className="w-8 h-8 text-[#E7C477] animate-spin" />
@@ -2581,16 +2581,16 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               </p>
             </div>
           ) : videoResult?.videoUrl ? (
-            <div className="relative w-full h-full min-h-[440px] md:min-h-[540px] flex items-center justify-center select-none p-3 bg-[#0E0E10] rounded-2xl group overflow-hidden">
-              <video 
-                src={videoResult.videoUrl} 
-                controls 
+            <div className="relative w-full h-full min-h-0 flex items-center justify-center select-none p-3 bg-[#0E0E10] rounded-2xl group overflow-hidden">
+              <video
+                src={videoResult.videoUrl}
+                controls
                 autoPlay
                 loop
-                className="max-w-full max-h-[520px] md:max-h-[600px] object-contain rounded-2xl shadow-2xl transition-all duration-300 border border-white/10 cursor-pointer hover:ring-2 hover:ring-[#E7C477]/50" 
+                className="max-w-full max-h-[38dvh] object-contain rounded-2xl shadow-2xl transition-all duration-300 border border-white/10 cursor-pointer hover:ring-2 hover:ring-[#E7C477]/50"
                 onClick={() => setLightboxVideoUrl(videoResult.videoUrl)}
               />
-              
+
               <div className="absolute bottom-3 right-3 flex items-center gap-2 z-20">
                 <button
                   onClick={e => { e.stopPropagation(); setLightboxVideoUrl(videoResult.videoUrl); }}
@@ -2651,16 +2651,16 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 >
                   {/* Left Side: Video Model Details */}
                   <div className="flex-1 flex flex-col justify-center text-left py-4 select-none">
-                    <span className={`self-start text-[8px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full border mb-1.5 ${VIDEO_HERO_SLIDES[activeVideoSlideIndex].badgeColor}`}>
+                    <span className={`self-start text-xs font-bold uppercase tracking-widest px-2 py-0.5 rounded-full border mb-1.5 ${VIDEO_HERO_SLIDES[activeVideoSlideIndex].badgeColor}`}>
                       {VIDEO_HERO_SLIDES[activeVideoSlideIndex].badge}
                     </span>
-                    <h2 className="text-[10px] font-bold uppercase text-[#8C909A] tracking-wider mb-0.5 leading-none">
+                    <h2 className="text-xs font-bold uppercase text-[#8C909A] tracking-wider mb-0.5 leading-none">
                       Start Creating with
                     </h2>
                     <h1 className="text-xl md:text-2xl font-serif tracking-tight mb-1.5 leading-tight text-[#F5F1E8]">
                       {VIDEO_HERO_SLIDES[activeVideoSlideIndex].title}
                     </h1>
-                    <p className="text-[10px] md:text-xs text-[#8C909A] font-medium leading-relaxed max-w-md">
+                    <p className="text-xs md:text-xs text-[#8C909A] font-medium leading-relaxed max-w-md">
                       {VIDEO_HERO_SLIDES[activeVideoSlideIndex].desc}
                     </p>
                   </div>
@@ -2692,7 +2692,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
         {/* ── BOTTOM SECTION: Curved Premium Video Prompt Box ── */}
         <div className="relative bg-[#08080A] border border-white/10 rounded-[24px] p-4.5 space-y-3.5 focus-within:border-[#E7C477]/50 focus-within:shadow-[0_0_30px_rgba(231,196,119,0.05)] transition-all duration-300">
-          
+
           {/* Sub-Mode Selector Tabs */}
           <div className="flex border-b border-white/5 bg-[#141416] p-1 rounded-xl">
             {[
@@ -2713,7 +2713,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                   }`}
                 >
                   <span className="text-xs font-bold tracking-wide leading-none">{subMode.label}</span>
-                  <span className="text-[9px] text-[#8C909A] mt-0.5 hidden md:inline font-medium">{subMode.desc}</span>
+                  <span className="text-xs text-[#8C909A] mt-0.5 hidden md:inline font-medium">{subMode.desc}</span>
                 </button>
               );
             })}
@@ -2751,7 +2751,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                     </button>
 
                     {/* Image Group */}
-                    <div className="px-2.5 py-1 text-[9px] font-black text-slate-500 uppercase tracking-widest border-b border-white/5">
+                    <div className="px-2.5 py-1 text-xs font-black text-slate-500 uppercase tracking-widest border-b border-white/5">
                       Upload Image
                     </div>
                     <button
@@ -2762,7 +2762,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                       }}
                       className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs text-slate-200 hover:bg-white/5 hover:text-white flex items-center gap-2 font-bold transition-all"
                     >
-                      <ImageIcon size={13} className="text-cyan-400" />
+                      <ImageIcon size={13} className="text-amber-400" />
                       Photo Library
                     </button>
                     <button
@@ -2778,7 +2778,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                     </button>
 
                     {/* Video Group */}
-                    <div className="px-2.5 py-1 pt-1.5 text-[9px] font-black text-slate-500 uppercase tracking-widest border-b border-white/5">
+                    <div className="px-2.5 py-1 pt-1.5 text-xs font-black text-slate-500 uppercase tracking-widest border-b border-white/5">
                       Upload Video
                     </div>
                     <button
@@ -2859,8 +2859,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               {videoSubMode === 'extend' && !videoResult?.videoUrl ? (
                 <div className="w-full h-20 flex flex-col items-center justify-center bg-black/20 rounded-xl border border-dashed border-white/15 px-4 text-center select-none">
                   <VideoOff className="w-5 h-5 text-slate-500 mb-1" />
-                  <p className="text-[10px] font-bold text-slate-400">No generated video found</p>
-                  <p className="text-[9px] text-slate-400">Generate or play a video above first to extend it.</p>
+                  <p className="text-xs font-bold text-slate-400">No generated video found</p>
+                  <p className="text-xs text-slate-400">Generate or play a video above first to extend it.</p>
                 </div>
               ) : (
                 <textarea
@@ -2874,7 +2874,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                   className="w-full bg-transparent border-0 text-slate-100 placeholder-slate-500 focus:ring-0 outline-none resize-none text-sm h-20 scrollbar-hide py-1"
                 />
               )}
-              
+
               {/* Reference Attachment Preview */}
               {effectiveVideoSource && (
                 <div className="absolute bottom-2 left-0 flex items-center gap-2 bg-black/60 border border-white/10 rounded-xl p-1.5 pr-3 shadow-lg max-w-[280px]">
@@ -2883,17 +2883,17 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                   ) : (
                     <img src={effectiveVideoSource} className="w-7 h-7 rounded-lg object-cover shrink-0" alt="Ref" />
                   )}
-                  <span className="text-[10px] font-bold text-slate-300 truncate">
+                  <span className="text-xs font-bold text-slate-300 truncate">
                     {videoSourceVideoName || videoSourceImageName || (videoSourcePersonaId !== 'none' ? personas.find(p => p.id === videoSourcePersonaId)?.name : 'Attached Reference')}
                   </span>
-                  <button 
+                  <button
                     onClick={() => {
                       setVideoSourcePersonaId('none');
                       setVideoSourceImage(null);
                       setVideoSourceImageName(null);
                       setVideoSourceVideo(null);
                       setVideoSourceVideoName(null);
-                    }} 
+                    }}
                     className="ml-auto text-slate-400 hover:text-white transition-colors"
                   >
                     <X size={10} />
@@ -2920,7 +2920,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           {/* Lower Parameter Toolbar */}
           <div className="flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t border-white/10 w-full overflow-x-hidden">
             <div className="flex flex-wrap items-center gap-1.5 flex-1 min-w-0">
-              
+
               {/* 1. Persona Selector Dropdown */}
               <div className="relative">
                 <select
@@ -3057,7 +3057,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 (videoSubMode === 'generate' && isI2V && !effectiveVideoSource) ||
                 (videoSubMode === 'edit' && !effectiveVideoSource)
               }
-              className="px-3.5 py-1 rounded-lg font-black text-[10px] btn-gold-primary disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 transition-all shadow-md group h-7 shrink-0 cursor-pointer"
+              className="px-3.5 py-1 rounded-lg font-black text-xs btn-gold-primary disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 transition-all shadow-md group h-7 shrink-0 cursor-pointer"
             >
               {isExtending ? (
                 <>
@@ -3322,21 +3322,21 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       <div className="grid grid-cols-1 lg:grid-cols-[440px_1fr] gap-4 items-start">
         {/* ══ LEFT COLUMN: Configuration ══ */}
         <div className="space-y-4 h-full overflow-y-auto pr-2 custom-scrollbar pb-20">
-          
+
           {/* 1. ACTIVE PERSONA */}
           <div className="space-y-3">
             <div className="flex items-center gap-2">
-              <div className="w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center text-[10px] font-bold text-emerald-400 border border-emerald-500/30">1</div>
-              <label className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase tracking-widest">Active Persona</label>
+              <div className="w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center text-xs font-bold text-emerald-400 border border-emerald-500/30">1</div>
+              <label className="text-xs font-extrabold text-[var(--text-tertiary)] uppercase tracking-widest">Active Persona</label>
             </div>
             <div className="glass-card p-4 flex items-center justify-between border-emerald-500/20">
               <div className="flex items-center gap-3">
                 <div className="relative">
                   {activePersona.avatar || activePersona.referenceImage ? (
-                    <img 
-                      src={activePersona.avatar || activePersona.referenceImage} 
-                      className="w-12 h-12 rounded-xl object-cover ring-2 ring-emerald-500/20" 
-                      alt="Persona" 
+                    <img
+                      src={activePersona.avatar || activePersona.referenceImage}
+                      className="w-12 h-12 rounded-xl object-cover ring-2 ring-emerald-500/20"
+                      alt="Persona"
                     />
                   ) : (
                     <div className="w-12 h-12 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-[var(--text-muted)] ring-2 ring-emerald-500/20">
@@ -3349,7 +3349,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-white">{activePersona.name || "New Persona"} — Lifestyle</h3>
-                  <p className="text-[10px] text-[var(--text-tertiary)] font-medium">Confident • Modern • Relatable</p>
+                  <p className="text-xs text-[var(--text-tertiary)] font-medium">Confident • Modern • Relatable</p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -3382,8 +3382,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           {/* 2. AVATAR SOURCE / REFERENCE */}
           <div className="space-y-3">
             <div className="flex items-center gap-2">
-              <div className="w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center text-[10px] font-bold text-emerald-400 border border-emerald-500/30">2</div>
-              <label className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase tracking-widest">
+              <div className="w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center text-xs font-bold text-emerald-400 border border-emerald-500/30">2</div>
+              <label className="text-xs font-extrabold text-[var(--text-tertiary)] uppercase tracking-widest">
                 {(() => {
                   const modelObj = LIPSYNC_MODELS.find(m => m.id === selectedLipSyncModel);
                   return modelObj?.inputType === 'video' ? 'Reference Video Source' : 'Avatar Portrait Source';
@@ -3418,26 +3418,26 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                         e.target.value = '';
                       }}
                     />
-                    
+
                     <div className="grid grid-cols-4 gap-3">
-                      <button 
+                      <button
                         onClick={() => avatarVideoUploadRef.current?.click()}
                         className="aspect-square flex flex-col items-center justify-center gap-1.5 glass-card border-dashed border-white/20 bg-white/5 hover:bg-white/10 transition-colors"
                       >
                         <Upload className="w-5 h-5 text-emerald-400" />
                         <div className="text-center">
-                          <div className="text-[9px] font-bold text-white">Upload Video</div>
+                          <div className="text-xs font-bold text-white">Upload Video</div>
                           <div className="text-[7px] text-[var(--text-muted)]">MP4, MOV, WEBM</div>
                         </div>
                       </button>
-                      <button 
+                      <button
                         type="button"
                         onClick={() => setIsWebcamCreatorOpen(true)}
                         className="aspect-square flex flex-col items-center justify-center gap-1.5 glass-card bg-emerald-500/10 border border-emerald-500/30 hover:bg-emerald-500/20 transition-all"
                       >
                         <Video className="w-5 h-5 text-emerald-400" />
                         <div className="text-center">
-                          <div className="text-[9px] font-bold text-white">Record Clip</div>
+                          <div className="text-xs font-bold text-white">Record Clip</div>
                           <div className="text-[7px] text-[var(--text-muted)]">Webcam capture</div>
                         </div>
                       </button>
@@ -3445,19 +3445,19 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                       {/* Display active reference video */}
                       {selectedAvatarVideoSource ? (
                         <div className="col-span-2 aspect-video rounded-xl overflow-hidden border border-emerald-500/30 bg-black relative group">
-                          <video 
-                            src={selectedAvatarVideoSource} 
-                            className="w-full h-full object-cover" 
-                            controls 
+                          <video
+                            src={selectedAvatarVideoSource}
+                            className="w-full h-full object-cover"
+                            controls
                           />
-                          <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-black/60 text-[8px] font-bold text-emerald-400 border border-emerald-500/20 truncate max-w-[120px]">
+                          <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-black/60 text-xs font-bold text-emerald-400 border border-emerald-500/20 truncate max-w-[120px]">
                             {uploadedAvatarVideoName || 'Uploaded Video'}
                           </div>
                         </div>
                       ) : (
                         <div className="col-span-2 aspect-video rounded-xl border border-white/5 bg-white/[0.02] flex flex-col items-center justify-center text-[var(--text-muted)] p-4 text-center">
                           <Film className="w-6 h-6 opacity-20 mb-1" />
-                          <span className="text-[9px] font-bold text-zinc-500">No reference video selected</span>
+                          <span className="text-xs font-bold text-zinc-500">No reference video selected</span>
                         </div>
                       )}
                     </div>
@@ -3488,41 +3488,41 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                       e.target.value = '';
                     }}
                   />
-                  <button 
+                  <button
                     onClick={() => avatarImageUploadRef.current?.click()}
                     className="aspect-square flex flex-col items-center justify-center gap-1.5 glass-card border-dashed border-white/20 bg-white/5 hover:bg-white/10 transition-colors"
                   >
                     <Upload className="w-5 h-5 text-emerald-400" />
                     <div className="text-center">
-                      <div className="text-[9px] font-bold text-white">Upload Image</div>
+                      <div className="text-xs font-bold text-white">Upload Image</div>
                       <div className="text-[7px] text-[var(--text-muted)]">JPG, PNG, WEBP</div>
                     </div>
                   </button>
-                  <button 
+                  <button
                     type="button"
                     onClick={() => setIsWebcamCreatorOpen(true)}
                     className="aspect-square flex flex-col items-center justify-center gap-1.5 glass-card bg-emerald-500/10 border border-emerald-500/30 hover:bg-emerald-500/20 transition-all"
                   >
                     <Video className="w-5 h-5 text-emerald-400" />
                     <div className="text-center">
-                      <div className="text-[9px] font-bold text-white">Record Video</div>
+                      <div className="text-xs font-bold text-white">Record Video</div>
                       <div className="text-[7px] text-[var(--text-muted)]">10s clip + voice</div>
                     </div>
                   </button>
-                  <button 
+                  <button
                     onClick={() => updateMode('image')}
                     className="aspect-square flex flex-col items-center justify-center gap-1.5 glass-card bg-white/5 hover:bg-white/10 transition-colors"
                   >
                     <Sparkles className="w-5 h-5 text-[var(--accent-primary)]" />
                     <div className="text-center">
-                      <div className="text-[9px] font-bold text-white">AI Generate</div>
+                      <div className="text-xs font-bold text-white">AI Generate</div>
                       <div className="text-[7px] text-[var(--text-muted)]">Create from text</div>
                     </div>
                   </button>
-                  
+
                   {/* Show up to 2 available images */}
                   {availableImages.slice(0, 2).map((imgUrl, idx) => (
-                    <button 
+                    <button
                       key={idx}
                       onClick={() => setSelectedAvatarSource(imgUrl)}
                       className={`aspect-square rounded-2xl overflow-hidden border-2 transition-all relative group ${selectedAvatarSource === imgUrl ? 'border-emerald-500' : 'border-transparent'}`}
@@ -3536,7 +3536,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
                   {/* If fewer than 2 available images, show placeholders */}
                   {Array.from({ length: Math.max(0, 2 - availableImages.length) }).map((_, idx) => (
-                    <div 
+                    <div
                       key={`placeholder-${idx}`}
                       className="aspect-square rounded-2xl border border-white/5 bg-white/[0.02] flex items-center justify-center text-[var(--text-muted)]"
                     >
@@ -3544,12 +3544,12 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                     </div>
                   ))}
 
-                  <button 
+                  <button
                     onClick={() => updateMode('image')}
                     className="aspect-square flex flex-col items-center justify-center glass-card bg-white/5 hover:bg-white/10 transition-colors"
                   >
                     <div className="text-[14px] text-[var(--text-muted)] font-bold">•••</div>
-                    <div className="text-[9px] font-bold text-white">More</div>
+                    <div className="text-xs font-bold text-white">More</div>
                   </button>
                 </div>
               );
@@ -3559,10 +3559,10 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           {/* ENGINE SELECTION */}
           <div className="space-y-3">
             <div className="flex items-center gap-2">
-              <div className="w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center text-[10px] font-bold text-emerald-400 border border-emerald-500/30">E</div>
-              <label className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase tracking-widest">Avatar / Lip-Sync Model</label>
+              <div className="w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center text-xs font-bold text-emerald-400 border border-emerald-500/30">E</div>
+              <label className="text-xs font-extrabold text-[var(--text-tertiary)] uppercase tracking-widest">Avatar / Lip-Sync Model</label>
             </div>
-            
+
             <div className="relative">
               <select
                 value={selectedLipSyncModel}
@@ -3596,8 +3596,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               return (
                 <div className="glass-card p-3 border border-emerald-500/10 bg-emerald-500/[0.02] rounded-xl space-y-1.5 animate-in fade-in duration-300">
                   <div className="flex items-center justify-between">
-                    <span className="text-[9px] font-extrabold text-[var(--text-muted)] uppercase tracking-wider">Required Inputs</span>
-                    <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-extrabold text-[8px] uppercase tracking-wider">
+                    <span className="text-xs font-extrabold text-[var(--text-muted)] uppercase tracking-wider">Required Inputs</span>
+                    <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-extrabold text-xs uppercase tracking-wider">
                       {modelObj.provider}
                     </span>
                   </div>
@@ -3614,20 +3614,20 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                       </>
                     )}
                   </div>
-                  <p className="text-[10px] text-[var(--text-tertiary)] font-medium leading-relaxed">
+                  <p className="text-xs text-[var(--text-tertiary)] font-medium leading-relaxed">
                     {modelObj.desc}
                   </p>
                 </div>
               );
             })()}
-            
+
             {selectedLipSyncModel === 'heygen' && (
               <div className="animate-in fade-in slide-in-from-top-2 duration-300 space-y-2 mt-2">
-                <label className="block text-[8px] font-extrabold text-[var(--text-muted)] uppercase tracking-wider">HeyGen Avatar Version</label>
+                <label className="block text-xs font-extrabold text-[var(--text-muted)] uppercase tracking-wider">HeyGen Avatar Version</label>
                 <div className="flex bg-white/5 border border-white/10 rounded-xl p-1 gap-1">
                   <button
                     onClick={() => setTalkingHeygenEngine('avatar_iv')}
-                    className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all ${
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
                       talkingHeygenEngine === 'avatar_iv' ? 'bg-emerald-600/30 border border-emerald-500/50 text-white shadow-lg' : 'text-[var(--text-secondary)] hover:text-white'
                     }`}
                   >
@@ -3635,7 +3635,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                   </button>
                   <button
                     onClick={() => setTalkingHeygenEngine('avatar_v')}
-                    className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all ${
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
                       talkingHeygenEngine === 'avatar_v' ? 'bg-emerald-600/30 border border-emerald-500/50 text-white shadow-lg' : 'text-[var(--text-secondary)] hover:text-white'
                     }`}
                   >
@@ -3649,8 +3649,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           {/* 3. SCRIPT */}
           <div className="space-y-3">
             <div className="flex items-center gap-2">
-              <div className="w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center text-[10px] font-bold text-emerald-400 border border-emerald-500/30">3</div>
-              <label className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase tracking-widest">Script</label>
+              <div className="w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center text-xs font-bold text-emerald-400 border border-emerald-500/30">3</div>
+              <label className="text-xs font-extrabold text-[var(--text-tertiary)] uppercase tracking-widest">Script</label>
             </div>
             <div className="relative">
               <textarea
@@ -3660,8 +3660,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 placeholder="Type your script here..."
               />
               <div className="absolute bottom-3 right-3 flex items-center gap-3">
-                <span className="text-[9px] font-bold text-white/40 tabular-nums">{avatarScript.length} / 2000</span>
-                <button 
+                <span className="text-xs font-bold text-white/40 tabular-nums">{avatarScript.length} / 2000</span>
+                <button
                   onClick={() => handleEnhanceField(avatarScript, setAvatarScript, 'avatarScript')}
                   className="p-1.5 bg-emerald-500/20 border border-emerald-500/40 rounded-lg text-emerald-400 hover:bg-emerald-500/30 transition-all"
                 >
@@ -3674,8 +3674,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           {/* 4. VOICE */}
           <div className="space-y-3">
             <div className="flex items-center gap-2">
-              <div className="w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center text-[10px] font-bold text-emerald-400 border border-emerald-500/30">4</div>
-              <label className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase tracking-widest">Voice</label>
+              <div className="w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center text-xs font-bold text-emerald-400 border border-emerald-500/30">4</div>
+              <label className="text-xs font-extrabold text-[var(--text-tertiary)] uppercase tracking-widest">Voice</label>
             </div>
             <div className="flex gap-2 items-center flex-wrap">
               <input
@@ -3696,7 +3696,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 <Mic className={`w-3.5 h-3.5 ${selectedAvatarVoice === 'custom-upload' ? 'text-emerald-400' : ''}`} />
                 {uploadedAudio ? uploadedAudio.name : 'Upload Audio'}
                 {uploadedAudio && selectedAvatarVoice === 'custom-upload' && (
-                  <div 
+                  <div
                     onClick={(e) => {
                       e.stopPropagation();
                       if (playingPreviewId === 'custom-upload') {
@@ -3719,7 +3719,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                   </div>
                 )}
               </button>
-              
+
               {allVoices.slice(0, 3).map(voice => (
                 <button
                   key={voice.id}
@@ -3734,7 +3734,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                     {selectedAvatarVoice === voice.id && <div className="w-1.5 h-1.5 rounded-full bg-emerald-900" />}
                   </div>
                   {voice.name}
-                  <div 
+                  <div
                     onClick={(e) => handleVoicePreview(e, voice)}
                     className={`ml-1 p-1 rounded-full transition-all ${playingPreviewId === voice.id ? 'bg-emerald-500 text-white animate-pulse' : 'bg-white/10 text-white/40 hover:bg-white/20 hover:text-white opacity-0 group-hover:opacity-100'}`}
                   >
@@ -3743,7 +3743,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 </button>
               ))}
               <div className="relative">
-                <button 
+                <button
                   onClick={() => setIsVoiceModalOpen(!isVoiceModalOpen)}
                   className={`px-4 py-2 rounded-xl glass-card text-xs font-bold transition-all flex items-center gap-2 border-white/5 ${
                     allVoices.slice(3).some(v => v.id === selectedAvatarVoice)
@@ -3753,7 +3753,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 >
                   {allVoices.find(v => v.id === selectedAvatarVoice && allVoices.indexOf(v) >= 3)?.name || 'More'} <ChevronDown className={`w-4 h-4 transition-transform ${isVoiceModalOpen ? 'rotate-180' : ''}`} />
                 </button>
-                
+
                 <AnimatePresence>
                   {isVoiceModalOpen && (
                     <motion.div
@@ -3763,7 +3763,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                       className="absolute bottom-full left-0 mb-2 w-64 glass-card border-white/10 p-2 z-50 shadow-2xl backdrop-blur-xl max-h-[400px] overflow-y-auto custom-scrollbar"
                     >
                       {/* Gemini Group */}
-                      <div className="text-[10px] font-black text-white/30 uppercase tracking-widest px-2 py-1 mt-1 mb-1 border-b border-white/5">Gemini TTS</div>
+                      <div className="text-xs font-black text-white/30 uppercase tracking-widest px-2 py-1 mt-1 mb-1 border-b border-white/5">Gemini TTS</div>
                       {allVoices.filter(v => v.engine === 'gemini').slice(3).map(voice => (
                         <button
                           key={voice.id}
@@ -3779,10 +3779,10 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                         >
                           <div className="flex items-center gap-2">
                              <span>{voice.name}</span>
-                             <span className="text-[8px] opacity-40 font-medium">{voice.gender}</span>
+                             <span className="text-xs opacity-40 font-medium">{voice.gender}</span>
                           </div>
                           <div className="flex items-center gap-2">
-                            <div 
+                            <div
                               onClick={(e) => handleVoicePreview(e, voice)}
                               className={`p-1 rounded-full transition-all ${playingPreviewId === voice.id ? 'bg-emerald-500 text-white' : 'bg-white/10 text-white/40 hover:bg-white/20 hover:text-white opacity-0 group-hover:opacity-100'}`}
                             >
@@ -3794,7 +3794,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                       ))}
 
                       {/* OpenAI Group */}
-                      <div className="text-[10px] font-black text-white/30 uppercase tracking-widest px-2 py-1 mt-3 mb-1 border-b border-white/5">OpenAI TTS</div>
+                      <div className="text-xs font-black text-white/30 uppercase tracking-widest px-2 py-1 mt-3 mb-1 border-b border-white/5">OpenAI TTS</div>
                       {allVoices.filter(v => v.engine === 'openai').map(voice => (
                         <button
                           key={voice.id}
@@ -3810,10 +3810,10 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                         >
                           <div className="flex items-center gap-2">
                              <span>{voice.name}</span>
-                             <span className="text-[8px] opacity-40 font-medium">{voice.gender}</span>
+                             <span className="text-xs opacity-40 font-medium">{voice.gender}</span>
                           </div>
                           <div className="flex items-center gap-2">
-                            <div 
+                            <div
                               onClick={(e) => handleVoicePreview(e, voice)}
                               className={`p-1 rounded-full transition-all ${playingPreviewId === voice.id ? 'bg-emerald-500 text-white' : 'bg-white/10 text-white/40 hover:bg-white/20 hover:text-white opacity-0 group-hover:opacity-100'}`}
                             >
@@ -3827,7 +3827,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                       {/* ElevenLabs Group */}
                       {allVoices.some(v => v.engine === 'elevenlabs') && (
                         <>
-                          <div className="text-[10px] font-black text-white/30 uppercase tracking-widest px-2 py-1 mt-3 mb-1 border-b border-white/5">ElevenLabs</div>
+                          <div className="text-xs font-black text-white/30 uppercase tracking-widest px-2 py-1 mt-3 mb-1 border-b border-white/5">ElevenLabs</div>
                           {allVoices.filter(v => v.engine === 'elevenlabs').map(voice => (
                             <button
                               key={voice.id}
@@ -3843,10 +3843,10 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                             >
                               <div className="flex items-center gap-2">
                                  <span className="truncate max-w-[100px]">{voice.name}</span>
-                                 <span className="text-[8px] opacity-40 font-medium truncate max-w-[40px]">{voice.gender}</span>
+                                 <span className="text-xs opacity-40 font-medium truncate max-w-[40px]">{voice.gender}</span>
                               </div>
                               <div className="flex items-center gap-2">
-                                <div 
+                                <div
                                   onClick={(e) => handleVoicePreview(e, voice)}
                                   className={`p-1 rounded-full transition-all ${playingPreviewId === voice.id ? 'bg-emerald-500 text-white' : 'bg-white/10 text-white/40 hover:bg-white/20 hover:text-white opacity-0 group-hover:opacity-100'}`}
                                 >
@@ -3868,26 +3868,26 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           {/* 5. STYLE & DELIVERY */}
           <div className="space-y-3">
             <div className="flex items-center gap-2">
-              <div className="w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center text-[10px] font-bold text-emerald-400 border border-emerald-500/30">5</div>
-              <label className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase tracking-widest">Style & Delivery</label>
+              <div className="w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center text-xs font-bold text-emerald-400 border border-emerald-500/30">5</div>
+              <label className="text-xs font-extrabold text-[var(--text-tertiary)] uppercase tracking-widest">Style & Delivery</label>
             </div>
             <div className="grid grid-cols-3 gap-3">
               <div className="glass-card p-3 flex flex-col gap-1 border-white/5">
-                <label className="text-[8px] font-extrabold text-[var(--text-muted)] uppercase flex items-center gap-1"><Smile className="w-2.5 h-2.5" /> Tone</label>
+                <label className="text-xs font-extrabold text-[var(--text-muted)] uppercase flex items-center gap-1"><Smile className="w-2.5 h-2.5" /> Tone</label>
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-white">{selectedAvatarTone}</span>
                   <ChevronDown className="w-4 h-4 text-white/30" />
                 </div>
               </div>
               <div className="glass-card p-3 flex flex-col gap-1 border-white/5">
-                <label className="text-[8px] font-extrabold text-[var(--text-muted)] uppercase flex items-center gap-1"><Camera className="w-2.5 h-2.5" /> Camera Framing</label>
+                <label className="text-xs font-extrabold text-[var(--text-muted)] uppercase flex items-center gap-1"><Camera className="w-2.5 h-2.5" /> Camera Framing</label>
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-white">{selectedAvatarFraming}</span>
                   <ChevronDown className="w-4 h-4 text-white/30" />
                 </div>
               </div>
               <div className="glass-card p-3 flex flex-col gap-1 border-white/5">
-                <label className="text-[8px] font-extrabold text-[var(--text-muted)] uppercase flex items-center gap-1"><RefreshCw className="w-2.5 h-2.5" /> Duration</label>
+                <label className="text-xs font-extrabold text-[var(--text-muted)] uppercase flex items-center gap-1"><RefreshCw className="w-2.5 h-2.5" /> Duration</label>
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-white truncate">{selectedAvatarDuration.split(' (')[0]}</span>
                   <ChevronDown className="w-4 h-4 text-white/30" />
@@ -3896,7 +3896,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             </div>
           </div>
 
-          <button 
+          <button
             onClick={handleGenerateTalkingAvatar}
             disabled={isGenerating}
             className="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-400 text-white font-black text-sm uppercase tracking-widest shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 active:scale-[0.98] transition-all disabled:opacity-50"
@@ -3909,19 +3909,19 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
         {/* ══ RIGHT COLUMN: Output & Preview ══ */}
         <div className="h-full overflow-y-auto pr-2 custom-scrollbar pb-20 space-y-6">
-          
+
           <div className="space-y-3">
             <div className="flex items-center justify-between px-1">
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
-                <span className="text-[10px] font-extrabold text-white uppercase tracking-widest">Live Preview</span>
+                <span className="text-xs font-extrabold text-white uppercase tracking-widest">Live Preview</span>
               </div>
               <div className="flex gap-2">
-                <div className="px-2 py-0.5 rounded-lg border border-white/10 bg-white/5 text-[9px] font-bold text-white/60">Preview</div>
-                <div className="px-2 py-0.5 rounded-lg border border-white/10 bg-white/5 text-[9px] font-bold text-white/60">HD</div>
+                <div className="px-2 py-0.5 rounded-lg border border-white/10 bg-white/5 text-xs font-bold text-white/60">Preview</div>
+                <div className="px-2 py-0.5 rounded-lg border border-white/10 bg-white/5 text-xs font-bold text-white/60">HD</div>
               </div>
             </div>
-            
+
             <div className="aspect-[9/16] rounded-3xl overflow-hidden glass-card relative group bg-[#0B0F19] shadow-2xl flex flex-col items-center justify-center">
               {isGenerating ? (
                 <div className="flex flex-col items-center gap-4 text-white z-10 p-6 text-center select-none">
@@ -3934,12 +3934,12 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                     </div>
                   </div>
                   <p className="text-xs font-bold text-emerald-300">Generating talking avatar...</p>
-                  <p className="text-[9px] text-[var(--text-muted)]">This may take 1-3 minutes. Please keep this tab open.</p>
+                  <p className="text-xs text-[var(--text-muted)]">This may take 1-3 minutes. Please keep this tab open.</p>
                 </div>
               ) : talkingAvatarResult?.videoUrl ? (
                 <>
-                  <video 
-                    src={talkingAvatarResult.videoUrl} 
+                  <video
+                    src={talkingAvatarResult.videoUrl}
                     className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-700"
                     autoPlay
                     controls
@@ -3947,11 +3947,11 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                     playsInline
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
-                  
+
                   <div className="absolute top-4 left-4 flex items-center gap-2">
                     <div className="flex items-center gap-2 px-2.5 py-1.5 bg-black/40 backdrop-blur-md rounded-xl border border-white/10">
                       <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
-                      <span className="text-[10px] font-black text-white uppercase tracking-widest">Live</span>
+                      <span className="text-xs font-black text-white uppercase tracking-widest">Live</span>
                     </div>
                   </div>
                 </>
@@ -3962,7 +3962,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                   </div>
                   <div>
                     <p className="text-sm font-bold text-white mb-1">Your talking avatar will appear here</p>
-                    <p className="text-[10px] text-[var(--text-muted)] max-w-[240px] leading-relaxed">
+                    <p className="text-xs text-[var(--text-muted)] max-w-[240px] leading-relaxed">
                       Select or upload a portrait, choose an engine (Wavespeed LTX or HeyGen AI), type a script, and hit Generate.
                     </p>
                   </div>
@@ -3973,48 +3973,48 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
           <div className="grid grid-cols-1 gap-4">
             <div className="space-y-2">
-               <label className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase tracking-widest px-1">Output & Actions</label>
+               <label className="text-xs font-extrabold text-[var(--text-tertiary)] uppercase tracking-widest px-1">Output & Actions</label>
                <div className="grid grid-cols-3 gap-3">
-                 <div 
-                   onClick={() => talkingAvatarResult && downloadFile(talkingAvatarResult.videoUrl, 'mp4')} 
+                 <div
+                   onClick={() => talkingAvatarResult && downloadFile(talkingAvatarResult.videoUrl, 'mp4')}
                    className={`glass-card p-4 flex flex-col items-center justify-center gap-2 hover:bg-white/5 transition-colors cursor-pointer border-white/5 ${!talkingAvatarResult ? 'opacity-50 pointer-events-none' : ''}`}
                  >
                    <Download className="w-5 h-5 text-emerald-400" />
                    <div className="text-center">
-                     <div className="text-[10px] font-bold text-white">Download</div>
-                     <div className="text-[8px] text-[var(--text-muted)]">MP4 • 1080p</div>
+                     <div className="text-xs font-bold text-white">Download</div>
+                     <div className="text-xs text-[var(--text-muted)]">MP4 • 1080p</div>
                    </div>
                  </div>
-                 <div 
-                   onClick={() => talkingAvatarResult && handleGenerateTalkingAvatar()} 
+                 <div
+                   onClick={() => talkingAvatarResult && handleGenerateTalkingAvatar()}
                    className={`glass-card p-4 flex flex-col items-center justify-center gap-2 hover:bg-white/5 transition-colors cursor-pointer border-white/5 ${!talkingAvatarResult ? 'opacity-50 pointer-events-none' : ''}`}
                  >
                    <RefreshCw className="w-5 h-5 text-[var(--accent-primary)]" />
                    <div className="text-center">
-                     <div className="text-[10px] font-bold text-white">Regenerate</div>
-                     <div className="text-[8px] text-[var(--text-muted)]">New version</div>
+                     <div className="text-xs font-bold text-white">Regenerate</div>
+                     <div className="text-xs text-[var(--text-muted)]">New version</div>
                    </div>
                  </div>
-                 <div 
+                 <div
                    onClick={() => {
                      if (talkingAvatarResult) {
                        navigator.clipboard.writeText(talkingAvatarResult.videoUrl);
                        toast.success('Video link copied to clipboard!');
                      }
-                   }} 
+                   }}
                    className={`glass-card p-4 flex flex-col items-center justify-center gap-2 hover:bg-white/5 transition-colors cursor-pointer border-white/5 ${!talkingAvatarResult ? 'opacity-50 pointer-events-none' : ''}`}
                  >
-                   <Share2 className="w-5 h-5 text-blue-400" />
+                   <Share2 className="w-5 h-5 text-amber-400" />
                    <div className="text-center">
-                     <div className="text-[10px] font-bold text-white">Share</div>
-                     <div className="text-[8px] text-[var(--text-muted)]">Copy link</div>
+                     <div className="text-xs font-bold text-white">Share</div>
+                     <div className="text-xs text-[var(--text-muted)]">Copy link</div>
                    </div>
                  </div>
                </div>
             </div>
 
             <div className="space-y-2">
-               <label className="text-[10px] font-extrabold text-[var(--text-tertiary)] uppercase tracking-widest px-1">Insights</label>
+               <label className="text-xs font-extrabold text-[var(--text-tertiary)] uppercase tracking-widest px-1">Insights</label>
                <div className="glass-card p-4 space-y-3 border-white/5">
                  {[
                    { label: 'Estimated Engagement', val: 'High', color: 'text-emerald-400' },
@@ -4022,9 +4022,9 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                    { label: 'Audience Fit', val: 'Excellent', color: 'text-emerald-400' }
                  ].map(m => (
                    <div key={m.label} className="flex items-center justify-between">
-                     <span className="text-[10px] font-bold text-white/60">{m.label}</span>
+                     <span className="text-xs font-bold text-white/60">{m.label}</span>
                      <div className="flex items-center gap-1.5">
-                       <span className={`text-[10px] font-black ${m.color}`}>{m.val}</span>
+                       <span className={`text-xs font-black ${m.color}`}>{m.val}</span>
                        <ArrowUpCircle className={`w-3 h-3 ${m.color} rotate-45`} />
                      </div>
                    </div>
@@ -4173,7 +4173,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
   return (
     <div className="flex-1 bg-[var(--bg-base)] text-white p-4 max-w-full mx-auto w-full selection:bg-emerald-500/30 flex flex-col overflow-y-auto overflow-x-hidden custom-scrollbar">
-      
+
       {/* ── CREATE HUB HEADER ── */}
       <div className="mb-4 flex flex-col md:flex-row md:items-center justify-between gap-3 px-1 border-b border-[#E7C477]/10 pb-3">
         <div>
@@ -4235,12 +4235,12 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
       {/* Fullscreen Enlarged Image Lightbox Modal (Edge-to-Edge True Screen Fill) */}
       {lightboxImageUrl && (
-        <div 
+        <div
           className="fixed inset-0 z-[999999] bg-black/98 w-screen h-screen flex items-center justify-center p-0 m-0 overflow-hidden animate-fadeIn"
           onClick={() => setLightboxImageUrl(null)}
         >
           {/* Top Floating Action Bar */}
-          <div 
+          <div
             className="absolute top-4 right-4 sm:right-6 flex items-center gap-2.5 z-[1000000] bg-zinc-950/90 backdrop-blur-xl border border-white/20 p-2 rounded-2xl shadow-2xl"
             onClick={e => e.stopPropagation()}
           >
@@ -4284,7 +4284,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           </div>
 
           {/* Top Left Title Badge */}
-          <div 
+          <div
             className="absolute top-4 left-4 sm:left-6 flex items-center gap-2 z-[1000000] bg-zinc-950/90 backdrop-blur-xl border border-white/20 px-4 py-2 rounded-2xl shadow-2xl pointer-events-none"
           >
             <Sparkles className="w-4 h-4 text-[var(--accent-primary)]" />
@@ -4297,8 +4297,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               src={lightboxImageUrl}
               alt="Enlarged Visual"
               className={`select-none transition-all duration-300 ${
-                lightboxZoomMode === 'fill' 
-                  ? 'w-screen h-screen object-cover shadow-2xl scale-[1.02]' 
+                lightboxZoomMode === 'fill'
+                  ? 'w-screen h-screen object-cover shadow-2xl scale-[1.02]'
                   : lightboxZoomMode === 'zoom'
                   ? 'w-screen h-screen object-cover scale-150 cursor-grab active:cursor-grabbing shadow-2xl'
                   : 'max-w-[98vw] max-h-[98vh] w-auto h-auto object-contain drop-shadow-[0_0_60px_rgba(0,0,0,0.9)] rounded-xl'
@@ -4315,12 +4315,12 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
       {/* Fullscreen Enlarged Video Lightbox Modal (Edge-to-Edge True Screen Fill) */}
       {lightboxVideoUrl && (
-        <div 
+        <div
           className="fixed inset-0 z-[999999] bg-black/98 w-screen h-screen flex items-center justify-center p-0 m-0 overflow-hidden animate-fadeIn"
           onClick={() => setLightboxVideoUrl(null)}
         >
           {/* Top Floating Action Bar */}
-          <div 
+          <div
             className="absolute top-4 right-4 sm:right-6 flex items-center gap-2.5 z-[1000000] bg-zinc-950/90 backdrop-blur-xl border border-white/20 p-2 rounded-2xl shadow-2xl"
             onClick={e => e.stopPropagation()}
           >
@@ -4340,7 +4340,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           </div>
 
           {/* Top Left Title Badge */}
-          <div 
+          <div
             className="absolute top-4 left-4 sm:left-6 flex items-center gap-2 z-[1000000] bg-zinc-950/90 backdrop-blur-xl border border-white/20 px-4 py-2 rounded-2xl shadow-2xl pointer-events-none"
           >
             <Film className="w-4 h-4 text-pink-400" />
@@ -4377,11 +4377,11 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-white font-serif tracking-tight">Select AI Generation Model</h3>
-                  <p className="text-[10px] text-slate-400">Choose from 130+ photorealistic, flux, and ultra-fast AI image engines</p>
+                  <p className="text-xs text-slate-400">Choose from 130+ photorealistic, flux, and ultra-fast AI image engines</p>
                 </div>
               </div>
-              <button 
-                onClick={() => setIsModelModalOpen(false)} 
+              <button
+                onClick={() => setIsModelModalOpen(false)}
                 className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-all border border-transparent hover:border-white/10 cursor-pointer"
               >
                 <X size={18} />
@@ -4400,8 +4400,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                   className="w-full bg-[#161618] border border-white/10 rounded-xl pl-10 pr-9 py-2 text-xs text-white placeholder-slate-500 outline-none focus:border-[#E7C477] transition-all"
                 />
                 {modelSearchQuery && (
-                  <button 
-                    onClick={() => setModelSearchQuery('')} 
+                  <button
+                    onClick={() => setModelSearchQuery('')}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-white font-bold"
                   >
                     Clear
@@ -4410,7 +4410,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               </div>
 
               {/* Category Filters */}
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-hide text-[10px] font-bold">
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-hide text-xs font-bold">
                 {[
                   { id: 'all', label: `All Models (${models.length})` },
                   { id: 'new', label: '✨ New & Upgraded' },
@@ -4475,17 +4475,17 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                           <div>
                             <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
                               {m.name}
-                              {m.releaseLabel && <span className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">✨ {m.releaseLabel}</span>}
-                              {m.nsfw && <span className="text-[9px] px-1 py-0.2 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">🔞</span>}
+                              {m.releaseLabel && <span className="text-xs px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">✨ {m.releaseLabel}</span>}
+                              {m.nsfw && <span className="text-xs px-1 py-0.2 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">🔞</span>}
                             </h4>
-                            <span className="text-[9px] text-slate-400 font-medium">{m.provider || 'AI Engine'}</span>
+                            <span className="text-xs text-slate-400 font-medium">{m.provider || 'AI Engine'}</span>
                           </div>
                         </div>
-                        <span className="text-[10px] font-bold text-[#F2D58D] bg-[#E7C477]/10 px-2 py-0.5 rounded-lg border border-[#E7C477]/20 shrink-0">
+                        <span className="text-xs font-bold text-[#F2D58D] bg-[#E7C477]/10 px-2 py-0.5 rounded-lg border border-[#E7C477]/20 shrink-0">
                           {m.price > 0 ? (billingInfo?.isCreator ? `$${m.price.toFixed(3)}` : `${m.price} credits`) : 'Free'}
                         </span>
                       </div>
-                      <p className="text-[10px] text-slate-400 line-clamp-2 leading-relaxed">{m.description || 'High-precision photorealistic AI image generation model.'}</p>
+                      <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">{m.description || 'High-precision photorealistic AI image generation model.'}</p>
                     </div>
                   );
                 })

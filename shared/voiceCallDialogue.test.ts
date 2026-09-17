@@ -7,7 +7,7 @@ test('call language overrides saved conversation language without changing perso
   const before = JSON.stringify(persona);
   const arabic = voiceCallDialogue(persona, { mode: 'arabic', dialect: 'levantine' });
   assert.match(arabic, /Begin and primarily converse in Arabic/);
-  assert.doesNotMatch(arabic, /Preferred conversation language: English|Egyptian/);
+  assert.doesNotMatch(arabic, /Preferred conversation language: English|Use Egyptian/);
   assert.match(arabic, /Primary trait: Witty/);
   const english = voiceCallDialogue({ ...persona, personalitySettings: { ...persona.personalitySettings, language: 'ar' } }, { mode: 'english' });
   assert.match(english, /Begin and primarily converse in English/);

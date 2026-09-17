@@ -16,3 +16,12 @@ test('English with Arabic accent keeps English words and preserves dialect guida
   assert.match(instructions, /spelling/);
   assert.match(instructions, /do not switch/i);
 });
+
+test('Levantine live calls keep the same regional vocabulary safeguards as persona chat', () => {
+  const instructions=callLanguageInstructions({mode:'arabic',dialect:'levantine',allowLanguageSwitching:true});
+  assert.match(instructions,/Egyptian/);
+  assert.match(instructions,/Saudi\/Gulf/);
+  assert.match(instructions,/وش، الحين، أبغى/);
+  assert.match(instructions,/glottal-stop/);
+  assert.match(instructions,/explicitly requests/);
+});

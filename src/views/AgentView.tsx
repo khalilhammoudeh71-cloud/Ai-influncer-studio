@@ -3168,7 +3168,11 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
             <summary className="flex cursor-pointer list-none items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-semibold text-zinc-300 transition-colors hover:border-[#E7C477]/30 hover:text-[#F2D58D]">
               <Sliders size={14} /> Controls
             </summary>
-            <div className="absolute right-0 top-full mt-2 flex w-[min(92vw,470px)] flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-[#1C1C20]/98 p-3 shadow-2xl backdrop-blur-xl">
+            <div className="absolute right-0 top-full mt-2 max-h-[min(640px,70dvh)] overflow-y-auto overscroll-contain custom-scrollbar flex w-[min(92vw,470px)] flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-[#1C1C20]/98 p-3 shadow-2xl backdrop-blur-xl">
+            <details open className="w-full rounded-xl border border-white/10 bg-black/15">
+              <summary className="flex min-h-11 cursor-pointer items-center gap-2 px-3 text-sm font-semibold text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E7C477]"><Sliders size={14} className="text-[#E7C477]"/>Task behavior</summary>
+              <div className="space-y-3 border-t border-white/10 p-3">
+                <div className="flex flex-wrap gap-2">
             {/* Approval Queue Toggle */}
             <button
               onClick={() => setAutoApprove(!autoApprove)}
@@ -3201,17 +3205,9 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
               <span>{allowNsfw ? 'Adult mode' : 'Standard mode'}</span>
             </button>
 
-            <details open className="group relative z-40 w-full">
-              <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-bold text-zinc-300 transition-colors hover:border-white/20 hover:bg-white/10">
-                <Mic size={13} className="text-amber-400" /> Voice & agent setup
-              </summary>
-              <div className="mt-2 flex w-full flex-col gap-3 rounded-xl border border-white/10 bg-black/20 p-3">
-            <label className="order-5 text-xs text-zinc-300">Project brief
-              <textarea aria-label="Project brief" value={workspaceBrief} onChange={e => {setWorkspaceBrief(e.target.value); accountLocalStorage.setItem(keys.brief,serializeProjectBrief(e.target.value));}} placeholder="Saved project facts, preferences and decisions. Edit to correct; clear to forget. Fictional scene details should be labeled." className="mt-1 w-full rounded-lg border border-white/15 bg-black/30 p-2 text-sm" rows={3} />
-              <span className="text-[11px] text-zinc-400">Saved for future conversations. You can edit it anytime.</span>
-            </label>
-            <label className="order-4 block text-xs text-zinc-300">Text planning model
-              <select aria-label="Text planning model" value={planningModel} onChange={e=>{setPlanningModel(e.target.value);accountLocalStorage.setItem('agent_planning_model',e.target.value);}} className="ml-2 rounded-lg border border-white/15 bg-zinc-900 p-2 text-zinc-100">
+                </div>
+            <label className="block text-xs text-zinc-300">Text planning model
+              <select aria-label="Text planning model" value={planningModel} onChange={e=>{setPlanningModel(e.target.value);accountLocalStorage.setItem('agent_planning_model',e.target.value);}} className="mt-2 w-full rounded-lg border border-white/15 bg-zinc-900 p-2 text-zinc-100">
                 <option value="">Use configured engine</option>
                 <option value="frontier-grok">Grok 4.6</option>
                 <option value="frontier-gemini-pro">Gemini 3.1 Pro Preview</option>
@@ -3219,6 +3215,11 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
               </select>
               <p className="mt-1 text-zinc-400">Applies to text tasks. Voice keeps its configured engine. Selected frontier models do not silently fall back.</p>
             </label>
+              </div>
+            </details>
+            <details open className="w-full rounded-xl border border-white/10 bg-black/15">
+              <summary className="flex min-h-11 cursor-pointer items-center gap-2 px-3 text-sm font-semibold text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E7C477]"><Mic size={14} className="text-[#E7C477]"/>Voice</summary>
+              <div className="flex flex-col gap-3 border-t border-white/10 p-3">
             {/* LLM Engine Selector */}
             <div className="order-3 rounded-xl border border-white/10 bg-white/[0.03] p-3">
               <label className="mb-2 block text-[10px] font-extrabold uppercase tracking-[0.14em] text-zinc-400" htmlFor="agent-voice-conversation-model">Voice conversation model</label>
@@ -3351,12 +3352,21 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
               </div>
             </details>
 
+              </div>
+            </details>
+            <details className="w-full rounded-xl border border-white/10 bg-black/15">
+              <summary className="flex min-h-11 cursor-pointer items-center gap-2 px-3 text-sm font-semibold text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E7C477]"><FileText size={14} className="text-[#E7C477]"/>Project memory</summary>
+              <div className="space-y-3 border-t border-white/10 p-3">
+            <label className="block text-xs text-zinc-300">Project brief
+              <textarea aria-label="Project brief" value={workspaceBrief} onChange={e => {setWorkspaceBrief(e.target.value); accountLocalStorage.setItem(keys.brief,serializeProjectBrief(e.target.value));}} placeholder="Saved project facts, preferences and decisions. Edit to correct; clear to forget. Fictional scene details should be labeled." className="mt-1 w-full rounded-lg border border-white/15 bg-black/30 p-2 text-sm" rows={3} />
+              <span className="text-[11px] text-zinc-400">Saved for future conversations. You can edit it anytime.</span>
+            </label>
             {/* Clear history */}
             <button
               type="button"
               onClick={() => void clearAllConversationHistory()}
               disabled={historySaving}
-              className="order-6 flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-zinc-400 transition-all hover:bg-white/10 hover:text-white disabled:cursor-wait disabled:opacity-50"
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-zinc-400 transition-all hover:bg-white/10 hover:text-white disabled:cursor-wait disabled:opacity-50"
               title="Erase every saved Super Agent conversation"
             >
               {historySaving ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
@@ -3364,6 +3374,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
             </button>
               </div>
             </details>
+
             </div>
           </details>
         </div>
@@ -3564,12 +3575,12 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
           </div>
         ) : (
         /* Draft Room: the brief comes first; only the current exchange appears below it. */
-        <div className="agent-console flex-1 min-h-0 flex flex-col p-3 sm:p-5 overflow-hidden">
-          <div className="agent-draft-shell w-full max-w-5xl mx-auto flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
+        <div className="agent-console flex-1 min-h-0 flex flex-col p-3 sm:p-5 overflow-y-auto overscroll-contain">
+          <div className="agent-draft-shell w-full max-w-5xl mx-auto flex-1 min-h-0 flex flex-col gap-3">
 
             {/* Current exchange only. Older saved messages stay out of the workspace. */}
             {currentExchangeMessages.length > 0 && (
-            <div className="agent-messages order-2 max-h-[44vh] overflow-y-auto rounded-2xl border border-white/[0.07] bg-[#161618]/85 p-4 sm:p-5 space-y-5 custom-scrollbar">
+            <div className="agent-messages order-2 flex-1 min-h-16 max-h-[44dvh] overflow-y-auto rounded-2xl border border-white/[0.07] bg-[#161618]/85 p-4 sm:p-5 space-y-5 custom-scrollbar">
                 {currentExchangeMessages.map((msg) => (
                   <div
                     key={msg.id}
@@ -3578,11 +3589,11 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                     <span className="text-[9px] font-black text-zinc-400 uppercase tracking-wider mb-1 px-1">
                       {msg.role === 'model' ? '🤖 Agent' : '👤 You'}
                       {msg.role === 'model' && msg.agentMode && (
-                        <span className="ml-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-300">
+                        <details className="ml-2 inline-block text-xs font-normal normal-case text-zinc-400"><summary className="cursor-pointer">Run details</summary><span className="block py-2 text-amber-200">
                           {msg.agentMode.provider} · {msg.agentMode.model} · {msg.agentMode.effort}
                           {msg.agentMode.research ? ' · research' : ''}
                           {typeof msg.agentMode.costUsd === 'number' ? ` · $${msg.agentMode.costUsd.toFixed(5)}` : ''}
-                        </span>
+                        </span></details>
                       )}
                     </span>
 
@@ -3751,7 +3762,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
             </div>
             )}
 
-            <div className="agent-draft-composer order-1 shrink-0 rounded-[24px] border border-[#E7C477]/30 bg-[#18181B] p-4 shadow-[0_18px_60px_rgba(0,0,0,0.35)] transition-colors focus-within:border-[#E7C477]/65 sm:p-5">
+            <div className="agent-draft-composer order-1 flex min-h-0 shrink flex-col rounded-[24px] border border-[#E7C477]/30 bg-[#18181B] p-4 shadow-[0_18px_60px_rgba(0,0,0,0.35)] transition-colors focus-within:border-[#E7C477]/65 sm:p-5">
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
                 <p className="font-serif text-lg text-[#F5F1E8] sm:text-xl">
@@ -3849,6 +3860,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
             {/* Textarea for User Input */}
             <textarea
               aria-label="Message Super Agent"
+              style={{ minHeight: 60, height: 'clamp(60px,18dvh,190px)' }}
               ref={agentTextareaRef}
               rows={6}
               value={inputText}
@@ -3863,7 +3875,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
               placeholder={interactionMode === 'plan'
                 ? 'Ask for ideas, strategy, feedback, comparisons, or a step-by-step plan…'
                 : 'Describe a campaign, ask for research, or give Super Agent a task…'}
-              className="w-full min-h-[150px] max-h-[300px] resize-none overflow-y-auto bg-transparent text-base font-medium leading-relaxed text-[#F5F1E8] outline-none placeholder:text-zinc-600 sm:min-h-[190px] sm:text-lg"
+              className="w-full flex-1 min-h-[60px] h-[clamp(60px,18dvh,190px)] max-h-[300px] resize-none overflow-y-auto bg-transparent text-base font-medium leading-relaxed text-[#F5F1E8] outline-none placeholder:text-zinc-600 sm:text-lg"
             />
 
             {/* Bottom Row Action Toolbar (Plus Menu on Left, Send on Right) */}

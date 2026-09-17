@@ -21,6 +21,7 @@ interface LeftSidebarProps {
   activeTab: Tab;
   onNavigate: (tab: Tab, params?: Record<string, unknown>) => void;
   newAssetsCount: number;
+  hasPersonas?: boolean;
   mobileOpen?: boolean;
   onMobileClose?: () => void;
 }
@@ -36,6 +37,7 @@ interface NavigationItem {
 
 const primaryItems: NavigationItem[] = [
   { id: 'agent', label: 'Super Agent', description: 'Get help with multi-step tasks', icon: Bot, tabTarget: 'agent' },
+  { id: 'chat', label: 'Persona Chat', description: 'Text and live voice conversations', icon: MessageCircle, tabTarget: 'assistant' },
   { id: 'personas', label: 'Personas', description: 'Your AI influencers', icon: Users, tabTarget: 'personas' },
   { id: 'create', label: 'Create content', description: 'Make photos, videos, and audio', icon: Sparkles, tabTarget: 'create' },
   { id: 'tools', label: 'Editing tools', description: 'Edit, enhance, and build content', icon: Wrench, tabTarget: 'intelligence' },
@@ -44,7 +46,6 @@ const primaryItems: NavigationItem[] = [
 ];
 
 const secondaryItems: NavigationItem[] = [
-  { id: 'chat', label: 'Persona Chat', description: 'Text and live voice conversations', icon: MessageCircle, tabTarget: 'assistant' },
   { id: 'analytics', label: 'Trends', description: 'Explore Instagram and TikTok ideas', icon: BarChart3, tabTarget: 'trends' },
 ];
 
@@ -56,6 +57,7 @@ export default function LeftSidebar({
   activeTab,
   onNavigate,
   newAssetsCount,
+  hasPersonas = true,
   mobileOpen = false,
   onMobileClose,
 }: LeftSidebarProps) {
@@ -194,7 +196,7 @@ export default function LeftSidebar({
             </span>
             <span className="min-w-0 flex-1">
               <span className="block text-[13px] font-semibold">Explore more</span>
-              <span className="mt-0.5 block truncate text-[11px] text-[var(--text-muted)]">Conversations and ideas</span>
+              <span className="mt-0.5 block truncate text-[11px] text-[var(--text-muted)]">Trends and insights</span>
             </span>
             <ChevronDown size={15} className={cn('transition-transform', moreOpen && 'rotate-180')} />
           </button>
@@ -217,7 +219,7 @@ export default function LeftSidebar({
         </nav>
 
         <div className="border-t border-[var(--border-subtle)] p-3">
-          <button type="button" onClick={() => handleNavigate('create-persona')} className="studio-sidebar-start"><Sparkles size={17} /><span>New to the studio?<small>Create your first AI influencer</small></span></button>
+          {!hasPersonas && <button type="button" onClick={() => handleNavigate('create-persona')} className="studio-sidebar-start"><Sparkles size={17} /><span>New to the studio?<small>Create your first AI influencer</small></span></button>}
           <button
             type="button"
             onClick={() => handleNavigate('settings')}

@@ -1,4 +1,4 @@
-import { Home, Images, Menu, Sparkles, Wrench } from 'lucide-react';
+import { Home, Images, Menu, MessageCircle, Sparkles } from 'lucide-react';
 import { Tab } from '../types';
 import { cn } from '../utils/cn';
 
@@ -12,7 +12,7 @@ interface MobileNavigationProps {
 const items: Array<{ label: string; tab: Tab; icon: typeof Home }> = [
   { label: 'Personas', tab: 'personas', icon: Home },
   { label: 'Create', tab: 'create', icon: Sparkles },
-  { label: 'Tools', tab: 'intelligence', icon: Wrench },
+  { label: 'Chat', tab: 'assistant', icon: MessageCircle },
   { label: 'Library', tab: 'gallery', icon: Images },
 ];
 

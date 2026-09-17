@@ -4,7 +4,9 @@ import { getAuthHeaders } from '../services/apiService';
 import type { PronunciationRule } from '../../shared/pronunciation';
 import { PronunciationMicrophone } from './PronunciationMicrophone';
 export async function pronunciationApi(personaId:string,suffix='',options:RequestInit={}) {
-  const response=await fetch(`/api/voice-recognition/pronunciations/${encodeURIComponent(personaId)}${suffix}`,{...options,headers:{'Content-Type':'application/json',...await getAuthHeaders(),...options.headers}});
+  const deadline=AbortSignal.timeout(20000);
+  const signal=options.signal?AbortSignal.any([options.signal,deadline]):deadline;
+  const response=await fetch(`/api/voice-recognition/pronunciations/${encodeURIComponent(personaId)}${suffix}`,{...options,signal,headers:{'Content-Type':'application/json',...await getAuthHeaders(),...options.headers}});
   const data=await response.json();if(!response.ok)throw new Error(data.error||'Pronunciation could not be saved.');return data;
 }
 export function PronunciationSettings({personaId,onPreview,revision=0,futureCallOnly=false}:{personaId:string;onPreview?:(text:string)=>void;revision?:number;futureCallOnly?:boolean}) {

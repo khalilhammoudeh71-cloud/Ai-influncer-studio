@@ -78,6 +78,7 @@ function PlatformMark({ platform }: { platform: SocialPlatform }) {
 }
 
 export default function TrendView({ persona: activePersona, nav }: TrendViewProps) {
+  const [activeSection, setActiveSection] = useState<'trends' | 'channel'>('trends');
   const [platform, setPlatform] = useState<PlatformFilter>('all');
   const [region, setRegion] = useState('US');
   const [data, setData] = useState<SocialTrendsResponse | null>(null);
@@ -154,7 +155,7 @@ export default function TrendView({ persona: activePersona, nav }: TrendViewProp
       <header className="flex flex-col gap-4 border-b border-[#E7C477]/15 pb-5 md:flex-row md:items-end md:justify-between">
         <div>
           <div className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-[#E7C477]">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#00F5C2]" />
+            <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent-primary)]" />
             Discover content ideas
           </div>
           <h1 className="flex items-center gap-3 font-serif text-3xl tracking-tight text-[#F5F1E8] md:text-4xl">
@@ -170,7 +171,7 @@ export default function TrendView({ persona: activePersona, nav }: TrendViewProp
             value={region}
             onChange={event => setRegion(event.target.value)}
             aria-label="Trend region"
-            className="rounded-xl border border-white/10 bg-[#0B0F17] px-3 py-2.5 text-xs font-bold text-white outline-none focus:border-[#E7C477]/50"
+            className="rounded-xl border border-white/10 bg-[var(--bg-input)] px-3 py-2.5 text-xs font-bold text-white outline-none focus:border-[#E7C477]/50"
           >
             {REGIONS.map(option => <option key={option.code} value={option.code}>{option.label}</option>)}
           </select>
@@ -186,6 +187,11 @@ export default function TrendView({ persona: activePersona, nav }: TrendViewProp
         </div>
       </header>
 
+      <nav aria-label="Discovery tools" className="flex gap-2">
+        {(['trends', 'channel'] as const).map(section => <button key={section} type="button" aria-pressed={activeSection === section} onClick={() => setActiveSection(section)} className={cn('rounded-xl px-4 py-2 text-sm font-semibold', activeSection === section ? 'bg-[var(--accent-primary)]/15 text-[var(--accent-primary)]' : 'text-[var(--text-muted)] hover:text-white')}>{section === 'trends' ? 'Trending ideas' : 'Analyze a channel'}</button>)}
+      </nav>
+      <div hidden={activeSection !== 'channel'}><ChannelAnalyzer region={region} /></div>
+      <div hidden={activeSection !== 'trends'} className="space-y-7">
       <section className="flex flex-col gap-3 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex gap-1 rounded-xl bg-black/20 p-1">
           {(['all', 'instagram', 'tiktok'] as const).map(value => (
@@ -208,7 +214,7 @@ export default function TrendView({ persona: activePersona, nav }: TrendViewProp
         {data && (
           <div className="flex flex-wrap items-center gap-3 px-2 text-[10px] font-bold text-zinc-400">
             <span className="flex items-center gap-1.5 text-[#71E6C1]">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#00F5C2]" />
+              <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent-primary)]" />
               {data.cached ? 'Cached live pull' : 'Fresh live pull'}
             </span>
             <span className="flex items-center gap-1"><Clock3 className="h-3 w-3" /> {formatCollectedAt(data.collectedAt)}</span>
@@ -217,7 +223,6 @@ export default function TrendView({ persona: activePersona, nav }: TrendViewProp
         )}
       </section>
 
-      <ChannelAnalyzer region={region} />
 
       {initialLoading && (
         <div className="premium-card flex min-h-[420px] flex-col items-center justify-center gap-4 p-8 text-center">
@@ -262,7 +267,7 @@ export default function TrendView({ persona: activePersona, nav }: TrendViewProp
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <h2 className="flex items-center gap-2 text-sm font-black uppercase tracking-wider text-white">
-                      <TrendingUp className="h-4 w-4 text-[#00F5C2]" />
+                      <TrendingUp className="h-4 w-4 text-[var(--accent-primary)]" />
                       Live trend signals
                     </h2>
                     <p className="mt-1 text-[11px] text-[var(--text-muted)]">Select a public post to inspect it and turn it into an original content brief.</p>
@@ -300,7 +305,7 @@ export default function TrendView({ persona: activePersona, nav }: TrendViewProp
                               <PlatformMark platform={trend.platform} /> {platformLabel(trend.platform)}
                             </span>
                             <div className="text-right">
-                              <p className="text-lg font-black text-[#00F5C2]">{trend.trendScore}</p>
+                              <p className="text-lg font-black text-[var(--accent-primary)]">{trend.trendScore}</p>
                               <p className="text-[8px] font-black uppercase tracking-wider text-zinc-500">Signal score</p>
                             </div>
                           </div>
@@ -422,7 +427,7 @@ export default function TrendView({ persona: activePersona, nav }: TrendViewProp
               </div>
 
               <div className="premium-card space-y-4 p-5">
-                <h3 className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-white"><BarChart2 className="h-4 w-4 text-[#00F5C2]" /> How ranking works</h3>
+                <h3 className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-white"><BarChart2 className="h-4 w-4 text-[var(--accent-primary)]" /> How ranking works</h3>
                 <p className="text-[11px] leading-relaxed text-zinc-400">{data.methodology}</p>
                 <div className="rounded-xl border border-white/[0.06] bg-black/15 p-3 text-[10px] leading-relaxed text-zinc-500">
                   These are public-content signals—not private reach, retention, saves, demographics, income, or follower/non-follower insights. Connect official Meta and TikTok account analytics later for those private metrics.
@@ -432,6 +437,7 @@ export default function TrendView({ persona: activePersona, nav }: TrendViewProp
           </div>
         </>
       )}
+      </div>
     </div>
   );
 }
@@ -485,7 +491,7 @@ function ChannelAnalyzer({ region }: { region: string }) {
             value={platform}
             onChange={event => { setPlatform(event.target.value as SocialPlatform); setAnalysis(null); setError(null); }}
             aria-label="Channel platform"
-            className="rounded-xl border border-white/10 bg-[#0B0F17] px-3 py-3 text-xs font-bold text-white outline-none focus:border-[#E7C477]/50"
+            className="rounded-xl border border-white/10 bg-[var(--bg-input)] px-3 py-3 text-xs font-bold text-white outline-none focus:border-[#E7C477]/50"
           >
             <option value="instagram">Instagram</option>
             <option value="tiktok">TikTok</option>
@@ -499,7 +505,7 @@ function ChannelAnalyzer({ region }: { region: string }) {
               placeholder="username"
               autoComplete="off"
               spellCheck={false}
-              className="w-full rounded-xl border border-white/10 bg-[#0B0F17] py-3 pl-8 pr-3 text-xs font-bold text-white outline-none placeholder:text-zinc-600 focus:border-[#E7C477]/50"
+              className="w-full rounded-xl border border-white/10 bg-[var(--bg-input)] py-3 pl-8 pr-3 text-xs font-bold text-white outline-none placeholder:text-zinc-600 focus:border-[#E7C477]/50"
             />
           </label>
           <button type="submit" disabled={loading || !handle.trim()} className="premium-button flex items-center justify-center gap-2 px-5 py-3 text-xs font-black disabled:opacity-50">
@@ -529,7 +535,7 @@ function ChannelAnalyzer({ region }: { region: string }) {
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="text-lg font-black text-white">@{analysis.handle}</h3>
-                <span className="flex items-center gap-1 rounded-md border border-[#00F5C2]/20 bg-[#00F5C2]/[0.06] px-2 py-1 text-[9px] font-black uppercase tracking-wider text-[#71E6C1]">
+                <span className="flex items-center gap-1 rounded-md border border-[var(--accent-primary)]/20 bg-[var(--accent-primary)]/[0.06] px-2 py-1 text-[9px] font-black uppercase tracking-wider text-[#71E6C1]">
                   <PlatformMark platform={analysis.platform} /> Live public data
                 </span>
               </div>
@@ -562,7 +568,7 @@ function ChannelAnalyzer({ region }: { region: string }) {
               <ul className="mt-4 space-y-3">
                 {analysis.insights.map(insight => (
                   <li key={insight} className="flex gap-2 text-[11px] leading-relaxed text-zinc-300">
-                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#00F5C2]" /> {insight}
+                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent-primary)]" /> {insight}
                   </li>
                 ))}
               </ul>
@@ -580,7 +586,7 @@ function ChannelAnalyzer({ region }: { region: string }) {
 
       {!loading && !analysis && !error && (
         <div className="flex items-center gap-3 px-5 py-4 text-[10px] leading-relaxed text-zinc-500">
-          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#00F5C2]" />
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent-primary)]" />
           Public profiles work without connecting the account. Private reach, retention, saves, demographics, and follower conversion require official account authorization.
         </div>
       )}

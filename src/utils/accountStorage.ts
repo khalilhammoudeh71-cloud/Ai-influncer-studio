@@ -297,6 +297,7 @@ export async function hydrateAccountLocalStorage(userId: string): Promise<void> 
   const meta = readSyncMeta(userId);
   const operations: Promise<unknown>[] = [];
   const upload = async (base: string, value: string) => {
+    if (!readSyncMeta(userId)[base]?.dirty) markLocalChange(base, userId);
     const clientUpdatedAt = readSyncMeta(userId)[base]?.updatedAt || new Date().toISOString();
     const prepared = await (adapter.prepareForRemote?.(value) ?? value);
     if (activeStorageUserId !== userId || localStorage.getItem(accountStorageKey(base, userId)) !== value) return;
@@ -337,7 +338,13 @@ export async function hydrateAccountLocalStorage(userId: string): Promise<void> 
     if (remoteByKey.has(base) || meta[base]?.deleted || !isSyncableWorkspaceKeyOnly(base)) continue;
     operations.push(upload(base, value));
   }
-  await Promise.allSettled(operations);
+  const results = await Promise.allSettled(operations);
+  const failures = results.filter(result => result.status === 'rejected');
+  if (failures.length) {
+    notifyWorkspaceSync('pending');
+    throw new Error('Some workspace changes could not sync. Your local changes are preserved.');
+  }
+  if (activeStorageUserId === userId) notifyWorkspaceSync(Object.values(readSyncMeta(userId)).some(marker => marker.dirty) ? 'pending' : 'synced');
 }
 
 export function migrateLegacyAccountKey(base: string, userId: string): void {
@@ -345,4 +352,14 @@ export function migrateLegacyAccountKey(base: string, userId: string): void {
   if (localStorage.getItem(scopedKey) !== null) return;
   const legacyValue = localStorage.getItem(base);
   if (legacyValue !== null) setAccountLocalValue(base, legacyValue, userId);
+}
+
+export function retryAccountWorkspaceSync(userId: string): void {
+  if (activeStorageUserId !== userId) return;
+  for (const [base, marker] of Object.entries(readSyncMeta(userId))) {
+    if (!marker.dirty || !isSyncableWorkspaceKey(base)) continue;
+    const value = localStorage.getItem(accountStorageKey(base, userId));
+    if (value === null && marker.deleted) scheduleRemoteRemove(base, userId, 0);
+    else if (value !== null) scheduleRemoteSave(base, value, userId, 0);
+  }
 }

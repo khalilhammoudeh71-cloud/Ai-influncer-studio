@@ -8,7 +8,7 @@ const languages: [RegExp, CallPreferences['mode']][] = [
   [/(?:hindi|الهندي(?:ة)?)/iu,'hi'], [/(?:japanese|الياباني(?:ة)?)/iu,'ja'], [/(?:korean|الكوري(?:ة)?)/iu,'ko'],
 ];
 const dialects: [RegExp, CallPreferences['dialect']][] = [
-  [/(?:jordanian|syrian|levantine|أردني|اردني|سوري|شامي)/iu,'levantine'], [/(?:lebanese|لبناني)/iu,'lebanese'],
+  [/(?:jordanian.{0,12}syrian|أردني.{0,12}سوري|اردني.{0,12}سوري|levantine|شامي)/iu,'levantine'], [/(?:jordanian|أردني|اردني)/iu,'jordanian'], [/(?:syrian|سوري)/iu,'syrian'], [/(?:lebanese|لبناني)/iu,'lebanese'],
   [/(?:egyptian|مصري)/iu,'egyptian'], [/(?:saudi|gulf|سعودي|خليجي)/iu,'gulf'], [/(?:standard arabic|فصحى)/iu,'msa'],
 ];
 /** Explicit requests change this call's delivery; casual mentions never change defaults. */

@@ -1,4 +1,6 @@
+import { createDialectTeachingRouter, dialectContext } from './dialectTeaching';
 import { createVoiceRecognitionRouter } from './voiceRecognition';
+import { createVoiceRemixRouter, VoiceRemixes } from './voiceRemixes';
 import { pronunciationRules } from './pronunciationStore';
 import { applyPronunciations } from '../shared/pronunciation';
 import { selectAgentSkills } from './agentSkills';
@@ -1565,6 +1567,11 @@ router.post('/agent/update-elevenlabs-key', async (req: AuthenticatedRequest, re
 });
 
 const elevenKey = () => process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key || '';
+router.use('/voice-remixes', createVoiceRemixRouter({
+  service: new VoiceRemixes({get:readVoiceState,put:writeVoiceState,claim:claimVoiceState,replace:replaceVoiceState}, personaVoices),
+  apiKey: elevenKey,
+  authorizeVoice: (req, voiceId) => assertVoiceAccess(req, voiceId),
+}));
 const modelVoiceClones=new ModelVoiceClones({get:readVoiceState,put:writeVoiceState,claim:claimVoiceState,replace:replaceVoiceState});
 router.post('/voice-model-clones',async(req:AuthenticatedRequest,res:Response)=>{
  try{return res.json(await modelVoiceClones.create(req.user.id,req.body));}
@@ -1661,7 +1668,7 @@ const handleGenerateSpeech = async (req: AuthenticatedRequest, res: Response) =>
     const canonical=voiceCloningModel(originalBody.engine);
     const body = {...originalBody,...(canonical?{engine:canonical.id}:{}),...(originalBody.engine==='elevenlabs-v3'?{speechModel:'eleven_v3'}:{})};
     if (typeof body.text !== 'string' || !body.text.trim()) return res.status(400).json({ error: 'text is required' });
-    const spokenRules = body.activePersona?.id && body.activePersona.id !== 'empty' ? await pronunciationRules(req.user.id, body.activePersona.id) : [];
+    const spokenRules = body.activePersona?.id && body.activePersona.id !== 'empty' ? await pronunciationRules(req.user.id, body.activePersona.id, body.preferences || body.activePersona) : [];
     body.text = applyPronunciations(body.text, spokenRules);
     if (body.engine === 'gemini') return res.json({audioUrl:await geminiStockSpeech(body.text,String(body.voiceId||body.voice||''),cancelled.signal),engine:'gemini'});
     const speechModel = body.engine === 'openai' || body.engine === 'openai:tts' ? 'tts-1' : (!body.engine || body.engine === 'elevenlabs') ? (body.speechModel || DEFAULT_SPEECH_MODEL) : body.engine;
@@ -1910,6 +1917,7 @@ router.post('/agent/voice-chat', async (req: AuthenticatedRequest, res: Response
 - Lore / Lore Context: ${(activePersona as any)?.lore || (activePersona as any)?.backstory || ''}`;
 
     personaContext += buildPersonaAuthoredDirections(activePersona);
+    personaContext += await dialectContext(req.user.id);
 
     const userName = creatorIdentity.creatorName;
     const creatorRole = effectiveCreator?.role || 'Creator, close partner, and primary companion';
@@ -2476,7 +2484,7 @@ CRITICAL VOICE & SOCIAL INTELLIGENCE DIRECTIVES:
     }
 
     text = sanitizePersonaSelfAddress(cleanSpokenDialogue(text), personaName, userName);
-    const spokenText = text;
+    const spokenText = applyPronunciations(text, activePersona?.id && activePersona.id!=='empty'?await pronunciationRules(req.user.id,activePersona.id,activePersona):[]);
 
     // High-Fidelity Speech Synthesis using chosen voice engine
     let audioUrl: string | undefined = undefined;
@@ -2869,6 +2877,7 @@ router.post('/agent/voice-chat-stream', async (req: AuthenticatedRequest, res: R
   }
 
   personaContext += buildPersonaAuthoredDirections(activePersona);
+    personaContext += await dialectContext(req.user.id);
 
   const suppliedCurrentTurn = String(req.body.userMessage || '').trim();
   const latestSuppliedUserTurn = [...(Array.isArray(messages) ? messages : [])]
@@ -4220,6 +4229,7 @@ Do not wrap your response in markdown code blocks or HTML tags. Return ONLY the 
   }
 }
 router.post('/agent/chat', handleAgentChat);
+router.use('/dialect-teaching', createDialectTeachingRouter());
 router.use('/voice-recognition', createVoiceRecognitionRouter(readPersonasForUser));
 router.use('/native-voice', createNativeVoiceRouter({readPersonas: readPersonasForUser, assertVoiceAccess, agentChat: handleAgentChat}));
 

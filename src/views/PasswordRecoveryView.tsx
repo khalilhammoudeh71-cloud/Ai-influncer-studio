@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { CheckCircle2, KeyRound, ShieldCheck } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { CheckCircle2, Eye, EyeOff, KeyRound, ShieldCheck } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 interface PasswordRecoveryViewProps {
@@ -11,6 +10,8 @@ interface PasswordRecoveryViewProps {
 export default function PasswordRecoveryView({ onComplete, onCancel }: PasswordRecoveryViewProps) {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [fieldError, setFieldError] = useState<{ field: 'password' | 'confirm' | 'form'; message: string } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
 
@@ -18,21 +19,24 @@ export default function PasswordRecoveryView({ onComplete, onCancel }: PasswordR
     event.preventDefault();
 
     if (password.length < 8) {
-      toast.error('Use at least 8 characters for your new password.');
+      setFieldError({ field: 'password', message: 'Use at least 8 characters for your new password.' });
       return;
     }
 
     if (password !== confirmPassword) {
-      toast.error('The passwords do not match.');
+      setFieldError({ field: 'confirm', message: 'The passwords do not match.' });
       return;
     }
 
+    setFieldError(null);
     setIsSaving(true);
-    const { error } = await supabase.auth.updateUser({ password });
+    let error;
+    try { ({ error } = await supabase.auth.updateUser({ password })); }
+    catch { error = { message: 'Could not connect. Check your connection and try again.' }; }
     setIsSaving(false);
 
     if (error) {
-      toast.error(error.message || 'We could not update your password. Please request a new link.');
+      setFieldError({ field: 'form', message: error.message || 'We could not update your password. Please request a new link.' });
       return;
     }
 
@@ -54,7 +58,6 @@ export default function PasswordRecoveryView({ onComplete, onCancel }: PasswordR
             <div className="w-16 h-16 rounded-2xl mx-auto flex items-center justify-center bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 mb-6">
               <CheckCircle2 size={30} />
             </div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-emerald-400 mb-3">Password updated</p>
             <h1 className="text-2xl font-black mb-3">Password updated</h1>
             <p className="text-sm text-white/60 leading-relaxed mb-7">
               Your new password is active. You can continue directly to your studio.
@@ -85,7 +88,9 @@ export default function PasswordRecoveryView({ onComplete, onCancel }: PasswordR
                 </label>
                 <input
                   id="new-password"
-                  type="password"
+                  aria-invalid={fieldError?.field === 'password'}
+                  aria-describedby={fieldError?.field === 'password' ? 'password-error' : undefined}
+                  type={showPassword ? 'text' : 'password'}
                   autoComplete="new-password"
                   required
                   minLength={8}
@@ -100,7 +105,9 @@ export default function PasswordRecoveryView({ onComplete, onCancel }: PasswordR
                 </label>
                 <input
                   id="confirm-password"
-                  type="password"
+                  aria-invalid={fieldError?.field === 'confirm'}
+                  aria-describedby={fieldError?.field === 'confirm' ? 'confirm-error' : undefined}
+                  type={showPassword ? 'text' : 'password'}
                   autoComplete="new-password"
                   required
                   minLength={8}
@@ -109,9 +116,11 @@ export default function PasswordRecoveryView({ onComplete, onCancel }: PasswordR
                   className="luxury-input w-full px-4 py-3.5 text-sm"
                 />
               </div>
+              {fieldError && <p id={fieldError.field === 'password' ? 'password-error' : fieldError.field === 'confirm' ? 'confirm-error' : 'recovery-error'} role="alert" className="text-sm text-rose-300">{fieldError.message}</p>}
+              <button type="button" onClick={() => setShowPassword(value => !value)} aria-pressed={showPassword} className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}{showPassword ? 'Hide passwords' : 'Show passwords'}</button>
               <div className="flex items-center gap-2 text-xs text-white/45 pt-1">
                 <ShieldCheck size={15} className="text-emerald-400 shrink-0" />
-                Your password is encrypted and never shown to us.
+                Your password is managed securely by your account provider.
               </div>
               <button
                 type="submit"

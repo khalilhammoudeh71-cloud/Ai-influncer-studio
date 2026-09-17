@@ -60,3 +60,27 @@ test('an old upload finishing last is followed by the latest value, not lost his
   assert.equal(storage.accountLocalStorage.getItem('chat_history_super_agent'),'new');
   storage.setActiveStorageUserId(null);
 });
+
+test('failed hydration upload reports pending sync and preserves the local history', async () => {
+  localStorage.clear(); storage.setActiveStorageUserId('qa');
+  storage.configureAccountStorageSync({list:async()=>[],save:async()=>{throw new Error('offline');},remove:async()=>{}});
+  storage.accountLocalStorage.setItem('chat_history_super_agent','keep this conversation');
+  await assert.rejects(storage.hydrateAccountLocalStorage('qa'), /local changes are preserved/);
+  assert.equal(storage.accountLocalStorage.getItem('chat_history_super_agent'),'keep this conversation');
+  storage.setActiveStorageUserId(null);
+});
+
+test('retry includes legacy local values after their first cloud upload fails', async () => {
+  localStorage.clear(); storage.setActiveStorageUserId('qa');
+  const base='chat_history_super_agent';
+  localStorage.setItem(storage.accountStorageKey(base,'qa'),'legacy local draft');
+  storage.configureAccountStorageSync({list:async()=>[],save:async()=>{throw new Error('offline');},remove:async()=>{}});
+  await assert.rejects(storage.hydrateAccountLocalStorage('qa'));
+  let uploaded!:()=>void;
+  const finished=new Promise<void>(resolve=>uploaded=resolve);
+  storage.configureAccountStorageSync({list:async()=>[],save:async(key,value)=>{uploaded();return {key,value,updatedAt:new Date().toISOString()};},remove:async()=>{}});
+  storage.retryAccountWorkspaceSync('qa');
+  await finished;
+  assert.equal(storage.accountLocalStorage.getItem(base),'legacy local draft');
+  storage.setActiveStorageUserId(null);
+});
