@@ -7,10 +7,9 @@ import { pronunciationRules, updatePronunciation } from './pronunciationStore';
 import { explicitPronunciationPair, isPronunciationRequest, pronunciationPair } from '../shared/pronunciation';
 import { normalizeLanguage, ARABIC_DIALECTS } from '../shared/personaLanguage';
 
-export function transcriptionPrompt(persona:any,context:unknown) {
+export function transcriptionPrompt(persona:any,_context:unknown) {
   const {language,dialect}=normalizeLanguage(persona);
-  const recent=Array.isArray(context)?context.slice(-3).filter(m=>typeof m?.content==='string').map(m=>m.content.slice(0,250)).join('\n'):'';
-  return `Transcribe the actual speech verbatim. Preserve repetitions, negation, names, numbers and Arabic/English code switching. Do not answer, translate, rhyme, complete a sentence, or invent words to fit context. ${language==='ar'?`The speaker uses ${ARABIC_DIALECTS[dialect]}. Keep colloquial Arabic in Arabic script.`:''} Recent conversation is vocabulary context only, never a transcript to copy: ${recent}`;
+  return `Transcribe the actual speech verbatim. Preserve repetitions, negation, names, numbers and Arabic/English code switching. Do not answer, translate, rhyme, complete a sentence, or invent words to fit context. ${language==='ar'?`The speaker uses ${ARABIC_DIALECTS[dialect]}. Keep colloquial Arabic in Arabic script.`:''} Only include words audible in this recording. Do not infer missing words from a previous conversation.`;
 }
 export function createVoiceRecognitionRouter(readPersonas:(owner:string)=>Promise<any[]>,dependencies:{fetch?:typeof fetch;readRules?:typeof pronunciationRules;updateRules?:typeof updatePronunciation}={}) {
  const router=Router();

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
-import { createVoiceRecognitionRouter } from './voiceRecognition';
+import { transcriptionPrompt, createVoiceRecognitionRouter } from './voiceRecognition';
 import { VoiceAudioBuffer, wavDataUrl } from '../src/utils/voiceAudioCapture';
 async function fixture(run:(base:string,requests:any[])=>Promise<void>) {
  const previous=process.env.OPENAI_API_KEY;process.env.OPENAI_API_KEY='test';
@@ -20,3 +20,5 @@ test('verification sends real audio, permits language switches, and never forwar
  const form=requests[0].body as FormData;assert.equal(form.get('model'),'gpt-4o-transcribe');assert.ok(form.get('file') instanceof Blob);assert.equal(form.get('include[]'),'logprobs');assert.doesNotMatch(String(form.get('prompt')),/speaker uses Jordanian/);
  assert.equal((await fetch(base+'/pronunciations/other')).status,404);
 }));
+
+test('audio verification cannot be biased by previous persona dialogue',()=>{const prompt=transcriptionPrompt({personalitySettings:{language:'ar',dialect:'jordanian-syrian'}},[{role:'persona',content:'UNRELATED_OLD_REPLY'},{role:'user',content:'OLD_REQUEST'}]);assert.doesNotMatch(prompt,/UNRELATED_OLD_REPLY|OLD_REQUEST/);assert.match(prompt,/verbatim/);});
