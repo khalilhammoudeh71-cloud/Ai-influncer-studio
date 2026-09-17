@@ -7,7 +7,7 @@ import { GoogleGenAI } from '@google/genai';
 import { randomUUID, createHash } from 'node:crypto';
 import { readVoiceState, writeVoiceState, claimVoiceState, replaceVoiceState } from './personaVoiceStore';
 import type { AuthenticatedRequest } from './auth';
-import { validDialect, dialectRule, dialectWordingContext, dialectPronunciationContext, DIALECT_PROFILES, type DialectProfile, type DialectProfileId } from '../shared/dialectTeaching';
+import { validDialect, unapprovedDialectCandidates, dialectRule, dialectWordingContext, dialectPronunciationContext, DIALECT_PROFILES, type DialectProfile, type DialectProfileId } from '../shared/dialectTeaching';
 const key=(id:string)=>'dialect-profile:'+id;
 export async function readDialect(owner:string,id:DialectProfileId):Promise<DialectProfile> {return await readVoiceState(owner,key(id))||{id,revision:0,rules:[]};}
 export async function dialectContext(owner:string) {const profiles=await Promise.all(DIALECT_PROFILES.map(id=>readDialect(owner,id)));return dialectWordingContext(profiles)+dialectPronunciationContext(profiles);}
@@ -48,7 +48,7 @@ export function createDialectTeachingRouter(dependencies:Partial<{read:typeof re
  });
  router.get('/:dialect/recordings',async(req:AuthenticatedRequest,res)=>{try{const recordings=(await list(req.user.id)).filter((r:any)=>r.dialect===req.params.dialect&&r.status!=='deleted').map(({id,name,status}:any)=>({id,name,status}));res.json({recordings});}catch{res.status(503).json({error:'References could not be loaded.'});}});
  router.delete('/:dialect/recordings/:id',async(req:AuthenticatedRequest,res)=>{try{const record=await read(req.user.id,'dialect-recording:'+req.params.id);if(!record||record.dialect!==req.params.dialect)return res.status(404).json({error:'Recording unavailable.'});if(record.status==='analyzing')return res.status(409).json({error:'Wait for analysis before deleting the recording.'});await write(req.user.id,'dialect-recording:'+req.params.id,{...record,audio:undefined,status:'deleted'});res.json({deleted:true});}catch{res.status(503).json({error:'Audio could not be deleted.'});}});
- router.get('/:dialect/recordings/:id',async(req:AuthenticatedRequest,res)=>{try{let record=await read(req.user.id,'dialect-recording:'+req.params.id);if(!record||record.dialect!==req.params.dialect)return res.status(404).json({error:'Recording unavailable.'});if(record.status==='analyzing'&&Date.now()-Date.parse(record.createdAt)>120000){const next={...record,status:'unknown',error:'Analysis outcome is unresolved. No automatic repeat was submitted.'};if(await replace(req.user.id,'dialect-recording:'+req.params.id,record,next))record=next;}res.json({id:req.params.id,targetWord:record.targetWord,status:record.status,candidates:record.candidates||[],error:record.error});}catch{res.status(503).json({error:'Status unavailable.'});}});
+ router.get('/:dialect/recordings/:id',async(req:AuthenticatedRequest,res)=>{try{let record=await read(req.user.id,'dialect-recording:'+req.params.id);if(!record||record.dialect!==req.params.dialect)return res.status(404).json({error:'Recording unavailable.'});if(record.status==='analyzing'&&Date.now()-Date.parse(record.createdAt)>120000){const next={...record,status:'unknown',error:'Analysis outcome is unresolved. No automatic repeat was submitted.'};if(await replace(req.user.id,'dialect-recording:'+req.params.id,record,next))record=next;}res.json({id:req.params.id,targetWord:record.targetWord,status:record.status,candidates:unapprovedDialectCandidates(record.candidates||[],await profile(req.user.id,req.params.dialect as DialectProfileId)),error:record.error});}catch{res.status(503).json({error:'Status unavailable.'});}});
  router.put('/:dialect',async(req:AuthenticatedRequest,res)=>{try{
   const id=req.params.dialect;if(!validDialect(id))return res.status(400).json({error:'Unknown dialect.'});
   const previous=await read(req.user.id,key(id)),profile:DialectProfile=previous||{id,revision:0,rules:[]};
@@ -61,7 +61,7 @@ export function createDialectTeachingRouter(dependencies:Partial<{read:typeof re
    if(old&&old.replacement!==rule.replacement&&req.body.replace!==true)return res.status(409).json({error:'A different correction exists. Confirm replacement first.'});
    rules=[{...rule,id:old?.id||(rule.recordingId?rule.id:randomUUID())},...rules.filter(r=>r.id!==old?.id)];if(rules.length>100)return res.status(400).json({error:'This profile has 100 rules. Remove one before adding another.'});
   }
-  const next={...profile,rules,revision:profile.revision+1};const saved=previous?await replace(req.user.id,key(id),previous,next):await claim(req.user.id,key(id),next);
+  const approvedCandidateIds=rule?.recordingId?[...new Set([...(profile.approvedCandidateIds||[]),rule.id])]:profile.approvedCandidateIds;const next={...profile,rules,approvedCandidateIds,revision:profile.revision+1};const saved=previous?await replace(req.user.id,key(id),previous,next):await claim(req.user.id,key(id),next);
   if(!saved)return res.status(409).json({error:'Dialect changed elsewhere. Reload before saving.'});res.json(next);
  }catch{res.status(503).json({error:'Correction could not be saved.'});}});
  return router;
