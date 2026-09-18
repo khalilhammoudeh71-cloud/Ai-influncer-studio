@@ -26,7 +26,7 @@ function fixture(options: { previewTimeout?: boolean; saveTimeout?: boolean; pre
     assert.equal((init?.headers as Record<string,string>)['xi-api-key'], 'fixture-secret');
     assert.equal(init?.redirect,'error');
     assert.equal(JSON.stringify(body).includes('fixture-secret'),false);
-    if (String(url).includes('/remix?')) {
+    if (String(url).includes('/remix?') || String(url).includes('/design?')) {
       if (options.previewTimeout) throw new Error('provider exception includes fixture-secret');
       if (options.previewStatus) return Response.json({detail:'fixture-secret provider raw payload'},{status:options.previewStatus});
       return Response.json({previews:[{generated_voice_id:'remix_preview_1',audio_base_64:options.invalidPreview?'not audio':Buffer.alloc(300,1).toString('base64'),media_type:'audio/mpeg'}],text:'The generated sample text.'});
@@ -44,6 +44,17 @@ function fixture(options: { previewTimeout?: boolean; saveTimeout?: boolean; pre
   return {service,store,rows,calls,remote,authorized,authorize,remix,save,options};
 }
 
+test('voice design uses a separate draft and the official design settings', async () => {
+  const f=fixture({denySource:true});
+  const values={...input,mode:'design' as const,designModel:'eleven_ttv_v3' as const,guidanceScale:7,loudness:0.2,enhance:true};
+  const result=await f.remix(values);
+  assert.equal(result.status,'ready');assert.deepEqual(f.authorized,[]);
+  assert.match(f.calls[0].url,/\/text-to-voice\/design\?/);
+  assert.equal(f.calls[0].body.model_id,'eleven_ttv_v3');
+  assert.equal(f.calls[0].body.guidance_scale,7);
+  assert.equal(f.calls[0].body.should_enhance,true);
+  await f.remix(values);assert.equal(f.calls.length,1);
+});
 test('remix uses the official schema and exposes only scoped audio previews', async () => {
   const f=fixture(); const result=await f.remix();
   assert.deepEqual(f.authorized,[input.voiceId]);

@@ -1,6 +1,7 @@
 import { LatestVoicePreview, VoiceDraftGuard, type CloneResult } from '../../shared/personaVoiceLifecycle';
 import { restoreSavedVoice, type SavedPersonaVoice } from '../../shared/personaVoiceLibrary';
 import SavedPersonaVoices from '../components/SavedPersonaVoices';
+import ElevenLabsVoiceTools from '../components/ElevenLabsVoiceTools';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { RotatingHeroImages } from '../components/RotatingHeroImages';
@@ -197,6 +198,11 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
   const [stability, setStability] = useState(0.5);
   const [clarity, setClarity] = useState(0.75);
   const [style, setStyle] = useState(0.0);
+  const [speechModel, setSpeechModel] = useState('eleven_flash_v2_5');
+  const [languageOverride, setLanguageOverride] = useState<'ar' | 'en' | ''>('');
+  const [speakingSpeed, setSpeakingSpeed] = useState(1);
+  const [speakerBoost,setSpeakerBoost] = useState(true);
+  const [dictionaries,setDictionaries] = useState<Array<{pronunciation_dictionary_id:string;version_id:string}>>([]);
 
   const audioRef = useRef<HTMLAudioElement>(null);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -232,7 +238,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
   const previewPlayer = useRef(new LatestVoicePreview());
   useEffect(() => {
     cloneGuard.current.change(); previewPlayer.current.stop(); setPreviewingVoice(null);
-  }, [persona?.id, targetAttachPersonaId, selectedELVoiceId, voiceEngine, attachOnClone, stability, clarity, style, selectedEmotion, persona?.voiceSpeakingSpeed]);
+  }, [persona?.id, targetAttachPersonaId, selectedELVoiceId, voiceEngine, attachOnClone, stability, clarity, style, selectedEmotion, persona?.voiceSpeakingSpeed, speechModel, languageOverride, speakingSpeed, speakerBoost, dictionaries]);
   useEffect(() => { cloneGuard.current.change(); setCloneResult(null); setSpeakerAuthorized(false); }, [cloningAudioBase64]);
   useEffect(() => () => { cloneGuard.current.change(); previewPlayer.current.stop(); }, []);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -289,6 +295,11 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
       setStability((persona.voiceStability ?? 75) / 100);
       setClarity((persona.voiceLikeness ?? 85) / 100);
       setStyle((persona.voiceStyleExaggeration ?? 20) / 100);
+      setSpeechModel(persona.elevenLabsSpeechModel || 'eleven_flash_v2_5');
+      setLanguageOverride(persona.elevenLabsLanguageOverride || '');
+      setSpeakingSpeed(persona.voiceSpeakingSpeed ?? 1);
+      setSpeakerBoost(persona.elevenLabsSpeakerBoost !== false);
+      setDictionaries(persona.elevenLabsPronunciationDictionaries || []);
       if (persona.voiceEngine === 'elevenlabs' && persona.voiceId) {
         setVoiceEngine('elevenlabs');
         setSelectedELVoiceId(persona.voiceId);
@@ -300,7 +311,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
         setSelectedVoice(persona.voiceId || '');
       }
     }
-  }, [persona?.id, persona?.voiceEngine, persona?.voiceId, persona?.voiceRevision, persona?.voiceStability, persona?.voiceLikeness, persona?.voiceStyleExaggeration]);
+  }, [persona?.id, persona?.voiceEngine, persona?.voiceId, persona?.voiceRevision, persona?.voiceStability, persona?.voiceLikeness, persona?.voiceStyleExaggeration, persona?.elevenLabsSpeechModel, persona?.elevenLabsLanguageOverride, persona?.elevenLabsSpeakerBoost, persona?.elevenLabsPronunciationDictionaries, persona?.voiceSpeakingSpeed]);
 
   const startRecording = async () => {
     try {
@@ -399,6 +410,8 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
         voiceId: activeVoiceId,
         voiceName: elevenLabsVoices.find(v => v.voice_id === activeVoiceId)?.name || activeVoices.find(v => v.id === activeVoiceId)?.name || (cloneResult?.voiceId === activeVoiceId ? cloneResult.name : '') || 'Selected voice',
         voiceStability: stability * 100, voiceLikeness: clarity * 100, voiceStyleExaggeration: style * 100,
+        voiceSpeakingSpeed: speakingSpeed,
+        ...(voiceEngine === 'elevenlabs' ? {elevenLabsSpeechModel:speechModel,elevenLabsLanguageOverride:languageOverride,elevenLabsSpeakerBoost:speakerBoost,elevenLabsPronunciationDictionaries:dictionaries} : {}),
         ...(cloneResult?.voiceId === activeVoiceId && cloningAudioBase64 ? {
           voiceSampleUrl: cloningAudioBase64,
           audioSamples: [{ name: cloneResult.name, base64: cloningAudioBase64 }],
@@ -581,12 +594,14 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
       };
 
       if (voiceEngine === 'elevenlabs') {
+        speechParams.speechModel = speechModel;
+        speechParams.activePersona = {...persona, elevenLabsSpeechModel:speechModel, elevenLabsLanguageOverride:languageOverride,elevenLabsSpeakerBoost:speakerBoost,elevenLabsPronunciationDictionaries:dictionaries};
         speechParams.voiceId = selectedELVoiceId;
         speechParams.voiceSettings = {
           stability,
           similarity_boost: clarity,
           style,
-          speed: persona?.voiceSpeakingSpeed ?? 1,
+          speed: speakingSpeed,
         };
       } else {
         speechParams.voice = selectedVoice;
@@ -620,7 +635,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
     try {
       await previewPlayer.current.play(async () => {
         const text = `Hi, I'm ${persona?.name || 'your creator'}. Let's talk about ${persona?.niche || 'what inspires us'}. What would you like to create today?`;
-        const result = voiceEngine === 'elevenlabs' ? await api.voice.previewVoice(voiceId, text, { stability, similarity_boost: clarity, style, speed: persona?.voiceSpeakingSpeed ?? 1 }, selectedEmotion || 'neutral') : await api.voice.generateSpeech({ voiceId, voice: voiceId, engine: voiceEngine, text, isPreview: true, activePersona: persona || undefined, voiceReference: persona?.voiceSampleUrl, emotion: selectedEmotion || 'neutral', voiceSettings: {speed: persona?.voiceSpeakingSpeed ?? 1} });
+        const result = voiceEngine === 'elevenlabs' ? await api.voice.previewVoice(voiceId, text, { stability, similarity_boost: clarity, style, speed: speakingSpeed }, selectedEmotion || 'neutral', speechModel, languageOverride || undefined,{...persona,elevenLabsSpeakerBoost:speakerBoost,elevenLabsPronunciationDictionaries:dictionaries}) : await api.voice.generateSpeech({ voiceId, voice: voiceId, engine: voiceEngine, text, isPreview: true, activePersona: persona || undefined, voiceReference: persona?.voiceSampleUrl, emotion: selectedEmotion || 'neutral', voiceSettings: {speed: persona?.voiceSpeakingSpeed ?? 1} });
         return result.audioUrl;
       }, url => {
         const audio = new Audio(url); previewAudioRef.current = audio;
@@ -896,6 +911,12 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
         <SlidersHorizontal className="w-4 h-4 text-[#E7C477]" />
         <span className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-widest">Voice Settings</span>
       </div>
+      <label className="block text-sm">Speech model<select aria-label="ElevenLabs speech model" value={speechModel} onChange={e=>setSpeechModel(e.target.value)} className="premium-input mt-1 w-full p-3"><option value="eleven_flash_v2_5">Flash 2.5</option><option value="eleven_turbo_v2_5">Turbo 2.5</option><option value="eleven_multilingual_v2">Multilingual v2</option><option value="eleven_v3">Eleven v3</option></select></label>
+      <label className="block text-sm">Language override<select aria-label="ElevenLabs language override" value={languageOverride} onChange={e=>setLanguageOverride(e.target.value as 'ar' | 'en' | '')} className="premium-input mt-1 w-full p-3"><option value="">Automatic</option><option value="ar">Arabic</option><option value="en">English</option></select></label>
+      <label className="block text-sm">Speed · {speakingSpeed.toFixed(2)}×<input aria-label="Speaking speed" type="range" min="0.7" max="1.2" step="0.05" value={speakingSpeed} disabled={speechModel==='eleven_v3'} onChange={e=>setSpeakingSpeed(Number(e.target.value))} className="voice-slider mt-2 w-full"/></label>
+      {speechModel==='eleven_v3' && <p className="text-xs text-[var(--text-muted)]">Eleven v3 controls pacing through its delivery; the speed slider is unavailable.</p>}
+      <label className="flex gap-2 text-sm"><input type="checkbox" checked={speakerBoost} disabled={speechModel==='eleven_v3'} onChange={e=>setSpeakerBoost(e.target.checked)}/>Speaker boost</label>
+      <p className="text-xs text-zinc-400">Pronunciation dictionaries: {dictionaries.length} selected. Create or select one below; Save as default applies it to this persona.</p>
 
       {/* Stability */}
       <div className="space-y-2">
@@ -1395,7 +1416,8 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                   </div>
 
                   {/* Voice Settings */}
-                  {isPro && <VoiceSettingsPanel />}
+                  <VoiceSettingsPanel />
+                  <ElevenLabsVoiceTools key={persona?.id || 'studio'} voiceId={selectedELVoiceId} voiceName={persona?.name || 'Character'} dictionaries={dictionaries} onDictionaries={setDictionaries} onSelect={async voice=>{setSelectedELVoiceId(voice.voiceId);setVoiceEngine('elevenlabs');await fetchVoices();}}/>
                 </>
               ) : (
                 <div className="space-y-4">

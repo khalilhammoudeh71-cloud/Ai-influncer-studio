@@ -4,7 +4,7 @@ import { personalityDelivery, type PersonalitySettings } from './personality';
 /** Provider-specific delivery. The stored speaker binding is never changed here. */
 export type VoiceEmotion = 'neutral' | 'comforting' | 'excited' | 'playful';
 export const DEFAULT_SPEECH_MODEL = 'eleven_turbo_v2_5';
-export type DeliveryPersona = {callPreferences?:import('./voiceCallPreferences').CallPreferences;voiceStability?:number;voiceLikeness?:number;voiceStyleExaggeration?:number;voiceSpeakingSpeed?:number;personalityTraits?:unknown;personalitySettings?:PersonalitySettings};
+export type DeliveryPersona = {callPreferences?:import('./voiceCallPreferences').CallPreferences;voiceStability?:number;voiceLikeness?:number;voiceStyleExaggeration?:number;voiceSpeakingSpeed?:number;elevenLabsSpeakerBoost?:boolean;personalityTraits?:unknown;personalitySettings?:PersonalitySettings};
 const clamp=(n:number,lo:number,hi:number)=>Math.min(hi,Math.max(lo,n));
 const finite=(n:unknown,fallback:number)=>typeof n==='number'&&Number.isFinite(n)?n:fallback;
 export function inferVoiceEmotion(text:string):VoiceEmotion {
@@ -27,7 +27,7 @@ export function buildVoiceDelivery(provider:string,model:string,text:string,pers
   stability:clamp(finite(overrides?.stability,finite(persona.voiceStability,50)/100)+stabilityOffset+offsets[1],0,1),
   similarity_boost:clamp(finite(overrides?.similarity_boost,finite(persona.voiceLikeness,88)/100),0,1),
   style:clamp(finite(overrides?.style,finite(persona.voiceStyleExaggeration,0)/100)+styleOffset+offsets[2],0,1),
-  speed:clamp(finite(overrides?.speed,finite(persona.voiceSpeakingSpeed,1))+speedOffset+offsets[0],.7,1.2),use_speaker_boost:true,
+  speed:clamp(finite(overrides?.speed,finite(persona.voiceSpeakingSpeed,1))+speedOffset+offsets[0],.7,1.2),use_speaker_boost:persona.elevenLabsSpeakerBoost !== false,
  };
  const unsupported:string[]=[];
  if(provider==='elevenlabs'&&model.startsWith('eleven_v3')) {

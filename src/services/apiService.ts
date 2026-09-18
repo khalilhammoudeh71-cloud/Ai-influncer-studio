@@ -334,6 +334,9 @@ export const api = {
   },
 
   voice: {
+    elevenLabsToolData: (kind:string,params:Record<string,string>={})=>request<any>(`/elevenlabs-tools/${encodeURIComponent(kind)}?${new URLSearchParams(params)}`),
+    runElevenLabsTool: async (input:Record<string,any>)=>request<any>('/elevenlabs-tools',{method:'POST',body:JSON.stringify({...input,...(input.audio?{audio:await persistMediaStringsForPlayback(input.audio)}:{})}),signal:AbortSignal.timeout(65_000)}),
+    elevenLabsToolStatus: (id:string)=>request<any>(`/elevenlabs-tools/operations/${encodeURIComponent(id)}`),
     remixVoice: (input: VoiceRemixInput) => request<VoiceRemixResult>('/voice-remixes', {method:'POST',body:JSON.stringify(input),signal:AbortSignal.timeout(65_000)}),
     remixVoiceStatus: (operationId: string) => request<VoiceRemixResult>(`/voice-remixes/${encodeURIComponent(operationId)}`),
     saveRemixedVoice: (input: SaveRemixedVoiceInput) => request<SavedRemixedVoiceResult>(`/voice-remixes/${encodeURIComponent(input.operationId)}/save`, {method:'POST',body:JSON.stringify(input),signal:AbortSignal.timeout(65_000)}),
@@ -380,7 +383,7 @@ export const api = {
     cloneStatus: (id: string) => request<CloneResult>(`/voice-clones/${encodeURIComponent(id)}`),
     cloneWithModel: async (input:{engine:string;name:string;reference:string;text:string;speakerAuthorized:boolean;retryRejected?:boolean})=>requestWithBody<CloneResult>('/voice-model-clones',{...input,reference:(await persistMediaStringsForPlayback([input.reference]))[0]}),
     modelCloneStatus:(id:string)=>request<CloneResult>(`/voice-model-clones/${encodeURIComponent(id)}`),
-    previewVoice: (voiceId: string, text: string, voiceSettings?: Record<string, number>, emotion?: string, speechModel?: string, languageCode?: 'ar' | 'en') => requestWithBody<{ audioUrl: string; voiceId: string }>('/persona-voice-preview', { voiceId, text, voiceSettings, emotion, speechModel, languageCode }),
+    previewVoice: (voiceId: string, text: string, voiceSettings?: Record<string, number>, emotion?: string, speechModel?: string, languageCode?: 'ar' | 'en', activePersona?:Partial<Persona>) => requestWithBody<{ audioUrl: string; voiceId: string }>('/persona-voice-preview', { voiceId, text, voiceSettings, emotion, speechModel, languageCode,activePersona }),
     generateScript: (params: { topic: string; persona: Persona; mode?: string; existingScript?: string; length?: string }) =>
       requestWithBody<{ script: string }>('/generate-voice-script', params),
     generateSpeech: async (params: {

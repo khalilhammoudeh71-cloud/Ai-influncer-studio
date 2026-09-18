@@ -2,6 +2,7 @@ import { reviewCampaignDraft } from './agentDraftReview';
 import { createDialectTeachingRouter, dialectContext } from './dialectTeaching';
 import { createVoiceRecognitionRouter } from './voiceRecognition';
 import { createVoiceRemixRouter, VoiceRemixes } from './voiceRemixes';
+import { createElevenLabsVoiceToolsRouter, ElevenLabsVoiceTools } from './elevenLabsVoiceTools';
 import { pronunciationRules } from './pronunciationStore';
 import { applyPronunciations } from '../shared/pronunciation';
 import { selectAgentSkills } from './agentSkills';
@@ -1571,6 +1572,7 @@ router.post('/agent/update-elevenlabs-key', async (req: AuthenticatedRequest, re
 });
 
 const elevenKey = () => process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key || '';
+router.use('/elevenlabs-tools',createElevenLabsVoiceToolsRouter({service:new ElevenLabsVoiceTools({get:readVoiceState,put:writeVoiceState,claim:claimVoiceState},key=>personaVoices.account(key)),apiKey:elevenKey,authorize:assertVoiceAccess,loadAudio:(owner,refs)=>loadVoiceUploadReferences(refs,owner,process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || ''),creator:req=>isCreatorUser(req.user?.email)}));
 router.use('/voice-remixes', createVoiceRemixRouter({
   service: new VoiceRemixes({get:readVoiceState,put:writeVoiceState,claim:claimVoiceState,replace:replaceVoiceState}, personaVoices),
   apiKey: elevenKey,
@@ -1598,6 +1600,18 @@ async function assertVoiceAccess(req: AuthenticatedRequest, voiceId: string, per
 }
 function voiceError(res: Response, error: unknown) {
   return res.status(error instanceof VoiceLifecycleError ? error.statusCode : 503).json({ error: error instanceof Error ? error.message : 'Voice service unavailable. Try again later.' });
+}
+async function speechDictionaries(req:AuthenticatedRequest,persona:any) {
+  const dictionaries=persona?.elevenLabsPronunciationDictionaries || [];
+  if(!Array.isArray(dictionaries)||dictionaries.length>3)throw new VoiceLifecycleError('Select up to three pronunciation dictionaries.',400);
+  for(const locator of dictionaries){
+    if(!/^[A-Za-z0-9_-]{1,128}$/.test(locator?.pronunciation_dictionary_id)||!/^[A-Za-z0-9_-]{1,128}$/.test(locator?.version_id))throw new VoiceLifecycleError('Choose a valid dictionary version.',400);
+    if(!isCreatorUser(req.user?.email)){
+      const owned=await readVoiceState(req.user.id,`eleven-dictionary:${locator.pronunciation_dictionary_id}`);
+      if(!owned || owned.account!==await personaVoices.account(elevenKey()) || owned.versionId!==locator.version_id)throw new VoiceLifecycleError('Dictionary unavailable in your account.',403);
+    }
+  }
+  return dictionaries.map(({pronunciation_dictionary_id,version_id}:any)=>({pronunciation_dictionary_id,version_id}));
 }
 router.post('/elevenlabs-clone-voice', async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -1638,7 +1652,7 @@ router.post('/persona-voice-preview', async (req: AuthenticatedRequest, res: Res
     const languageCode = req.body.languageCode;
     if (languageCode && !['ar', 'en'].includes(languageCode)) throw new VoiceLifecycleError('Choose Arabic, English, or automatic language.', 400);
     const delivery = buildVoiceDelivery('elevenlabs', model, req.body.text, req.body.activePersona, req.body.voiceSettings, req.body.emotion);
-    const audioUrl = await personaVoices.preview(elevenKey(), id, delivery.text, delivery.settings as any, model, languageCode);
+    const audioUrl = await personaVoices.preview(elevenKey(), id, delivery.text, delivery.settings as any, model, languageCode,await speechDictionaries(req,req.body.activePersona));
     res.setHeader('Cache-Control', 'no-store');
     return res.json({ audioUrl, voiceId: id, model, delivery });
   } catch (error) { return voiceError(res, error); }
@@ -1700,12 +1714,13 @@ const handleGenerateSpeech = async (req: AuthenticatedRequest, res: Response) =>
     const result = await dispatchSelectedSpeech({...body, voiceReference: body.voiceReference || body.activePersona?.voiceSampleUrl}, {
       elevenlabs: async voiceId => {
         await assertVoiceAccess(req, voiceId);
+        const dictionaries=await speechDictionaries(req,body.activePersona);
         const key = process.env.ELEVENLABS_API_KEY || process.env.Elevenlabs_api_key;
         if (!key) throw new SelectedSpeechError('ElevenLabs is not configured.', 503);
         return audioData(await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}${body.stream === true ? '/stream' : ''}`, {
           method: 'POST', headers: { 'xi-api-key': key, 'Content-Type': 'application/json' },
           signal: AbortSignal.any([cancelled.signal, AbortSignal.timeout(15000)]),
-          body: JSON.stringify({ text: delivery.text, model_id: speechModel, voice_settings: voiceSettings, ...(['ar', 'en'].includes(body.activePersona?.elevenLabsLanguageOverride) ? {language_code:body.activePersona.elevenLabsLanguageOverride} : {}) }),
+          body: JSON.stringify({ text: delivery.text, model_id: speechModel, voice_settings: voiceSettings, ...(dictionaries.length?{pronunciation_dictionary_locators:dictionaries}:{}), ...(['ar', 'en'].includes(body.activePersona?.elevenLabsLanguageOverride) ? {language_code:body.activePersona.elevenLabsLanguageOverride} : {}) }),
         }));
       },
       openai: async voiceId => {

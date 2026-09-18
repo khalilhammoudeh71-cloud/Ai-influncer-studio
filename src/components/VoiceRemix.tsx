@@ -10,11 +10,16 @@ function rejectedBeforeSubmission(error: unknown) {
 }
 
 type Preview = { generatedVoiceId: string; audioUrl: string };
-export default function VoiceRemix({ voiceId, voiceName, disabled, expanded=false, onApply }: {
-  voiceId?: string; voiceName: string; disabled?: boolean; expanded?:boolean;
+export default function VoiceRemix({ voiceId: sourceVoiceId, voiceName, disabled, expanded=false, mode='remix', onApply }: {
+  voiceId?: string; voiceName: string; disabled?: boolean; expanded?:boolean; mode?:'remix'|'design';
   onApply(voice: { voiceId: string; name: string }): Promise<void>;
 }) {
-  const [description, setDescription] = useState('Keep the character’s vocal identity and tone. Speak Arabic with a natural urban Jordanian / Syrian accent, including Levantine vowel sounds and intonation.');
+  const voiceId = mode === 'design' ? 'voice-design' : sourceVoiceId;
+  const [designModel,setDesignModel] = useState<'eleven_multilingual_ttv_v2'|'eleven_ttv_v3'>('eleven_ttv_v3');
+  const [guidanceScale,setGuidanceScale] = useState(5);
+  const [loudness,setLoudness] = useState(0.5);
+  const [enhance,setEnhance] = useState(false);
+  const [description, setDescription] = useState(mode==='design'?'A warm, natural character voice speaking Arabic with an urban Jordanian / Syrian accent, including Levantine vowel sounds and intonation.':'Keep the character’s vocal identity and tone. Speak Arabic with a natural urban Jordanian / Syrian accent, including Levantine vowel sounds and intonation.');
   const [text, setText] = useState('أهلين، كيفك اليوم؟ أنا جاهزة نحكي شوي ونرتّب أفكارنا على رواق. شو حابب نعمل؟ إذا بدك صورة أو عندك فكرة جديدة، احكيلي عنها وبنشتغل عليها خطوة خطوة. خذ راحتك، أنا هون معك.');
   const [name, setName] = useState(`${voiceName} · Levantine`);
   const [previews, setPreviews] = useState<Preview[]>([]);
@@ -42,7 +47,7 @@ export default function VoiceRemix({ voiceId, voiceName, disabled, expanded=fals
     try {
       const id = crypto.randomUUID(); setOperationId(id); setPending('preview'); setPreviewDescription(description.trim());
       accountLocalStorage.setItem(`voice-remix:${voiceId}`,JSON.stringify({operationId:id,pending:'preview',description:description.trim(),name:name.trim(),text:text.trim()}));
-      const result = await api.voice.remixVoice({ voiceId, description: description.trim(), text: text.trim() || undefined, operationId: id });
+      const result = await api.voice.remixVoice({ voiceId, description: description.trim(), text: text.trim() || undefined, operationId: id,...(mode==='design'?{mode:'design' as const,designModel,guidanceScale,loudness,enhance}: {}) });
       if (revision.current !== snapshot) return;
       setOperationId(result.operationId);
       if (result.status==='ready') { setPreviews(result.previews); setSaved(null); setPending(null); }
@@ -94,14 +99,20 @@ export default function VoiceRemix({ voiceId, voiceName, disabled, expanded=fals
     finally{lock.current=false;setBusy(false);}
   }
   return <details open={expanded||undefined} className="rounded-xl border border-[#E7C477]/25 p-3">
-    <summary className="cursor-pointer text-sm font-medium text-[#E7C477]"><Wand2 size={15} className="mr-2 inline"/>Remix voice · accent & style</summary>
+    <summary className="cursor-pointer text-sm font-medium text-[#E7C477]"><Wand2 size={15} className="mr-2 inline"/>{mode==='design'?'Design a new voice':'Remix voice · accent & style'}</summary>
     <div className="mt-3 space-y-3">
-      <p className="text-xs leading-relaxed text-zinc-400">Describe changes to {voiceName}, then compare previews. Creates a new voice; accent accuracy and identity preservation need listening checks. Generation uses ElevenLabs credits.</p>
+      <p className="text-xs leading-relaxed text-zinc-400">{mode==='design'?'Describe the new character’s voice, accent, age and delivery.':'Describe changes to '+voiceName+'.'} Compare previews before saving. Generation uses ElevenLabs credits.</p>
+      {mode==='design' && <div className="space-y-3">
+        <label className="block text-sm">Design model<select value={designModel} onChange={e=>setDesignModel(e.target.value as typeof designModel)} disabled={busy || !!pending} className="mt-1 w-full rounded-xl bg-[#151515] p-3"><option value="eleven_ttv_v3">Voice Design v3</option><option value="eleven_multilingual_ttv_v2">Voice Design v2</option></select></label>
+        <label className="block text-sm">Prompt guidance · {guidanceScale}<input type="range" min="0" max="100" value={guidanceScale} disabled={busy || !!pending} onChange={e=>setGuidanceScale(Number(e.target.value))} className="w-full"/></label>
+        <label className="block text-sm">Loudness · {loudness.toFixed(1)}<input type="range" min="-1" max="1" step="0.1" value={loudness} disabled={busy || !!pending} onChange={e=>setLoudness(Number(e.target.value))} className="w-full"/></label>
+        <label className="flex gap-2 text-sm"><input type="checkbox" checked={enhance} disabled={busy || !!pending} onChange={e=>setEnhance(e.target.checked)}/>Enhance the description</label>
+      </div>}
       {!voiceId && <p className="text-xs text-amber-300">Select an ElevenLabs voice first.</p>}
       {disabled && <p className="text-xs text-amber-300">End the current call before changing its voice.</p>}
       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2"><label className="block text-sm">Accent & style <span className="text-xs text-zinc-400">At least 20 characters</span><textarea aria-label="Remix accent and style" value={description} onChange={e=>setDescription(e.target.value)} disabled={busy || !!pending} maxLength={1000} rows={3} className="mt-1 w-full rounded-xl border border-white/10 bg-[#151515] p-3 text-sm"/></label><PronunciationMicrophone key={`${voiceId}-style`} fieldLabel="accent and style" maxLength={1000} disabled={busy || !!pending || disabled || dictating} onBusy={setDictating} onText={setDescription}/></div>
       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2"><label className="block text-sm">Sample text <span className="text-xs text-zinc-400">Optional · 100–1000 characters · correct sentences only</span><textarea aria-label="Remix sample text" value={text} onChange={e=>setText(e.target.value)} disabled={busy || !!pending} maxLength={1000} rows={2} placeholder="Leave empty for an automatically generated sample." className="mt-1 w-full rounded-xl border border-white/10 bg-[#151515] p-3 text-sm"/></label><PronunciationMicrophone key={`${voiceId}-sample`} fieldLabel="sample text" maxLength={1000} disabled={busy || !!pending || disabled || dictating} onBusy={setDictating} onText={setText}/></div>
-      <button type="button" disabled={busy || dictating || !!pending || disabled || !voiceId || description.trim().length<20 || (!!text.trim() && text.trim().length<100)} onClick={()=>void generate()} className="min-h-11 rounded-xl bg-[#E7C477] px-4 text-sm font-semibold text-[#19160f] disabled:opacity-40">{busy?<><Loader2 className="mr-2 inline animate-spin" size={15}/>Working…</>:'Generate remix previews'}</button>
+      <button type="button" disabled={busy || dictating || !!pending || disabled || !voiceId || description.trim().length<20 || (!!text.trim() && text.trim().length<100)} onClick={()=>void generate()} className="min-h-11 rounded-xl bg-[#E7C477] px-4 text-sm font-semibold text-[#19160f] disabled:opacity-40">{busy?<><Loader2 className="mr-2 inline animate-spin" size={15}/>Working…</>:mode==='design'?'Generate voice previews':'Generate remix previews'}</button>
       {previews.length>0 && <>{previewDescription.length<20 && <p className="text-xs text-amber-300">Use a description of at least 20 characters and generate previews to save a remix.</p>}<label className="block text-sm">New voice name<input aria-label="Remixed voice name" value={name} onChange={e=>setName(e.target.value)} maxLength={100} disabled={busy || !!pending || !!saved} className="mt-1 min-h-11 w-full rounded-xl border border-white/10 bg-[#151515] px-3"/></label><div className="space-y-2">{previews.map((p,i)=><div key={p.generatedVoiceId} className="rounded-xl bg-white/5 p-3"><p className="mb-2 text-xs text-zinc-300">Option {i+1}</p><audio ref={el=>{if(el) audio.current[i]=el;}} controls src={p.audioUrl} onPlay={()=>audio.current.forEach((a,j)=>{if(j!==i)a?.pause();})} className="w-full"/><button type="button" disabled={busy || !!pending || disabled || previewDescription.length<20 || !name.trim() || !!saved} onClick={()=>void apply(p)} className="mt-2 min-h-11 rounded-lg border border-[#E7C477]/40 px-3 text-sm text-[#E7C477] disabled:opacity-40">Save & use this voice</button></div>)}</div></>}
       {saved && !notice && <button type="button" disabled={busy || disabled} onClick={()=>void apply()} className="min-h-11 text-sm text-[#E7C477]">Retry applying saved voice</button>}
       {pending && <button type="button" disabled={busy} onClick={()=>void checkStatus()} className="min-h-11 text-sm text-[#E7C477]">Check request status</button>}

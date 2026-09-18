@@ -15,6 +15,8 @@ export interface SavedPersonaVoice {
   voiceSpeakingSpeed?: number;
   elevenLabsSpeechModel?: string;
   elevenLabsLanguageOverride?: 'ar' | 'en' | '';
+  elevenLabsSpeakerBoost?: boolean;
+  elevenLabsPronunciationDictionaries?: Array<{pronunciation_dictionary_id:string;version_id:string}>;
   provider?: string;
   account?: string;
 }
@@ -34,6 +36,8 @@ export function restoreSavedVoice(voice: SavedPersonaVoice) {
     voiceSpeakingSpeed: voice.voiceSpeakingSpeed ?? 1,
     elevenLabsSpeechModel: voice.elevenLabsSpeechModel,
     elevenLabsLanguageOverride: voice.elevenLabsLanguageOverride,
+    elevenLabsSpeakerBoost: voice.elevenLabsSpeakerBoost,
+    elevenLabsPronunciationDictionaries: structuredClone(voice.elevenLabsPronunciationDictionaries || []),
   };
 }
 

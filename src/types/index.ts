@@ -79,6 +79,8 @@ export type Persona = {
   voiceSpeakingSpeed?: number;
   elevenLabsSpeechModel?: string;
   elevenLabsLanguageOverride?: 'ar' | 'en' | '';
+  elevenLabsSpeakerBoost?: boolean;
+  elevenLabsPronunciationDictionaries?: Array<{pronunciation_dictionary_id:string;version_id:string}>;
   wardrobe?: WardrobeItem[];
   activeOutfitId?: string;
   relationshipState?: RelationshipState;

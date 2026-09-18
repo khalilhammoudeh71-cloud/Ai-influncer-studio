@@ -55,11 +55,14 @@ export class VoiceRemixes {
     return op;
   }
   async remix(owner: string, apiKey: string, input: VoiceRemixInput, authorizeVoice: (voiceId: string) => Promise<void>): Promise<VoiceRemixResult> {
-    const operationId = validateId(input.operationId, true), voiceId = validateId(input.voiceId);
-    const description = requiredText(input.description, 5, 1000, 'Remix description');
+    const design = input.mode === 'design';
+    const operationId = validateId(input.operationId, true), voiceId = design ? 'voice-design' : validateId(input.voiceId);
+    const description = requiredText(input.description, design ? 20 : 5, 1000, 'Voice description');
+    const designSettings:Record<string,any> = design ? {model_id:input.designModel || 'eleven_ttv_v3',guidance_scale:input.guidanceScale ?? 5,loudness:input.loudness ?? 0.5,should_enhance:input.enhance === true,...(input.seed === undefined ? {} : {seed:input.seed})} : {};
+    if(design && (!['eleven_multilingual_ttv_v2','eleven_ttv_v3'].includes(designSettings.model_id!) || !Number.isFinite(designSettings.guidance_scale) || designSettings.guidance_scale! < 0 || designSettings.guidance_scale! > 100 || !Number.isFinite(designSettings.loudness) || designSettings.loudness! < -1 || designSettings.loudness! > 1 || (input.seed !== undefined && (!Number.isInteger(input.seed) || input.seed < 0 || input.seed > 2147483647)))) throw new VoiceLifecycleError('Choose valid Voice Design settings.',400);
     const text = input.text === undefined || input.text === '' ? undefined : requiredText(input.text, 100, 1000, 'Preview text');
-    await authorizeVoice(voiceId);
-    const account = await this.account(apiKey), requestHash = hash(JSON.stringify([voiceId, description, text || '']));
+    if(!design) await authorizeVoice(voiceId);
+    const account = await this.account(apiKey), requestHash = hash(JSON.stringify([voiceId, description, text || '',...(design ? [designSettings] : [])]));
     const op: PreviewOperation = { operationId, owner, account, sourceVoiceId: voiceId, requestHash, createdAt: new Date().toISOString(), status: 'submitting', previews: [] };
     if (!await this.store.claim(owner, `remix:${operationId}`, op)) {
       const existing = await this.readPreview(owner, apiKey, operationId);
@@ -67,7 +70,7 @@ export class VoiceRemixes {
       return this.status(owner, apiKey, operationId);
     }
     try {
-      const response = await this.request(apiKey, `/v1/text-to-voice/${encodeURIComponent(voiceId)}/remix?output_format=mp3_44100_128`, { voice_description: description, ...(text ? { text, auto_generate_text: false } : { auto_generate_text: true }), stream_previews: false });
+      const response = await this.request(apiKey, design ? '/v1/text-to-voice/design?output_format=mp3_44100_128' : `/v1/text-to-voice/${encodeURIComponent(voiceId)}/remix?output_format=mp3_44100_128`, { voice_description: description, ...(text ? { text, auto_generate_text: false } : { auto_generate_text: true }), stream_previews: false,...designSettings });
       if (!response.ok) {
         op.status = response.status >= 500 || response.status === 408 ? 'unknown' : 'failed';
         op.message = op.status === 'unknown' ? unknownPreview : providerFailure(response.status);

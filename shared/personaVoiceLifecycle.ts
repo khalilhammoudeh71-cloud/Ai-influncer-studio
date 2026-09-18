@@ -1,4 +1,4 @@
-export const voiceFields = ['voiceId', 'voiceEngine', 'voiceName', 'voiceSampleUrl', 'audioSamples', 'voiceReferenceText', 'voicePrompt', 'voiceLikeness', 'voiceStability', 'voiceStyleExaggeration', 'voiceSpeakingSpeed', 'elevenLabsSpeechModel', 'elevenLabsLanguageOverride'] as const;
+export const voiceFields = ['voiceId', 'voiceEngine', 'voiceName', 'voiceSampleUrl', 'audioSamples', 'voiceReferenceText', 'voicePrompt', 'voiceLikeness', 'voiceStability', 'voiceStyleExaggeration', 'voiceSpeakingSpeed', 'elevenLabsSpeechModel', 'elevenLabsLanguageOverride', 'elevenLabsSpeakerBoost', 'elevenLabsPronunciationDictionaries'] as const;
 export function mergeVoiceDraft(saved: Record<string, any>, draft: Record<string, any>) {
   return Object.fromEntries(voiceFields.flatMap(key => {
     const value = draft[key] === undefined ? saved[key] : draft[key];
