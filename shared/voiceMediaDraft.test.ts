@@ -114,6 +114,11 @@ test('natural scene replies and Levantine send variants retain the supplied scen
  }
  assert.equal(resolveVoiceMediaDraft('أول شي ابتسامة خفيفة وبجانبك كتاب أحمر',[]).status,'none');
 });
+test('Levantine request framing with an explicit send command is ready immediately',()=>{
+ const result=resolveVoiceMediaDraft('بحكيلك ابعتيلي صورة إلي وانتي لابسة فستان أسود وماسكة وردة بيضاء',[]);
+ assert.equal(result.status,'ready');
+ assert.match(result.prompt||'',/فستان أسود/);
+});
 test('declining further additions does not cancel an explicit send',()=>{
  const result=resolveVoiceMediaDraft('ما بدي أضيف شي، ابعتيلي الصورة',[user('بدي صورة إلك على الشاطئ')]);
  assert.equal(result.status,'ready');assert.match(result.prompt||'',/الشاطئ/);

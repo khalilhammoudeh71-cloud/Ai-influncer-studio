@@ -1389,7 +1389,10 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         // Keep the audio-grounded result verbatim; old text substitutions must not rewrite it.
         // A low-confidence recheck is advisory. Never replace what the user
         // actually said with a speculative transcript correction.
-        corrected=result.needsConfirmation ? rawTranscript : String(result.text||rawTranscript).trim();
+        corrected=applyVoiceCorrections(
+          result.needsConfirmation ? rawTranscript : String(result.text||rawTranscript).trim(),
+          voiceAccuracyProfileRef.current.corrections,
+        );
         if(result.needsConfirmation) {
           setTranscriptionNotice('Sent the best available transcript. You can correct it in the conversation.');
         }

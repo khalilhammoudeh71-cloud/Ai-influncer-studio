@@ -256,6 +256,10 @@ function normalizedVoiceOpening(value: unknown): string {
 function repeatsVoiceOpening(value: unknown, previous: unknown): boolean {
   const currentWords = normalizeVoiceEchoText(value);
   const previousWords = normalizeVoiceEchoText(previous);
+  const arabicGreeting = /^(?:أهلاً|أهلا|اهلا|أهلين|اهلين|مرحبا|هلا)$/u;
+  // A greeting can be only one or two words. Check it before the longer
+  // opening comparison so short Arabic turns are not allowed to repeat.
+  if (arabicGreeting.test(currentWords[0] || '') && arabicGreeting.test(previousWords[0] || '')) return true;
   if (currentWords.length < 3 || previousWords.length < 3) return false;
   return currentWords.slice(0, 3).join(' ') === previousWords.slice(0, 3).join(' ') ||
     normalizedVoiceOpening(value) === normalizedVoiceOpening(previous);
@@ -303,6 +307,8 @@ export function reviewVoiceCandidate(input: {
   if (!response) return 'empty';
   // Reject accidental CJK/provider test fragments in an Arabic reply before
   // they reach TTS; the bounded repair path can regenerate the turn.
+  if (/[\u{3400}-\u{9fff}]/u.test(response) && (/[\u{0600}-\u{06ff}]/u.test(response) || /[\u{0600}-\u{06ff}]/u.test(userTurn))) return 'instruction-miss';
+  if (/[\u{0600}-\u{06ff}]/u.test(userTurn) && !/[\u{0600}-\u{06ff}]/u.test(response) && /[A-Za-z]{4}/u.test(response)) return 'instruction-miss';
   if (/[\u0600-\u06ff]/u.test(response) && /[\u3400-\u9fff]/u.test(response)) return 'instruction-miss';
   if (/(?:\.{2,}|…)\s*["'”’]?$/u.test(response)) return 'instruction-miss';
   const requestedRecall = requestsVoiceRepetition(userTurn);
@@ -488,7 +494,17 @@ export function sanitizeSpokenDialogue(value: unknown): string {
   // a request to repeat, so keep only the first adjacent copy.
   const spokenSentences = cleaned.match(/[^.!?؟]+[.!?؟]+|[^.!?؟]+$/gu)?.map(s => s.trim()).filter(Boolean) || [];
   const normalizeSentence = (text: string) => text.toLocaleLowerCase().replace(/[\u064b-\u065f\u0670ـ]/gu, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
-  cleaned = spokenSentences.filter((sentence, index) => index === 0 || normalizeSentence(sentence) !== normalizeSentence(spokenSentences[index - 1])).join(' ').trim();
+  const keptSentences: string[] = [];
+  for (const sentence of spokenSentences) {
+    const normalized = normalizeSentence(sentence);
+    const previous = keptSentences.at(-1) || '';
+    const previousWords = normalizeSentence(previous).split(' ').filter(Boolean);
+    const currentWords = normalized.split(' ').filter(Boolean);
+    const isTrailingQuestionEcho = currentWords.length >= 1 && currentWords.length <= 3 &&
+      /[?؟]$/.test(sentence) && previousWords.slice(-currentWords.length).join(' ') === currentWords.join(' ');
+    if (normalized && normalized !== normalizeSentence(previous) && !isTrailingQuestionEcho) keptSentences.push(sentence);
+  }
+  cleaned = keptSentences.join(' ').trim();
   cleaned = cleaned.replace(/^([a-z])/, (_, firstLetter: string) => firstLetter.toUpperCase());
   if (!/[.!?؟]$/.test(cleaned)) cleaned += '.';
   return cleaned;

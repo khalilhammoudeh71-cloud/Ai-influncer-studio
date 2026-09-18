@@ -10,3 +10,7 @@ test('uncertain recognition and strongly conflicting alternatives require review
  assert.equal(review({text:'One'}),true);
  assert.equal(review(result('')),true);
 });
+test('a provider transcript without logprobs can still be accepted when it matches the draft',()=>{
+ assert.equal(review({text:'بدي صورة إلي'},'بدي صورة إلي'),false);
+ assert.equal(review({text:'كلام مختلف تماما'},'بدي صورة إلي'),true);
+});

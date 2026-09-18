@@ -95,6 +95,11 @@ test('rejects repeated voice openings while allowing a fresh response', () => {
     response: 'That could work beautifully, actually.',
     recentAssistantResponses: ['Honestly, I think we should wait until tomorrow.'],
   }), 'accepted');
+  assert.equal(reviewVoiceCandidate({
+    userTurn: 'شو رأيك؟',
+    response: 'أهلاً، ممكن نبدأ بهالموضوع؟',
+    recentAssistantResponses: ['أهلاً، كيفك؟'],
+  }), 'repetitive');
 });
 
 test('selects affect-specific ElevenLabs delivery without changing the clone', () => {
@@ -502,3 +507,5 @@ test('provider duplicate sentence artifacts are spoken once',()=>{
 test('Arabic replies containing accidental CJK fragments are rejected',()=>{
  assert.equal(reviewVoiceCandidate({userTurn:'احكي معي بالعربي',response:'أهلاً، كيفك؟ 尾注意事項'}),'instruction-miss');
 });
+test('Arabic turns reject an entirely non-Arabic provider reply',()=>{assert.equal(reviewVoiceCandidate({userTurn:'احكي معي بالعربي',response:'Hello, how are you?'}),'instruction-miss');});
+test('a repeated trailing Arabic question fragment is spoken once',()=>{assert.equal(sanitizeSpokenDialogue('شو رأيك الموضوع؟ الموضوع؟'),'شو رأيك الموضوع؟');});

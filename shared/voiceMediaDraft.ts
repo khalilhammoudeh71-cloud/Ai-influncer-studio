@@ -6,7 +6,7 @@ export function resolveVoiceMediaDraft(current: string, history: MediaDraftMessa
   const text = current.trim();
   const finish = /\b(?:send|show)\s+(?:me\s+)?(?:that|it|the (?:image|photo|picture|video))\b|\b(?:now\s+(?:generate|create|make|render)|(?:generate|create|make|render)\s+(?:it|that|the (?:image|photo|picture|video))\s+now|go ahead and (?:make|generate|create|send)(?: it| that)?|let'?s see it)\b/i;
   const media = /\b(image|photo|picture|portrait|selfie|video|clip)\b|(صورة|صوره|صور|سيلفي|فيديو|مقطع)/i;
-  const arabicFinish = /(?:ابعثي|ابعث|إبعثي|ابعت(?:ي)?|أرسلي|ارسل|ارسلي|ورجيني|فرجيني|ولدي|ولّد|انشئي)\s*(?:لي\s*)?(?:الصورة|الصوره|الفيديو|المقطع|إياها|اياها|ها)|(?:اعملي|اعمل|سوي)\s+(?:الصورة|الصوره|الفيديو|المقطع)/u;
+  const arabicFinish = /(?:ابعثي|ابعث|إبعثي|ابعت(?:ي)?|أرسلي|ارسل|ارسلي|ورجيني|فرجيني|ولدي|ولّد|انشئي)\s*(?:(?:لي|ها|إياها|اياها)\s*)?(?:ال)?(?:صورة|صوره|صور|فيديو|مقطع)|(?:ابعثي|ابعث|إبعثي|ابعت(?:ي)?|أرسلي|ارسل|ارسلي|ورجيني|فرجيني)\s*(?:ها|إياها|اياها)|(?:اعملي|اعمل|سوي)\s+(?:ال)?(?:صورة|صوره|فيديو|مقطع)/u;
   const finished = (value: string) => finish.test(value) || arabicFinish.test(value);
   const videoKind = (value: string) => /video|clip|فيديو|مقطع/i.test(value);
   const description = /\b(?:wearing|standing|sitting|hugging|walking|holding|jacket|dress|beach|cafe|window|sunset|lighting|background|close-up|waist-up)\b|(?:لابسة|لابسه|واقف|قاعد|جالس|ماشي|شاطئ|الشاطي|بحر|مقهى|حديقة|جاكيت|فستان|خلفية|إضاءة|اضاءة)/i;
@@ -26,13 +26,13 @@ export function resolveVoiceMediaDraft(current: string, history: MediaDraftMessa
   const startsRequest = (value: string) => media.test(value) && (
     /\b(?:generate|create|make|render|send|show|give|want|need|would like)\s+(?:me\s+)?(?:(?:a|an|the|another|new|some)\s+)*(?:image|photo|picture|portrait|selfie|video|clip)\b/i.test(value)
     || /^(?:a|an)\s+(?:image|photo|picture|portrait|selfie|video|clip)\b/i.test(value)
-    || /(?:بدي|بدّي|عايز|عايزة|أريد|اريد|اعملي|اعمل|ولدي|ابعتي|ابعت|ورجيني|فرجيني)\s+(?:(?:لي|إلي|الي|كمان|واحدة|وحدة)\s+)?(?:ال)?(?:صورة|صوره|صور|سيلفي|فيديو|مقطع)/u.test(value)
+    || /(?:بدي|بدّي|عايز|عايزة|أريد|اريد|اعملي|اعمل|ولدي|ابعتي(?:لي)?|ابعت(?:ي)?(?:لي)?|ورجيني|فرجيني)\s*(?:(?:إلي|الي|كمان|واحدة|وحدة)\s+)?(?:ال)?(?:صورة|صوره|صور|سيلفي|فيديو|مقطع)/u.test(value)
   );
   const contextualScene = (value: string) => /^(?:أول شي|اول شي|المشهد|بالصورة|في الصورة|الصورة تكون|خلينا نخلي)/u.test(value) && value.trim().split(/\s+/).length >= 5;
   const sceneInstruction = (value: string) => /^(?:(?:بدي|بدّي)\s+(?:تكوني|تكون|ياكي|إياكي)|تكوني|خلي(?:ها|ك|كي)?)[\s،]/u.test(value) && value.trim().split(/\s+/).length >= 5;
   const detailedSend = (value: string) => {
     const command = value.match(finish) || value.match(arabicFinish);
-    if (!command || !media.test(command[0])) return false;
+    if (!command || (!media.test(command[0]) && !/(?:ها|إياها|اياها)/u.test(command[0]))) return false;
     const suppliedScene = value.slice(0, command.index).trim();
     return suppliedScene.split(/\s+/).length >= 5
       && /^(?:بدي|بدّي|تكوني|خلي|إنتي|انتي|أنت|انت|I want|I'd like|You|Make|Show|A scene)\b|^(?:بدي|بدّي|تكوني|خلي|إنتي|انتي|أنت|انت)\s/iu.test(suppliedScene);
