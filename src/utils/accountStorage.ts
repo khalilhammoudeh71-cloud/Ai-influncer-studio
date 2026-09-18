@@ -76,10 +76,16 @@ let activeStorageUserId: string | null = null;
 let workspaceSyncAdapter: WorkspaceSyncAdapter | null = null;
 const pendingRemoteChanges = new Map<string, ReturnType<typeof setTimeout>>();
 const outstandingSyncKeys = new Set<string>();
+const failedSyncKeys = new Set<string>();
 
 export type WorkspaceSyncStatus = 'synced' | 'syncing' | 'pending';
 
 function notifyWorkspaceSync(status: WorkspaceSyncStatus, key?: string, error?: unknown) {
+  if (status === 'synced' && activeStorageUserId && !Object.values(readSyncMeta(activeStorageUserId)).some(marker => marker.dirty)) {
+    failedSyncKeys.delete(`${activeStorageUserId}:hydration`);
+  }
+  // A different successful write must not hide a failed save awaiting recovery.
+  if (failedSyncKeys.size) status = 'pending';
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new CustomEvent('workspace-sync-status', {
     detail: {
@@ -100,6 +106,7 @@ export function setActiveStorageUserId(userId: string | null | undefined) {
     pendingRemoteChanges.forEach(timer => clearTimeout(timer));
     pendingRemoteChanges.clear();
     outstandingSyncKeys.clear();
+    failedSyncKeys.clear();
   }
   activeStorageUserId = nextUserId;
 }
@@ -182,7 +189,8 @@ function scheduleRemoteSave(
         if (activeStorageUserId === userId && localStorage.getItem(accountStorageKey(base, userId)) === value) {
           markLocalChange(base, userId, false, entry.updatedAt, false);
           outstandingSyncKeys.delete(queueKey);
-          notifyWorkspaceSync(outstandingSyncKeys.size === 0 ? 'synced' : 'pending', base);
+          failedSyncKeys.delete(queueKey);
+          notifyWorkspaceSync(outstandingSyncKeys.size === 0 ? 'synced' : 'syncing', base);
         } else if (activeStorageUserId === userId) {
           // An older upload finished after a newer edit; restore the newest value remotely.
           const latest = localStorage.getItem(accountStorageKey(base, userId));
@@ -192,6 +200,8 @@ function scheduleRemoteSave(
         }
       })
       .catch(error => {
+        if (activeStorageUserId !== userId) return;
+        failedSyncKeys.add(queueKey);
         notifyWorkspaceSync('pending', base, error);
         const stillCurrent = activeStorageUserId === userId
           && localStorage.getItem(accountStorageKey(base, userId)) === value;
@@ -221,9 +231,12 @@ function scheduleRemoteRemove(base: string, userId: string, delayMs = REMOTE_WRI
         if (latest !== null) { markLocalChange(base, userId); scheduleRemoteSave(base, latest, userId); return; }
         markLocalChange(base, userId, true, new Date().toISOString(), false);
         outstandingSyncKeys.delete(queueKey);
-        notifyWorkspaceSync(outstandingSyncKeys.size === 0 ? 'synced' : 'pending', base);
+        failedSyncKeys.delete(queueKey);
+        notifyWorkspaceSync(outstandingSyncKeys.size === 0 ? 'synced' : 'syncing', base);
       })
       .catch(error => {
+        if (activeStorageUserId !== userId) return;
+        failedSyncKeys.add(queueKey);
         notifyWorkspaceSync('pending', base, error);
         const stillDeleted = activeStorageUserId === userId
           && localStorage.getItem(accountStorageKey(base, userId)) === null;
@@ -305,7 +318,10 @@ export async function hydrateAccountLocalStorage(userId: string): Promise<void> 
     const saved = await adapter.save(base, prepared, clientUpdatedAt);
     if (activeStorageUserId !== userId) return;
     const latest = localStorage.getItem(accountStorageKey(base, userId));
-    if (latest === value) markLocalChange(base, userId, false, saved.updatedAt, false);
+    if (latest === value) {
+      markLocalChange(base, userId, false, saved.updatedAt, false);
+      failedSyncKeys.delete(`${userId}:${base}`);
+    }
     else {
       markLocalChange(base, userId, latest === null);
       if (latest === null) scheduleRemoteRemove(base, userId);
@@ -340,11 +356,14 @@ export async function hydrateAccountLocalStorage(userId: string): Promise<void> 
   }
   const results = await Promise.allSettled(operations);
   const failures = results.filter(result => result.status === 'rejected');
+  if (activeStorageUserId !== userId) return;
   if (failures.length) {
+    failedSyncKeys.add(`${userId}:hydration`);
     notifyWorkspaceSync('pending');
     throw new Error('Some workspace changes could not sync. Your local changes are preserved.');
   }
-  if (activeStorageUserId === userId) notifyWorkspaceSync(Object.values(readSyncMeta(userId)).some(marker => marker.dirty) ? 'pending' : 'synced');
+  failedSyncKeys.delete(`${userId}:hydration`);
+  notifyWorkspaceSync(Object.values(readSyncMeta(userId)).some(marker => marker.dirty) ? 'syncing' : 'synced');
 }
 
 export function migrateLegacyAccountKey(base: string, userId: string): void {

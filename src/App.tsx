@@ -226,6 +226,15 @@ function App() {
   const [showMediaJobCenter, setShowMediaJobCenter] = useState(false);
   const [newAssetsCount, setNewAssetsCount] = useState(0); // #6 gallery badge
   const [workspaceSyncStatus, setWorkspaceSyncStatus] = useState<WorkspaceSyncStatus>('synced');
+  const [showWorkspaceSyncStatus, setShowWorkspaceSyncStatus] = useState(false);
+
+  useEffect(() => {
+    if (workspaceSyncStatus === 'pending') { setShowWorkspaceSyncStatus(true); return; }
+    if (workspaceSyncStatus === 'synced') { setShowWorkspaceSyncStatus(false); return; }
+    // Most autosaves finish quickly; only show progress for a noticeable wait.
+    const timer = window.setTimeout(() => setShowWorkspaceSyncStatus(true), 800);
+    return () => window.clearTimeout(timer);
+  }, [workspaceSyncStatus]);
 
   useEffect(() => {
     const handleWorkspaceSyncStatus = (event: Event) => {
@@ -1215,7 +1224,7 @@ function App() {
       onOpenMenu={() => setIsMobileNavOpen(true)}
       newAssetsCount={newAssetsCount}
     />
-    {workspaceSyncStatus !== 'synced' && (
+    {showWorkspaceSyncStatus && workspaceSyncStatus !== 'synced' && (
       <div
         className="fixed bottom-[82px] right-4 z-[1000] flex items-center gap-2 rounded-full border border-amber-400/25 bg-[#17181d]/95 px-3 py-2 text-[11px] font-semibold text-amber-100 shadow-2xl backdrop-blur-xl lg:bottom-4"
         title="Your changes are safe in this browser and will sync automatically when the account connection recovers."

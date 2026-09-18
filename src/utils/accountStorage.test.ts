@@ -13,6 +13,53 @@ Object.defineProperty(globalThis,'localStorage',{value:new MemoryStorage(),confi
 Object.defineProperty(globalThis,'sessionStorage',{value:new MemoryStorage(),configurable:true});
 const storage = await import('./accountStorage');
 
+test('normal queued saves never report a failed sync warning', async () => {
+  const events: string[] = [];
+  Object.defineProperty(globalThis, 'window', { value: { dispatchEvent: (event: CustomEvent) => { events.push(event.detail.status); } }, configurable: true });
+  localStorage.clear(); storage.setActiveStorageUserId('status-test');
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => release = resolve);
+  let started!: () => void;
+  const ready = new Promise<void>(resolve => started = resolve);
+  storage.configureAccountStorageSync({ list: async () => [], save: async (key, value) => {
+    if (key === 'chat_history_second') { started(); await gate; }
+    return { key, value, updatedAt: new Date().toISOString() };
+  }, remove: async () => {} });
+  storage.accountLocalStorage.setItem('chat_history_first', 'first');
+  storage.accountLocalStorage.setItem('chat_history_second', 'second');
+  await ready;
+  await new Promise(resolve => setImmediate(resolve));
+  assert.ok(events.includes('syncing'));
+  assert.ok(!events.includes('pending'), events.join(', '));
+  release(); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(events.at(-1), 'synced');
+  storage.setActiveStorageUserId(null);
+  Reflect.deleteProperty(globalThis, 'window');
+});
+
+test('an unrelated successful save cannot clear a real failure warning', async () => {
+  const events: string[] = [];
+  Object.defineProperty(globalThis, 'window', { value: { dispatchEvent: (event: CustomEvent) => { events.push(event.detail.status); } }, configurable: true });
+  localStorage.clear(); storage.setActiveStorageUserId('failure-status');
+  let failed!: () => void;
+  const failure = new Promise<void>(resolve => failed = resolve);
+  storage.configureAccountStorageSync({ list: async () => [], save: async (key, value) => {
+    if (key === 'chat_history_broken') { failed(); throw new Error('Workspace sync conflict'); }
+    return { key, value, updatedAt: new Date().toISOString() };
+  }, remove: async () => {} });
+  storage.accountLocalStorage.setItem('chat_history_broken', 'keep locally');
+  await failure; await new Promise(resolve => setImmediate(resolve));
+  storage.accountLocalStorage.setItem('chat_history_ok', 'another conversation');
+  await new Promise(resolve => setTimeout(resolve, 500));
+  assert.equal(events.at(-1), 'pending');
+  storage.configureAccountStorageSync({ list: async () => [], save: async (key, value) => ({ key, value, updatedAt: new Date().toISOString() }), remove: async () => {} });
+  storage.retryAccountWorkspaceSync('failure-status');
+  await new Promise(resolve => setTimeout(resolve, 25));
+  assert.equal(events.at(-1), 'synced');
+  storage.setActiveStorageUserId(null);
+  Reflect.deleteProperty(globalThis, 'window');
+});
+
 test('unsynced local history survives a later timestamp on an older cloud snapshot', async () => {
   localStorage.clear(); storage.setActiveStorageUserId('qa');
   const saved:string[]=[];
