@@ -301,6 +301,9 @@ export function reviewVoiceCandidate(input: {
   const response = String(input.response || '').trim();
   const userTurn = String(input.userTurn || '').trim();
   if (!response) return 'empty';
+  // Reject accidental CJK/provider test fragments in an Arabic reply before
+  // they reach TTS; the bounded repair path can regenerate the turn.
+  if (/[\u0600-\u06ff]/u.test(response) && /[\u3400-\u9fff]/u.test(response)) return 'instruction-miss';
   if (/(?:\.{2,}|…)\s*["'”’]?$/u.test(response)) return 'instruction-miss';
   const requestedRecall = requestsVoiceRepetition(userTurn);
   const requested = requestedArabicPracticePhrase(userTurn);
@@ -343,7 +346,7 @@ export function getVoiceCandidateRepairInstruction(review: VoiceCandidateReview)
     return 'A previous draft sounded like generic support staff. Respond to one specific feeling or detail from the latest turn, sound personally invested, and stay in the moment. Do not offer assistance, advice, or a generic follow-up question.';
   }
   if (review === 'instruction-miss') {
-    return 'A previous draft ignored an explicit conversational constraint in the latest turn. Follow every stated do-not, format, and interaction instruction exactly while still answering naturally.';
+    return 'A previous draft ignored an explicit conversational constraint or emitted the wrong writing system. Follow every stated do-not, format, language, and interaction instruction exactly. For this Arabic turn, output Arabic dialogue only; never append Chinese, Japanese, Korean, English test text, metadata, or stage directions.';
   }
   if (review === 'repetitive') {
     return 'A previous draft reused a recent sentence opening. Change the rhythm, opening, and phrasing while preserving the meaning and persona.';
@@ -481,6 +484,11 @@ export function sanitizeSpokenDialogue(value: unknown): string {
   cleaned = cleaned.replace(/[-–—\s]+$/, '').trim();
   if (!cleaned) return '';
   cleaned = cleaned.replace(/\bDr\.\s*H\b/gi, 'Dr. H');
+  // Providers can append an exact duplicate sentence. It is an artifact, not
+  // a request to repeat, so keep only the first adjacent copy.
+  const spokenSentences = cleaned.match(/[^.!?؟]+[.!?؟]+|[^.!?؟]+$/gu)?.map(s => s.trim()).filter(Boolean) || [];
+  const normalizeSentence = (text: string) => text.toLocaleLowerCase().replace(/[\u064b-\u065f\u0670ـ]/gu, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  cleaned = spokenSentences.filter((sentence, index) => index === 0 || normalizeSentence(sentence) !== normalizeSentence(spokenSentences[index - 1])).join(' ').trim();
   cleaned = cleaned.replace(/^([a-z])/, (_, firstLetter: string) => firstLetter.toUpperCase());
   if (!/[.!?؟]$/.test(cleaned)) cleaned += '.';
   return cleaned;

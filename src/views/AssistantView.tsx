@@ -1387,7 +1387,9 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         const result=await response.json();if(!response.ok)throw new Error(result.error||'Audio recheck failed.');
         if(!stillCurrent())return;
         // Keep the audio-grounded result verbatim; old text substitutions must not rewrite it.
-        corrected=String(result.text||rawTranscript).trim();
+        // A low-confidence recheck is advisory. Never replace what the user
+        // actually said with a speculative transcript correction.
+        corrected=result.needsConfirmation ? rawTranscript : String(result.text||rawTranscript).trim();
         if(result.needsConfirmation) {
           setTranscriptionNotice('Sent the best available transcript. You can correct it in the conversation.');
         }

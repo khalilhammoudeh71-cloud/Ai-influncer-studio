@@ -494,3 +494,11 @@ test('Arabic repetition cannot be replaced with invented narration',()=>{assert.
 test('unfinished thoughts are rejected before speech',()=>{assert.equal(reviewVoiceCandidate({userTurn:'شو عم تعملي؟',response:'كنت عم...'}),'instruction-miss');});
 
 test('Arabic parenthetical delivery directions never reach speech',()=>{assert.equal(sanitizeSpokenDialogue('بقدر أوصفلك المشهد. (بصوت خجول وهادئ)'),'بقدر أوصفلك المشهد.');assert.equal(sanitizeSpokenDialogue('أنا ساكنة هون (عمان).'),'أنا ساكنة هون (عمان).');});
+
+test('provider duplicate sentence artifacts are spoken once',()=>{
+ assert.equal(sanitizeSpokenDialogue('أهلاً، كيفك؟ أهلاً، كيفك؟'),'أهلاً، كيفك؟');
+});
+
+test('Arabic replies containing accidental CJK fragments are rejected',()=>{
+ assert.equal(reviewVoiceCandidate({userTurn:'احكي معي بالعربي',response:'أهلاً، كيفك؟ 尾注意事項'}),'instruction-miss');
+});
