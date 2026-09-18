@@ -10,6 +10,7 @@ import { PronunciationSettings, pronunciationApi } from '../components/Pronuncia
 import { isPronunciationRequest } from '../../shared/pronunciation';
 import { NativeVoiceCall } from '../components/NativeVoiceCall';
 import { createStreamingSpeech } from '../utils/streamingSpeech';
+import { CallAudioPlayback, needsReusableCallAudio } from '../utils/callAudioPlayback';
 import { getSavedPersonaVoice } from '../utils/personaVoiceEngine';
 import { SpeechEnginePilot } from '../components/SpeechEnginePilot';
 import { recognitionLanguage } from '../../shared/personaLanguage';
@@ -1124,6 +1125,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 
   const [callInput, setCallInput] = useState('');
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const callAudioPlaybackRef = useRef(new CallAudioPlayback());
+  useEffect(()=>()=>callAudioPlaybackRef.current.stop(),[]);
   const streamingAudioContextRef = useRef<AudioContext | null>(null);
   const streamingAudioSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const activeCallAbortControllerRef = useRef<AbortController | null>(null);
@@ -2187,6 +2190,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         audio=new Audio(data.audioUrl);
       }
       if (!isCallActiveRef.current || controller.signal.aborted) { audio.pause(); return; }
+      if(needsReusableCallAudio())audio=callAudioPlaybackRef.current.prepare(audio);
       audioRef.current = audio;
       audio.volume = 1.0;
 
@@ -2196,6 +2200,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           audio.src = '';
           return;
         }
+        setVoicePlaybackNotice('');
         setCallStatus('speaking');
         isAgentSpeakingRef.current = true;
         voiceCallBusyRef.current = false;
@@ -2221,6 +2226,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         try {
           await audio.play();
         } catch (playErr: any) {
+          if(playErr?.name==='NotAllowedError')setVoicePlaybackNotice('Call audio is blocked. Tap Enable call audio to hear the persona.');
           if (playErr?.name !== 'AbortError') {
             console.warn('[Audio Play Error]:', playErr);
           }
@@ -2428,8 +2434,9 @@ export default function AssistantView({ personas, persona: propActivePersona, on
         if (!preparedAudio || controller.signal.aborted || callTurnId !== callTurnIdRef.current || !isCallActiveRef.current) return;
 
         let playbackStarted = false;
+        let playbackBlocked = false;
         const playedToEnd = await new Promise<boolean>((resolve) => {
-          const audio = preparedAudio;
+          const audio = needsReusableCallAudio()?callAudioPlaybackRef.current.prepare(preparedAudio):preparedAudio;
           audioRef.current = audio;
           audio.volume = 1;
           let settled = false;
@@ -2454,6 +2461,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           audio.onended = () => finish(true);
           audio.onerror = () => finish(false);
           audio.onplay = () => {
+            setVoicePlaybackNotice('');
             playbackStarted = true;
             streamingAudioPlayed = true;
             recordFirstAudioLatency();
@@ -2465,12 +2473,12 @@ export default function AssistantView({ personas, persona: propActivePersona, on
             if (!isMutedRef.current) restartSpeechRecognition();
           };
 
-          audio.play().catch(() => finish(false));
+          audio.play().catch((error) => {if(error?.name==='NotAllowedError'){setVoicePlaybackNotice('Call audio is blocked. Tap Enable call audio to hear the persona.');playbackBlocked=true;}finish(false);});
         });
 
         // A temporary CDN/audio-element failure should not silently remove the
         // final phrase. Re-synthesize and replay that phrase once.
-        if (!playedToEnd && !playbackStarted && !terminalTtsError && playbackAttempt === 0 && !controller.signal.aborted && callTurnId === callTurnIdRef.current) {
+        if (!playedToEnd && !playbackStarted && !playbackBlocked && !terminalTtsError && playbackAttempt === 0 && !controller.signal.aborted && callTurnId === callTurnIdRef.current) {
           await playPreparedSegment(segment, synthesizeSpeechSegment(segment), 1);
         }
       };
@@ -2767,7 +2775,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           audioRef.current = null;
         }
 
-        const audio = new Audio();
+        const preparedAudio = new Audio(data.audioUrl);
+        const audio = needsReusableCallAudio()?callAudioPlaybackRef.current.prepare(preparedAudio):preparedAudio;
         audioRef.current = audio;
         audio.src = data.audioUrl;
         audio.volume = 1.0;
@@ -2776,6 +2785,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
             try { audio.pause(); audio.src = ''; } catch {}
             return;
           }
+          setVoicePlaybackNotice('');
           recordFirstAudioLatency();
           setCallStatus('speaking');
           isAgentSpeakingRef.current = true;
@@ -2816,6 +2826,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
           try {
             await audio.play();
           } catch (pErr: any) {
+            if(pErr?.name==='NotAllowedError')setVoicePlaybackNotice('Call audio is blocked. Tap Enable call audio to hear the persona.');
             if (pErr?.name !== 'AbortError') {
               console.warn('[Audio Play Error]:', pErr);
             }
@@ -3150,12 +3161,8 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 
     // Unlock HTML5 audio context directly inside user click gesture
     try {
-      if (!audioRef.current) {
-        audioRef.current = new Audio();
-      }
-      audioRef.current.volume = 1.0;
-      audioRef.current.muted = false;
-      audioRef.current.play().catch(() => {});
+      callAudioPlaybackRef.current.stop();
+      void callAudioPlaybackRef.current.unlock().catch(()=>setVoicePlaybackNotice('Call audio is blocked. Tap Enable call audio to hear the persona.'));
       {
         // Unlock Web Audio while the call-start click still has user activation.
         // The caller can switch to streaming speech later in this same call.
@@ -3234,6 +3241,7 @@ export default function AssistantView({ personas, persona: propActivePersona, on
 
   // End Call
   const handleEndCall = useCallback(() => {
+    callAudioPlaybackRef.current.stop();
     callTurnIdRef.current += 1;
     if (activeCallAbortControllerRef.current) {
       try { activeCallAbortControllerRef.current.abort(); } catch {}
@@ -4618,7 +4626,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                   </div>
                 )}
                 {voicePlaybackNotice && (
-                  <p role="status" className="basis-full text-xs text-[#E7C477]">{voicePlaybackNotice}</p>
+                  <div className="basis-full text-xs text-[#E7C477]"><p role="status">{voicePlaybackNotice}</p>{voicePlaybackNotice.includes('Enable call audio')&&<button type="button" className="min-h-11 rounded-xl border border-[#E7C477]/40 px-3" onClick={()=>{void streamingAudioContextRef.current?.resume();void callAudioPlaybackRef.current.unlock().then(()=>setVoicePlaybackNotice('')).catch(()=>setVoicePlaybackNotice('Call audio is blocked. Tap Enable call audio to try again.'));}}>Enable call audio</button>}</div>
                 )}
                 {lastVoiceRoute && (
                   <div

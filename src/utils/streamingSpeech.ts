@@ -1,3 +1,4 @@
+import {needsReusableCallAudio} from './callAudioPlayback';
 export function validateSpeechStream(response:Response,voiceId:string) {
  if(!response.ok)throw new Error(`Selected voice unavailable (${response.status}). Your saved voice is unchanged.`);
  if(response.headers.get('x-voice-id')!==voiceId)throw new Error('Speech identity does not match the selected voice.');
@@ -10,7 +11,7 @@ export async function createStreamingSpeech(response:Response,voiceId:string,sig
  if(!reader)throw new Error('Missing speech stream.');
  const cleanup=()=>{audio.pause();if(url)URL.revokeObjectURL(url);void reader.cancel().catch(()=>{});signal.removeEventListener('abort',cleanup);};
  signal.addEventListener('abort',cleanup,{once:true});audio.addEventListener('ended',cleanup,{once:true});audio.addEventListener('error',cleanup,{once:true});
- if(typeof MediaSource==='undefined'||!MediaSource.isTypeSupported('audio/mpeg')) {
+ if(needsReusableCallAudio() || typeof MediaSource==='undefined'||!MediaSource.isTypeSupported('audio/mpeg')) {
   try {const chunks:Uint8Array[]=[];while(true){const {value,done}=await reader.read();signal.throwIfAborted();if(done)break;chunks.push(value);}url=URL.createObjectURL(new Blob(chunks as BlobPart[],{type:'audio/mpeg'}));audio.src=url;return audio;}
   catch(error){cleanup();throw error;}
  }
