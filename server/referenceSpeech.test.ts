@@ -27,6 +27,20 @@ test('F5 is sent to Fal and legacy aliases never select an ElevenLabs speaker',(
  assert.equal(request.input.model_type,'F5-TTS');
  assert.throws(()=>buildReferenceSpeechInput('elevenlabs:playht','Hello',{}),/PlayHT/);
 });
+test('Fal Arabic reference models use their published input contracts',()=>{
+ const zonos=buildReferenceSpeechInput('fal:zonos2','مرحبا',{reference:'https://example.com/a.wav'});
+ assert.equal(zonos.provider,'Fal');
+ assert.equal(zonos.model,'fal-ai/zonos2');
+ assert.deepEqual(zonos.input,{reference_audio_url:'https://example.com/a.wav',text:'مرحبا'});
+ const chatter=buildReferenceSpeechInput('fal:chatterbox-multilingual','مرحبا',{reference:'https://example.com/a.wav'});
+ assert.equal(chatter.model,'fal-ai/chatterbox/text-to-speech/multilingual');
+ assert.equal(chatter.input.audio_url,'https://example.com/a.wav');
+ assert.equal(chatter.input.custom_audio_language,'arabic');
+});
+test('Fal nested audio outputs are normalized to a playable URL',async()=>{
+ const result=await renderReferenceSpeech('fal:zonos2','مرحبا',{reference:'https://example.com/a.wav'},{env:{FAL_KEY:'fixture'},fetchImpl:async()=>Response.json({audio:{url:'https://fal.example/out.wav'}})});
+ assert.equal(result,'https://fal.example/out.wav');
+});
 test('Wiro waits for successful completion and never accepts early output or failed tasks',async()=>{
  const requests:any[]=[];let polls=0;
  const fetchImpl:typeof fetch=async(url,init)=>{

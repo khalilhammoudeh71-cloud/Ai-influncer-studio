@@ -19,7 +19,11 @@ export function buildReferenceSpeechInput(engine:string,text:string,options:Refe
   if(selected.model==='openmoss/moss-tts-v1-5')input.language=arabic?'Arabic':'None';
   if(selected.model==='resemble-ai/chatterbox-multilingual')Object.assign(input,{language:arabic?'ar':'en',exaggeration,cfg_weight:.5,temperature:.8,topP:1});
   if(selected.model==='openbmb/voxcpm2')input.cfgValue=2;
- } else if(selected.provider==='Fal')Object.assign(input,{gen_text:text,ref_audio_url:reference,ref_text:referenceText,model_type:'F5-TTS',remove_silence:false});
+ } else if(selected.provider==='Fal') {
+  if(selected.id==='fal:zonos2') Object.assign(input,{reference_audio_url:reference,text});
+  else if(selected.id==='fal:chatterbox-multilingual') Object.assign(input,{text,audio_url:reference,custom_audio_language:arabic?'arabic':'english',exaggeration,temperature:.8,cfg_scale:.5});
+  else Object.assign(input,{gen_text:text,ref_audio_url:reference,ref_text:referenceText,model_type:'F5-TTS',remove_silence:false});
+ }
  else if(selected.id==='wavespeed:zonos2')Object.assign(input,{audio:reference,text,clean_speaker_background:false});
  else if(selected.id==='wavespeed:qwen3-clone')Object.assign(input,{audio:reference,text,reference_text:referenceText,language:'auto'});
  else if(selected.id==='wavespeed:omnivoice')Object.assign(input,{audio:reference,text,reference_text:referenceText,speed});
@@ -88,8 +92,8 @@ export async function renderReferenceSpeech(engine:string,text:string,options:Re
  if(request.provider==='Fal'){
   const key=env.FAL_KEY||env.FAL_API_KEY;if(!key)throw new SelectedSpeechError('Connect your Fal API key in Settings.',503);
   const response=await fetcher(`https://fal.run/${request.model}`,{method:'POST',headers:{Authorization:`Key ${key}`,'Content-Type':'application/json'},body:JSON.stringify(request.input),signal});
-  const data=await response.json();const output=audioUrl(data.audio_url);
-  if(!response.ok||!output)throw new SelectedSpeechError(`Fal F5-TTS failed (HTTP ${response.status}).`,502);return output;
+  const data=await response.json();const output=audioUrl(data.audio_url)||audioUrl(data.audio)||audioUrl(data.output);
+  if(!response.ok||!output)throw new SelectedSpeechError(`Fal speech synthesis failed (HTTP ${response.status}).`,502);return output;
  }
  if(!env.WIRO_API_KEY)throw new SelectedSpeechError('Connect your Wiro API key in Settings.',503);
  const headers=()=>{const nonce=Date.now().toString();return {'x-api-key':env.WIRO_API_KEY!,'x-nonce':nonce,...(env.WIRO_API_SECRET?{'x-signature':createHmac('sha256',env.WIRO_API_KEY!).update(env.WIRO_API_SECRET+nonce).digest('hex')}:{})};};

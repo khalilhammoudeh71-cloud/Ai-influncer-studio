@@ -2,6 +2,8 @@ export type VoiceCloningModel = { id: string; name: string; provider: string; ki
 export const VOICE_CLONING_MODELS: VoiceCloningModel[] = [
  {id:'elevenlabs',name:'ElevenLabs Instant Voice Clone',provider:'ElevenLabs',kind:'enrollment',description:'Create a reusable ElevenLabs voice for speech and live calls. Compatible with ElevenLabs v2 and v3 speech models.',aliases:['elevenlabs-v3','elevenlabs-v2']},
  {id:'wavespeed:zonos2',name:'Zyphra Zonos2',provider:'WaveSpeed',kind:'reference',model:'wavespeed-ai/zonos2',description:'Generate speech using the primary reference recording.',aliases:['zonos2']},
+ {id:'fal:zonos2',name:'Fal Zonos2',provider:'Fal',kind:'reference',model:'fal-ai/zonos2',description:'Multilingual reference-based speech through Fal. Arabic text is passed through without English normalization.',aliases:['fal-zonos2']},
+ {id:'fal:chatterbox-multilingual',name:'Fal Chatterbox Multilingual',provider:'Fal',kind:'reference',model:'fal-ai/chatterbox/text-to-speech/multilingual',description:'Arabic-capable reference speech through Fal with language-aware synthesis.',aliases:['fal-chatterbox-multilingual']},
  {id:'wavespeed:qwen3-clone',name:'Qwen3-TTS Voice Clone',provider:'WaveSpeed',kind:'reference',model:'wavespeed-ai/qwen3-tts/voice-clone',description:'Reference-based speech with an optional recording transcript. Arabic is not a listed output language.',aliases:['qwen3-clone']},
  {id:'wavespeed:seed-speech',name:'ByteDance Seed Speech 2.0',provider:'WaveSpeed',kind:'preset',model:'bytedance/seed-speech-tts-2.0',description:'Preset voices with delivery instructions. This API does not clone uploaded recordings.',aliases:['seed-speech'],voices:['stokie_en','dacey_en','tim_en','kian_en_zh','sophie_en_zh','vivi_mixed_en_zh_ja_es_id']},
  {id:'wavespeed:omnivoice',name:'OmniVoice',provider:'WaveSpeed',kind:'reference',model:'wavespeed-ai/omnivoice/voice-clone',description:'Multilingual speech from a primary voice reference, with optional transcript and speed control.',aliases:['omnivoice']},
@@ -29,6 +31,8 @@ export function voiceSamplePolicy(model: VoiceCloningModel) {
     elevenlabs: [120, '1–10 files · ideal 1–2 min total'],
     'wavespeed:qwen3-clone': [15, '1 file · ideal 3–15 sec'],
     'wavespeed:omnivoice': [30, '1 file · ideal 6–30 sec'],
+    'fal:zonos2': [30, '1 file · ideal 6–30 sec'],
+    'fal:chatterbox-multilingual': [30, '1 file · ideal 6–30 sec'],
     'wiro-voice:k2-fsa/omnivoice': [30, '1 file · ideal 6–30 sec'],
     'wiro-voice:fishaudio/s2-pro': [30, '1 file · ideal 10–30 sec'],
     'minimax-clone': [300, '1 file · accepted 10 sec–5 min'],
