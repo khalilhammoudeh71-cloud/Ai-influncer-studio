@@ -1,4 +1,5 @@
 import { prepareVerifiedScene, type VerifiedScene } from './verifiedScene';
+import { assessReferenceQuality, REFERENCE_QUALITY_PROMPT, type ReferenceQuality } from './identityReferenceQuality';
 import { audioAvatarModel, buildAudioAvatarRequest } from './audioAvatarRequest';
 import { normalizeGeminiAudio } from './geminiStockSpeech';
 import { excludeVaultReferences } from './personaIdentityReferenceFilter';
@@ -5662,6 +5663,14 @@ const generateImageHandler = async (req: any, res: any) => {
   }
 };
 
+export async function inspectIdentityReferenceQuality(image:string,anchor=false):Promise<ReferenceQuality> {
+  if(!getGeminiDirectKey())return {status:'uncertain',reasons:['Reference photo checking is not configured.']};
+  try {
+    const result=await getGeminiDirectClient().models.generateContent({model:getStudioFlashModel(),contents:[{role:'user',parts:[{text:REFERENCE_QUALITY_PROMPT},await mediaQualityInlineImage(image)]}],config:{responseMimeType:'application/json',temperature:0,maxOutputTokens:500}});
+    return assessReferenceQuality(JSON.parse(result.text || '{}'),anchor);
+  } catch {return {status:'uncertain',reasons:['Reference photo checking is unavailable. Please try again.']};}
+}
+
 app.post('/api/persona-identity/review', async (req: any, res) => {
   try {
     const prepare = async (value: unknown) => {
@@ -5672,8 +5681,14 @@ app.post('/api/persona-identity/review', async (req: any, res) => {
       return (await resolveOwnedImageReference(normalized,req.user.id))!;
     };
     const [anchor, candidate] = await Promise.all([prepare(req.body.anchorImage),prepare(req.body.candidateImage)]);
+    const primary=req.body.anchorImage===req.body.candidateImage;
+    const referenceQuality=await inspectIdentityReferenceQuality(candidate,primary);
+    if(referenceQuality.status!=='passed')return res.json({...referenceQuality,referenceQuality});
+    if(primary)return res.json({status:'passed',reasons:referenceQuality.reasons,referenceQuality});
+    const anchorQuality=await inspectIdentityReferenceQuality(anchor,true);
+    if(anchorQuality.status!=='passed')return res.json({status:anchorQuality.status,reasons:['Your primary photo needs attention.',...anchorQuality.reasons],referenceQuality,anchorQuality});
     const quality = await inspectGeneratedImageQuality(candidate,[{name:'Persona',referenceImage:anchor}], '',1,false);
-    res.json({status:quality.status,reasons:quality.reasons});
+    res.json({status:quality.status,reasons:quality.reasons,referenceQuality});
   } catch(error) { res.status(400).json({error:error instanceof Error ? error.message : 'Reference check failed'}); }
 });
 

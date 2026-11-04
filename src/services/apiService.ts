@@ -231,7 +231,7 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 
 export const api = {
   personaIdentity: {
-    review: (anchorImage:string,candidateImage:string) => request<{status:'passed'|'failed'|'unavailable';reasons:string[]}>('/persona-identity/review',{method:'POST',body:JSON.stringify({anchorImage,candidateImage})}),
+    review: (anchorImage:string,candidateImage:string) => request<{status:'passed'|'failed'|'uncertain'|'unavailable';reasons:string[]}>('/persona-identity/review',{method:'POST',body:JSON.stringify({anchorImage,candidateImage})}),
   },
   modelCatalog: {
     status: () => request<ModelCatalogStatus>('/model-catalog/status'),

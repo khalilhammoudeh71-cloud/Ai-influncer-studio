@@ -1,6 +1,12 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {selectIdentityReferences,normalizeIdentitySet,referenceShot} from './personaIdentitySet';
 const entries=[{image:'front',view:'front',approved:true},{image:'side',view:'profile',approved:true},{image:'body',view:'full-body',approved:true},{image:'bad',view:'profile',approved:false}];
+test('a persona with just one approved photo supports all media and requested angles',()=>{
+ const persona={referenceImage:'single',identityReferences:[{image:'single',view:'profile' as const,approved:true}]};
+ for(const kind of ['image','video','avatar'] as const)
+  for(const prompt of ['front portrait','side profile','full body','laughing'])
+   assert.deepEqual(selectIdentityReferences(persona,prompt,kind).map(ref=>ref.image),['single']);
+});
 test('selects approved shot-matched references and a stable face anchor only',()=>{
  assert.equal(referenceShot('full body walking through a garden'),'full-body');
  assert.equal(referenceShot('بروفايل من الجانب'),'profile');

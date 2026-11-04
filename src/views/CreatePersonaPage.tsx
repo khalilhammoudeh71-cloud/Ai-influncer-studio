@@ -347,22 +347,19 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       return;
     }
     const anchor = referenceImages[0];
-    if(index===0) {
-      setIdentityDetails(prev=>({...prev,[image]:{view:prev[image]?.view || 'front',approved:true}}));
-      return;
-    }
-    if(!identityDetails[anchor]?.approved) {toast.error('Approve your primary identity photo first.');return;}
+    if(index!==0 && !identityDetails[anchor]?.approved) {toast.error('Approve your primary identity photo first.');return;}
     const reviewToken=crypto.randomUUID();identityReviewTokens.current[image]=reviewToken;
-    setIdentityReviews(prev=>({...prev,[image]:{checking:true,message:'Checking against your primary photo…'}}));
+    setIdentityReviews(prev=>({...prev,[image]:{checking:true,message:index===0?'Checking face visibility, sharpness and filtering…':'Checking photo quality and identity match…'}}));
     try {
-      const [storedAnchor,storedCandidate]=await persistPersonaReferenceImages([anchor,image],editingPersona?.id || 'identity-draft');
+      const persisted=await persistPersonaReferenceImages(index===0?[image]:[anchor,image],editingPersona?.id || 'identity-draft');
+      const storedAnchor=persisted[0],storedCandidate=index===0?persisted[0]:persisted[1];
       const review=await api.personaIdentity.review(storedAnchor,storedCandidate);
       if(identityReviewTokens.current[image]!==reviewToken || currentIdentityImages.current[0]!==anchor || !currentIdentityImages.current.includes(image))return;
       if(review.status==='passed') {
-        setIdentityDetails(prev=>({...prev,[image]:{view:prev[image]?.view || 'other',approved:true}}));
-        setIdentityReviews(prev=>({...prev,[image]:{message:'Identity match checked · approved'}}));
+        setIdentityDetails(prev=>({...prev,[image]:{view:prev[image]?.view || (index===0?'front':'other'),approved:true}}));
+        setIdentityReviews(prev=>({...prev,[image]:{message:index===0?'Photo quality checked · anchor approved':'Photo quality and identity match checked · approved'}}));
       } else {
-        setIdentityReviews(prev=>({...prev,[image]:{message:review.status==='failed'?'This photo does not match the identity anchor.':'Could not confirm a match. Try a clearer photo.'}}));
+        setIdentityReviews(prev=>({...prev,[image]:{message:review.reasons?.join(' ') || 'Could not confirm this reference. Try a clearer photo.'}}));
       }
     } catch(error) {
       if(identityReviewTokens.current[image]!==reviewToken)return;
@@ -1907,7 +1904,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
           )}
 
           <div className="rounded-xl border border-white/10 bg-white/[0.025] p-3 text-xs leading-relaxed text-slate-300">
-            {referenceImages.filter(image=>identityDetails[image]?.approved).length} approved identity photos. The studio chooses relevant approved views for each shot and keeps your identity anchor. Unapproved photos stay in the vault and are not used automatically. Start with a clear front face, then add a side profile and full-body view.
+            {referenceImages.filter(image=>identityDetails[image]?.approved).length} approved identity photos. One clear photo is enough to create your persona. Optional extra photos can help with difficult angles and full-body shots. Choose a sharp photo with one person and visible facial features; strong filters can hide identity details. The studio checks new approvals for photo quality and identity consistency; these visual checks can make mistakes.
           </div>
           {/* Photo Gallery Grid */}
           {referenceImages.length > 0 && (
