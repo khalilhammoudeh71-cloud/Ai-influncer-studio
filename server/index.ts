@@ -1,4 +1,6 @@
 import { prepareVerifiedScene, type VerifiedScene } from './verifiedScene';
+import { audioAvatarModel, buildAudioAvatarRequest } from './audioAvatarRequest';
+import { normalizeGeminiAudio } from './geminiStockSpeech';
 import { excludeVaultReferences } from './personaIdentityReferenceFilter';
 import { normalizePersonaMediaReference } from './personaMediaPersistence';
 import { bindPersonaIdentity, assertReferenceModel, requireIdentityPass } from './personaIdentityPolicy';
@@ -8041,13 +8043,7 @@ app.post('/api/talking-avatar', async (req, res) => {
     const talkingRes = await fetch(`${WAVESPEED_BASE}/wavespeed-ai/infinitetalk`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${WAVESPEED_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        image_url: resolvedImage,
-        audio_url: clonedAudioUrl,
-        camera: 'close_up',
-        expression: 'neutral',
-        lighting: 'studio'
-      }),
+      body: JSON.stringify(buildAudioAvatarRequest(resolvedImage, clonedAudioUrl)),
     });
     const talkingJson = await talkingRes.json() as Record<string, unknown>;
     const videoUrl = await extractWavespeedVideoOutput(talkingJson);
@@ -8537,7 +8533,7 @@ const talkingHeadHandler = async (req: any, res: any) => {
   let creditReservation: GenerationReservation | null = null;
   try {
     const authReq = req as AuthenticatedRequest;
-    const avatarModelId = model || (engine === 'heygen' ? `heygen:${heygenEngine}` : 'wavespeed-ai/ai-talking-photos');
+    const avatarModelId = engine === 'heygen' ? model || `heygen:${heygenEngine}` : audioAvatarModel(model);
     const quote = await calculateGenerationQuote(avatarModelId, 'avatar', 1, { textLength: script?.length });
     creditReservation = await reserveGenerationCredits({
       userId: authReq.user.id,
@@ -8583,8 +8579,7 @@ const talkingHeadHandler = async (req: any, res: any) => {
       });
       const inlineData = ttsResult.candidates?.[0]?.content?.parts?.[0]?.inlineData;
       if (inlineData?.data) {
-        const mimeType = (inlineData.mimeType as string) || 'audio/wav';
-        resolvedAudioUrl = `data:${mimeType};base64,${inlineData.data}`;
+        resolvedAudioUrl = normalizeGeminiAudio(inlineData.data, (inlineData.mimeType as string) || 'audio/wav');
       }
     } catch {
       return sendAvatarFailure(500, 'Failed to generate TTS audio for talking head');
@@ -8627,7 +8622,7 @@ const talkingHeadHandler = async (req: any, res: any) => {
 
   // --- Wavespeed Path ---
   try {
-    const selectedModel = model || 'wavespeed-ai/ai-talking-photos';
+    const selectedModel = audioAvatarModel(model);
     
     if (selectedModel === 'bytedance/lipsync/audio-to-video' || selectedModel === 'veed') {
       if (!video) return sendAvatarFailure(400, 'Reference video is required for Sync 1.0 / VEED');
@@ -8685,16 +8680,10 @@ const talkingHeadHandler = async (req: any, res: any) => {
       return sendAvatarFailure(400, 'portraitImage is required for Wavespeed engine');
     }
     const img = await resolveImageToDataUrl(portraitImage);
-    const r = await fetch(`${WAVESPEED_BASE}/wavespeed-ai/ai-talking-photos`, {
+    const r = await fetch(`${WAVESPEED_BASE}/wavespeed-ai/infinitetalk`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${WAVESPEED_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        image_url: img, 
-        audio_url: resolvedAudioUrl,
-        camera,
-        expression,
-        lighting
-      }),
+      body: JSON.stringify(buildAudioAvatarRequest(img, resolvedAudioUrl)),
     });
     const json = await r.json() as Record<string, unknown>;
     const videoUrl = await extractWavespeedVideoOutput(json);
