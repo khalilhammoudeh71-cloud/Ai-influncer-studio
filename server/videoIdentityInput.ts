@@ -13,5 +13,5 @@ export async function videoIdentityInput(input:string, request:typeof fetch=fetc
  try {while(true){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>MAX_VIDEO_BYTES)throw new Error('Video is too large for identity review.');chunks.push(value);}}
  finally {await reader.cancel().catch(()=>{});reader.releaseLock();}
  if(!size)throw new Error('Video is empty.');
- return {inlineData:{mimeType,data:Buffer.concat(chunks).toString('base64')},videoMetadata:{fps:1}};
+ return {inlineData:{mimeType,data:Buffer.concat(chunks).toString('base64')},videoMetadata:{fps:2}};
 }

@@ -16,6 +16,14 @@ export function assertReferenceModel(locked:boolean,model:{hasReferenceImage?:bo
  if(locked && !model.hasReferenceImage && !model.hasEditVariant && !model.editApiPath && !['image-to-video','reference-to-video','video-to-video'].includes(model.type || ''))
   throw new Error('This model cannot preserve a persona reference. Choose a model with image reference support.');
 }
-export function requireIdentityPass(report:{status:string;reasons:string[]}) {
- if(report.status!=='passed')throw new Error(`Persona identity could not be verified. ${report.reasons.join(' ') || 'Try a clearer reference or a different model.'}`);
+export function identityReviewFailure(report:{status:string;reasons:string[];identityStatus?:string;sceneStatus?:string;temporalStatus?:string}) {
+ const context=report.identityStatus==='passed'&&report.sceneStatus&&report.sceneStatus!=='passed'&&report.sceneStatus!=='not-requested'
+  ? 'The face matched, but the requested scene could not be verified.'
+  : report.temporalStatus==='failed'?'Identity drift was detected in the video.'
+  : report.temporalStatus==='unavailable'?'Face consistency could not be confirmed throughout the video.'
+  : 'Persona identity could not be verified.';
+ return `${context} ${report.reasons.join(' ') || 'Try a clearer reference or a different model.'}`;
+}
+export function requireIdentityPass(report:Parameters<typeof identityReviewFailure>[0]) {
+ if(report.status!=='passed')throw new Error(identityReviewFailure(report));
 }

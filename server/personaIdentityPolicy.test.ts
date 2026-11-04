@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { bindPersonaIdentity, assertReferenceModel, requireIdentityPass } from './personaIdentityPolicy';
+test('a confirmed face with an inconclusive scene reports scene uncertainty and stays blocked',()=>{
+ assert.throws(()=>requireIdentityPass({status:'unavailable',identityStatus:'passed',sceneStatus:'unavailable',reasons:['Framing uncertain.']}),/face matched.*scene/i);
+ assert.throws(()=>requireIdentityPass({status:'failed',temporalStatus:'failed',reasons:['Middle segment differs.']}),/drift/i);
+});
 const saved={id:'p1',name:'Persona',referenceImage:'primary',additionalReferenceImages:['side','profile']};
 test('saved identity anchors every image request and retains multiple angles',()=>{
  const body=bindPersonaIdentity({personaId:'p1',referenceImage:'browser-override',additionalImages:['scene']},saved,'image');

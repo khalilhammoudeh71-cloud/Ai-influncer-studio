@@ -384,6 +384,9 @@ export interface PersonaMediaRequest {
 
 export interface PersonaMediaQualityReport {
   status: 'passed' | 'failed' | 'unavailable';
+  identityStatus?: 'passed'|'failed'|'unavailable';
+  sceneStatus?: 'passed'|'failed'|'unavailable'|'not-requested';
+  temporalStatus?: 'passed'|'failed'|'unavailable'|'not-requested';
   expectedParticipantCount: number;
   observedParticipantCount: number | null;
   countConfidence: number | null;

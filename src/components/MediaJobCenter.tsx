@@ -18,6 +18,7 @@ import {
   X,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { mediaQualityLabel } from '../../shared/mediaQualityLabel';
 import { cn } from '../utils/cn';
 import {
   cancelMediaJob,
@@ -249,9 +250,7 @@ export default function MediaJobCenter({ isOpen, onClose, onOpenResult, onJobCom
                               : 'border-white/10 bg-white/[0.04] text-zinc-400',
                           )} title={job.result.quality.reasons.join(' ')}>
                             <ShieldCheck size={11} />
-                            {job.result.quality.status === 'passed'
-                              ? job.result.qualityRetried ? 'Auto-corrected and checked' : 'Identity checked'
-                              : 'Visual check unavailable'}
+                            {mediaQualityLabel(job.result.quality,job.result.qualityRetried)}
                           </div>
                         )}
                       </div>
