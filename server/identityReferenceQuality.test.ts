@@ -1,7 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { assessReferenceQuality } from './identityReferenceQuality';
+import { assessReferenceQuality, identityExampleFile } from './identityReferenceQuality';
 const clear={faceCount:1,detail:'clear',blur:'none',occlusion:'none',retouching:'light',view:'front'};
+test('built-in example photos are accepted without allowing arbitrary remote or local files',()=>{
+ assert.equal(identityExampleFile('/examples/persona-ideas/tech-ai-nano-pro.jpg'),'tech-ai-nano-pro.jpg');
+ assert.equal(identityExampleFile('https://ai-influencerstudio.com/examples/persona-ideas/tech-ai-nano-pro.jpg'),'tech-ai-nano-pro.jpg');
+ for(const value of ['https://evil.example/examples/persona-ideas/tech-ai-nano-pro.jpg','file:///etc/passwd','/examples/persona-ideas/../../.env','/examples/persona-ideas/unknown.jpg'])assert.equal(identityExampleFile(value),null);
+});
 test('one usable photo is enough, including a profile anchor; front-facing is only recommended',()=>{
  assert.equal(assessReferenceQuality(clear).status,'passed');
  assert.equal(assessReferenceQuality({...clear,view:'profile'}).status,'passed');

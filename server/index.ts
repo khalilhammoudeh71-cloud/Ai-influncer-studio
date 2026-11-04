@@ -1,5 +1,5 @@
 import { prepareVerifiedScene, type VerifiedScene } from './verifiedScene';
-import { assessReferenceQuality, REFERENCE_QUALITY_PROMPT, type ReferenceQuality } from './identityReferenceQuality';
+import { assessReferenceQuality, identityExampleFile, REFERENCE_QUALITY_PROMPT, type ReferenceQuality } from './identityReferenceQuality';
 import { audioAvatarModel, buildAudioAvatarRequest } from './audioAvatarRequest';
 import { normalizeGeminiAudio } from './geminiStockSpeech';
 import { excludeVaultReferences } from './personaIdentityReferenceFilter';
@@ -5676,6 +5676,8 @@ app.post('/api/persona-identity/review', async (req: any, res) => {
     const prepare = async (value: unknown) => {
       if (typeof value !== 'string' || value.length > 14_000_000) throw new Error('Choose a valid reference photo under 10 MB.');
       if (/^data:image\/(png|jpe?g|webp);base64,[A-Za-z0-9+/=]+$/.test(value)) return value;
+      const example=identityExampleFile(value);
+      if(example)return `https://ai-influencerstudio.com/examples/persona-ideas/${example}`;
       const normalized = normalizePersonaMediaReference(value, req.user.id);
       if (typeof normalized !== 'string' || !normalized.startsWith('supabase-media://')) throw new Error('Upload this reference photo to your account before checking it.');
       return (await resolveOwnedImageReference(normalized,req.user.id))!;
