@@ -87,6 +87,7 @@ import { buildVoiceConversationHistory } from '../../shared/voiceConversationCon
 import { normalizeAgentSteps } from '../utils/agentStepValidation';
 import { readVoiceTextStream, VoiceTurnScope } from '../utils/voiceStream';
 import { buildAgentSpeechRequest, validateAgentSpeechResponse } from '../utils/agentVoice';
+import { agentCostLabel, agentEscalationLabel } from '../utils/agentMode';
 
 interface AgentViewProps {
   personas: Persona[];
@@ -136,6 +137,8 @@ interface Message {
     promptTokens?: number;
     completionTokens?: number;
     costUsd?: number;
+    attemptCount?: number;
+    escalatedFrom?: string[];
   };
   sources?: Array<{title:string;url:string}>;
   replanDepth?: number;
@@ -3239,7 +3242,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                   setVoiceLlmModel(selected);
                   localStorage.setItem('agent_voice_llm', selected);
                   const labels: Record<string, string> = {
-                    adaptive: 'Adaptive Agent enabled — the best-value configured provider is selected automatically.',
+                    adaptive: 'Cost-first agent ladder enabled — Luna starts, then Terra, Sol, and Astra only when quality requires it.',
                     'adaptive-fast': 'Adaptive Fast enabled — optimized for the lowest latency and cost.',
                     'adaptive-smart': 'Adaptive Smart enabled — balanced quality and cost.',
                     'adaptive-deep': 'Adaptive Deep enabled — stronger models and deeper reasoning.',
@@ -3268,7 +3271,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                 title="Select Conversational Intelligence LLM Engine for Super Agent & Voice Call"
               >
                 <optgroup label="ADAPTIVE AGENT">
-                  <option value="adaptive" className="bg-zinc-900 text-white">Adaptive Auto — Best value</option>
+                  <option value="adaptive" className="bg-zinc-900 text-white">Cost-first ladder — Luna → Terra → Sol → Astra</option>
                   <option value="adaptive-fast" className="bg-zinc-900 text-white">Adaptive Fast — Lowest latency / cost</option>
                   <option value="adaptive-smart" className="bg-zinc-900 text-white">Adaptive Smart — Balanced</option>
                   <option value="adaptive-deep" className="bg-zinc-900 text-white">Adaptive Deep — Maximum reasoning</option>
@@ -3599,8 +3602,9 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                       {msg.role === 'model' && msg.agentMode && (
                         <details className="ml-2 inline-block text-xs font-normal normal-case text-zinc-400"><summary className="cursor-pointer">Run details</summary><span className="block py-2 text-amber-200">
                           {msg.agentMode.provider} · {msg.agentMode.model} · {msg.agentMode.effort}
+                          {agentEscalationLabel(msg.agentMode.attemptCount)}
                           {msg.agentMode.research ? ' · research' : ''}
-                          {typeof msg.agentMode.costUsd === 'number' ? ` · $${msg.agentMode.costUsd.toFixed(5)}` : ''}
+                          {agentCostLabel(msg.agentMode.costUsd)}
                         </span></details>
                       )}
                     </span>

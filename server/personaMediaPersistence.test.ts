@@ -58,3 +58,8 @@ test('normalizes every persona reference field', () => {
   assert.deepEqual(normalized.additionalReferenceImages, [`supabase-media://${userId}/image/portrait.jpg`]);
   assert.equal(normalized.bio, 'Keep ordinary persona text unchanged.');
 });
+
+test('identity approvals cannot attach another account’s photo or an image outside the persona vault',()=>{
+ assert.throws(()=>normalizePersonaMediaReferences({referenceImage:'supabase-media://owner/front.jpg',identityReferences:[{image:'supabase-media://foreign/front.jpg',view:'front',approved:true}]},'owner'),/owned|account/);
+ assert.throws(()=>normalizePersonaMediaReferences({referenceImage:'supabase-media://owner/front.jpg',identityReferences:[{image:'supabase-media://owner/unrelated.jpg',view:'front',approved:true}]},'owner'),/reference vault/);
+});

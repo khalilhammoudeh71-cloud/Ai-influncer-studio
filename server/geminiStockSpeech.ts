@@ -1,3 +1,4 @@
+import { getStudioTtsModel } from './directModelCatalog';
 import { STOCK_VOICES } from '../shared/stockVoices';
 import { SelectedSpeechError } from './selectedSpeech';
 export function pcmWave(pcm:Buffer,rate=24000) {
@@ -7,9 +8,14 @@ export async function geminiStockSpeech(text:string,voice:string,signal?:AbortSi
  if(!STOCK_VOICES.some(v=>v.engine==='gemini'&&v.id===voice))throw new SelectedSpeechError('Choose an available Gemini voice.',422);
  const key=process.env.Gemini_api_key||process.env.gemini_api_key||process.env.GEMINI_API_KEY||process.env.AI_INTEGRATIONS_GEMINI_API_KEY||process.env.GOOGLE_API_KEY;
  if(!key)throw new SelectedSpeechError('Connect a Gemini API key in Settings.',503);
- const response=await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent',{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},signal:AbortSignal.any([AbortSignal.timeout(90000),...(signal?[signal]:[])]),body:JSON.stringify({contents:[{parts:[{text}]}],generationConfig:{responseModalities:['AUDIO'],speechConfig:{voiceConfig:{prebuiltVoiceConfig:{voiceName:voice}}}}})});
+ const response=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${getStudioTtsModel()}:generateContent`,{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},signal:AbortSignal.any([AbortSignal.timeout(90000),...(signal?[signal]:[])]),body:JSON.stringify({contents:[{parts:[{text}]}],generationConfig:{responseModalities:['AUDIO'],speechConfig:{voiceConfig:{prebuiltVoiceConfig:{voiceName:voice}}}}})});
  const data=await response.json();const audio=data.candidates?.[0]?.content?.parts?.find((part:any)=>part.inlineData?.data)?.inlineData;
  if(!response.ok||!audio)throw new SelectedSpeechError(`Gemini voice generation failed (${response.status}).`,502);
- const pcm=Buffer.from(audio.data,'base64');
- return `data:audio/wav;base64,${pcmWave(pcm,Number(audio.mimeType?.match(/rate=(\d+)/)?.[1]||24000)).toString('base64')}`;
+ return normalizeGeminiAudio(audio.data,audio.mimeType || 'audio/wav');
+}
+
+export function normalizeGeminiAudio(data:string,mimeType:string) {
+ const buffer=Buffer.from(data,'base64');
+ if(buffer.toString('ascii',0,4)==='RIFF' && buffer.toString('ascii',8,12)==='WAVE')return `data:audio/wav;base64,${data}`;
+ return `data:audio/wav;base64,${pcmWave(buffer,Number(mimeType.match(/rate=(\d+)/)?.[1]||24000)).toString('base64')}`;
 }

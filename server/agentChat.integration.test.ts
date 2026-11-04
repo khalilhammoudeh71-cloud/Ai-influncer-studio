@@ -1,13 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+const OPENAI_KEYS = ['OPENAI_API_KEY', 'Openai_api_key', 'openai_api_key', 'AI_INTEGRATIONS_OPENAI_API_KEY'];
+
 // Exercise the deployed route handler, with only external provider HTTP replaced.
 // No database credentials or network access are needed by these cases.
 test('planner failures do not invent image actions from keywords', async () => {
   const keys=['Gemini_api_key','gemini_api_key','GEMINI_API_KEY','AI_INTEGRATIONS_GEMINI_API_KEY'];
   const saved=keys.map(key=>process.env[key]);
-  keys.forEach(key=>delete process.env[key]);
   const {default:router}=await import('./routes');
+  keys.forEach(key=>delete process.env[key]);
   const handler=(router as any).stack.find((layer:any)=>layer.route?.path==='/agent/chat').route.stack[0].handle;
   try {
     for(const prompt of ['Create a photo of a blue cup','Text only: calculate the price of three photos. Do not create anything.']) {
@@ -36,12 +38,12 @@ test('a fenced plan envelope preserves its explanation and yields reviewable ste
 });
 
 test('accepting a native plan does not require a second model call to summarize it', async () => {
-  const names=['GEMINI_API_KEY','RUNWARE_API_KEY','WIRO_API_KEY','ATLASCLOUD_API_KEY','WAVESPEED_API_KEY','VENICE_API_KEY'];
+  const names=['GEMINI_API_KEY','RUNWARE_API_KEY','WIRO_API_KEY','ATLASCLOUD_API_KEY','WAVESPEED_API_KEY','VENICE_API_KEY',...OPENAI_KEYS];
   const values=names.map(name=>process.env[name]);names.forEach(name=>delete process.env[name]);
   process.env.GEMINI_API_KEY='test';process.env.RUNWARE_API_KEY='test';
   const originalFetch=globalThis.fetch;let calls=0;
   globalThis.fetch=async(url)=>{
-    if(String(url).endsWith('/models'))return new Response(JSON.stringify({data:[{id:'deepseek:v4@flash',capabilities:{function_tools:true}}]}));
+    if(String(url).includes('/models'))return new Response(JSON.stringify({data:[{id:'deepseek:v4@flash',capabilities:{function_tools:true}}]}));
     calls++;
     if(calls>1)throw new Error('A valid plan already exists; no more model calls should be necessary.');
     return new Response(JSON.stringify({choices:[{message:{role:'assistant',tool_calls:[{id:'plan-1',type:'function',function:{name:'create_studio_plan',arguments:JSON.stringify({summary:'Review this blue cup.',steps:[{type:'generate_image',params:{prompt:'A blue ceramic cup',usePersona:false}}]})}}]}}]}));
@@ -61,7 +63,7 @@ test('accepting a native plan does not require a second model call to summarize 
 });
 
 test('plan mode behaves as an LLM and never returns executable studio steps', async () => {
-  const names=['GEMINI_API_KEY','RUNWARE_API_KEY','WIRO_API_KEY','ATLASCLOUD_API_KEY','WAVESPEED_API_KEY','VENICE_API_KEY'];
+  const names=['GEMINI_API_KEY','RUNWARE_API_KEY','WIRO_API_KEY','ATLASCLOUD_API_KEY','WAVESPEED_API_KEY','VENICE_API_KEY',...OPENAI_KEYS];
   const values=names.map(name=>process.env[name]);names.forEach(name=>delete process.env[name]);
   process.env.GEMINI_API_KEY='test';process.env.RUNWARE_API_KEY='test';
   const originalFetch=globalThis.fetch;let chatCalls=0;
@@ -87,10 +89,10 @@ test('plan mode behaves as an LLM and never returns executable studio steps', as
 });
 
 test('a partial native plan is rejected and replaced as a whole before review', async () => {
-  const names=['RUNWARE_API_KEY'];const values=names.map(name=>process.env[name]);process.env.RUNWARE_API_KEY='test';
+  const names=['RUNWARE_API_KEY',...OPENAI_KEYS];const values=names.map(name=>process.env[name]);names.forEach(name=>delete process.env[name]);process.env.RUNWARE_API_KEY='test';
   const originalFetch=globalThis.fetch;let calls=0;
   globalThis.fetch=async(url,init)=>{
-    if(String(url).endsWith('/models'))return new Response(JSON.stringify({data:[{id:'deepseek:v4@flash',capabilities:{function_tools:true}}]}));
+    if(String(url).includes('/models'))return new Response(JSON.stringify({data:[{id:'deepseek:v4@flash',capabilities:{function_tools:true}}]}));
     calls++;
     const params=calls===1?{sourceImageFromStepIndex:0}:{prompt:'Change only the cup to green',sourceImageFromStepIndex:0};
     if(calls===2){const body=JSON.parse(init!.body as string);assert.equal(JSON.parse(body.messages.at(-1).content).ok,false);}
@@ -122,8 +124,8 @@ test('the saved Grok route works without a Gemini credential and preserves provi
 });
 
 test('truncated native and SDK replies never return partial plans',async()=>{
-  const names=['GEMINI_API_KEY','RUNWARE_API_KEY'];const values=names.map(name=>process.env[name]);
-  process.env.GEMINI_API_KEY='test';process.env.RUNWARE_API_KEY='test';
+  const names=['GEMINI_API_KEY','RUNWARE_API_KEY',...OPENAI_KEYS];const values=names.map(name=>process.env[name]);
+  names.forEach(name=>delete process.env[name]);process.env.GEMINI_API_KEY='test';process.env.RUNWARE_API_KEY='test';
   const originalFetch=globalThis.fetch;
   const steps=[{type:'generate_image',params:{prompt:'A blue cup'}}];
   globalThis.fetch=async(url)=>{
@@ -139,4 +141,169 @@ test('truncated native and SDK replies never return partial plans',async()=>{
       assert.ok(status>=400,`${voiceLlmModel}: truncated replies must fail, got ${status}`);assert.deepEqual(data.suggestedSteps,[]);
     }
   }finally{globalThis.fetch=originalFetch;names.forEach((name,index)=>{if(values[index]===undefined)delete process.env[name];else process.env[name]=values[index];});}
+});
+
+test('adaptive agent uses the OpenAI cost ladder and reports escalation details', async () => {
+  const names = [
+    'OPENAI_API_KEY', 'Openai_api_key', 'openai_api_key', 'AI_INTEGRATIONS_OPENAI_API_KEY',
+    'GEMINI_API_KEY', 'Gemini_api_key', 'gemini_api_key', 'AI_INTEGRATIONS_GEMINI_API_KEY',
+    'RUNWARE_API_KEY', 'WIRO_API_KEY', 'WIRO_API_SECRET', 'ATLASCLOUD_API_KEY',
+    'WAVESPEED_API_KEY', 'VENICE_API_KEY', 'VENICEAI_API_KEY', 'Veniceai_api_key',
+  ];
+  const values = names.map(name => process.env[name]);
+  names.forEach(name => delete process.env[name]);
+  process.env.OPENAI_API_KEY = 'test';
+  const originalFetch = globalThis.fetch;
+  const seen: string[] = [];
+  globalThis.fetch = async (url, init) => {
+    if (String(url) !== 'https://api.openai.com/v1/responses') {
+      if (/\/models(?:\?|$)/.test(String(url))) {
+        return new Response(JSON.stringify({ data: [] }), { headers: { 'content-type': 'application/json' } });
+      }
+      return new Response('{}', { status: 503, headers: { 'content-type': 'application/json' } });
+    }
+    const body = JSON.parse(String(init?.body));
+    seen.push(body.model);
+    const accepted = body.model === 'gpt-5.6-terra';
+    const reply = JSON.stringify({
+      text: accepted ? 'Three campaign ideas are ready.' : 'The first draft may be incomplete.',
+      suggestedSteps: [],
+      campaign: null,
+      quality: {
+        shouldEscalate: !accepted,
+        confidence: accepted ? 0.93 : 0.61,
+        accuracy: accepted ? 'pass' : 'uncertain',
+        completeness: accepted ? 'pass' : 'uncertain',
+        instructionFollowing: 'pass',
+        reason: accepted ? 'Complete.' : 'A requested campaign direction may be missing.',
+      },
+    });
+    return new Response(JSON.stringify({
+      status: 'completed',
+      output: [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: reply, annotations: [] }] }],
+      usage: { input_tokens: 100, output_tokens: 50, total_tokens: 150 },
+    }), { headers: { 'content-type': 'application/json' } });
+  };
+
+  try {
+    const { default: router } = await import('./routes');
+    const handler = (router as any).stack.find((layer: any) => layer.route?.path === '/agent/chat').route.stack[0].handle;
+    let status = 200;
+    let data: any;
+    await handler(
+      { body: { messages: [{ role: 'user', content: 'Give me three campaign ideas.' }], voiceLlmModel: 'adaptive', interactionMode: 'plan' }, user: { id: 'test-owner' } },
+      { status(code: number) { status = code; return this; }, json(value: any) { data = value; return this; } },
+    );
+    assert.equal(status, 200);
+    assert.equal(data.text, 'Three campaign ideas are ready.');
+    assert.deepEqual(seen, ['gpt-5.6-luna', 'gpt-5.6-terra']);
+    assert.equal(data.agentMode.provider, 'openai');
+    assert.equal(data.agentMode.model, 'gpt-5.6-terra');
+    assert.equal(data.agentMode.attemptCount, 2);
+    assert.deepEqual(data.agentMode.escalatedFrom, ['gpt-5.6-luna']);
+    assert.equal(data.agentMode.promptTokens, 200);
+    assert.equal(data.agentMode.completionTokens, 100);
+  } finally {
+    globalThis.fetch = originalFetch;
+    names.forEach((name, index) => {
+      if (values[index] === undefined) delete process.env[name];
+      else process.env[name] = values[index];
+    });
+  }
+});
+
+test('gateway fallback preserves every billed OpenAI attempt in cumulative usage', async () => {
+  const names = [
+    'OPENAI_API_KEY', 'Openai_api_key', 'openai_api_key', 'AI_INTEGRATIONS_OPENAI_API_KEY',
+    'GEMINI_API_KEY', 'Gemini_api_key', 'gemini_api_key', 'AI_INTEGRATIONS_GEMINI_API_KEY',
+    'RUNWARE_API_KEY', 'WIRO_API_KEY', 'WIRO_API_SECRET', 'ATLASCLOUD_API_KEY',
+    'WAVESPEED_API_KEY', 'VENICE_API_KEY', 'VENICEAI_API_KEY', 'Veniceai_api_key',
+  ];
+  const values = names.map(name => process.env[name]);
+  names.forEach(name => delete process.env[name]);
+  process.env.OPENAI_API_KEY = 'test';
+  process.env.RUNWARE_API_KEY = 'test';
+  const originalFetch = globalThis.fetch;
+  const seen: string[] = [];
+  globalThis.fetch = async (url, init) => {
+    const requestUrl = String(url);
+    if (requestUrl === 'https://api.openai.com/v1/responses') {
+      const model = JSON.parse(String(init?.body)).model;
+      seen.push(model);
+      return new Response(JSON.stringify({
+        status: 'completed',
+        output: [{
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'output_text', text: JSON.stringify({
+            text: 'Escalate.',
+            suggestedSteps: [],
+            campaign: null,
+            quality: {
+              shouldEscalate: true,
+              confidence: 0.5,
+              accuracy: 'uncertain',
+              completeness: 'uncertain',
+              instructionFollowing: 'pass',
+              reason: 'Needs a stronger tier.',
+            },
+          }), annotations: [] }],
+        }],
+        usage: { input_tokens: 100, output_tokens: 50, total_tokens: 150 },
+      }), { headers: { 'content-type': 'application/json' } });
+    }
+    if (requestUrl.includes('/models')) {
+      return new Response(JSON.stringify({ data: [{ id: 'deepseek:v4@flash', capabilities: {} }] }), {
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    if (requestUrl === 'https://api.runware.ai/v1/chat/completions') {
+      seen.push('deepseek:v4@flash');
+      return new Response(JSON.stringify({
+        choices: [{ finish_reason: 'stop', message: { content: JSON.stringify({
+          text: 'Gateway fallback completed the answer.',
+          suggestedSteps: [],
+          campaign: null,
+        }) } }],
+        usage: { prompt_tokens: 20, completion_tokens: 10 },
+        cost: 0.001,
+      }), { headers: { 'content-type': 'application/json' } });
+    }
+    return new Response('{}', { status: 503, headers: { 'content-type': 'application/json' } });
+  };
+
+  try {
+    const { default: router } = await import('./routes');
+    const handler = (router as any).stack.find((layer: any) => layer.route?.path === '/agent/chat').route.stack[0].handle;
+    let data: any;
+    await handler(
+      { body: { messages: [{ role: 'user', content: 'Hello!' }], voiceLlmModel: 'adaptive', interactionMode: 'plan' }, user: { id: 'test-owner' }, once() {} },
+      { writableFinished: false, once() {}, status() { return this; }, json(value: any) { data = value; this.writableFinished = true; return this; } },
+    );
+    assert.deepEqual(seen, [
+      'gpt-5.6-luna',
+      'gpt-5.6-terra',
+      'gpt-5.6-sol',
+      'gpt-6-astra',
+      'deepseek:v4@flash',
+    ]);
+    assert.equal(data.text, 'Gateway fallback completed the answer.');
+    assert.equal(data.agentMode.provider, 'runware');
+    assert.equal(data.agentMode.promptTokens, 420);
+    assert.equal(data.agentMode.completionTokens, 210);
+    assert.equal(data.agentMode.costUsd, 0.00678);
+    assert.equal(data.agentMode.attemptCount, 5);
+    assert.deepEqual(data.agentMode.escalatedFrom, [
+      'gpt-5.6-luna',
+      'gpt-5.6-terra',
+      'gpt-5.6-sol',
+      'gpt-6-astra',
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+    names.forEach((name, index) => {
+      if (values[index] === undefined) delete process.env[name];
+      else process.env[name] = values[index];
+    });
+  }
 });

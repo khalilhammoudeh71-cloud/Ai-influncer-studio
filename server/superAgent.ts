@@ -2,7 +2,7 @@ import { blocksAgentPlan } from '../shared/agentPlanIntent';
 import { validateCampaign, CAMPAIGN_WIRE_SCHEMA } from '../shared/agentCampaign';
 
 export type SuperAgentEffort = 'fast' | 'smart' | 'deep';
-export type SuperAgentProvider = 'runware' | 'wiro' | 'atlas' | 'wavespeed' | 'venice';
+export type SuperAgentProvider = 'openai' | 'runware' | 'wiro' | 'atlas' | 'wavespeed' | 'venice';
 
 export interface SuperAgentResearchRequest {
   deepResearch?: boolean;
@@ -47,6 +47,13 @@ const SUPPORTED_STEP_TYPES = new Set([
 ]);
 
 const candidate = (provider: SuperAgentProvider, model: string): SuperAgentCandidate => ({ provider, model });
+
+export const OPENAI_COST_LADDER: SuperAgentCandidate[] = [
+  candidate('openai', 'gpt-5.6-luna'),
+  candidate('openai', 'gpt-5.6-terra'),
+  candidate('openai', 'gpt-5.6-sol'),
+  candidate('openai', 'gpt-6-astra'),
+];
 
 // Ordered by expected value for each workload. Runtime catalog discovery removes
 // unavailable entries before a request is sent, and request failures advance to
@@ -159,9 +166,10 @@ function candidatesForRequestedProvider(
   effort: SuperAgentEffort,
   adultCreative: boolean,
 ): SuperAgentCandidate[] | null {
-  const provider = (['runware', 'wiro', 'atlas', 'wavespeed', 'venice'] as SuperAgentProvider[])
+  const provider = (['openai', 'runware', 'wiro', 'atlas', 'wavespeed', 'venice'] as SuperAgentProvider[])
     .find(name => requestedModel === name || requestedModel.startsWith(`${name}-`));
   if (!provider) return null;
+  if (provider === 'openai') return OPENAI_COST_LADDER;
   const pool = adultCreative ? MODE_CANDIDATES.uncensored : MODE_CANDIDATES[effort];
   const providerModels = [...pool, ...MODE_CANDIDATES.uncensored]
     .filter(item => item.provider === provider);
@@ -200,7 +208,13 @@ export function selectSuperAgentRoute(input: {
   if (requestedModel.includes('smart')) effort = 'smart';
   if (requestedModel.includes('deep')) effort = 'deep';
 
-  let preferred = isAdultCreative ? MODE_CANDIDATES.uncensored : MODE_CANDIDATES[effort];
+  const adaptiveRequested = requestedModel === 'adaptive' || requestedModel.startsWith('adaptive-');
+  const openAiAvailable = input.configuredProviders?.includes('openai') === true;
+  let preferred = !isAdultCreative && adaptiveRequested && openAiAvailable
+    ? OPENAI_COST_LADDER
+    : isAdultCreative
+      ? MODE_CANDIDATES.uncensored
+      : MODE_CANDIDATES[effort];
   preferred = candidatesForRequestedProvider(requestedModel, effort, isAdultCreative) || preferred;
   if (requestedModel === 'venice') {
     preferred = MODE_CANDIDATES.uncensored.filter(item => item.provider === 'venice');
@@ -475,4 +489,112 @@ export function decodeAgentReply(reply: string, request: string, deferCampaignRe
   }
   if (!reply.trim() || /^\s*(?:```json\b|\{|\[)/.test(reply)) throw new Error('The planner returned an incomplete response.');
   return {text:reply.trim(),status:'normal',suggestedSteps:[]};
+}
+
+export interface CostLadderQualitySignal {
+  shouldEscalate: boolean;
+  confidence: number;
+  accuracy: 'pass' | 'uncertain' | 'fail';
+  completeness: 'pass' | 'uncertain' | 'fail';
+  instructionFollowing: 'pass' | 'uncertain' | 'fail';
+  reason: string;
+}
+
+function hasExactKeys(value: Record<string, unknown>, expected: string[]): boolean {
+  const actual = Object.keys(value).sort();
+  const required = [...expected].sort();
+  return actual.length === required.length && actual.every((key, index) => key === required[index]);
+}
+
+function parseCostLadderEnvelope(reply: string): {
+  value?: Record<string, any> & { quality: CostLadderQualitySignal };
+  error?: string;
+} {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(reply);
+  } catch {
+    return { error: 'The candidate response did not match the required schema.' };
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { error: 'The candidate response did not match the required schema.' };
+  }
+  const envelope = parsed as Record<string, unknown>;
+  if (!hasExactKeys(envelope, ['text', 'suggestedSteps', 'campaign', 'quality'])
+    || typeof envelope.text !== 'string'
+    || !Array.isArray(envelope.suggestedSteps)
+    || !(envelope.campaign === null || typeof envelope.campaign === 'string')) {
+    return { error: 'The candidate response did not match the required schema.' };
+  }
+  for (const step of envelope.suggestedSteps) {
+    if (!step || typeof step !== 'object' || Array.isArray(step)) {
+      return { error: 'The candidate response did not match the required schema.' };
+    }
+    const record = step as Record<string, unknown>;
+    if (!hasExactKeys(record, ['type', 'params'])
+      || typeof record.type !== 'string'
+      || !SUPPORTED_STEP_TYPES.has(record.type)
+      || typeof record.params !== 'string') {
+      return { error: 'The candidate response did not match the required schema.' };
+    }
+  }
+  const quality = envelope.quality;
+  if (!quality || typeof quality !== 'object' || Array.isArray(quality)) {
+    return { error: 'The candidate response did not match the required schema.' };
+  }
+  const qualityRecord = quality as Record<string, unknown>;
+  if (!hasExactKeys(qualityRecord, [
+    'shouldEscalate', 'confidence', 'accuracy', 'completeness', 'instructionFollowing', 'reason',
+  ])
+    || typeof qualityRecord.shouldEscalate !== 'boolean'
+    || typeof qualityRecord.confidence !== 'number'
+    || !Number.isFinite(qualityRecord.confidence)
+    || qualityRecord.confidence < 0
+    || qualityRecord.confidence > 1
+    || !['pass', 'uncertain', 'fail'].includes(String(qualityRecord.accuracy))
+    || !['pass', 'uncertain', 'fail'].includes(String(qualityRecord.completeness))
+    || !['pass', 'uncertain', 'fail'].includes(String(qualityRecord.instructionFollowing))
+    || typeof qualityRecord.reason !== 'string'
+    || qualityRecord.reason.length > 500) {
+    return { error: 'The candidate response did not match the required schema.' };
+  }
+  return { value: envelope as Record<string, any> & { quality: CostLadderQualitySignal } };
+}
+
+export function assessCostLadderReply(
+  reply: string,
+  request: string,
+  deferCampaignReview = false,
+  minimumConfidence = 0.82,
+): {
+  passed: boolean;
+  reason?: string;
+  decoded?: ReturnType<typeof decodeAgentReply>;
+  quality?: CostLadderQualitySignal;
+} {
+  const envelope = parseCostLadderEnvelope(reply);
+  if (!envelope.value) return { passed: false, reason: envelope.error };
+
+  let decoded: ReturnType<typeof decodeAgentReply>;
+  try {
+    decoded = decodeAgentReply(reply, request, deferCampaignReview);
+  } catch (error) {
+    return { passed: false, reason: error instanceof Error ? error.message : 'The candidate reply was invalid.' };
+  }
+
+  const quality = envelope.value.quality;
+
+  const dimensions = [quality.accuracy, quality.completeness, quality.instructionFollowing];
+  const confidence = Number(quality.confidence);
+
+  if (quality.shouldEscalate || dimensions.some(value => value !== 'pass') || confidence < minimumConfidence) {
+    const reason = typeof quality.reason === 'string' && quality.reason.trim()
+      ? quality.reason.trim()
+      : confidence < minimumConfidence
+        ? `Candidate confidence ${confidence.toFixed(2)} is below ${minimumConfidence.toFixed(2)}.`
+        : 'The candidate requested escalation.';
+    return { passed: false, reason };
+  }
+
+  return { passed: true, decoded, quality: { ...quality, confidence } };
 }

@@ -55,6 +55,30 @@ export interface SocialTrendsResponse {
   methodology: string;
 }
 
+export interface ModelCatalogNotification {
+  id: string;
+  modelId: string;
+  name: string;
+  provider: string;
+  type: string;
+  discoveredAt: string;
+}
+
+export interface ModelCatalogStatus {
+ activeFlashModel: string;
+ scheduledRefreshConfigured: boolean;
+ checkedAt: string | null;
+ stale: boolean;
+ providers: Record<string,{configured:boolean;ok:boolean;discovered?:number;error?:string}>;
+ adapterManagedProviders: string[];
+}
+
+export interface ModelCatalogNotificationsResponse {
+  checkedAt: string | null;
+  notifications: ModelCatalogNotification[];
+  unreadCount: number;
+}
+
 export type ChannelPostPerformance = 'top' | 'typical' | 'needs-attention';
 
 export interface SocialChannelPost extends SocialTrend {
@@ -206,6 +230,14 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  personaIdentity: {
+    review: (anchorImage:string,candidateImage:string) => request<{status:'passed'|'failed'|'unavailable';reasons:string[]}>('/persona-identity/review',{method:'POST',body:JSON.stringify({anchorImage,candidateImage})}),
+  },
+  modelCatalog: {
+    status: () => request<ModelCatalogStatus>('/model-catalog/status'),
+    notifications: () => request<ModelCatalogNotificationsResponse>('/model-catalog/notifications'),
+    markNotificationsRead: () => request<{ readAt: string; unreadCount: number }>('/model-catalog/notifications/read', { method: 'POST' }),
+  },
   workspaceState: {
     list: () => request<Array<{ key: string; value: string; updatedAt: string }>>('/workspace-state'),
     save: (key: string, value: string, clientUpdatedAt?: string) =>
@@ -290,6 +322,7 @@ export const api = {
         openai: boolean;
         gemini: boolean;
         wavespeed: boolean;
+        higgsfield: boolean;
         elevenlabs: boolean;
         heygen: boolean;
         scrapeCreators: boolean;
@@ -297,7 +330,7 @@ export const api = {
         databaseConnected: boolean | null;
       }>('/config-status');
     } catch {
-      return { openai: false, gemini: false, wavespeed: false, elevenlabs: false, heygen: false, scrapeCreators: false, database: false, databaseConnected: false };
+      return { openai: false, gemini: false, wavespeed: false, higgsfield: false, elevenlabs: false, heygen: false, scrapeCreators: false, database: false, databaseConnected: false };
     }
   },
 

@@ -327,7 +327,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
   const [localPersonaId, setLocalPersonaId] = useState<string>(initialPersona?.id || 'none');
   const [naturalLook, setNaturalLook] = useState(initialPersona?.naturalLook ?? true);
-  const [identityLock, setIdentityLock] = useState(initialPersona?.identityLock ?? true);
+  const [identityLock, setIdentityLock] = useState(true);
 
   const activePersona = useMemo(() => {
     if (localPersonaId === 'none') return ANONYMOUS_PERSONA;
@@ -344,7 +344,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
   useEffect(() => {
     setNaturalLook(activePersona?.naturalLook ?? true);
-    setIdentityLock(activePersona?.identityLock ?? true);
+    setIdentityLock(true);
   }, [activePersona?.id]);
 
   const handleNaturalLookToggle = () => {
@@ -460,9 +460,9 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   useEffect(() => {
     setRefPersonaId(initialPersona?.id || 'none');
   }, [initialPersona?.id]);
-  const [videoResult, setVideoResult] = useState<{ videoUrl: string; model: string } | null>(null);
+  const [videoResult, setVideoResult] = useState<{ videoUrl: string; model: string; sceneImageUrl?: string; sceneVerified?: boolean } | null>(null);
   const [isExtending, setIsExtending] = useState(false);
-  const [extendResult, setExtendResult] = useState<{ videoUrl: string; model: string } | null>(null);
+  const [extendResult, setExtendResult] = useState<{ videoUrl: string; model: string; sceneImageUrl?: string; sceneVerified?: boolean } | null>(null);
   const [extendError, setExtendError] = useState<string | null>(null);
   const [videoSourcePersonaId, setVideoSourcePersonaId] = useState<string>('none');
   const [videoSourceImage, setVideoSourceImage] = useState<string | null>(null);
@@ -663,7 +663,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const avatarImageUploadRef = useRef<HTMLInputElement | null>(null);
 
   // Separate result state for talking avatar to keep it independent of standard video tab
-  const [talkingAvatarResult, setTalkingAvatarResult] = useState<{ videoUrl: string; model: string } | null>(null);
+  const [talkingAvatarResult, setTalkingAvatarResult] = useState<{ videoUrl: string; model: string; sceneImageUrl?: string; sceneVerified?: boolean } | null>(null);
   const [isWebcamCreatorOpen, setIsWebcamCreatorOpen] = useState(false);
   const handleWebcamCreatorComplete = async (avatarId: string, voiceId?: string, portraitBase64?: string) => {
     if (portraitBase64) {
@@ -838,6 +838,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
       toast.loading('Animating avatar face (this may take a minute)...', { id: t });
       const result = await generateTalkingHead({
+        personaId: activePersona.id === 'empty' ? undefined : activePersona.id,
         portraitImage: isVideoInput ? undefined : ((activePersona as any).heygenAvatarId && selectedLipSyncModel === 'heygen' ? undefined : portraitImage),
         video: isVideoInput ? videoReference : undefined,
         model: selectedLipSyncModel,
@@ -852,7 +853,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
       toast.success('Talking Avatar ready!', { id: t });
       if (result.videoUrl) {
-        setTalkingAvatarResult({ videoUrl: result.videoUrl, model: result.model });
+        setTalkingAvatarResult(result);
       }
     } catch (err) {
       console.error(err);
@@ -1109,7 +1110,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       setSelectedResolution('1k');
     }
   }, [selectedModel, resolutionOpts, selectedResolution]);
-  const isI2VModel = selectedVideoModel.startsWith('wavespeed-i2v:');
+  const isI2VModel = getVideoModelType(videoModels.find(model => model.id === selectedVideoModel) || { id: selectedVideoModel }) === 'image-to-video';
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -1344,8 +1345,10 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         supportsAspectRatio ? selectedVideoAspectRatio : undefined,
         supportsDuration ? selectedVideoDuration : undefined,
         supportsResolution ? selectedVideoResolution : undefined,
-        sourceVid,
-        generateAudioToggle
+        isV2V ? sourceVid : undefined,
+        generateAudioToggle,
+        undefined,
+        videoSourcePersonaId !== 'none' ? videoSourcePersonaId : undefined
       );
       setVideoResult(data);
     } catch (err: unknown) {
@@ -2690,6 +2693,11 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           )}
         </div>
 
+        {videoResult?.sceneVerified && videoResult.sceneImageUrl && <details className="rounded-xl border border-emerald-400/20 bg-emerald-400/5 p-3">
+          <summary className="cursor-pointer text-xs font-semibold text-emerald-200">Verified starting image</summary>
+          <img src={videoResult.sceneImageUrl} alt="The identity-checked scene used to start this video" className="mt-3 max-h-64 rounded-lg object-contain" />
+        </details>}
+
         {/* ── BOTTOM SECTION: Curved Premium Video Prompt Box ── */}
         <div className="relative bg-[#08080A] border border-white/10 rounded-[24px] p-4.5 space-y-3.5 focus-within:border-[#E7C477]/50 focus-within:shadow-[0_0_30px_rgba(231,196,119,0.05)] transition-all duration-300">
 
@@ -3971,6 +3979,11 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             </div>
           </div>
 
+          {talkingAvatarResult?.sceneVerified && talkingAvatarResult.sceneImageUrl && <details className="rounded-xl border border-emerald-400/20 bg-emerald-400/5 p-3">
+            <summary className="cursor-pointer text-xs font-semibold text-emerald-200">Verified portrait used for this avatar</summary>
+            <img src={talkingAvatarResult.sceneImageUrl} alt="The identity-checked portrait used for this talking avatar" className="mt-3 max-h-64 rounded-lg object-contain" />
+          </details>}
+
           <div className="grid grid-cols-1 gap-4">
             <div className="space-y-2">
                <label className="text-xs font-extrabold text-[var(--text-tertiary)] uppercase tracking-widest px-1">Output & Actions</label>
@@ -4151,11 +4164,11 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     },
     video: {
       title: 'Video Studio',
-      description: 'Turn a prompt or reference image into cinematic motion.',
+      description: 'Your persona’s scene image is checked before animation. Starting from a persona reference also generates an opening image, billed separately; uploaded scenes are checked and reused.',
     },
     'talking-avatar': {
       title: 'Talking Avatar Studio',
-      description: 'Combine a face, script, and voice into a speaking avatar.',
+      description: 'The portrait is checked against your persona before voice or animation starts.',
     },
     voice: {
       title: 'Voice & Audio Studio',

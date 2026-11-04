@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  assessCostLadderReply,
   estimateSuperAgentCost,
   decodeAgentReply,
   modelSupportsNativeTools,
@@ -11,6 +12,119 @@ import {
   parseAgentToolArguments,
   selectSuperAgentRoute,
 } from './superAgent';
+
+test('adaptive routing starts with the cheapest OpenAI agent and escalates by capability', () => {
+  const route = selectSuperAgentRoute({
+    prompt: 'Design a launch campaign and verify the plan is complete',
+    requestedModel: 'adaptive',
+    configuredProviders: ['openai'],
+  });
+  assert.deepEqual(route.modelCandidates, [
+    { provider: 'openai', model: 'gpt-5.6-luna' },
+    { provider: 'openai', model: 'gpt-5.6-terra' },
+    { provider: 'openai', model: 'gpt-5.6-sol' },
+    { provider: 'openai', model: 'gpt-6-astra' },
+  ]);
+});
+
+test('explicit provider routing is preserved instead of being replaced by the OpenAI ladder', () => {
+  const route = selectSuperAgentRoute({
+    prompt: 'Draft a caption',
+    requestedModel: 'runware',
+    configuredProviders: ['openai', 'runware'],
+  });
+  assert.equal(route.modelCandidates[0]?.provider, 'runware');
+  assert.equal(route.modelCandidates.some(candidate => candidate.provider === 'openai'), false);
+});
+
+test('cost-ladder gate accepts only complete replies with passing quality dimensions', () => {
+  const reply = JSON.stringify({
+    text: 'Three concise campaign directions are ready.',
+    suggestedSteps: [],
+    campaign: null,
+    quality: {
+      shouldEscalate: false,
+      confidence: 0.91,
+      accuracy: 'pass',
+      completeness: 'pass',
+      instructionFollowing: 'pass',
+      reason: 'All requested directions are covered.',
+    },
+  });
+  const result = assessCostLadderReply(reply, 'Text only: give me three campaign directions.');
+  assert.equal(result.passed, true);
+  assert.equal(result.decoded?.text, 'Three concise campaign directions are ready.');
+});
+
+test('cost-ladder gate escalates uncertainty and structurally incomplete plans', () => {
+  const uncertain = JSON.stringify({
+    text: 'This may be right, but I could not verify it.',
+    suggestedSteps: [],
+    campaign: null,
+    quality: {
+      shouldEscalate: true,
+      confidence: 0.62,
+      accuracy: 'uncertain',
+      completeness: 'pass',
+      instructionFollowing: 'pass',
+      reason: 'The factual claim could not be verified.',
+    },
+  });
+  assert.deepEqual(
+    assessCostLadderReply(uncertain, 'What is the current campaign benchmark?'),
+    { passed: false, reason: 'The factual claim could not be verified.' },
+  );
+
+  const incomplete = JSON.stringify({
+    text: 'I made the first part.',
+    suggestedSteps: [
+      { type: 'generate_image', params: JSON.stringify({ prompt: 'A blue cup' }) },
+      { type: 'edit_image', params: JSON.stringify({ sourceImageFromStepIndex: 0 }) },
+    ],
+    campaign: null,
+    quality: {
+      shouldEscalate: false,
+      confidence: 0.99,
+      accuracy: 'pass',
+      completeness: 'pass',
+      instructionFollowing: 'pass',
+      reason: 'Complete.',
+    },
+  });
+  const result = assessCostLadderReply(incomplete, 'Create a blue cup and edit it green.');
+  assert.equal(result.passed, false);
+  assert.match(result.reason || '', /incomplete/i);
+});
+
+test('cost-ladder gate rejects envelopes that do not exactly match the local schema', () => {
+  const quality = {
+    shouldEscalate: false,
+    confidence: 0.95,
+    accuracy: 'pass',
+    completeness: 'pass',
+    instructionFollowing: 'pass',
+    reason: 'Complete.',
+  };
+  const missingRequiredFields = JSON.stringify({ text: 'Looks good.', quality });
+  const unexpectedFields = JSON.stringify({
+    text: 'Looks good.',
+    suggestedSteps: [],
+    campaign: null,
+    quality: { ...quality, debug: true },
+  });
+  const invalidReason = JSON.stringify({
+    text: 'Looks good.',
+    suggestedSteps: [],
+    campaign: null,
+    quality: { ...quality, reason: 42 },
+  });
+
+  for (const reply of [missingRequiredFields, unexpectedFields, invalidReason]) {
+    const result = assessCostLadderReply(reply, 'Check this response.');
+    assert.equal(result.passed, false);
+    assert.match(result.reason || '', /schema/i);
+  }
+});
 
 test('uses the fast route for trivial conversation without research', () => {
   const route = selectSuperAgentRoute({ prompt: 'Hello!' });

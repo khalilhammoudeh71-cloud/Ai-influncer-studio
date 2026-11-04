@@ -65,16 +65,15 @@ export default function TalkingHeadStudio({
   }, [initialAudioUrl, initialScript]);
 
   useEffect(() => {
-    if (persona?.referenceImage && !portraitImage) {
-      setPortraitImage(persona.referenceImage);
-    }
+    setPortraitImage(persona?.referenceImage || persona?.avatar || null);
+    setVideoUrl(null);
     if (persona?.heygenAvatarId) {
       setUseCustomAvatar(true);
       setEngine('heygen');
     } else {
       setUseCustomAvatar(false);
     }
-  }, [persona]);
+  }, [persona?.id, persona?.referenceImage, persona?.avatar, persona?.heygenAvatarId]);
 
   const handleGenerate = async () => {
     if (!useCustomAvatar && !portraitImage) return toast.error('Upload a portrait image first');
@@ -105,6 +104,7 @@ export default function TalkingHeadStudio({
 
       const result = await generateTalkingHead({
         ...params,
+        personaId: persona?.id,
         engine,
         heygenEngine,
         heygenApiKey: loadPrefs().heygenApiKey || undefined,

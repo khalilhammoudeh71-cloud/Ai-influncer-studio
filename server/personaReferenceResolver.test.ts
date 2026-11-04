@@ -15,3 +15,11 @@ test('signing failure is explicit and never passes the internal reference as bas
  await assert.rejects(resolveOwnedImageReference('supabase-media://owner/image/photo.jpg','owner',async()=>{throw new Error('Storage unavailable');}),/Storage unavailable/);
  assert.equal(await resolveOwnedImageReference(undefined,'owner'),undefined);
 });
+
+test('only approved shot-matched views are signed, with a stable anchor retained',async()=>{
+ const calls:string[]=[];
+ const p={id:'p',referenceImage:'supabase-media://owner/front.jpg',additionalReferenceImages:['supabase-media://owner/rejected.jpg'],identityReferences:[{image:'supabase-media://owner/front.jpg',view:'front' as const,approved:true},{image:'supabase-media://owner/side.jpg',view:'profile' as const,approved:true},{image:'supabase-media://owner/rejected.jpg',view:'profile' as const,approved:false}]};
+ const selected=await hydratePersonaReferences(p,'owner',async path=>{calls.push(path);return 'https://signed/'+path;},{prompt:'side profile portrait',kind:'image'});
+ assert.equal(selected.referenceImage,'https://signed/owner/side.jpg');assert.deepEqual(calls,['owner/side.jpg','owner/front.jpg']);
+ assert.deepEqual(selected.additionalReferenceImages,['https://signed/owner/front.jpg']);
+});

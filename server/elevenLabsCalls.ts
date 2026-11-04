@@ -42,7 +42,7 @@ export function buildElevenLabsCallConfig(owner: string, persona: any, input: un
       disableFirstMessageInterruptions: false,
       dynamicVariables: { dynamic_variable_placeholders: { call_context: '{}' } },
       prompt: {
-        prompt, llm: 'gemini-2.5-flash' as const, temperature: .6, maxTokens: 700,
+        prompt, llm: 'gemini-3.8-flash' as const, temperature: .6, maxTokens: 700,
         builtInTools: {
           endCall: { name: 'end_call', params: { systemToolType: 'end_call' as const } },
           ...(preferences.allowLanguageSwitching ? { languageDetection: { name: 'language_detection', params: { systemToolType: 'language_detection' as const } } } : {}),

@@ -1,3 +1,4 @@
+import { IDENTITY_VIEWS, type IdentityView } from '../../shared/personaIdentitySet';
 import { VoiceModelPicker } from '../components/VoiceModelPicker';
 import AvailableVoices, { type VoicePreviewState } from '../components/AvailableVoices';
 import VoiceRemix from '../components/VoiceRemix';
@@ -335,6 +336,40 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   // Image State
   const [imageTab, setImageTab] = useState<'upload' | 'ai' | 'wizard'>('upload');
   const [referenceImages, setReferenceImages] = useState<string[]>([]);
+  const [identityDetails, setIdentityDetails] = useState<Record<string,{view:IdentityView;approved:boolean}>>({});
+  const [identityReviews, setIdentityReviews] = useState<Record<string,{checking?:boolean;message:string}>>({});
+  const identityReviewTokens = useRef<Record<string,string>>({});
+  const currentIdentityImages = useRef(referenceImages);
+  currentIdentityImages.current = referenceImages;
+  const approveIdentityReference = async (image:string,index:number) => {
+    if (identityDetails[image]?.approved) {
+      setIdentityDetails(prev=>({...prev,[image]:{view:prev[image]?.view || (index===0?'front':'other'),approved:false}}));
+      return;
+    }
+    const anchor = referenceImages[0];
+    if(index===0) {
+      setIdentityDetails(prev=>({...prev,[image]:{view:prev[image]?.view || 'front',approved:true}}));
+      return;
+    }
+    if(!identityDetails[anchor]?.approved) {toast.error('Approve your primary identity photo first.');return;}
+    const reviewToken=crypto.randomUUID();identityReviewTokens.current[image]=reviewToken;
+    setIdentityReviews(prev=>({...prev,[image]:{checking:true,message:'Checking against your primary photo…'}}));
+    try {
+      const [storedAnchor,storedCandidate]=await persistPersonaReferenceImages([anchor,image],editingPersona?.id || 'identity-draft');
+      const review=await api.personaIdentity.review(storedAnchor,storedCandidate);
+      if(identityReviewTokens.current[image]!==reviewToken || currentIdentityImages.current[0]!==anchor || !currentIdentityImages.current.includes(image))return;
+      if(review.status==='passed') {
+        setIdentityDetails(prev=>({...prev,[image]:{view:prev[image]?.view || 'other',approved:true}}));
+        setIdentityReviews(prev=>({...prev,[image]:{message:'Identity match checked · approved'}}));
+      } else {
+        setIdentityReviews(prev=>({...prev,[image]:{message:review.status==='failed'?'This photo does not match the identity anchor.':'Could not confirm a match. Try a clearer photo.'}}));
+      }
+    } catch(error) {
+      if(identityReviewTokens.current[image]!==reviewToken)return;
+      setIdentityReviews(prev=>({...prev,[image]:{message:error instanceof Error?error.message:'Reference check failed. Try again.'}}));
+    }
+  };
+
   const [aiImagePrompt, setAiImagePrompt] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -389,11 +424,18 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   };
 
   const removeImage = (indexToRemove: number) => {
+    const image=referenceImages[indexToRemove];delete identityReviewTokens.current[image];
+    setIdentityReviews(prev=>{const next={...prev};delete next[image];return next;});
     setReferenceImages(prev => prev.filter((_, idx) => idx !== indexToRemove));
   };
 
   const setPrimaryImage = (indexToMakePrimary: number) => {
     if (indexToMakePrimary === 0) return;
+    identityReviewTokens.current={};setIdentityReviews({});
+    if (!identityDetails[referenceImages[indexToMakePrimary]]?.approved) {
+      setIdentityDetails(prev=>Object.fromEntries(Object.entries(prev).map(([image,details])=>[image,{...details,approved:false}])));
+      setIdentityReviews({});
+    }
     setReferenceImages(prev => {
       const selected = prev[indexToMakePrimary];
       const rest = prev.filter((_, idx) => idx !== indexToMakePrimary);
@@ -856,6 +898,11 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
         });
       }
       setReferenceImages(refPhotos);
+      setIdentityDetails(Object.fromEntries(refPhotos.map((image,index)=>{
+        const saved=editingPersona.identityReferences?.find(ref=>ref.image===image);
+        return [image,{view:saved?.view || (index===0?'front':'other'),approved:saved?.approved ?? (editingPersona.identityReferences===undefined && index===0)}];
+      })));
+      setIdentityReviews({});
 
       // 2. Persona Generations Vault: Dedicated folder ONLY for AI-generated images created in the app
       if (Array.isArray(editingPersona.visualLibrary)) {
@@ -929,6 +976,8 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       setVoiceStyleExaggeration(20);
       setVoiceSpeakingSpeed(1.0);
       setReferenceImages([]);
+      setIdentityDetails({});
+      setIdentityReviews({});
       setGenerationsVault([]);
       setSelectedSavedVoiceName('');
       setSelectedVoiceId('');
@@ -1333,6 +1382,8 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       return;
     }
 
+    if (referenceImages[0] && !identityDetails[referenceImages[0]]?.approved) {toast.error('Approve your primary identity photo in Appearance before saving.');setStudioStep(1);return;}
+    if (Object.values(identityReviews).some(review=>review.checking)) {toast.error('Wait for the identity photo check to finish.');return;}
     if (isCloning) { toast.error('Wait for the current voice operation before saving.'); return; }
     setIsSaving(true);
     const saveToastId = toast.loading('Saving persona securely...');
@@ -1341,6 +1392,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
       const persistedReferenceImages = await persistPersonaReferenceImages(referenceImages, personaId);
       const primaryImg = persistedReferenceImages[0] || '';
       const additionalImgs = persistedReferenceImages.slice(1);
+      const identityReferences = persistedReferenceImages.map((image,index)=>({image,view:identityDetails[referenceImages[index]]?.view || (index===0?'front' as const:'other' as const),approved:identityDetails[referenceImages[index]]?.approved===true}));
 
       const defaultVoiceRule = `Deeply loyal, devoted, and open with her creator. Loves teasing, talking dirty, and fulfilling all romantic, adult, and creative desires in text and voice. ${tone}`.trim();
       const voiceRuleToSave = creatorVoiceRule.trim() || (editingPersona?.brandVoiceRules || defaultVoiceRule);
@@ -1370,6 +1422,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
           referenceImage: primaryImg,
           avatar: primaryImg,
           additionalReferenceImages: additionalImgs,
+          identityReferences,
           visualLibrary: generationsVault,
           voiceId: selectedVoiceId,
           voiceName: selectedVoiceName,
@@ -1406,6 +1459,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
           referenceImage: primaryImg,
           avatar: primaryImg,
           additionalReferenceImages: additionalImgs,
+          identityReferences,
           visualLibrary: generationsVault,
           voiceId: selectedVoiceId,
           voiceName: selectedVoiceName,
@@ -1639,14 +1693,14 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
 
         {/* ── STEP 1: PERSONA PHOTOS ── */}
         <div className="luxury-card p-4 sm:p-7 space-y-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+          <div className="flex flex-col 2xl:flex-row items-start 2xl:items-center justify-between gap-4 border-b border-slate-800 pb-4">
             <div>
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
                 <ImageIcon className="text-[#D9BA72]" size={20} />
-                1. Persona Identity & Reference Vault ({referenceImages.length} Reference Photos)
+                1. Identity Reference Set ({referenceImages.length} Reference Photos)
               </h3>
               <p className="text-xs text-slate-400 mt-0.5">
-                Upload portrait headshots and training photos used for AI face consistency. AI-generated shoots are saved separately in the Generations Vault below.
+                Build your approved identity set. Label each view, approve the primary face, then check extra photos against it. Generated shoots stay separate until you choose and approve them.
               </p>
             </div>
 
@@ -1852,6 +1906,9 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
             </div>
           )}
 
+          <div className="rounded-xl border border-white/10 bg-white/[0.025] p-3 text-xs leading-relaxed text-slate-300">
+            {referenceImages.filter(image=>identityDetails[image]?.approved).length} approved identity photos. The studio chooses relevant approved views for each shot and keeps your identity anchor. Unapproved photos stay in the vault and are not used automatically. Start with a clear front face, then add a side profile and full-body view.
+          </div>
           {/* Photo Gallery Grid */}
           {referenceImages.length > 0 && (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 pt-2">
@@ -1859,16 +1916,16 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                 <div
                   key={idx}
                   className={cn(
-                    "group relative h-40 rounded-xl overflow-hidden border bg-black/40",
+                    "group relative rounded-xl overflow-hidden border bg-black/40",
                     idx === 0 ? "border-[#E7C477] ring-2 ring-[#E7C477]/20" : "border-white/10"
                   )}
                 >
                   <img
                     src={imgUrl}
-                    alt=""
-                    className="w-full h-full object-cover"
+                    alt={`Identity reference ${idx+1}`}
+                    className="w-full h-40 object-cover"
                     onError={(e) => {
-                      (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?q=80&w=600&auto=format&fit=crop';
+                      (e.target as HTMLImageElement).alt = 'Reference photo unavailable — upload it again';
                     }}
                   />
 
@@ -1880,6 +1937,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
                     ) : (
                       <button
                         type="button"
+                        disabled={isSaving}
                         onClick={(e) => { e.stopPropagation(); setPrimaryImage(idx); }}
                         className="p-1.5 rounded-full bg-black/80 text-white hover:text-[#E7C477] transition-all"
                         title="Make Main Avatar"
@@ -1890,11 +1948,24 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
 
                     <button
                       type="button"
+                      aria-label={`Remove reference ${idx+1}`}
+                      disabled={isSaving}
                       onClick={(e) => { e.stopPropagation(); removeImage(idx); }}
-                      className="p-1.5 rounded-full bg-black/80 text-white hover:text-rose-400 transition-all opacity-0 group-hover:opacity-100"
+                      className="p-1.5 rounded-full bg-black/80 text-white hover:text-rose-400 transition-all opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100"
                     >
                       <Trash2 size={12} />
                     </button>
+                  </div>
+                  <div className="space-y-2 p-2.5">
+                    <label className="block text-[10px] text-slate-300">Photo view
+                      <select disabled={isSaving} aria-label={`Reference ${idx+1} photo view`} value={identityDetails[imgUrl]?.view || (idx===0?'front':'other')} onChange={e=>setIdentityDetails(prev=>({...prev,[imgUrl]:{view:e.target.value as IdentityView,approved:prev[imgUrl]?.approved===true}}))} className="mt-1 w-full rounded-lg border border-white/15 bg-[#17171b] px-2 py-2 text-xs text-white">
+                        {IDENTITY_VIEWS.map(view=><option key={view} value={view}>{({'front':'Front face','three-quarter':'Three-quarter','profile':'Side profile','full-body':'Full body','expression':'Expression','other':'Other view'})[view]}</option>)}
+                      </select>
+                    </label>
+                    <button type="button" aria-label={`${identityDetails[imgUrl]?.approved?'Unapprove':'Approve'} reference ${idx+1}`} aria-pressed={identityDetails[imgUrl]?.approved===true} disabled={identityReviews[imgUrl]?.checking || isSaving} onClick={()=>approveIdentityReference(imgUrl,idx)} className={`w-full min-h-10 rounded-lg border px-2 py-2 text-[10px] font-semibold disabled:opacity-50 ${identityDetails[imgUrl]?.approved?'border-emerald-400/40 bg-emerald-400/10 text-emerald-200':'border-white/20 text-white'}`}>
+                      {identityReviews[imgUrl]?.checking?'Checking…':identityDetails[imgUrl]?.approved?'Approved · remove approval':idx===0?'Approve as identity anchor':'Check & approve identity'}
+                    </button>
+                    {identityReviews[imgUrl]?.message && <p role="status" className="text-[10px] leading-relaxed text-slate-300">{identityReviews[imgUrl].message}</p>}
                   </div>
                 </div>
               ))}

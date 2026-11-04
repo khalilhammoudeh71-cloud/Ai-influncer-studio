@@ -1,3 +1,4 @@
+import { normalizeIdentitySet } from '../shared/personaIdentitySet';
 const WORKSPACE_MEDIA_BUCKET = 'workspace-media';
 const WORKSPACE_MEDIA_PREFIX = 'supabase-media://';
 
@@ -91,5 +92,13 @@ export function normalizePersonaMediaReferences<T extends Record<string, any>>(b
     });
   }
 
+  if ('identityReferences' in normalized) {
+    if (!Array.isArray(normalized.identityReferences)) throw new PersonaMediaPersistenceError('Identity references must be a list.');
+    const entries = normalized.identityReferences.map((ref: any) => ({...ref,image:normalizePersonaMediaReference(ref?.image,userId)}));
+    try {
+      normalized.identityReferences = normalizeIdentitySet(entries,[normalized.referenceImage,normalized.avatar,normalized.alternateReferenceImage,...(normalized.additionalReferenceImages || [])].filter(Boolean));
+      if (normalized.referenceImage && !normalized.identityReferences.some((ref: any) => ref.image === normalized.referenceImage && ref.approved)) throw new Error('Approve the primary identity photo before saving this persona.');
+    } catch(error) { throw new PersonaMediaPersistenceError(error instanceof Error ? error.message : 'Invalid identity reference set'); }
+  }
   return normalized as T;
 }

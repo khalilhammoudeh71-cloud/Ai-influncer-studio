@@ -5,6 +5,9 @@ export type MediaJobKind = 'image' | 'video' | 'edit' | 'upscale' | 'avatar';
 export type MediaJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled';
 
 export interface MediaJobResult {
+  sceneImageUrl?: string;
+  sceneVerified?: boolean;
+  sceneImageGenerated?: boolean;
   url: string;
   type?: 'image' | 'video';
   model?: string;
@@ -225,7 +228,7 @@ export async function studioVideoJob(personaClientId: string | undefined, reques
   const compactRequest = await compressRequestImages({ ...request, requestMode: 'studio' });
   const job = await createAndRunMediaJob('video', personaClientId, compactRequest);
   if (!job.result?.url) throw new Error(job.error || 'Video generation failed');
-  return { videoUrl: job.result.url, model: job.result.model || String(request.modelId || '') };
+  return { videoUrl: job.result.url, model: job.result.model || String(request.modelId || ''),sceneImageUrl:job.result.sceneImageUrl,sceneVerified:job.result.sceneVerified };
 }
 
 export async function editImageJob(
@@ -263,5 +266,5 @@ export async function talkingAvatarJob(personaClientId: string | undefined, requ
     : request.portraitImage;
   const job = await createAndRunMediaJob('avatar', personaClientId, { ...request, portraitImage });
   if (!job.result?.url) throw new Error(job.error || 'Talking avatar generation failed');
-  return { videoUrl: job.result.url, model: job.result.model || String(request.model || 'Talking Avatar') };
+  return { videoUrl: job.result.url, model: job.result.model || String(request.model || 'Talking Avatar'),sceneImageUrl:job.result.sceneImageUrl,sceneVerified:job.result.sceneVerified };
 }

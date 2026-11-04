@@ -1,9 +1,10 @@
+import { getStudioFlashModel } from './directModelCatalog';
 const models:Record<string,{provider:string;model:string}>={
  'frontier-grok':{provider:'xai',model:'grok-4.6'},
  'frontier-gemini-pro':{provider:'google',model:'gemini-3.1-pro-preview'},
  'frontier-gemini-flash':{provider:'google',model:'gemini-3.8-flash'},
 };
-export const frontierModel=(choice:string)=>Object.prototype.hasOwnProperty.call(models,choice)?models[choice]:undefined;
+export const frontierModel=(choice:string)=>choice==='frontier-gemini-flash'?{provider:'google',model:getStudioFlashModel()}:Object.prototype.hasOwnProperty.call(models,choice)?models[choice]:undefined;
 export const selectedTextModel=(choice:string)=>choice==='grok'?{provider:'xai',model:process.env.XAI_SUPER_AGENT_MODEL || 'grok-4.6'}:frontierModel(choice);
 export function assertCompleteModelOutput(finishReason:unknown,model:string) {
  if (finishReason==='MAX_TOKENS' || finishReason==='length') throw new Error(`${model} returned an incomplete response. Retry with a smaller task. No actions were started.`);

@@ -70,3 +70,9 @@ test('composes separate identity instructions for multi-persona media', () => {
   assert.match(prompt, /Rawan Hassan/);
   assert.match(prompt, /Do not merge, swap, duplicate, or average their faces/);
 });
+
+test('studio duo wording includes the creator in identity checks',()=>{
+ const active={id:'a',name:'Alex',referenceImage:'a.jpg'};
+ const creator={id:'creator',name:'Creator',referenceImage:'creator.jpg'};
+ assert.equal(resolveMediaParticipants('Duo photoshoot featuring Alex standing alongside the creator',active,[active],creator).length,2);
+});

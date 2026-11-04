@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Persona, NavActions, CreatorProfile } from '../types';
-import { api } from '../services/apiService';
+import { api, type ModelCatalogStatus } from '../services/apiService';
 import { fetchAllModelTypes, ModelInfo } from '../services/imageService';
 import { supabase } from '../lib/supabase';
 import { useCreatorProfile, saveCreatorProfile } from '../utils/creatorProfile';
@@ -79,6 +79,8 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
   const [defaultImageModel, setDefaultImageModel] = useState<string>(() => loadPrefs().defaultImageModel || '');
   const [defaultVideoModel, setDefaultVideoModel] = useState<string>(() => loadPrefs().defaultVideoModel || '');
   const [modelsLoaded, setModelsLoaded] = useState(false);
+  const [catalogStatus, setCatalogStatus] = useState<ModelCatalogStatus | null>(null);
+  const [catalogStatusError, setCatalogStatusError] = useState(false);
 
   // API status
   const [apiStatus, setApiStatus] = useState<ApiStatus | null>(null);
@@ -145,6 +147,7 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
     }).catch(() => setModelsLoaded(true));
 
     checkApiStatus();
+    api.modelCatalog.status().then(setCatalogStatus).catch(() => setCatalogStatusError(true));
   }, []);
 
   const checkApiStatus = async () => {
@@ -812,6 +815,16 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
 
         {/* ── Default Model Preferences ── */}
         <motion.section className={activeSettingsTab === 'models' ? 'block' : 'hidden'} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
+          <div className="premium-card mb-5 rounded-2xl p-5 space-y-3">
+            <h3 className="text-sm font-semibold">Daily model updates</h3>
+            {catalogStatus ? <>
+              <p className="text-xs text-[var(--text-secondary)]">Internal analysis: {catalogStatus.activeFlashModel}</p>
+              <p className="text-xs text-[var(--text-tertiary)]">{catalogStatus.checkedAt ? `Last scan: ${new Date(catalogStatus.checkedAt).toLocaleString()}` : 'No completed daily scan yet.'}</p>
+              <p className="text-xs text-[var(--text-tertiary)]">{!catalogStatus.scheduledRefreshConfigured ? 'Daily scanning needs server configuration.' : catalogStatus.stale ? 'The daily scan is overdue or has not completed.' : 'Daily scan results are current.'}</p>
+              <div className="space-y-2">{Object.entries(catalogStatus.providers).map(([name,status])=><div key={name} className="flex justify-between gap-3 text-xs"><span>{name}</span><span className={status.configured && !status.ok ? 'text-amber-400' : 'text-[var(--text-secondary)]'}>{!status.configured ? 'Not configured' : status.ok ? `${status.discovered ?? 0} models found` : 'Scan failed — previous catalog retained'}</span></div>)}</div>
+              <p className="text-xs text-[var(--text-muted)]">{catalogStatus.adapterManagedProviders.join(', ')} use maintained integrations; new engines need compatibility checks. Voice and image models are updated separately from text analysis.</p>
+            </> : <p className="text-xs text-[var(--text-tertiary)]">{catalogStatusError ? 'Daily scan status is unavailable. Your saved model defaults are still available.' : 'Checking daily scan status…'}</p>}
+          </div>
           <h3 className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-[0.15em] ml-4 mb-3">Default AI Models</h3>
           <div className="premium-card rounded-2xl p-5 space-y-4">
             <p className="text-xs text-[var(--text-tertiary)]">These models are used as defaults in Create Studio and the AI Assistant when no specific model is selected.</p>

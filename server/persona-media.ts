@@ -1,3 +1,4 @@
+import { selectIdentityReferences, type IdentityReference } from '../shared/personaIdentitySet';
 export interface MediaPersonaContext {
   id?: string;
   name?: string;
@@ -9,6 +10,8 @@ export interface MediaPersonaContext {
   avatar?: string;
   alternateReferenceImage?: string;
   additionalReferenceImages?: string[];
+  identityReferences?: IdentityReference[];
+  identityReferenceSelected?: boolean;
   isCreator?: boolean;
   isOwner?: boolean;
 }
@@ -80,7 +83,7 @@ export function resolveMediaParticipants(
   }
 
   const creatorReferencePrompt = normalizeCreatorReferencePrompt(prompt);
-  const referencesCreatorDirectly = /\b(?:you\s+and\s+me|me\s+and\s+you|of\s+us|us\s+together|both\s+of\s+us|with\s+me|beside\s+me|next\s+to\s+me|holding\s+me|kissing\s+me|me\s+with\s+you|myself\s+and\s+you|you\s+and\s+myself|with\s+(?:the\s+)?creator|with\s+(?:the\s+)?owner)\b/i.test(creatorReferencePrompt);
+  const referencesCreatorDirectly = /\b(?:you\s+and\s+me|me\s+and\s+you|of\s+us|us\s+together|both\s+of\s+us|with\s+me|beside\s+me|next\s+to\s+me|holding\s+me|kissing\s+me|me\s+with\s+you|myself\s+and\s+you|you\s+and\s+myself|(?:with|alongside|beside)\s+(?:the\s+)?creator|with\s+(?:the\s+)?owner)\b/i.test(creatorReferencePrompt);
   const referencesCreatorInSubjectList =
     /\b(?:of|with|featuring|showing|include|including|containing)\b(?:\s+[a-z0-9]+){0,16}\s+(?:and|plus|alongside)\s+(?:me|myself)\b/i.test(creatorReferencePrompt)
     || /\b(?:of|with|featuring|showing|include|including|containing)\s+(?:me|myself)\b(?:\s+[a-z0-9]+){0,16}\s+(?:and|plus|alongside)\b/i.test(creatorReferencePrompt);
@@ -134,7 +137,8 @@ export function resolveCreatorPersona(
 }
 
 export function getPersonaPrimaryReference(persona: MediaPersonaContext): string | undefined {
-  return persona.referenceImage || persona.avatar || persona.alternateReferenceImage || persona.additionalReferenceImages?.[0];
+  if (persona.identityReferenceSelected) return persona.referenceImage;
+  return selectIdentityReferences(persona, '', 'avatar')[0]?.image;
 }
 
 export function composeMultiPersonaPrompt(prompt: string, participants: MediaPersonaContext[]): string {

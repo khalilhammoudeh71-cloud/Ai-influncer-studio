@@ -1,5 +1,6 @@
+import { selectIdentityReferences } from '../shared/personaIdentitySet';
 import { createClient } from '@supabase/supabase-js';
-import { getPersonaPrimaryReference, type MediaPersonaContext } from './persona-media';
+import { type MediaPersonaContext } from './persona-media';
 
 type SignImage=(path:string)=>Promise<string>;
 const signStoredImage:SignImage=async(path)=>{
@@ -19,8 +20,9 @@ export async function resolveOwnedImageReference(input:string|undefined,userId:s
   if(!userId || !path.startsWith(`${userId}/`) || /[%\\\x00-\x1f]/.test(path) || path.split('/').some(part=>!part || part==='.' || part==='..'))throw new Error('The saved image does not belong to this account or has an invalid path.');
   return sign(path);
 }
-export async function hydratePersonaReferences<T extends MediaPersonaContext>(persona:T,userId:string,sign:SignImage=signStoredImage):Promise<T> {
-  // Only the selected identity reference is sent to the generator/checker.
-  // Do not sign or depend on unrelated library photos.
-  return {...persona,referenceImage:await resolveOwnedImageReference(getPersonaPrimaryReference(persona),userId,sign)};
+export async function hydratePersonaReferences<T extends MediaPersonaContext>(persona:T,userId:string,sign:SignImage=signStoredImage,selection:{prompt?:string;kind?:'image'|'video'|'avatar'}={}):Promise<T> {
+  const selected = selectIdentityReferences(persona,selection.prompt || '',selection.kind || 'image');
+  const resolved = await Promise.all(selected.map(async ref => ({...ref,image:(await resolveOwnedImageReference(ref.image,userId,sign))!})));
+  return {...persona,referenceImage:resolved[0]?.image,additionalReferenceImages:resolved.slice(1).map(ref=>ref.image),
+    ...(persona.identityReferences !== undefined ? {identityReferences:resolved} : {}),identityReferenceSelected:true};
 }

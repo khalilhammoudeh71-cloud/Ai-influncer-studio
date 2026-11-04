@@ -350,9 +350,10 @@ export async function generateVideo(
   resolution?: string,
   sourceVideo?: string,
   generateAudio?: boolean,
-  strength?: number
-): Promise<{ videoUrl: string; model: string }> {
-  const body: Record<string, unknown> = { prompt, modelId };
+  strength?: number,
+  personaId?: string
+): Promise<{ videoUrl: string; model: string; sceneImageUrl?: string; sceneVerified?: boolean }> {
+  const body: Record<string, unknown> = { prompt, modelId, ...(personaId ? {personaId} : {}) };
   if (sourceImage) body.sourceImage = sourceImage;
   if (identityLock !== undefined) body.identityLock = identityLock;
   if (naturalLook !== undefined) body.naturalLook = naturalLook;
@@ -363,7 +364,7 @@ export async function generateVideo(
   if (generateAudio !== undefined) body.generateAudio = generateAudio;
   if (strength !== undefined) body.strength = strength;
   const { studioVideoJob } = await import('./mediaJobService');
-  return studioVideoJob(undefined, body);
+  return studioVideoJob(personaId, body);
 }
 
 export interface PersonaMediaRequest {
@@ -688,6 +689,7 @@ export async function textToSpeech(params: {
 }
 
 export async function generateTalkingHead(params: {
+  personaId?: string;
   portraitImage?: string;
   video?: string;
   model?: string;
@@ -701,9 +703,9 @@ export async function generateTalkingHead(params: {
   camera?: string;
   expression?: string;
   lighting?: string;
-}): Promise<{ videoUrl: string; model: string }> {
+}): Promise<{ videoUrl: string; model: string; sceneImageUrl?: string; sceneVerified?: boolean }> {
   const { talkingAvatarJob } = await import('./mediaJobService');
-  return talkingAvatarJob(undefined, params);
+  return talkingAvatarJob(params.personaId, params);
 }
 
 export async function virtualTryOn(
@@ -735,7 +737,7 @@ export async function generateMotionControl(params: {
   motionVideoBase64?: string;
   danceId?: string;
   model?: string;
-}): Promise<{ videoUrl: string; model: string }> {
+}): Promise<{ videoUrl: string; model: string; sceneImageUrl?: string; sceneVerified?: boolean }> {
   const compressedRef = await compressForUpload(params.refImage);
   const response = await authFetch('/api/motion-control', {
     method: 'POST',

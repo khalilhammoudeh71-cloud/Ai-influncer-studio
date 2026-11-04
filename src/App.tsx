@@ -44,6 +44,7 @@ import CommandPalette from './components/CommandPalette';
 import LeftSidebar from './components/LeftSidebar';
 import MobileNavigation from './components/MobileNavigation';
 import ConnectionStatus from './components/ConnectionStatus';
+import ModelNotifications from './components/ModelNotifications';
 const TrendView = lazy(() => import('./views/TrendView'));
 const CreatePersonaPage = lazy(() => import('./views/CreatePersonaPage'));
 import PersonaAvatar from './components/PersonaAvatar';
@@ -1015,6 +1016,8 @@ function App() {
             </button>
 
             {['create', 'intelligence', 'ai-tools'].includes(currentNav.view) && <ProModeToggle isPro={isProMode} onToggle={setIsProMode} />}
+
+            <ModelNotifications />
 
             {/* Durable media jobs */}
             <button

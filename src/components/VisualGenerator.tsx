@@ -312,7 +312,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
   const [videoSourceImageName, setVideoSourceImageName] = useState<string | null>(null);
   const [imageWeight, setImageWeight] = useState(0.35);
   const [naturalLook, setNaturalLook] = useState(persona?.naturalLook ?? true);
-  const [identityLock, setIdentityLock] = useState(persona?.identityLock ?? true);
+  const [identityLock, setIdentityLock] = useState(true);
 
   const [overrideRefImages, setOverrideRefImages] = useState<{ id: string; url: string; name: string }[]>([]);
   const [promptCopied, setPromptCopied] = useState(false);
@@ -348,6 +348,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
   };
 
   const handleIdentityLockToggle = () => {
+    if (activePersonaObj?.id && activePersonaObj.id !== 'empty') return;
     const next = !identityLock;
     setIdentityLock(next);
     if (activePersonaObj) {
@@ -461,7 +462,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
   }, [videoModels]);
 
   const selectedVideoModelInfo = useMemo(() => videoModels.find(m => m.id === selectedVideoModel), [videoModels, selectedVideoModel]);
-  const isI2VModel = selectedVideoModel.startsWith('wavespeed-i2v:');
+  const isI2VModel = selectedVideoModelInfo?.type === 'image-to-video' || selectedVideoModel.startsWith('wavespeed-i2v:');
   const selectedModelInfo = useMemo(() => models.find(m => m.id === selectedModel), [models, selectedModel]);
   const activeVersion = imageHistory[activeHistoryIndex] || null;
 
@@ -734,15 +735,13 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
     setVideoResult(null);
 
     try {
-      const sourceImg = isI2VModel
-        ? (videoSourceImage || activePersonaObj?.referenceImage || null)
-        : undefined;
+      const sourceImg = videoSourceImage || activePersonaObj?.referenceImage || activePersonaObj?.avatar || undefined;
 
       if (isI2VModel && !sourceImg) {
         throw new Error('Image-to-video models require a source image. Upload one or set a persona reference image.');
       }
 
-      const data = await generateVideo(prompt, selectedVideoModel, sourceImg || undefined, identityLock, naturalLook);
+      const data = await generateVideo(prompt, selectedVideoModel, sourceImg || undefined, true, naturalLook, undefined, undefined, undefined, undefined, undefined, undefined, activePersonaObj?.id);
       setVideoResult(data);
     } catch (err: any) {
       setGlobalError(err.message || 'Video generation failed. Please try again.');
@@ -1271,6 +1270,11 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
                 </div>
                 <button
                   onClick={handleIdentityLockToggle}
+                  disabled={Boolean(activePersonaObj?.id && activePersonaObj.id !== 'empty')}
+                  role="switch"
+                  aria-label="Preserve persona identity"
+                  aria-checked={identityLock}
+                  title="Saved personas always use identity protection"
                   className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${identityLock ? 'bg-[#00D4FF]' : 'bg-[#111827] border border-[#334155]/60'}`}
                 >
                   <span className={`inline-block h-2.5 w-2.5 transform rounded-full bg-white transition-transform duration-300 ${identityLock ? 'translate-x-3.5' : 'translate-x-0.5'}`} />

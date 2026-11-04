@@ -45,6 +45,7 @@ export type Persona = {
   status: string;
   avatar: string;
   referenceImage?: string; // Base64 or local blob URL
+  identityReferences?: import("../../shared/personaIdentitySet").IdentityReference[];
   additionalReferenceImages?: string[]; // Extra reference images uploaded alongside the primary
   alternateReferenceImage?: string; // Secondary reference (style, outfit, pose, etc.)
   personalityTraits: string[];
