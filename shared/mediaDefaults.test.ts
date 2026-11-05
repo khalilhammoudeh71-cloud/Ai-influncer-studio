@@ -9,12 +9,15 @@ import {
   pickDefaultVideoModelForType,
 } from './mediaDefaults';
 
-test('uses WaveSpeed Seedream 5.0 Pro as the image default', () => {
+test('uses Sunburst ahead of Seedream and Flare for persona images and scene frames', () => {
   const models = [
     { id: 'openai:gpt-image-2', name: 'GPT Image 2', provider: 'OpenAI' },
-    { id: DEFAULT_IMAGE_MODEL_ID, name: 'Seedream 5.0 Pro', provider: 'WaveSpeed AI' },
+    { id: 'wavespeed:bytedance/seedream-v5.0-pro', name: 'Seedream 5.0 Pro', provider: 'WaveSpeed AI' },
+    { id: 'openai:gpt-image-2.5-flare', name: 'GPT Image 2.5 Flare', provider: 'OpenAI' },
+    { id: 'openai:gpt-image-2.5-sunburst', name: 'GPT Image 2.5 Sunburst', provider: 'OpenAI' },
   ];
   assert.equal(pickDefaultImageModel(models)?.id, DEFAULT_IMAGE_MODEL_ID);
+  assert.equal(DEFAULT_IMAGE_MODEL_ID, 'openai:gpt-image-2.5-sunburst');
 });
 
 test('classifies Wan generation models by endpoint type instead of the Wan brand name', () => {

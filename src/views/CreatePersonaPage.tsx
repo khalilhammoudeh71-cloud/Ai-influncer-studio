@@ -1,3 +1,4 @@
+import { DEFAULT_IMAGE_MODEL_ID } from '../../shared/mediaDefaults';
 import { IDENTITY_VIEWS, type IdentityView } from '../../shared/personaIdentitySet';
 import { VoiceModelPicker } from '../components/VoiceModelPicker';
 import AvailableVoices, { type VoicePreviewState } from '../components/AvailableVoices';
@@ -1098,7 +1099,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
 
     const generateWithCascade = async (prompt: string): Promise<string> => {
       const cascade = [
-        'wavespeed:bytedance/seedream-v5.0-pro',
+        DEFAULT_IMAGE_MODEL_ID,
         'wavespeed:wavespeed-ai/qwen-3.0-pro',
         'openai:gpt-image-2',
         'google:nano-banana-pro'
@@ -1132,7 +1133,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   const handleGenerateWizardPersona = async () => {
     const generateWithCascade = async (prompt: string): Promise<string> => {
       const cascade = [
-        'wavespeed:bytedance/seedream-v5.0-pro',
+        DEFAULT_IMAGE_MODEL_ID,
         'wavespeed:wavespeed-ai/qwen-3.0-pro',
         'openai:gpt-image-2',
         'google:nano-banana-pro'

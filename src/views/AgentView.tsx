@@ -82,7 +82,7 @@ import { projectKeys, readProjects, AgentProject } from '../utils/agentProjects'
 import { saveAgentHistory } from '../utils/agentHistoryPersistence';
 import { prepareWorkspaceValueForStorage, resolveWorkspaceValueFromStorage } from '../services/workspaceMediaService';
 import toast from 'react-hot-toast';
-import { DEFAULT_VIDEO_MODEL_ID } from '../../shared/mediaDefaults';
+import { DEFAULT_VIDEO_MODEL_ID, DEFAULT_IMAGE_MODEL_ID } from '../../shared/mediaDefaults';
 import { buildVoiceConversationHistory } from '../../shared/voiceConversationContext';
 import { normalizeAgentSteps } from '../utils/agentStepValidation';
 import { readVoiceTextStream, VoiceTurnScope } from '../utils/voiceStream';
@@ -2549,7 +2549,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
             activeP.referenceImage = memoryFaceImage;
           }
 
-          let modelId = step.params.modelId || 'wavespeed:bytedance/seedream-v5.0-pro';
+          let modelId = step.params.modelId || DEFAULT_IMAGE_MODEL_ID;
           addLocalLog(`Chosen Model ID: ${modelId}`, true, true);
           addLocalLog(`⏳ Spinning up visual generation pipeline...`);
           addLocalLog(`📝 Prompt: "${step.params.prompt}"`);
@@ -2967,7 +2967,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
             if (!res.ok) throw new Error(data.error || 'Virtual try-on failed');
             editedUrl = data.imageUrl;
           } else {
-            const chosenEditModel = step.params.modelId || 'wavespeed:bytedance/seedream-v5.0-pro';
+            const chosenEditModel = step.params.modelId || DEFAULT_IMAGE_MODEL_ID;
             const data = await editImageJob(
               activeP.id,
               srcImg,

@@ -8,6 +8,12 @@ const models = [
 export function getDirectImageModel(id?: string) {
   return models.find(model => model.id === id);
 }
+export function directImageOptions(id: string, aspectRatio?: string): {quality?: 'high';size: '1024x1024'|'1024x1536'|'1536x1024'|'1024x1792'|'1792x1024'} {
+  const landscape=['16:9','3:2','5:4','21:9'].includes(aspectRatio||'');
+  const portrait=['9:16','2:3','4:5'].includes(aspectRatio||'');
+  if(id.includes('gpt-image-2.5-'))return {quality:'high',size:landscape?'1536x1024':portrait?'1024x1536':'1024x1024'};
+  return {size:landscape?'1792x1024':portrait?'1024x1792':'1024x1024'};
+}
 export function directImageModels() {
   return models.slice(1).map(model => ({
     ...model, provider: 'OpenAI', type: 'text-to-image' as const,

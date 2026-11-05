@@ -1,6 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { directImageModels, getDirectImageModel } from './openai-image-models';
+import { directImageModels, getDirectImageModel, directImageOptions } from './openai-image-models';
+
+test('Sunburst uses the tested high-quality portrait settings without legacy aspect stretching', () => {
+  assert.deepEqual(directImageOptions('openai:gpt-image-2.5-sunburst', '2:3'), {quality:'high',size:'1024x1536'});
+  assert.deepEqual(directImageOptions('openai:gpt-image-2.5-sunburst', '16:9'), {quality:'high',size:'1536x1024'});
+  assert.deepEqual(directImageOptions('openai:gpt-image-2.5-sunburst', '1:1'), {quality:'high',size:'1024x1024'});
+});
 
 test('both 2.5 choices resolve to their exact provider ID and support references', () => {
   for (const suffix of ['flare', 'sunburst']) {

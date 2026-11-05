@@ -3,6 +3,7 @@ import { Persona } from '../types';
 import { supabase } from '../lib/supabase';
 import { compressForUpload } from '../utils/imageProcessing';
 import {
+  DEFAULT_IMAGE_MODEL_ID,
   isSeedream5ProModel,
   isWan3VideoModel,
   isWaveSpeedModel,
@@ -198,6 +199,7 @@ export async function fetchAllModelTypes(): Promise<{ models: ModelInfo[]; editM
     const getPriority = (m: ModelInfo): number => {
       const id = (m.id || '').toLowerCase();
       const name = (m.name || '').toLowerCase();
+      if (id === DEFAULT_IMAGE_MODEL_ID) return 0;
       if (isWaveSpeedModel(m) && isSeedream5ProModel(m)) return 1;
       if (isSeedream5ProModel(m)) return 2;
       if (isWaveSpeedModel(m) && (id.includes('seedream') || name.includes('seedream'))) return 3;

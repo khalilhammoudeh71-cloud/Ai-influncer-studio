@@ -1,3 +1,4 @@
+import { DEFAULT_IMAGE_MODEL_ID } from '../../shared/mediaDefaults';
 import React, { useRef, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronLeft, Save, Sparkles, Upload, X, Info, Image as ImageIcon, Video, Mic, Volume2, MessageSquare, Plus, Check, Camera, Diamond, Dumbbell, ShoppingBag, Briefcase, Activity, Sliders, Loader2 } from 'lucide-react';
@@ -67,7 +68,7 @@ export default function PersonaBuilderView({ persona: initialPersona, onChange, 
     // Helper for robust multi-model fallback cascade
     const generateWithModelCascade = async (targetPersona: any, chatPrompt: string) => {
       const cascadeModels = [
-        'wavespeed:bytedance/seedream-v5.0-pro',
+        DEFAULT_IMAGE_MODEL_ID,
         'wavespeed:wavespeed-ai/qwen-3.0-pro',
         'openai:gpt-image-2',
         'google:nano-banana-pro'

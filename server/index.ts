@@ -22,7 +22,7 @@ import { frontierModel } from './frontierModels';
 import { mediaJobAttemptWhere } from './mediaJobLease';
 import { runProviderCandidates } from './providerFailover';
 import { equivalentRoutes } from '../shared/modelRouting';
-import { directImageModels, getDirectImageModel } from './openai-image-models';
+import { directImageModels, getDirectImageModel, directImageOptions } from './openai-image-models';
 import {SEQUENCE_STYLES,validateSequence} from '../shared/carouselSequence';
 import { validateCarousel } from '../shared/carousel';
 import { buildPersonalityInstructions, personalityDelivery } from '../shared/personality';
@@ -1577,7 +1577,7 @@ async function generateWithDirectOpenAI(prompt: string, referenceImage?: string 
   const selectedModel = getDirectImageModel(modelId);
   if (!selectedModel) throw new Error('Unknown OpenAI image model');
   if (!OPENAI_DIRECT_KEY) throw new Error('OpenAI API key not configured');
-  const client = new OpenAI({ apiKey: OPENAI_DIRECT_KEY });
+  const client = new OpenAI({ apiKey: OPENAI_DIRECT_KEY, maxRetries: 0 });
   let response;
 
   const images = Array.isArray(referenceImage) ? referenceImage : (referenceImage ? [referenceImage] : []);
@@ -1585,6 +1585,11 @@ async function generateWithDirectOpenAI(prompt: string, referenceImage?: string 
   if (images.length > 0) {
     const imageFiles = await Promise.all(images.map(async (img, i) => {
       try {
+        if (modelId.includes('gpt-image-2.5-')) {
+          const resolved = await resolveImageToDataUrl(img);
+          const { mimeType, data } = stripDataPrefix(resolved);
+          return toFile(Buffer.from(data, 'base64'), `reference_${i}.${mimeType.includes('png') ? 'png' : 'jpg'}`, { type: mimeType });
+        }
         console.log('[OpenAI] Converting reference image to square PNG...');
         const pngBuf = await convertToSquarePngBuffer(img);
         return toFile(pngBuf, `reference_${i}.png`, { type: 'image/png' });
@@ -1602,7 +1607,7 @@ async function generateWithDirectOpenAI(prompt: string, referenceImage?: string 
       image: imageFiles,
       prompt,
       n: 1,
-      size: aspectRatioToReplitSize(aspectRatio),
+      ...directImageOptions(modelId, aspectRatio),
     };
 
     if (maskImage) {
@@ -1624,7 +1629,7 @@ async function generateWithDirectOpenAI(prompt: string, referenceImage?: string 
       model: selectedModel.apiModel,
       prompt,
       n: 1,
-      size: aspectRatioToReplitSize(aspectRatio),
+      ...directImageOptions(modelId, aspectRatio),
     });
   }
 
@@ -2889,7 +2894,9 @@ app.get('/api/models', requireAuth, async (req, res) => {
       const id = (m.id || '').toLowerCase();
       const name = (m.name || '').toLowerCase();
 
-      // 1. SeeDream 5.0 Pro (PRIMARY DEFAULT FOR UNCENSORED / PHOTO)
+      if (id === DEFAULT_IMAGE_MODEL_ID) return 0;
+
+      // Other available image models
       if (id.includes('seedream-v5') || name.includes('seedream 5.0 pro') || name.includes('seedream 5') || id.includes('seedream')) return 1;
 
       // 2. Qwen 3.0 Pro

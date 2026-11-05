@@ -1,5 +1,5 @@
-export const DEFAULT_IMAGE_MODEL_ID = 'wavespeed:bytedance/seedream-v5.0-pro';
-export const DEFAULT_IMAGE_MODEL_NAME = 'Seedream 5.0 Pro';
+export const DEFAULT_IMAGE_MODEL_ID = 'openai:gpt-image-2.5-sunburst';
+export const DEFAULT_IMAGE_MODEL_NAME = 'GPT Image 2.5 Sunburst';
 
 // WaveSpeed's current Wan 3.0 image-to-video endpoint. Persona media always
 // has a reference image, so I2V is the correct default rather than T2V.
