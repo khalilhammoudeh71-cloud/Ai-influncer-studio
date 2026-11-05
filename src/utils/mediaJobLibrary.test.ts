@@ -5,6 +5,7 @@ const job:any={id:'test-job',kind:'avatar',status:'succeeded',personaClientId:'o
 test('recovered media keeps its original persona and video type with a stable save ID',()=>{
  const entry=mediaJobLibraryEntry(job)!;
  assert.equal(entry.personaId,'original-persona');assert.equal(entry.media.mediaType,'video');
+ assert.equal(entry.media.id,'media-job-test-job-0');
  assert.equal(entry.media.url,job.result.url);assert.equal(entry.media.model,'InfiniteTalk');
  assert.deepEqual(mediaJobLibraryEntry(job),entry);
  assert.equal(mediaJobLibraryEntry({...job,kind:'video'})?.media.mediaType,'video');
