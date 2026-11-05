@@ -40,6 +40,7 @@ const RevenueView = lazy(() => import('./views/RevenueView'));
 const AgentView = lazy(() => import('./views/AgentView'));
 import OnboardingTour, { type LaunchTask } from './components/OnboardingTour';
 import MediaJobCenter from './components/MediaJobCenter';
+import { mediaJobLibraryEntry } from './utils/mediaJobLibrary';
 import CommandPalette from './components/CommandPalette';
 import LeftSidebar from './components/LeftSidebar';
 import MobileNavigation from './components/MobileNavigation';
@@ -1252,6 +1253,13 @@ function App() {
       <MediaJobCenter
         isOpen={showMediaJobCenter}
         onClose={() => setShowMediaJobCenter(false)}
+        onSaveToLibrary={async job => {
+          const entry=mediaJobLibraryEntry(job);
+          if(!entry||!personas.some(p=>p.id===entry.personaId))throw new Error('The original persona is unavailable.');
+          const persisted=await api.images.create(entry.personaId,entry.media);
+          setPersonas(current=>current.map(p=>p.id===entry.personaId
+            ? {...p,visualLibrary:[persisted,...(p.visualLibrary||[]).filter(media=>media.id!==persisted.id)]}:p));
+        }}
         onOpenResult={(job) => {
           if (!job.result?.url) return;
           window.open(job.result.url, '_blank', 'noopener,noreferrer');

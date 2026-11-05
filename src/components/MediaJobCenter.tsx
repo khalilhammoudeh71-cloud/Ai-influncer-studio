@@ -34,6 +34,7 @@ interface Props {
   onClose: () => void;
   onOpenResult?: (job: MediaJob) => void;
   onJobCompleted?: (job: MediaJob) => void;
+  onSaveToLibrary?: (job: MediaJob) => Promise<void>;
 }
 
 const KIND_LABELS: Record<MediaJobKind, string> = {
@@ -57,11 +58,19 @@ function formatWhen(value: string) {
   return Number.isNaN(date.getTime()) ? '' : date.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
-export default function MediaJobCenter({ isOpen, onClose, onOpenResult, onJobCompleted }: Props) {
+export default function MediaJobCenter({ isOpen, onClose, onOpenResult, onJobCompleted, onSaveToLibrary }: Props) {
   const [jobs, setJobs] = useState<MediaJob[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [savedJobIds, setSavedJobIds] = useState<string[]>([]);
+  const saveToLibrary = async (job: MediaJob) => {
+    if (!onSaveToLibrary) return;
+    setActiveJobId(job.id);
+    try { await onSaveToLibrary(job); setSavedJobIds(ids=>[...ids,job.id]); toast.success('Saved to the persona’s library'); }
+    catch(error) { toast.error(error instanceof Error?error.message:'Could not save to the library'); }
+    finally { setActiveJobId(null); }
+  };
 
   const refresh = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
@@ -279,6 +288,12 @@ export default function MediaJobCenter({ isOpen, onClose, onOpenResult, onJobCom
                     {failed && <p className="mt-3 text-xs text-zinc-400">Retry starts a new provider request and may incur a new charge.</p>}
                     {working && <p className="mt-3 text-xs text-zinc-400">Cancel requests a stop; provider work may already have started.</p>}
                     <div className="flex items-center justify-end gap-2 mt-3">
+                      {complete && job.result?.url && job.personaClientId && onSaveToLibrary && (
+                        <button onClick={()=>void saveToLibrary(job)} disabled={activeJobId===job.id||savedJobIds.includes(job.id)}
+                          className="px-3 py-2 rounded-xl border border-[#E7C477]/30 text-[#F2D58D] text-xs font-bold disabled:opacity-50">
+                          {activeJobId===job.id?'Saving…':savedJobIds.includes(job.id)?'Saved to Library':'Save to Library'}
+                        </button>
+                      )}
                       {complete && job.result?.url && (
                         <button
                           onClick={() => onOpenResult?.(job)}
