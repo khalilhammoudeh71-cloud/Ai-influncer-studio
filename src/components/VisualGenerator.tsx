@@ -1,3 +1,4 @@
+import { pickDefaultImageModel } from '../../shared/mediaDefaults';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useProMode, ProModeToggle } from '../utils/useProMode';
 import {
@@ -378,19 +379,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
         setVideoModels(vm);
         setThreeDModels(tm);
 
-        // Default Model Cascade: 1. SeeDream 5.0 Pro -> 2. Qwen 3.0 Pro -> 3. GPT Image 2 / Nano Banana Pro
-        const findDefaultNonProModel = (list: ModelInfo[]) => {
-          const seedream = list.find(x => x.id.includes('seedream-v5') || x.name.toLowerCase().includes('seedream 5') || x.id.includes('seedream'));
-          if (seedream) return seedream;
-          const qwen = list.find(x => x.id.includes('qwen-3') || x.name.toLowerCase().includes('qwen 3'));
-          if (qwen) return qwen;
-          const cascade = ['openai:gpt-image-2', 'google:nano-banana-pro', 'replit:gpt-image-1', 'google:nano-banana-2'];
-          for (const candidate of cascade) {
-            const found = list.find(x => x.id === candidate);
-            if (found) return found;
-          }
-          return list[0];
-        };
+        const findDefaultNonProModel = pickDefaultImageModel;
 
         const preferred = findDefaultNonProModel(m);
         if (preferred) {

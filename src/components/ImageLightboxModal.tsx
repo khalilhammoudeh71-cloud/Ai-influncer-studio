@@ -1,3 +1,4 @@
+import { pickDefaultImageModel } from '../../shared/mediaDefaults';
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -126,8 +127,8 @@ export default function ImageLightboxModal({
           setSelectedUpscaleModel(preferredUpscaler.id);
         }
         if (em.length > 0) {
-          const preferredEdit = em.find(m => m.id.includes('seedream') || m.id.includes('seededit') || m.id.includes('qwen')) || em[0];
-          setSelectedEditModel(preferredEdit.id);
+          const preferredEdit = pickDefaultImageModel(em);
+          if (preferredEdit) setSelectedEditModel(preferredEdit.id);
         }
       }).catch(err => {
         console.warn('Failed to load upscale/edit models:', err);
