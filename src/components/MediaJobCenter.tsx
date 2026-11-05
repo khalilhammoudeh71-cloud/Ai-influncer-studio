@@ -19,6 +19,8 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { mediaQualityLabel } from '../../shared/mediaQualityLabel';
+import { IDENTITY_FEEDBACK_KEY, readIdentityFeedback, recordIdentityFeedback, type IdentityVerdict } from '../../shared/identityFeedback';
+import { accountLocalStorage } from '../utils/accountStorage';
 import { cn } from '../utils/cn';
 import {
   cancelMediaJob,
@@ -64,6 +66,14 @@ export default function MediaJobCenter({ isOpen, onClose, onOpenResult, onJobCom
   const [loadError, setLoadError] = useState('');
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [savedJobIds, setSavedJobIds] = useState<string[]>([]);
+  const [identityFeedback,setIdentityFeedback]=useState(()=>readIdentityFeedback(accountLocalStorage.getItem(IDENTITY_FEEDBACK_KEY)));
+  const rateIdentity=(job:MediaJob,verdict:IdentityVerdict)=>{
+    try {
+      const next=recordIdentityFeedback(readIdentityFeedback(accountLocalStorage.getItem(IDENTITY_FEEDBACK_KEY)),job.id,verdict);
+      accountLocalStorage.setItem(IDENTITY_FEEDBACK_KEY,JSON.stringify(next));setIdentityFeedback(next);
+      toast.success('Your face-identity feedback is saved');
+    }catch {toast.error('Could not save feedback. Please try again.');}
+  };
   const saveToLibrary = async (job: MediaJob) => {
     if (!onSaveToLibrary) return;
     setActiveJobId(job.id);
@@ -328,6 +338,20 @@ export default function MediaJobCenter({ isOpen, onClose, onOpenResult, onJobCom
                         </button>
                       )}
                     </div>
+                    {accountLocalStorage.getItem('identity_trial_enabled_v1')==='true' && complete && job.personaClientId && job.result?.url && (
+                      <fieldset className="mt-3 border-t border-white/10 pt-3">
+                        <legend className="text-xs text-zinc-400">Does the face look like the same person?</legend>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {([['same','Same person'],['different','Face changed'],['uncertain','Can’t tell']] as const).map(([value,label])=>(
+                            <button key={value} type="button" aria-pressed={identityFeedback[job.id]?.verdict===value}
+                              onClick={()=>rateIdentity(job,value)} className={cn('rounded-lg border px-2.5 py-1.5 text-xs',identityFeedback[job.id]?.verdict===value?'border-[#E7C477] text-[#E7C477]':'border-white/15 text-zinc-300')}>
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                        <p className="mt-1 text-[10px] text-zinc-500">Your feedback is separate from the automatic checks and does not change generation settings.</p>
+                      </fieldset>
+                    )}
                   </article>
                 );
               })}

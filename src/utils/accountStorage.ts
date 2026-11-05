@@ -4,6 +4,8 @@ const MAX_REMOTE_VALUE_BYTES = 1_500_000;
 const REMOTE_WRITE_DEBOUNCE_MS = 450;
 
 const SYNCABLE_EXACT_KEYS = new Set([
+  'identity_trial_feedback_v1',
+  'identity_trial_enabled_v1',
   'ai_studio_creator_profile',
   'persona_user_name',
   'persona_form_draft',
