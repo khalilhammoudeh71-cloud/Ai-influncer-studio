@@ -13,6 +13,9 @@ export function equivalentRoutes<T extends RoutableModel>(selected:T,models:T[])
  const cost=(m:T)=>Number.isFinite(m.price)&&m.price>0?m.price:Infinity;
  return models.filter(m=>modelKey(m)===key).sort((a,b)=>cost(a)-cost(b)||a.id.localeCompare(b.id));
 }
+export function generationRoutes<T extends RoutableModel>(selected:T,models:T[],preserveSelectedProvider=false):T[]{
+ return preserveSelectedProvider?[selected]:equivalentRoutes(selected,models);
+}
 export function uniqueModels<T extends RoutableModel>(models:T[]):T[]{
  const groups=new Map<string,T>();
  for(const model of models){const key=modelKey(model);if(!groups.has(key))groups.set(key,equivalentRoutes(model,models)[0]);}

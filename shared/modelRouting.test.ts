@@ -1,7 +1,13 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {uniqueModels, equivalentRoutes} from './modelRouting';
+import {uniqueModels, equivalentRoutes, generationRoutes} from './modelRouting';
 const model=(id:string,name:string,price:number,type='text-to-image')=>({id,name,price,type,provider:id.split(':')[0],hasReferenceImage:true});
+test('a pinned provider stays selected even when an equivalent reseller is cheaper',()=>{
+ const direct=model('openai:gpt-image-2.5-sunburst','GPT Image 2.5 Sunburst',.05);
+ const reseller=model('runware:sunburst','GPT Image 2.5 Sunburst',.02);
+ assert.deepEqual(generationRoutes(direct,[reseller,direct],true).map(x=>x.id),[direct.id]);
+ assert.equal(generationRoutes(direct,[reseller,direct],false)[0].id,reseller.id);
+});
 test('duplicates use lowest known cost while versions stay separate',()=>{
  const list=[model('a:1','ByteDance Seedream 5.0 Pro',.04),model('b:1','Seedream 5 Pro (Provider)',.03),model('b:2','Seedream 5 Lite',.02)];
  assert.equal(uniqueModels(list).length,2);

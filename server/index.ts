@@ -21,7 +21,7 @@ import { resolveVideoAspectRatio } from './videoAspectRatio';
 import { frontierModel } from './frontierModels';
 import { mediaJobAttemptWhere } from './mediaJobLease';
 import { runProviderCandidates } from './providerFailover';
-import { equivalentRoutes } from '../shared/modelRouting';
+import { generationRoutes } from '../shared/modelRouting';
 import { directImageModels, getDirectImageModel, directImageOptions } from './openai-image-models';
 import {SEQUENCE_STYLES,validateSequence} from '../shared/carouselSequence';
 import { validateCarousel } from '../shared/carousel';
@@ -6562,7 +6562,7 @@ async function runJsonGenerationHandler(
             WIRO_API_KEY && WIRO_API_SECRET ? WIRO_CURATED_VIDEO_MODELS : [],
             HIGGSFIELD_CREDENTIALS ? HIGGSFIELD_VIDEO_MODELS : []);
       const selected = available.find(m => m.id === body.modelId);
-      if (selected) candidates = equivalentRoutes(selected, available).filter(m =>
+      if (selected) candidates = generationRoutes(selected, available, !!getDirectImageModel(selected.id)).filter(m =>
         !(body.referenceImage || body.sourceImage) || m.hasReferenceImage || m.hasEditVariant || m.type === 'image-to-video');
     } catch (error) { console.warn('[model-routing] Catalog unavailable; retaining selected model'); }
     if (candidates.length > 1) {
