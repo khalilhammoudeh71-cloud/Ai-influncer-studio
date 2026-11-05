@@ -8,6 +8,10 @@ const models = [
 export function getDirectImageModel(id?: string) {
   return models.find(model => model.id === id);
 }
+export function shouldUseAdultImageFallback(modelId: string, adultRequested: boolean): boolean {
+  // Explicit direct OpenAI choices must reach OpenAI and retain its own policy errors.
+  return adultRequested && !getDirectImageModel(modelId);
+}
 export function directImageOptions(id: string, aspectRatio?: string): {quality?: 'high';size: '1024x1024'|'1024x1536'|'1536x1024'|'1024x1792'|'1792x1024'} {
   const landscape=['16:9','3:2','5:4','21:9'].includes(aspectRatio||'');
   const portrait=['9:16','2:3','4:5'].includes(aspectRatio||'');

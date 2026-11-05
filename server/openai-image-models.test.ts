@@ -1,6 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { directImageModels, getDirectImageModel, directImageOptions } from './openai-image-models';
+import { directImageModels, getDirectImageModel, directImageOptions, shouldUseAdultImageFallback } from './openai-image-models';
+
+test('an explicit OpenAI selection cannot be switched by a broad adult-word classifier', () => {
+  assert.equal(shouldUseAdultImageFallback('openai:gpt-image-2.5-sunburst', true), false);
+  assert.equal(shouldUseAdultImageFallback('openai:gpt-image-2.5-flare', true), false);
+  assert.equal(shouldUseAdultImageFallback('google:nano-banana-pro', false), false);
+  assert.equal(shouldUseAdultImageFallback('google:nano-banana-pro', true), true);
+});
 
 test('Sunburst uses the tested high-quality portrait settings without legacy aspect stretching', () => {
   assert.deepEqual(directImageOptions('openai:gpt-image-2.5-sunburst', '2:3'), {quality:'high',size:'1024x1536'});

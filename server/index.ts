@@ -22,7 +22,7 @@ import { frontierModel } from './frontierModels';
 import { mediaJobAttemptWhere } from './mediaJobLease';
 import { runProviderCandidates } from './providerFailover';
 import { generationRoutes } from '../shared/modelRouting';
-import { directImageModels, getDirectImageModel, directImageOptions } from './openai-image-models';
+import { directImageModels, getDirectImageModel, directImageOptions, shouldUseAdultImageFallback } from './openai-image-models';
 import {SEQUENCE_STYLES,validateSequence} from '../shared/carouselSequence';
 import { validateCarousel } from '../shared/carousel';
 import { buildPersonalityInstructions, personalityDelivery } from '../shared/personality';
@@ -5235,7 +5235,7 @@ const generateImageHandler = async (req: any, res: any) => {
   ].filter(Boolean).join(' ');
 
   const isAdultPrompt = isNsfwPromptText(fullPromptText, (rest as any).allowNsfw) || ((rest as any).niche || '').toLowerCase().includes('adult');
-  if (isAdultPrompt) {
+  if (shouldUseAdultImageFallback(modelId, isAdultPrompt)) {
     console.log('[Model Cascade] NSFW/Adult prompt detected — routing fallback to Wavespeed ByteDance Seedream 5.0 Pro');
     modelId = 'wavespeed:bytedance/seedream-v5.0-pro';
   }
