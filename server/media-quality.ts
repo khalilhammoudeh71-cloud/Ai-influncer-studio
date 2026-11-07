@@ -21,6 +21,8 @@ export interface MediaPromptFidelityCheck {
 export interface MediaQualityReport {
   status: 'passed' | 'failed' | 'unavailable';
   identityStatus?: ReviewStatus;
+  expressionStatus?: ReviewStatus|'not-requested';
+  expressionCheck?: {satisfied:boolean|null;confidence:number|null};
   sceneStatus?: ReviewStatus|'not-requested';
   temporalStatus?: ReviewStatus|'not-requested';
   temporalChecks?: TemporalIdentityCheck[];
@@ -83,7 +85,7 @@ export function unavailableMediaQualityReport(expectedNames: string[], reason: s
   };
 }
 
-export function parseMediaQualityReport(raw: string, expectedNames: string[], attempt = 1, options:{strictFidelity?:boolean;video?:boolean}={}): MediaQualityReport {
+export function parseMediaQualityReport(raw: string, expectedNames: string[], attempt = 1, options:{strictFidelity?:boolean;video?:boolean;expressionRequested?:boolean}={}): MediaQualityReport {
   const parsed = parseJsonObject(raw);
   if (!parsed) return unavailableMediaQualityReport(expectedNames, 'The visual checker returned an unreadable result.', attempt);
 
@@ -185,11 +187,17 @@ export function parseMediaQualityReport(raw: string, expectedNames: string[], at
     if(!completeSceneChecklist)sceneReasons.push('The scene checklist was incomplete or contained duplicate criteria.');
     for(const x of applicablePromptChecks.filter(x=>x.satisfied!==true||(x.confidence||0)<0.72))sceneReasons.push(`The requested ${x.criterion} could not be confirmed.`);
   }
-  const status:ReviewStatus=identityStatus==='failed'||sceneStatus==='failed'?'failed':identityStatus==='passed'&&(sceneStatus==='passed'||sceneStatus==='not-requested')?'passed':'unavailable';
+  const rawExpression=parsed.expressionCheck;
+  const expressionEntry=rawExpression && typeof rawExpression==='object' && !Array.isArray(rawExpression)?rawExpression as Record<string,unknown>:{};
+  const expressionCheck={satisfied:typeof expressionEntry.satisfied==='boolean'?expressionEntry.satisfied:null,confidence:clampConfidence(expressionEntry.confidence)};
+  const expressionStatus:ReviewStatus|'not-requested'=!options.expressionRequested?'not-requested':expressionCheck.satisfied===false&&(expressionCheck.confidence||0)>=0.82?'failed':expressionCheck.satisfied===true&&(expressionCheck.confidence||0)>=0.72?'passed':'unavailable';
+  if(expressionStatus==='failed')sceneReasons.push('The requested facial expression was not followed.');
+  if(expressionStatus==='unavailable')sceneReasons.push('The requested facial expression could not be confirmed.');
+  const status:ReviewStatus=identityStatus==='failed'||sceneStatus==='failed'||expressionStatus==='failed'?'failed':identityStatus==='passed'&&(sceneStatus==='passed'||sceneStatus==='not-requested')&&(expressionStatus==='passed'||expressionStatus==='not-requested')?'passed':'unavailable';
   const combinedReasons=[...identityReasons,...sceneReasons];
   return {
     status,
-    identityStatus,sceneStatus,temporalStatus,temporalChecks,
+    identityStatus,sceneStatus,temporalStatus,temporalChecks,expressionStatus,expressionCheck,
     expectedParticipantCount: expectedNames.length,
     observedParticipantCount,
     countConfidence,
@@ -218,7 +226,7 @@ export function buildMediaQualityRetryPrompt(
     `Render exactly ${expectedNames.length} distinct people, no more and no fewer. Each person must appear once, with a clearly visible and recognizable face.`,
     identities,
     'Do not omit, duplicate, merge, swap, average, or replace any identity. Keep all requested people in the same frame and preserve the user-requested scene, action, clothing, pose, and setting.',
-    'Treat the original request as a visual checklist. Correct every failed pose, setting, gaze, wardrobe, lighting, framing, and text requirement without changing details that already passed.',
+    'Treat the original request as a visual checklist. Correct every failed expression, pose, setting, gaze, wardrobe, lighting, framing, and text requirement without changing details that already passed.',
     failureSummary ? `Correct these detected problems: ${failureSummary}` : '',
   ].filter(Boolean).join('\n');
 }

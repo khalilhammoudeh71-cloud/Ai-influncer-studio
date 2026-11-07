@@ -1,3 +1,5 @@
+import MediaResultPreview from './components/MediaResultPreview';
+import type {MediaJob} from './services/mediaJobService';
 import { withDeadline } from './utils/requestDeadline';
 import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -226,6 +228,7 @@ function App() {
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showShortcutsModal, setShowShortcutsModal] = useState(false);
   const [showMediaJobCenter, setShowMediaJobCenter] = useState(false);
+  const [previewMediaJob,setPreviewMediaJob]=useState<MediaJob|null>(null);
   const [newAssetsCount, setNewAssetsCount] = useState(0); // #6 gallery badge
   const [workspaceSyncStatus, setWorkspaceSyncStatus] = useState<WorkspaceSyncStatus>('synced');
   const [showWorkspaceSyncStatus, setShowWorkspaceSyncStatus] = useState(false);
@@ -1262,9 +1265,10 @@ function App() {
         }}
         onOpenResult={(job) => {
           if (!job.result?.url) return;
-          window.open(job.result.url, '_blank', 'noopener,noreferrer');
+          setPreviewMediaJob(job);
         }}
       />
+      <MediaResultPreview job={previewMediaJob} onClose={()=>setPreviewMediaJob(null)} />
       {/* #10 Keyboard shortcuts modal */}
       <AnimatePresence>
         {showShortcutsModal && (

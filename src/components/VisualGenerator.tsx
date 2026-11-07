@@ -1,3 +1,5 @@
+import ExpressionControls from './ExpressionControls';
+import {withExpression,type ExpressionId,type ExpressionIntensity} from '../../shared/personaExpression';
 import { pickDefaultImageModel } from '../../shared/mediaDefaults';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useProMode, ProModeToggle } from '../utils/useProMode';
@@ -314,6 +316,8 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
   const [imageWeight, setImageWeight] = useState(0.35);
   const [naturalLook, setNaturalLook] = useState(persona?.naturalLook ?? true);
   const [identityLock, setIdentityLock] = useState(true);
+  const [expression,setExpression]=useState<ExpressionId>('auto');
+  const [expressionIntensity,setExpressionIntensity]=useState<ExpressionIntensity>('natural');
 
   const [overrideRefImages, setOverrideRefImages] = useState<{ id: string; url: string; name: string }[]>([]);
   const [promptCopied, setPromptCopied] = useState(false);
@@ -503,7 +507,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
       const creatorDuoPrompt = includeCreator
         ? ` Duo photoshoot: featuring ${persona.name} standing and posing alongside the creator (${creatorProfile.name || 'Dr. H'}, ${creatorProfile.appearance || 'stylish creator'}), interacting naturally together in frame, high aesthetic fashion shoot.`
         : '';
-      const effectiveInstructions = `${prompt}${creatorDuoPrompt}`.trim();
+      const effectiveInstructions = withExpression(`${prompt}${creatorDuoPrompt}`.trim(),expression,expressionIntensity);
 
       const params = {
         persona: (personaForGen || persona) as any,
@@ -578,7 +582,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
       const creatorDuoPrompt = includeCreator
         ? ` Duo photoshoot: featuring ${persona.name} standing and posing alongside the creator (${creatorProfile.name || 'Dr. H'}, ${creatorProfile.appearance || 'stylish creator'}), interacting naturally together in frame, high aesthetic fashion shoot.`
         : '';
-      const effectiveInstructions = `${prompt}${creatorDuoPrompt}`.trim();
+      const effectiveInstructions = withExpression(`${prompt}${creatorDuoPrompt}`.trim(),expression,expressionIntensity);
 
       const genResult = await generateImage({
         persona: (personaForGen || persona) as any,
@@ -730,7 +734,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
         throw new Error('Image-to-video models require a source image. Upload one or set a persona reference image.');
       }
 
-      const data = await generateVideo(prompt, selectedVideoModel, sourceImg || undefined, true, naturalLook, undefined, undefined, undefined, undefined, undefined, undefined, activePersonaObj?.id);
+      const data = await generateVideo(withExpression(prompt,expression,expressionIntensity), selectedVideoModel, sourceImg || undefined, true, naturalLook, undefined, undefined, undefined, undefined, undefined, undefined, activePersonaObj?.id);
       setVideoResult(data);
     } catch (err: any) {
       setGlobalError(err.message || 'Video generation failed. Please try again.');
@@ -1106,6 +1110,8 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
                 className="w-full bg-[#111827]/60 border border-[#334155]/60 focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] rounded-xl px-3 py-1.5 text-xs text-white min-h-[36px] max-h-[48px] outline-none resize-none placeholder-[#64748B] font-semibold shadow-inner leading-relaxed"
               />
             </div>
+
+            {<ExpressionControls value={expression} intensity={expressionIntensity} onChange={setExpression} onIntensityChange={setExpressionIntensity} />}
 
             {/* Source image for video */}
             {genMode === 'video' && isI2VModel && (

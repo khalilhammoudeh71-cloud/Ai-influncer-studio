@@ -27,3 +27,7 @@ test('uncertain or unavailable identity review is never marked successful',()=>{
  assert.throws(()=>requireIdentityPass({status:'failed',reasons:['Wrong face']}),/Wrong face/);
  assert.doesNotThrow(()=>requireIdentityPass({status:'passed',reasons:[]}));
 });
+test('an expression failure is not described as a face identity failure',()=>{
+ const report={status:'failed',identityStatus:'passed',expressionStatus:'failed',reasons:['The requested facial expression was not followed.']};
+ assert.throws(()=>requireIdentityPass(report),/face matched.*expression/i);
+});

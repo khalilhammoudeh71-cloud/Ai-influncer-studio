@@ -1,3 +1,5 @@
+import ExpressionControls from '../components/ExpressionControls';
+import {withExpression,type ExpressionId,type ExpressionIntensity} from '../../shared/personaExpression';
 import CarouselImageDialog from '../components/CarouselImageDialog';
 import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -328,6 +330,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const [localPersonaId, setLocalPersonaId] = useState<string>(initialPersona?.id || 'none');
   const [naturalLook, setNaturalLook] = useState(initialPersona?.naturalLook ?? true);
   const [identityLock, setIdentityLock] = useState(true);
+  const [expression,setExpression]=useState<ExpressionId>('auto');
+  const [expressionIntensity,setExpressionIntensity]=useState<ExpressionIntensity>('natural');
 
   const activePersona = useMemo(() => {
     if (localPersonaId === 'none') return ANONYMOUS_PERSONA;
@@ -1173,7 +1177,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         outfitStyle: selectedOutfit,
         framing: selectedFraming,
         mood: selectedMood,
-        additionalInstructions: [imagePrompt.trim(), activePresetChips.map(c => PRESET_EXPANSIONS[c]).filter(Boolean).join(', ')].filter(Boolean).join(', '),
+        additionalInstructions: withExpression([imagePrompt.trim(), activePresetChips.map(c => PRESET_EXPANSIONS[c]).filter(Boolean).join(', ')].filter(Boolean).join(', '),expression,expressionIntensity),
         additionalImages: extraRefs.length > 0 ? extraRefs : undefined,
         naturalLook,
         identityLock,
@@ -1337,7 +1341,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       const supportsResolution = selectedVideoInfo?.supportedProperties?.some(p => ['resolution', 'quality', 'size'].includes(p)) ?? false;
 
       const data = await generateVideo(
-        videoPrompt,
+        withExpression(videoPrompt,expression,expressionIntensity),
         selectedVideoModel,
         sourceImg,
         identityLock,
@@ -1378,7 +1382,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       const supportsResolution = selectedVideoInfo?.supportedProperties?.some(p => ['resolution', 'quality', 'size'].includes(p)) ?? false;
 
       const data = await generateVideo(
-        videoPrompt,
+        withExpression(videoPrompt,expression,expressionIntensity),
         selectedVideoModel,
         frameData.frameDataUrl,
         identityLock,
@@ -2168,6 +2172,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             </button>
           </div>
 
+          <ExpressionControls value={expression} intensity={expressionIntensity} onChange={setExpression} onIntensityChange={setExpressionIntensity} />
+
           {/* Reference files input */}
           <input
             id="ref-image-file-input"
@@ -2924,6 +2930,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               </button>
             </div>
           </div>
+
+          <ExpressionControls value={expression} intensity={expressionIntensity} onChange={setExpression} onIntensityChange={setExpressionIntensity} />
 
           {/* Lower Parameter Toolbar */}
           <div className="flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t border-white/10 w-full overflow-x-hidden">

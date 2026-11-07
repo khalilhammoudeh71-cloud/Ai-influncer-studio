@@ -1,3 +1,4 @@
+import { requestedExpression } from '../shared/personaExpression';
 import { prepareVerifiedScene, type VerifiedScene } from './verifiedScene';
 import { assessReferenceQuality, identityExampleFile, REFERENCE_QUALITY_PROMPT, type ReferenceQuality } from './identityReferenceQuality';
 import { audioAvatarModel, buildAudioAvatarRequest } from './audioAvatarRequest';
@@ -3234,7 +3235,9 @@ export async function inspectGeneratedImageQuality(
   attempt = 1,
   strictFidelity = true,
   video = false,
+  checkExpression = true,
 ): Promise<MediaQualityReport> {
+  const expression= requestedExpression(originalPrompt,checkExpression?'result':'source');
   const names=participants.map(persona => persona.name || 'Saved persona');
   const expectedNames=names.map((name,index)=>names.filter(x=>x===name).length>1?`${name} (reference ${index+1})`:name);
   if (!getGeminiDirectKey()) {
@@ -3259,6 +3262,7 @@ export async function inspectGeneratedImageQuality(
         'Identity is independent of expression: a requested smile, laughter, surprise, frown, open mouth, visible teeth, raised brows or closed eyes is not itself an identity mismatch. Compare stable anatomy while allowing natural expression-driven deformation. Closed eyes alone do not imply an uncertain identity if enough other facial structure is clearly comparable; remain uncertain when evidence is insufficient.',
         'Evaluate pose, setting, gaze, wardrobe, lighting, framing, and absence or presence of text against the authoritative user request. Mark a criterion applicable only when the request specified it. For applicable criteria, satisfied means the generated output visibly followed it.',
         'Use verdict "match" only when the visible identity resembles the reference, "mismatch" only when it is clearly a different person, and "uncertain" when the face is too small, hidden, turned away, or otherwise not safely comparable.',
+        expression ? `EXPRESSION CHECK (separate from identity): ${expression}. Return expressionCheck: {satisfied:boolean|null,confidence:number}. Judge the visible facial muscle configuration, mouth, brows and eyes, not just a generic emotion label. If an intensity is specified, judge whether it is visibly followed. For video judge whether the requested expression or expression transition actually occurs during motion; do not require the same expression throughout. Missing or hidden evidence is null. Do not mark the expression correct solely because identity matches.` : 'No expression requested; omit expressionCheck.',
         'Return JSON only with this shape:',
         '{"observedParticipantCount": number, "countConfidence": number, "identities": [{"name": string, "present": boolean, "verdict": "match"|"mismatch"|"uncertain", "confidence": number}], "promptFidelity": [{"criterion": "pose"|"setting"|"gaze"|"wardrobe"|"lighting"|"framing"|"text", "applicable": boolean, "satisfied": boolean|null, "confidence": number}]}',
         'Confidence values must be between 0 and 1. Include every expected name exactly as provided and include all seven prompt-fidelity criteria exactly once.',
@@ -3279,10 +3283,13 @@ export async function inspectGeneratedImageQuality(
       config: {
         responseMimeType: 'application/json',
         temperature: 0,
-        maxOutputTokens: video ? 3500 : 1600,
+        maxOutputTokens: video ? 6000 : 4000,
+        thinkingConfig: flashThinkingConfig(),
+        httpOptions: {timeout:60000},
       },
     });
-    return parseMediaQualityReport(result.text || '', expectedNames, attempt,{strictFidelity,video});
+    if(result.candidates?.[0]?.finishReason==='MAX_TOKENS')return unavailableMediaQualityReport(expectedNames,'The visual checker response was incomplete; no quality approval was issued.',attempt);
+    return parseMediaQualityReport(result.text || '', expectedNames, attempt,{strictFidelity,video,expressionRequested:Boolean(expression)});
   } catch (error) {
     const reason = error instanceof Error ? error.message : 'Visual inspection failed';
     console.warn('[media-quality] Inspection unavailable:', reason);
@@ -5659,7 +5666,7 @@ const generateImageHandler = async (req: any, res: any) => {
 
     if (identityParticipants.length) {
       for (const imageUrl of imageUrls) {
-        const quality = await inspectGeneratedImageQuality(imageUrl, identityParticipants, prompt, 1, false);
+        const quality = await inspectGeneratedImageQuality(imageUrl, identityParticipants, prompt, 1, false, false, !req[OPENING_SCENE_REVIEW]);
         requireIdentityPass(quality);
         verifiedQualities.push(quality);
       }
@@ -6195,6 +6202,12 @@ async function resolveVideoUrlOrDataUrl(input: string): Promise<string> {
 }
 
 const VERIFIED_SCENE_PREPARATION = Symbol('verified-scene-preparation');
+const OPENING_SCENE_REVIEW = Symbol('opening-scene-review');
+async function runOpeningSceneImage(req:any,body:Record<string,unknown>) {
+  const previous=req[OPENING_SCENE_REVIEW];req[OPENING_SCENE_REVIEW]=true;
+  try{return await runBoundPersonaImage(req,body);}
+  finally{if(previous===undefined)delete req[OPENING_SCENE_REVIEW];else req[OPENING_SCENE_REVIEW]=previous;}
+}
 async function prepareAnimationScene(req: any, participants: MediaPersonaContext[], kind: 'video' | 'avatar'): Promise<VerifiedScene> {
   const body = req.body;
   if (!participants.length) return {sourceImage:kind==='avatar'?body.portraitImage:body.sourceImage,sourceVideo:kind==='avatar'?body.video:body.sourceVideo,verified:false,generated:false};
@@ -6209,7 +6222,7 @@ async function prepareAnimationScene(req: any, participants: MediaPersonaContext
   if (existing?.key === key) return existing.promise;
   const promise = prepareVerifiedScene({kind,prompt,sourceImage,sourceVideo,participants},{
     generate: async scenePrompt => {
-      const generation = await runBoundPersonaImage(req,{
+      const generation = await runOpeningSceneImage(req,{
         modelId:body.sceneImageModelId || DEFAULT_IMAGE_MODEL_ID,
         prompt:composeMultiPersonaPrompt(scenePrompt,participants),
         preservePromptVerbatim:true,personaId:participants[0]?.id,personaName:participants[0]?.name,
@@ -6221,7 +6234,7 @@ async function prepareAnimationScene(req: any, participants: MediaPersonaContext
       if(generation.status>=400 || !generation.payload?.imageUrl) throw new Error(generation.payload?.error || 'The opening scene image could not be generated.');
       return {imageUrl:generation.payload.imageUrl,model:generation.payload.model};
     },
-    inspect:(source,video)=>inspectGeneratedImageQuality(source,participants,prompt,1,!video && kind==='video' && source!==sourceImage,video),
+    inspect:(source,video)=>inspectGeneratedImageQuality(source,participants,prompt,1,!video && kind==='video' && source!==sourceImage,video,false),
   });
   req[VERIFIED_SCENE_PREPARATION] = {key,promise};
   return promise;
@@ -8591,7 +8604,7 @@ const talkingHeadHandler = async (req: any, res: any) => {
   const sendAvatarSuccess = async (payload: Record<string, unknown>) => {
     let quality:MediaQualityReport|null=null;
     if (identityParticipants.length && typeof payload.videoUrl === 'string') {
-      quality = await inspectGeneratedImageQuality(payload.videoUrl, identityParticipants, '', 1, false, true);
+      quality = await inspectGeneratedImageQuality(payload.videoUrl, identityParticipants, 'EXPRESSION REQUEST: Natural speaking mouth articulation with changing lip positions during the clip; facial identity remains stable.', 1, false, true);
       if (quality.status !== 'passed') {
         await finalizeGenerationCredits(creditReservation, {ok:false,error:'Avatar identity could not be verified'});
         return res.status(422).json({error:identityReviewFailure(quality),quality});

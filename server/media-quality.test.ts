@@ -75,3 +75,17 @@ test('adds prompt-checklist correction language to the single retry', () => {
   assert.match(retry, /requested framing was not followed/i);
   assert.match(retry, /Seated on the edge of a bed/i);
 });
+test('a wrong expression fails independently of a matching identity even without scene checks',()=>{
+ const options={strictFidelity:false,expressionRequested:true};
+ const result=parseMediaQualityReport(JSON.stringify({...identityMatch,expressionCheck:{satisfied:false,confidence:0.97}}),['Leen Hasan'],1,options);
+ assert.equal(result.identityStatus,'passed');assert.equal(result.expressionStatus,'failed');assert.equal(result.status,'failed');
+ assert.match(result.reasons.join(' '),/expression/i);
+});
+test('missing, duplicate or weak expression evidence cannot be reported as verified',()=>{
+ for(const expressionCheck of [undefined,{satisfied:true,confidence:0.4},{satisfied:true,confidence:true},[{satisfied:true,confidence:0.99}]]){
+  const result=parseMediaQualityReport(JSON.stringify({...identityMatch,expressionCheck}),['Leen Hasan'],1,{strictFidelity:false,expressionRequested:true});
+  assert.equal(result.identityStatus,'passed');assert.equal(result.expressionStatus,'unavailable');assert.equal(result.status,'unavailable');
+ }
+ const result=parseMediaQualityReport(JSON.stringify({...identityMatch,expressionCheck:{satisfied:true,confidence:0.91}}),['Leen Hasan'],1,{strictFidelity:false,expressionRequested:true});
+ assert.equal(result.expressionStatus,'passed');assert.equal(result.status,'passed');
+});

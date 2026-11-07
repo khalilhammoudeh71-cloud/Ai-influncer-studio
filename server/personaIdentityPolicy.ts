@@ -16,11 +16,13 @@ export function assertReferenceModel(locked:boolean,model:{hasReferenceImage?:bo
  if(locked && !model.hasReferenceImage && !model.hasEditVariant && !model.editApiPath && !['image-to-video','reference-to-video','video-to-video'].includes(model.type || ''))
   throw new Error('This model cannot preserve a persona reference. Choose a model with image reference support.');
 }
-export function identityReviewFailure(report:{status:string;reasons:string[];identityStatus?:string;sceneStatus?:string;temporalStatus?:string}) {
+export function identityReviewFailure(report:{status:string;reasons:string[];identityStatus?:string;sceneStatus?:string;temporalStatus?:string;expressionStatus?:string}) {
  const context=report.identityStatus==='passed'&&report.sceneStatus&&report.sceneStatus!=='passed'&&report.sceneStatus!=='not-requested'
   ? 'The face matched, but the requested scene could not be verified.'
   : report.temporalStatus==='failed'?'Identity drift was detected in the video.'
   : report.temporalStatus==='unavailable'?'Face consistency could not be confirmed throughout the video.'
+  : report.identityStatus==='passed'&&report.expressionStatus==='failed'?'The face matched, but the requested expression was not followed.'
+  : report.identityStatus==='passed'&&report.expressionStatus==='unavailable'?'The face matched, but the requested expression could not be verified.'
   : 'Persona identity could not be verified.';
  return `${context} ${report.reasons.join(' ') || 'Try a clearer reference or a different model.'}`;
 }
