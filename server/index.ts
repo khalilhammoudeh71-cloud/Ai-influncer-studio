@@ -1171,11 +1171,22 @@ function cleanChatPromptToVisualScene(prompt: string, personaName: string, creat
   return cleaned;
 }
 
+const EXPRESSION_FREEDOM = 'EXPRESSION FREEDOM: Expression is not identity. Use the reference for stable facial anatomy and recognizable likeness, not as a frozen expression or pose. Follow the requested expression, mouth opening, visible teeth, cheek movement, brow position, eyelid movement and gaze even when they differ from the reference or a saved appearance description. Allow natural expression-driven changes in lip contour, eye aperture and smile lines while preserving the same person. Do not copy the reference smile unless requested. If no expression is specified, choose one appropriate to the scene; do not force a smile. An explicit request to keep the original expression should be respected.';
+
+function withExpressionFreedom(prompt: string, body: {referenceImage?: string|null; identityLock?: boolean}): string {
+  return body.referenceImage && body.identityLock !== false && !prompt.includes(EXPRESSION_FREEDOM)
+    ? `${prompt}\n${EXPRESSION_FREEDOM}` : prompt;
+}
+
 export function buildPrompt(body: ImageGenRequest, useEditInstructionStyle = false): string {
+  return withExpressionFreedom(buildBasePrompt(body, useEditInstructionStyle), body);
+}
+
+function buildBasePrompt(body: ImageGenRequest, useEditInstructionStyle = false): string {
   const { personaName, niche, tone, visualStyle, environment, outfitStyle, framing, mood, additionalInstructions, isChatContext, chatPrompt, referenceImage, faceDescriptor, naturalLook, identityLock } = body;
   const hasRef = !!referenceImage;
   const realismTerms = 'Candid photography, natural skin texture, subtle skin pores, film grain, not over-retouched, authentic photograph.';
-  const identityLockTerms = 'IDENTITY LOCK: Reproduce the exact same facial features in every detail — identical bone structure, eye shape and spacing, nose shape, lip shape, and jawline. This is the same person. Do not reinterpret or alter the face.';
+  const identityLockTerms = 'IDENTITY LOCK: Preserve the same recognizable person and stable facial anatomy: bone structure, eye spacing, nose anatomy, natural lip anatomy, and jawline. Facial muscles, mouth opening, eyelids and brows may move naturally with the requested expression.';
 
   const directPrompt = typeof (body as any).prompt === 'string' ? (body as any).prompt.trim() : '';
   if (isChatContext || directPrompt) {
@@ -1252,7 +1263,7 @@ export function buildPrompt(body: ImageGenRequest, useEditInstructionStyle = fal
     }
 
     if (hasRef && useEditInstructionStyle) {
-      let p = `The reference image shows the EXACT person named ${personaName}. Keep their face, facial structure, skin tone, and body proportions identical.`;
+      let p = `The reference image shows the EXACT person named ${personaName}. Preserve their recognizable facial anatomy, skin tone, and body proportions; follow the requested expression and pose.`;
       if (faceDescriptor) p += ` Appearance: ${faceDescriptor}.`;
       p += ` Scene: ${visualScene}.`;
       if (visualStyle) p += ` Visual style: ${visualStyle}.`;
@@ -1263,7 +1274,7 @@ export function buildPrompt(body: ImageGenRequest, useEditInstructionStyle = fal
     }
 
     const refNote = hasRef
-      ? `CRITICAL: The reference image shows the EXACT person named ${personaName}. Preserve all facial features identically — same face shape, eyes, nose, mouth, skin tone, hair color and texture. The person must look like the same individual.`
+      ? `CRITICAL: The reference image shows the EXACT person named ${personaName}. Preserve stable facial anatomy, skin tone, hair color and texture while allowing natural changes for the requested expression. The person must look like the same individual.`
       : '';
     const descriptorNote = faceDescriptor ? `Appearance: ${faceDescriptor}` : '';
     
@@ -1290,7 +1301,7 @@ export function buildPrompt(body: ImageGenRequest, useEditInstructionStyle = fal
     if (!SKIP(mood)) sceneParts.push(`${mood} mood`);
     if (visualStyle) sceneParts.push(`${visualStyle} visual style`);
     if (additionalInstructions) sceneParts.push(additionalInstructions);
-    let p = `The reference image shows the EXACT person. Keep their face, hair, skin tone, and body proportions perfectly identical.`;
+    let p = `The reference image shows the EXACT person. Preserve their recognizable facial anatomy, hair, skin tone, and body proportions; follow the requested expression and pose.`;
     if (faceDescriptor) p += ` Appearance: ${faceDescriptor}.`;
     p += ` Place them in a new scene: ${sceneParts.join(', ')}. Photorealistic, cinematic lighting, professional social media quality.`;
     if (identityLock) p += ` ${identityLockTerms}`;
@@ -1306,7 +1317,7 @@ export function buildPrompt(body: ImageGenRequest, useEditInstructionStyle = fal
     parts.push(`Appearance: ${faceDescriptor}`);
   }
   if (hasRef) {
-    parts.push('CRITICAL: The reference image shows the EXACT person. Preserve ALL facial features identically — same face shape, eyes, nose, lips, skin tone, hair color and texture. The output person must look like the same individual as the reference. Do NOT change the face or identity.');
+    parts.push('CRITICAL: The reference image shows the EXACT person. Preserve stable facial anatomy, skin tone, hair color and texture while allowing natural changes for the requested expression. The output person must look like the same individual as the reference. Do not change the person’s identity.');
   }
   if (!SKIP(environment)) parts.push(`Environment: ${environment}.`);
   if (!SKIP(outfitStyle)) parts.push(`Outfit: ${outfitStyle}.`);
@@ -1351,15 +1362,15 @@ PROMPT ENGINEERING RULES:
 
 2. SUBJECT IDENTITIES & PRECISE APPEARANCE:
    ${isDuo ? `- DUO INTERACTIVE SCENE:
-     1) ${personaName} (Reference Image 1): Mediterranean beauty with large warm dark brown almond eyes, arched natural dark eyebrows, straight nose, radiant warm smile with white teeth, soft feminine jawline, warm olive skin tone, and long dark brown hair with caramel highlights. Her face must be clearly visible and angled towards the camera to lock her signature smile and eyes with 100% precision from Reference Image 1. Fully nude with natural curves.
+     1) ${personaName} (Reference Image 1): Mediterranean beauty with large warm dark brown almond eyes, arched natural dark eyebrows, straight nose, recognizable facial proportions, soft feminine jawline, warm olive skin tone, and long dark brown hair with caramel highlights. Her face must be clearly visible and angled towards the camera to preserve her recognizable anatomy from Reference Image 1 while following the requested expression and gaze. Fully nude with natural curves.
      2) ${creatorName} (Reference Image 2): Completely bald with a smooth clean-shaven head (ZERO hair on scalp), trimmed dark beard, sharp masculine facial features, and athletic muscular physique. Fully nude.
      - PHYSICAL ACTION & DYNAMIC: Accurately render the physical interaction and posture requested ("${rawPrompt}"). Both bodies must be visible in the scene engaged in the action.` : ''}
    ${isCreatorSolo ? `- SOLO CREATOR SCENE: Vertical portrait of ${creatorName} (${creatorAppearance}) from Reference Image 2, completely bald with clean-shaven head and trimmed dark beard.` : ''}
-   ${!isDuo && !isCreatorSolo ? `- SINGLE PERSON ONLY: Exactly ONE female model (${personaName}: Mediterranean beauty with large dark brown almond eyes, warm radiant smile, long dark brown hair) in the photograph. No extra people.
+   ${!isDuo && !isCreatorSolo ? `- SINGLE PERSON ONLY: Exactly ONE female model (${personaName}: Mediterranean beauty with large dark brown almond eyes, recognizable facial proportions, long dark brown hair) in the photograph. No extra people.
      - FRAMING: Vertical 9:16 portrait. Her face and natural curves clearly visible for maximum identity lock.` : ''}
 
 3. MAXIMUM IDENTITY LOCK & DUAL-IMAGE SYNTHESIS:
-   ${hasPersonaRef ? `- Reference Image 1 is ${personaName}. Reproduce her exact facial features, warm dark almond eyes, and radiant white smile.` : ''}
+   ${hasPersonaRef ? `- Reference Image 1 is ${personaName}. Reproduce her stable facial anatomy and warm dark almond eyes while following the requested expression.` : ''}
    ${isDuo && hasCreatorRef ? `- Reference Image 2 is ${creatorName}. Reproduce his exact face, smooth bald head (no hair), trimmed dark beard, and muscular build.` : ''}
 
 4. NUDITY & BODY DIRECTIVE:
@@ -1474,7 +1485,7 @@ Creator: ${creatorName} (${creatorAppearance})`;
 
   // 4. Dynamic Programmatic Photographic Prompt Synthesizer (Zero Censorship Guarantee)
   if (isDuo) {
-    return `An ultra-photorealistic vertical 9:16 scene featuring ${personaName} (Reference Image 1: Mediterranean beauty with large warm dark brown almond eyes, arched dark eyebrows, straight nose, radiant warm smile, warm olive skin, long dark brown hair with caramel highlights) and ${creatorName} (Reference Image 2: completely bald with smooth clean-shaven head, trimmed dark beard, and athletic muscular physique). Both are fully nude. The scene explicitly depicts the full physical action and dynamic: ${rawPrompt}. Leen is looking back towards the camera with her unmistakable smile and sparkling eyes from Reference Image 1. Full bodies visible, natural feminine curves, raw passion, authentic skin pores, volumetric cinematic lighting, 8k uhd photorealistic quality.`;
+    return `An ultra-photorealistic vertical 9:16 scene featuring ${personaName} (Reference Image 1: Mediterranean beauty with large warm dark brown almond eyes, arched dark eyebrows, straight nose, recognizable facial proportions, warm olive skin, long dark brown hair with caramel highlights) and ${creatorName} (Reference Image 2: completely bald with smooth clean-shaven head, trimmed dark beard, and athletic muscular physique). Both are fully nude. The scene explicitly depicts the full physical action and dynamic: ${rawPrompt}. Leen is looking back towards the camera with her recognizable facial anatomy from Reference Image 1 and the expression requested in the scene. Full bodies visible, natural feminine curves, raw passion, authentic skin pores, volumetric cinematic lighting, 8k uhd photorealistic quality.`;
   }
   if (isRefRecreation) {
     return `Strictly modify Reference Image 1: Preserve the exact same pose, body angle, direct smiling eye contact, head tilt, and outdoor natural lighting from Reference Image 1. Execute the requested change: ${isExplicitNude ? 'remove the yellow top and all garments completely, rendering her fully bare and unclothed with natural feminine chest, delicate collarbones, and authentic skin texture' : rawPrompt}. Photorealistic, high-resolution, natural skin tones, visible pores, soft outdoor sunlight, cinematic depth of field, 8k uhd.`;
@@ -3245,6 +3256,7 @@ export async function inspectGeneratedImageQuality(
           ? `AUTHORITATIVE USER REQUEST: ${originalPrompt}`
           : 'Prompt-fidelity checking is disabled for this request; mark every prompt criterion not applicable.',
         'Count distinct visible human people in the generated image. Then compare each expected identity to its named reference using stable facial structure, eyes, nose, mouth, skin tone, hair, and other durable features.',
+        'Identity is independent of expression: a requested smile, laughter, surprise, frown, open mouth, visible teeth, raised brows or closed eyes is not itself an identity mismatch. Compare stable anatomy while allowing natural expression-driven deformation. Closed eyes alone do not imply an uncertain identity if enough other facial structure is clearly comparable; remain uncertain when evidence is insufficient.',
         'Evaluate pose, setting, gaze, wardrobe, lighting, framing, and absence or presence of text against the authoritative user request. Mark a criterion applicable only when the request specified it. For applicable criteria, satisfied means the generated output visibly followed it.',
         'Use verdict "match" only when the visible identity resembles the reference, "mismatch" only when it is clearly a different person, and "uncertain" when the face is too small, hidden, turned away, or otherwise not safely comparable.',
         'Return JSON only with this shape:',
@@ -5316,7 +5328,7 @@ const generateImageHandler = async (req: any, res: any) => {
         });
         if (enhanced && enhanced.length > 30) {
           console.log('[generate-image] Rephrased & enhanced prompt applied:', enhanced.slice(0, 120) + '...');
-          prompt = enhanced;
+          prompt = withExpressionFreedom(enhanced, {referenceImage,identityLock:rest.identityLock});
         }
       } catch (enhErr) {
         console.warn('[generate-image] Prompt enhancement failed, using standard built prompt:', enhErr);
@@ -6228,7 +6240,7 @@ const generateVideoHandler = async (req: any, res: any) => {
 
   let scene: VerifiedScene;
   let modelId = rawModelId as string;
-  const identityLockTerms = 'IDENTITY LOCK: Reproduce the exact same facial features in every detail — identical bone structure, eye shape and spacing, nose shape, lip shape, and jawline. This is the same person. Do not reinterpret or alter the face.';
+  const identityLockTerms = 'IDENTITY LOCK: Preserve the same recognizable person and stable facial anatomy: bone structure, eye spacing, nose anatomy, natural lip anatomy, and jawline. Facial muscles, mouth opening, eyelids and brows may move naturally with the requested expression.';
   const realismTerms = 'Candid photography, natural skin texture, subtle skin pores, film grain, not over-retouched, authentic photograph.';
   let prompt = rawPrompt.trim();
   if (identityLock === true) prompt += ` ${identityLockTerms}`;
