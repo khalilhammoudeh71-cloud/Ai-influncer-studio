@@ -127,3 +127,9 @@
 .image-studio-options summary span{display:none}
 .image-studio-submit>div{position:absolute;right:0;top:10px;pointer-events:none;font-size:10px;max-width:65%;text-align:right}
 .image-studio-fields{gap:6px}
+.image-studio-persona-and-model{display:block}
+.image-studio-persona label{font-size:11px}
+.image-studio-model-select{display:flex;align-items:center;gap:10px;min-height:34px;font-size:12px!important}
+.image-studio-model-select>span{color:var(--text-tertiary);font-weight:500;flex-shrink:0}
+.image-studio-model-select>select{flex:1;min-width:0;margin:0;min-height:34px;font-size:12px;padding:6px 8px}
+.image-studio-fields{gap:4px}

@@ -1,3 +1,4 @@
+import {imageModelMenu,resolveImageModelChoice} from '../../shared/imageModelMenu';
 import {IMAGE_CAMERA_ANGLES,withCameraAngle,type ImageCameraAngle} from '../../shared/imageCameraAngle';
 import PersonaPrimaryReferenceDialog from '../components/PersonaPrimaryReferenceDialog';
 import './ImageStudio.css';
@@ -499,6 +500,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const [upscaleModels, setUpscaleModels] = useState<ModelInfo[]>([]);
   const [videoModels, setVideoModels] = useState<ModelInfo[]>([]);
   const [selectedModel, setSelectedModel] = useState('');
+  const [imageModelChoice,setImageModelChoice]=useState('default');
+  const imageModelOptions=useMemo(()=>imageModelMenu(models),[models]);
   const [selectedVideoModel, setSelectedVideoModel] = useState('');
   const [selectedOutcome, setSelectedOutcome] = useState<CreationOutcome>('quality');
   const [videoSubMode, setVideoSubMode] = useState<'generate' | 'edit' | 'extend'>('generate');
@@ -963,13 +966,13 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
   useEffect(() => {
     if (isPro) return;
-    if (mode === 'image' && models.length > 0) {
-      setSelectedModel(current => chooseModelForOutcome(models, selectedOutcome, current));
+    if (mode === 'image' && models.length > 0 && imageModelChoice === 'default') {
+      setSelectedModel(resolveImageModelChoice(models,'default'));
     }
     if (mode === 'video' && videoModels.length > 0) {
       setSelectedVideoModel(current => chooseModelForOutcome(videoModels, selectedOutcome, current, true));
     }
-  }, [isPro, mode, models, selectedOutcome, videoModels]);
+  }, [isPro, mode, models, selectedOutcome, videoModels, imageModelChoice]);
 
   useEffect(() => {
     if (!isPro || !initialBrief?.requestedModel) return;
@@ -984,7 +987,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       return;
     }
     if (initialBrief.kind === 'video') setSelectedVideoModel(match.id);
-    else setSelectedModel(match.id);
+    else { setSelectedModel(match.id); setImageModelChoice(match.id); }
     toast.success(`Using ${match.name}`);
   }, [initialBrief, isPro, models, videoModels]);
 
@@ -1958,13 +1961,20 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               </select>
             </div>
           </div>
-          <button type="button" className="image-studio-model" onClick={()=>setIsModelModalOpen(true)} aria-label={`Model: ${selectedModelInfo?.name || 'Choose a model'}`}><span>Model</span><strong>{selectedModelInfo?.name || 'Choose a model'}</strong><ChevronDown size={14}/></button>
+
           </div>
           <div className="image-studio-prompt">
             <label htmlFor="image-description" className="sr-only">Describe your photo</label>
             <textarea id="image-description" value={imagePrompt} onChange={e => setImagePrompt(e.target.value)} placeholder="Describe your photo" />
 
           </div>
+          <label className="image-studio-model-select" htmlFor="image-model"><span>Model</span>
+            <select id="image-model" value={imageModelChoice} disabled={modelsLoading} onChange={e=>{setImageModelChoice(e.target.value);setSelectedModel(resolveImageModelChoice(models,e.target.value));}}>
+              <option value="default">Default</option>
+              <optgroup label="Latest OpenAI, Gemini & Seedream">{imageModelOptions.latest.map(model=><option key={model.id} value={model.id}>{model.name}{model.provider?` · ${model.provider}`:''}</option>)}</optgroup>
+              <optgroup label="All models">{imageModelOptions.other.map(model=><option key={model.id} value={model.id}>{model.name}{model.provider?` · ${model.provider}`:''}</option>)}</optgroup>
+            </select>
+          </label>
           <div className="image-studio-composition">
           <label className="image-studio-field" htmlFor="image-shape">Photo shape
             <select id="image-shape" value={selectedAspectRatio} onChange={e => setSelectedAspectRatio(e.target.value)}>
@@ -4228,6 +4238,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                       key={m.id}
                       onClick={() => {
                         setSelectedModel(m.id);
+                        setImageModelChoice(m.id);
                         setIsModelModalOpen(false);
                         toast.success(`Selected model: ${m.name}`);
                       }}
