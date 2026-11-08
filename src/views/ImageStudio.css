@@ -1,0 +1,56 @@
+.image-studio-workspace{display:grid;grid-template-columns:minmax(300px,390px) minmax(0,1fr);gap:28px;width:100%;max-width:1200px;margin:0 auto;padding-bottom:40px;color:var(--text-primary);align-items:start}
+.image-studio-brief{padding:24px;background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:20px;display:flex;flex-direction:column;gap:20px;min-width:0}
+.image-studio-workspace button,.image-studio-upload{cursor:pointer}
+.image-studio-workspace button:disabled{cursor:not-allowed;opacity:.45}
+.image-studio-workspace :is(button,select,textarea,summary,input):focus-visible{outline:2px solid var(--accent-primary);outline-offset:3px}
+.image-studio-persona{display:flex;gap:12px;align-items:center}
+.image-studio-persona>img{width:48px;height:56px;object-fit:cover;border-radius:10px;border:1px solid var(--border-default)}
+.image-studio-persona>div{flex:1;min-width:0}
+.image-studio-workspace label{font-size:14px;font-weight:600;line-height:1.5}
+.image-studio-workspace select{display:block;width:100%;min-height:44px;background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border-default);border-radius:10px;padding:10px;font:inherit;font-size:14px;margin-top:6px}
+.image-studio-persona select{font-size:16px;font-weight:600}
+.image-studio-hint{font-size:12px;line-height:1.6;color:var(--text-tertiary);margin:0}
+.image-studio-persona+.image-studio-hint{margin-top:-12px}
+.image-studio-prompt{display:flex;flex-direction:column;gap:8px}
+.image-studio-prompt>label{font-size:17px}
+.image-studio-prompt textarea{width:100%;min-height:150px;resize:vertical;background:var(--bg-input);border:1px solid var(--border-default);border-radius:12px;padding:14px;color:var(--text-primary);font-size:16px;line-height:1.65}
+.image-studio-prompt textarea::placeholder{color:var(--text-muted)}
+.image-studio-examples{display:flex;flex-wrap:wrap;gap:6px;margin-top:-8px}
+.image-studio-examples button{padding:8px 10px;border:1px solid var(--border-default);border-radius:20px;font-size:12px;color:var(--text-secondary);min-height:36px}
+.image-studio-examples button:hover{border-color:var(--accent-primary);color:var(--text-primary);background:var(--accent-subtle)}
+.image-studio-upload{display:flex;align-items:center;gap:6px;min-height:44px;font-weight:500!important;position:relative;width:fit-content;color:var(--text-primary)}
+.image-studio-upload span{font-size:12px;color:var(--text-tertiary)}
+.image-studio-upload input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+.image-studio-references{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+.image-studio-references>div{position:relative}
+.image-studio-references img{width:56px;height:64px;object-fit:cover;border-radius:8px}
+.image-studio-references button{position:absolute;top:-8px;right:-8px;background:var(--bg-modal);border:1px solid var(--border-default);border-radius:20px;padding:5px}
+.image-studio-options{border-block:1px solid var(--border-subtle);padding-block:16px}
+.image-studio-options summary{cursor:pointer;font-size:14px;font-weight:600}
+.image-studio-options summary span{display:block;margin:4px 0 0 17px;color:var(--text-tertiary);font-size:12px;font-weight:400}
+.image-studio-option-content{display:flex;flex-direction:column;gap:14px;margin-top:20px}
+.image-studio-option-content>button{display:flex;align-items:center;gap:8px;text-align:left;padding:10px;border:1px solid var(--border-default);border-radius:10px;min-height:44px;font-size:13px;background:var(--bg-input)}
+.image-studio-settings{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.image-studio-submit{display:flex;flex-direction:column;gap:12px}
+.image-studio-submit>div{display:flex;justify-content:space-between;gap:10px;color:var(--text-tertiary);font-size:11px}
+.image-studio-submit>button{min-height:48px;display:flex;align-items:center;justify-content:center;gap:8px;border-radius:12px;font-size:15px;font-weight:600;width:100%}
+.image-studio-results{min-width:0;display:flex;flex-direction:column;gap:16px}
+.image-studio-result-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:28px}
+.image-studio-result-heading h2{font-size:15px;font-weight:500;color:var(--text-secondary)}
+.image-studio-result-heading button,.image-studio-download button{display:flex;align-items:center;gap:7px;font-size:13px;min-height:44px;padding:8px 12px;border:1px solid var(--border-default);border-radius:10px;background:var(--bg-surface)}
+.image-studio-canvas{min-height:420px;height:min(65vh,680px);background:var(--bg-input);border:1px solid var(--border-subtle);border-radius:20px;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:12px}
+.image-studio-canvas>img{width:100%;height:100%;object-fit:contain;border-radius:10px}
+.image-studio-empty{text-align:center;max-width:300px;display:flex;flex-direction:column;align-items:center;padding:24px;gap:12px;color:var(--text-tertiary)}
+.image-studio-empty h3{font-size:18px;color:var(--text-primary);font-weight:500;line-height:1.5}
+.image-studio-empty p{font-size:14px;line-height:1.7}
+.image-studio-empty-frame{display:grid;place-items:center;width:96px;height:112px;border:1px solid var(--border-default);border-radius:12px;transform:rotate(-5deg);margin-bottom:12px;color:var(--text-gold)}
+.image-studio-download{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.image-studio-download>span{font-size:11px;color:var(--text-tertiary)}
+@media(max-width:1000px){.image-studio-workspace{grid-template-columns:minmax(280px,340px) minmax(0,1fr);gap:20px}.image-studio-brief{padding:20px}.image-studio-submit>div{flex-direction:column;gap:3px}}
+@media(max-width:760px){.image-studio-workspace{grid-template-columns:minmax(0,1fr);gap:28px;max-width:560px}.image-studio-canvas{min-height:320px;height:55vh}.image-studio-submit>div{flex-direction:row}.image-studio-brief{gap:18px}.image-studio-workspace button{touch-action:manipulation}}
+@media(prefers-reduced-motion:reduce){.image-studio-workspace .animate-spin{animation:none}}
+.image-studio-submit{position:sticky;bottom:0;background:var(--bg-surface);padding-top:14px;z-index:2;border-top:1px solid var(--border-subtle)}
+.image-studio-brief{gap:16px}
+.image-studio-prompt textarea{min-height:120px}
+.image-studio-option-content .grid.sm\:grid-cols-6{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media(max-width:760px){.image-studio-submit{position:static}}

@@ -1,3 +1,4 @@
+import './ImageStudio.css';
 import ExpressionControls from '../components/ExpressionControls';
 import {withExpression,type ExpressionId,type ExpressionIntensity} from '../../shared/personaExpression';
 import CarouselImageDialog from '../components/CarouselImageDialog';
@@ -1931,511 +1932,63 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   ];
 
   const renderImageMode = () => {
-    const isIdentityModel = selectedModelInfo?.isIdentityModel ?? false;
     const selectedReferencePersona = refPersonaId !== 'none' ? personas.find(p => p.id === refPersonaId) : null;
-    const refPersonaImage = selectedReferencePersona?.referenceImage || selectedReferencePersona?.avatar || null;
-    const estimatedImageCost = (selectedModelInfo?.price || 0) * imageCount;
-    const estimatedImageCostLabel = estimatedImageCost > 0
-      ? billingInfo?.isCreator
-        ? `$${estimatedImageCost.toFixed(3)} estimated`
-        : `${estimatedImageCost} credit${estimatedImageCost === 1 ? '' : 's'} estimated`
-      : 'No generation charge';
-
+    const reference = selectedReferencePersona?.referenceImage || selectedReferencePersona?.avatar;
+    const busy = isGenerating || isProcessing;
+    const missingReference = Boolean(selectedModelInfo?.isIdentityModel && !effectiveRefImage && !activePersona.referenceImage && !uploadedAvatarImage);
+    const canGenerate = Boolean(imagePrompt.trim() && selectedModel && !modelsLoading && !busy && !missingReference);
+    const cost = (selectedModelInfo?.price || 0) * imageCount;
+    const costLabel = modelsLoading ? 'Checking cost…' : !selectedModel ? 'Choose an image model in More options' : cost > 0 ? billingInfo?.isCreator ? `$${cost.toFixed(3)} estimated` : `${cost} credits estimated` : 'No generation charge shown';
     return (
-      <div className="flex flex-col gap-4 w-full max-w-5xl mx-auto pb-10">
-        {/* ── TOP SECTION: Thin Visual Showcase Banner (when idle) OR Generating State OR Canvas Results ── */}
-        {activeVersion || isGenerating || isProcessing ? (
-          <div className="w-full relative min-h-[220px] h-[min(42dvh,420px)] max-h-[420px] bg-[#08080A] border border-white/10 rounded-[24px] overflow-hidden shadow-2xl flex flex-col justify-center items-center p-3 font-sans transition-all duration-500">
-            {isGenerating || isProcessing ? (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#08080A]/90 backdrop-blur-sm z-30 gap-2 select-none">
-                <Loader2 className="w-8 h-8 animate-spin text-[#E7C477]" />
-                <div className="text-center">
-                  <p className="text-xs font-bold text-white tracking-wide animate-pulse">
-                    {isProcessing
-                      ? (postAction === 'upscale' ? 'Upscaling image to 4K...' : 'Editing visual canvas...')
-                      : `Creating with ${selectedModelInfo?.name || 'AI'}`}
-                  </p>
-                  <p className="text-xs text-slate-400 mt-0.5">Generating {imageCount > 1 ? `${imageCount} variations` : 'image'} - please wait</p>
-                </div>
-              </div>
-            ) : (
-              <div className="relative w-full h-full min-h-0 flex items-center justify-center select-none p-3 bg-[#0E0E10] rounded-2xl group overflow-hidden">
-                <img
-                  src={activeVersion.imageUrl}
-                  alt="Active preview"
-                  onClick={() => setLightboxImageUrl(activeVersion.imageUrl)}
-                  className="max-w-full max-h-[38dvh] object-contain rounded-2xl shadow-2xl transition-all duration-300 hover:scale-[1.015] cursor-pointer hover:ring-2 hover:ring-[#E7C477]/50 border border-white/10"
-                  title="Click to enlarge full screen"
-                />
-
-                {/* Quick Image Download & View Action Badges */}
-                <div className="absolute bottom-2 right-2 flex items-center gap-1.5 z-20">
-                  <button
-                    onClick={e => { e.stopPropagation(); setLightboxImageUrl(activeVersion.imageUrl); }}
-                    className="btn-gold-primary px-3 py-1.5 rounded-lg text-xs font-bold shadow-lg flex items-center gap-1 cursor-pointer"
-                    title="Enlarge Full Screen"
-                  >
-                    <Maximize2 className="w-3.5 h-3.5" /> Fullscreen
-                  </button>
-                  <button
-                    onClick={e => { e.stopPropagation(); downloadFile(activeVersion.imageUrl, 'png'); }}
-                    className="p-1.5 bg-black/80 backdrop-blur-sm rounded-lg text-white hover:bg-black transition-all border border-white/10 hover:border-[#E7C477] shadow-lg cursor-pointer"
-                    title="Download"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={e => { e.stopPropagation(); handleImageGenerate(); }}
-                    className="p-1.5 bg-black/80 backdrop-blur-sm rounded-lg text-white hover:bg-[#1E1E22] transition-all border border-white/10 shadow-lg cursor-pointer"
-                    title="Regenerate"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-                <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/80 backdrop-blur-sm border border-white/15 rounded-md text-xs font-bold text-[#F2D58D]">
-                  {activeVersion.model}
-                </div>
-              </div>
-            )}
-          </div>
-        ) : (
-          null
-        )}
-
-        {/* Post Generation Toolkit for Active Version */}
-        {activeVersion && !isGenerating && !isProcessing && (
-          <div className="space-y-3 bg-[#0E0E10] p-4 rounded-2xl border border-white/10">
-            <div className="flex gap-2">
-              <button onClick={() => setPostAction(postAction === 'edit' ? null : 'edit')} className={`flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${postAction === 'edit' ? 'btn-gold-primary' : 'bg-[#1E1E22] text-[#F5F1E8] hover:border-[#E7C477]/40 border border-white/10'}`}>
-                <Pencil className="w-3.5 h-3.5" /> Edit Image
-              </button>
-              <button onClick={() => setPostAction(postAction === 'upscale' ? null : 'upscale')} className={`flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${postAction === 'upscale' ? 'btn-gold-primary' : 'bg-[#1E1E22] text-[#F5F1E8] hover:border-[#E7C477]/40 border border-white/10'}`}>
-                <ArrowUpCircle className="w-3.5 h-3.5" /> Upscale 4K
-              </button>
-              <button onClick={handleSaveImage} disabled={saved} className="flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 btn-gold-secondary transition-all disabled:opacity-50 shadow-md">
-                {saved ? <><Check className="w-3.5 h-3.5 text-[#E7C477]" /> Saved!</> : <><CheckCircle className="w-3.5 h-3.5" /> Save to Library</>}
-              </button>
-            </div>
-
-            {actionError && (
-              <div role="alert" className="rounded-xl border border-red-400/40 bg-red-950/30 p-3 text-sm text-red-100">
-                <p className="font-semibold">Image update failed — your original image is still displayed.</p>
-                <p className="mt-1">{actionError}</p>
-              </div>
-            )}
-
-            {postAction === 'edit' && (
-              <div className="bg-[#161618] border border-white/10 rounded-xl p-3.5 space-y-3">
-                {isPro && renderModelSelect(selectedEditModel, setSelectedEditModel, groupedEditModels)}
-                <textarea value={editPrompt} onChange={e => setEditPrompt(e.target.value)} placeholder="Describe what to change in the active image..." className="w-full bg-[#08080A] border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 resize-none h-16 outline-none focus:border-[#E7C477]" />
-                <div className="flex gap-2">
-                  <label className="flex-1 flex items-center gap-2 px-3 py-2 bg-[#08080A] rounded-lg cursor-pointer hover:bg-[#1E1E22] text-xs text-slate-300 border border-white/10">
-                    <Upload className="w-3.5 h-3.5 text-[#E7C477]" />
-                    <span className="truncate">{editAdditionalImageName || 'Add reference (optional)'}</span>
-                    <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload(setEditAdditionalImage, setEditAdditionalImageName)} />
-                  </label>
-                  <button onClick={handleEdit} disabled={isProcessing || !editPrompt.trim()} className="px-4 py-2 btn-gold-primary rounded-lg text-xs font-bold disabled:opacity-50">
-                    {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Apply Edit'}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {postAction === 'upscale' && (
-              <div className="bg-[#161618] border border-white/10 rounded-xl p-3.5 space-y-3">
-                {isPro && renderModelSelect(selectedUpscaleModel, setSelectedUpscaleModel, groupedUpscaleModels)}
-                <button onClick={handleUpscale} disabled={isProcessing} className="w-full py-2 btn-gold-primary rounded-lg text-xs font-bold disabled:opacity-50 flex items-center justify-center gap-1.5">
-                  {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <><ArrowUpCircle className="w-4 h-4" /> Enhance Resolution</>}
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ── INTERMEDIATE SECTION: Variation History Stream Thumbnails ── */}
-        {activeVersion && generatedFeed.length > 0 && (
-          <div className="space-y-2 bg-[#0E0E10] border border-white/10 p-3.5 rounded-2xl">
-            <span className="text-xs font-bold text-[#F2D58D] uppercase tracking-wider block">Recent creations</span>
-            <div className="flex gap-2.5 overflow-x-auto pb-1 scrollbar-hide select-none">
-              {generatedFeed.map(entry => {
-                const isFocused = focusedEntryId === entry.id;
-                return (
-                  <div
-                    key={entry.id}
-                    onClick={() => {
-                      setFocusedEntryId(entry.id);
-                      setImageResult({ imageUrl: entry.imageUrl, model: entry.model, promptUsed: entry.promptUsed });
-                      setImageHistory([{ imageUrl: entry.imageUrl, model: entry.model, promptUsed: entry.promptUsed, label: entry.label }]);
-                      setActiveHistoryIndex(0);
-                      setPostAction(null);
-                      setLightboxImageUrl(entry.imageUrl);
-                    }}
-                    className={`relative rounded-xl overflow-hidden border cursor-pointer transition-all shrink-0 w-16 h-20 group/thumb ${
-                      isFocused ? 'border-[#E7C477] ring-2 ring-[#E7C477]/40 scale-95 shadow-lg' : 'border-white/10 hover:border-white/40 hover:scale-105'
-                    }`}
-                    title="Click to select & view enlarged full screen"
-                  >
-                    <img src={entry.imageUrl} alt={entry.label} className="w-full h-full object-cover" />
-                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/thumb:opacity-100 transition-opacity flex items-center justify-center">
-                      <span className="text-xs font-bold text-[#161618] bg-[#E7C477] px-1 py-0.5 rounded shadow">🔍 Enlarge</span>
-                    </div>
-                    <div className="absolute bottom-1 left-1 px-1 py-0.5 bg-black/80 rounded text-[7px] font-bold text-white max-w-[calc(100%-8px)] truncate">
-                      {entry.label}
-                    </div>
-                  </div>
-                );
-              })}
+      <div className="image-studio-workspace">
+        <section className="image-studio-brief" aria-label="Create a photo">
+          <div className="image-studio-persona">
+            {reference ? <img src={reference} alt="" /> : <UserRound aria-hidden="true" size={28} />}
+            <div>
+              <label htmlFor="image-persona">Who's in your photo?</label>
+              <select id="image-persona" value={refPersonaId} onChange={e => { const id=e.target.value; setRefPersonaId(id); setLocalPersonaId(id); onSelectPersona(id==='none'?'empty':id); }}>
+                <option value="none">Create without a persona</option>
+                {personas.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
             </div>
           </div>
-        )}
-
-        {/* ── BOTTOM SECTION: Deep Inset Charcoal Prompt Box ── */}
-        <div className="relative bg-[#08080A] border border-white/10 rounded-[24px] p-4.5 space-y-3.5 focus-within:border-[#E7C477]/50 focus-within:shadow-[0_0_30px_rgba(231,196,119,0.05)] transition-all duration-300">
-
-          {/* Top Row: Dropzone popover, Upload previews, prompt input, Wand icon */}
-          <div className="flex items-start gap-4">
-
-            {/* Upload Button (+) & Dropdown */}
-            <div className="relative shrink-0">
-              <button
-                type="button"
-                aria-label="Add reference image"
-                onClick={() => setUploadMenuOpen(!uploadMenuOpen)}
-                className="w-10 h-10 rounded-2xl bg-white/[0.04] border border-white/10 flex items-center justify-center text-slate-350 hover:bg-white/10 hover:text-white transition-all shadow-md"
-              >
-                <Plus size={18} />
-              </button>
-
-              {uploadMenuOpen && (
-                <>
-                  <div className="fixed inset-0 z-29" onClick={() => setUploadMenuOpen(false)} />
-                  <div className="absolute left-0 top-full mt-2 w-48 rounded-xl border border-white/10 bg-[#141416] p-1.5 shadow-2xl z-30 space-y-0.5">
-                    <button type="button" onClick={()=>{setUploadMenuOpen(false);setReferencePickerOpen(true)}} className="w-full text-left px-3 py-2 rounded-lg text-xs text-slate-200 hover:bg-white/5 flex items-center gap-2 font-bold"><ImageIcon size={14}/>Persona reference images</button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setUploadMenuOpen(false);
-                        document.getElementById('ref-image-file-input')?.click();
-                      }}
-                      className="w-full text-left px-3 py-2 rounded-lg text-xs text-slate-200 hover:bg-white/5 hover:text-white flex items-center gap-2 font-bold transition-all"
-                    >
-                      <ImageIcon size={14} className="text-amber-400" />
-                      Photo Library
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setUploadMenuOpen(false);
-                        document.getElementById('ref-image-file-input')?.click();
-                      }}
-                      className="w-full text-left px-3 py-2 rounded-lg text-xs text-slate-200 hover:bg-white/5 hover:text-white flex items-center gap-2 font-bold transition-all"
-                    >
-                      <FolderOpen size={14} className="text-[var(--accent-primary)]" />
-                      Files
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setUploadMenuOpen(false);
-                        document.getElementById('ref-image-file-input')?.click();
-                      }}
-                      className="w-full text-left px-3 py-2 rounded-lg text-xs text-slate-200 hover:bg-white/5 hover:text-white flex items-center gap-2 font-bold transition-all"
-                    >
-                      <Camera size={14} className="text-emerald-400" />
-                      Take Photo / Camera
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* Prompt input field */}
-            <div className="flex-1 min-w-0">
-              <textarea
-                value={imagePrompt}
-                onChange={e => setImagePrompt(e.target.value)}
-                aria-label="Describe your image"
-                placeholder="Describe the image: subject, setting, style, and lighting…"
-                className="w-full bg-transparent border-0 outline-none resize-none text-sm text-white placeholder-slate-500 h-28 md:h-32 min-h-[112px] focus:ring-0 p-0"
-              />
-            </div>
-
-            {/* Enhance with AI Icon */}
-            <button
-              type="button"
-              onClick={() => handleEnhanceField(imagePrompt, setImagePrompt, 'imagePrompt')}
-              disabled={!imagePrompt.trim() || !!enhancingField}
-              className="p-2 rounded-xl bg-[var(--accent-subtle)] border border-[var(--border-strong)] text-[var(--accent-primary)] hover:bg-[var(--accent-muted)] transition-all disabled:opacity-30 self-start"
-              title="Enhance prompt with AI"
-            >
-              {enhancingField === 'imagePrompt' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
-            </button>
+          <p className="image-studio-hint">{reference ? 'Your saved persona photo helps keep their appearance consistent.' : 'Choose a saved persona, or create anyone you imagine.'}</p>
+          <div className="image-studio-prompt">
+            <label htmlFor="image-description">Describe your photo</label>
+            <textarea id="image-description" value={imagePrompt} onChange={e => setImagePrompt(e.target.value)} placeholder="A relaxed photo at a sunny café, wearing a cream sweater and smiling naturally…" />
+            <span className="image-studio-hint">Just describe the scene, outfit, and feeling. Everyday words work.</span>
           </div>
-
-          <ExpressionControls value={expression} intensity={expressionIntensity} onChange={setExpression} onIntensityChange={setExpressionIntensity} />
-
-          {/* Reference files input */}
-          <input
-            id="ref-image-file-input"
-            type="file"
-            accept="image/*"
-            multiple
-            className="hidden"
-            onChange={(e) => {
-              const files = e.target.files;
-              if (files) {
-                Array.from(files).forEach(file => handleAddRefImage(file));
-              }
-              e.target.value = '';
-            }}
-          />
-
-          {/* Uploaded Reference Thumbnails Inline Preview */}
-          {(refImages.length > 0 || refPersonaId !== 'none') && (
-            <div className="flex flex-wrap items-center gap-2 px-1 pt-1">
-              {/* Persona Reference Thumbnail */}
-              {refPersonaId !== 'none' && (() => {
-                const p = personas.find(x => x.id === refPersonaId);
-                if (!p?.referenceImage) return null;
-                return (
-                  <div className="relative w-8 h-8 rounded-lg overflow-hidden border border-emerald-500/30 shrink-0 ring-1 ring-emerald-500/20" title={`Persona face: ${p.name}`}>
-                    <img src={p.referenceImage} alt="" className="w-full h-full object-cover" />
-                    <div className="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-emerald-500 border border-[#0B0F17]" />
-                  </div>
-                );
-              })()}
-
-              {/* Custom Uploaded Thumbnails */}
-              {refImages.map(img => (
-                <div key={img.id} className="relative w-8 h-8 rounded-lg overflow-hidden border border-white/10 shrink-0 group">
-                  <img src={img.url} alt="" className="w-full h-full object-cover" />
-                  <button
-                    type="button"
-                    onClick={() => setRefImages(prev => prev.filter(x => x.id !== img.id))}
-                    className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity"
-                  >
-                    <X size={10} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Bottom Row: Selection Dropdowns & CTA Generate */}
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t border-white/10 w-full">
-            <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0 max-w-full">
-
-              {/* 1. Custom Interactive AI Model Selector Trigger Button */}
-              {isPro && <button
-                type="button"
-                onClick={() => setIsModelModalOpen(true)}
-                className="bg-[#1E1E22] border border-[#E7C477]/50 hover:border-[#E7C477] text-[#F2D58D] font-bold text-xs px-3 py-1 rounded-xl flex items-center gap-2 transition-all shadow-md hover:bg-[#242428] shrink-0 h-8 cursor-pointer"
-                title="Click to browse and change AI Generation Model"
-              >
-                <Cpu size={14} className="text-[#E7C477] shrink-0 animate-pulse" />
-                <div className="flex flex-col text-left leading-none max-w-[170px] truncate">
-                  <span className="text-[7.5px] font-bold uppercase tracking-wider text-[#8C909A]">AI Engine</span>
-                  <span className="truncate font-bold text-[#F2D58D] text-[11px] mt-0.5">
-                    {selectedModelInfo?.name ? selectedModelInfo.name : 'Choose AI Model (130+)'}
-                  </span>
-                </div>
-                <ChevronDown size={13} className="text-[#E7C477] shrink-0 ml-0.5" />
-              </button>}
-
-              {/* 2. Community LoRA & Style Booster Popover Button */}
-              {isPro && <div className="relative shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setLoraPanelOpen(!loraPanelOpen)}
-                  className={`border font-bold text-xs px-2.5 py-1 rounded-xl flex items-center gap-1.5 transition-all shadow-md h-8 cursor-pointer ${
-                    selectedLoras.length > 0
-                      ? 'bg-[#E7C477]/20 border-[#E7C477] text-[#F2D58D]'
-                      : 'bg-[#141416] border-white/10 text-slate-300 hover:border-white/20'
-                  }`}
-                  title="Attach Community Aesthetic LoRAs & Civitai weights"
-                >
-                  <Sparkles size={13} className={selectedLoras.length > 0 ? 'text-[#E7C477] animate-spin' : 'text-slate-400'} />
-                  <span>LoRA {selectedLoras.length > 0 ? `(${selectedLoras.length})` : 'Booster'}</span>
-                </button>
-
-                {/* LoRA Popover Dropdown */}
-                {loraPanelOpen && (
-                  <div className="absolute left-0 bottom-10 z-50 w-72 bg-[#161618] border border-white/15 rounded-2xl p-3 shadow-2xl backdrop-blur-xl">
-                    <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/10">
-                      <div className="flex items-center gap-1.5">
-                        <Sparkles size={13} className="text-[#E7C477]" />
-                        <span className="text-xs font-bold text-white">Community LoRA & Aesthetics</span>
-                      </div>
-                      <button type="button" onClick={() => setLoraPanelOpen(false)} className="text-slate-400 hover:text-white p-0.5"><X size={13} /></button>
-                    </div>
-
-                    <div className="space-y-1.5 max-h-52 overflow-y-auto custom-scrollbar pr-1">
-                      {POPULAR_LORAS.map(l => {
-                        const active = selectedLoras.find(x => x.model === l.id);
-                        return (
-                          <div key={l.id} className={`p-2 rounded-xl border text-left transition-all ${active ? 'bg-[#E7C477]/10 border-[#E7C477]/60' : 'bg-[#1E1E22] border-white/5 hover:border-white/15'}`}>
-                            <div className="flex items-center justify-between">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (active) setSelectedLoras(prev => prev.filter(x => x.model !== l.id));
-                                  else setSelectedLoras(prev => [...prev, { model: l.id, weight: l.defaultWeight, name: l.name }]);
-                                }}
-                                className="text-[11px] font-bold text-slate-200 hover:text-[#E7C477] flex items-center gap-1.5 cursor-pointer"
-                              >
-                                <span>{active ? '✅' : '➕'}</span>
-                                <span className="truncate max-w-[170px]">{l.name}</span>
-                              </button>
-                              <span className="text-xs px-1.5 py-0.5 rounded bg-black/40 text-slate-400 font-mono">{l.tag}</span>
-                            </div>
-                            {active && (
-                              <div className="mt-1.5 pt-1 border-t border-white/5 flex items-center gap-2">
-                                <span className="text-xs text-slate-400">Weight:</span>
-                                <input
-                                  type="range"
-                                  min="0.1"
-                                  max="1.5"
-                                  step="0.05"
-                                  value={active.weight}
-                                  onChange={e => {
-                                    const w = parseFloat(e.target.value);
-                                    setSelectedLoras(prev => prev.map(x => x.model === l.id ? { ...x, weight: w } : x));
-                                  }}
-                                  className="w-full h-1 accent-[#E7C477] bg-white/10 rounded cursor-pointer"
-                                />
-                                <span className="text-xs font-mono text-[#E7C477] w-7 text-right">{active.weight.toFixed(2)}</span>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    {/* Custom Civitai LoRA Input */}
-                    <div className="mt-2.5 pt-2 border-t border-white/10">
-                      <span className="text-[9.5px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Custom Civitai / Air LoRA</span>
-                      <div className="flex items-center gap-1.5">
-                        <input
-                          type="text"
-                          placeholder="curn:civitai:..."
-                          value={customLoraInput}
-                          onChange={e => setCustomLoraInput(e.target.value)}
-                          className="flex-1 bg-[#101012] border border-white/10 rounded-lg px-2 py-1 text-xs text-slate-200 outline-none placeholder:text-slate-600"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (!customLoraInput.trim()) return;
-                            const id = customLoraInput.trim();
-                            if (!selectedLoras.find(x => x.model === id)) {
-                              setSelectedLoras(prev => [...prev, { model: id, weight: customLoraWeight, name: 'Custom Civitai LoRA' }]);
-                            }
-                            setCustomLoraInput('');
-                          }}
-                          className="bg-[#E7C477] text-black font-bold text-xs px-2 py-1 rounded-lg hover:bg-[#F2D58D] cursor-pointer"
-                        >
-                          Add
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>}
-
-              {/* 2. Persona Selector Dropdown */}
-              <div className="relative shrink-0">
-                <select
-                  value={refPersonaId}
-                  onChange={(e) => {const id=e.target.value;setRefPersonaId(id);setLocalPersonaId(id);onSelectPersona(id==='none'?'empty':id);}}
-                  className="bg-[#141416] border border-white/10 rounded-xl px-2.5 py-1 text-xs font-semibold text-slate-200 outline-none appearance-none pr-6 hover:bg-[#1E1E22] hover:border-white/20 transition-all cursor-pointer h-8 text-ellipsis overflow-hidden max-w-[140px]"
-                >
-                  <option value="none">None — create freely</option>
-                  {personas.map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none" />
-              </div>
-
-              {/* 3. Aspect Ratio Dropdown */}
-              <div className="relative shrink-0">
-                <select
-                  value={selectedAspectRatio}
-                  onChange={e => setSelectedAspectRatio(e.target.value)}
-                  className="bg-[#141416] border border-white/10 rounded-xl px-2.5 py-1 text-xs font-semibold text-slate-200 outline-none appearance-none pr-6 hover:bg-[#1E1E22] hover:border-white/20 transition-all cursor-pointer h-8 text-ellipsis overflow-hidden max-w-[110px]"
-                >
-                  <option value="1:1">1:1 Square</option>
-                  <option value="16:9">16:9 Landscape</option>
-                  <option value="9:16">9:16 Shorts</option>
-                  <option value="4:5">4:5 Post</option>
-                  <option value="4:3">4:3 Widescreen</option>
-                  <option value="2:3">2:3 Tall</option>
-                  <option value="3:2">3:2 Classic</option>
-                </select>
-                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none" />
-              </div>
-
-              {/* 4. Resolution Dropdown */}
-              {isPro && <div className="relative shrink-0">
-                <select
-                  value={selectedResolution}
-                  onChange={e => setSelectedResolution(e.target.value)}
-                  className="bg-[#141416] border border-white/10 rounded-xl px-2.5 py-1 text-xs font-semibold text-slate-200 outline-none appearance-none pr-6 hover:bg-[#1E1E22] hover:border-white/20 transition-all cursor-pointer h-8 text-ellipsis overflow-hidden max-w-[115px]"
-                >
-                  {resolutionOpts.map(o => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none" />
-              </div>}
-
-              {/* 5. Number of Generations Dropdown */}
-              <div className="relative shrink-0">
-                <select
-                  value={imageCount}
-                  onChange={e => setImageCount(Number(e.target.value))}
-                  className="bg-[#141416] border border-white/10 rounded-xl px-2.5 py-1 text-xs font-semibold text-slate-200 outline-none appearance-none pr-6 hover:bg-[#1E1E22] hover:border-white/20 transition-all cursor-pointer h-8 text-ellipsis overflow-hidden max-w-[85px]"
-                >
-                  <option value={1}>1 Gen</option>
-                  <option value={2}>2 Gens</option>
-                  <option value={3}>3 Gens</option>
-                  <option value={4}>4 Gens</option>
-                </select>
-                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none" />
-              </div>
-
-              {/* Optional Style presets builder button */}
-              <button
-                type="button"
-                onClick={() => setStyleOptionsOpen(!styleOptionsOpen)}
-                className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold transition-all border h-8 shrink-0 ${
-                  styleOptionsOpen || activeQuickStyle || activePresetChips.length > 0 || selectedEnv !== 'None'
-                    ? 'btn-gold-secondary text-[#F2D58D]'
-                    : 'bg-[#141416] border-white/10 text-slate-300 hover:bg-[#1E1E22]'
-                }`}
-              >
-                <Wand2 size={13} />
-                Presets
-              </button>
-            </div>
-
-            {/* Cost and timing remain visible at the point of commitment. */}
-            <div className="ml-auto hidden shrink-0 text-right md:block">
-              <p className="text-xs font-semibold text-slate-300">{estimatedImageCostLabel}</p>
-              <p className="text-xs text-slate-500">Usually under 1 minute</p>
-            </div>
-            <button
-              onClick={handleImageGenerate}
-              disabled={isGenerating || !selectedModel || (selectedModelInfo?.isIdentityModel && !refPersonaImage && refImages.length === 0)}
-              className="btn-gold-primary group z-10 flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-xl px-4 py-1 text-xs font-bold shadow-md transition-all disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <Sparkles size={13} className="group-hover:animate-pulse" />
-              Generate {imageCount > 1 ? `x${imageCount}` : ''}
-            </button>
+          <div className="image-studio-examples" aria-label="Photo ideas">
+            {[
+              ['At a café', 'A candid photo at a sunny café, wearing a cream sweater, holding a coffee and smiling naturally.'],
+              ['Work portrait', 'A natural professional portrait in a bright office, wearing a tailored navy blazer, with a relaxed confident expression.'],
+              ['Outfit photo', 'A full-length street style photo in a casual denim outfit, walking along a city sidewalk in soft afternoon light.'],
+            ].map(([label, prompt]) => <button key={label} type="button" onClick={() => setImagePrompt(prompt)}>{label}</button>)}
           </div>
-
+          <label className="image-studio-field" htmlFor="image-shape">Photo shape
+            <select id="image-shape" value={selectedAspectRatio} onChange={e => setSelectedAspectRatio(e.target.value)}>
+              {ASPECT_RATIO_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </label>
+          <div>
+            <label className="image-studio-upload"><Plus size={16} aria-hidden="true" /> Add a reference <span>(optional)</span>
+              <input type="file" accept="image/*" multiple onChange={e => { Array.from(e.target.files || []).forEach(file => handleAddRefImage(file)); e.target.value=''; }} />
+            </label>
+            <p className="image-studio-hint">Add an outfit or scene you'd like to use as inspiration.</p>
+            {refImages.length > 0 && <div className="image-studio-references">{refImages.map(ref => <div key={ref.id}><img src={ref.url} alt={ref.name} /><button type="button" aria-label={`Remove ${ref.name}`} onClick={() => setRefImages(prev => prev.filter(r => r.id!==ref.id))}><X size={14}/></button></div>)}</div>}
+          </div>
+          <details className="image-studio-options">
+            <summary>More options <span>Expression, style & settings</span></summary>
+            <div className="image-studio-option-content">
+              <ExpressionControls value={expression} intensity={expressionIntensity} onChange={setExpression} onIntensityChange={setExpressionIntensity} />
+              <button type="button" onClick={() => handleEnhanceField(imagePrompt, setImagePrompt, 'imagePrompt')} disabled={!imagePrompt.trim() || !!enhancingField}><Wand2 size={16}/> {enhancingField === 'imagePrompt' ? 'Improving description…' : 'Help improve my description'}</button>
+              <button type="button" onClick={() => setReferencePickerOpen(true)}>Choose saved reference images</button>
+              <button type="button" onClick={() => setIsModelModalOpen(true)}>Image model: {selectedModelInfo?.name || 'Choose a model'}</button>
+              <div className="image-studio-settings">
+                <label>Photo quality<select value={selectedResolution} onChange={e => setSelectedResolution(e.target.value)}>{resolutionOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></label>
+                <label>Number of photos<select value={imageCount} onChange={e => setImageCount(Number(e.target.value))}>{[1,2,3,4].map(n => <option key={n} value={n}>{n} {n===1?'photo':'photos'}</option>)}</select></label>
+              </div>
+              <button type="button" onClick={() => setStyleOptionsOpen(!styleOptionsOpen)} aria-expanded={styleOptionsOpen}>Style presets</button>
           {/* Style presets panel */}
           {styleOptionsOpen && (
             <div className="border-t border-white/5 pt-4 space-y-4 transition-all duration-350">
@@ -2542,8 +2095,199 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             </div>
           )}
 
-        </div>
+              <button type="button" onClick={() => setLoraPanelOpen(!loraPanelOpen)} aria-expanded={loraPanelOpen}>Advanced style adapters {selectedLoras.length > 0 ? `(${selectedLoras.length} selected)` : ''}</button>
+                {/* LoRA Popover Dropdown */}
+                {loraPanelOpen && (
+                  <div className="relative w-full bg-[#161618] border border-white/15 rounded-2xl p-3 shadow-2xl backdrop-blur-xl">
+                    <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/10">
+                      <div className="flex items-center gap-1.5">
+                        <Sparkles size={13} className="text-[#E7C477]" />
+                        <span className="text-xs font-bold text-white">Community LoRA & Aesthetics</span>
+                      </div>
+                      <button type="button" onClick={() => setLoraPanelOpen(false)} className="text-slate-400 hover:text-white p-0.5"><X size={13} /></button>
+                    </div>
 
+                    <div className="space-y-1.5 max-h-52 overflow-y-auto custom-scrollbar pr-1">
+                      {POPULAR_LORAS.map(l => {
+                        const active = selectedLoras.find(x => x.model === l.id);
+                        return (
+                          <div key={l.id} className={`p-2 rounded-xl border text-left transition-all ${active ? 'bg-[#E7C477]/10 border-[#E7C477]/60' : 'bg-[#1E1E22] border-white/5 hover:border-white/15'}`}>
+                            <div className="flex items-center justify-between">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (active) setSelectedLoras(prev => prev.filter(x => x.model !== l.id));
+                                  else setSelectedLoras(prev => [...prev, { model: l.id, weight: l.defaultWeight, name: l.name }]);
+                                }}
+                                className="text-[11px] font-bold text-slate-200 hover:text-[#E7C477] flex items-center gap-1.5 cursor-pointer"
+                              >
+                                <span>{active ? '✅' : '➕'}</span>
+                                <span className="truncate max-w-[170px]">{l.name}</span>
+                              </button>
+                              <span className="text-xs px-1.5 py-0.5 rounded bg-black/40 text-slate-400 font-mono">{l.tag}</span>
+                            </div>
+                            {active && (
+                              <div className="mt-1.5 pt-1 border-t border-white/5 flex items-center gap-2">
+                                <span className="text-xs text-slate-400">Weight:</span>
+                                <input
+                                  type="range"
+                                  min="0.1"
+                                  max="1.5"
+                                  step="0.05"
+                                  value={active.weight}
+                                  onChange={e => {
+                                    const w = parseFloat(e.target.value);
+                                    setSelectedLoras(prev => prev.map(x => x.model === l.id ? { ...x, weight: w } : x));
+                                  }}
+                                  className="w-full h-1 accent-[#E7C477] bg-white/10 rounded cursor-pointer"
+                                />
+                                <span className="text-xs font-mono text-[#E7C477] w-7 text-right">{active.weight.toFixed(2)}</span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Custom Civitai LoRA Input */}
+                    <div className="mt-2.5 pt-2 border-t border-white/10">
+                      <span className="text-[9.5px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Custom Civitai / Air LoRA</span>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          placeholder="curn:civitai:..."
+                          value={customLoraInput}
+                          onChange={e => setCustomLoraInput(e.target.value)}
+                          className="flex-1 bg-[#101012] border border-white/10 rounded-lg px-2 py-1 text-xs text-slate-200 outline-none placeholder:text-slate-600"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!customLoraInput.trim()) return;
+                            const id = customLoraInput.trim();
+                            if (!selectedLoras.find(x => x.model === id)) {
+                              setSelectedLoras(prev => [...prev, { model: id, weight: customLoraWeight, name: 'Custom Civitai LoRA' }]);
+                            }
+                            setCustomLoraInput('');
+                          }}
+                          className="bg-[#E7C477] text-black font-bold text-xs px-2 py-1 rounded-lg hover:bg-[#F2D58D] cursor-pointer"
+                        >
+                          Add
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+            </div>
+          </details>
+          <div className="image-studio-submit">
+            <div><span>{costLabel}</span><span>Usually under 1 minute</span></div>
+            <button type="button" className="btn-gold-primary" disabled={!canGenerate} onClick={() => { if (canGenerate) void handleImageGenerate(); }}>{busy ? <Loader2 size={18} className="animate-spin"/> : <Sparkles size={18}/>} {busy ? 'Creating your photo…' : imageCount > 1 ? `Generate ${imageCount} photos` : 'Generate photo'}</button>
+            {!busy && !imagePrompt.trim() && <p className="image-studio-hint">Add a description or choose an idea to get started.</p>}
+            {missingReference && <p role="status" className="image-studio-hint">This model needs a persona or reference photo.</p>}
+          </div>
+        </section>
+        <section className="image-studio-results" aria-label="Your photos">
+          <div className="image-studio-result-heading"><h2>{activeVersion ? 'Your photo' : 'A little imagination. A new photo.'}</h2>{activeVersion && <button type="button" onClick={() => setLightboxImageUrl(activeVersion.imageUrl)}><Maximize2 size={16}/> Enlarge</button>}</div>
+          <div className="image-studio-canvas" aria-busy={busy}>
+            {busy ? <div className="image-studio-empty" role="status"><Loader2 size={32} className="animate-spin"/><h3>{isProcessing ? 'Updating your photo…' : 'Creating your photo…'}</h3><p>You can stay here while we bring your idea to life.</p></div>
+              : activeVersion ? <img src={activeVersion.imageUrl} alt="Your generated photo" />
+              : <div className="image-studio-empty"><div className="image-studio-empty-frame"><ImageIcon size={36} strokeWidth={1}/></div><h3>Your photo will appear here</h3><p>Choose who's in it, describe your idea, and press Generate photo.</p></div>}
+          </div>
+          {activeVersion && !busy && <div className="image-studio-download"><span>{activeVersion.model}</span><button type="button" onClick={() => downloadFile(activeVersion.imageUrl, 'png')}><Download size={16}/> Download photo</button></div>}
+        {/* Post Generation Toolkit for Active Version */}
+        {activeVersion && !isGenerating && !isProcessing && (
+          <div className="space-y-3 bg-[#0E0E10] p-4 rounded-2xl border border-white/10">
+            <div className="flex gap-2">
+              <button onClick={() => setPostAction(postAction === 'edit' ? null : 'edit')} className={`flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${postAction === 'edit' ? 'btn-gold-primary' : 'bg-[#1E1E22] text-[#F5F1E8] hover:border-[#E7C477]/40 border border-white/10'}`}>
+                <Pencil className="w-3.5 h-3.5" /> Edit Image
+              </button>
+              <button onClick={() => setPostAction(postAction === 'upscale' ? null : 'upscale')} className={`flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${postAction === 'upscale' ? 'btn-gold-primary' : 'bg-[#1E1E22] text-[#F5F1E8] hover:border-[#E7C477]/40 border border-white/10'}`}>
+                <ArrowUpCircle className="w-3.5 h-3.5" /> Upscale 4K
+              </button>
+              <button onClick={handleSaveImage} disabled={saved} className="flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 btn-gold-secondary transition-all disabled:opacity-50 shadow-md">
+                {saved ? <><Check className="w-3.5 h-3.5 text-[#E7C477]" /> Saved!</> : <><CheckCircle className="w-3.5 h-3.5" /> Save to Library</>}
+              </button>
+            </div>
+
+            {actionError && (
+              <div role="alert" className="rounded-xl border border-red-400/40 bg-red-950/30 p-3 text-sm text-red-100">
+                <p className="font-semibold">Image update failed — your original image is still displayed.</p>
+                <p className="mt-1">{actionError}</p>
+              </div>
+            )}
+
+            {postAction === 'edit' && (
+              <div className="bg-[#161618] border border-white/10 rounded-xl p-3.5 space-y-3">
+                {renderModelSelect(selectedEditModel, setSelectedEditModel, groupedEditModels)}
+                <textarea value={editPrompt} onChange={e => setEditPrompt(e.target.value)} placeholder="Describe what to change in the active image..." className="w-full bg-[#08080A] border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 resize-none h-16 outline-none focus:border-[#E7C477]" />
+                <div className="flex gap-2">
+                  <label className="flex-1 flex items-center gap-2 px-3 py-2 bg-[#08080A] rounded-lg cursor-pointer hover:bg-[#1E1E22] text-xs text-slate-300 border border-white/10">
+                    <Upload className="w-3.5 h-3.5 text-[#E7C477]" />
+                    <span className="truncate">{editAdditionalImageName || 'Add reference (optional)'}</span>
+                    <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload(setEditAdditionalImage, setEditAdditionalImageName)} />
+                  </label>
+                  <button onClick={handleEdit} disabled={isProcessing || !editPrompt.trim()} className="px-4 py-2 btn-gold-primary rounded-lg text-xs font-bold disabled:opacity-50">
+                    {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Apply Edit'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {postAction === 'upscale' && (
+              <div className="bg-[#161618] border border-white/10 rounded-xl p-3.5 space-y-3">
+                {renderModelSelect(selectedUpscaleModel, setSelectedUpscaleModel, groupedUpscaleModels)}
+                <button onClick={handleUpscale} disabled={isProcessing} className="w-full py-2 btn-gold-primary rounded-lg text-xs font-bold disabled:opacity-50 flex items-center justify-center gap-1.5">
+                  {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <><ArrowUpCircle className="w-4 h-4" /> Enhance Resolution</>}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+
+        {/* ── INTERMEDIATE SECTION: Variation History Stream Thumbnails ── */}
+        {activeVersion && generatedFeed.length > 0 && (
+          <div className="space-y-2 bg-[#0E0E10] border border-white/10 p-3.5 rounded-2xl">
+            <span className="text-xs font-bold text-[#F2D58D] uppercase tracking-wider block">Recent creations</span>
+            <div className="flex gap-2.5 overflow-x-auto pb-1 scrollbar-hide select-none">
+              {generatedFeed.map(entry => {
+                const isFocused = focusedEntryId === entry.id;
+                return (
+                  <button
+                    type="button"
+                    aria-pressed={isFocused}
+                    key={entry.id}
+                    onClick={() => {
+                      setFocusedEntryId(entry.id);
+                      setImageResult({ imageUrl: entry.imageUrl, model: entry.model, promptUsed: entry.promptUsed });
+                      setImageHistory([{ imageUrl: entry.imageUrl, model: entry.model, promptUsed: entry.promptUsed, label: entry.label }]);
+                      setActiveHistoryIndex(0);
+                      setPostAction(null);
+
+                    }}
+                    className={`relative rounded-xl overflow-hidden border cursor-pointer transition-all shrink-0 w-16 h-20 group/thumb ${
+                      isFocused ? 'border-[#E7C477] ring-2 ring-[#E7C477]/40 scale-95 shadow-lg' : 'border-white/10 hover:border-white/40 hover:scale-105'
+                    }`}
+                    title="Select photo"
+                  >
+                    <img src={entry.imageUrl} alt={entry.label} className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/thumb:opacity-100 transition-opacity flex items-center justify-center">
+                      <span className="text-xs font-bold text-[#161618] bg-[#E7C477] px-1 py-0.5 rounded shadow">Select</span>
+                    </div>
+                    <div className="absolute bottom-1 left-1 px-1 py-0.5 bg-black/80 rounded text-[7px] font-bold text-white max-w-[calc(100%-8px)] truncate">
+                      {entry.label}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+
+        </section>
       </div>
     );
   };
@@ -4069,7 +3813,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   };
 
   const renderGuidedCreationWorkspace = () => {
-    if (isPro || !['image', 'video', 'talking-avatar'].includes(mode)) return null;
+    if (isPro || !['video', 'talking-avatar'].includes(mode)) return null;
 
     const selectedVideoInfo = videoModels.find(model => model.id === selectedVideoModel);
     const selectedInfo = mode === 'image' ? selectedModelInfo : selectedVideoInfo;
@@ -4155,7 +3899,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     );
   };
 
-  const usesGuidedWorkspace = !isPro && ['image', 'video', 'talking-avatar'].includes(mode);
+  const usesGuidedWorkspace = !isPro && ['video', 'talking-avatar'].includes(mode);
   const hasGuidedOutput = mode === 'image'
     ? Boolean(imageResult || isGenerating || isProcessing)
     : mode === 'video'
@@ -4168,7 +3912,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const workspaceMeta: Record<string, { title: string; description: string }> = {
     image: {
       title: 'Image Studio',
-      description: 'Generate polished images with optional persona identity lock.',
+      description: 'Choose a persona, describe a scene, and make it yours.',
     },
     video: {
       title: 'Video Studio',
