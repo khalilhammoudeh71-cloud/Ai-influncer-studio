@@ -9,3 +9,5 @@ Desktop places the brief beside the result. Below 760px it stacks the brief firs
 Use the existing charcoal, ivory and brass semantic tokens, quiet borders, 12–20px corner radii, 16px description text and a 48px primary action. Keep native selects and disclosure for reliable keyboard/mobile use. The main action is disabled for blank descriptions, busy work, unavailable models and missing references required by the selected model.
 
 Validation: TypeScript and production build; actual CreateView browser preview, description examples, shape, expression and disclosure interactions, desktop/mobile layout; live production smoke check. No provider generation charges required for UI validation.
+
+The Change reference photo action beside the persona opens their saved photo library. Choosing a photo and pressing Use as reference persists the primary reference, preserves the old photo, clears its cached face descriptor, and makes the selected photo the first approved identity anchor. Cancel/Escape leaves the persona unchanged. Prompt text is 14px.

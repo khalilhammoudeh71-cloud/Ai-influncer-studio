@@ -1,3 +1,4 @@
+import PersonaPrimaryReferenceDialog from '../components/PersonaPrimaryReferenceDialog';
 import './ImageStudio.css';
 import ExpressionControls from '../components/ExpressionControls';
 import {withExpression,type ExpressionId,type ExpressionIntensity} from '../../shared/personaExpression';
@@ -536,6 +537,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const [activeQuickStyle, setActiveQuickStyle] = useState<string | null>(null);
   const [styleOptionsOpen, setStyleOptionsOpen] = useState(false);
   const [referencePickerOpen,setReferencePickerOpen]=useState(false);
+  const [primaryReferenceOpen,setPrimaryReferenceOpen]=useState(false);
   const [personaPickerOpen, setPersonaPickerOpen] = useState(false);
   const [selectedAspectRatio, setSelectedAspectRatio] = useState('1:1');
   const [isModelModalOpen, setIsModelModalOpen] = useState(false);
@@ -1952,6 +1954,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               </select>
             </div>
           </div>
+          {selectedReferencePersona && <button type="button" className="image-studio-change-reference" onClick={() => setPrimaryReferenceOpen(true)}>Change reference photo</button>}
           <p className="image-studio-hint">{reference ? 'Your saved persona photo helps keep their appearance consistent.' : 'Choose a saved persona, or create anyone you imagine.'}</p>
           <div className="image-studio-prompt">
             <label htmlFor="image-description">Describe your photo</label>
@@ -4261,6 +4264,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         </div>
       )}
 
+      {primaryReferenceOpen && selectedReferencePersona && <PersonaPrimaryReferenceDialog key={selectedReferencePersona.id} persona={selectedReferencePersona} onClose={()=>setPrimaryReferenceOpen(false)} onSaved={updated=>{setPersonas(previous=>previous.map(p=>p.id===updated.id?updated:p));}} />}
       {referencePickerOpen&&<CarouselImageDialog purpose="reference" format="instagram" personaPhotos={[activePersona.referenceImage,activePersona.avatar,...(activePersona.additionalReferenceImages||[])].filter((u):u is string=>!!u)} libraryPhotos={(activePersona.visualLibrary||[]).map(i=>i.url)} onChoose={url=>{if(url)setRefImages(prev=>prev.some(i=>i.url===url)?prev:[...prev,{id:crypto.randomUUID(),url,name:'Persona reference'}]);setReferencePickerOpen(false)}} onClose={()=>setReferencePickerOpen(false)}/>}
       <AssetPickerModal
         isOpen={isCreateAssetPickerOpen}
